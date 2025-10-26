@@ -48,11 +48,7 @@ RUN apt-get update \
     && echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc \
     && echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> /etc/profile.d/mssql.sh \
     && apt-get install -y php-pear php8.2-xml php8.2-dev \
-    && apt-get remove --purge -y php8.2-mongodb || true \
     && pecl channel-update pecl.php.net \
-    && pecl install mongodb-1.15.0 \
-    && echo "extension=mongodb.so" > /etc/php/8.2/mods-available/mongodb.ini \
-    && phpenmod mongodb \
     && pecl install sqlsrv \
     && pecl install pdo_sqlsrv \
     && echo "extension=sqlsrv.so" > /etc/php/8.2/mods-available/sqlsrv.ini \

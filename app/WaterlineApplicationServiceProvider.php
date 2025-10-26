@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
-use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryMongoDB;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryMySQL;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryPostgreSQL;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLite;
@@ -46,7 +45,6 @@ class WaterlineApplicationServiceProvider extends ServiceProvider
         }
 
         $drivers = [
-            'mongodb' => WorkflowRepositoryMongoDB::class,
             'mysql' => WorkflowRepositoryMySQL::class,
             'pgsql' => WorkflowRepositoryPostgreSQL::class,
             'sqlite' => WorkflowRepositorySQLite::class,

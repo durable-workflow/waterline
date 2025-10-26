@@ -12,15 +12,6 @@ jobs:
     runs-on: ubuntu-latest
 
     services:
-      mongo:
-        image: mongo:latest
-        env:
-            MONGO_INITDB_ROOT_USERNAME: testing
-            MONGO_INITDB_ROOT_PASSWORD: password
-            MONGO_INITDB_DATABASE: testing
-        ports:
-            - 27017:27017
-
       mssql:
         image: mcr.microsoft.com/mssql/server:2022-latest
         env:
