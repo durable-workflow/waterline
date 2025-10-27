@@ -16,8 +16,6 @@
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
         "mockery/mockery": "^1.4.4",
-        "mongodb/laravel-mongodb": "^3.9",
-        "mongodb/mongodb": "1.11",
         "orchestra/testbench": "^7.29",
         "orchestra/workbench": "^7.29",
         "phpunit/phpunit": "^9.5.10"
@@ -47,9 +45,8 @@
             "@php vendor/bin/testbench serve --ansi"
         ],
         "build": "@php vendor/bin/testbench workbench:build --ansi",
-        "test": "composer test-mongo && composer test-mssql && composer test-mysql && composer test-pgsql && composer test-sqlite",
-        "test-all": "composer test-mongo && composer test-mssql && composer test-mysql && composer test-pgsql && composer test-sqlite",
-        "test-mongo": "vendor/bin/phpunit --testdox --configuration=phpunit-mongo.xml",
+        "test": "composer test-mssql && composer test-mysql && composer test-pgsql && composer test-sqlite",
+        "test-all": "composer test-mssql && composer test-mysql && composer test-pgsql && composer test-sqlite",
         "test-mssql": "vendor/bin/phpunit --testdox --configuration=phpunit-mssql.xml",
         "test-mysql": "vendor/bin/phpunit --testdox --configuration=phpunit-mysql.xml",
         "test-pgsql": "vendor/bin/phpunit --testdox --configuration=phpunit-pgsql.xml",

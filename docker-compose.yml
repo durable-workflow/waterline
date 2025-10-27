@@ -25,23 +25,6 @@ services:
         depends_on:
             - mysql
             - redis
-    mongo:
-        image: 'mongo:latest'
-        ports:
-            - '${FORWARD_DB_PORT:-27017}:27017'
-        environment:
-            MONGO_INITDB_ROOT_USERNAME: 'testing'
-            MONGO_INITDB_ROOT_PASSWORD: 'password'
-            MONGO_INITDB_DATABASE: 'testing'
-        volumes:
-            - 'sail-mongo:/data/db'
-            # - './docker/create-testing-database-mongo.js:/docker-entrypoint-initdb.d/10-create-testing-database.js'
-        networks:
-            - sail
-        healthcheck:
-            test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
-            retries: 3
-            timeout: 5s
     mssql:
         image: 'mcr.microsoft.com/mssql/server:2022-latest'
         ports:
@@ -114,8 +97,6 @@ networks:
     sail:
         driver: bridge
 volumes:
-    sail-mongo:
-        driver: local
     sail-mssql:
         driver: local
     sail-mysql:
