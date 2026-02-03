@@ -1,6 +1,6 @@
 # Waterline
 
-An elegant UI for monitoring [Laravel Workflows](https://github.com/laravel-workflow/laravel-workflow).
+An elegant UI for monitoring [workflows](https://github.com/durable-workflow/workflow).
 
 ## Installation
 
