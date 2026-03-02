@@ -2,36 +2,32 @@
 
 namespace Waterline\Http\Controllers;
 
-use SplFileObject;
+use Illuminate\Database\Eloquent\Builder;
 use Waterline\Http\Resources\StoredWorkflowResource;
-use Waterline\Transformer\WorkflowToChartDataTransformer;
 use Workflow\Models\StoredWorkflow;
 
 class WorkflowsController extends Controller
 {
     public function completed() {
-        return config('workflows.stored_workflow_model', StoredWorkflow::class)::whereIn('status', [
+        return $this->orderedFlowsQuery()->whereIn('status', [
                 'completed',
                 'continued',
             ])
-            ->orderByDesc('id')
             ->paginate(50);
     }
 
     public function failed() {
-        return config('workflows.stored_workflow_model', StoredWorkflow::class)::whereStatus('failed')
-            ->orderByDesc('id')
+        return $this->orderedFlowsQuery()->whereStatus('failed')
             ->paginate(50);
     }
 
     public function running() {
-        return config('workflows.stored_workflow_model', StoredWorkflow::class)::whereIn('status', [
+        return $this->orderedFlowsQuery()->whereIn('status', [
                 'created',
                 'pending',
                 'running',
                 'waiting',
             ])
-            ->orderByDesc('id')
             ->paginate(50);
     }
 
@@ -44,5 +40,11 @@ class WorkflowsController extends Controller
         ])->find($id);
 
         return StoredWorkflowResource::make($flow);
+    }
+
+    protected function orderedFlowsQuery(): Builder
+    {
+        return config('workflows.stored_workflow_model', StoredWorkflow::class)::query()
+            ->orderByDesc(config('waterline.workflow_sort_column', 'id'));
     }
 }

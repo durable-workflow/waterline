@@ -3,6 +3,7 @@
 namespace Waterline\Tests\Feature;
 
 use Exception;
+use Illuminate\Support\Carbon;
 use Illuminate\Testing\Fluent\AssertableJson;
 use Waterline\Tests\TestCase;
 use Workflow\Models\StoredWorkflow;
@@ -148,5 +149,56 @@ class DashboardWorkflowTest extends TestCase
                     ->where('queue', 'other')
                     ->etc()
             );
+    }
+
+    public function testRunningFlowsAreSortedByIdByDefault()
+    {
+        $firstWorkflow = $this->createRunningWorkflowAt(now()->addDays(3));
+        $secondWorkflow = $this->createRunningWorkflowAt(now()->addDay());
+        $thirdWorkflow = $this->createRunningWorkflowAt(now()->addDays(2));
+
+        $response = $this->get('/waterline/api/flows/running');
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.id', $thirdWorkflow->id)
+            ->assertJsonPath('data.1.id', $secondWorkflow->id)
+            ->assertJsonPath('data.2.id', $firstWorkflow->id);
+    }
+
+    public function testRunningFlowsCanBeSortedByConfiguredColumn()
+    {
+        config()->set('waterline.workflow_sort_column', 'created_at');
+
+        $latestWorkflow = $this->createRunningWorkflowAt(now()->addDays(3));
+        $oldestWorkflow = $this->createRunningWorkflowAt(now()->addDay());
+        $middleWorkflow = $this->createRunningWorkflowAt(now()->addDays(2));
+
+        $response = $this->get('/waterline/api/flows/running');
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.id', $latestWorkflow->id)
+            ->assertJsonPath('data.1.id', $middleWorkflow->id)
+            ->assertJsonPath('data.2.id', $oldestWorkflow->id);
+    }
+
+    protected function createRunningWorkflowAt(Carbon $createdAt): StoredWorkflow
+    {
+        $workflow = StoredWorkflow::create([
+            'class' => 'WorkflowClass',
+            'arguments' => 'N;',
+            'output' => 'N;',
+            'status' => 'created',
+        ]);
+
+        StoredWorkflow::query()
+            ->whereKey($workflow->id)
+            ->update([
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+            ]);
+
+        return $workflow->refresh();
     }
 }
