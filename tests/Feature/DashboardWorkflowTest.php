@@ -99,6 +99,36 @@ class DashboardWorkflowTest extends TestCase
                     'connection' => 'redis',
                     'queue' => 'other',
                 ],
+            ]),
+            'output' => 'N;',
+            'status' => 'completed',
+        ]);
+
+        $response = $this
+            ->get('/waterline/api/flows/'.$storedWorkflow->id);
+
+        $response
+            ->assertStatus(200)
+            ->assertJson(
+                fn (AssertableJson $json) => $json
+                    ->where('id', $storedWorkflow->id)
+                    ->where('arguments', serialize([]))
+                    ->where('connection', 'redis')
+                    ->where('queue', 'other')
+                    ->etc()
+            );
+    }
+
+    public function testShowExtractsWorkflowOptionsFromArgumentsWithConstructorMarker()
+    {
+        $storedWorkflow = StoredWorkflow::create([
+            'class' => 'WorkflowClass',
+            'arguments' => Serializer::serialize([
+                'arguments' => [],
+                'options' => [
+                    'connection' => 'redis',
+                    'queue' => 'other',
+                ],
                 '__constructor' => 'arguments',
             ]),
             'output' => 'N;',
