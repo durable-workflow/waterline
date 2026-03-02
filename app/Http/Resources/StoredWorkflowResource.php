@@ -17,10 +17,14 @@ class StoredWorkflowResource extends JsonResource
 
     public function toArray($request)
     {
+        $arguments = $this->normalizeArguments();
+
         return [
             "id" => $this->id,
             "class" => $this->class,
-            "arguments" => serialize(Serializer::unserialize($this->arguments)),
+            "arguments" => serialize($arguments['arguments']),
+            "connection" => $arguments['connection'],
+            "queue" => $arguments['queue'],
             "output" => $this->output === null ? serialize(null) : serialize(Serializer::unserialize($this->output)),
             "status" => $this->status,
             "created_at" => $this->created_at,
@@ -31,5 +35,37 @@ class StoredWorkflowResource extends JsonResource
             "continuedWorkflows" => StoredWorkflowRelationshipResource::collection($this->continuedWorkflows),
             "chartData" => app(WorkflowToChartDataTransformer::class)->transform($this->resource),
         ];
+    }
+
+    protected function normalizeArguments(): array
+    {
+        $arguments = $this->arguments === null ? null : Serializer::unserialize($this->arguments);
+
+        if (! is_array($arguments) || (($arguments['__constructor'] ?? null) !== 'arguments')) {
+            return [
+                'arguments' => $arguments,
+                'connection' => null,
+                'queue' => null,
+            ];
+        }
+
+        $options = isset($arguments['options']) && is_array($arguments['options'])
+            ? $arguments['options']
+            : [];
+
+        return [
+            'arguments' => array_key_exists('arguments', $arguments) ? $arguments['arguments'] : [],
+            'connection' => $this->normalizeOptionValue($options['connection'] ?? null),
+            'queue' => $this->normalizeOptionValue($options['queue'] ?? null),
+        ];
+    }
+
+    protected function normalizeOptionValue($value): ?string
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        return $value;
     }
 }

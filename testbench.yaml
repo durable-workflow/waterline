@@ -1,3 +1,5 @@
+laravel: workbench
+
 providers:
   - Waterline\WaterlineApplicationServiceProvider
   - Workbench\App\Providers\WorkbenchServiceProvider
@@ -7,11 +9,10 @@ env:
   - APP_URL=http://localhost:8000
   - ASSET_URL=http://localhost:8000
   - DB_CONNECTION=sqlite
-  - DB_DATABASE=/var/www/html/vendor/orchestra/testbench-core/laravel/database/database.sqlite
   - QUEUE_CONNECTION=database
 
 migrations:
-  - /var/www/html/workbench/database/migrations
+  - workbench/database/migrations
 
 seeders: false
 

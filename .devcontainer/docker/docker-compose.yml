@@ -1,13 +1,11 @@
-# For more information: https://laravel.com/docs/sail
-version: '3'
 services:
-    laravel.test:
+    laravel:
         build:
-            context: ./docker
+            context: .
             dockerfile: Dockerfile
             args:
                 WWWGROUP: '1000'
-        image: sail-8.2/app
+        image: sail-8.4/app
         extra_hosts:
             - 'host.docker.internal:host-gateway'
         ports:
@@ -19,26 +17,34 @@ services:
             XDEBUG_MODE: '${SAIL_XDEBUG_MODE:-off}'
             XDEBUG_CONFIG: '${SAIL_XDEBUG_CONFIG:-client_host=host.docker.internal}'
         volumes:
-            - '.:/var/www/html'
+            - '../..:/var/www/html'
         networks:
             - sail
         depends_on:
             - mysql
             - redis
+            - pgsql
+            - mssql
     mssql:
-        image: 'mcr.microsoft.com/mssql/server:2022-latest'
+        # SQL Server Linux containers are supported on x86-64 only.
+        platform: linux/amd64
+        # Build locally from Microsoft Ubuntu packages instead of pulling from MCR.
+        build:
+            context: .
+            dockerfile: mssql/Dockerfile
+        image: waterline-mssql:2022-ubuntu-22.04
         ports:
-            - '${FORWARD_DB_PORT:-1433}:1433'
+            - '${FORWARD_MSSQL_PORT:-1433}:1433'
         environment:
             ACCEPT_EULA: 'Y'
-            MSSQL_SA_PASSWORD: 'P@ssword'
+            MSSQL_PID: '${MSSQL_PID:-Developer}'
+            MSSQL_SA_PASSWORD: '${MSSQL_SA_PASSWORD:-P@ssword}'
         volumes:
-            - 'sail-mssql:/var/lib/mssql/data'
-            - './docker/create-testing-database-mssql.sh:/docker-entrypoint-initdb.d/10-create-testing-database.sh'
+            - 'sail-mssql:/var/opt/mssql'
         networks:
             - sail
         healthcheck:
-            test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "P@ssword", "-Q", "SELECT 1", "-b", "-o", "/dev/null"]
+            test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -Q \"SELECT 1\" -C -b -o /dev/null || /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P \"$${MSSQL_SA_PASSWORD}\" -Q \"SELECT 1\" -b -o /dev/null"]
             interval: 10s
             timeout: 3s
             retries: 10
@@ -48,37 +54,37 @@ services:
         ports:
             - '${FORWARD_DB_PORT:-3306}:3306'
         environment:
-            MYSQL_ROOT_PASSWORD: 'password'
-            MYSQL_ROOT_HOST: "%"
-            MYSQL_DATABASE: 'testing'
-            MYSQL_USER: 'testing'
-            MYSQL_PASSWORD: 'password'
+            MYSQL_ROOT_PASSWORD: '${DB_PASSWORD:-password}'
+            MYSQL_ROOT_HOST: '%'
+            MYSQL_DATABASE: '${DB_DATABASE:-testing}'
+            MYSQL_USER: '${DB_USERNAME:-testing}'
+            MYSQL_PASSWORD: '${DB_PASSWORD:-password}'
             MYSQL_ALLOW_EMPTY_PASSWORD: 1
         volumes:
             - 'sail-mysql:/var/lib/mysql'
-            - './docker/create-testing-database-mysql.sh:/docker-entrypoint-initdb.d/10-create-testing-database.sh'
+            - './create-testing-database-mysql.sh:/docker-entrypoint-initdb.d/10-create-testing-database.sh'
         networks:
             - sail
         healthcheck:
-            test: ["CMD", "mysqladmin", "ping", "-ppassword"]
+            test: ["CMD", "mysqladmin", "ping", "-p${DB_PASSWORD:-password}"]
             retries: 3
             timeout: 5s
     pgsql:
         image: 'postgres:15'
         ports:
-            - '${FORWARD_DB_PORT:-5432}:5432'
+            - '${FORWARD_PGSQL_PORT:-5432}:5432'
         environment:
-            PGPASSWORD: 'password'
-            POSTGRES_DB: 'testing'
-            POSTGRES_USER: 'testing'
-            POSTGRES_PASSWORD: 'password'
+            PGPASSWORD: '${DB_PASSWORD:-password}'
+            POSTGRES_DB: '${DB_DATABASE:-testing}'
+            POSTGRES_USER: '${DB_USERNAME:-testing}'
+            POSTGRES_PASSWORD: '${DB_PASSWORD:-password}'
         volumes:
             - 'sail-pgsql:/var/lib/postgresql/data'
-            - './docker/create-testing-database-pgsql.sql:/docker-entrypoint-initdb.d/10-create-testing-database.sql'
+            - './create-testing-database-pgsql.sql:/docker-entrypoint-initdb.d/10-create-testing-database.sql'
         networks:
             - sail
         healthcheck:
-            test: ["CMD", "pg_isready", "-q", "-d", "testing", "-U", "testing"]
+            test: ["CMD", "pg_isready", "-q", "-d", "${DB_DATABASE:-testing}", "-U", "${DB_USERNAME:-testing}"]
             retries: 3
             timeout: 5s
     redis:

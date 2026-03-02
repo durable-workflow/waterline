@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+set -e
+
+COMPOSER_INSTALLED_JSON=/var/www/html/vendor/composer/installed.json
+
+if [ -n "$WWWUSER" ]; then
+    usermod -u "$WWWUSER" laravel
+fi
+
+# A truncated mounted vendor cache can make Composer fail before it can repair itself.
+if [ -f "$COMPOSER_INSTALLED_JSON" ] && ! php -r '
+$contents = @file_get_contents($argv[1]);
+if ($contents === false) {
+    exit(1);
+}
+
+json_decode($contents);
+exit(json_last_error() === JSON_ERROR_NONE ? 0 : 1);
+' "$COMPOSER_INSTALLED_JSON"; then
+    rm -rf /var/www/html/vendor
+fi
+
+composer install --prefer-dist --no-progress --no-interaction
+
+if [ ! -d /.composer ]; then
+    mkdir /.composer
+fi
+
+chmod -R ugo+rw /.composer
+
+if [ $# -gt 0 ]; then
+    exec gosu laravel "$@"
+else
+    exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+fi

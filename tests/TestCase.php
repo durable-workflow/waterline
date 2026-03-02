@@ -3,7 +3,9 @@
 namespace Waterline\Tests;
 
 use Illuminate\Support\Carbon;
+use Orchestra\Testbench\Concerns\WithWorkbench;
 use function Orchestra\Testbench\artisan;
+use function Orchestra\Testbench\default_skeleton_path;
 use function Orchestra\Testbench\workbench_path;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 use PDO;
@@ -11,6 +13,8 @@ use Waterline\Waterline;
 
 abstract class TestCase extends BaseTestCase
 {
+    use WithWorkbench;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -41,9 +45,8 @@ abstract class TestCase extends BaseTestCase
             };
         });
 
+        $this->loadMigrationsFrom(default_skeleton_path('migrations'));
         artisan($this, 'migrate:fresh');
-        $this->loadLaravelMigrations();
-        $this->loadMigrationsFrom('./vendor/laravel-workflow/laravel-workflow/src/migrations');
 
         $this->beforeApplicationDestroyed(
             fn () => artisan($this, 'migrate:rollback')
@@ -56,6 +59,9 @@ abstract class TestCase extends BaseTestCase
             class_alias(\Illuminate\Database\Eloquent\Model::class, '\Workflow\Models\Model');
         }
 
-        return ['Waterline\WaterlineServiceProvider', 'Waterline\WaterlineApplicationServiceProvider'];
+        return array_values(array_unique(array_merge(parent::getPackageProviders($app), [
+            'Waterline\WaterlineServiceProvider',
+            'Waterline\WaterlineApplicationServiceProvider',
+        ])));
     }
 }
