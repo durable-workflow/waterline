@@ -26,6 +26,14 @@ Gate::define('viewWaterline', function ($user) {
 
 This will allow only the single admin user to access the Waterline UI.
 
+## Configuration
+
+If your workflow IDs are strings (for example UUIDs) and do not sort in a useful order, publish the config and set `workflow_sort_column` to a timestamp column such as `created_at`:
+
+```php
+'workflow_sort_column' => 'created_at',
+```
+
 
 ## Upgrading Waterline
 
