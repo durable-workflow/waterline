@@ -41,7 +41,7 @@ class StoredWorkflowResource extends JsonResource
     {
         $arguments = $this->arguments === null ? null : Serializer::unserialize($this->arguments);
 
-        if (! is_array($arguments) || (($arguments['__constructor'] ?? null) !== 'arguments')) {
+        if (! $this->isWrappedWorkflowArguments($arguments)) {
             return [
                 'arguments' => $arguments,
                 'connection' => null,
@@ -58,6 +58,27 @@ class StoredWorkflowResource extends JsonResource
             'connection' => $this->normalizeOptionValue($options['connection'] ?? null),
             'queue' => $this->normalizeOptionValue($options['queue'] ?? null),
         ];
+    }
+
+    protected function isWrappedWorkflowArguments($arguments): bool
+    {
+        if (! is_array($arguments) || ! array_key_exists('arguments', $arguments)) {
+            return false;
+        }
+
+        if (! array_key_exists('options', $arguments) && ! array_key_exists('__constructor', $arguments)) {
+            return false;
+        }
+
+        if (array_key_exists('__constructor', $arguments) && $arguments['__constructor'] !== 'arguments') {
+            return false;
+        }
+
+        if (array_key_exists('options', $arguments) && ! is_array($arguments['options'])) {
+            return false;
+        }
+
+        return array_diff(array_keys($arguments), ['arguments', 'options', '__constructor']) === [];
     }
 
     protected function normalizeOptionValue($value): ?string
