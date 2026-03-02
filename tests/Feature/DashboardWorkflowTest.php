@@ -42,6 +42,8 @@ class DashboardWorkflowTest extends TestCase
                     ->where('id', $storedWorkflow->id)
                     ->where('class', 'WorkflowClass')
                     ->where('arguments', 'N;')
+                    ->where('connection', null)
+                    ->where('queue', null)
                     ->where('output', 'N;')
                     ->where('status', 'created')
                     ->whereType('created_at', 'string')
@@ -84,6 +86,37 @@ class DashboardWorkflowTest extends TestCase
                         'chartData.1.y.1' => 'integer',
                     ])
 
+            );
+    }
+
+    public function testShowExtractsWorkflowOptionsFromArguments()
+    {
+        $storedWorkflow = StoredWorkflow::create([
+            'class' => 'WorkflowClass',
+            'arguments' => Serializer::serialize([
+                'arguments' => [],
+                'options' => [
+                    'connection' => 'redis',
+                    'queue' => 'other',
+                ],
+                '__constructor' => 'arguments',
+            ]),
+            'output' => 'N;',
+            'status' => 'completed',
+        ]);
+
+        $response = $this
+            ->get('/waterline/api/flows/'.$storedWorkflow->id);
+
+        $response
+            ->assertStatus(200)
+            ->assertJson(
+                fn (AssertableJson $json) => $json
+                    ->where('id', $storedWorkflow->id)
+                    ->where('arguments', serialize([]))
+                    ->where('connection', 'redis')
+                    ->where('queue', 'other')
+                    ->etc()
             );
     }
 }

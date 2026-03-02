@@ -1,15 +1,17 @@
 {
 	"name": "Existing Docker Compose (Extend)",
 	"dockerComposeFile": [
-		"../docker-compose.yml"
+		"docker/docker-compose.yml"
 	],
-	"service": "laravel.test",
+	"service": "laravel",
+	"runServices": [
+		"laravel",
+		"mysql",
+		"redis",
+		"pgsql",
+		"mssql"
+	],
 	"workspaceFolder": "/var/www/html",
-	"settings": {},
-	"extensions": [
-        "editorconfig.editorconfig",
-	],
-	"remoteUser": "sail",
-	"postCreateCommand": "chown -R 1000:1000 /var/www/html && composer install",
-	"forwardPorts": [8000]
+	"remoteUser": "laravel",
+	"forwardPorts": [80]
 }

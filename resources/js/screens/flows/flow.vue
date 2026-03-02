@@ -49,6 +49,16 @@
                     <div class="col" v-else>-</div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.connection)">
+                    <div class="col-md-2"><strong>Connection</strong></div>
+                    <div class="col">{{ flow.connection }}</div>
+                </div>
+
+                <div class="row mb-2" v-if="hasDetailValue(flow.queue)">
+                    <div class="col-md-2"><strong>Queue</strong></div>
+                    <div class="col">{{ flow.queue }}</div>
+                </div>
+
                 <div class="row mb-2" v-if="flow.parents.length">
                     <div class="col-md-2"><strong v-if="flow.parents[0].parent_index > Number.MAX_SAFE_INTEGER">Continued From</strong><strong v-else>Parent ID</strong></div>
                     <div class="col">{{ flow.parents[0].parent_workflow_id }}</div>
@@ -345,10 +355,12 @@ export default {
         unserialize(data) {
             try {
                 let result = phpunserialize(data)
-                if (result.class) {
-                    result.__constructor = result.class
-                } else {
-                    result.__constructor = data.split('"')[1]
+                if (result && typeof result === 'object' && !Array.isArray(result)) {
+                    if (result.class) {
+                        result.__constructor = result.class
+                    } else {
+                        result.__constructor = data.split('"')[1]
+                    }
                 }
                 return result
             } catch (err) {
@@ -367,6 +379,10 @@ export default {
 
         duration(start, end) {
             return moment(end).from(moment(start), true)
+        },
+
+        hasDetailValue(value) {
+            return value !== null && value !== undefined && value !== ''
         },
 
         showResult(result) {

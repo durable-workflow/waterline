@@ -18,7 +18,7 @@ class StoredWorkflowLogResource extends JsonResource
     {
         return [
             "id" => $this->id,
-            "index" => $this->index,
+            "index" => (int) $this->index,
             "now" => $this->now,
             "class" => $this->class,
             "result" => serialize(Serializer::unserialize($this->result)),
