@@ -78,7 +78,7 @@ php artisan waterline:publish
    composer run serve
    ```
 6. Access dashboard:
-   - Local: http://localhost:8000/waterline
+   - Local: http://localhost:18280/waterline
 7. Create test workflow:
    ```bash
    ./vendor/bin/testbench workflow:create-test
