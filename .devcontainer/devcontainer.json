@@ -13,5 +13,5 @@
 	],
 	"workspaceFolder": "/var/www/html",
 	"remoteUser": "laravel",
-	"forwardPorts": [80]
+	"forwardPorts": [18280]
 }

@@ -19,7 +19,7 @@ jobs:
             MSSQL_PID: Express
             MSSQL_SA_PASSWORD: P@ssword
         ports:
-            - 1433:1433
+          - 11433:1433
 
       mysql:
         image: mysql
@@ -29,7 +29,7 @@ jobs:
           MYSQL_PASSWORD: password
           MYSQL_DATABASE: testing
         ports:
-        - 3306:3306
+        - 13307:3306
 
       postgres:
         image: postgres
@@ -38,7 +38,7 @@ jobs:
           POSTGRES_PASSWORD: password
           POSTGRES_DB: testing
         ports:
-        - 5432:5432
+        - 15433:5432
 
       redis:
         image: redis
@@ -78,7 +78,7 @@ jobs:
 
     - name: Create databases
       run: |
-        /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "P@ssword" -Q "CREATE DATABASE testing;"
+        /opt/mssql-tools/bin/sqlcmd -S localhost,11433 -U sa -P "P@ssword" -Q "CREATE DATABASE testing;"
 
     - name: Run test suite
       run: composer test
