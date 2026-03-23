@@ -12,7 +12,7 @@ on:
 jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
 
     permissions:
       contents: read
@@ -23,32 +23,40 @@ jobs:
 
       - name: Start devcontainer services
         run: |
-          docker compose -f .devcontainer/docker/docker-compose.yml up -d --build --wait --wait-timeout 180 mysql redis pgsql mssql
+          docker compose -f .devcontainer/docker/docker-compose.yml up -d --build --wait --wait-timeout 180 mysql redis pgsql mssql laravel
 
-      - name: Validate composer.json and smoke test feature suites
+      - name: Prepare dashboard and queue worker
         run: |
-          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --build --no-deps --entrypoint bash laravel -lc '
+          curl --fail --retry 30 --retry-delay 2 --retry-connrefused http://127.0.0.1:18280 > /dev/null
+          docker compose -f .devcontainer/docker/docker-compose.yml exec -T laravel bash -lc '
+            cd /var/www/html &&
             git config --global --add safe.directory /var/www/html &&
             mkdir -p workbench/bootstrap/cache &&
             mkdir -p workbench/storage/framework/cache &&
             mkdir -p workbench/storage/framework/sessions &&
             mkdir -p workbench/storage/framework/views &&
             mkdir -p workbench/storage/logs &&
-            composer install --prefer-dist --no-progress --no-interaction &&
             chmod -R ug+rwX workbench/bootstrap/cache workbench/storage &&
-            composer validate --strict &&
-            echo "Running feature suite against MySQL" &&
-            vendor/bin/phpunit --testdox --configuration=phpunit-mysql.xml --testsuite Feature &&
-            echo "Running feature suite against PostgreSQL" &&
-            vendor/bin/phpunit --testdox --configuration=phpunit-pgsql.xml --testsuite Feature &&
-            echo "Running feature suite against SQL Server" &&
-            vendor/bin/phpunit --testdox --configuration=phpunit-mssql.xml --testsuite Feature
+            ./vendor/bin/testbench workbench:create-sqlite-db &&
+            ./vendor/bin/testbench migrate:fresh --database=sqlite &&
+            ./vendor/bin/testbench waterline:publish
           '
+          docker compose -f .devcontainer/docker/docker-compose.yml exec -d laravel bash -lc '
+            cd /var/www/html &&
+            ./vendor/bin/testbench queue:work --tries=1 --timeout=90
+          '
+          docker compose -f .devcontainer/docker/docker-compose.yml exec -T laravel bash -lc 'ps -ef | grep "[q]ueue:work"'
+          docker compose -f .devcontainer/docker/docker-compose.yml exec -T laravel bash -lc '
+            cd /var/www/html &&
+            ./vendor/bin/testbench workflow:create-test &&
+            ./vendor/bin/testbench workflow:create-test-parent &&
+            ./vendor/bin/testbench workflow:create-test-continue-as-new
+          '
+          sleep 5
+          curl --fail --retry 10 --retry-delay 2 --retry-connrefused http://127.0.0.1:18280/waterline > /dev/null
 
       - name: Show compose logs if checks fail
         if: failure()
-        run: docker compose -f .devcontainer/docker/docker-compose.yml logs --no-color
-
-      - name: Tear down devcontainer services
-        if: always()
-        run: docker compose -f .devcontainer/docker/docker-compose.yml down -v --remove-orphans
+        run: |
+          docker compose -f .devcontainer/docker/docker-compose.yml logs --no-color
+          docker compose -f .devcontainer/docker/docker-compose.yml exec -T laravel bash -lc 'ps -ef'
