@@ -23,12 +23,12 @@ jobs:
 
       - name: Start devcontainer services
         run: |
-          docker compose -f .devcontainer/docker/docker-compose.yml up -d --build --wait --wait-timeout 180 mysql redis pgsql mssql laravel
+          docker compose -f .devcontainer/docker/docker-compose.yml up -d --build --wait --wait-timeout 180 mysql redis pgsql mssql
+          docker compose -f .devcontainer/docker/docker-compose.yml build laravel
 
       - name: Prepare dashboard and queue worker
         run: |
-          curl --fail --retry 30 --retry-delay 2 --retry-connrefused http://127.0.0.1:18280 > /dev/null
-          docker compose -f .devcontainer/docker/docker-compose.yml exec -T laravel bash -lc '
+          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --no-deps --entrypoint bash laravel -lc '
             cd /var/www/html &&
             git config --global --add safe.directory /var/www/html &&
             mkdir -p workbench/bootstrap/cache &&
@@ -37,26 +37,54 @@ jobs:
             mkdir -p workbench/storage/framework/views &&
             mkdir -p workbench/storage/logs &&
             chmod -R ug+rwX workbench/bootstrap/cache workbench/storage &&
+            composer install --prefer-dist --no-progress --no-interaction &&
+            composer run build &&
             ./vendor/bin/testbench workbench:create-sqlite-db &&
             ./vendor/bin/testbench migrate:fresh --database=sqlite &&
             ./vendor/bin/testbench waterline:publish
           '
-          docker compose -f .devcontainer/docker/docker-compose.yml exec -d laravel bash -lc '
+          docker compose -f .devcontainer/docker/docker-compose.yml run -d --name waterline-copilot-app --service-ports --no-deps --entrypoint bash laravel -lc '
             cd /var/www/html &&
+            git config --global --add safe.directory /var/www/html &&
+            mkdir -p workbench/bootstrap/cache &&
+            mkdir -p workbench/storage/framework/cache &&
+            mkdir -p workbench/storage/framework/sessions &&
+            mkdir -p workbench/storage/framework/views &&
+            mkdir -p workbench/storage/logs &&
+            chmod -R ug+rwX workbench/bootstrap/cache workbench/storage &&
+            SERVER_HOST=0.0.0.0 SERVER_PORT=80 php vendor/bin/testbench serve --ansi
+          '
+          docker compose -f .devcontainer/docker/docker-compose.yml run -d --name waterline-copilot-worker --no-deps --entrypoint bash laravel -lc '
+            cd /var/www/html &&
+            git config --global --add safe.directory /var/www/html &&
+            mkdir -p workbench/bootstrap/cache &&
+            mkdir -p workbench/storage/framework/cache &&
+            mkdir -p workbench/storage/framework/sessions &&
+            mkdir -p workbench/storage/framework/views &&
+            mkdir -p workbench/storage/logs &&
+            chmod -R ug+rwX workbench/bootstrap/cache workbench/storage &&
             ./vendor/bin/testbench queue:work --tries=1 --timeout=90
           '
-          docker compose -f .devcontainer/docker/docker-compose.yml exec -T laravel bash -lc 'ps -ef | grep "[q]ueue:work"'
-          docker compose -f .devcontainer/docker/docker-compose.yml exec -T laravel bash -lc '
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18280 > /dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent http://127.0.0.1:18280 > /dev/null
+          docker exec waterline-copilot-worker bash -lc 'ps -ef | grep "[q]ueue:work"'
+          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --no-deps --entrypoint bash laravel -lc '
             cd /var/www/html &&
             ./vendor/bin/testbench workflow:create-test &&
             ./vendor/bin/testbench workflow:create-test-parent &&
             ./vendor/bin/testbench workflow:create-test-continue-as-new
           '
           sleep 5
-          curl --fail --retry 10 --retry-delay 2 --retry-connrefused http://127.0.0.1:18280/waterline > /dev/null
+          curl --fail --silent http://127.0.0.1:18280/waterline > /dev/null
 
       - name: Show compose logs if checks fail
         if: failure()
         run: |
           docker compose -f .devcontainer/docker/docker-compose.yml logs --no-color
-          docker compose -f .devcontainer/docker/docker-compose.yml exec -T laravel bash -lc 'ps -ef'
+          docker logs waterline-copilot-app || true
+          docker logs waterline-copilot-worker || true
