@@ -68,6 +68,17 @@ jobs:
           tools: composer:v2
           coverage: none
 
+      - name: Install mssql-tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl gnupg2
+          curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+          curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools unixodbc-dev
+          echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
+          source ~/.bashrc
+
       - name: Validate composer.json and composer.lock
         run: composer validate --strict
 
@@ -85,29 +96,7 @@ jobs:
       - name: Prepare SQL Server database
         env:
           MSSQL_PORT: ${{ job.services.mssql.ports[1433] }}
-        run: |
-          php <<'PHP'
-          <?php
-
-          $dsn = sprintf('sqlsrv:Server=127.0.0.1,%s;Database=master', getenv('MSSQL_PORT'));
-
-          for ($attempt = 1; $attempt <= 30; $attempt++) {
-              try {
-                  $pdo = new PDO($dsn, 'sa', 'P@ssword');
-                  $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-                  $pdo->exec("IF DB_ID(N'testing') IS NULL CREATE DATABASE testing;");
-
-                  exit(0);
-              } catch (Throwable $e) {
-                  if ($attempt === 30) {
-                      fwrite(STDERR, $e->getMessage().PHP_EOL);
-                      exit(1);
-                  }
-
-                  sleep(2);
-              }
-          }
-          PHP
+        run: /opt/mssql-tools/bin/sqlcmd -S "127.0.0.1,${MSSQL_PORT}" -U sa -P "P@ssword" -Q "IF DB_ID(N'testing') IS NULL CREATE DATABASE testing;"
 
       - name: Smoke test feature suite (MySQL)
         env:
