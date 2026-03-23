@@ -17,6 +17,9 @@ jobs:
     permissions:
       contents: read
 
+    env:
+      APP_PORT: 18280
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -28,7 +31,12 @@ jobs:
 
       - name: Prepare dashboard and queue worker
         run: |
-          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --no-deps --entrypoint bash laravel -lc '
+          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --no-deps \
+            -e APP_ENV=local \
+            -e APP_DEBUG=true \
+            -e APP_URL=http://127.0.0.1:${APP_PORT} \
+            -e ASSET_URL=http://127.0.0.1:${APP_PORT} \
+            --entrypoint bash laravel -lc '
             cd /var/www/html &&
             git config --global --add safe.directory /var/www/html &&
             mkdir -p workbench/bootstrap/cache &&
@@ -43,7 +51,12 @@ jobs:
             ./vendor/bin/testbench migrate:fresh --database=sqlite &&
             ./vendor/bin/testbench waterline:publish
           '
-          docker compose -f .devcontainer/docker/docker-compose.yml run -d --name waterline-copilot-app --service-ports --no-deps --entrypoint bash laravel -lc '
+          docker compose -f .devcontainer/docker/docker-compose.yml run -d --name waterline-copilot-app --service-ports --no-deps \
+            -e APP_ENV=local \
+            -e APP_DEBUG=true \
+            -e APP_URL=http://127.0.0.1:${APP_PORT} \
+            -e ASSET_URL=http://127.0.0.1:${APP_PORT} \
+            --entrypoint bash laravel -lc '
             cd /var/www/html &&
             git config --global --add safe.directory /var/www/html &&
             mkdir -p workbench/bootstrap/cache &&
@@ -54,7 +67,12 @@ jobs:
             chmod -R ug+rwX workbench/bootstrap/cache workbench/storage &&
             php -S 0.0.0.0:80 -t workbench/public workbench/server.php
           '
-          docker compose -f .devcontainer/docker/docker-compose.yml run -d --name waterline-copilot-worker --no-deps --entrypoint bash laravel -lc '
+          docker compose -f .devcontainer/docker/docker-compose.yml run -d --name waterline-copilot-worker --no-deps \
+            -e APP_ENV=local \
+            -e APP_DEBUG=true \
+            -e APP_URL=http://127.0.0.1:${APP_PORT} \
+            -e ASSET_URL=http://127.0.0.1:${APP_PORT} \
+            --entrypoint bash laravel -lc '
             cd /var/www/html &&
             git config --global --add safe.directory /var/www/html &&
             mkdir -p workbench/bootstrap/cache &&
@@ -66,25 +84,32 @@ jobs:
             ./vendor/bin/testbench queue:work --tries=1 --timeout=90
           '
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:18280 > /dev/null; then
+            if curl --fail --silent --show-error http://127.0.0.1:${APP_PORT}/waterline > /dev/null; then
               break
             fi
             sleep 2
           done
-          curl --fail --silent http://127.0.0.1:18280 > /dev/null
+          curl --fail --silent --show-error http://127.0.0.1:${APP_PORT}/waterline > /dev/null
           docker exec waterline-copilot-worker bash -lc 'ps -ef | grep "[q]ueue:work"'
-          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --no-deps --entrypoint bash laravel -lc '
+          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --no-deps \
+            -e APP_ENV=local \
+            -e APP_DEBUG=true \
+            -e APP_URL=http://127.0.0.1:${APP_PORT} \
+            -e ASSET_URL=http://127.0.0.1:${APP_PORT} \
+            --entrypoint bash laravel -lc '
             cd /var/www/html &&
             ./vendor/bin/testbench workflow:create-test &&
             ./vendor/bin/testbench workflow:create-test-parent &&
             ./vendor/bin/testbench workflow:create-test-continue-as-new
           '
           sleep 5
-          curl --fail --silent http://127.0.0.1:18280/waterline > /dev/null
+          curl --fail --silent --show-error http://127.0.0.1:${APP_PORT}/waterline/api/stats > /dev/null
 
       - name: Show compose logs if checks fail
         if: failure()
         run: |
+          curl --include --silent --show-error http://127.0.0.1:${APP_PORT}/waterline || true
+          curl --include --silent --show-error http://127.0.0.1:${APP_PORT}/waterline/api/stats || true
           docker compose -f .devcontainer/docker/docker-compose.yml logs --no-color
           docker logs waterline-copilot-app || true
           docker logs waterline-copilot-worker || true
