@@ -52,7 +52,7 @@ jobs:
             mkdir -p workbench/storage/framework/views &&
             mkdir -p workbench/storage/logs &&
             chmod -R ug+rwX workbench/bootstrap/cache workbench/storage &&
-            SERVER_HOST=0.0.0.0 SERVER_PORT=80 php vendor/bin/testbench serve --ansi
+            php -S 0.0.0.0:80 -t workbench/public workbench/server.php
           '
           docker compose -f .devcontainer/docker/docker-compose.yml run -d --name waterline-copilot-worker --no-deps --entrypoint bash laravel -lc '
             cd /var/www/html &&
