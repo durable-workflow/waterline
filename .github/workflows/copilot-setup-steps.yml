@@ -12,118 +12,35 @@ on:
 jobs:
   copilot-setup-steps:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     permissions:
       contents: read
-
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: password
-          MYSQL_USER: testing
-          MYSQL_PASSWORD: password
-          MYSQL_DATABASE: testing
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -ppassword"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-
-      postgres:
-        image: postgres:13
-        env:
-          POSTGRES_USER: testing
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: testing
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U testing -d testing"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-
-      mssql:
-        image: mcr.microsoft.com/mssql/server:2022-latest
-        env:
-          ACCEPT_EULA: Y
-          MSSQL_PID: Express
-          MSSQL_SA_PASSWORD: P@ssword
-        ports:
-          - 1433:1433
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Set up PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.1"
-          extensions: pdo_mysql, pdo_pgsql, sqlsrv, pdo_sqlsrv
-          tools: composer:v2
-          coverage: none
-
-      - name: Install mssql-tools
+      - name: Start devcontainer services
         run: |
-          sudo apt-get update
-          sudo apt-get install -y curl gnupg2
-          curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-          curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
-          sudo apt-get update
-          sudo ACCEPT_EULA=Y apt-get install -y mssql-tools unixodbc-dev
-          echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
-          source ~/.bashrc
+          docker compose -f .devcontainer/docker/docker-compose.yml up -d --build --wait --wait-timeout 180 mysql redis pgsql mssql
 
-      - name: Validate composer.json and composer.lock
-        run: composer validate --strict
+      - name: Validate composer.json and smoke test feature suites
+        run: |
+          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --build laravel bash -lc '
+            composer validate --strict &&
+            echo "Running feature suite against MySQL" &&
+            vendor/bin/phpunit --testdox --configuration=phpunit-mysql.xml --testsuite Feature &&
+            echo "Running feature suite against PostgreSQL" &&
+            vendor/bin/phpunit --testdox --configuration=phpunit-pgsql.xml --testsuite Feature &&
+            echo "Running feature suite against SQL Server" &&
+            vendor/bin/phpunit --testdox --configuration=phpunit-mssql.xml --testsuite Feature
+          '
 
-      - name: Cache Composer packages
-        uses: actions/cache@v4
-        with:
-          path: vendor
-          key: ${{ runner.os }}-copilot-php-${{ hashFiles('**/composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-copilot-php-
+      - name: Show compose logs if checks fail
+        if: failure()
+        run: docker compose -f .devcontainer/docker/docker-compose.yml logs --no-color
 
-      - name: Install dependencies
-        run: composer install --prefer-dist --no-progress --no-interaction
-
-      - name: Prepare SQL Server database
-        env:
-          MSSQL_PORT: ${{ job.services.mssql.ports[1433] }}
-        run: /opt/mssql-tools/bin/sqlcmd -S "127.0.0.1,${MSSQL_PORT}" -U sa -P "P@ssword" -Q "IF DB_ID(N'testing') IS NULL CREATE DATABASE testing;"
-
-      - name: Smoke test feature suite (MySQL)
-        env:
-          DB_CONNECTION: mysql
-          DB_HOST: 127.0.0.1
-          DB_PORT: ${{ job.services.mysql.ports[3306] }}
-          DB_DATABASE: testing
-          DB_USERNAME: testing
-          DB_PASSWORD: password
-        run: vendor/bin/phpunit --testdox --configuration=phpunit-mysql.xml --testsuite Feature
-
-      - name: Smoke test feature suite (PostgreSQL)
-        env:
-          DB_CONNECTION: pgsql
-          DB_HOST: 127.0.0.1
-          DB_PORT: ${{ job.services.postgres.ports[5432] }}
-          DB_DATABASE: testing
-          DB_USERNAME: testing
-          DB_PASSWORD: password
-        run: vendor/bin/phpunit --testdox --configuration=phpunit-pgsql.xml --testsuite Feature
-
-      - name: Smoke test feature suite (SQL Server)
-        env:
-          DB_CONNECTION: sqlsrv
-          DB_HOST: 127.0.0.1
-          DB_PORT: ${{ job.services.mssql.ports[1433] }}
-          DB_DATABASE: testing
-          DB_USERNAME: sa
-          DB_PASSWORD: P@ssword
-        run: vendor/bin/phpunit --testdox --configuration=phpunit-mssql.xml --testsuite Feature
+      - name: Tear down devcontainer services
+        if: always()
+        run: docker compose -f .devcontainer/docker/docker-compose.yml down -v --remove-orphans
