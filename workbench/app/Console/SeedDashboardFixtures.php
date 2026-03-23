@@ -4,7 +4,7 @@ namespace Workbench\App\Console;
 
 use Exception;
 use Illuminate\Console\Command;
-use Illuminate\Support\CarbonImmutable;
+use Illuminate\Support\Carbon;
 use Workflow\Models\StoredWorkflow;
 use Workflow\Serializers\Serializer;
 
@@ -37,7 +37,7 @@ class SeedDashboardFixtures extends Command
             return Command::SUCCESS;
         }
 
-        $now = CarbonImmutable::now();
+        $now = Carbon::now();
 
         $running = StoredWorkflow::create([
             'class' => \Workbench\App\Workflows\TestWorkflow::class,
