@@ -27,7 +27,15 @@ jobs:
 
       - name: Validate composer.json and smoke test feature suites
         run: |
-          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --build laravel bash -lc '
+          export WWWUSER="$(id -u)"
+          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --build --no-deps laravel bash -lc '
+            git config --global --add safe.directory /var/www/html &&
+            mkdir -p workbench/bootstrap/cache &&
+            mkdir -p workbench/storage/framework/cache &&
+            mkdir -p workbench/storage/framework/sessions &&
+            mkdir -p workbench/storage/framework/views &&
+            mkdir -p workbench/storage/logs &&
+            chmod -R ug+rwX workbench/bootstrap/cache workbench/storage &&
             composer validate --strict &&
             echo "Running feature suite against MySQL" &&
             vendor/bin/phpunit --testdox --configuration=phpunit-mysql.xml --testsuite Feature &&
