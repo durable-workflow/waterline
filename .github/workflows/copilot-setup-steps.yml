@@ -98,9 +98,7 @@ jobs:
             -e ASSET_URL=http://127.0.0.1:${APP_PORT} \
             --entrypoint bash laravel -lc '
             cd /var/www/html &&
-            ./vendor/bin/testbench workflow:create-test &&
-            ./vendor/bin/testbench workflow:create-test-parent &&
-            ./vendor/bin/testbench workflow:create-test-continue-as-new
+            ./vendor/bin/testbench workflow:seed-dashboard-fixtures
           '
           sleep 5
           curl --fail --silent --show-error http://127.0.0.1:${APP_PORT}/waterline/api/stats > /dev/null
