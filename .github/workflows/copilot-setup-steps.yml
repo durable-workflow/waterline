@@ -1,0 +1,54 @@
+name: "Copilot Setup Steps"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Start devcontainer services
+        run: |
+          docker compose -f .devcontainer/docker/docker-compose.yml up -d --build --wait --wait-timeout 180 mysql redis pgsql mssql
+
+      - name: Validate composer.json and smoke test feature suites
+        run: |
+          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --build --no-deps --entrypoint bash laravel -lc '
+            git config --global --add safe.directory /var/www/html &&
+            mkdir -p workbench/bootstrap/cache &&
+            mkdir -p workbench/storage/framework/cache &&
+            mkdir -p workbench/storage/framework/sessions &&
+            mkdir -p workbench/storage/framework/views &&
+            mkdir -p workbench/storage/logs &&
+            composer install --prefer-dist --no-progress --no-interaction &&
+            chmod -R ug+rwX workbench/bootstrap/cache workbench/storage &&
+            composer validate --strict &&
+            echo "Running feature suite against MySQL" &&
+            vendor/bin/phpunit --testdox --configuration=phpunit-mysql.xml --testsuite Feature &&
+            echo "Running feature suite against PostgreSQL" &&
+            vendor/bin/phpunit --testdox --configuration=phpunit-pgsql.xml --testsuite Feature &&
+            echo "Running feature suite against SQL Server" &&
+            vendor/bin/phpunit --testdox --configuration=phpunit-mssql.xml --testsuite Feature
+          '
+
+      - name: Show compose logs if checks fail
+        if: failure()
+        run: docker compose -f .devcontainer/docker/docker-compose.yml logs --no-color
+
+      - name: Tear down devcontainer services
+        if: always()
+        run: docker compose -f .devcontainer/docker/docker-compose.yml down -v --remove-orphans
