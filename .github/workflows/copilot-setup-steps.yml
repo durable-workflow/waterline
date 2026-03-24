@@ -17,6 +17,9 @@ jobs:
     permissions:
       contents: read
 
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
     services:
       mssql:
         image: mcr.microsoft.com/mssql/server:2022-latest
@@ -92,6 +95,20 @@ jobs:
             echo "127.0.0.1 redis"
           } | sudo tee -a /etc/hosts > /dev/null
 
+      - name: Install SQL Server ODBC driver
+        run: |
+          source /etc/os-release
+          if [ "$VERSION_ID" = "24.04" ]; then
+            curl -sSL -O https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
+            sudo dpkg -i packages-microsoft-prod.deb
+            rm packages-microsoft-prod.deb
+          else
+            curl -sSL https://packages.microsoft.com/keys/microsoft.asc | sudo tee /etc/apt/trusted.gpg.d/microsoft.asc > /dev/null
+            curl -sSL "https://packages.microsoft.com/config/ubuntu/${VERSION_ID}/prod.list" | sudo tee /etc/apt/sources.list.d/mssql-release.list > /dev/null
+          fi
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
+
       - name: Validate composer.json and composer.lock
         run: composer validate --strict
 
@@ -127,7 +144,10 @@ jobs:
         run: |
           php <<'PHP'
           <?php
-          $dsn = sprintf('sqlsrv:Server=127.0.0.1,%s;Encrypt=no', getenv('MSSQL_PORT'));
+          $dsn = sprintf(
+              'sqlsrv:Server=mssql,%s;Database=master;Encrypt=yes;TrustServerCertificate=1;LoginTimeout=5',
+              getenv('MSSQL_PORT')
+          );
           for ($attempt = 1; $attempt <= 30; $attempt++) {
               try {
                   $pdo = new PDO($dsn, 'sa', 'P@ssword');
