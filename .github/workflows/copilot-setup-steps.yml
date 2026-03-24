@@ -17,97 +17,154 @@ jobs:
     permissions:
       contents: read
 
-    env:
-      APP_PORT: 18280
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: Y
+          MSSQL_PID: Express
+          MSSQL_SA_PASSWORD: P@ssword
+        ports:
+          - 1433:1433
+
+      mysql:
+        image: mysql/mysql-server:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_USER: testing
+          MYSQL_PASSWORD: password
+          MYSQL_DATABASE: testing
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -ppassword"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+      pgsql:
+        image: postgres:15
+        env:
+          POSTGRES_USER: testing
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: testing
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U testing -d testing"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Start devcontainer services
-        run: |
-          docker compose -f .devcontainer/docker/docker-compose.yml up -d --build --wait --wait-timeout 180 mysql redis pgsql mssql
-          docker compose -f .devcontainer/docker/docker-compose.yml build laravel
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: mbstring, xml, ctype, fileinfo, curl, intl, bcmath, sqlite3, pdo_sqlite, pdo_mysql, pdo_pgsql, pgsql, redis, sqlsrv, pdo_sqlsrv
+          tools: composer:v2
+          coverage: none
 
-      - name: Prepare dashboard and queue worker
-        run: |
-          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --no-deps \
-            -e APP_ENV=local \
-            -e APP_DEBUG=true \
-            -e APP_URL=http://127.0.0.1:${APP_PORT} \
-            -e ASSET_URL=http://127.0.0.1:${APP_PORT} \
-            --entrypoint bash laravel -lc '
-            cd /var/www/html &&
-            git config --global --add safe.directory /var/www/html &&
-            mkdir -p workbench/bootstrap/cache &&
-            mkdir -p workbench/storage/framework/cache &&
-            mkdir -p workbench/storage/framework/sessions &&
-            mkdir -p workbench/storage/framework/views &&
-            mkdir -p workbench/storage/logs &&
-            chmod -R ug+rwX workbench/bootstrap/cache workbench/storage &&
-            composer install --prefer-dist --no-progress --no-interaction &&
-            composer run build &&
-            ./vendor/bin/testbench workbench:create-sqlite-db &&
-            ./vendor/bin/testbench migrate:fresh --database=sqlite &&
-            ./vendor/bin/testbench waterline:publish
-          '
-          docker compose -f .devcontainer/docker/docker-compose.yml run -d --name waterline-copilot-app --service-ports --no-deps \
-            -e APP_ENV=local \
-            -e APP_DEBUG=true \
-            -e APP_URL=http://127.0.0.1:${APP_PORT} \
-            -e ASSET_URL=http://127.0.0.1:${APP_PORT} \
-            --entrypoint bash laravel -lc '
-            cd /var/www/html &&
-            git config --global --add safe.directory /var/www/html &&
-            mkdir -p workbench/bootstrap/cache &&
-            mkdir -p workbench/storage/framework/cache &&
-            mkdir -p workbench/storage/framework/sessions &&
-            mkdir -p workbench/storage/framework/views &&
-            mkdir -p workbench/storage/logs &&
-            chmod -R ug+rwX workbench/bootstrap/cache workbench/storage &&
-            php -S 0.0.0.0:80 -t workbench/public workbench/server.php
-          '
-          docker compose -f .devcontainer/docker/docker-compose.yml run -d --name waterline-copilot-worker --no-deps \
-            -e APP_ENV=local \
-            -e APP_DEBUG=true \
-            -e APP_URL=http://127.0.0.1:${APP_PORT} \
-            -e ASSET_URL=http://127.0.0.1:${APP_PORT} \
-            --entrypoint bash laravel -lc '
-            cd /var/www/html &&
-            git config --global --add safe.directory /var/www/html &&
-            mkdir -p workbench/bootstrap/cache &&
-            mkdir -p workbench/storage/framework/cache &&
-            mkdir -p workbench/storage/framework/sessions &&
-            mkdir -p workbench/storage/framework/views &&
-            mkdir -p workbench/storage/logs &&
-            chmod -R ug+rwX workbench/bootstrap/cache workbench/storage &&
-            ./vendor/bin/testbench queue:work --tries=1 --timeout=90
-          '
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent --show-error http://127.0.0.1:${APP_PORT}/waterline > /dev/null; then
-              break
-            fi
-            sleep 2
-          done
-          curl --fail --silent --show-error http://127.0.0.1:${APP_PORT}/waterline > /dev/null
-          docker exec waterline-copilot-worker bash -lc 'ps -ef | grep "[q]ueue:work"'
-          docker compose -f .devcontainer/docker/docker-compose.yml run --rm --no-deps \
-            -e APP_ENV=local \
-            -e APP_DEBUG=true \
-            -e APP_URL=http://127.0.0.1:${APP_PORT} \
-            -e ASSET_URL=http://127.0.0.1:${APP_PORT} \
-            --entrypoint bash laravel -lc '
-            cd /var/www/html &&
-            ./vendor/bin/testbench workflow:seed-dashboard-fixtures
-          '
-          sleep 5
-          curl --fail --silent --show-error http://127.0.0.1:${APP_PORT}/waterline/api/stats > /dev/null
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
 
-      - name: Show compose logs if checks fail
-        if: failure()
+      - name: Mirror service hostnames on the runner
         run: |
-          curl --include --silent --show-error http://127.0.0.1:${APP_PORT}/waterline || true
-          curl --include --silent --show-error http://127.0.0.1:${APP_PORT}/waterline/api/stats || true
-          docker compose -f .devcontainer/docker/docker-compose.yml logs --no-color
-          docker logs waterline-copilot-app || true
-          docker logs waterline-copilot-worker || true
+          {
+            echo "127.0.0.1 mysql"
+            echo "127.0.0.1 pgsql"
+            echo "127.0.0.1 mssql"
+            echo "127.0.0.1 redis"
+          } | sudo tee -a /etc/hosts > /dev/null
+
+      - name: Validate composer.json and composer.lock
+        run: composer validate --strict
+
+      - name: Cache Composer dependencies
+        id: composer-cache
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ${{ runner.os }}-copilot-php-8.4-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-copilot-php-8.4-
+
+      - name: Install PHP dependencies
+        if: steps.composer-cache.outputs.cache-hit != 'true'
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Cache frontend dependencies
+        id: node-cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: ${{ runner.os }}-copilot-node-18-${{ hashFiles('package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-copilot-node-18-
+
+      - name: Install frontend dependencies
+        if: steps.node-cache.outputs.cache-hit != 'true'
+        run: npm install --no-audit --no-fund --no-package-lock
+
+      - name: Prepare SQL Server test database
+        env:
+          MSSQL_PORT: ${{ job.services.mssql.ports[1433] }}
+        run: |
+          php <<'PHP'
+          <?php
+          $dsn = sprintf('sqlsrv:Server=127.0.0.1,%s;Encrypt=no', getenv('MSSQL_PORT'));
+          for ($attempt = 1; $attempt <= 30; $attempt++) {
+              try {
+                  $pdo = new PDO($dsn, 'sa', 'P@ssword');
+                  $pdo->exec("IF DB_ID(N'testing') IS NULL CREATE DATABASE testing");
+                  exit(0);
+              } catch (Throwable $exception) {
+                  if ($attempt === 30) {
+                      fwrite(STDERR, $exception->getMessage().PHP_EOL);
+                      exit(1);
+                  }
+                  sleep(2);
+              }
+          }
+          PHP
+
+      - name: Export Copilot environment defaults
+        run: |
+          echo "APP_ENV=local" >> "$GITHUB_ENV"
+          echo "APP_DEBUG=true" >> "$GITHUB_ENV"
+          echo "APP_KEY=base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI=" >> "$GITHUB_ENV"
+          echo "APP_URL=http://127.0.0.1:8000" >> "$GITHUB_ENV"
+          echo "ASSET_URL=http://127.0.0.1:8000" >> "$GITHUB_ENV"
+          echo "QUEUE_CONNECTION=database" >> "$GITHUB_ENV"
+          echo "REDIS_HOST=redis" >> "$GITHUB_ENV"
+          echo "REDIS_PORT=${{ job.services.redis.ports[6379] }}" >> "$GITHUB_ENV"
+          echo "MYSQL_HOST=mysql" >> "$GITHUB_ENV"
+          echo "MYSQL_PORT=${{ job.services.mysql.ports[3306] }}" >> "$GITHUB_ENV"
+          echo "MYSQL_DATABASE=testing" >> "$GITHUB_ENV"
+          echo "MYSQL_USERNAME=testing" >> "$GITHUB_ENV"
+          echo "MYSQL_PASSWORD=password" >> "$GITHUB_ENV"
+          echo "PGSQL_HOST=pgsql" >> "$GITHUB_ENV"
+          echo "PGSQL_PORT=${{ job.services.pgsql.ports[5432] }}" >> "$GITHUB_ENV"
+          echo "PGSQL_DATABASE=testing" >> "$GITHUB_ENV"
+          echo "PGSQL_USERNAME=testing" >> "$GITHUB_ENV"
+          echo "PGSQL_PASSWORD=password" >> "$GITHUB_ENV"
+          echo "MSSQL_HOST=mssql" >> "$GITHUB_ENV"
+          echo "MSSQL_PORT=${{ job.services.mssql.ports[1433] }}" >> "$GITHUB_ENV"
+          echo "MSSQL_DATABASE=testing" >> "$GITHUB_ENV"
+          echo "MSSQL_USERNAME=sa" >> "$GITHUB_ENV"
+          echo "MSSQL_PASSWORD=P@ssword" >> "$GITHUB_ENV"

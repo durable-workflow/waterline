@@ -18,7 +18,6 @@ class WorkbenchServiceProvider extends ServiceProvider
                 \Workbench\App\Console\CreateTestWorkflow::class,
                 \Workbench\App\Console\CreateTestParentWorkflow::class,
                 \Workbench\App\Console\CreateTestContinueAsNewWorkflow::class,
-                \Workbench\App\Console\SeedDashboardFixtures::class,
             ]);
         }
     }
