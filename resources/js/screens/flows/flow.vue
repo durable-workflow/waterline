@@ -136,14 +136,22 @@
                     </div>
                 </div>
 
-                <div class="row mb-2" v-if="flow.parents.length">
-                    <div class="col-md-2"><strong v-if="flow.parents[0].parent_index > Number.MAX_SAFE_INTEGER">Continued From</strong><strong v-else>Parent ID</strong></div>
-                    <div class="col">{{ flow.parents[0].parent_workflow_id }}</div>
-                </div>
-
-                <div class="row mb-2" v-if="flow.continuedWorkflows.length">
-                    <div class="col-md-2"><strong>Continued As</strong></div>
-                    <div class="col">{{ flow.continuedWorkflows[0].child_workflow_id }}</div>
+                <div class="row mb-2" v-if="lineageEntries().length">
+                    <div class="col-md-2"><strong>Lineage</strong></div>
+                    <div class="col">
+                        <div v-for="entry in lineageEntries()" :key="entry.key">
+                            <strong>{{ entry.label }}:</strong>
+                            <router-link v-if="entry.route_id && entry.status"
+                                :to="{ name: flowRouteName(entry.status_bucket, entry.status), params: { flowId: entry.route_id } }">
+                                {{ entry.display_id }}
+                            </router-link>
+                            <span v-else>{{ entry.display_id }}</span>
+                            <span v-if="entry.run_number"> (run {{ entry.run_number }})</span>
+                            <span v-if="entry.status">
+                                - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -566,6 +574,35 @@ export default {
             return this.flow.activities && this.flow.activities.length
                 ? this.flow.activities
                 : (this.flow.logs || [])
+        },
+
+        lineageEntries() {
+            const parents = (this.flow.parents || []).map((parent) => ({
+                key: 'parent-' + (parent.id || parent.parent_workflow_run_id || parent.parent_workflow_id),
+                label: this.isContinuedParent(parent) ? 'Continued from' : 'Parent',
+                display_id: parent.workflow_run_id || parent.parent_workflow_run_id || parent.parent_workflow_id,
+                route_id: parent.workflow_run_id || parent.parent_workflow_run_id || null,
+                run_number: parent.run_number,
+                status: parent.status,
+                status_bucket: parent.status_bucket,
+            }))
+
+            const continued = (this.flow.continuedWorkflows || []).map((link) => ({
+                key: 'continued-' + (link.id || link.child_workflow_run_id || link.child_workflow_id),
+                label: 'Continued as',
+                display_id: link.workflow_run_id || link.child_workflow_run_id || link.child_workflow_id,
+                route_id: link.workflow_run_id || link.child_workflow_run_id || null,
+                run_number: link.run_number,
+                status: link.status,
+                status_bucket: link.status_bucket,
+            }))
+
+            return [...parents, ...continued]
+        },
+
+        isContinuedParent(parent) {
+            return parent.link_type === 'continue_as_new'
+                || (parent.parent_index && parent.parent_index > Number.MAX_SAFE_INTEGER)
         },
 
         async issueCommand(commandType) {

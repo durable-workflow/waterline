@@ -14,7 +14,7 @@
             <br>
 
             <small class="text-muted">
-                Run: {{ flow.run_id || flow.id }} <span v-if="flow.status === 'continued'" class="badge badge-info ml-1">Continued</span>
+                Run: {{ flow.run_id || flow.id }} <span v-if="flow.status === 'continued' || flow.closed_reason === 'continued'" class="badge badge-info ml-1">Continued</span>
             </small>
         </td>
 
