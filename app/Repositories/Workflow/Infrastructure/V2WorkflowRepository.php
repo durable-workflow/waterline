@@ -80,7 +80,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function failedFlowsPastWeek(): int
     {
-        return $this->runSummaryModel::where('status', 'failed')
+        return $this->runSummaryModel::where('status_bucket', 'failed')
             ->where('updated_at', '>=', now()->subDays(7))
             ->count();
     }

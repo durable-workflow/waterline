@@ -269,7 +269,7 @@
                             <th scope="col">Status</th>
                             <th scope="col">Queue</th>
                             <th scope="col">Result</th>
-                            <th scope="col">Completed At</th>
+                            <th scope="col">Recorded At</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -279,7 +279,7 @@
                             <td>{{ activity.queue || '-' }}</td>
                             <td><button title="View Result" class="btn btn-outline-primary ml-auto"
                                     @click="showResult(activity.result)">View</button></td>
-                            <td>{{ timestamp(activity.closed_at || activity.created_at) }}</td>
+                            <td>{{ timestamp(activity.closed_at || activity.started_at || activity.created_at) }}</td>
                         </tr>
                     </tbody>
                 </table>

@@ -82,4 +82,54 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('max_exceptions_workflow.exceptions_count', 1)
             ->assertJsonPath('max_exceptions_workflow.id', $run->id);
     }
+
+    public function testIndexCountsCancelledRunsInFailedBucketForWeeklyTotals(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => '01JTESTFLOWINSTANCEFAILED000',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCANCELLED000',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'cancelled',
+            'closed_reason' => 'cancelled',
+            'started_at' => now()->subMinutes(20),
+            'closed_at' => now()->subMinutes(10),
+            'last_progress_at' => now()->subMinutes(10),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'cancelled',
+            'status_bucket' => 'failed',
+            'closed_reason' => 'cancelled',
+            'started_at' => $run->started_at,
+            'closed_at' => $run->closed_at,
+            'duration_ms' => CarbonInterval::minutes(10)->totalMilliseconds,
+            'exception_count' => 0,
+            'created_at' => now()->subMinutes(20),
+            'updated_at' => now()->subMinutes(10),
+        ]);
+
+        $this->get('/waterline/api/stats')
+            ->assertStatus(200)
+            ->assertJsonPath('failed_flows_past_week', 1);
+    }
 }
