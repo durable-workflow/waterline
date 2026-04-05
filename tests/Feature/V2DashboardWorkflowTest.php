@@ -1,0 +1,269 @@
+<?php
+
+namespace Waterline\Tests\Feature;
+
+use Waterline\Tests\TestCase;
+use Workflow\Serializers\Serializer;
+use Workflow\V2\Models\ActivityExecution;
+use Workflow\V2\Models\WorkflowFailure;
+use Workflow\V2\Models\WorkflowInstance;
+use Workflow\V2\Models\WorkflowRun;
+use Workflow\V2\Models\WorkflowRunSummary;
+
+class V2DashboardWorkflowTest extends TestCase
+{
+    public function testShowReturnsV2CompatibilityPayload()
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => '01JTESTFLOWINSTANCE00000001',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUN000000000001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize(['name' => 'Taylor']),
+            'output' => Serializer::serialize(['ok' => true]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(10),
+            'closed_at' => now()->subMinutes(5),
+            'last_progress_at' => now()->subMinutes(5),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'status_bucket' => 'completed',
+            'closed_reason' => 'completed',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'closed_at' => $run->closed_at,
+            'duration_ms' => 300000,
+            'exception_count' => 1,
+            'created_at' => now()->subMinutes(10),
+            'updated_at' => now()->subMinutes(5),
+        ]);
+
+        ActivityExecution::create([
+            'id' => '01JTESTACTIVITY00000000000',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ActivityClass',
+            'activity_type' => 'activity.test',
+            'status' => 'completed',
+            'arguments' => Serializer::serialize(['Taylor']),
+            'result' => Serializer::serialize('Hello, Taylor!'),
+            'started_at' => now()->subMinutes(9),
+            'closed_at' => now()->subMinutes(8),
+        ]);
+
+        WorkflowFailure::create([
+            'id' => '01JTESTFAILURE000000000001',
+            'workflow_run_id' => $run->id,
+            'source_kind' => 'activity_execution',
+            'source_id' => '01JTESTACTIVITY00000000000',
+            'propagation_kind' => 'activity',
+            'handled' => false,
+            'exception_class' => \RuntimeException::class,
+            'message' => 'boom',
+            'file' => __FILE__,
+            'line' => 42,
+            'trace_preview' => 'trace',
+        ]);
+
+        $response = $this->get('/waterline/api/flows/' . $run->id);
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('id', $run->id)
+            ->assertJsonPath('instance_id', $instance->id)
+            ->assertJsonPath('selected_run_id', $run->id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('is_current_run', true)
+            ->assertJsonPath('current_run_id', $run->id)
+            ->assertJsonPath('current_run_status', 'completed')
+            ->assertJsonPath('current_run_status_bucket', 'completed')
+            ->assertJsonPath('engine_source', 'v2')
+            ->assertJsonPath('class', 'WorkflowClass')
+            ->assertJsonPath('connection', 'redis')
+            ->assertJsonPath('queue', 'default')
+            ->assertJsonPath('status', 'completed')
+            ->assertJsonPath('closed_reason', 'completed')
+            ->assertJsonPath('can_issue_terminal_commands', false)
+            ->assertJsonPath('read_only_reason', 'Run is closed.')
+            ->assertJsonPath('logs.0.class', 'ActivityClass')
+            ->assertJsonPath('exceptions.0.class', 'ActivityClass')
+            ->assertJsonPath('chartData.0.type', 'Workflow')
+            ->assertJsonPath('chartData.1.type', 'Activity');
+    }
+
+    public function testShowCanResolveCurrentRunFromInstanceId(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-123',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCURRENT000001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('id', $run->id)
+            ->assertJsonPath('instance_id', $instance->id)
+            ->assertJsonPath('selected_run_id', $run->id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('current_run_id', $run->id)
+            ->assertJsonPath('current_run_status', 'waiting')
+            ->assertJsonPath('current_run_status_bucket', 'running')
+            ->assertJsonPath('can_issue_terminal_commands', true)
+            ->assertJsonPath('read_only_reason', null);
+    }
+
+    public function testShowHistoricalRunIncludesPointerToCurrentRun(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-historical',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 2,
+        ]);
+
+        $historicalRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNHISTORY00001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize(['step' => 1]),
+            'output' => Serializer::serialize(['ok' => true]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(10),
+            'closed_at' => now()->subMinutes(8),
+            'last_progress_at' => now()->subMinutes(8),
+        ]);
+
+        $currentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCURRENT00002',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize(['step' => 2]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $currentRun->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $historicalRun->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => false,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'status_bucket' => 'completed',
+            'closed_reason' => 'completed',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $historicalRun->started_at,
+            'closed_at' => $historicalRun->closed_at,
+            'duration_ms' => 120000,
+            'created_at' => now()->subMinutes(10),
+            'updated_at' => now()->subMinutes(8),
+        ]);
+
+        WorkflowRunSummary::create([
+            'id' => $currentRun->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $currentRun->started_at,
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $historicalRun->id)
+            ->assertStatus(200)
+            ->assertJsonPath('id', $historicalRun->id)
+            ->assertJsonPath('selected_run_id', $historicalRun->id)
+            ->assertJsonPath('run_id', $historicalRun->id)
+            ->assertJsonPath('is_current_run', false)
+            ->assertJsonPath('current_run_id', $currentRun->id)
+            ->assertJsonPath('current_run_status', 'waiting')
+            ->assertJsonPath('current_run_status_bucket', 'running')
+            ->assertJsonPath('can_issue_terminal_commands', false)
+            ->assertJsonPath('read_only_reason', 'Selected run is historical. Issue commands against the current active run.');
+    }
+}

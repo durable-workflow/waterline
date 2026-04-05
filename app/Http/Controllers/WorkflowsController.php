@@ -2,49 +2,33 @@
 
 namespace Waterline\Http\Controllers;
 
-use Illuminate\Database\Eloquent\Builder;
 use Waterline\Http\Resources\StoredWorkflowResource;
-use Workflow\Models\StoredWorkflow;
+use Waterline\Http\Resources\V2StoredWorkflowResource;
+use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 
 class WorkflowsController extends Controller
 {
-    public function completed() {
-        return $this->orderedFlowsQuery()->whereIn('status', [
-                'completed',
-                'continued',
-            ])
-            ->paginate(50);
-    }
-
-    public function failed() {
-        return $this->orderedFlowsQuery()->whereStatus('failed')
-            ->paginate(50);
-    }
-
-    public function running() {
-        return $this->orderedFlowsQuery()->whereIn('status', [
-                'created',
-                'pending',
-                'running',
-                'waiting',
-            ])
-            ->paginate(50);
-    }
-
-    public function show($id) {
-        $flow = config('workflows.stored_workflow_model', StoredWorkflow::class)::with([
-            'continuedWorkflows',
-            'exceptions',
-            'logs',
-            'parents'
-        ])->find($id);
-
-        return StoredWorkflowResource::make($flow);
-    }
-
-    protected function orderedFlowsQuery(): Builder
+    public function completed(WorkflowRepositoryInterface $repository)
     {
-        return config('workflows.stored_workflow_model', StoredWorkflow::class)::query()
-            ->orderByDesc(config('waterline.workflow_sort_column', 'id'));
+        return $repository->completedFlows();
+    }
+
+    public function failed(WorkflowRepositoryInterface $repository)
+    {
+        return $repository->failedFlows();
+    }
+
+    public function running(WorkflowRepositoryInterface $repository)
+    {
+        return $repository->runningFlows();
+    }
+
+    public function show(string $id, WorkflowRepositoryInterface $repository)
+    {
+        $flow = $repository->findFlow($id);
+
+        return $repository->engineSource() === 'v2'
+            ? V2StoredWorkflowResource::make($flow)
+            : StoredWorkflowResource::make($flow);
     }
 }

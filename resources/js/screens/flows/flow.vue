@@ -32,6 +32,11 @@
                     <div class="col">{{ flow.status }}</div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.read_only_reason)">
+                    <div class="col-md-2"><strong>Mode</strong></div>
+                    <div class="col">{{ flow.read_only_reason }}</div>
+                </div>
+
                 <div class="row mb-2">
                     <div class="col-md-2"><strong>Started At</strong></div>
                     <div class="col">{{ timestamp(flow.created_at) }}</div>
@@ -57,6 +62,18 @@
                 <div class="row mb-2" v-if="hasDetailValue(flow.queue)">
                     <div class="col-md-2"><strong>Queue</strong></div>
                     <div class="col">{{ flow.queue }}</div>
+                </div>
+
+                <div class="row mb-2" v-if="!flow.is_current_run && flow.current_run_id">
+                    <div class="col-md-2"><strong>Current Run</strong></div>
+                    <div class="col">
+                        <router-link :to="{ name: flowRouteName(flow.current_run_status_bucket, flow.current_run_status), params: { flowId: flow.current_run_id } }">
+                            {{ flow.current_run_id }}
+                        </router-link>
+                        <span v-if="flow.current_run_status">
+                            ({{ flow.current_run_status }}<span v-if="flow.current_run_status_bucket"> / {{ flow.current_run_status_bucket }}</span>)
+                        </span>
+                    </div>
                 </div>
 
                 <div class="row mb-2" v-if="flow.parents.length">
@@ -308,6 +325,14 @@ export default {
         document.title = "Waterline - Flow Detail";
     },
 
+    watch: {
+        '$route.params.flowId'(flowId) {
+            if (flowId) {
+                this.loadFlow(flowId)
+            }
+        }
+    },
+
     methods: {
         /**
          * Load a flow by the given ID.
@@ -383,6 +408,18 @@ export default {
 
         hasDetailValue(value) {
             return value !== null && value !== undefined && value !== ''
+        },
+
+        flowRouteName(statusBucket, status) {
+            let type = statusBucket
+
+            if (!type) {
+                type = ['failed', 'cancelled', 'terminated'].includes(status)
+                    ? 'failed'
+                    : (status === 'completed' ? 'completed' : 'running')
+            }
+
+            return type + '-flows-preview'
         },
 
         showResult(result) {

@@ -43,6 +43,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Workflow Engine Source
+    |--------------------------------------------------------------------------
+    |
+    | Waterline can read the legacy v1 workflow tables or the v2 run-summary
+    | bridge. The default keeps today's v1 behavior until an application opts
+    | into the v2 compatibility layer explicitly.
+    |
+    */
+
+    'engine_source' => env('WATERLINE_ENGINE_SOURCE', 'v1'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Workflow Sort Column
     |--------------------------------------------------------------------------
     |
