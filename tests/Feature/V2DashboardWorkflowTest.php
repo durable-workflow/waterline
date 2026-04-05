@@ -2,6 +2,7 @@
 
 namespace Waterline\Tests\Feature;
 
+use Illuminate\Support\Facades\Queue;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Models\ActivityExecution;
@@ -113,6 +114,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('exception_count', 1)
             ->assertJsonPath('exceptions_count', 1)
             ->assertJsonPath('can_issue_terminal_commands', false)
+            ->assertJsonPath('can_repair', false)
             ->assertJsonPath('read_only_reason', 'Run is closed.')
             ->assertJsonPath('activities.0.class', 'ActivityClass')
             ->assertJsonPath('logs.0.class', 'ActivityClass')
@@ -187,6 +189,62 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('liveness_state', 'waiting_for_signal')
             ->assertJsonPath('liveness_reason', 'Waiting for signal approved-by.')
             ->assertJsonPath('can_issue_terminal_commands', true)
+            ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('read_only_reason', null);
+    }
+
+    public function testShowMarksRepairableCurrentRun(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-repairable',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNREPAIRABLE01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'liveness_state' => 'repair_needed',
+            'liveness_reason' => 'Run is non-terminal but has no durable next-resume source.',
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('id', $run->id)
+            ->assertJsonPath('can_issue_terminal_commands', true)
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('liveness_state', 'repair_needed')
             ->assertJsonPath('read_only_reason', null);
     }
 
@@ -281,6 +339,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('current_run_status', 'waiting')
             ->assertJsonPath('current_run_status_bucket', 'running')
             ->assertJsonPath('can_issue_terminal_commands', false)
+            ->assertJsonPath('can_repair', false)
             ->assertJsonPath('read_only_reason', 'Selected run is historical. Issue commands against the current active run.');
     }
 
@@ -331,6 +390,64 @@ class V2DashboardWorkflowTest extends TestCase
             'target_scope' => 'run',
             'status' => 'accepted',
             'outcome' => 'cancelled',
+        ]);
+    }
+
+    public function testRepairTargetsSelectedCurrentRunAndReturnsAcceptedResponse(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        Queue::fake();
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-repair-current',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNREPAIRCURR01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $response = $this->post('/waterline/api/flows/' . $instance->id . '/repair');
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'repair_dispatched')
+            ->assertJsonPath('workflow_id', $instance->id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('rejection_reason', null);
+
+        $commandId = $response->json('command_id');
+
+        $this->assertDatabaseHas('workflow_commands', [
+            'id' => $commandId,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_type' => 'repair',
+            'target_scope' => 'run',
+            'status' => 'accepted',
+            'outcome' => 'repair_dispatched',
+        ]);
+
+        $this->assertDatabaseHas('workflow_tasks', [
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'ready',
+            'repair_count' => 1,
         ]);
     }
 

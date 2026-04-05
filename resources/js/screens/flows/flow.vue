@@ -6,6 +6,12 @@
                 <h5 v-if="ready">{{ flow.class }}</h5>
 
                 <div class="d-flex align-items-center">
+                    <button v-if="ready && flow.can_repair"
+                        class="btn btn-outline-info btn-sm mr-2"
+                        @click="issueCommand('repair')">
+                        Repair
+                    </button>
+
                     <button v-if="ready && flow.can_issue_terminal_commands"
                         class="btn btn-outline-warning btn-sm mr-2"
                         @click="issueCommand('cancel')">
@@ -563,12 +569,30 @@ export default {
         },
 
         async issueCommand(commandType) {
+            const copy = {
+                repair: {
+                    title: 'Repair run?',
+                    text: 'This recreates the durable next task for the selected run when liveness shows repair is needed.',
+                    confirmButtonText: 'Repair run',
+                },
+                cancel: {
+                    title: 'Cancel run?',
+                    text: 'This action applies to the selected run only.',
+                    confirmButtonText: 'Cancel run',
+                },
+                terminate: {
+                    title: 'Terminate run?',
+                    text: 'This action applies to the selected run only.',
+                    confirmButtonText: 'Terminate run',
+                },
+            }[commandType]
+
             const confirmed = await Swal.fire({
-                title: commandType === 'cancel' ? 'Cancel run?' : 'Terminate run?',
-                text: 'This action applies to the selected run only.',
+                title: copy.title,
+                text: copy.text,
                 icon: 'warning',
                 showCancelButton: true,
-                confirmButtonText: commandType === 'cancel' ? 'Cancel run' : 'Terminate run',
+                confirmButtonText: copy.confirmButtonText,
                 background: '#1c1c1c',
             })
 
@@ -577,12 +601,20 @@ export default {
             }
 
             try {
-                await this.$http.post(Waterline.basePath + '/api/flows/' + this.flow.id + '/' + commandType)
+                const response = await this.$http.post(Waterline.basePath + '/api/flows/' + this.flow.id + '/' + commandType)
                 await this.loadFlow(this.flow.id)
+
+                const successText = commandType === 'repair'
+                    ? (
+                        response.data.outcome === 'repair_dispatched'
+                            ? 'Waterline recreated the durable task and re-dispatched it.'
+                            : 'Waterline recorded the repair command, and no new task was needed.'
+                    )
+                    : 'Waterline recorded the command durably.'
 
                 Swal.fire({
                     title: 'Command accepted',
-                    text: 'Waterline recorded the command durably.',
+                    text: successText,
                     icon: 'success',
                     confirmButtonText: 'Okay',
                     background: '#1c1c1c',

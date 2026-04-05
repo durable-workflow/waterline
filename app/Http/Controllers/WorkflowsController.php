@@ -47,6 +47,19 @@ class WorkflowsController extends Controller
         );
     }
 
+    public function repair(string $id, WorkflowRepositoryInterface $repository)
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $flow = $repository->findFlow($id);
+        $result = V2WorkflowStub::loadRun($flow->id)->attemptRepair();
+
+        return response()->json(
+            CommandResponse::payload($result),
+            $result->accepted() ? 200 : 409,
+        );
+    }
+
     public function terminate(string $id, WorkflowRepositoryInterface $repository)
     {
         abort_unless($repository->engineSource() === 'v2', 404);
