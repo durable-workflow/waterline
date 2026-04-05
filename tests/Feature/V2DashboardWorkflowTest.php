@@ -8,6 +8,7 @@ use Workflow\Serializers\Serializer;
 use Workflow\V2\Models\ActivityExecution;
 use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowFailure;
+use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowLink;
 use Workflow\V2\Models\WorkflowRun;
@@ -193,6 +194,108 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('can_issue_terminal_commands', true)
             ->assertJsonPath('can_repair', false)
             ->assertJsonPath('read_only_reason', null);
+    }
+
+    public function testShowIncludesCompletedUpdateResultsInCommandHistory(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-update-command',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNUPDATECOMMAND1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        WorkflowCommand::create([
+            'id' => '01JTESTCOMMANDUPDATECOMPLETE',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 2,
+            'command_type' => 'update',
+            'target_scope' => 'instance',
+            'status' => 'accepted',
+            'outcome' => 'update_completed',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'payload_codec' => Serializer::class,
+            'payload' => Serializer::serialize([
+                'name' => 'approve',
+                'arguments' => [true, 'waterline'],
+            ]),
+            'accepted_at' => now()->subSeconds(50),
+            'applied_at' => now()->subSeconds(49),
+            'created_at' => now()->subSeconds(50),
+            'updated_at' => now()->subSeconds(49),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYUPDATECOMPLETE',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => 'UpdateCompleted',
+            'payload' => [
+                'workflow_command_id' => '01JTESTCOMMANDUPDATECOMPLETE',
+                'update_name' => 'approve',
+                'sequence' => 1,
+                'result' => Serializer::serialize([
+                    'approved' => true,
+                    'events' => ['started', 'approved:yes:waterline'],
+                ]),
+            ],
+            'workflow_command_id' => '01JTESTCOMMANDUPDATECOMPLETE',
+            'recorded_at' => now()->subSeconds(49),
+            'created_at' => now()->subSeconds(49),
+            'updated_at' => now()->subSeconds(49),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('can_update', true)
+            ->assertJsonPath('can_signal', true)
+            ->assertJsonPath('commands.0.type', 'update')
+            ->assertJsonPath('commands.0.target_name', 'approve')
+            ->assertJsonPath('commands.0.result_available', true)
+            ->assertJsonPath('commands.0.failure_id', null)
+            ->assertJsonPath('commands.0.failure_message', null)
+            ->assertJsonPath('commands.0.completed_at', now()->subSeconds(49)->jsonSerialize())
+            ->assertJsonPath('commands.0.result', serialize([
+                'approved' => true,
+                'events' => ['started', 'approved:yes:waterline'],
+            ]));
     }
 
     public function testShowOrdersCommandsByDurableCommandSequence(): void

@@ -244,6 +244,7 @@
                             <th scope="col">Target</th>
                             <th scope="col">Outcome</th>
                             <th scope="col">Status</th>
+                            <th scope="col">Result</th>
                             <th scope="col">Accepted At</th>
                         </tr>
                     </thead>
@@ -253,6 +254,15 @@
                             <td>{{ command.target_name || command.target_scope }}</td>
                             <td>{{ command.outcome || '-' }}</td>
                             <td>{{ command.status }}</td>
+                            <td>
+                                <button
+                                    v-if="command.result_available"
+                                    title="View Result"
+                                    class="btn btn-outline-primary ml-auto"
+                                    @click="showResult(command.result, 'Command Result')"
+                                >View</button>
+                                <span v-else>-</span>
+                            </td>
                             <td>{{ timestamp(command.accepted_at || command.rejected_at || command.applied_at) }}</td>
                         </tr>
                     </tbody>
@@ -560,9 +570,9 @@ export default {
             return type + '-flows-preview'
         },
 
-        showResult(result) {
+        showResult(result, title = 'Activity Result') {
             Swal.fire({
-                title: 'Activity Result',
+                title: title,
                 text: JSON.stringify(this.unserialize(result), null, 2),
                 icon: 'info',
                 confirmButtonText: 'Okay',
