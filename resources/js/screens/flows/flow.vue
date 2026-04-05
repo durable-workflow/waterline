@@ -227,6 +227,88 @@
             </div>
         </div>
 
+        <div class="card mt-4" v-if="ready && waitRows().length">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5>Waits</h5>
+
+                <a data-toggle="collapse" href="#collapseWaits" role="button">
+                    Collapse
+                </a>
+            </div>
+
+            <div class="card-body collapse show" id="collapseWaits">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Wait</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Backing</th>
+                            <th scope="col">Opened At</th>
+                            <th scope="col">Resolved / Deadline</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="wait in waitRows()" :key="wait.id">
+                            <td>
+                                {{ wait.summary }}
+                                <div class="small text-muted" v-if="hasDetailValue(wait.target_name) || hasDetailValue(wait.target_type)">
+                                    {{ wait.kind }}
+                                    <span v-if="hasDetailValue(wait.target_name)"> / {{ wait.target_name }}</span>
+                                    <span v-else-if="hasDetailValue(wait.target_type)"> / {{ wait.target_type }}</span>
+                                </div>
+                            </td>
+                            <td>
+                                {{ wait.status }}
+                                <div class="small text-muted" v-if="hasDetailValue(wait.source_status)">
+                                    {{ wait.source_status }}
+                                </div>
+                            </td>
+                            <td>{{ waitBacking(wait) }}</td>
+                            <td>{{ hasDetailValue(wait.opened_at) ? timestamp(wait.opened_at) : '-' }}</td>
+                            <td>{{ waitCompletion(wait) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mt-4" v-if="ready && taskRows().length">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5>Tasks</h5>
+
+                <a data-toggle="collapse" href="#collapseTasks" role="button">
+                    Collapse
+                </a>
+            </div>
+
+            <div class="card-body collapse show" id="collapseTasks">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Type</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Target</th>
+                            <th scope="col">Queue</th>
+                            <th scope="col">Summary</th>
+                            <th scope="col">Ready / Leased</th>
+                            <th scope="col">Attempts</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="task in taskRows()" :key="task.id">
+                            <td>{{ task.type }}</td>
+                            <td>{{ task.status }}</td>
+                            <td>{{ taskTarget(task) }}</td>
+                            <td>{{ task.queue || '-' }}</td>
+                            <td>{{ task.summary }}</td>
+                            <td>{{ taskAvailability(task) }}</td>
+                            <td>{{ task.attempt_count }}<span v-if="task.repair_count"> / repair {{ task.repair_count }}</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="card mt-4" v-if="ready && flow.commands && flow.commands.length">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Commands</h5>
@@ -584,6 +666,62 @@ export default {
             return this.flow.activities && this.flow.activities.length
                 ? this.flow.activities
                 : (this.flow.logs || [])
+        },
+
+        waitRows() {
+            return this.flow.waits || []
+        },
+
+        taskRows() {
+            return this.flow.tasks || []
+        },
+
+        waitBacking(wait) {
+            if (wait.external_only) {
+                return 'external input'
+            }
+
+            if (!wait.task_backed) {
+                return 'task missing'
+            }
+
+            return [wait.task_type, wait.task_status].filter(Boolean).join(' / ')
+        },
+
+        waitCompletion(wait) {
+            if (this.hasDetailValue(wait.resolved_at)) {
+                return this.timestamp(wait.resolved_at)
+            }
+
+            if (this.hasDetailValue(wait.deadline_at)) {
+                return this.timestamp(wait.deadline_at)
+            }
+
+            return '-'
+        },
+
+        taskTarget(task) {
+            if (this.hasDetailValue(task.activity_type)) {
+                return task.activity_type
+            }
+
+            if (this.hasDetailValue(task.timer_sequence)) {
+                return 'timer #' + task.timer_sequence
+            }
+
+            return 'selected run'
+        },
+
+        taskAvailability(task) {
+            if (this.hasDetailValue(task.leased_at)) {
+                return this.timestamp(task.leased_at)
+            }
+
+            if (this.hasDetailValue(task.available_at)) {
+                return this.timestamp(task.available_at)
+            }
+
+            return '-'
         },
 
         lineageEntries() {

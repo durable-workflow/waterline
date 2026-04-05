@@ -13,6 +13,8 @@ use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowLink;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Models\WorkflowTask;
+use Workflow\V2\Models\WorkflowTimer;
 
 class V2DashboardWorkflowTest extends TestCase
 {
@@ -194,6 +196,187 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('can_issue_terminal_commands', true)
             ->assertJsonPath('can_repair', false)
             ->assertJsonPath('read_only_reason', null);
+    }
+
+    public function testShowIncludesSelectedRunWaitsAndTasks(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-detail-waits',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNWAITTASK0001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'wait_kind' => 'signal',
+            'wait_reason' => 'Waiting for signal approved-by',
+            'wait_started_at' => now()->subSeconds(45),
+            'liveness_state' => 'waiting_for_signal',
+            'liveness_reason' => 'Waiting for signal approved-by.',
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        WorkflowTask::create([
+            'id' => '01JTESTFLOWTASKWAITTASK0001',
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'completed',
+            'queue' => 'default',
+            'available_at' => now()->subMinutes(2),
+            'leased_at' => now()->subMinutes(2),
+            'lease_owner' => 'worker-1',
+            'attempt_count' => 1,
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYWAITTASK0001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => 'SignalWaitOpened',
+            'payload' => [
+                'signal_name' => 'approved-by',
+                'sequence' => 1,
+            ],
+            'recorded_at' => now()->subSeconds(45),
+            'created_at' => now()->subSeconds(45),
+            'updated_at' => now()->subSeconds(45),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('waits_scope', 'selected_run')
+            ->assertJsonPath('tasks_scope', 'selected_run')
+            ->assertJsonPath('timeline_scope', 'selected_run')
+            ->assertJsonPath('lineage_scope', 'selected_run')
+            ->assertJsonPath('waits.0.kind', 'signal')
+            ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.target_name', 'approved-by')
+            ->assertJsonPath('waits.0.task_backed', false)
+            ->assertJsonPath('waits.0.external_only', true)
+            ->assertJsonPath('tasks.0.type', 'workflow')
+            ->assertJsonPath('tasks.0.status', 'completed')
+            ->assertJsonPath('tasks.0.is_open', false);
+    }
+
+    public function testShowExposesRepairNeededTimerWaitWithoutBackingTask(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-detail-repair-timer',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNREPAIRWAIT001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'wait_kind' => 'timer',
+            'wait_reason' => 'Waiting for timer',
+            'wait_started_at' => now()->subSeconds(30),
+            'wait_deadline_at' => now()->addMinute(),
+            'liveness_state' => 'repair_needed',
+            'liveness_reason' => 'Timer 01JTESTFLOWTIMERREPAIR0001 is pending without an open timer task.',
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        WorkflowTask::create([
+            'id' => '01JTESTFLOWTASKREPAIRWAIT01',
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'completed',
+            'queue' => 'default',
+            'available_at' => now()->subMinutes(2),
+            'leased_at' => now()->subMinutes(2),
+            'lease_owner' => 'worker-1',
+            'attempt_count' => 1,
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        WorkflowTimer::create([
+            'id' => '01JTESTFLOWTIMERREPAIR0001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'status' => 'pending',
+            'delay_seconds' => 60,
+            'fire_at' => now()->addMinute(),
+            'created_at' => now()->subSeconds(30),
+            'updated_at' => now()->subSeconds(30),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('waits.0.kind', 'timer')
+            ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.task_backed', false)
+            ->assertJsonPath('waits.0.task_id', null)
+            ->assertJsonPath('waits.0.task_type', null)
+            ->assertJsonPath('waits.0.task_status', null)
+            ->assertJsonPath('tasks.0.type', 'workflow')
+            ->assertJsonMissingPath('tasks.1');
     }
 
     public function testShowIncludesCompletedUpdateResultsInCommandHistory(): void

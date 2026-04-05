@@ -47,7 +47,18 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function findFlow(string $id)
     {
-        $relations = ['summary', 'activityExecutions', 'failures', 'instance.currentRun.summary'];
+        $relations = [
+            'summary',
+            'commands',
+            'tasks',
+            'activityExecutions',
+            'timers',
+            'failures',
+            'historyEvents',
+            'parentLinks.parentRun.summary',
+            'childLinks.childRun.summary',
+            'instance.currentRun.summary',
+        ];
 
         $run = $this->runModel::query()
             ->with($relations)
