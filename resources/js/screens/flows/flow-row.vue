@@ -1,27 +1,33 @@
 <template>
     <tr>
         <td>
-            <router-link :title="flow.class" :to="{ name: $route.params.type+'-flows-preview', params: { flowId: flow.id }}">
+            <router-link :title="flow.class" :to="{ name: routeName(flow), params: { flowId: flow.id }}">
                 {{ flowBaseName(flow.class) }}
             </router-link>
 
             <br>
 
             <small class="text-muted">
-                ID: {{flow.id}} <span v-if="flow.status === 'continued'" class="badge badge-info ml-1">Continued</span>
+                Workflow: {{ flow.instance_id || flow.workflow_instance_id || flow.id }}
+            </small>
+
+            <br>
+
+            <small class="text-muted">
+                Run: {{ flow.run_id || flow.id }} <span v-if="flow.status === 'continued'" class="badge badge-info ml-1">Continued</span>
             </small>
         </td>
 
         <td class="table-fit">
-            {{ timestamp(flow.created_at) }}
+            {{ timestamp(flow.started_at || flow.created_at) }}
         </td>
 
         <td v-if="$route.params.type=='completed' || $route.params.type=='failed'" class="table-fit">
-            {{ timestamp(flow.updated_at) }}
+            {{ timestamp(flow.closed_at || flow.updated_at) }}
         </td>
 
         <td v-if="$route.params.type=='completed' || $route.params.type=='failed'" class="table-fit">
-            <span>{{ duration(flow.created_at, flow.updated_at) }}</span>
+            <span>{{ duration(flow.started_at || flow.created_at, flow.closed_at || flow.updated_at) }}</span>
         </td>
     </tr>
 </template>
@@ -52,6 +58,14 @@
             duration(start, end) {
                 moment.relativeTimeThreshold('ss', 1)
                 return moment(end).from(moment(start), true)
+            },
+
+            routeName(flow) {
+                const type = flow.status_bucket || (['failed', 'cancelled', 'terminated'].includes(flow.status)
+                    ? 'failed'
+                    : (flow.status === 'completed' ? 'completed' : 'running'));
+
+                return type + '-flows-preview'
             },
         }
     }

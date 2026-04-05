@@ -108,10 +108,17 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('queue', 'default')
             ->assertJsonPath('status', 'completed')
             ->assertJsonPath('closed_reason', 'completed')
+            ->assertJsonPath('closed_at', $run->closed_at?->jsonSerialize())
+            ->assertJsonPath('duration_ms', 300000)
+            ->assertJsonPath('exception_count', 1)
+            ->assertJsonPath('exceptions_count', 1)
             ->assertJsonPath('can_issue_terminal_commands', false)
             ->assertJsonPath('read_only_reason', 'Run is closed.')
+            ->assertJsonPath('activities.0.class', 'ActivityClass')
             ->assertJsonPath('logs.0.class', 'ActivityClass')
             ->assertJsonPath('exceptions.0.class', 'ActivityClass')
+            ->assertJsonPath('commands', [])
+            ->assertJsonPath('timeline', [])
             ->assertJsonPath('chartData.0.type', 'Workflow')
             ->assertJsonPath('chartData.1.type', 'Activity');
     }
@@ -156,6 +163,12 @@ class V2DashboardWorkflowTest extends TestCase
             'connection' => 'redis',
             'queue' => 'default',
             'started_at' => $run->started_at,
+            'wait_kind' => 'signal',
+            'wait_reason' => 'Waiting for signal approved-by',
+            'wait_started_at' => now()->subSeconds(30),
+            'next_task_at' => now()->subSeconds(5),
+            'liveness_state' => 'waiting_for_signal',
+            'liveness_reason' => 'Waiting for signal approved-by.',
             'created_at' => now()->subMinutes(2),
             'updated_at' => now()->subMinute(),
         ]);
@@ -169,6 +182,10 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('current_run_id', $run->id)
             ->assertJsonPath('current_run_status', 'waiting')
             ->assertJsonPath('current_run_status_bucket', 'running')
+            ->assertJsonPath('wait_kind', 'signal')
+            ->assertJsonPath('wait_reason', 'Waiting for signal approved-by')
+            ->assertJsonPath('liveness_state', 'waiting_for_signal')
+            ->assertJsonPath('liveness_reason', 'Waiting for signal approved-by.')
             ->assertJsonPath('can_issue_terminal_commands', true)
             ->assertJsonPath('read_only_reason', null);
     }
@@ -265,5 +282,150 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('current_run_status_bucket', 'running')
             ->assertJsonPath('can_issue_terminal_commands', false)
             ->assertJsonPath('read_only_reason', 'Selected run is historical. Issue commands against the current active run.');
+    }
+
+    public function testCancelTargetsSelectedCurrentRunAndReturnsAcceptedResponse(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-cancel-current',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCANCEL000001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $response = $this->post('/waterline/api/flows/' . $instance->id . '/cancel');
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'cancelled')
+            ->assertJsonPath('workflow_id', $instance->id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('rejection_reason', null);
+
+        $commandId = $response->json('command_id');
+
+        $this->assertDatabaseHas('workflow_commands', [
+            'id' => $commandId,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_type' => 'cancel',
+            'target_scope' => 'run',
+            'status' => 'accepted',
+            'outcome' => 'cancelled',
+        ]);
+    }
+
+    public function testTerminateRejectsHistoricalRunSelection(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-terminate-historical',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 2,
+        ]);
+
+        $historicalRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNTERMHIST0001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'started_at' => now()->subMinutes(10),
+            'closed_at' => now()->subMinutes(8),
+            'last_progress_at' => now()->subMinutes(8),
+        ]);
+
+        $currentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNTERMCURR0001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $currentRun->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $historicalRun->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => false,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'status_bucket' => 'completed',
+            'closed_reason' => 'completed',
+            'started_at' => $historicalRun->started_at,
+            'closed_at' => $historicalRun->closed_at,
+            'created_at' => now()->subMinutes(10),
+            'updated_at' => now()->subMinutes(8),
+        ]);
+
+        WorkflowRunSummary::create([
+            'id' => $currentRun->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'started_at' => $currentRun->started_at,
+            'created_at' => now()->subMinute(),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        $response = $this->post('/waterline/api/flows/' . $historicalRun->id . '/terminate');
+
+        $response
+            ->assertStatus(409)
+            ->assertJsonPath('outcome', 'rejected_not_current')
+            ->assertJsonPath('workflow_id', $instance->id)
+            ->assertJsonPath('run_id', $historicalRun->id)
+            ->assertJsonPath('command_status', 'rejected')
+            ->assertJsonPath('rejection_reason', 'selected_run_not_current');
+
+        $commandId = $response->json('command_id');
+
+        $this->assertDatabaseHas('workflow_commands', [
+            'id' => $commandId,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $historicalRun->id,
+            'command_type' => 'terminate',
+            'target_scope' => 'run',
+            'status' => 'rejected',
+            'outcome' => 'rejected_not_current',
+            'rejection_reason' => 'selected_run_not_current',
+        ]);
     }
 }

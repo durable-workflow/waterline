@@ -5,9 +5,23 @@
                 <h5 v-if="!ready">Flow Preview</h5>
                 <h5 v-if="ready">{{ flow.class }}</h5>
 
-                <a data-toggle="collapse" href="#collapseDetails" role="button">
-                    Collapse
-                </a>
+                <div class="d-flex align-items-center">
+                    <button v-if="ready && flow.can_issue_terminal_commands"
+                        class="btn btn-outline-warning btn-sm mr-2"
+                        @click="issueCommand('cancel')">
+                        Cancel
+                    </button>
+
+                    <button v-if="ready && flow.can_issue_terminal_commands"
+                        class="btn btn-outline-danger btn-sm mr-3"
+                        @click="issueCommand('terminate')">
+                        Terminate
+                    </button>
+
+                    <a data-toggle="collapse" href="#collapseDetails" role="button">
+                        Collapse
+                    </a>
+                </div>
             </div>
 
             <div v-if="!ready"
@@ -27,9 +41,22 @@
                     <div class="col">{{ flow.id }}</div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.instance_id)">
+                    <div class="col-md-2"><strong>Instance ID</strong></div>
+                    <div class="col">{{ flow.instance_id }}</div>
+                </div>
+
+                <div class="row mb-2" v-if="hasDetailValue(flow.run_id)">
+                    <div class="col-md-2"><strong>Run ID</strong></div>
+                    <div class="col">{{ flow.run_id }}</div>
+                </div>
+
                 <div class="row mb-2">
                     <div class="col-md-2"><strong>Status</strong></div>
-                    <div class="col">{{ flow.status }}</div>
+                    <div class="col">
+                        {{ flow.status }}
+                        <span v-if="hasDetailValue(flow.status_bucket)"> / {{ flow.status_bucket }}</span>
+                    </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.read_only_reason)">
@@ -43,14 +70,14 @@
                 </div>
 
                 <div class="row mb-2">
-                    <div class="col-md-2"><strong>Completed At</strong></div>
-                    <div class="col" v-if="(flow.status === 'completed' || flow.status === 'continued')">{{ timestamp(flow.updated_at) }}</div>
+                    <div class="col-md-2"><strong>Closed At</strong></div>
+                    <div class="col" v-if="isClosed(flow)">{{ timestamp(flow.closed_at || flow.updated_at) }}</div>
                     <div class="col" v-else>-</div>
                 </div>
 
                 <div class="row mb-2">
                     <div class="col-md-2"><strong>Duration</strong></div>
-                    <div class="col" v-if="(flow.status === 'completed' || flow.status === 'continued')">{{ duration(flow.created_at, flow.updated_at) }}</div>
+                    <div class="col" v-if="isClosed(flow)">{{ duration(flow.created_at, flow.closed_at || flow.updated_at) }}</div>
                     <div class="col" v-else>-</div>
                 </div>
 
@@ -73,6 +100,33 @@
                         <span v-if="flow.current_run_status">
                             ({{ flow.current_run_status }}<span v-if="flow.current_run_status_bucket"> / {{ flow.current_run_status_bucket }}</span>)
                         </span>
+                    </div>
+                </div>
+
+                <div class="row mb-2" v-if="hasDetailValue(flow.wait_reason)">
+                    <div class="col-md-2"><strong>Wait</strong></div>
+                    <div class="col">
+                        {{ flow.wait_reason }}
+                        <span v-if="hasDetailValue(flow.wait_kind)">
+                            ({{ flow.wait_kind }})
+                        </span>
+                    </div>
+                </div>
+
+                <div class="row mb-2" v-if="hasDetailValue(flow.liveness_reason)">
+                    <div class="col-md-2"><strong>Liveness</strong></div>
+                    <div class="col">
+                        {{ flow.liveness_reason }}
+                        <span v-if="hasDetailValue(flow.liveness_state)">
+                            ({{ flow.liveness_state }})
+                        </span>
+                    </div>
+                </div>
+
+                <div class="row mb-2" v-if="hasDetailValue(flow.next_task_id)">
+                    <div class="col-md-2"><strong>Next Task</strong></div>
+                    <div class="col">
+                        {{ flow.next_task_type }} / {{ flow.next_task_status }} / {{ flow.next_task_id }}
                     </div>
                 </div>
 
@@ -102,7 +156,7 @@
             </div>
         </div>
 
-        <div class="card mt-4" v-if="ready && (flow.status === 'completed' || flow.status === 'continued')">
+        <div class="card mt-4" v-if="ready && isClosed(flow)">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Output</h5>
 
@@ -116,9 +170,9 @@
             </div>
         </div>
 
-        <div class="card mt-4" v-if="ready && flow.logs && flow.logs.length">
+        <div class="card mt-4" v-if="ready && flow.chartData && flow.chartData.length">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Timeline</h5>
+                <h5>Timeline Chart</h5>
 
                 <a data-toggle="collapse" href="#collapseTimeline" role="button">
                     Collapse
@@ -130,7 +184,69 @@
             </div>
         </div>
 
-        <div class="card mt-4" v-if="ready && flow.logs && flow.logs.length">
+        <div class="card mt-4" v-if="ready && flow.timeline && flow.timeline.length">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5>History</h5>
+
+                <a data-toggle="collapse" href="#collapseHistory" role="button">
+                    Collapse
+                </a>
+            </div>
+
+            <div class="card-body collapse show" id="collapseHistory">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Recorded At</th>
+                            <th scope="col">Kind</th>
+                            <th scope="col">Summary</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="entry in flow.timeline" :key="entry.id">
+                            <td>{{ timestamp(entry.recorded_at) }}</td>
+                            <td>{{ entry.kind }}</td>
+                            <td>{{ entry.summary }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mt-4" v-if="ready && flow.commands && flow.commands.length">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5>Commands</h5>
+
+                <a data-toggle="collapse" href="#collapseCommands" role="button">
+                    Collapse
+                </a>
+            </div>
+
+            <div class="card-body collapse show" id="collapseCommands">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Type</th>
+                            <th scope="col">Target</th>
+                            <th scope="col">Outcome</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Accepted At</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="command in flow.commands" :key="command.id">
+                            <td>{{ command.type }}</td>
+                            <td>{{ command.target_name || command.target_scope }}</td>
+                            <td>{{ command.outcome || '-' }}</td>
+                            <td>{{ command.status }}</td>
+                            <td>{{ timestamp(command.accepted_at || command.rejected_at || command.applied_at) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card mt-4" v-if="ready && activityRows().length">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Activities</h5>
 
@@ -144,16 +260,20 @@
                     <thead>
                         <tr>
                             <th scope="col">Activity</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Queue</th>
                             <th scope="col">Result</th>
                             <th scope="col">Completed At</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="activity in flow.logs">
-                            <td>{{ activity.class }}</td>
+                        <tr v-for="activity in activityRows()" :key="activity.id">
+                            <td>{{ activity.type || activity.class }}</td>
+                            <td>{{ activity.status || '-' }}</td>
+                            <td>{{ activity.queue || '-' }}</td>
                             <td><button title="View Result" class="btn btn-outline-primary ml-auto"
                                     @click="showResult(activity.result)">View</button></td>
-                            <td>{{ timestamp(activity.created_at) }}</td>
+                            <td>{{ timestamp(activity.closed_at || activity.created_at) }}</td>
                         </tr>
                     </tbody>
                 </table>
@@ -340,7 +460,7 @@ export default {
         loadFlow(id) {
             this.ready = false;
 
-            this.$http.get(Waterline.basePath + '/api/flows/' + id)
+            return this.$http.get(Waterline.basePath + '/api/flows/' + id)
                 .then(response => {
                     this.flow = response.data;
                     this.series[0].data = response.data.chartData;
@@ -406,6 +526,10 @@ export default {
             return moment(end).from(moment(start), true)
         },
 
+        isClosed(flow) {
+            return ['completed', 'continued', 'failed', 'cancelled', 'terminated'].includes(flow.status)
+        },
+
         hasDetailValue(value) {
             return value !== null && value !== undefined && value !== ''
         },
@@ -430,7 +554,55 @@ export default {
                 confirmButtonText: 'Okay',
                 background: '#1c1c1c',
             })
-        }
+        },
+
+        activityRows() {
+            return this.flow.activities && this.flow.activities.length
+                ? this.flow.activities
+                : (this.flow.logs || [])
+        },
+
+        async issueCommand(commandType) {
+            const confirmed = await Swal.fire({
+                title: commandType === 'cancel' ? 'Cancel run?' : 'Terminate run?',
+                text: 'This action applies to the selected run only.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: commandType === 'cancel' ? 'Cancel run' : 'Terminate run',
+                background: '#1c1c1c',
+            })
+
+            if (! confirmed.isConfirmed) {
+                return
+            }
+
+            try {
+                await this.$http.post(Waterline.basePath + '/api/flows/' + this.flow.id + '/' + commandType)
+                await this.loadFlow(this.flow.id)
+
+                Swal.fire({
+                    title: 'Command accepted',
+                    text: 'Waterline recorded the command durably.',
+                    icon: 'success',
+                    confirmButtonText: 'Okay',
+                    background: '#1c1c1c',
+                })
+            } catch (error) {
+                const message = error.response
+                    && error.response.data
+                    && error.response.data.rejection_reason
+                    ? error.response.data.rejection_reason
+                    : 'Command was rejected.'
+
+                Swal.fire({
+                    title: 'Command rejected',
+                    text: message,
+                    icon: 'error',
+                    confirmButtonText: 'Okay',
+                    background: '#1c1c1c',
+                })
+            }
+        },
     }
 }
 </script>

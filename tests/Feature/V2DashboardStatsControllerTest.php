@@ -79,6 +79,7 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('exceptions_past_hour', 1)
             ->assertJsonPath('failed_flows_past_week', 0)
             ->assertJsonPath('max_duration_workflow.id', $run->id)
+            ->assertJsonPath('max_exceptions_workflow.exceptions_count', 1)
             ->assertJsonPath('max_exceptions_workflow.id', $run->id);
     }
 }

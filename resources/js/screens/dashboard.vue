@@ -1,5 +1,4 @@
 <script type="text/ecmascript-6">
-    import _ from 'lodash';
     import moment from 'moment';
 
     export default {
@@ -44,11 +43,6 @@
                 return this.$http.get(Waterline.basePath + '/api/stats')
                     .then(response => {
                         this.stats = response.data;
-
-                        if (_.values(response.data.wait)[0]) {
-                            this.stats.max_wait_time = _.values(response.data.wait)[0];
-                            this.stats.max_wait_queue = _.keys(response.data.wait)[0].split(':')[1];
-                        }
                     });
             },
 
@@ -71,6 +65,35 @@
 
             duration(start, end) {
                 return moment(end).from(moment(start), true)
+            },
+
+            routeName(flow) {
+                const type = flow.status_bucket || (['failed', 'cancelled', 'terminated'].includes(flow.status)
+                    ? 'failed'
+                    : (flow.status === 'completed' ? 'completed' : 'running'));
+
+                return type + '-flows-preview';
+            },
+
+            waitAge(flow) {
+                return flow.wait_started_at
+                    ? this.duration(flow.wait_started_at, new Date())
+                    : '-';
+            },
+
+            flowDuration(flow) {
+                const start = flow.started_at || flow.created_at;
+                const end = flow.closed_at || flow.updated_at;
+
+                if (! start || ! end) {
+                    return '-';
+                }
+
+                return this.duration(start, end);
+            },
+
+            exceptionCount(flow) {
+                return flow.exceptions_count ?? flow.exception_count ?? 0;
             },
         }
     }
@@ -142,11 +165,11 @@
                             <small class="text-uppercase">Max Wait Time</small>
 
                             <h4 class="mt-4 mb-0">
-                                {{ stats.max_wait_time_workflow ? duration(stats.max_wait_time_workflow.updated_at, new Date()) : '-' }}
+                                {{ stats.max_wait_time_workflow ? waitAge(stats.max_wait_time_workflow) : '-' }}
                             </h4>
 
                             <small class="mt-1" v-if="stats.max_wait_time_workflow">
-                                (<router-link :title="stats.max_wait_time_workflow.class" :to="{ name: (stats.max_wait_time_workflow.status === 'failed' ? 'failed' : (stats.max_wait_time_workflow.status === 'completed' ? 'completed' : 'running')) + '-flows-preview', params: { flowId: stats.max_wait_time_workflow.id }}">{{ flowBaseName(stats.max_wait_time_workflow.class) }}</router-link>)
+                                (<router-link :title="stats.max_wait_time_workflow.class" :to="{ name: routeName(stats.max_wait_time_workflow), params: { flowId: stats.max_wait_time_workflow.id }}">{{ flowBaseName(stats.max_wait_time_workflow.class) }}</router-link>)
                             </small>
                         </div>
                     </div>
@@ -156,11 +179,11 @@
                             <small class="text-uppercase">Max Duration</small>
 
                             <h4 class="mt-4 mb-0">
-                                {{ stats.max_duration_workflow ? duration(stats.max_duration_workflow.created_at, stats.max_duration_workflow.updated_at) : '-' }}
+                                {{ stats.max_duration_workflow ? flowDuration(stats.max_duration_workflow) : '-' }}
                             </h4>
 
                             <small class="mt-1" v-if="stats.max_duration_workflow">
-                                (<router-link :title="stats.max_duration_workflow.class" :to="{ name: (stats.max_duration_workflow.status === 'failed' ? 'failed' : (stats.max_duration_workflow.status === 'completed' ? 'completed' : 'running')) + '-flows-preview', params: { flowId: stats.max_duration_workflow.id }}">{{ flowBaseName(stats.max_duration_workflow.class) }}</router-link>)
+                                (<router-link :title="stats.max_duration_workflow.class" :to="{ name: routeName(stats.max_duration_workflow), params: { flowId: stats.max_duration_workflow.id }}">{{ flowBaseName(stats.max_duration_workflow.class) }}</router-link>)
                             </small>
                         </div>
                     </div>
@@ -170,11 +193,11 @@
                             <small class="text-uppercase">Max Exceptions</small>
 
                             <h4 class="mt-4 mb-0">
-                                {{ stats.max_exceptions_workflow ? stats.max_exceptions_workflow.exceptions_count.toLocaleString() : 0 }}
+                                {{ stats.max_exceptions_workflow ? exceptionCount(stats.max_exceptions_workflow).toLocaleString() : 0 }}
                             </h4>
 
                             <small class="mt-1" v-if="stats.max_exceptions_workflow">
-                                (<router-link :title="stats.max_exceptions_workflow.class" :to="{ name: (stats.max_exceptions_workflow.status === 'failed' ? 'failed' : (stats.max_exceptions_workflow.status === 'completed' ? 'completed' : 'running')) + '-flows-preview', params: { flowId: stats.max_exceptions_workflow.id }}">{{ flowBaseName(stats.max_exceptions_workflow.class) }}</router-link>)
+                                (<router-link :title="stats.max_exceptions_workflow.class" :to="{ name: routeName(stats.max_exceptions_workflow), params: { flowId: stats.max_exceptions_workflow.id }}">{{ flowBaseName(stats.max_exceptions_workflow.class) }}</router-link>)
                             </small>
                         </div>
                     </div>

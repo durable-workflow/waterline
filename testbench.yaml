@@ -11,9 +11,6 @@ env:
   - DB_CONNECTION=sqlite
   - QUEUE_CONNECTION=database
 
-migrations:
-  - workbench/database/migrations
-
 seeders: false
 
 install:
