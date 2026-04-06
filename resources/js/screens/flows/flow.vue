@@ -364,6 +364,7 @@
                 <table class="table">
                     <thead>
                         <tr>
+                            <th scope="col">Seq</th>
                             <th scope="col">Type</th>
                             <th scope="col">Target</th>
                             <th scope="col">Outcome</th>
@@ -375,6 +376,7 @@
                     </thead>
                     <tbody>
                         <tr v-for="command in flow.commands" :key="command.id">
+                            <td>{{ hasDetailValue(command.sequence) ? '#' + command.sequence : '-' }}</td>
                             <td>{{ command.type }}</td>
                             <td>{{ command.target_name || command.target_scope }}</td>
                             <td>{{ command.outcome || '-' }}</td>
