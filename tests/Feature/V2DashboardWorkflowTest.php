@@ -3,6 +3,7 @@
 namespace Waterline\Tests\Feature;
 
 use Illuminate\Support\Facades\Queue;
+use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Jobs\RunWorkflowTask;
@@ -120,6 +121,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('duration_ms', 300000)
             ->assertJsonPath('exception_count', 1)
             ->assertJsonPath('exceptions_count', 1)
+            ->assertJsonPath('declared_signals', [])
+            ->assertJsonPath('declared_updates', [])
             ->assertJsonPath('can_issue_terminal_commands', false)
             ->assertJsonPath('can_repair', false)
             ->assertJsonPath('read_only_reason', 'Run is closed.')
@@ -195,9 +198,87 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('wait_reason', 'Waiting for signal approved-by')
             ->assertJsonPath('liveness_state', 'waiting_for_signal')
             ->assertJsonPath('liveness_reason', 'Waiting for signal approved-by.')
+            ->assertJsonPath('declared_signals', [])
+            ->assertJsonPath('declared_updates', [])
             ->assertJsonPath('can_issue_terminal_commands', true)
             ->assertJsonPath('can_repair', false)
             ->assertJsonPath('read_only_reason', null);
+    }
+
+    public function testShowIncludesDeclaredCommandContractAndRejectedReason(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-command-contract',
+            'workflow_class' => TestCommandContractWorkflow::class,
+            'workflow_type' => 'workflow.command-contract',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCOMMANDCON001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => TestCommandContractWorkflow::class,
+            'workflow_type' => 'workflow.command-contract',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(20),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => TestCommandContractWorkflow::class,
+            'workflow_type' => 'workflow.command-contract',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'created_at' => now()->subMinute(),
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        WorkflowCommand::create([
+            'id' => '01JTESTCOMMANDREJECTEDSIGNAL1',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 1,
+            'command_type' => 'signal',
+            'target_scope' => 'instance',
+            'source' => 'webhook',
+            'status' => 'rejected',
+            'outcome' => 'rejected_unknown_signal',
+            'rejection_reason' => 'unknown_signal',
+            'payload' => Serializer::serialize([
+                'name' => 'not-declared',
+                'arguments' => ['Taylor'],
+            ]),
+            'workflow_class' => TestCommandContractWorkflow::class,
+            'workflow_type' => 'workflow.command-contract',
+            'rejected_at' => now()->subSeconds(10),
+            'created_at' => now()->subSeconds(10),
+            'updated_at' => now()->subSeconds(10),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
+            ->assertJsonPath('declared_updates', ['approve'])
+            ->assertJsonPath('commands.0.type', 'signal')
+            ->assertJsonPath('commands.0.target_name', 'not-declared')
+            ->assertJsonPath('commands.0.outcome', 'rejected_unknown_signal')
+            ->assertJsonPath('commands.0.rejection_reason', 'unknown_signal');
     }
 
     public function testShowMarksExpiredLeasedTaskAsRepairNeeded(): void

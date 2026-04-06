@@ -97,6 +97,16 @@
                     <div class="col">{{ flow.queue }}</div>
                 </div>
 
+                <div class="row mb-2" v-if="flow.declared_signals && flow.declared_signals.length">
+                    <div class="col-md-2"><strong>Signals</strong></div>
+                    <div class="col">{{ flow.declared_signals.join(', ') }}</div>
+                </div>
+
+                <div class="row mb-2" v-if="flow.declared_updates && flow.declared_updates.length">
+                    <div class="col-md-2"><strong>Updates</strong></div>
+                    <div class="col">{{ flow.declared_updates.join(', ') }}</div>
+                </div>
+
                 <div class="row mb-2" v-if="hasDetailValue(flow.compatibility) || flow.compatibility_supported === false">
                     <div class="col-md-2"><strong>Compatibility</strong></div>
                     <div class="col">
@@ -366,6 +376,9 @@
                             <td>{{ command.status }}</td>
                             <td>
                                 <div>{{ commandSource(command) }}</div>
+                                <small v-if="command.status === 'rejected' && hasDetailValue(command.rejection_reason)" class="text-muted d-block">
+                                    {{ command.rejection_reason }}
+                                </small>
                                 <small v-if="commandSourceDetail(command)" class="text-muted">
                                     {{ commandSourceDetail(command) }}
                                 </small>
