@@ -57,6 +57,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
             'historyEvents',
             'parentLinks.parentRun.summary',
             'childLinks.childRun.summary',
+            'childLinks.childRun.historyEvents',
             'instance.currentRun.summary',
         ];
 
