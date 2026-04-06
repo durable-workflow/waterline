@@ -97,6 +97,16 @@
                     <div class="col">{{ flow.queue }}</div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.compatibility) || flow.compatibility_supported === false">
+                    <div class="col-md-2"><strong>Compatibility</strong></div>
+                    <div class="col">
+                        <div>{{ flow.compatibility || '-' }}</div>
+                        <div class="small text-muted" v-if="flow.compatibility_supported === false && hasDetailValue(flow.compatibility_reason)">
+                            {{ flow.compatibility_reason }}
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="!flow.is_current_run && flow.current_run_id">
                     <div class="col-md-2"><strong>Current Run</strong></div>
                     <div class="col">
@@ -289,6 +299,7 @@
                             <th scope="col">Status</th>
                             <th scope="col">Target</th>
                             <th scope="col">Queue</th>
+                            <th scope="col">Compatibility</th>
                             <th scope="col">Summary</th>
                             <th scope="col">Ready / Leased</th>
                             <th scope="col">Attempts</th>
@@ -300,6 +311,12 @@
                             <td>{{ task.status }}</td>
                             <td>{{ taskTarget(task) }}</td>
                             <td>{{ task.queue || '-' }}</td>
+                            <td>
+                                <div>{{ task.compatibility || '-' }}</div>
+                                <div class="small text-muted" v-if="task.compatibility_supported === false && hasDetailValue(task.compatibility_reason)">
+                                    {{ task.compatibility_reason }}
+                                </div>
+                            </td>
                             <td>{{ task.summary }}</td>
                             <td>{{ taskAvailability(task) }}</td>
                             <td>{{ task.attempt_count }}<span v-if="task.repair_count"> / repair {{ task.repair_count }}</span></td>
