@@ -107,6 +107,11 @@
                     <div class="col">{{ flow.declared_updates.join(', ') }}</div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.declared_contract_source)">
+                    <div class="col-md-2"><strong>Contract Source</strong></div>
+                    <div class="col">{{ contractSourceLabel(flow.declared_contract_source) }}</div>
+                </div>
+
                 <div class="row mb-2" v-if="hasDetailValue(flow.compatibility) || flow.compatibility_supported === false">
                     <div class="col-md-2"><strong>Compatibility</strong></div>
                     <div class="col">
@@ -685,6 +690,19 @@ export default {
 
         hasDetailValue(value) {
             return value !== null && value !== undefined && value !== ''
+        },
+
+        contractSourceLabel(source) {
+            switch (source) {
+                case 'durable_history':
+                    return 'Durable start history'
+                case 'live_definition':
+                    return 'Live workflow definition'
+                case 'unavailable':
+                    return 'Unavailable'
+                default:
+                    return source
+            }
         },
 
         flowRouteName(statusBucket, status) {

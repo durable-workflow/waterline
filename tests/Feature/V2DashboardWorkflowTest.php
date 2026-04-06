@@ -313,10 +313,74 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
             ->assertJsonPath('declared_updates', ['approve'])
+            ->assertJsonPath('declared_contract_source', 'live_definition')
             ->assertJsonPath('commands.0.type', 'signal')
             ->assertJsonPath('commands.0.target_name', 'not-declared')
             ->assertJsonPath('commands.0.outcome', 'rejected_unknown_signal')
             ->assertJsonPath('commands.0.rejection_reason', 'unknown_signal');
+    }
+
+    public function testShowUsesDurableCommandContractHistoryWhenWorkflowClassCannotBeResolved(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-command-contract-history',
+            'workflow_class' => TestCommandContractWorkflow::class,
+            'workflow_type' => 'workflow.command-contract',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCOMMANDCONHIS1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'Missing\\Workflow\\CommandContractWorkflow',
+            'workflow_type' => 'workflow.command-contract',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(20),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'Missing\\Workflow\\CommandContractWorkflow',
+            'workflow_type' => 'workflow.command-contract',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'created_at' => now()->subMinute(),
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYCOMMANDCONTRACT',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [
+                'declared_signals' => ['approved-by', 'rejected-by'],
+                'declared_updates' => ['approve'],
+            ],
+            'recorded_at' => now()->subSeconds(19),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
+            ->assertJsonPath('declared_updates', ['approve'])
+            ->assertJsonPath('declared_contract_source', 'durable_history');
     }
 
     public function testShowMarksExpiredLeasedTaskAsRepairNeeded(): void
