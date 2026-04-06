@@ -59,9 +59,9 @@ return [
     | Workflow Sort Column
     |--------------------------------------------------------------------------
     |
-    | Waterline sorts workflow lists in descending order. By default this uses
-    | the workflow ID, but you can point it at another sortable column such as
-    | created_at when your workflow IDs are not naturally ordered.
+    | Waterline sorts legacy v1 workflow lists in descending order. The v2
+    | bridge ignores this setting and uses the durable run-summary sort
+    | contract (`sort_timestamp` + `sort_key`) instead of raw column guesses.
     |
     */
 

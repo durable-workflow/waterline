@@ -81,7 +81,15 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function flowsPastHour(): int
     {
-        return $this->runSummaryModel::where('created_at', '>=', now()->subHour())->count();
+        $cutoff = now()->subHour();
+
+        return $this->runSummaryModel::where(static function ($query) use ($cutoff): void {
+            $query->where('sort_timestamp', '>=', $cutoff)
+                ->orWhere(static function ($fallback) use ($cutoff): void {
+                    $fallback->whereNull('sort_timestamp')
+                        ->where('created_at', '>=', $cutoff);
+                });
+        })->count();
     }
 
     public function exceptionsPastHour(): int
@@ -101,6 +109,9 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         return $this->runSummaryModel::where('status_bucket', 'running')
             ->whereNotNull('wait_started_at')
             ->orderBy('wait_started_at')
+            ->orderBy('sort_timestamp')
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->first();
     }
 
@@ -108,7 +119,9 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     {
         return $this->runSummaryModel::whereNotNull('duration_ms')
             ->orderByDesc('duration_ms')
-            ->orderByDesc('updated_at')
+            ->orderByDesc('sort_timestamp')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->first();
     }
 
@@ -116,7 +129,9 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     {
         return $this->runSummaryModel::where('exception_count', '>', 0)
             ->orderByDesc('exception_count')
-            ->orderByDesc('updated_at')
+            ->orderByDesc('sort_timestamp')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->first();
     }
 
@@ -128,6 +143,8 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     protected function orderedRunsQuery()
     {
         return $this->runSummaryModel::query()
-            ->orderByDesc(config('waterline.workflow_sort_column', 'id'));
+            ->orderByDesc('sort_timestamp')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
     }
 }

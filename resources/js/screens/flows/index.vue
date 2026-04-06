@@ -67,7 +67,11 @@
 
                 this.$http.get(Waterline.basePath + '/api/flows/' + this.$route.params.type + '?page=' + page)
                     .then(response => {
-                        if (!this.$root.autoLoadsNewEntries && refreshing && this.flows.length && _.first(response.data.data).id !== _.first(this.flows).id) {
+                        const incomingFirst = _.first(response.data.data);
+                        const currentFirst = _.first(this.flows);
+
+                        if (!this.$root.autoLoadsNewEntries && refreshing && this.flows.length && incomingFirst
+                            && this.flowCursor(incomingFirst) !== this.flowCursor(currentFirst)) {
                             this.hasNewEntries = true;
                         } else {
                             this.flows = response.data.data;
@@ -124,6 +128,14 @@
                     ++this.page
                 );
                 this.hasNewEntries = false;
+            },
+
+            flowCursor(flow) {
+                if (!flow) {
+                    return null;
+                }
+
+                return flow.sort_key || flow.id || null
             },
 
             /**
