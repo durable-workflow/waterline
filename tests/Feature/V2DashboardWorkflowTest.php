@@ -243,6 +243,75 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('read_only_reason', null);
     }
 
+    public function testShowIncludesTaskDispatchFailureMetadata(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+
+        $instance = WorkflowInstance::create([
+            'id' => 'dispatch-failure-instance',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNDISPATCHFAIL01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'compatibility' => 'build-a',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $task = WorkflowTask::create([
+            'id' => '01JTESTFLOWTASKDISPATCHFAIL1',
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'ready',
+            'available_at' => now()->subMinute(),
+            'payload' => [],
+            'connection' => 'redis',
+            'queue' => 'default',
+            'compatibility' => 'build-a',
+            'last_dispatch_attempt_at' => now()->subSeconds(5),
+            'last_dispatch_error' => 'Queue transport unavailable.',
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('wait_reason', 'Workflow task dispatch failed')
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath(
+                'liveness_reason',
+                sprintf(
+                    'Workflow task %s could not be dispatched at %s. Queue transport unavailable.',
+                    $task->id,
+                    $task->last_dispatch_attempt_at?->toJSON(),
+                ),
+            )
+            ->assertJsonPath('tasks.0.transport_state', 'dispatch_failed')
+            ->assertJsonPath('tasks.0.dispatch_failed', true)
+            ->assertJsonPath('tasks.0.dispatch_overdue', false)
+            ->assertJsonPath('tasks.0.last_dispatched_at', null)
+            ->assertJsonPath('tasks.0.last_dispatch_attempt_at', $task->last_dispatch_attempt_at?->jsonSerialize())
+            ->assertJsonPath('tasks.0.last_dispatch_error', 'Queue transport unavailable.')
+            ->assertJsonPath('tasks.0.summary', 'Workflow task dispatch failed; waiting for recovery.');
+    }
+
     public function testShowIncludesDeclaredCommandContractAndRejectedReason(): void
     {
         config()->set('waterline.engine_source', 'v2');

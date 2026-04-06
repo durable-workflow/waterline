@@ -322,6 +322,7 @@
                         <tr>
                             <th scope="col">Type</th>
                             <th scope="col">Status</th>
+                            <th scope="col">Transport</th>
                             <th scope="col">Target</th>
                             <th scope="col">Queue</th>
                             <th scope="col">Compatibility</th>
@@ -334,6 +335,12 @@
                         <tr v-for="task in taskRows()" :key="task.id">
                             <td>{{ task.type }}</td>
                             <td>{{ task.status }}</td>
+                            <td>
+                                <div>{{ taskTransportState(task) }}</div>
+                                <div class="small text-muted" v-if="hasDetailValue(task.last_dispatch_attempt_at)">
+                                    {{ timestamp(task.last_dispatch_attempt_at) }}
+                                </div>
+                            </td>
                             <td>{{ taskTarget(task) }}</td>
                             <td>{{ task.queue || '-' }}</td>
                             <td>
@@ -342,7 +349,12 @@
                                     {{ task.compatibility_reason }}
                                 </div>
                             </td>
-                            <td>{{ task.summary }}</td>
+                            <td>
+                                <div>{{ task.summary }}</div>
+                                <div class="small text-muted" v-if="hasDetailValue(task.last_dispatch_error)">
+                                    {{ task.last_dispatch_error }}
+                                </div>
+                            </td>
                             <td>{{ taskAvailability(task) }}</td>
                             <td>{{ task.attempt_count }}<span v-if="task.repair_count"> / repair {{ task.repair_count }}</span></td>
                         </tr>
@@ -838,6 +850,22 @@ export default {
             }
 
             return 'selected run'
+        },
+
+        taskTransportState(task) {
+            const labels = {
+                ready: 'ready',
+                scheduled: 'scheduled',
+                leased: 'leased',
+                lease_expired: 'lease expired',
+                dispatch_overdue: 'dispatch overdue',
+                dispatch_failed: 'dispatch failed',
+                completed: 'completed',
+                cancelled: 'cancelled',
+                failed: 'failed',
+            }
+
+            return labels[task.transport_state] || task.transport_state || '-'
         },
 
         taskAvailability(task) {
