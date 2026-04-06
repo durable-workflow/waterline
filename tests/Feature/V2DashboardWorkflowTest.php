@@ -347,6 +347,107 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.is_open', false);
     }
 
+    public function testShowMarksReceivedSignalWithoutWorkflowTaskAsRepairNeeded(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-signal-repair-needed',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNSIGNALREPAIR1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowCommand::create([
+            'id' => '01JTESTCOMMANDSIGNALREPAIR01',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 2,
+            'command_type' => 'signal',
+            'target_scope' => 'instance',
+            'status' => 'accepted',
+            'outcome' => 'signal_received',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'payload_codec' => Serializer::class,
+            'payload' => Serializer::serialize([
+                'name' => 'approved-by',
+                'arguments' => ['Taylor'],
+            ]),
+            'accepted_at' => now()->subSeconds(30),
+            'created_at' => now()->subSeconds(30),
+            'updated_at' => now()->subSeconds(30),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYSIGNALWAIT001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => 'SignalWaitOpened',
+            'payload' => [
+                'signal_name' => 'approved-by',
+                'sequence' => 1,
+            ],
+            'recorded_at' => now()->subSeconds(45),
+            'created_at' => now()->subSeconds(45),
+            'updated_at' => now()->subSeconds(45),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYSIGNALRCVD001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 2,
+            'event_type' => 'SignalReceived',
+            'payload' => [
+                'workflow_command_id' => '01JTESTCOMMANDSIGNALREPAIR01',
+                'workflow_instance_id' => $instance->id,
+                'workflow_run_id' => $run->id,
+                'signal_name' => 'approved-by',
+            ],
+            'workflow_command_id' => '01JTESTCOMMANDSIGNALREPAIR01',
+            'recorded_at' => now()->subSeconds(30),
+            'created_at' => now()->subSeconds(30),
+            'updated_at' => now()->subSeconds(30),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', null)
+            ->assertJsonPath('wait_reason', null)
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath('liveness_reason', 'Run is non-terminal but has no durable next-resume source.')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('waits.0.kind', 'signal')
+            ->assertJsonPath('waits.0.status', 'resolved')
+            ->assertJsonPath('waits.0.source_status', 'received')
+            ->assertJsonPath('waits.0.summary', 'Signal approved-by received.')
+            ->assertJsonPath('waits.0.task_backed', false)
+            ->assertJsonPath('waits.0.external_only', true)
+            ->assertJsonPath('waits.0.resume_source_kind', 'signal')
+            ->assertJsonPath('waits.0.command_sequence', 2)
+            ->assertJsonPath('waits.0.command_outcome', 'signal_received');
+    }
+
     public function testShowIncludesChildWaitAndChildWorkflowLineage(): void
     {
         config()->set('waterline.engine_source', 'v2');
