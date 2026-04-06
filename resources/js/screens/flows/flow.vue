@@ -684,6 +684,10 @@ export default {
         },
 
         waitBacking(wait) {
+            if (wait.kind === 'child') {
+                return 'child run'
+            }
+
             if (wait.external_only) {
                 return 'external input'
             }
@@ -758,7 +762,7 @@ export default {
         lineageEntries() {
             const parents = (this.flow.parents || []).map((parent) => ({
                 key: 'parent-' + (parent.id || parent.parent_workflow_run_id || parent.parent_workflow_id),
-                label: this.isContinuedParent(parent) ? 'Continued from' : 'Parent',
+                label: this.lineageLabel(parent, 'parent'),
                 display_id: parent.workflow_run_id || parent.parent_workflow_run_id || parent.parent_workflow_id,
                 route_id: parent.workflow_run_id || parent.parent_workflow_run_id || null,
                 run_number: parent.run_number,
@@ -768,7 +772,7 @@ export default {
 
             const continued = (this.flow.continuedWorkflows || []).map((link) => ({
                 key: 'continued-' + (link.id || link.child_workflow_run_id || link.child_workflow_id),
-                label: 'Continued as',
+                label: this.lineageLabel(link, 'child'),
                 display_id: link.workflow_run_id || link.child_workflow_run_id || link.child_workflow_id,
                 route_id: link.workflow_run_id || link.child_workflow_run_id || null,
                 run_number: link.run_number,
@@ -782,6 +786,14 @@ export default {
         isContinuedParent(parent) {
             return parent.link_type === 'continue_as_new'
                 || (parent.parent_index && parent.parent_index > Number.MAX_SAFE_INTEGER)
+        },
+
+        lineageLabel(link, direction) {
+            if (link.link_type === 'continue_as_new') {
+                return direction === 'parent' ? 'Continued from' : 'Continued as'
+            }
+
+            return direction === 'parent' ? 'Parent' : 'Child'
         },
 
         async issueCommand(commandType) {

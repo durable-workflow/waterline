@@ -15,6 +15,7 @@ use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\Models\WorkflowTimer;
+use Workflow\V2\Support\RunSummaryProjector;
 
 class V2DashboardWorkflowTest extends TestCase
 {
@@ -289,6 +290,133 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.type', 'workflow')
             ->assertJsonPath('tasks.0.status', 'completed')
             ->assertJsonPath('tasks.0.is_open', false);
+    }
+
+    public function testShowIncludesChildWaitAndChildWorkflowLineage(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $parentInstance = WorkflowInstance::create([
+            'id' => 'order-detail-child-parent',
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'run_count' => 1,
+        ]);
+
+        $childInstance = WorkflowInstance::create([
+            'id' => 'order-detail-child-run',
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'run_count' => 1,
+        ]);
+
+        $parentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDPARENT01',
+            'workflow_instance_id' => $parentInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $childRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDCHILD001',
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(3),
+            'last_progress_at' => now()->subMinutes(2),
+        ]);
+
+        $parentInstance->update(['current_run_id' => $parentRun->id]);
+        $childInstance->update(['current_run_id' => $childRun->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $childRun->id,
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $childRun->started_at,
+            'created_at' => now()->subMinutes(3),
+            'updated_at' => now()->subMinutes(2),
+        ]);
+
+        $link = WorkflowLink::create([
+            'id' => '01JTESTFLOWLINKCHILDWAIT001',
+            'link_type' => 'child_workflow',
+            'sequence' => 1,
+            'parent_workflow_instance_id' => $parentInstance->id,
+            'parent_workflow_run_id' => $parentRun->id,
+            'child_workflow_instance_id' => $childInstance->id,
+            'child_workflow_run_id' => $childRun->id,
+            'is_primary_parent' => true,
+            'created_at' => now()->subSeconds(90),
+            'updated_at' => now()->subSeconds(90),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYCHILDWAIT0001',
+            'workflow_run_id' => $parentRun->id,
+            'sequence' => 1,
+            'event_type' => 'ChildWorkflowScheduled',
+            'payload' => [
+                'workflow_link_id' => $link->id,
+                'sequence' => 1,
+                'child_workflow_instance_id' => $childInstance->id,
+                'child_workflow_run_id' => $childRun->id,
+                'child_workflow_type' => $childRun->workflow_type,
+                'child_workflow_class' => $childRun->workflow_class,
+                'child_run_number' => $childRun->run_number,
+            ],
+            'recorded_at' => now()->subSeconds(90),
+            'created_at' => now()->subSeconds(90),
+            'updated_at' => now()->subSeconds(90),
+        ]);
+
+        RunSummaryProjector::project($parentRun->fresh());
+
+        $this->get('/waterline/api/flows/' . $parentRun->id)
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'child')
+            ->assertJsonPath('wait_reason', 'Waiting for child workflow workflow.child')
+            ->assertJsonPath('waits.0.kind', 'child')
+            ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.target_name', $childInstance->id)
+            ->assertJsonPath('waits.0.target_type', 'workflow.child')
+            ->assertJsonPath('waits.0.task_backed', false)
+            ->assertJsonPath('waits.0.external_only', false)
+            ->assertJsonPath('waits.0.resume_source_kind', 'child_workflow_run')
+            ->assertJsonPath('waits.0.resume_source_id', $childRun->id)
+            ->assertJsonPath('continuedWorkflows.0.link_type', 'child_workflow')
+            ->assertJsonPath('continuedWorkflows.0.child_workflow_run_id', $childRun->id)
+            ->assertJsonPath('continuedWorkflows.0.workflow_run_id', $childRun->id)
+            ->assertJsonPath('continuedWorkflows.0.status', 'waiting')
+            ->assertJsonPath('continuedWorkflows.0.status_bucket', 'running');
+
+        $this->get('/waterline/api/flows/' . $childRun->id)
+            ->assertStatus(200)
+            ->assertJsonPath('parents.0.link_type', 'child_workflow')
+            ->assertJsonPath('parents.0.parent_workflow_run_id', $parentRun->id)
+            ->assertJsonPath('parents.0.workflow_run_id', $parentRun->id)
+            ->assertJsonPath('parents.0.status', 'waiting')
+            ->assertJsonPath('parents.0.status_bucket', 'running');
     }
 
     public function testShowExposesRepairNeededTimerWaitWithoutBackingTask(): void
