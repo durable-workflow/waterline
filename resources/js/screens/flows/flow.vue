@@ -709,6 +709,16 @@ export default {
                 return 'external input'
             }
 
+            if (!wait.task_backed && this.hasDetailValue(wait.task_id)) {
+                const prefix = wait.status === 'open'
+                    ? 'stale'
+                    : 'historical'
+
+                return [prefix + ' ' + (wait.task_type || 'task'), wait.task_status]
+                    .filter(Boolean)
+                    .join(' / ')
+            }
+
             if (!wait.task_backed) {
                 return 'task missing'
             }

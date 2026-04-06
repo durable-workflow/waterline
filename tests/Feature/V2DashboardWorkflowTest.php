@@ -663,6 +663,76 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonMissingPath('tasks.1');
     }
 
+    public function testShowExposesHistoricalTimerTaskMetadataWhenOpenTimerWaitLostItsBackingTask(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-detail-stale-timer-task',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNSTALETIMER01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $timer = WorkflowTimer::create([
+            'id' => '01JTESTFLOWTIMERSTALE0001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'status' => 'pending',
+            'delay_seconds' => 60,
+            'fire_at' => now()->addMinute(),
+            'created_at' => now()->subSeconds(30),
+            'updated_at' => now()->subSeconds(30),
+        ]);
+
+        $task = WorkflowTask::create([
+            'id' => '01JTESTFLOWTASKSTALETIMER1',
+            'workflow_run_id' => $run->id,
+            'task_type' => 'timer',
+            'status' => 'completed',
+            'queue' => 'default',
+            'payload' => ['timer_id' => $timer->id],
+            'available_at' => now()->subMinutes(2),
+            'leased_at' => now()->subMinutes(2),
+            'attempt_count' => 1,
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'timer')
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath('waits.0.kind', 'timer')
+            ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.task_backed', false)
+            ->assertJsonPath('waits.0.task_id', $task->id)
+            ->assertJsonPath('waits.0.task_type', 'timer')
+            ->assertJsonPath('waits.0.task_status', 'completed')
+            ->assertJsonPath('tasks.0.id', $task->id)
+            ->assertJsonPath('tasks.0.status', 'completed');
+    }
+
     public function testShowIncludesCompletedUpdateResultsInCommandHistory(): void
     {
         config()->set('waterline.engine_source', 'v2');
