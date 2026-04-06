@@ -221,6 +221,7 @@
                 <table class="table">
                     <thead>
                         <tr>
+                            <th scope="col">Seq</th>
                             <th scope="col">Recorded At</th>
                             <th scope="col">Kind</th>
                             <th scope="col">Summary</th>
@@ -228,6 +229,12 @@
                     </thead>
                     <tbody>
                         <tr v-for="entry in flow.timeline" :key="entry.id">
+                            <td>
+                                #{{ entry.sequence }}
+                                <div class="small text-muted" v-if="hasDetailValue(entry.workflow_sequence)">
+                                    step {{ entry.workflow_sequence }}
+                                </div>
+                            </td>
                             <td>{{ timestamp(entry.recorded_at) }}</td>
                             <td>{{ entry.kind }}</td>
                             <td>{{ entry.summary }}</td>
@@ -265,6 +272,9 @@
                                     {{ wait.kind }}
                                     <span v-if="hasDetailValue(wait.target_name)"> / {{ wait.target_name }}</span>
                                     <span v-else-if="hasDetailValue(wait.target_type)"> / {{ wait.target_type }}</span>
+                                </div>
+                                <div class="small text-muted" v-if="hasDetailValue(wait.sequence)">
+                                    step {{ wait.sequence }}
                                 </div>
                             </td>
                             <td>
