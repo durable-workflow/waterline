@@ -1080,6 +1080,102 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('commands.1.target_name', 'approved-by');
     }
 
+    public function testShowIncludesWorkflowSourceMetadataForWorkflowOriginatedStartCommand(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-continued-current',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 2,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNWORKFLOWSRC1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'output' => Serializer::serialize(['ok' => true]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'closed_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'status_bucket' => 'completed',
+            'closed_reason' => 'completed',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'closed_at' => $run->closed_at,
+            'duration_ms' => 60000,
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        WorkflowCommand::create([
+            'id' => '01JTESTCOMMANDWORKFLOWSRC1',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 1,
+            'command_type' => 'start',
+            'target_scope' => 'instance',
+            'status' => 'accepted',
+            'outcome' => 'started_new',
+            'source' => 'workflow',
+            'context' => [
+                'caller' => [
+                    'type' => 'workflow',
+                    'label' => 'Workflow',
+                ],
+                'auth' => [
+                    'status' => 'not_applicable',
+                    'method' => 'none',
+                ],
+                'workflow' => [
+                    'parent_instance_id' => 'order-continued-current',
+                    'parent_run_id' => '01JTESTFLOWRUNWORKFLOWSRC0',
+                    'sequence' => 2,
+                ],
+            ],
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'payload_codec' => Serializer::class,
+            'payload' => Serializer::serialize([]),
+            'accepted_at' => now()->subMinutes(2),
+            'applied_at' => now()->subMinutes(2),
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinutes(2),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('commands.0.sequence', 1)
+            ->assertJsonPath('commands.0.type', 'start')
+            ->assertJsonPath('commands.0.source', 'workflow')
+            ->assertJsonPath('commands.0.caller_label', 'Workflow')
+            ->assertJsonPath('commands.0.context.workflow.parent_instance_id', 'order-continued-current')
+            ->assertJsonPath('commands.0.context.workflow.parent_run_id', '01JTESTFLOWRUNWORKFLOWSRC0')
+            ->assertJsonPath('commands.0.context.workflow.sequence', 2);
+    }
+
     public function testShowMarksRepairableCurrentRun(): void
     {
         config()->set('waterline.engine_source', 'v2');

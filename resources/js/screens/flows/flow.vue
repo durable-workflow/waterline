@@ -754,6 +754,29 @@ export default {
 
         commandSourceDetail(command) {
             const details = []
+            const workflow = command.context && command.context.workflow
+                ? command.context.workflow
+                : null
+
+            if (workflow) {
+                const workflowDetails = []
+
+                if (workflow.parent_instance_id) {
+                    workflowDetails.push('instance ' + workflow.parent_instance_id)
+                }
+
+                if (workflow.parent_run_id) {
+                    workflowDetails.push('run ' + workflow.parent_run_id)
+                }
+
+                if (workflow.sequence !== null && workflow.sequence !== undefined) {
+                    workflowDetails.push('step ' + workflow.sequence)
+                }
+
+                if (workflowDetails.length) {
+                    details.push(workflowDetails.join(' / '))
+                }
+            }
 
             if (command.auth_status && command.auth_method) {
                 details.push(command.auth_status + ' via ' + command.auth_method)
