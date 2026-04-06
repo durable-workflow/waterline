@@ -430,6 +430,23 @@ class V2DashboardWorkflowTest extends TestCase
             'command_sequence' => 2,
             'command_type' => 'update',
             'target_scope' => 'instance',
+            'source' => 'webhook',
+            'context' => [
+                'caller' => [
+                    'type' => 'webhook',
+                    'label' => 'Webhook',
+                ],
+                'auth' => [
+                    'status' => 'not_configured',
+                    'method' => 'none',
+                ],
+                'request' => [
+                    'method' => 'POST',
+                    'path' => '/webhooks/instances/order-update-command/updates/approve',
+                    'route_name' => 'workflows.v2.update',
+                    'fingerprint' => 'sha256:test-update-command',
+                ],
+            ],
             'status' => 'accepted',
             'outcome' => 'update_completed',
             'workflow_class' => 'WorkflowClass',
@@ -471,6 +488,14 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('can_signal', true)
             ->assertJsonPath('commands.0.type', 'update')
             ->assertJsonPath('commands.0.target_name', 'approve')
+            ->assertJsonPath('commands.0.source', 'webhook')
+            ->assertJsonPath('commands.0.caller_label', 'Webhook')
+            ->assertJsonPath('commands.0.auth_status', 'not_configured')
+            ->assertJsonPath('commands.0.auth_method', 'none')
+            ->assertJsonPath('commands.0.request_method', 'POST')
+            ->assertJsonPath('commands.0.request_path', '/webhooks/instances/order-update-command/updates/approve')
+            ->assertJsonPath('commands.0.request_route_name', 'workflows.v2.update')
+            ->assertJsonPath('commands.0.request_fingerprint', 'sha256:test-update-command')
             ->assertJsonPath('commands.0.result_available', true)
             ->assertJsonPath('commands.0.failure_id', null)
             ->assertJsonPath('commands.0.failure_message', null)
@@ -870,6 +895,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('workflow_id', $instance->id)
             ->assertJsonPath('run_id', $run->id)
             ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('command_source', 'waterline')
             ->assertJsonPath('rejection_reason', null);
 
         $commandId = $response->json('command_id');
@@ -879,10 +905,20 @@ class V2DashboardWorkflowTest extends TestCase
             'workflow_instance_id' => $instance->id,
             'workflow_run_id' => $run->id,
             'command_type' => 'cancel',
+            'source' => 'waterline',
             'target_scope' => 'run',
             'status' => 'accepted',
             'outcome' => 'cancelled',
         ]);
+
+        $command = WorkflowCommand::query()->findOrFail($commandId);
+
+        $this->assertSame('Waterline UI', $command->callerLabel());
+        $this->assertSame('authorized', $command->authStatus());
+        $this->assertSame('waterline', $command->authMethod());
+        $this->assertSame('POST', $command->requestMethod());
+        $this->assertSame('/waterline/api/flows/'.$instance->id.'/cancel', $command->requestPath());
+        $this->assertSame('waterline.cancel', $command->requestRouteName());
     }
 
     public function testRepairTargetsSelectedCurrentRunAndReturnsAcceptedResponse(): void

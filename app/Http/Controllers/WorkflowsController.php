@@ -2,6 +2,7 @@
 
 namespace Waterline\Http\Controllers;
 
+use Workflow\V2\CommandContext;
 use Workflow\V2\Support\CommandResponse;
 use Workflow\V2\WorkflowStub as V2WorkflowStub;
 use Waterline\Http\Resources\StoredWorkflowResource;
@@ -39,7 +40,9 @@ class WorkflowsController extends Controller
         abort_unless($repository->engineSource() === 'v2', 404);
 
         $flow = $repository->findFlow($id);
-        $result = V2WorkflowStub::loadRun($flow->id)->attemptCancel();
+        $result = V2WorkflowStub::loadRun($flow->id)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptCancel();
 
         return response()->json(
             CommandResponse::payload($result),
@@ -52,7 +55,9 @@ class WorkflowsController extends Controller
         abort_unless($repository->engineSource() === 'v2', 404);
 
         $flow = $repository->findFlow($id);
-        $result = V2WorkflowStub::loadRun($flow->id)->attemptRepair();
+        $result = V2WorkflowStub::loadRun($flow->id)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptRepair();
 
         return response()->json(
             CommandResponse::payload($result),
@@ -65,7 +70,9 @@ class WorkflowsController extends Controller
         abort_unless($repository->engineSource() === 'v2', 404);
 
         $flow = $repository->findFlow($id);
-        $result = V2WorkflowStub::loadRun($flow->id)->attemptTerminate();
+        $result = V2WorkflowStub::loadRun($flow->id)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptTerminate();
 
         return response()->json(
             CommandResponse::payload($result),

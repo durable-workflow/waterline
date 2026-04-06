@@ -326,6 +326,7 @@
                             <th scope="col">Target</th>
                             <th scope="col">Outcome</th>
                             <th scope="col">Status</th>
+                            <th scope="col">Source</th>
                             <th scope="col">Result</th>
                             <th scope="col">Accepted At</th>
                         </tr>
@@ -336,6 +337,12 @@
                             <td>{{ command.target_name || command.target_scope }}</td>
                             <td>{{ command.outcome || '-' }}</td>
                             <td>{{ command.status }}</td>
+                            <td>
+                                <div>{{ commandSource(command) }}</div>
+                                <small v-if="commandSourceDetail(command)" class="text-muted">
+                                    {{ commandSourceDetail(command) }}
+                                </small>
+                            </td>
                             <td>
                                 <button
                                     v-if="command.result_available"
@@ -698,6 +705,30 @@ export default {
             }
 
             return '-'
+        },
+
+        commandSource(command) {
+            return command.caller_label || command.source || '-'
+        },
+
+        commandSourceDetail(command) {
+            const details = []
+
+            if (command.auth_status && command.auth_method) {
+                details.push(command.auth_status + ' via ' + command.auth_method)
+            } else if (command.auth_status) {
+                details.push(command.auth_status)
+            }
+
+            const requestSummary = [command.request_method, command.request_path]
+                .filter(Boolean)
+                .join(' ')
+
+            if (requestSummary) {
+                details.push(requestSummary)
+            }
+
+            return details.join(' | ')
         },
 
         taskTarget(task) {
