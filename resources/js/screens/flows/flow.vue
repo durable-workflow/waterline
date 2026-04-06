@@ -817,7 +817,7 @@ export default {
             const copy = {
                 repair: {
                     title: 'Repair run?',
-                    text: 'This recreates the durable next task for the selected run when liveness shows repair is needed.',
+                    text: 'This recreates the durable next task for the selected run when liveness shows repair is needed. It does not restart an activity that is already marked running.',
                     confirmButtonText: 'Repair run',
                 },
                 cancel: {

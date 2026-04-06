@@ -835,6 +835,73 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('read_only_reason', null);
     }
 
+    public function testShowMarksRunningActivityWithoutTaskAsNonRepairable(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-running-activity',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNRUNNINGACT01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subSeconds(30),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $execution = ActivityExecution::create([
+            'id' => '01JTESTACTIVITYRUNNING00001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ActivityClass',
+            'activity_type' => 'activity.test',
+            'status' => 'running',
+            'arguments' => Serializer::serialize(['Taylor']),
+            'connection' => 'redis',
+            'queue' => 'activities',
+            'started_at' => now()->subSeconds(20),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('id', $run->id)
+            ->assertJsonPath('wait_kind', 'activity')
+            ->assertJsonPath('liveness_state', 'activity_running_without_task')
+            ->assertJsonPath(
+                'liveness_reason',
+                sprintf(
+                    'Activity %s is already running without an open activity task. Repair is deferred to avoid duplicating in-flight work.',
+                    $execution->id,
+                ),
+            )
+            ->assertJsonPath('can_issue_terminal_commands', true)
+            ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('waits.0.kind', 'activity')
+            ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.source_status', 'running')
+            ->assertJsonPath('waits.0.task_backed', false)
+            ->assertJsonPath('waits.0.resume_source_kind', 'activity_execution')
+            ->assertJsonPath('waits.0.resume_source_id', $execution->id)
+            ->assertJsonPath('tasks', []);
+    }
+
     public function testShowHistoricalRunIncludesPointerToCurrentRun(): void
     {
         config()->set('waterline.engine_source', 'v2');
