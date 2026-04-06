@@ -2,6 +2,7 @@
 
 namespace Waterline\Tests\Feature;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
 use Waterline\Tests\TestCase;
@@ -19,6 +20,7 @@ use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\Models\WorkflowTimer;
 use Workflow\V2\Support\RunSummaryProjector;
+use Workflow\V2\TaskWatchdog;
 
 class V2DashboardWorkflowTest extends TestCase
 {
@@ -1824,6 +1826,64 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('can_repair', false);
     }
 
+    public function testAutomaticWorkerRecoveryRecreatesMissingWorkflowTaskAndClearsRepairNeededFromFlowDetail(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        Queue::fake();
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-repair-watchdog-current',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNREPAIRWATCH01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(30),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('next_task_id', null);
+
+        $this->wakeTaskWatchdog();
+
+        /** @var WorkflowTask $task */
+        $task = WorkflowTask::query()
+            ->where('workflow_run_id', $run->id)
+            ->sole();
+
+        Queue::assertPushed(
+            RunWorkflowTask::class,
+            static fn (RunWorkflowTask $job): bool => $job->taskId === $task->id
+        );
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('next_task_id', $task->id)
+            ->assertJsonPath('next_task_type', 'workflow')
+            ->assertJsonPath('liveness_state', 'workflow_task_ready')
+            ->assertJsonPath('can_repair', false);
+    }
+
     public function testTerminateRejectsHistoricalRunSelection(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -1917,5 +1977,11 @@ class V2DashboardWorkflowTest extends TestCase
             'outcome' => 'rejected_not_current',
             'rejection_reason' => 'selected_run_not_current',
         ]);
+    }
+
+    private function wakeTaskWatchdog(): void
+    {
+        Cache::forget(TaskWatchdog::LOOP_THROTTLE_KEY);
+        TaskWatchdog::wake();
     }
 }
