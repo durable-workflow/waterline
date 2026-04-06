@@ -5,6 +5,7 @@ namespace Waterline\Tests\Feature;
 use Illuminate\Support\Facades\Queue;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
+use Workflow\V2\Jobs\RunWorkflowTask;
 use Workflow\V2\Models\ActivityExecution;
 use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowFailure;
@@ -1226,6 +1227,89 @@ class V2DashboardWorkflowTest extends TestCase
             'status' => 'ready',
             'repair_count' => 1,
         ]);
+    }
+
+    public function testRepairRedispatchesOverdueReadyWorkflowTaskAndClearsRepairNeededFromFlowDetail(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        Queue::fake();
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-repair-ready-task',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNREPAIRREADY01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(30),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $originalLastDispatchedAt = now()->subSeconds(20);
+
+        $task = WorkflowTask::create([
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'ready',
+            'payload' => [],
+            'available_at' => now()->subSeconds(30),
+            'last_dispatched_at' => $originalLastDispatchedAt,
+            'connection' => 'redis',
+            'queue' => 'default',
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('next_task_id', $task->id);
+
+        $this->post('/waterline/api/flows/' . $instance->id . '/repair')
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'repair_dispatched')
+            ->assertJsonPath('workflow_id', $instance->id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('rejection_reason', null);
+
+        /** @var WorkflowTask $repairedTask */
+        $repairedTask = WorkflowTask::query()
+            ->where('workflow_run_id', $run->id)
+            ->sole();
+
+        $this->assertSame($task->id, $repairedTask->id);
+        $this->assertSame('workflow', $repairedTask->task_type->value);
+        $this->assertSame('ready', $repairedTask->status->value);
+        $this->assertSame(1, $repairedTask->repair_count);
+        $this->assertNotNull($repairedTask->last_dispatched_at);
+        $this->assertTrue($repairedTask->last_dispatched_at->gt($originalLastDispatchedAt));
+
+        Queue::assertPushed(
+            RunWorkflowTask::class,
+            static fn (RunWorkflowTask $job): bool => $job->taskId === $repairedTask->id
+        );
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('next_task_id', $repairedTask->id)
+            ->assertJsonPath('liveness_state', 'workflow_task_ready')
+            ->assertJsonPath('can_repair', false);
     }
 
     public function testTerminateRejectsHistoricalRunSelection(): void
