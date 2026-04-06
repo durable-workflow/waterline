@@ -199,6 +199,60 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('read_only_reason', null);
     }
 
+    public function testShowMarksExpiredLeasedTaskAsRepairNeeded(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-expired-lease',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNEXPIREDLEASE1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowTask::create([
+            'id' => '01JTESTFLOWTASKEXPIREDLEASE1',
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'leased',
+            'queue' => 'default',
+            'available_at' => now()->subSeconds(30),
+            'leased_at' => now()->subSeconds(25),
+            'lease_owner' => 'worker-1',
+            'lease_expires_at' => now()->subSecond(),
+            'last_dispatched_at' => now()->subSeconds(25),
+            'attempt_count' => 1,
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'workflow-task')
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('tasks.0.lease_expired', true)
+            ->assertJsonPath('tasks.0.summary', 'Workflow task lease expired; waiting for recovery.');
+    }
+
     public function testShowIncludesSelectedRunWaitsAndTasks(): void
     {
         config()->set('waterline.engine_source', 'v2');
