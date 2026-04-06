@@ -61,6 +61,13 @@ class V2CompatibilityDashboardWorkflowTest extends TestCase
             ->assertJsonPath('compatibility', 'build-a')
             ->assertJsonPath('compatibility_supported', false)
             ->assertJsonPath('compatibility_reason', 'Requires compatibility [build-a]; this worker supports [build-b].')
+            ->assertJsonPath('liveness_state', 'workflow_task_waiting_for_compatible_worker')
+            ->assertJsonPath('wait_reason', 'Workflow task waiting for a compatible worker')
+            ->assertJsonPath(
+                'liveness_reason',
+                'Workflow task 01JTESTFLOWTASKCOMPAT00001 is ready but waiting for a compatible worker. Requires compatibility [build-a]; this worker supports [build-b].'
+            )
+            ->assertJsonPath('can_repair', false)
             ->assertJsonPath('tasks.0.compatibility', 'build-a')
             ->assertJsonPath('tasks.0.compatibility_supported', false)
             ->assertJsonPath('tasks.0.compatibility_reason', 'Requires compatibility [build-a]; this worker supports [build-b].')
