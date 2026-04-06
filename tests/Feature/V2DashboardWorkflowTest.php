@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Queue;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
+use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Jobs\RunWorkflowTask;
 use Workflow\V2\Models\ActivityExecution;
 use Workflow\V2\Models\WorkflowCommand;
@@ -99,7 +100,36 @@ class V2DashboardWorkflowTest extends TestCase
             'trace_preview' => 'trace',
         ]);
 
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYFAILUREDETAIL01',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::ActivityFailed->value,
+            'payload' => [
+                'failure_id' => '01JTESTFAILURE000000000001',
+                'exception_class' => \RuntimeException::class,
+                'message' => 'boom',
+                'exception' => [
+                    'class' => \RuntimeException::class,
+                    'message' => 'boom',
+                    'code' => 422,
+                    'file' => __FILE__,
+                    'line' => 42,
+                    'trace' => [[
+                        'class' => 'Tests\\Fixtures\\Workflow',
+                        'type' => '->',
+                        'function' => 'handle',
+                        'file' => __FILE__,
+                        'line' => 99,
+                    ]],
+                    'properties' => [],
+                ],
+            ],
+            'recorded_at' => now()->subMinutes(7),
+        ]);
+
         $response = $this->get('/waterline/api/flows/' . $run->id);
+        $exception = unserialize($response->json('exceptions.0.exception'));
 
         $response
             ->assertStatus(200)
@@ -130,9 +160,15 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('logs.0.class', 'ActivityClass')
             ->assertJsonPath('exceptions.0.class', 'ActivityClass')
             ->assertJsonPath('commands', [])
-            ->assertJsonPath('timeline', [])
+            ->assertJsonPath('timeline.0.type', 'ActivityFailed')
+            ->assertJsonPath('timeline.0.failure_id', '01JTESTFAILURE000000000001')
             ->assertJsonPath('chartData.0.type', 'Workflow')
             ->assertJsonPath('chartData.1.type', 'Activity');
+
+        $this->assertSame(\RuntimeException::class, $exception['__constructor']);
+        $this->assertSame('boom', $exception['message']);
+        $this->assertCount(1, $exception['trace']);
+        $this->assertSame('handle', $exception['trace'][0]['function']);
     }
 
     public function testShowCanResolveCurrentRunFromInstanceId(): void
