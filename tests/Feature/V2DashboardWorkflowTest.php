@@ -839,6 +839,7 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
             ->assertJsonPath('can_update', true)
+            ->assertJsonPath('update_blocked_reason', null)
             ->assertJsonPath('can_signal', true)
             ->assertJsonPath('commands.0.type', 'update')
             ->assertJsonPath('commands.0.target_name', 'approve')
@@ -858,6 +859,133 @@ class V2DashboardWorkflowTest extends TestCase
                 'approved' => true,
                 'events' => ['started', 'approved:yes:waterline'],
             ]));
+    }
+
+    public function testShowMarksUpdateAsBlockedWhenAnEarlierSignalIsPending(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-update-blocked',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNUPDBLOCKED001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subSeconds(30),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowCommand::create([
+            'id' => '01JTESTCOMMANDSTARTBLOCKED01',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 1,
+            'command_type' => 'start',
+            'target_scope' => 'instance',
+            'source' => 'php',
+            'status' => 'accepted',
+            'outcome' => 'started_new',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'accepted_at' => now()->subMinutes(2),
+            'applied_at' => now()->subMinutes(2),
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinutes(2),
+        ]);
+
+        WorkflowCommand::create([
+            'id' => '01JTESTCOMMANDSIGNALBLOCK01',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 2,
+            'command_type' => 'signal',
+            'target_scope' => 'instance',
+            'source' => 'webhook',
+            'status' => 'accepted',
+            'outcome' => 'signal_received',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'payload_codec' => Serializer::class,
+            'payload' => Serializer::serialize([
+                'name' => 'name-provided',
+                'arguments' => ['Taylor'],
+            ]),
+            'accepted_at' => now()->subSeconds(20),
+            'created_at' => now()->subSeconds(20),
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYSIGNALWAIT001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => 'SignalWaitOpened',
+            'payload' => [
+                'signal_name' => 'name-provided',
+                'signal_wait_id' => 'signal-wait-1',
+                'sequence' => 1,
+            ],
+            'recorded_at' => now()->subSeconds(25),
+            'created_at' => now()->subSeconds(25),
+            'updated_at' => now()->subSeconds(25),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYSIGNALRECV001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 2,
+            'event_type' => 'SignalReceived',
+            'payload' => [
+                'signal_name' => 'name-provided',
+                'signal_wait_id' => 'signal-wait-1',
+            ],
+            'workflow_command_id' => '01JTESTCOMMANDSIGNALBLOCK01',
+            'recorded_at' => now()->subSeconds(20),
+            'created_at' => now()->subSeconds(20),
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        WorkflowTask::create([
+            'id' => '01JTESTTASKUPDBLOCKED000001',
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'ready',
+            'available_at' => now()->subSeconds(20),
+            'payload' => [],
+            'connection' => 'redis',
+            'queue' => 'default',
+            'created_at' => now()->subSeconds(20),
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('can_signal', true)
+            ->assertJsonPath('can_update', false)
+            ->assertJsonPath('update_blocked_reason', 'earlier_signal_pending')
+            ->assertJsonPath('commands.1.type', 'signal')
+            ->assertJsonPath('commands.1.target_name', 'name-provided')
+            ->assertJsonPath('commands.1.outcome', 'signal_received')
+            ->assertJsonPath('waits.0.kind', 'signal')
+            ->assertJsonPath('waits.0.source_status', 'received')
+            ->assertJsonPath('waits.0.command_sequence', 2);
     }
 
     public function testShowOrdersCommandsByDurableCommandSequence(): void
