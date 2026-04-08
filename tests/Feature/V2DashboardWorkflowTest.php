@@ -2893,6 +2893,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('outcome', 'cancelled')
             ->assertJsonPath('workflow_id', $instance->id)
             ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('target_scope', 'instance')
             ->assertJsonPath('command_status', 'accepted')
             ->assertJsonPath('command_source', 'waterline')
             ->assertJsonPath('rejection_reason', null);
@@ -2955,6 +2956,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('outcome', 'repair_dispatched')
             ->assertJsonPath('workflow_id', $instance->id)
             ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('target_scope', 'instance')
             ->assertJsonPath('command_status', 'accepted')
             ->assertJsonPath('rejection_reason', null);
 
@@ -3012,6 +3014,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('outcome', 'terminated')
             ->assertJsonPath('workflow_id', $instance->id)
             ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('target_scope', 'instance')
             ->assertJsonPath('command_status', 'accepted')
             ->assertJsonPath('command_source', 'waterline')
             ->assertJsonPath('rejection_reason', null);
@@ -3037,6 +3040,67 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame('POST', $command->requestMethod());
         $this->assertSame('/waterline/api/instances/'.$instance->id.'/terminate', $command->requestPath());
         $this->assertSame('waterline.instances.terminate', $command->requestRouteName());
+    }
+
+    public function testTerminateTargetsSelectedRunRouteAndReturnsAcceptedResponse(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-terminate-selected-run',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNTERMSEL0001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $response = $this->post('/waterline/api/instances/' . $instance->id . '/runs/' . $run->id . '/terminate');
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'terminated')
+            ->assertJsonPath('workflow_id', $instance->id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('target_scope', 'run')
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('command_source', 'waterline')
+            ->assertJsonPath('rejection_reason', null);
+
+        $commandId = $response->json('command_id');
+
+        $this->assertDatabaseHas('workflow_commands', [
+            'id' => $commandId,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_type' => 'terminate',
+            'source' => 'waterline',
+            'target_scope' => 'run',
+            'status' => 'accepted',
+            'outcome' => 'terminated',
+        ]);
+
+        $command = WorkflowCommand::query()->findOrFail($commandId);
+
+        $this->assertSame(
+            '/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/terminate',
+            $command->requestPath(),
+        );
+        $this->assertSame('waterline.instances.runs.terminate', $command->requestRouteName());
     }
 
     public function testRepairRedispatchesOverdueReadyWorkflowTaskAndClearsRepairNeededFromFlowDetail(): void
@@ -3273,6 +3337,80 @@ class V2DashboardWorkflowTest extends TestCase
             'outcome' => 'rejected_not_current',
             'rejection_reason' => 'selected_run_not_current',
         ]);
+    }
+
+    public function testTerminateSelectionRouteRejectsHistoricalRunSelection(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-terminate-selection-historical',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 2,
+        ]);
+
+        $historicalRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNTERMHISTRUN1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'started_at' => now()->subMinutes(10),
+            'closed_at' => now()->subMinutes(8),
+            'last_progress_at' => now()->subMinutes(8),
+        ]);
+
+        $currentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNTERMCURRRUN1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $currentRun->id]);
+
+        $response = $this->post(
+            '/waterline/api/instances/' . $instance->id . '/runs/' . $historicalRun->id . '/terminate'
+        );
+
+        $response
+            ->assertStatus(409)
+            ->assertJsonPath('outcome', 'rejected_not_current')
+            ->assertJsonPath('workflow_id', $instance->id)
+            ->assertJsonPath('run_id', $historicalRun->id)
+            ->assertJsonPath('target_scope', 'run')
+            ->assertJsonPath('command_status', 'rejected')
+            ->assertJsonPath('rejection_reason', 'selected_run_not_current');
+
+        $commandId = $response->json('command_id');
+
+        $this->assertDatabaseHas('workflow_commands', [
+            'id' => $commandId,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $historicalRun->id,
+            'command_type' => 'terminate',
+            'target_scope' => 'run',
+            'status' => 'rejected',
+            'outcome' => 'rejected_not_current',
+            'rejection_reason' => 'selected_run_not_current',
+        ]);
+
+        $command = WorkflowCommand::query()->findOrFail($commandId);
+
+        $this->assertSame(
+            '/waterline/api/instances/'.$instance->id.'/runs/'.$historicalRun->id.'/terminate',
+            $command->requestPath(),
+        );
+        $this->assertSame('waterline.instances.runs.terminate', $command->requestRouteName());
     }
 
     private function wakeTaskWatchdog(): void

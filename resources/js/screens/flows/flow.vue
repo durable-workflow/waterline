@@ -1227,6 +1227,12 @@ export default {
 
         commandEndpoint(commandType) {
             if (this.flow.instance_id) {
+                const selectedRunId = this.flow.selected_run_id || this.flow.run_id || this.flow.id
+
+                if (selectedRunId) {
+                    return Waterline.basePath + '/api/instances/' + this.flow.instance_id + '/runs/' + selectedRunId + '/' + commandType
+                }
+
                 return Waterline.basePath + '/api/instances/' + this.flow.instance_id + '/' + commandType
             }
 

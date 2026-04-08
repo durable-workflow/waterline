@@ -73,6 +73,20 @@ class WorkflowsController extends Controller
         );
     }
 
+    public function cancelSelection(string $instanceId, string $runId, WorkflowRepositoryInterface $repository)
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $result = V2WorkflowStub::loadSelection($instanceId, $runId)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptCancel();
+
+        return response()->json(
+            CommandResponse::payload($result),
+            $result->accepted() ? 200 : 409,
+        );
+    }
+
     public function repair(string $id, WorkflowRepositoryInterface $repository)
     {
         abort_unless($repository->engineSource() === 'v2', 404);
@@ -102,6 +116,20 @@ class WorkflowsController extends Controller
         );
     }
 
+    public function repairSelection(string $instanceId, string $runId, WorkflowRepositoryInterface $repository)
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $result = V2WorkflowStub::loadSelection($instanceId, $runId)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptRepair();
+
+        return response()->json(
+            CommandResponse::payload($result),
+            $result->accepted() ? 200 : 409,
+        );
+    }
+
     public function terminate(string $id, WorkflowRepositoryInterface $repository)
     {
         abort_unless($repository->engineSource() === 'v2', 404);
@@ -122,6 +150,20 @@ class WorkflowsController extends Controller
         abort_unless($repository->engineSource() === 'v2', 404);
 
         $result = V2WorkflowStub::load($instanceId)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptTerminate();
+
+        return response()->json(
+            CommandResponse::payload($result),
+            $result->accepted() ? 200 : 409,
+        );
+    }
+
+    public function terminateSelection(string $instanceId, string $runId, WorkflowRepositoryInterface $repository)
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $result = V2WorkflowStub::loadSelection($instanceId, $runId)
             ->withCommandContext(CommandContext::waterline(request()))
             ->attemptTerminate();
 
