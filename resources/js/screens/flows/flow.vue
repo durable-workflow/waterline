@@ -112,12 +112,18 @@
                     <div class="col">{{ contractSourceLabel(flow.declared_contract_source) }}</div>
                 </div>
 
-                <div class="row mb-2" v-if="hasDetailValue(flow.compatibility) || flow.compatibility_supported === false">
+                <div class="row mb-2" v-if="hasDetailValue(flow.compatibility) || flow.compatibility_supported === false || hasDetailValue(flow.compatibility_supported_in_fleet)">
                     <div class="col-md-2"><strong>Compatibility</strong></div>
                     <div class="col">
                         <div>{{ flow.compatibility || '-' }}</div>
                         <div class="small text-muted" v-if="flow.compatibility_supported === false && hasDetailValue(flow.compatibility_reason)">
-                            {{ flow.compatibility_reason }}
+                            This build: {{ flow.compatibility_reason }}
+                        </div>
+                        <div class="small text-muted" v-if="hasDetailValue(flow.compatibility_supported_in_fleet)">
+                            Fleet: {{ compatibilityFleetSummary(flow.compatibility_supported_in_fleet) }}
+                        </div>
+                        <div class="small text-muted" v-if="flow.compatibility_supported_in_fleet === false && hasDetailValue(flow.compatibility_fleet_reason)">
+                            {{ flow.compatibility_fleet_reason }}
                         </div>
                     </div>
                 </div>
@@ -394,7 +400,13 @@
                             <td>
                                 <div>{{ task.compatibility || '-' }}</div>
                                 <div class="small text-muted" v-if="task.compatibility_supported === false && hasDetailValue(task.compatibility_reason)">
-                                    {{ task.compatibility_reason }}
+                                    This build: {{ task.compatibility_reason }}
+                                </div>
+                                <div class="small text-muted" v-if="hasDetailValue(task.compatibility_supported_in_fleet)">
+                                    Fleet: {{ compatibilityFleetSummary(task.compatibility_supported_in_fleet) }}
+                                </div>
+                                <div class="small text-muted" v-if="task.compatibility_supported_in_fleet === false && hasDetailValue(task.compatibility_fleet_reason)">
+                                    {{ task.compatibility_fleet_reason }}
                                 </div>
                             </td>
                             <td>
@@ -851,6 +863,18 @@ export default {
                 default:
                     return source
             }
+        },
+
+        compatibilityFleetSummary(supported) {
+            if (supported === true) {
+                return 'supported by an active worker heartbeat'
+            }
+
+            if (supported === false) {
+                return 'no active compatible worker heartbeat'
+            }
+
+            return '-'
         },
 
         showResult(result, title = 'Activity Result') {
