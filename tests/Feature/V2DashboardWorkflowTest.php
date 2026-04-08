@@ -1868,6 +1868,240 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('commands.1.target_name', 'approved-by');
     }
 
+    public function testShowPreservesBufferedSignalWaitIdsWhenSignalWasReceivedBeforeWaitOpened(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'buffered-signal-detail',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNBUFFERSIGNAL1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'output' => Serializer::serialize(['ok' => true]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'closed_at' => now()->subSeconds(5),
+            'last_progress_at' => now()->subSeconds(5),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowCommand::create([
+            'id' => '01JTESTCOMMANDBUFFERSTART001',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 1,
+            'command_type' => 'start',
+            'target_scope' => 'instance',
+            'source' => 'php',
+            'status' => 'accepted',
+            'outcome' => 'started_new',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'accepted_at' => now()->subMinute(),
+            'applied_at' => now()->subMinute(),
+            'created_at' => now()->subMinute(),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        WorkflowCommand::create([
+            'id' => '01JTESTCOMMANDBUFFERSIGNAL01',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 2,
+            'command_type' => 'signal',
+            'target_scope' => 'instance',
+            'source' => 'php',
+            'status' => 'accepted',
+            'outcome' => 'signal_received',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'payload_codec' => Serializer::class,
+            'payload' => Serializer::serialize([
+                'name' => 'message',
+                'arguments' => ['first'],
+            ]),
+            'accepted_at' => now()->subSeconds(50),
+            'applied_at' => now()->subSeconds(40),
+            'created_at' => now()->subSeconds(50),
+            'updated_at' => now()->subSeconds(40),
+        ]);
+
+        WorkflowCommand::create([
+            'id' => '01JTESTCOMMANDBUFFERSIGNAL02',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 3,
+            'command_type' => 'signal',
+            'target_scope' => 'instance',
+            'source' => 'php',
+            'status' => 'accepted',
+            'outcome' => 'signal_received',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'payload_codec' => Serializer::class,
+            'payload' => Serializer::serialize([
+                'name' => 'message',
+                'arguments' => ['second'],
+            ]),
+            'accepted_at' => now()->subSeconds(30),
+            'applied_at' => now()->subSeconds(10),
+            'created_at' => now()->subSeconds(30),
+            'updated_at' => now()->subSeconds(10),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYBUFFSIGOPEN001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => 'SignalWaitOpened',
+            'payload' => [
+                'signal_name' => 'message',
+                'signal_wait_id' => 'signal-wait-1',
+                'sequence' => 1,
+            ],
+            'recorded_at' => now()->subSeconds(55),
+            'created_at' => now()->subSeconds(55),
+            'updated_at' => now()->subSeconds(55),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYBUFFSIGRECV01',
+            'workflow_run_id' => $run->id,
+            'sequence' => 2,
+            'event_type' => 'SignalReceived',
+            'payload' => [
+                'signal_name' => 'message',
+                'signal_wait_id' => 'signal-wait-1',
+            ],
+            'workflow_command_id' => '01JTESTCOMMANDBUFFERSIGNAL01',
+            'recorded_at' => now()->subSeconds(50),
+            'created_at' => now()->subSeconds(50),
+            'updated_at' => now()->subSeconds(50),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYBUFFSIGAPPLY1',
+            'workflow_run_id' => $run->id,
+            'sequence' => 3,
+            'event_type' => 'SignalApplied',
+            'payload' => [
+                'signal_name' => 'message',
+                'signal_wait_id' => 'signal-wait-1',
+                'sequence' => 1,
+            ],
+            'workflow_command_id' => '01JTESTCOMMANDBUFFERSIGNAL01',
+            'recorded_at' => now()->subSeconds(40),
+            'created_at' => now()->subSeconds(40),
+            'updated_at' => now()->subSeconds(40),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYBUFFSIGRECV02',
+            'workflow_run_id' => $run->id,
+            'sequence' => 4,
+            'event_type' => 'SignalReceived',
+            'payload' => [
+                'signal_name' => 'message',
+                'signal_wait_id' => 'signal-wait-2',
+            ],
+            'workflow_command_id' => '01JTESTCOMMANDBUFFERSIGNAL02',
+            'recorded_at' => now()->subSeconds(30),
+            'created_at' => now()->subSeconds(30),
+            'updated_at' => now()->subSeconds(30),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYBUFFSIGOPEN002',
+            'workflow_run_id' => $run->id,
+            'sequence' => 5,
+            'event_type' => 'SignalWaitOpened',
+            'payload' => [
+                'signal_name' => 'message',
+                'signal_wait_id' => 'signal-wait-2',
+                'sequence' => 2,
+            ],
+            'recorded_at' => now()->subSeconds(20),
+            'created_at' => now()->subSeconds(20),
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYBUFFSIGAPPLY2',
+            'workflow_run_id' => $run->id,
+            'sequence' => 6,
+            'event_type' => 'SignalApplied',
+            'payload' => [
+                'signal_name' => 'message',
+                'signal_wait_id' => 'signal-wait-2',
+                'sequence' => 2,
+            ],
+            'workflow_command_id' => '01JTESTCOMMANDBUFFERSIGNAL02',
+            'recorded_at' => now()->subSeconds(10),
+            'created_at' => now()->subSeconds(10),
+            'updated_at' => now()->subSeconds(10),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYBUFFSIGDONE001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 7,
+            'event_type' => 'WorkflowCompleted',
+            'payload' => [
+                'output' => $run->output,
+            ],
+            'recorded_at' => now()->subSeconds(5),
+            'created_at' => now()->subSeconds(5),
+            'updated_at' => now()->subSeconds(5),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $response = $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('waits.0.kind', 'signal')
+            ->assertJsonPath('waits.0.status', 'resolved')
+            ->assertJsonPath('waits.0.signal_wait_id', 'signal-wait-1')
+            ->assertJsonPath('waits.0.command_sequence', 2)
+            ->assertJsonPath('waits.1.signal_wait_id', 'signal-wait-2')
+            ->assertJsonPath('waits.1.command_sequence', 3);
+
+        $this->assertSame(
+            ['signal-wait-1', 'signal-wait-2'],
+            collect($response->json('waits'))
+                ->pluck('signal_wait_id')
+                ->all(),
+        );
+        $this->assertSame(
+            ['signal-wait-1', 'signal-wait-2'],
+            collect($response->json('timeline'))
+                ->filter(static fn (array $entry): bool => ($entry['type'] ?? null) === 'SignalWaitOpened')
+                ->pluck('signal_wait_id')
+                ->all(),
+        );
+        $this->assertSame(
+            ['signal-wait-1', 'signal-wait-2'],
+            collect($response->json('timeline'))
+                ->filter(static fn (array $entry): bool => ($entry['type'] ?? null) === 'SignalReceived')
+                ->pluck('signal_wait_id')
+                ->all(),
+        );
+    }
+
     public function testShowIncludesWorkflowSourceMetadataForWorkflowOriginatedStartCommand(): void
     {
         config()->set('waterline.engine_source', 'v2');
