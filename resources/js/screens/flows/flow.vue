@@ -119,18 +119,13 @@
                     <div class="col">{{ flow.queue }}</div>
                 </div>
 
-                <div class="row mb-2" v-if="flow.declared_signal_contracts && flow.declared_signal_contracts.length">
+                <div class="row mb-2" v-if="declaredSignalTargets().length">
                     <div class="col-md-2"><strong>Signals</strong></div>
                     <div class="col">
-                        <div v-for="contract in flow.declared_signal_contracts" :key="contract.name">
-                            {{ signalContractLabel(contract) }}
+                        <div v-for="target in declaredSignalTargets()" :key="target.name">
+                            {{ signalTargetLabel(target) }}
                         </div>
                     </div>
-                </div>
-
-                <div class="row mb-2" v-else-if="flow.declared_signals && flow.declared_signals.length">
-                    <div class="col-md-2"><strong>Signals</strong></div>
-                    <div class="col">{{ flow.declared_signals.join(', ') }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.declared_contract_source)">
@@ -138,18 +133,13 @@
                     <div class="col">{{ contractSourceLabel(flow.declared_contract_source) }}</div>
                 </div>
 
-                <div class="row mb-2" v-if="flow.declared_update_contracts && flow.declared_update_contracts.length">
+                <div class="row mb-2" v-if="declaredUpdateTargets().length">
                     <div class="col-md-2"><strong>Updates</strong></div>
                     <div class="col">
-                        <div v-for="contract in flow.declared_update_contracts" :key="contract.name">
-                            {{ updateContractLabel(contract) }}
+                        <div v-for="target in declaredUpdateTargets()" :key="target.name">
+                            {{ updateTargetLabel(target) }}
                         </div>
                     </div>
-                </div>
-
-                <div class="row mb-2" v-else-if="flow.declared_updates && flow.declared_updates.length">
-                    <div class="col-md-2"><strong>Updates</strong></div>
-                    <div class="col">{{ flow.declared_updates.join(', ') }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.declared_contract_source)">
@@ -1078,38 +1068,94 @@ export default {
                 : (this.flow.logs || [])
         },
 
-        signalTargets() {
-            if (Array.isArray(this.flow.declared_signal_contracts) && this.flow.declared_signal_contracts.length) {
-                return this.flow.declared_signal_contracts.map((contract) => ({
-                    name: contract.name,
-                    label: this.signalContractLabel(contract),
-                }))
+        declaredSignalTargets() {
+            if (Array.isArray(this.flow.declared_signal_targets) && this.flow.declared_signal_targets.length) {
+                return this.normalizeCommandTargets(this.flow.declared_signal_targets)
             }
 
-            return Array.isArray(this.flow.declared_signals)
-                ? this.flow.declared_signals.map((name) => ({
-                    name,
-                    label: name,
-                }))
-                : []
+            return this.normalizeCommandTargets(
+                this.flow.declared_signals,
+                this.flow.declared_signal_contracts,
+            )
+        },
+
+        declaredUpdateTargets() {
+            if (Array.isArray(this.flow.declared_update_targets) && this.flow.declared_update_targets.length) {
+                return this.normalizeCommandTargets(this.flow.declared_update_targets)
+            }
+
+            return this.normalizeCommandTargets(
+                this.flow.declared_updates,
+                this.flow.declared_update_contracts,
+            )
+        },
+
+        normalizeCommandTargets(namesOrTargets, contracts = []) {
+            if (Array.isArray(namesOrTargets) && namesOrTargets.every((target) => target && typeof target.name === 'string')) {
+                return [...namesOrTargets]
+                    .map((target) => ({
+                        name: target.name,
+                        parameters: Array.isArray(target.parameters) ? target.parameters : [],
+                        has_contract: target.has_contract === true || (Array.isArray(target.parameters) && target.parameters.length > 0),
+                    }))
+                    .sort((left, right) => left.name.localeCompare(right.name))
+            }
+
+            const targets = new Map()
+
+            if (Array.isArray(namesOrTargets)) {
+                namesOrTargets
+                    .filter((name) => typeof name === 'string' && name.length > 0)
+                    .forEach((name) => {
+                        targets.set(name, {
+                            name,
+                            parameters: [],
+                            has_contract: false,
+                        })
+                    })
+            }
+
+            if (Array.isArray(contracts)) {
+                contracts
+                    .filter((contract) => contract && typeof contract.name === 'string' && contract.name.length > 0)
+                    .forEach((contract) => {
+                        const existing = targets.get(contract.name) || {
+                            name: contract.name,
+                            parameters: [],
+                            has_contract: false,
+                        }
+
+                        targets.set(contract.name, {
+                            ...existing,
+                            parameters: Array.isArray(contract.parameters) ? contract.parameters : [],
+                            has_contract: true,
+                        })
+                    })
+            }
+
+            return Array.from(targets.values()).sort((left, right) => left.name.localeCompare(right.name))
+        },
+
+        signalTargetLabel(target) {
+            return target.has_contract ? this.signalContractLabel(target) : target.name
+        },
+
+        updateTargetLabel(target) {
+            return target.has_contract ? this.updateContractLabel(target) : target.name
+        },
+
+        signalTargets() {
+            return this.declaredSignalTargets().map((target) => ({
+                name: target.name,
+                label: this.signalTargetLabel(target),
+            }))
         },
 
         updateTargets() {
-            if (Array.isArray(this.flow.declared_update_contracts) && this.flow.declared_update_contracts.length) {
-                return this.flow.declared_update_contracts.map((contract) => ({
-                    name: contract.name,
-                    label: this.updateContractLabel(contract),
-                }))
-            }
-
-            if (Array.isArray(this.flow.declared_updates)) {
-                return this.flow.declared_updates.map((name) => ({
-                    name,
-                    label: name,
-                }))
-            }
-
-            return []
+            return this.declaredUpdateTargets().map((target) => ({
+                name: target.name,
+                label: this.updateTargetLabel(target),
+            }))
         },
 
         canIssueSignal() {
@@ -1121,19 +1167,11 @@ export default {
         },
 
         updateContractByName(name) {
-            if (!Array.isArray(this.flow.declared_update_contracts)) {
-                return null
-            }
-
-            return this.flow.declared_update_contracts.find((contract) => contract.name === name) || null
+            return this.declaredUpdateTargets().find((target) => target.name === name && target.has_contract) || null
         },
 
         signalContractByName(name) {
-            if (!Array.isArray(this.flow.declared_signal_contracts)) {
-                return null
-            }
-
-            return this.flow.declared_signal_contracts.find((contract) => contract.name === name) || null
+            return this.declaredSignalTargets().find((target) => target.name === name && target.has_contract) || null
         },
 
         defaultContractArguments(contract, fallback = '[]') {
