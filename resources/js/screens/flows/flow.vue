@@ -93,7 +93,7 @@
                     <div class="col">
                         <div v-for="action in actionStateRows()" :key="action.name">
                             {{ action.label }}: {{ action.allowed ? 'available' : 'blocked' }}
-                            <span v-if="hasDetailValue(action.reason)" class="text-muted">({{ action.reason }})</span>
+                            <span v-if="hasDetailValue(action.reason)" class="text-muted">({{ actionReasonLabel(action.reason) }})</span>
                         </div>
                     </div>
                 </div>
@@ -1527,6 +1527,27 @@ export default {
                 : null
         },
 
+        actionReasonLabel(reason) {
+            return this.commandRejectionMessage(reason)
+        },
+
+        commandRejectionMessage(reason, commandType = null) {
+            switch (reason) {
+                case 'earlier_signal_pending':
+                    return commandType === 'update'
+                        ? 'An earlier accepted signal is still waiting to be applied. Retry the update after the worker drains it.'
+                        : 'An earlier accepted signal is still waiting to be applied.'
+                case 'selected_run_not_current':
+                    return 'The selected run is not the current active run.'
+                case 'run_closed':
+                    return 'The selected run is already closed.'
+                case 'repair_not_needed':
+                    return 'The selected run already has a durable resume path.'
+                default:
+                    return reason
+            }
+        },
+
         actionStateRows() {
             const hasExplicitContract = ['signal', 'update', 'repair', 'cancel', 'terminate']
                 .some((name) => this.hasDetailValue(this.flow['can_' + name]) || this.hasDetailValue(this.flow[name + '_blocked_reason']))
@@ -1982,7 +2003,7 @@ export default {
                     : (error.response
                         && error.response.data
                         && error.response.data.rejection_reason
-                        ? error.response.data.rejection_reason
+                        ? this.commandRejectionMessage(error.response.data.rejection_reason, commandType)
                         : 'Command was rejected.')
 
                 Swal.fire({

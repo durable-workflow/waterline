@@ -2878,8 +2878,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('terminate_blocked_reason', null)
             ->assertJsonPath('can_signal', true)
             ->assertJsonPath('signal_blocked_reason', null)
-            ->assertJsonPath('can_update', true)
-            ->assertJsonPath('update_blocked_reason', null)
+            ->assertJsonPath('can_update', false)
+            ->assertJsonPath('update_blocked_reason', 'earlier_signal_pending')
             ->assertJsonPath('can_repair', true)
             ->assertJsonPath('repair_blocked_reason', null)
             ->assertJsonPath('commands.1.type', 'signal')
@@ -4001,7 +4001,7 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame('waterline.instances.update', $command->requestRouteName());
     }
 
-    public function testUpdateStaysAvailableWhenAnEarlierSignalCanBeLinearized(): void
+    public function testUpdateIsBlockedWhileAnEarlierSignalIsStillPending(): void
     {
         config()->set('waterline.engine_source', 'v2');
 
@@ -4027,8 +4027,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('wait_kind', 'workflow-task')
             ->assertJsonPath('liveness_state', 'workflow_task_ready')
-            ->assertJsonPath('can_update', true)
-            ->assertJsonPath('update_blocked_reason', null);
+            ->assertJsonPath('can_update', false)
+            ->assertJsonPath('update_blocked_reason', 'earlier_signal_pending');
 
         $response = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/updates/mark-approved', [
             'arguments' => [
@@ -4038,18 +4038,13 @@ class V2DashboardWorkflowTest extends TestCase
         ]);
 
         $response
-            ->assertStatus(200)
-            ->assertJsonPath('outcome', 'update_completed')
+            ->assertStatus(409)
+            ->assertJsonPath('outcome', 'rejected_pending_signal')
             ->assertJsonPath('workflow_id', $workflow->id())
             ->assertJsonPath('run_id', $workflow->runId())
-            ->assertJsonPath('command_status', 'accepted')
-            ->assertJsonPath('rejection_reason', null)
-            ->assertJsonPath('result.stage', 'waiting-for-finish')
-            ->assertJsonPath('result.name', 'Taylor')
-            ->assertJsonPath('result.approved', true)
-            ->assertJsonPath('result.events.0', 'started')
-            ->assertJsonPath('result.events.1', 'signal:Taylor')
-            ->assertJsonPath('result.events.2', 'approved:yes:waterline-ui');
+            ->assertJsonPath('command_status', 'rejected')
+            ->assertJsonPath('rejection_reason', 'earlier_signal_pending')
+            ->assertJsonPath('result', null);
     }
 
     public function testUpdateReturnsValidationErrorsForInvalidArguments(): void
