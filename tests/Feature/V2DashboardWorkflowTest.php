@@ -20,6 +20,7 @@ use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\Models\WorkflowTimer;
 use Workflow\V2\Support\RunSummaryProjector;
+use Workflow\V2\Support\WorkflowInstanceId;
 use Workflow\V2\TaskWatchdog;
 
 class V2DashboardWorkflowTest extends TestCase
@@ -254,6 +255,61 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('run_navigation.0.run_number', 1)
             ->assertJsonPath('run_navigation.0.is_current_run', true)
             ->assertJsonPath('run_navigation.0.is_selected_run', true);
+    }
+
+    public function testShowSelectionAcceptsLongRouteSafeInstanceId(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instanceId = 'tenant.alpha:' . str_repeat('z', WorkflowInstanceId::MAX_LENGTH - strlen('tenant.alpha:'));
+
+        $instance = WorkflowInstance::create([
+            'id' => $instanceId,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNLONGINSTANCE01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        $this->get('/waterline/api/instances/' . $instanceId . '/runs/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('id', $run->id)
+            ->assertJsonPath('instance_id', $instanceId)
+            ->assertJsonPath('selected_run_id', $run->id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('current_run_id', $run->id);
     }
 
     public function testShowCanResolveHistoricalSelectedRunFromCanonicalInstanceRoute(): void
