@@ -1218,6 +1218,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
             ->assertJsonPath('declared_updates', ['mark-approved'])
+            ->assertJsonPath('declared_update_contracts.0.name', 'mark-approved')
+            ->assertJsonPath('declared_update_contracts.0.parameters.0.name', 'approved')
+            ->assertJsonPath('declared_update_contracts.0.parameters.0.required', true)
             ->assertJsonPath('declared_contract_source', 'live_definition')
             ->assertJsonPath('commands.0.type', 'signal')
             ->assertJsonPath('commands.0.target_name', 'not-declared')
@@ -1287,6 +1290,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
             ->assertJsonPath('declared_updates', ['mark-approved'])
+            ->assertJsonPath('declared_update_contracts.0.name', 'mark-approved')
+            ->assertJsonPath('declared_update_contracts.0.parameters.0.name', 'approved')
             ->assertJsonPath('declared_contract_source', 'durable_history');
 
         /** @var WorkflowHistoryEvent $started */
@@ -1297,6 +1302,11 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->assertSame(['approved-by', 'rejected-by'], $started->payload['declared_signals'] ?? null);
         $this->assertSame(['mark-approved'], $started->payload['declared_updates'] ?? null);
+        $this->assertSame('mark-approved', $started->payload['declared_update_contracts'][0]['name'] ?? null);
+        $this->assertSame(
+            'approved',
+            $started->payload['declared_update_contracts'][0]['parameters'][0]['name'] ?? null,
+        );
     }
 
     public function testShowUsesDurableCommandContractHistoryWhenWorkflowClassCannotBeResolved(): void
@@ -1351,6 +1361,23 @@ class V2DashboardWorkflowTest extends TestCase
             'payload' => [
                 'declared_signals' => ['approved-by', 'rejected-by'],
                 'declared_updates' => ['mark-approved'],
+                'declared_update_contracts' => [
+                    [
+                        'name' => 'mark-approved',
+                        'parameters' => [
+                            [
+                                'name' => 'approved',
+                                'position' => 0,
+                                'required' => true,
+                                'variadic' => false,
+                                'default_available' => false,
+                                'default' => null,
+                                'type' => 'bool',
+                                'allows_null' => false,
+                            ],
+                        ],
+                    ],
+                ],
             ],
             'recorded_at' => now()->subSeconds(19),
         ]);
@@ -1359,6 +1386,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
             ->assertJsonPath('declared_updates', ['mark-approved'])
+            ->assertJsonPath('declared_update_contracts.0.name', 'mark-approved')
+            ->assertJsonPath('declared_update_contracts.0.parameters.0.name', 'approved')
             ->assertJsonPath('declared_contract_source', 'durable_history');
     }
 

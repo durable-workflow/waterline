@@ -112,7 +112,16 @@
                     <div class="col">{{ flow.declared_signals.join(', ') }}</div>
                 </div>
 
-                <div class="row mb-2" v-if="flow.declared_updates && flow.declared_updates.length">
+                <div class="row mb-2" v-if="flow.declared_update_contracts && flow.declared_update_contracts.length">
+                    <div class="col-md-2"><strong>Updates</strong></div>
+                    <div class="col">
+                        <div v-for="contract in flow.declared_update_contracts" :key="contract.name">
+                            {{ updateContractLabel(contract) }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-2" v-else-if="flow.declared_updates && flow.declared_updates.length">
                     <div class="col-md-2"><strong>Updates</strong></div>
                     <div class="col">{{ flow.declared_updates.join(', ') }}</div>
                 </div>
@@ -477,6 +486,13 @@
                                 </small>
                                 <small v-if="commandSourceDetail(command)" class="text-muted">
                                     {{ commandSourceDetail(command) }}
+                                </small>
+                                <small
+                                    v-for="(message, index) in commandValidationMessages(command)"
+                                    :key="command.id + '-validation-' + index"
+                                    class="text-muted d-block"
+                                >
+                                    {{ message }}
                                 </small>
                             </td>
                             <td>
@@ -905,6 +921,34 @@ export default {
             }
         },
 
+        updateContractLabel(contract) {
+            const parameters = Array.isArray(contract && contract.parameters)
+                ? contract.parameters
+                : []
+
+            const signature = parameters.map((parameter) => {
+                const parts = [parameter.name]
+
+                if (parameter.type) {
+                    parts.push(': ' + parameter.type)
+                }
+
+                if (parameter.variadic === true) {
+                    parts.push('...')
+                }
+
+                if (parameter.required !== true) {
+                    parts.push(' ?')
+                }
+
+                return parts.join('')
+            }).join(', ')
+
+            return signature
+                ? `${contract.name}(${signature})`
+                : contract.name
+        },
+
         compatibilityFleetSummary(supported) {
             if (supported === true) {
                 return 'supported by an active worker heartbeat'
@@ -1173,6 +1217,20 @@ export default {
             }
 
             return details.join(' | ')
+        },
+
+        commandValidationMessages(command) {
+            if (!command || !command.validation_errors) {
+                return []
+            }
+
+            return Object.entries(command.validation_errors).flatMap(([field, messages]) => {
+                if (!Array.isArray(messages)) {
+                    return []
+                }
+
+                return messages.map((message) => `${field}: ${message}`)
+            })
         },
 
         taskTarget(task) {
