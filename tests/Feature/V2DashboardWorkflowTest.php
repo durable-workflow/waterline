@@ -10,6 +10,7 @@ use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Jobs\RunWorkflowTask;
+use Workflow\V2\Models\ActivityAttempt;
 use Workflow\V2\Models\ActivityExecution;
 use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowFailure;
@@ -324,6 +325,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('activities.0.status', 'completed')
             ->assertJsonPath('activities.0.attempt_id', '01JTESTATTEMPT000000000001')
             ->assertJsonPath('activities.0.attempt_count', 1)
+            ->assertJsonPath('activities.0.attempts.0.id', '01JTESTATTEMPT000000000001')
+            ->assertJsonPath('activities.0.attempts.0.attempt_number', 1)
+            ->assertJsonPath('activities.0.attempts.0.status', 'completed')
             ->assertJsonPath('activities.0.connection', 'redis')
             ->assertJsonPath('activities.0.queue', 'default')
             ->assertJsonPath('activities.0.started_at', $startedAt->jsonSerialize())
@@ -387,6 +391,19 @@ class V2DashboardWorkflowTest extends TestCase
             'last_heartbeat_at' => $heartbeatAt,
         ]);
 
+        ActivityAttempt::create([
+            'id' => $attemptId,
+            'workflow_run_id' => $run->id,
+            'activity_execution_id' => $activity->id,
+            'workflow_task_id' => $taskId,
+            'attempt_number' => 1,
+            'status' => 'running',
+            'lease_owner' => 'heartbeat-worker',
+            'started_at' => $startedAt,
+            'last_heartbeat_at' => $heartbeatAt,
+            'lease_expires_at' => $leaseExpiresAt,
+        ]);
+
         WorkflowTask::create([
             'id' => $taskId,
             'workflow_run_id' => $run->id,
@@ -424,6 +441,11 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('activities.0.attempt_id', $attemptId)
             ->assertJsonPath('activities.0.attempt_count', 1)
             ->assertJsonPath('activities.0.last_heartbeat_at', $heartbeatAt->jsonSerialize())
+            ->assertJsonPath('activities.0.attempts.0.id', $attemptId)
+            ->assertJsonPath('activities.0.attempts.0.attempt_number', 1)
+            ->assertJsonPath('activities.0.attempts.0.status', 'running')
+            ->assertJsonPath('activities.0.attempts.0.lease_owner', 'heartbeat-worker')
+            ->assertJsonPath('activities.0.attempts.0.lease_expires_at', $leaseExpiresAt->jsonSerialize())
             ->assertJsonPath('tasks.0.id', $taskId)
             ->assertJsonPath('tasks.0.status', 'leased')
             ->assertJsonPath('tasks.0.lease_expires_at', $leaseExpiresAt->jsonSerialize())
