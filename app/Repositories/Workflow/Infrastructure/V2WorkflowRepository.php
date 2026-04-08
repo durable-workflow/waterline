@@ -2,6 +2,7 @@
 
 namespace Waterline\Repositories\Workflow\Infrastructure;
 
+use Workflow\V2\Support\CurrentRunResolver;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 
 class V2WorkflowRepository implements WorkflowRepositoryInterface
@@ -56,23 +57,25 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         }
 
         $instance = $this->instanceModel::query()
-            ->with('currentRun.summary')
+            ->with('runs.summary')
             ->findOrFail($id);
 
-        abort_if($instance->current_run_id === null, 404);
+        $currentRun = CurrentRunResolver::forInstance($instance, ['summary']);
+
+        abort_if($currentRun === null, 404);
 
         return $this->runModel::query()
             ->with($this->detailRelations())
-            ->findOrFail($instance->current_run_id);
+            ->findOrFail($currentRun->id);
     }
 
     public function findFlowSelection(string $instanceId, ?string $runId = null)
     {
         $instance = $this->instanceModel::query()
-            ->with('currentRun.summary')
+            ->with('runs.summary')
             ->findOrFail($instanceId);
 
-        $selectedRunId = $runId ?? $instance->current_run_id;
+        $selectedRunId = $runId ?? CurrentRunResolver::forInstance($instance, ['summary'])?->id;
 
         abort_if($selectedRunId === null, 404);
 
@@ -166,7 +169,6 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
             'childLinks.childRun.summary',
             'childLinks.childRun.historyEvents',
             'instance.runs.summary',
-            'instance.currentRun.summary',
         ];
     }
 }

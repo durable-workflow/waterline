@@ -422,6 +422,109 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('run_navigation.1.is_selected_run', false);
     }
 
+    public function testInstanceDetailResolvesLatestRunWhenCurrentRunPointerIsMissing()
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-history-pointer-drift',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 2,
+        ]);
+
+        $historicalRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNHISTORYDRIFT001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'continued',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(10),
+            'closed_at' => now()->subMinutes(9),
+            'last_progress_at' => now()->subMinutes(9),
+        ]);
+
+        $currentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNHISTORYDRIFT002',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update([
+            'current_run_id' => null,
+            'run_count' => 2,
+        ]);
+
+        WorkflowRunSummary::create([
+            'id' => $historicalRun->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => false,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'status_bucket' => 'completed',
+            'closed_reason' => 'continued',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $historicalRun->started_at,
+            'closed_at' => $historicalRun->closed_at,
+            'created_at' => now()->subMinutes(10),
+            'updated_at' => now()->subMinutes(9),
+        ]);
+
+        WorkflowRunSummary::create([
+            'id' => $currentRun->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $currentRun->started_at,
+            'wait_kind' => 'signal',
+            'wait_reason' => 'Waiting for signal approved-by',
+            'wait_started_at' => now()->subSeconds(30),
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        $this->get('/waterline/api/instances/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('id', $currentRun->id)
+            ->assertJsonPath('instance_id', $instance->id)
+            ->assertJsonPath('selected_run_id', $currentRun->id)
+            ->assertJsonPath('run_id', $currentRun->id)
+            ->assertJsonPath('is_current_run', true)
+            ->assertJsonPath('current_run_id', $currentRun->id);
+
+        $this->get('/waterline/api/instances/' . $instance->id . '/runs/' . $historicalRun->id)
+            ->assertStatus(200)
+            ->assertJsonPath('id', $historicalRun->id)
+            ->assertJsonPath('is_current_run', false)
+            ->assertJsonPath('current_run_id', $currentRun->id)
+            ->assertJsonPath('run_navigation.1.run_id', $currentRun->id)
+            ->assertJsonPath('run_navigation.1.is_current_run', true);
+    }
+
     public function testShowIncludesTaskDispatchFailureMetadata(): void
     {
         config()->set('waterline.engine_source', 'v2');
