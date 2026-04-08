@@ -1973,6 +1973,12 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('commands.0.request_path', '/webhooks/instances/order-update-command/updates/approve')
             ->assertJsonPath('commands.0.request_route_name', 'workflows.v2.update')
             ->assertJsonPath('commands.0.request_fingerprint', 'sha256:test-update-command')
+            ->assertJsonPath('commands.0.payload_codec', Serializer::class)
+            ->assertJsonPath('commands.0.payload_available', true)
+            ->assertJsonPath('commands.0.payload', serialize([
+                'name' => 'approve',
+                'arguments' => [true, 'waterline'],
+            ]))
             ->assertJsonPath('commands.0.result_available', true)
             ->assertJsonPath('commands.0.failure_id', null)
             ->assertJsonPath('commands.0.failure_message', null)

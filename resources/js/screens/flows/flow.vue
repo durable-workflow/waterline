@@ -442,6 +442,7 @@
                             <th scope="col">Outcome</th>
                             <th scope="col">Status</th>
                             <th scope="col">Source</th>
+                            <th scope="col">Payload</th>
                             <th scope="col">Result</th>
                             <th scope="col">Accepted At</th>
                         </tr>
@@ -461,6 +462,15 @@
                                 <small v-if="commandSourceDetail(command)" class="text-muted">
                                     {{ commandSourceDetail(command) }}
                                 </small>
+                            </td>
+                            <td>
+                                <button
+                                    v-if="command.payload_available"
+                                    title="View Payload"
+                                    class="btn btn-outline-primary ml-auto"
+                                    @click="showResult(command.payload, 'Command Payload')"
+                                >View</button>
+                                <span v-else>-</span>
                             </td>
                             <td>
                                 <button
