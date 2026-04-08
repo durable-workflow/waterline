@@ -14,6 +14,8 @@ interface WorkflowRepositoryInterface
 
     public function findFlow(string $id);
 
+    public function findFlowSelection(string $instanceId, ?string $runId = null);
+
     public function flowsPastHour();
 
     public function exceptionsPastHour();

@@ -56,6 +56,11 @@ abstract class WorkflowRepositoryBaseSQL implements WorkflowRepositoryInterface
         ])->findOrFail($id);
     }
 
+    public function findFlowSelection(string $instanceId, ?string $runId = null)
+    {
+        return $this->findFlow($runId ?? $instanceId);
+    }
+
     public function flowsPastHour(): int
     {
         return $this->workflowModel::where('updated_at', '>=', now()->subHour())->count();

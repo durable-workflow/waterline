@@ -125,12 +125,30 @@
                 <div class="row mb-2" v-if="!flow.is_current_run && flow.current_run_id">
                     <div class="col-md-2"><strong>Current Run</strong></div>
                     <div class="col">
-                        <router-link :to="{ name: flowRouteName(flow.current_run_status_bucket, flow.current_run_status), params: { flowId: flow.current_run_id } }">
+                        <router-link :to="canonicalRoute(flow.instance_id, flow.current_run_id)">
                             {{ flow.current_run_id }}
                         </router-link>
                         <span v-if="flow.current_run_status">
                             ({{ flow.current_run_status }}<span v-if="flow.current_run_status_bucket"> / {{ flow.current_run_status_bucket }}</span>)
                         </span>
+                    </div>
+                </div>
+
+                <div class="row mb-2" v-if="runNavigationRows().length > 1">
+                    <div class="col-md-2"><strong>Runs</strong></div>
+                    <div class="col">
+                        <div v-for="entry in runNavigationRows()" :key="entry.run_id">
+                            <router-link v-if="entry.instance_id && entry.run_id"
+                                :to="canonicalRoute(entry.instance_id, entry.run_id)">
+                                Run {{ entry.run_number }} / {{ entry.run_id }}
+                            </router-link>
+                            <span v-else>Run {{ entry.run_number }} / {{ entry.run_id }}</span>
+                            <span v-if="entry.is_selected_run" class="badge badge-info ml-1">Viewing</span>
+                            <span v-if="entry.is_current_run" class="badge badge-success ml-1">Current</span>
+                            <span v-if="entry.status">
+                                - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
+                            </span>
+                        </div>
                     </div>
                 </div>
 
@@ -166,8 +184,8 @@
                     <div class="col">
                         <div v-for="entry in lineageEntries()" :key="entry.key">
                             <strong>{{ entry.label }}:</strong>
-                            <router-link v-if="entry.route_id && entry.status"
-                                :to="{ name: flowRouteName(entry.status_bucket, entry.status), params: { flowId: entry.route_id } }">
+                            <router-link v-if="entry.instance_id && entry.run_id"
+                                :to="canonicalRoute(entry.instance_id, entry.run_id)">
                                 {{ entry.display_id }}
                             </router-link>
                             <span v-else>{{ entry.display_id }}</span>
@@ -612,27 +630,52 @@ export default {
     mounted() {
         moment.relativeTimeThreshold('ss', 1);
 
-        this.loadFlow(this.$route.params.flowId);
+        this.loadRouteFlow();
 
         document.title = "Waterline - Flow Detail";
     },
 
     watch: {
-        '$route.params.flowId'(flowId) {
-            if (flowId) {
-                this.loadFlow(flowId)
-            }
+        '$route.fullPath'() {
+            this.loadRouteFlow()
         }
     },
 
     methods: {
+        loadRouteFlow() {
+            if (this.isCanonicalRoute()) {
+                return this.loadCanonicalFlow(this.$route.params.instanceId, this.$route.params.runId || null)
+            }
+
+            return this.loadLegacyFlow(this.$route.params.flowId)
+        },
+
+        isCanonicalRoute() {
+            return ['flow-detail', 'flow-detail-run'].includes(this.$route.name)
+        },
+
+        loadCanonicalFlow(instanceId, runId = null) {
+            const path = runId
+                ? '/api/instances/' + instanceId + '/runs/' + runId
+                : '/api/instances/' + instanceId
+
+            return this.fetchFlow(Waterline.basePath + path)
+        },
+
+        loadLegacyFlow(id) {
+            return this.fetchFlow(Waterline.basePath + '/api/flows/' + id)
+                .then(() => {
+                    this.replaceWithCanonicalRoute(this.flow)
+                })
+        },
+
         /**
          * Load a flow by the given ID.
          */
-        loadFlow(id) {
+        fetchFlow(path) {
             this.ready = false;
 
-            return this.$http.get(Waterline.basePath + '/api/flows/' + id)
+            return this.$http.get(path)
                 .then(response => {
                     this.flow = response.data;
                     this.series[0].data = response.data.chartData;
@@ -663,6 +706,45 @@ export default {
 
                     this.ready = true;
                 });
+        },
+
+        replaceWithCanonicalRoute(flow) {
+            const route = this.canonicalRoute(flow.instance_id, flow.selected_run_id || flow.run_id || flow.id)
+
+            if (!route || this.routeMatches(route)) {
+                return
+            }
+
+            this.$router.replace(route)
+        },
+
+        canonicalRoute(instanceId, runId = null) {
+            if (!instanceId) {
+                return null
+            }
+
+            return runId
+                ? {
+                    name: 'flow-detail-run',
+                    params: {
+                        instanceId,
+                        runId,
+                    },
+                }
+                : {
+                    name: 'flow-detail',
+                    params: {
+                        instanceId,
+                    },
+                }
+        },
+
+        routeMatches(route) {
+            if (!route || this.$route.name !== route.name) {
+                return false
+            }
+
+            return Object.keys(route.params || {}).every((key) => this.$route.params[key] === route.params[key])
         },
 
 
@@ -719,18 +801,6 @@ export default {
             }
         },
 
-        flowRouteName(statusBucket, status) {
-            let type = statusBucket
-
-            if (!type) {
-                type = ['failed', 'cancelled', 'terminated'].includes(status)
-                    ? 'failed'
-                    : (status === 'completed' ? 'completed' : 'running')
-            }
-
-            return type + '-flows-preview'
-        },
-
         showResult(result, title = 'Activity Result') {
             Swal.fire({
                 title: title,
@@ -753,6 +823,10 @@ export default {
 
         taskRows() {
             return this.flow.tasks || []
+        },
+
+        runNavigationRows() {
+            return this.flow.run_navigation || []
         },
 
         waitBacking(wait) {
@@ -885,7 +959,8 @@ export default {
                 key: 'parent-' + (parent.id || parent.parent_workflow_run_id || parent.parent_workflow_id),
                 label: this.lineageLabel(parent, 'parent'),
                 display_id: parent.workflow_run_id || parent.parent_workflow_run_id || parent.parent_workflow_id,
-                route_id: parent.workflow_run_id || parent.parent_workflow_run_id || null,
+                instance_id: parent.workflow_instance_id || parent.parent_workflow_id || null,
+                run_id: parent.workflow_run_id || parent.parent_workflow_run_id || null,
                 run_number: parent.run_number,
                 status: parent.status,
                 status_bucket: parent.status_bucket,
@@ -895,7 +970,8 @@ export default {
                 key: 'continued-' + (link.id || link.child_workflow_run_id || link.child_workflow_id),
                 label: this.lineageLabel(link, 'child'),
                 display_id: link.workflow_run_id || link.child_workflow_run_id || link.child_workflow_id,
-                route_id: link.workflow_run_id || link.child_workflow_run_id || null,
+                instance_id: link.workflow_instance_id || link.child_workflow_id || null,
+                run_id: link.workflow_run_id || link.child_workflow_run_id || null,
                 run_number: link.run_number,
                 status: link.status,
                 status_bucket: link.status_bucket,
@@ -950,8 +1026,10 @@ export default {
             }
 
             try {
-                const response = await this.$http.post(Waterline.basePath + '/api/flows/' + this.flow.id + '/' + commandType)
-                await this.loadFlow(this.flow.id)
+                const response = await this.$http.post(
+                    Waterline.basePath + '/api/flows/' + (this.flow.run_id || this.flow.id) + '/' + commandType
+                )
+                await this.loadRouteFlow()
 
                 const successText = commandType === 'repair'
                     ? (

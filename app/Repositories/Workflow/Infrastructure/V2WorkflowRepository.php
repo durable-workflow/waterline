@@ -47,22 +47,8 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function findFlow(string $id)
     {
-        $relations = [
-            'summary',
-            'commands',
-            'tasks',
-            'activityExecutions',
-            'timers',
-            'failures',
-            'historyEvents',
-            'parentLinks.parentRun.summary',
-            'childLinks.childRun.summary',
-            'childLinks.childRun.historyEvents',
-            'instance.currentRun.summary',
-        ];
-
         $run = $this->runModel::query()
-            ->with($relations)
+            ->with($this->detailRelations())
             ->find($id);
 
         if ($run !== null) {
@@ -76,8 +62,25 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         abort_if($instance->current_run_id === null, 404);
 
         return $this->runModel::query()
-            ->with($relations)
+            ->with($this->detailRelations())
             ->findOrFail($instance->current_run_id);
+    }
+
+    public function findFlowSelection(string $instanceId, ?string $runId = null)
+    {
+        $instance = $this->instanceModel::query()
+            ->with('currentRun.summary')
+            ->findOrFail($instanceId);
+
+        $selectedRunId = $runId ?? $instance->current_run_id;
+
+        abort_if($selectedRunId === null, 404);
+
+        return $this->runModel::query()
+            ->with($this->detailRelations())
+            ->where('workflow_instance_id', $instanceId)
+            ->whereKey($selectedRunId)
+            ->firstOrFail();
     }
 
     public function flowsPastHour(): int
@@ -147,5 +150,23 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
             ->orderByDesc('sort_timestamp')
             ->orderByDesc('created_at')
             ->orderByDesc('id');
+    }
+
+    protected function detailRelations(): array
+    {
+        return [
+            'summary',
+            'commands',
+            'tasks',
+            'activityExecutions',
+            'timers',
+            'failures',
+            'historyEvents',
+            'parentLinks.parentRun.summary',
+            'childLinks.childRun.summary',
+            'childLinks.childRun.historyEvents',
+            'instance.runs.summary',
+            'instance.currentRun.summary',
+        ];
     }
 }

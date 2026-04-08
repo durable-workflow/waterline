@@ -8,6 +8,18 @@ export default [
     },
 
     {
+        path: '/flows/instances/:instanceId',
+        name: 'flow-detail',
+        component: require('./screens/flows/flow').default,
+    },
+
+    {
+        path: '/flows/instances/:instanceId/runs/:runId',
+        name: 'flow-detail-run',
+        component: require('./screens/flows/flow').default,
+    },
+
+    {
         path: '/running/:flowId',
         name: 'running-flows-preview',
         component: require('./screens/flows/flow').default,

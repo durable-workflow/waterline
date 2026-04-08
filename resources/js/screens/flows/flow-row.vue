@@ -1,7 +1,7 @@
 <template>
     <tr>
         <td>
-            <router-link :title="flow.class" :to="{ name: routeName(flow), params: { flowId: flow.id }}">
+            <router-link :title="flow.class" :to="detailRoute(flow)">
                 {{ flowBaseName(flow.class) }}
             </router-link>
 
@@ -60,12 +60,17 @@
                 return moment(end).from(moment(start), true)
             },
 
-            routeName(flow) {
-                const type = flow.status_bucket || (['failed', 'cancelled', 'terminated'].includes(flow.status)
-                    ? 'failed'
-                    : (flow.status === 'completed' ? 'completed' : 'running'));
+            detailRoute(flow) {
+                const instanceId = flow.instance_id || flow.workflow_instance_id || flow.id
+                const runId = flow.run_id || flow.id
 
-                return type + '-flows-preview'
+                return {
+                    name: 'flow-detail-run',
+                    params: {
+                        instanceId,
+                        runId,
+                    },
+                }
             },
         }
     }

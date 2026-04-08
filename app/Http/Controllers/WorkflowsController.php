@@ -35,6 +35,15 @@ class WorkflowsController extends Controller
             : StoredWorkflowResource::make($flow);
     }
 
+    public function showSelection(string $instanceId, WorkflowRepositoryInterface $repository, ?string $runId = null)
+    {
+        $flow = $repository->findFlowSelection($instanceId, $runId);
+
+        return $repository->engineSource() === 'v2'
+            ? V2StoredWorkflowResource::make($flow)
+            : StoredWorkflowResource::make($flow);
+    }
+
     public function cancel(string $id, WorkflowRepositoryInterface $repository)
     {
         abort_unless($repository->engineSource() === 'v2', 404);

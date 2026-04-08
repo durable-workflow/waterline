@@ -19,6 +19,8 @@ Route::prefix('api')->group(function () {
     Route::get('/flows/completed', 'WorkflowsController@completed')->name('waterline.completed');
     Route::get('/flows/failed', 'WorkflowsController@failed')->name('waterline.failed');
     Route::get('/flows/running', 'WorkflowsController@running')->name('waterline.running');
+    Route::get('/instances/{instanceId}', 'WorkflowsController@showSelection')->name('waterline.instances.show');
+    Route::get('/instances/{instanceId}/runs/{runId}', 'WorkflowsController@showSelection')->name('waterline.instances.runs.show');
     Route::get('/flows/{id}', 'WorkflowsController@show')->name('waterline.show');
     Route::post('/flows/{id}/repair', 'WorkflowsController@repair')->name('waterline.repair');
     Route::post('/flows/{id}/cancel', 'WorkflowsController@cancel')->name('waterline.cancel');
