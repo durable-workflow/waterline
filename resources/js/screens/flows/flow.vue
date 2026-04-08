@@ -161,6 +161,14 @@
                         <div class="small text-muted" v-if="flow.compatibility_supported_in_fleet === false && hasDetailValue(flow.compatibility_fleet_reason)">
                             {{ flow.compatibility_fleet_reason }}
                         </div>
+                        <div class="small text-muted mt-1" v-if="compatibilityFleetRows(flow.compatibility_fleet).length">
+                            <div v-for="snapshot in compatibilityFleetRows(flow.compatibility_fleet)" :key="compatibilityFleetKey(snapshot)">
+                                {{ compatibilityFleetLabel(snapshot) }}
+                                <span v-if="hasDetailValue(snapshot.expires_at)">
+                                    until {{ timestamp(snapshot.expires_at) }}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -976,6 +984,54 @@ export default {
             }
 
             return '-'
+        },
+
+        compatibilityFleetRows(fleet) {
+            return Array.isArray(fleet)
+                ? fleet
+                : []
+        },
+
+        compatibilityFleetKey(snapshot) {
+            return [
+                snapshot && snapshot.worker_id ? snapshot.worker_id : 'worker',
+                snapshot && snapshot.connection ? snapshot.connection : 'connection',
+                snapshot && snapshot.queue ? snapshot.queue : 'queue',
+            ].join(':')
+        },
+
+        compatibilityFleetLabel(snapshot) {
+            const parts = []
+            const supported = Array.isArray(snapshot && snapshot.supported)
+                ? snapshot.supported
+                : []
+
+            if (this.hasDetailValue(snapshot && snapshot.worker_id)) {
+                parts.push(snapshot.worker_id)
+            }
+
+            if (this.hasDetailValue(snapshot && snapshot.host)) {
+                parts.push(snapshot.host)
+            }
+
+            if (this.hasDetailValue(snapshot && snapshot.process_id)) {
+                parts.push(`pid ${snapshot.process_id}`)
+            }
+
+            if (this.hasDetailValue(snapshot && snapshot.connection) || this.hasDetailValue(snapshot && snapshot.queue)) {
+                parts.push([
+                    this.hasDetailValue(snapshot && snapshot.connection) ? `connection ${snapshot.connection}` : null,
+                    this.hasDetailValue(snapshot && snapshot.queue) ? `queue ${snapshot.queue}` : null,
+                ].filter(Boolean).join(' / '))
+            }
+
+            parts.push(`supports ${supported.length ? supported.join(', ') : 'none'}`)
+
+            if (snapshot && snapshot.supports_required === true) {
+                parts.push('matches selected marker')
+            }
+
+            return parts.join(' / ')
         },
 
         showResult(result, title = 'Activity Result') {
