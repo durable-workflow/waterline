@@ -504,8 +504,10 @@
                             <th scope="col">Activity</th>
                             <th scope="col">Status</th>
                             <th scope="col">Queue</th>
+                            <th scope="col">Started</th>
+                            <th scope="col">Heartbeat</th>
+                            <th scope="col">Closed</th>
                             <th scope="col">Result</th>
-                            <th scope="col">Recorded At</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -513,9 +515,11 @@
                             <td>{{ activity.type || activity.class }}</td>
                             <td>{{ activity.status || '-' }}</td>
                             <td>{{ activity.queue || '-' }}</td>
+                            <td>{{ timestamp(activity.started_at) }}</td>
+                            <td>{{ timestamp(activity.last_heartbeat_at) }}</td>
+                            <td>{{ timestamp(activity.closed_at) }}</td>
                             <td><button title="View Result" class="btn btn-outline-primary ml-auto"
                                     @click="showResult(activity.result)">View</button></td>
-                            <td>{{ timestamp(activity.closed_at || activity.started_at || activity.created_at) }}</td>
                         </tr>
                     </tbody>
                 </table>
