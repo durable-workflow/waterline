@@ -2062,6 +2062,7 @@ class V2DashboardWorkflowTest extends TestCase
                 'child_workflow_type' => $firstChildRun->workflow_type,
                 'child_workflow_class' => $firstChildRun->workflow_class,
                 'child_run_number' => $firstChildRun->run_number,
+                'parallel_group_kind' => 'child',
                 'parallel_group_id' => 'parallel-children:1:2',
                 'parallel_group_base_sequence' => 1,
                 'parallel_group_size' => 2,
@@ -2085,6 +2086,7 @@ class V2DashboardWorkflowTest extends TestCase
                 'child_workflow_type' => $secondChildRun->workflow_type,
                 'child_workflow_class' => $secondChildRun->workflow_class,
                 'child_run_number' => $secondChildRun->run_number,
+                'parallel_group_kind' => 'child',
                 'parallel_group_id' => 'parallel-children:1:2',
                 'parallel_group_base_sequence' => 1,
                 'parallel_group_size' => 2,
@@ -2101,9 +2103,11 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('wait_kind', 'child')
             ->assertJsonPath('open_wait_count', 2)
+            ->assertJsonPath('waits.0.parallel_group_kind', 'child')
             ->assertJsonPath('waits.0.parallel_group_id', 'parallel-children:1:2')
             ->assertJsonPath('waits.0.parallel_group_size', 2)
             ->assertJsonPath('waits.0.parallel_group_index', 0)
+            ->assertJsonPath('waits.1.parallel_group_kind', 'child')
             ->assertJsonPath('waits.1.parallel_group_id', 'parallel-children:1:2')
             ->assertJsonPath('waits.1.parallel_group_size', 2)
             ->assertJsonPath('waits.1.parallel_group_index', 1);
