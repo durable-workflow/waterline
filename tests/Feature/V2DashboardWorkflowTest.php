@@ -191,6 +191,134 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame('order-123', $exception['properties'][0]['value']);
     }
 
+    public function testShowUsesTypedActivityHistoryWhenActivityRowIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'activity-history-fallback',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNACTIVITYHIST001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'output' => Serializer::serialize(['ok' => true]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(6),
+            'closed_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinutes(2),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'status_bucket' => 'completed',
+            'closed_reason' => 'completed',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'closed_at' => $run->closed_at,
+            'duration_ms' => 240000,
+            'created_at' => now()->subMinutes(6),
+            'updated_at' => now()->subMinutes(2),
+        ]);
+
+        $scheduledAt = now()->subMinutes(5);
+        $startedAt = now()->subMinutes(4);
+        $closedAt = now()->subMinutes(3);
+        $activityId = '01JTESTACTIVITYHISTORYONLY01';
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYACTIVITYONLY01A',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::ActivityScheduled->value,
+            'payload' => [
+                'activity_execution_id' => $activityId,
+                'activity_class' => 'ActivityClass',
+                'activity_type' => 'activity.test',
+                'sequence' => 1,
+                'activity' => [
+                    'id' => $activityId,
+                    'sequence' => 1,
+                    'type' => 'activity.test',
+                    'class' => 'ActivityClass',
+                    'status' => 'pending',
+                    'attempt_count' => 0,
+                    'connection' => 'redis',
+                    'queue' => 'default',
+                    'created_at' => $scheduledAt->jsonSerialize(),
+                    'arguments' => Serializer::serialize(['Taylor']),
+                ],
+            ],
+            'recorded_at' => $scheduledAt,
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYACTIVITYONLY01B',
+            'workflow_run_id' => $run->id,
+            'sequence' => 2,
+            'event_type' => HistoryEventType::ActivityCompleted->value,
+            'payload' => [
+                'activity_execution_id' => $activityId,
+                'activity_class' => 'ActivityClass',
+                'activity_type' => 'activity.test',
+                'sequence' => 1,
+                'result' => Serializer::serialize('Hello, Taylor!'),
+                'activity' => [
+                    'id' => $activityId,
+                    'sequence' => 1,
+                    'type' => 'activity.test',
+                    'class' => 'ActivityClass',
+                    'status' => 'completed',
+                    'attempt_count' => 1,
+                    'connection' => 'redis',
+                    'queue' => 'default',
+                    'created_at' => $scheduledAt->jsonSerialize(),
+                    'started_at' => $startedAt->jsonSerialize(),
+                    'closed_at' => $closedAt->jsonSerialize(),
+                    'arguments' => Serializer::serialize(['Taylor']),
+                    'result' => Serializer::serialize('Hello, Taylor!'),
+                ],
+            ],
+            'recorded_at' => $closedAt,
+        ]);
+
+        $response = $this->get('/waterline/api/instances/' . $instance->id);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('activities.0.class', 'ActivityClass')
+            ->assertJsonPath('activities.0.type', 'activity.test')
+            ->assertJsonPath('activities.0.status', 'completed')
+            ->assertJsonPath('activities.0.connection', 'redis')
+            ->assertJsonPath('logs.0.class', 'ActivityClass')
+            ->assertJsonPath('chartData.1.type', 'Activity')
+            ->assertJsonPath('chartData.1.x', 'ActivityClass');
+
+        $this->assertSame('Hello, Taylor!', unserialize($response->json('activities.0.result')));
+        $this->assertSame(['Taylor'], unserialize($response->json('activities.0.arguments')));
+        $this->assertSame('Hello, Taylor!', unserialize($response->json('logs.0.result')));
+    }
+
     public function testShowReturnsSideEffectTimelineEntries(): void
     {
         config()->set('waterline.engine_source', 'v2');
