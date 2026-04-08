@@ -1922,6 +1922,29 @@ class V2DashboardWorkflowTest extends TestCase
             'updated_at' => now()->subSeconds(20),
         ]);
 
+        WorkflowCommand::create([
+            'id' => '01JTESTCOMMANDUPDATEBLOCK01',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 3,
+            'command_type' => 'update',
+            'target_scope' => 'instance',
+            'source' => 'webhook',
+            'status' => 'rejected',
+            'outcome' => 'rejected_pending_signal',
+            'rejection_reason' => 'earlier_signal_pending',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'payload_codec' => Serializer::class,
+            'payload' => Serializer::serialize([
+                'name' => 'approve',
+                'arguments' => [true, 'waterline'],
+            ]),
+            'rejected_at' => now()->subSeconds(18),
+            'created_at' => now()->subSeconds(18),
+            'updated_at' => now()->subSeconds(18),
+        ]);
+
         WorkflowHistoryEvent::create([
             'id' => '01JTESTHISTORYSIGNALWAIT001',
             'workflow_run_id' => $run->id,
@@ -1952,6 +1975,36 @@ class V2DashboardWorkflowTest extends TestCase
             'updated_at' => now()->subSeconds(20),
         ]);
 
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYUPDATEREJ001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 3,
+            'event_type' => HistoryEventType::UpdateRejected->value,
+            'payload' => [
+                'workflow_command_id' => '01JTESTCOMMANDUPDATEBLOCK01',
+                'workflow_instance_id' => $instance->id,
+                'workflow_run_id' => $run->id,
+                'update_name' => 'approve',
+                'arguments' => Serializer::serialize([true, 'waterline']),
+                'command' => [
+                    'id' => '01JTESTCOMMANDUPDATEBLOCK01',
+                    'sequence' => 3,
+                    'type' => 'update',
+                    'target_scope' => 'instance',
+                    'target_name' => 'approve',
+                    'source' => 'webhook',
+                    'status' => 'rejected',
+                    'outcome' => 'rejected_pending_signal',
+                    'rejection_reason' => 'earlier_signal_pending',
+                    'rejected_at' => now()->subSeconds(18)->jsonSerialize(),
+                ],
+            ],
+            'workflow_command_id' => '01JTESTCOMMANDUPDATEBLOCK01',
+            'recorded_at' => now()->subSeconds(18),
+            'created_at' => now()->subSeconds(18),
+            'updated_at' => now()->subSeconds(18),
+        ]);
+
         WorkflowTask::create([
             'id' => '01JTESTTASKUPDBLOCKED000001',
             'workflow_run_id' => $run->id,
@@ -1977,9 +2030,20 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('commands.1.type', 'signal')
             ->assertJsonPath('commands.1.target_name', 'name-provided')
             ->assertJsonPath('commands.1.outcome', 'signal_received')
+            ->assertJsonPath('commands.2.type', 'update')
+            ->assertJsonPath('commands.2.target_name', 'approve')
+            ->assertJsonPath('commands.2.status', 'rejected')
+            ->assertJsonPath('commands.2.outcome', 'rejected_pending_signal')
             ->assertJsonPath('waits.0.kind', 'signal')
             ->assertJsonPath('waits.0.source_status', 'received')
-            ->assertJsonPath('waits.0.command_sequence', 2);
+            ->assertJsonPath('waits.0.command_sequence', 2)
+            ->assertJsonPath('timeline.2.type', 'UpdateRejected')
+            ->assertJsonPath('timeline.2.source_kind', 'workflow_command')
+            ->assertJsonPath('timeline.2.source_id', '01JTESTCOMMANDUPDATEBLOCK01')
+            ->assertJsonPath('timeline.2.update_name', 'approve')
+            ->assertJsonPath('timeline.2.command_status', 'rejected')
+            ->assertJsonPath('timeline.2.command_outcome', 'rejected_pending_signal')
+            ->assertJsonPath('timeline.2.summary', 'Rejected update approve: earlier_signal_pending.');
     }
 
     public function testShowKeepsSignalWaitCommandMetadataWhenCommandRowsDrift(): void
