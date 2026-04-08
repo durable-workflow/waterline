@@ -6,7 +6,6 @@ use Illuminate\Support\Carbon;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use function Orchestra\Testbench\artisan;
 use function Orchestra\Testbench\default_skeleton_path;
-use function Orchestra\Testbench\workbench_path;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 use PDO;
 use Waterline\Waterline;
@@ -48,10 +47,6 @@ abstract class TestCase extends BaseTestCase
 
         $this->loadMigrationsFrom(default_skeleton_path('migrations'));
         artisan($this, 'migrate:fresh');
-        artisan($this, 'migrate', [
-            '--path' => dirname((new \ReflectionClass(WorkflowServiceProvider::class))->getFileName()) . '/../migrations',
-            '--realpath' => true,
-        ]);
 
         $this->beforeApplicationDestroyed(
             fn () => artisan($this, 'migrate:rollback')
@@ -65,6 +60,7 @@ abstract class TestCase extends BaseTestCase
         }
 
         return array_values(array_unique(array_merge(parent::getPackageProviders($app), [
+            WorkflowServiceProvider::class,
             'Waterline\WaterlineServiceProvider',
             'Waterline\WaterlineApplicationServiceProvider',
         ])));
