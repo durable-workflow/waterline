@@ -52,6 +52,39 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('data.0.run_id', $newest->id);
     }
 
+    public function testRunningFlowsBreakSortTimestampTiesByRunIdNotCreatedAt(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.workflow_sort_column', 'created_at');
+
+        $sortTimestamp = Carbon::parse('2022-01-01 12:05:00');
+
+        $olderRunId = '01JTESTSORTKEY00000000000001';
+        $newerRunId = '01JTESTSORTKEY00000000000002';
+
+        $older = $this->createRunningSummary(
+            'order-older-tie',
+            $olderRunId,
+            $sortTimestamp,
+            Carbon::parse('2022-01-01 12:30:00'),
+        );
+        $newer = $this->createRunningSummary(
+            'order-newer-tie',
+            $newerRunId,
+            $sortTimestamp,
+            Carbon::parse('2022-01-01 11:30:00'),
+        );
+
+        $response = $this->get('/waterline/api/flows/running');
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.id', $newer->id)
+            ->assertJsonPath('data.1.id', $older->id)
+            ->assertJsonPath('data.0.sort_key', $newer->sort_key)
+            ->assertJsonPath('data.1.sort_key', $older->sort_key);
+    }
+
     private function createRunningSummary(
         string $instanceId,
         string $runId,

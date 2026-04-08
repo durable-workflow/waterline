@@ -3,6 +3,7 @@
 namespace Waterline\Repositories\Workflow\Infrastructure;
 
 use Workflow\V2\Support\CurrentRunResolver;
+use Workflow\V2\Support\RunSummarySortKey;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 
 class V2WorkflowRepository implements WorkflowRepositoryInterface
@@ -149,10 +150,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     protected function orderedRunsQuery()
     {
-        return $this->runSummaryModel::query()
-            ->orderByDesc('sort_timestamp')
-            ->orderByDesc('created_at')
-            ->orderByDesc('id');
+        return RunSummarySortKey::applyDescending($this->runSummaryModel::query());
     }
 
     protected function detailRelations(): array
