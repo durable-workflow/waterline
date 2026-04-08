@@ -632,6 +632,86 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('timeline.3.workflow_sequence', 2);
     }
 
+    public function testShowReturnsVersionMarkerTimelineEntries(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'version-marker-instance',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNVERSIONMARKER01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYVERSIONMARK01A',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::StartAccepted->value,
+            'payload' => [],
+            'recorded_at' => now()->subMinute(),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYVERSIONMARK01B',
+            'workflow_run_id' => $run->id,
+            'sequence' => 2,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [],
+            'recorded_at' => now()->subSeconds(55),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYVERSIONMARK01C',
+            'workflow_run_id' => $run->id,
+            'sequence' => 3,
+            'event_type' => HistoryEventType::VersionMarkerRecorded->value,
+            'payload' => [
+                'sequence' => 1,
+                'change_id' => 'step-1',
+                'version' => 2,
+                'min_supported' => -1,
+                'max_supported' => 2,
+            ],
+            'recorded_at' => now()->subSeconds(50),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $response = $this->get('/waterline/api/instances/' . $instance->id);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('instance_id', $instance->id)
+            ->assertJsonPath('selected_run_id', $run->id)
+            ->assertJsonPath('timeline.2.type', 'VersionMarkerRecorded')
+            ->assertJsonPath('timeline.2.kind', 'version')
+            ->assertJsonPath('timeline.2.source_kind', 'version_marker')
+            ->assertJsonPath('timeline.2.source_id', 'step-1')
+            ->assertJsonPath('timeline.2.workflow_sequence', 1)
+            ->assertJsonPath('timeline.2.version_change_id', 'step-1')
+            ->assertJsonPath('timeline.2.version', 2)
+            ->assertJsonPath('timeline.2.version_min_supported', -1)
+            ->assertJsonPath('timeline.2.version_max_supported', 2)
+            ->assertJsonPath('timeline.2.summary', 'Recorded version marker step-1 = 2.');
+    }
+
     public function testShowCanResolveCurrentRunFromInstanceId(): void
     {
         config()->set('waterline.engine_source', 'v2');
