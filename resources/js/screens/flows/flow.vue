@@ -6,6 +6,12 @@
                 <h5 v-if="ready">{{ flow.class }}</h5>
 
                 <div class="d-flex align-items-center">
+                    <button v-if="ready && canIssueQuery()"
+                        class="btn btn-outline-secondary btn-sm mr-2"
+                        @click="issueCommand('query')">
+                        Query
+                    </button>
+
                     <button v-if="ready && canIssueSignal()"
                         class="btn btn-outline-primary btn-sm mr-2"
                         @click="issueCommand('signal')">
@@ -124,6 +130,15 @@
                     <div class="col">
                         <div v-for="target in declaredSignalTargets()" :key="target.name">
                             {{ signalTargetLabel(target) }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-2" v-if="declaredQueryTargets().length">
+                    <div class="col-md-2"><strong>Queries</strong></div>
+                    <div class="col">
+                        <div v-for="target in declaredQueryTargets()" :key="target.name">
+                            {{ queryTargetLabel(target) }}
                         </div>
                     </div>
                 </div>
@@ -992,6 +1007,10 @@ export default {
             return this.commandContractLabel(contract)
         },
 
+        queryContractLabel(contract) {
+            return this.commandContractLabel(contract)
+        },
+
         compatibilityFleetSummary(supported) {
             if (supported === true) {
                 return 'supported by an active worker heartbeat'
@@ -1079,6 +1098,17 @@ export default {
             )
         },
 
+        declaredQueryTargets() {
+            if (Array.isArray(this.flow.declared_query_targets) && this.flow.declared_query_targets.length) {
+                return this.normalizeCommandTargets(this.flow.declared_query_targets)
+            }
+
+            return this.normalizeCommandTargets(
+                this.flow.declared_queries,
+                this.flow.declared_query_contracts,
+            )
+        },
+
         declaredUpdateTargets() {
             if (Array.isArray(this.flow.declared_update_targets) && this.flow.declared_update_targets.length) {
                 return this.normalizeCommandTargets(this.flow.declared_update_targets)
@@ -1144,10 +1174,21 @@ export default {
             return target.has_contract ? this.updateContractLabel(target) : target.name
         },
 
+        queryTargetLabel(target) {
+            return target.has_contract ? this.queryContractLabel(target) : target.name
+        },
+
         signalTargets() {
             return this.declaredSignalTargets().map((target) => ({
                 name: target.name,
                 label: this.signalTargetLabel(target),
+            }))
+        },
+
+        queryTargets() {
+            return this.declaredQueryTargets().map((target) => ({
+                name: target.name,
+                label: this.queryTargetLabel(target),
             }))
         },
 
@@ -1156,6 +1197,10 @@ export default {
                 name: target.name,
                 label: this.updateTargetLabel(target),
             }))
+        },
+
+        canIssueQuery() {
+            return this.queryTargets().length > 0
         },
 
         canIssueSignal() {
@@ -1168,6 +1213,10 @@ export default {
 
         updateContractByName(name) {
             return this.declaredUpdateTargets().find((target) => target.name === name && target.has_contract) || null
+        },
+
+        queryContractByName(name) {
+            return this.declaredQueryTargets().find((target) => target.name === name && target.has_contract) || null
         },
 
         signalContractByName(name) {
@@ -1235,6 +1284,10 @@ export default {
             return this.defaultContractArguments(this.signalContractByName(name))
         },
 
+        defaultQueryArguments(name) {
+            return this.defaultContractArguments(this.queryContractByName(name))
+        },
+
         defaultUpdateArguments(name) {
             return this.defaultContractArguments(this.updateContractByName(name))
         },
@@ -1293,6 +1346,70 @@ export default {
 
                     if (!target) {
                         Swal.showValidationMessage('Select a signal.')
+
+                        return false
+                    }
+
+                    try {
+                        return {
+                            targetName: target,
+                            arguments: this.parseCommandArguments(rawArguments),
+                        }
+                    } catch (error) {
+                        Swal.showValidationMessage('Arguments must be valid JSON.')
+
+                        return false
+                    }
+                },
+            })
+
+            return result.isConfirmed ? result.value : null
+        },
+
+        async promptForQueryCommand() {
+            const queries = this.queryTargets()
+
+            if (!queries.length) {
+                return null
+            }
+
+            const options = queries.map((query) =>
+                `<option value="${this.escapeHtml(query.name)}">${this.escapeHtml(query.label)}</option>`
+            ).join('')
+
+            const firstQuery = queries[0].name
+
+            const result = await Swal.fire({
+                title: 'Run query',
+                html: `
+                    <label class="d-block text-left mb-2" for="waterline-query-target">Query</label>
+                    <select id="waterline-query-target" class="swal2-input">${options}</select>
+                    <label class="d-block text-left mb-2" for="waterline-query-arguments">Arguments JSON</label>
+                    <textarea id="waterline-query-arguments" class="swal2-textarea" style="min-height: 10rem;">${this.escapeHtml(this.defaultQueryArguments(firstQuery))}</textarea>
+                    <div class="small text-muted text-left">Use a JSON object for named arguments or a JSON array for positional arguments.</div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Run query',
+                focusConfirm: false,
+                background: '#1c1c1c',
+                didOpen: () => {
+                    const select = document.getElementById('waterline-query-target')
+                    const textarea = document.getElementById('waterline-query-arguments')
+
+                    if (!select || !textarea) {
+                        return
+                    }
+
+                    select.addEventListener('change', () => {
+                        textarea.value = this.defaultQueryArguments(select.value)
+                    })
+                },
+                preConfirm: () => {
+                    const target = document.getElementById('waterline-query-target').value
+                    const rawArguments = document.getElementById('waterline-query-arguments').value
+
+                    if (!target) {
+                        Swal.showValidationMessage('Select a query.')
 
                         return false
                     }
@@ -1764,6 +1881,10 @@ export default {
         },
 
         async issueCommand(commandType) {
+            if (commandType === 'query') {
+                return this.issueInteractiveCommand(commandType, await this.promptForQueryCommand())
+            }
+
             if (commandType === 'signal') {
                 return this.issueInteractiveCommand(commandType, await this.promptForSignalCommand())
             }
@@ -1807,7 +1928,7 @@ export default {
         },
 
         async issueInteractiveCommand(commandType, interactiveCommand = null) {
-            if ((commandType === 'signal' || commandType === 'update') && !interactiveCommand) {
+            if ((commandType === 'query' || commandType === 'signal' || commandType === 'update') && !interactiveCommand) {
                 return
             }
 
@@ -1816,6 +1937,17 @@ export default {
                     this.commandEndpoint(commandType, interactiveCommand ? interactiveCommand.targetName : null),
                     interactiveCommand ? this.commandRequestBody(interactiveCommand.arguments) : {},
                 )
+
+                if (commandType === 'query') {
+                    const queryName = response.data && response.data.query_name
+                        ? response.data.query_name
+                        : interactiveCommand.targetName
+
+                    this.showResult(response.data.result, 'Query Result: ' + queryName)
+
+                    return
+                }
+
                 await this.loadRouteFlow()
 
                 const successText = {
@@ -1848,7 +1980,7 @@ export default {
                         : 'Command was rejected.')
 
                 Swal.fire({
-                    title: 'Command rejected',
+                    title: commandType === 'query' ? 'Query failed' : 'Command rejected',
                     text: message,
                     icon: 'error',
                     confirmButtonText: 'Okay',
@@ -1858,8 +1990,11 @@ export default {
         },
 
         commandEndpoint(commandType, targetName = null) {
+            const collection = commandType === 'query'
+                ? 'queries'
+                : commandType + 's'
             const suffix = targetName
-                ? commandType + 's/' + encodeURIComponent(targetName)
+                ? collection + '/' + encodeURIComponent(targetName)
                 : commandType
 
             if (this.flow.instance_id) {

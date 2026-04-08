@@ -1218,6 +1218,14 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
+            ->assertJsonPath('declared_queries', ['current-stage', 'stageMatches'])
+            ->assertJsonPath('declared_query_contracts.0.name', 'current-stage')
+            ->assertJsonPath('declared_query_targets.0.name', 'current-stage')
+            ->assertJsonPath('declared_query_targets.0.has_contract', true)
+            ->assertJsonPath('declared_query_targets.0.parameters', [])
+            ->assertJsonPath('declared_query_targets.1.name', 'stageMatches')
+            ->assertJsonPath('declared_query_targets.1.has_contract', true)
+            ->assertJsonPath('declared_query_targets.1.parameters.0.name', 'stage')
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
             ->assertJsonPath('declared_signal_contracts.0.name', 'approved-by')
             ->assertJsonPath('declared_signal_contracts.0.parameters.0.name', 'actor')
@@ -1299,6 +1307,12 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
+            ->assertJsonPath('declared_queries', ['current-stage', 'stageMatches'])
+            ->assertJsonPath('declared_query_contracts.0.name', 'current-stage')
+            ->assertJsonPath('declared_query_targets.0.name', 'current-stage')
+            ->assertJsonPath('declared_query_targets.0.has_contract', true)
+            ->assertJsonPath('declared_query_targets.1.name', 'stageMatches')
+            ->assertJsonPath('declared_query_targets.1.has_contract', true)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
             ->assertJsonPath('declared_signal_contracts.0.name', 'approved-by')
             ->assertJsonPath('declared_signal_contracts.0.parameters.0.name', 'actor')
@@ -1325,6 +1339,8 @@ class V2DashboardWorkflowTest extends TestCase
             'actor',
             $started->payload['declared_signal_contracts'][0]['parameters'][0]['name'] ?? null,
         );
+        $this->assertSame(['current-stage', 'stageMatches'], $started->payload['declared_queries'] ?? null);
+        $this->assertSame('current-stage', $started->payload['declared_query_contracts'][0]['name'] ?? null);
         $this->assertSame(['mark-approved'], $started->payload['declared_updates'] ?? null);
         $this->assertSame('mark-approved', $started->payload['declared_update_contracts'][0]['name'] ?? null);
         $this->assertSame(
@@ -1383,6 +1399,28 @@ class V2DashboardWorkflowTest extends TestCase
             'sequence' => 1,
             'event_type' => HistoryEventType::WorkflowStarted->value,
             'payload' => [
+                'declared_queries' => ['current-stage', 'stageMatches'],
+                'declared_query_contracts' => [
+                    [
+                        'name' => 'current-stage',
+                        'parameters' => [],
+                    ],
+                    [
+                        'name' => 'stageMatches',
+                        'parameters' => [
+                            [
+                                'name' => 'stage',
+                                'position' => 0,
+                                'required' => true,
+                                'variadic' => false,
+                                'default_available' => false,
+                                'default' => null,
+                                'type' => 'string',
+                                'allows_null' => false,
+                            ],
+                        ],
+                    ],
+                ],
                 'declared_signals' => ['approved-by', 'rejected-by'],
                 'declared_signal_contracts' => [
                     [
@@ -1425,6 +1463,12 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
+            ->assertJsonPath('declared_queries', ['current-stage', 'stageMatches'])
+            ->assertJsonPath('declared_query_contracts.0.name', 'current-stage')
+            ->assertJsonPath('declared_query_targets.0.name', 'current-stage')
+            ->assertJsonPath('declared_query_targets.0.has_contract', true)
+            ->assertJsonPath('declared_query_targets.1.name', 'stageMatches')
+            ->assertJsonPath('declared_query_targets.1.has_contract', true)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
             ->assertJsonPath('declared_signal_contracts.0.name', 'approved-by')
             ->assertJsonPath('declared_signal_contracts.0.parameters.0.name', 'actor')
@@ -1486,6 +1530,9 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
+            ->assertJsonPath('declared_queries', [])
+            ->assertJsonPath('declared_query_contracts', [])
+            ->assertJsonPath('declared_query_targets', [])
             ->assertJsonPath('declared_signals', [])
             ->assertJsonPath('declared_signal_contracts', [])
             ->assertJsonPath('declared_signal_targets', [])
@@ -4059,6 +4106,54 @@ class V2DashboardWorkflowTest extends TestCase
             'workflow_id' => 'order-signal-selected-run',
             'run_id' => $workflow->runId(),
         ], $workflow->output());
+    }
+
+    public function testQueryTargetsSelectedRunRouteAndReturnsSerializedResult(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-query-selected-run');
+        $workflow->start();
+
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
+
+        $response = $this->postJson(
+            '/waterline/api/instances/' . $workflow->id() . '/runs/' . $workflow->runId() . '/queries/events-starting-with',
+            ['arguments' => ['prefix' => 'start']],
+        );
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('query_name', 'events-starting-with')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'run');
+
+        $this->assertSame(1, unserialize((string) $response->json('result')));
+    }
+
+    public function testQueryReturnsValidationErrorsForInvalidArguments(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-query-invalid');
+        $workflow->start();
+
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
+
+        $response = $this->postJson(
+            '/waterline/api/instances/' . $workflow->id() . '/queries/events-starting-with',
+            ['arguments' => ['extra' => 'start']],
+        );
+
+        $response
+            ->assertStatus(422)
+            ->assertJsonPath('query_name', 'events-starting-with')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'instance')
+            ->assertJsonPath('validation_errors.prefix.0', 'The prefix argument is required.')
+            ->assertJsonPath('validation_errors.extra.0', 'Unknown argument [extra].');
     }
 
     public function testSignalReturnsValidationErrorsForInvalidArguments(): void

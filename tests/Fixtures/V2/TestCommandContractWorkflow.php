@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Waterline\Tests\Fixtures\V2;
 
 use Generator;
+use Workflow\QueryMethod;
 use Workflow\UpdateMethod;
 use Workflow\V2\Attributes\Signal;
 use Workflow\V2\Attributes\Type;
@@ -25,6 +26,18 @@ final class TestCommandContractWorkflow extends Workflow
         }
 
         return [];
+    }
+
+    #[QueryMethod('current-stage')]
+    public function currentStage(): string
+    {
+        return 'waiting';
+    }
+
+    #[QueryMethod]
+    public function stageMatches(string $stage): bool
+    {
+        return $stage === 'waiting';
     }
 
     #[UpdateMethod('mark-approved')]

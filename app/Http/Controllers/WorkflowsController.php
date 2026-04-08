@@ -3,6 +3,8 @@
 namespace Waterline\Http\Controllers;
 
 use Illuminate\Http\Request;
+use LogicException;
+use Workflow\V2\Exceptions\InvalidQueryArgumentsException;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Support\CommandResponse;
 use Workflow\V2\WorkflowStub as V2WorkflowStub;
@@ -43,6 +45,57 @@ class WorkflowsController extends Controller
         return $repository->engineSource() === 'v2'
             ? V2StoredWorkflowResource::make($flow)
             : StoredWorkflowResource::make($flow);
+    }
+
+    public function query(
+        string $id,
+        string $query,
+        Request $request,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $flow = $repository->findFlow($id);
+
+        return $this->queryResponse(
+            V2WorkflowStub::loadRun($flow->id),
+            $query,
+            $this->commandArguments($request),
+            'run',
+        );
+    }
+
+    public function queryInstance(
+        string $instanceId,
+        string $query,
+        Request $request,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        return $this->queryResponse(
+            V2WorkflowStub::load($instanceId),
+            $query,
+            $this->commandArguments($request),
+            'instance',
+        );
+    }
+
+    public function querySelection(
+        string $instanceId,
+        string $runId,
+        string $query,
+        Request $request,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        return $this->queryResponse(
+            V2WorkflowStub::loadSelection($instanceId, $runId),
+            $query,
+            $this->commandArguments($request),
+            'run',
+        );
     }
 
     public function cancel(string $id, WorkflowRepositoryInterface $repository)
@@ -290,5 +343,44 @@ class WorkflowsController extends Controller
             CommandResponse::payload($result),
             $result->accepted() ? 200 : 409,
         );
+    }
+
+    /**
+     * @param array<int|string, mixed> $arguments
+     */
+    private function queryResponse(
+        V2WorkflowStub $workflow,
+        string $query,
+        array $arguments,
+        string $targetScope,
+    ) {
+        try {
+            $result = $workflow->queryWithArguments($query, $arguments);
+        } catch (InvalidQueryArgumentsException $exception) {
+            return response()->json([
+                'query_name' => $exception->queryName(),
+                'workflow_id' => $workflow->id(),
+                'run_id' => $workflow->runId(),
+                'target_scope' => $targetScope,
+                'message' => $exception->getMessage(),
+                'validation_errors' => $exception->validationErrors(),
+            ], 422);
+        } catch (LogicException $exception) {
+            return response()->json([
+                'query_name' => $query,
+                'workflow_id' => $workflow->id(),
+                'run_id' => $workflow->runId(),
+                'target_scope' => $targetScope,
+                'message' => $exception->getMessage(),
+            ], 409);
+        }
+
+        return response()->json([
+            'query_name' => $query,
+            'workflow_id' => $workflow->id(),
+            'run_id' => $workflow->runId(),
+            'target_scope' => $targetScope,
+            'result' => serialize($result),
+        ]);
     }
 }

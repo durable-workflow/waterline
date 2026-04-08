@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Waterline\Tests\Fixtures\V2;
 
 use Generator;
+use Workflow\QueryMethod;
 use Workflow\UpdateMethod;
 use Workflow\V2\Attributes\Signal;
 use Workflow\V2\Attributes\Type;
@@ -39,6 +40,24 @@ final class TestOperatorCommandWorkflow extends Workflow
             'workflow_id' => $this->workflowId(),
             'run_id' => $this->runId(),
         ];
+    }
+
+    #[QueryMethod('current-state')]
+    public function currentState(): array
+    {
+        return [
+            'approved' => $this->approved,
+            'events' => $this->events,
+        ];
+    }
+
+    #[QueryMethod('events-starting-with')]
+    public function countEventsByPrefix(string $prefix): int
+    {
+        return count(array_filter(
+            $this->events,
+            static fn (string $event): bool => str_starts_with($event, $prefix),
+        ));
     }
 
     #[UpdateMethod('mark-approved')]
