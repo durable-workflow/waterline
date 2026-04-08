@@ -2,6 +2,7 @@
 
 namespace Waterline\Tests\Feature;
 
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
@@ -19,6 +20,7 @@ use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\Models\WorkflowTimer;
+use Workflow\V2\Support\ActivityLease;
 use Workflow\V2\Support\ActivitySnapshot;
 use Workflow\V2\Support\RunSummaryProjector;
 use Workflow\V2\Support\WorkflowInstanceId;
@@ -325,6 +327,98 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame('Hello, Taylor!', unserialize($response->json('activities.0.result')));
         $this->assertSame(['Taylor'], unserialize($response->json('activities.0.arguments')));
         $this->assertSame('Hello, Taylor!', unserialize($response->json('logs.0.result')));
+    }
+
+    public function testShowReturnsLiveHeartbeatMetadataForRunningActivity(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $startedAt = now()->subMinutes(4);
+        $heartbeatAt = now()->subMinute();
+        $leaseExpiresAt = now()->addMinutes(ActivityLease::DURATION_MINUTES);
+        $runId = (string) Str::ulid();
+        $activityId = (string) Str::ulid();
+        $taskId = (string) Str::ulid();
+        $attemptId = (string) Str::ulid();
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-heartbeat-live',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => $runId,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $startedAt,
+            'last_progress_at' => $startedAt,
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $activity = ActivityExecution::create([
+            'id' => $activityId,
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ActivityClass',
+            'activity_type' => 'activity.test',
+            'status' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'attempt_count' => 1,
+            'current_attempt_id' => $attemptId,
+            'started_at' => $startedAt,
+            'last_heartbeat_at' => $heartbeatAt,
+        ]);
+
+        WorkflowTask::create([
+            'id' => $taskId,
+            'workflow_run_id' => $run->id,
+            'task_type' => 'activity',
+            'status' => 'leased',
+            'payload' => [
+                'activity_execution_id' => $activity->id,
+            ],
+            'connection' => 'redis',
+            'queue' => 'default',
+            'leased_at' => $startedAt,
+            'lease_owner' => 'heartbeat-worker',
+            'lease_expires_at' => $leaseExpiresAt,
+            'attempt_count' => 1,
+        ]);
+
+        RunSummaryProjector::project($run->fresh([
+            'instance',
+            'tasks',
+            'activityExecutions',
+            'timers',
+            'failures',
+            'historyEvents',
+        ]));
+
+        $response = $this->get('/waterline/api/instances/' . $instance->id);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('status', 'running')
+            ->assertJsonPath('wait_kind', 'activity')
+            ->assertJsonPath('liveness_state', 'activity_task_leased')
+            ->assertJsonPath('activities.0.id', $activity->id)
+            ->assertJsonPath('activities.0.status', 'running')
+            ->assertJsonPath('activities.0.attempt_id', $attemptId)
+            ->assertJsonPath('activities.0.attempt_count', 1)
+            ->assertJsonPath('activities.0.last_heartbeat_at', $heartbeatAt->jsonSerialize())
+            ->assertJsonPath('tasks.0.id', $taskId)
+            ->assertJsonPath('tasks.0.status', 'leased')
+            ->assertJsonPath('tasks.0.lease_expires_at', $leaseExpiresAt->jsonSerialize())
+            ->assertJsonPath('next_task_lease_expires_at', $leaseExpiresAt->jsonSerialize());
     }
 
     public function testShowReturnsSideEffectTimelineEntries(): void
