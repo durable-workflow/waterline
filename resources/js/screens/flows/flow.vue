@@ -503,6 +503,7 @@
                         <tr>
                             <th scope="col">Activity</th>
                             <th scope="col">Status</th>
+                            <th scope="col">Attempts</th>
                             <th scope="col">Queue</th>
                             <th scope="col">Started</th>
                             <th scope="col">Heartbeat</th>
@@ -514,6 +515,10 @@
                         <tr v-for="activity in activityRows()" :key="activity.id">
                             <td>{{ activity.type || activity.class }}</td>
                             <td>{{ activity.status || '-' }}</td>
+                            <td>
+                                {{ activity.attempt_count || 0 }}
+                                <div v-if="activity.attempt_id" class="small text-muted">{{ activity.attempt_id }}</div>
+                            </td>
                             <td>{{ activity.queue || '-' }}</td>
                             <td>{{ timestamp(activity.started_at) }}</td>
                             <td>{{ timestamp(activity.last_heartbeat_at) }}</td>

@@ -289,6 +289,7 @@ class V2DashboardWorkflowTest extends TestCase
                     'sequence' => 1,
                     'type' => 'activity.test',
                     'class' => 'ActivityClass',
+                    'attempt_id' => '01JTESTATTEMPT000000000001',
                     'status' => 'completed',
                     'attempt_count' => 1,
                     'connection' => 'redis',
@@ -310,7 +311,13 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('activities.0.class', 'ActivityClass')
             ->assertJsonPath('activities.0.type', 'activity.test')
             ->assertJsonPath('activities.0.status', 'completed')
+            ->assertJsonPath('activities.0.attempt_id', '01JTESTATTEMPT000000000001')
+            ->assertJsonPath('activities.0.attempt_count', 1)
             ->assertJsonPath('activities.0.connection', 'redis')
+            ->assertJsonPath('activities.0.queue', 'default')
+            ->assertJsonPath('activities.0.started_at', $startedAt->jsonSerialize())
+            ->assertJsonPath('activities.0.last_heartbeat_at', null)
+            ->assertJsonPath('activities.0.closed_at', $closedAt->jsonSerialize())
             ->assertJsonPath('logs.0.class', 'ActivityClass')
             ->assertJsonPath('chartData.1.type', 'Activity')
             ->assertJsonPath('chartData.1.x', 'ActivityClass');
@@ -2900,6 +2907,8 @@ class V2DashboardWorkflowTest extends TestCase
 
         $execution->forceFill([
             'status' => 'running',
+            'attempt_count' => 1,
+            'current_attempt_id' => '01JTESTATTEMPT000000000001',
             'started_at' => now()->subSeconds(15),
         ])->save();
 
@@ -2933,8 +2942,11 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('activities.0.id', $executionId)
             ->assertJsonPath('activities.0.class', 'ActivityClass')
             ->assertJsonPath('activities.0.type', 'activity.test')
+            ->assertJsonPath('activities.0.attempt_id', '01JTESTATTEMPT000000000001')
+            ->assertJsonPath('activities.0.attempt_count', 1)
             ->assertJsonPath('activities.0.status', 'running')
             ->assertJsonPath('activities.0.queue', 'activities')
+            ->assertJsonPath('activities.0.closed_at', null)
             ->assertJsonPath('waits.0.kind', 'activity')
             ->assertJsonPath('waits.0.status', 'open')
             ->assertJsonPath('waits.0.source_status', 'running')
