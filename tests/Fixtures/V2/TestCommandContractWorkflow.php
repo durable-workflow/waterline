@@ -12,7 +12,9 @@ use function Workflow\V2\awaitSignal;
 use Workflow\V2\Workflow;
 
 #[Type('workflow.command-contract')]
-#[Signal('approved-by')]
+#[Signal('approved-by', [
+    ['name' => 'actor', 'type' => 'string'],
+])]
 #[Signal('rejected-by')]
 final class TestCommandContractWorkflow extends Workflow
 {

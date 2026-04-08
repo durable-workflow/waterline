@@ -1219,6 +1219,8 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
+            ->assertJsonPath('declared_signal_contracts.0.name', 'approved-by')
+            ->assertJsonPath('declared_signal_contracts.0.parameters.0.name', 'actor')
             ->assertJsonPath('declared_updates', ['mark-approved'])
             ->assertJsonPath('declared_update_contracts.0.name', 'mark-approved')
             ->assertJsonPath('declared_update_contracts.0.parameters.0.name', 'approved')
@@ -1291,6 +1293,8 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
+            ->assertJsonPath('declared_signal_contracts.0.name', 'approved-by')
+            ->assertJsonPath('declared_signal_contracts.0.parameters.0.name', 'actor')
             ->assertJsonPath('declared_updates', ['mark-approved'])
             ->assertJsonPath('declared_update_contracts.0.name', 'mark-approved')
             ->assertJsonPath('declared_update_contracts.0.parameters.0.name', 'approved')
@@ -1303,6 +1307,11 @@ class V2DashboardWorkflowTest extends TestCase
             ->sole();
 
         $this->assertSame(['approved-by', 'rejected-by'], $started->payload['declared_signals'] ?? null);
+        $this->assertSame('approved-by', $started->payload['declared_signal_contracts'][0]['name'] ?? null);
+        $this->assertSame(
+            'actor',
+            $started->payload['declared_signal_contracts'][0]['parameters'][0]['name'] ?? null,
+        );
         $this->assertSame(['mark-approved'], $started->payload['declared_updates'] ?? null);
         $this->assertSame('mark-approved', $started->payload['declared_update_contracts'][0]['name'] ?? null);
         $this->assertSame(
@@ -1362,6 +1371,23 @@ class V2DashboardWorkflowTest extends TestCase
             'event_type' => HistoryEventType::WorkflowStarted->value,
             'payload' => [
                 'declared_signals' => ['approved-by', 'rejected-by'],
+                'declared_signal_contracts' => [
+                    [
+                        'name' => 'approved-by',
+                        'parameters' => [
+                            [
+                                'name' => 'actor',
+                                'position' => 0,
+                                'required' => true,
+                                'variadic' => false,
+                                'default_available' => false,
+                                'default' => null,
+                                'type' => 'string',
+                                'allows_null' => true,
+                            ],
+                        ],
+                    ],
+                ],
                 'declared_updates' => ['mark-approved'],
                 'declared_update_contracts' => [
                     [
@@ -1387,6 +1413,8 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
+            ->assertJsonPath('declared_signal_contracts.0.name', 'approved-by')
+            ->assertJsonPath('declared_signal_contracts.0.parameters.0.name', 'actor')
             ->assertJsonPath('declared_updates', ['mark-approved'])
             ->assertJsonPath('declared_update_contracts.0.name', 'mark-approved')
             ->assertJsonPath('declared_update_contracts.0.parameters.0.name', 'approved')
@@ -3733,6 +3761,32 @@ class V2DashboardWorkflowTest extends TestCase
             'workflow_id' => 'order-signal-selected-run',
             'run_id' => $workflow->runId(),
         ], $workflow->output());
+    }
+
+    public function testSignalReturnsValidationErrorsForInvalidArguments(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-signal-invalid');
+        $workflow->start();
+
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
+
+        $response = $this->postJson(
+            '/waterline/api/instances/' . $workflow->id() . '/signals/name-provided',
+            ['arguments' => ['nickname' => 'Taylor']],
+        );
+
+        $response
+            ->assertStatus(409)
+            ->assertJsonPath('outcome', 'rejected_invalid_arguments')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'instance')
+            ->assertJsonPath('command_status', 'rejected')
+            ->assertJsonPath('rejection_reason', 'invalid_signal_arguments')
+            ->assertJsonPath('validation_errors.name.0', 'The name argument is required.')
+            ->assertJsonPath('validation_errors.nickname.0', 'Unknown argument [nickname].');
     }
 
     public function testRepairTargetsSelectedCurrentRunAndReturnsAcceptedResponse(): void

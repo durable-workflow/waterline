@@ -12,7 +12,9 @@ use function Workflow\V2\awaitSignal;
 use Workflow\V2\Workflow;
 
 #[Type('workflow.operator-command')]
-#[Signal('name-provided')]
+#[Signal('name-provided', [
+    ['name' => 'name', 'type' => 'string'],
+])]
 final class TestOperatorCommandWorkflow extends Workflow
 {
     private bool $approved = false;

@@ -119,7 +119,16 @@
                     <div class="col">{{ flow.queue }}</div>
                 </div>
 
-                <div class="row mb-2" v-if="flow.declared_signals && flow.declared_signals.length">
+                <div class="row mb-2" v-if="flow.declared_signal_contracts && flow.declared_signal_contracts.length">
+                    <div class="col-md-2"><strong>Signals</strong></div>
+                    <div class="col">
+                        <div v-for="contract in flow.declared_signal_contracts" :key="contract.name">
+                            {{ signalContractLabel(contract) }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mb-2" v-else-if="flow.declared_signals && flow.declared_signals.length">
                     <div class="col-md-2"><strong>Signals</strong></div>
                     <div class="col">{{ flow.declared_signals.join(', ') }}</div>
                 </div>
@@ -946,7 +955,7 @@ export default {
             }
         },
 
-        updateContractLabel(contract) {
+        commandContractLabel(contract) {
             const parameters = Array.isArray(contract && contract.parameters)
                 ? contract.parameters
                 : []
@@ -972,6 +981,14 @@ export default {
             return signature
                 ? `${contract.name}(${signature})`
                 : contract.name
+        },
+
+        signalContractLabel(contract) {
+            return this.commandContractLabel(contract)
+        },
+
+        updateContractLabel(contract) {
+            return this.commandContractLabel(contract)
         },
 
         compatibilityFleetSummary(supported) {
@@ -1051,8 +1068,18 @@ export default {
         },
 
         signalTargets() {
+            if (Array.isArray(this.flow.declared_signal_contracts) && this.flow.declared_signal_contracts.length) {
+                return this.flow.declared_signal_contracts.map((contract) => ({
+                    name: contract.name,
+                    label: this.signalContractLabel(contract),
+                }))
+            }
+
             return Array.isArray(this.flow.declared_signals)
-                ? this.flow.declared_signals
+                ? this.flow.declared_signals.map((name) => ({
+                    name,
+                    label: name,
+                }))
                 : []
         },
 
@@ -1090,15 +1117,17 @@ export default {
             return this.flow.declared_update_contracts.find((contract) => contract.name === name) || null
         },
 
-        defaultSignalArguments() {
-            return '[]'
+        signalContractByName(name) {
+            if (!Array.isArray(this.flow.declared_signal_contracts)) {
+                return null
+            }
+
+            return this.flow.declared_signal_contracts.find((contract) => contract.name === name) || null
         },
 
-        defaultUpdateArguments(name) {
-            const contract = this.updateContractByName(name)
-
+        defaultContractArguments(contract, fallback = '[]') {
             if (!contract || !Array.isArray(contract.parameters) || !contract.parameters.length) {
-                return '[]'
+                return fallback
             }
 
             const template = {}
@@ -1120,6 +1149,14 @@ export default {
             return JSON.stringify(template, null, 2)
         },
 
+        defaultSignalArguments(name) {
+            return this.defaultContractArguments(this.signalContractByName(name))
+        },
+
+        defaultUpdateArguments(name) {
+            return this.defaultContractArguments(this.updateContractByName(name))
+        },
+
         parseCommandArguments(rawValue) {
             const value = (rawValue || '').trim()
 
@@ -1138,8 +1175,10 @@ export default {
             }
 
             const options = signals.map((signal) =>
-                `<option value="${this.escapeHtml(signal)}">${this.escapeHtml(signal)}</option>`
+                `<option value="${this.escapeHtml(signal.name)}">${this.escapeHtml(signal.label)}</option>`
             ).join('')
+
+            const firstSignal = signals[0].name
 
             const result = await Swal.fire({
                 title: 'Send signal',
@@ -1147,13 +1186,25 @@ export default {
                     <label class="d-block text-left mb-2" for="waterline-signal-target">Signal</label>
                     <select id="waterline-signal-target" class="swal2-input">${options}</select>
                     <label class="d-block text-left mb-2" for="waterline-signal-arguments">Arguments JSON</label>
-                    <textarea id="waterline-signal-arguments" class="swal2-textarea" style="min-height: 8rem;">${this.defaultSignalArguments()}</textarea>
-                    <div class="small text-muted text-left">Use a JSON array for positional arguments or any other JSON value for one payload.</div>
+                    <textarea id="waterline-signal-arguments" class="swal2-textarea" style="min-height: 8rem;">${this.escapeHtml(this.defaultSignalArguments(firstSignal))}</textarea>
+                    <div class="small text-muted text-left">Use a JSON object for named arguments when the signal declares a contract, a JSON array for positional arguments, or any other JSON value for one payload.</div>
                 `,
                 showCancelButton: true,
                 confirmButtonText: 'Send signal',
                 focusConfirm: false,
                 background: '#1c1c1c',
+                didOpen: () => {
+                    const select = document.getElementById('waterline-signal-target')
+                    const textarea = document.getElementById('waterline-signal-arguments')
+
+                    if (!select || !textarea) {
+                        return
+                    }
+
+                    select.addEventListener('change', () => {
+                        textarea.value = this.defaultSignalArguments(select.value)
+                    })
+                },
                 preConfirm: () => {
                     const target = document.getElementById('waterline-signal-target').value
                     const rawArguments = document.getElementById('waterline-signal-arguments').value
@@ -1675,11 +1726,16 @@ export default {
                     background: '#1c1c1c',
                 })
             } catch (error) {
-                const message = error.response
-                    && error.response.data
-                    && error.response.data.rejection_reason
-                    ? error.response.data.rejection_reason
-                    : 'Command was rejected.'
+                const validationMessages = error.response && error.response.data
+                    ? this.commandValidationMessages(error.response.data)
+                    : []
+                const message = validationMessages.length
+                    ? validationMessages.join(' ')
+                    : (error.response
+                        && error.response.data
+                        && error.response.data.rejection_reason
+                        ? error.response.data.rejection_reason
+                        : 'Command was rejected.')
 
                 Swal.fire({
                     title: 'Command rejected',
