@@ -333,6 +333,12 @@
                                 <div class="small text-muted" v-if="hasDetailValue(wait.sequence)">
                                     step {{ wait.sequence }}
                                 </div>
+                                <div class="small text-muted" v-if="hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.command_sequence)">
+                                    <span v-if="hasDetailValue(wait.signal_wait_id)">signal wait / {{ wait.signal_wait_id }}</span>
+                                    <span v-if="hasDetailValue(wait.command_sequence)">
+                                        <span v-if="hasDetailValue(wait.signal_wait_id)"> | </span>command / #{{ wait.command_sequence }}
+                                    </span>
+                                </div>
                             </td>
                             <td>
                                 {{ wait.status }}
@@ -947,10 +953,22 @@ export default {
             const details = []
 
             if (this.hasDetailValue(entry.command_status) || this.hasDetailValue(entry.command_outcome)) {
+                const commandDetails = ['command']
+
+                if (this.hasDetailValue(entry.command_sequence)) {
+                    commandDetails.push('#' + entry.command_sequence)
+                }
+
+                if (this.hasDetailValue(entry.command_status)) {
+                    commandDetails.push(entry.command_status)
+                }
+
+                if (this.hasDetailValue(entry.command_outcome)) {
+                    commandDetails.push(entry.command_outcome)
+                }
+
                 details.push(
-                    ['command', entry.command_status, entry.command_outcome]
-                        .filter(Boolean)
-                        .join(' / ')
+                    commandDetails.join(' / ')
                 )
             }
 

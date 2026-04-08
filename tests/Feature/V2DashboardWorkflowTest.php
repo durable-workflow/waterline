@@ -1894,6 +1894,132 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.command_sequence', 2);
     }
 
+    public function testShowKeepsSignalWaitCommandMetadataWhenCommandRowsDrift(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-signal-history-snapshot',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWSIGNALSNAPSHOT01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subSeconds(15),
+            'last_history_sequence' => 0,
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $startCommand = WorkflowCommand::create([
+            'id' => '01JTESTCOMMANDSIGNALSNAP001',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 1,
+            'command_type' => 'start',
+            'target_scope' => 'instance',
+            'source' => 'php',
+            'status' => 'accepted',
+            'outcome' => 'started_new',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'accepted_at' => now()->subMinutes(2),
+            'applied_at' => now()->subMinutes(2),
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinutes(2),
+        ]);
+
+        $signalCommand = WorkflowCommand::create([
+            'id' => '01JTESTCOMMANDSIGNALSNAP002',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 2,
+            'command_type' => 'signal',
+            'target_scope' => 'instance',
+            'source' => 'webhook',
+            'status' => 'accepted',
+            'outcome' => 'signal_received',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'payload_codec' => Serializer::class,
+            'payload' => Serializer::serialize([
+                'name' => 'name-provided',
+                'arguments' => ['Taylor'],
+            ]),
+            'accepted_at' => now()->subSeconds(20),
+            'created_at' => now()->subSeconds(20),
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::StartAccepted, [
+            'workflow_command_id' => $startCommand->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'workflow_class' => $run->workflow_class,
+            'workflow_type' => $run->workflow_type,
+            'outcome' => $startCommand->outcome,
+        ], null, $startCommand);
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::WorkflowStarted, [
+            'workflow_command_id' => $startCommand->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'workflow_class' => $run->workflow_class,
+            'workflow_type' => $run->workflow_type,
+            'declared_signals' => ['name-provided'],
+            'declared_updates' => [],
+        ], null, $startCommand);
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::SignalWaitOpened, [
+            'signal_name' => 'name-provided',
+            'signal_wait_id' => 'signal-wait-1',
+            'sequence' => 1,
+        ]);
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::SignalReceived, [
+            'signal_name' => 'name-provided',
+            'signal_wait_id' => 'signal-wait-1',
+        ], null, $signalCommand);
+
+        WorkflowTask::create([
+            'id' => '01JTESTTASKSIGNALSNAPSHOT1',
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'ready',
+            'available_at' => now()->subSeconds(20),
+            'payload' => [],
+            'connection' => 'redis',
+            'queue' => 'default',
+            'created_at' => now()->subSeconds(20),
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $signalCommand->delete();
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('waits.0.kind', 'signal')
+            ->assertJsonPath('waits.0.signal_wait_id', 'signal-wait-1')
+            ->assertJsonPath('waits.0.command_sequence', 2)
+            ->assertJsonPath('waits.0.command_status', 'accepted')
+            ->assertJsonPath('waits.0.command_outcome', 'signal_received');
+    }
+
     public function testShowOrdersCommandsByDurableCommandSequence(): void
     {
         config()->set('waterline.engine_source', 'v2');
