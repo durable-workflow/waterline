@@ -279,7 +279,7 @@
                                 </div>
                             </td>
                             <td>{{ timestamp(entry.recorded_at) }}</td>
-                            <td>{{ entry.kind }}</td>
+                            <td>{{ historyKind(entry.kind) }}</td>
                             <td>
                                 <div>{{ entry.summary }}</div>
                                 <div class="small text-muted" v-if="historySource(entry)">
@@ -947,6 +947,14 @@ export default {
             }
 
             return [entry.source_kind, entry.source_id].filter(Boolean).join(' / ')
+        },
+
+        historyKind(kind) {
+            if (!this.hasDetailValue(kind)) {
+                return '-'
+            }
+
+            return String(kind).replace(/_/g, ' ')
         },
 
         historySnapshot(entry) {

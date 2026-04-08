@@ -191,6 +191,94 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame('order-123', $exception['properties'][0]['value']);
     }
 
+    public function testShowReturnsSideEffectTimelineEntries(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-side-effect-history',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNSIDEEFFECT001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYSIDEEFFECT001A',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::StartAccepted->value,
+            'payload' => [],
+            'recorded_at' => now()->subMinute(),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYSIDEEFFECT001B',
+            'workflow_run_id' => $run->id,
+            'sequence' => 2,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [],
+            'recorded_at' => now()->subSeconds(55),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYSIDEEFFECT001C',
+            'workflow_run_id' => $run->id,
+            'sequence' => 3,
+            'event_type' => HistoryEventType::SideEffectRecorded->value,
+            'payload' => [
+                'sequence' => 1,
+                'result' => Serializer::serialize(1),
+            ],
+            'recorded_at' => now()->subSeconds(50),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYSIDEEFFECT001D',
+            'workflow_run_id' => $run->id,
+            'sequence' => 4,
+            'event_type' => HistoryEventType::SignalWaitOpened->value,
+            'payload' => [
+                'sequence' => 2,
+                'signal_name' => 'finish',
+                'signal_wait_id' => 'signal-wait-side-effect',
+            ],
+            'recorded_at' => now()->subSeconds(45),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $response = $this->get('/waterline/api/instances/' . $instance->id);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('instance_id', $instance->id)
+            ->assertJsonPath('timeline.2.type', 'SideEffectRecorded')
+            ->assertJsonPath('timeline.2.kind', 'side_effect')
+            ->assertJsonPath('timeline.2.source_kind', 'workflow_run')
+            ->assertJsonPath('timeline.2.source_id', $run->id)
+            ->assertJsonPath('timeline.2.workflow_sequence', 1)
+            ->assertJsonPath('timeline.2.summary', 'Recorded side effect.')
+            ->assertJsonPath('timeline.3.type', 'SignalWaitOpened')
+            ->assertJsonPath('timeline.3.signal_wait_id', 'signal-wait-side-effect')
+            ->assertJsonPath('timeline.3.workflow_sequence', 2);
+    }
+
     public function testShowCanResolveCurrentRunFromInstanceId(): void
     {
         config()->set('waterline.engine_source', 'v2');
