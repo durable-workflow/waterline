@@ -124,7 +124,11 @@ class V2DashboardWorkflowTest extends TestCase
                         'file' => __FILE__,
                         'line' => 99,
                     ]],
-                    'properties' => [],
+                    'properties' => [[
+                        'declaring_class' => 'Tests\\Fixtures\\Workflow',
+                        'name' => 'orderId',
+                        'value' => 'order-123',
+                    ]],
                 ],
             ],
             'recorded_at' => now()->subMinutes(7),
@@ -161,6 +165,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('activities.0.class', 'ActivityClass')
             ->assertJsonPath('logs.0.class', 'ActivityClass')
             ->assertJsonPath('exceptions.0.class', 'ActivityClass')
+            ->assertJsonPath('exceptions.0.code', 'trace')
             ->assertJsonPath('commands', [])
             ->assertJsonPath('timeline.0.type', 'ActivityFailed')
             ->assertJsonPath('timeline.0.failure_id', '01JTESTFAILURE000000000001')
@@ -169,8 +174,11 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->assertSame(\RuntimeException::class, $exception['__constructor']);
         $this->assertSame('boom', $exception['message']);
+        $this->assertSame(422, $exception['code']);
         $this->assertCount(1, $exception['trace']);
         $this->assertSame('handle', $exception['trace'][0]['function']);
+        $this->assertSame('orderId', $exception['properties'][0]['name']);
+        $this->assertSame('order-123', $exception['properties'][0]['value']);
     }
 
     public function testShowCanResolveCurrentRunFromInstanceId(): void

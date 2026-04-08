@@ -502,9 +502,20 @@
                                 <td colspan="3">
                                     <div class="code-bg text-white">
                                         <div v-for="exception in [unserialize(exception.exception)]">
-                                            <b>{{ exception.__constructor }}("{{ exception.message }}")</b><br />
+                                            <b>{{ exception.__constructor }}("{{ exception.message }}")</b>
+                                            <span v-if="exception.code !== undefined && exception.code !== null">
+                                                [code {{ exception.code }}]
+                                            </span><br />
                                             <span style="opacity: 0.8">in {{ exception.file }} (line {{ exception.line
                                             }})</span><br /><br />
+                                            <div v-if="exception.properties && exception.properties.length">
+                                                <b>Custom Properties</b><br /><br />
+                                                <div v-for="property in exception.properties"
+                                                    :key="property.declaring_class + ':' + property.name">
+                                                    <b>{{ property.declaring_class }}::{{ property.name }}</b>
+                                                    <pre class="mb-3">{{ prettyJson(property.value) }}</pre>
+                                                </div>
+                                            </div>
                                         </div>
                                         <prism-editor :id="'prism' + exception.id" style="background-color: #424242" v-model="exception.code"
                                             :highlight="highlighter" line-numbers readonly></prism-editor>
@@ -595,6 +606,9 @@ export default {
                             return '<div style="padding: 1em">' +
                                 '<b>Class</b>: ' + exception.__constructor + '<br />' +
                                 '<b>Message</b>: ' + exception.message + '<br />' +
+                                ((exception.code !== undefined && exception.code !== null)
+                                    ? '<b>Code</b>: ' + exception.code + '<br />'
+                                    : '') +
                                 '<b>File</b>: ' + exception.file + '<br />' +
                                 '<b>Line</b>: ' + exception.line + '<br />' +
                                 '</div>'
@@ -774,6 +788,14 @@ export default {
 
         highlighter(code) {
             return highlight(code, languages.php)
+        },
+
+        prettyJson(value) {
+            const encoded = JSON.stringify(value, null, 2)
+
+            return encoded === undefined
+                ? 'null'
+                : encoded
         },
 
         duration(start, end) {
