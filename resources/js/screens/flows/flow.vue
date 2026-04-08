@@ -1192,10 +1192,43 @@ export default {
                     return
                 }
 
-                template[parameter.name] = null
+                template[parameter.name] = this.defaultContractArgumentValue(parameter)
             })
 
             return JSON.stringify(template, null, 2)
+        },
+
+        defaultContractArgumentValue(parameter) {
+            if (!parameter) {
+                return null
+            }
+
+            if (parameter.allows_null === true) {
+                return null
+            }
+
+            const type = typeof parameter.type === 'string'
+                ? parameter.type.replace(/^\?/, '')
+                : null
+
+            switch (type) {
+                case 'bool':
+                case 'false':
+                case 'true':
+                    return false
+                case 'int':
+                case 'float':
+                    return 0
+                case 'string':
+                    return ''
+                case 'array':
+                case 'iterable':
+                    return []
+                case 'object':
+                    return {}
+                default:
+                    return null
+            }
         },
 
         defaultSignalArguments(name) {

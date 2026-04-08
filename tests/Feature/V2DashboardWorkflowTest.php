@@ -1428,10 +1428,71 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
             ->assertJsonPath('declared_signal_contracts.0.name', 'approved-by')
             ->assertJsonPath('declared_signal_contracts.0.parameters.0.name', 'actor')
+            ->assertJsonPath('declared_signal_targets.0.name', 'approved-by')
+            ->assertJsonPath('declared_signal_targets.0.has_contract', true)
+            ->assertJsonPath('declared_signal_targets.1.name', 'rejected-by')
+            ->assertJsonPath('declared_signal_targets.1.has_contract', false)
             ->assertJsonPath('declared_updates', ['mark-approved'])
             ->assertJsonPath('declared_update_contracts.0.name', 'mark-approved')
             ->assertJsonPath('declared_update_contracts.0.parameters.0.name', 'approved')
+            ->assertJsonPath('declared_update_targets.0.name', 'mark-approved')
+            ->assertJsonPath('declared_update_targets.0.has_contract', true)
             ->assertJsonPath('declared_contract_source', 'durable_history');
+    }
+
+    public function testShowReturnsEmptyNormalizedTargetsWhenCommandContractIsUnavailable(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-command-contract-unavailable',
+            'workflow_class' => 'Missing\\Workflow\\CommandContractWorkflow',
+            'workflow_type' => 'workflow.command-contract',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCOMMANDUNAVL1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'Missing\\Workflow\\CommandContractWorkflow',
+            'workflow_type' => 'workflow.command-contract',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(20),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'Missing\\Workflow\\CommandContractWorkflow',
+            'workflow_type' => 'workflow.command-contract',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'created_at' => now()->subMinute(),
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('declared_signals', [])
+            ->assertJsonPath('declared_signal_contracts', [])
+            ->assertJsonPath('declared_signal_targets', [])
+            ->assertJsonPath('declared_updates', [])
+            ->assertJsonPath('declared_update_contracts', [])
+            ->assertJsonPath('declared_update_targets', [])
+            ->assertJsonPath('declared_contract_source', 'unavailable');
     }
 
     public function testShowMarksExpiredLeasedTaskAsRepairNeeded(): void
@@ -3916,6 +3977,32 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('validation_errors.extra.0', 'Unknown argument [extra].');
     }
 
+    public function testUpdateReturnsValidationErrorsForNullArgumentsWhenTheContractDisallowsNull(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-update-null-invalid');
+        $workflow->start();
+
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
+
+        $response = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/updates/mark-approved', [
+            'arguments' => [
+                'approved' => null,
+            ],
+        ]);
+
+        $response
+            ->assertStatus(409)
+            ->assertJsonPath('outcome', 'rejected_invalid_arguments')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'instance')
+            ->assertJsonPath('command_status', 'rejected')
+            ->assertJsonPath('rejection_reason', 'invalid_update_arguments')
+            ->assertJsonPath('validation_errors.approved.0', 'The approved argument cannot be null.');
+    }
+
     public function testSignalTargetsSelectedRunRouteAndAcceptsScalarJsonPayload(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -3998,6 +4085,31 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('rejection_reason', 'invalid_signal_arguments')
             ->assertJsonPath('validation_errors.name.0', 'The name argument is required.')
             ->assertJsonPath('validation_errors.nickname.0', 'Unknown argument [nickname].');
+    }
+
+    public function testSignalReturnsValidationErrorsForTypeMismatchedArguments(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-signal-type-invalid');
+        $workflow->start();
+
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
+
+        $response = $this->postJson(
+            '/waterline/api/instances/' . $workflow->id() . '/signals/name-provided',
+            ['arguments' => ['name' => 123]],
+        );
+
+        $response
+            ->assertStatus(409)
+            ->assertJsonPath('outcome', 'rejected_invalid_arguments')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'instance')
+            ->assertJsonPath('command_status', 'rejected')
+            ->assertJsonPath('rejection_reason', 'invalid_signal_arguments')
+            ->assertJsonPath('validation_errors.name.0', 'The name argument must be of type string.');
     }
 
     public function testRepairTargetsSelectedCurrentRunAndReturnsAcceptedResponse(): void
