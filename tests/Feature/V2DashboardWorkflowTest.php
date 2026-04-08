@@ -109,6 +109,10 @@ class V2DashboardWorkflowTest extends TestCase
             'sequence' => 1,
             'event_type' => HistoryEventType::ActivityFailed->value,
             'payload' => [
+                'activity_execution_id' => '01JTESTACTIVITY00000000000',
+                'activity_class' => 'ActivityClass',
+                'activity_type' => 'activity.test',
+                'sequence' => 1,
                 'failure_id' => '01JTESTFAILURE000000000001',
                 'exception_class' => \RuntimeException::class,
                 'message' => 'boom',
@@ -169,7 +173,12 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('exceptions.0.code', 'trace')
             ->assertJsonPath('commands', [])
             ->assertJsonPath('timeline.0.type', 'ActivityFailed')
+            ->assertJsonPath('timeline.0.entry_kind', 'point')
+            ->assertJsonPath('timeline.0.source_kind', 'activity_execution')
+            ->assertJsonPath('timeline.0.source_id', '01JTESTACTIVITY00000000000')
             ->assertJsonPath('timeline.0.failure_id', '01JTESTFAILURE000000000001')
+            ->assertJsonPath('timeline.0.activity_status', 'failed')
+            ->assertJsonPath('timeline.0.failure.handled', false)
             ->assertJsonPath('chartData.0.type', 'Workflow')
             ->assertJsonPath('chartData.1.type', 'Activity');
 

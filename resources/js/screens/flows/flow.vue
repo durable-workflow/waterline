@@ -270,7 +270,15 @@
                             </td>
                             <td>{{ timestamp(entry.recorded_at) }}</td>
                             <td>{{ entry.kind }}</td>
-                            <td>{{ entry.summary }}</td>
+                            <td>
+                                <div>{{ entry.summary }}</div>
+                                <div class="small text-muted" v-if="historySource(entry)">
+                                    {{ historySource(entry) }}
+                                </div>
+                                <div class="small text-muted" v-if="historySnapshot(entry)">
+                                    {{ historySnapshot(entry) }}
+                                </div>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -887,6 +895,52 @@ export default {
             }
 
             return '-'
+        },
+
+        historySource(entry) {
+            if (!this.hasDetailValue(entry.source_kind) && !this.hasDetailValue(entry.source_id)) {
+                return ''
+            }
+
+            return [entry.source_kind, entry.source_id].filter(Boolean).join(' / ')
+        },
+
+        historySnapshot(entry) {
+            const details = []
+
+            if (this.hasDetailValue(entry.command_status) || this.hasDetailValue(entry.command_outcome)) {
+                details.push(
+                    ['command', entry.command_status, entry.command_outcome]
+                        .filter(Boolean)
+                        .join(' / ')
+                )
+            }
+
+            if (this.hasDetailValue(entry.activity_status)) {
+                details.push('activity / ' + entry.activity_status)
+            }
+
+            if (entry.timer && this.hasDetailValue(entry.timer.status)) {
+                details.push('timer / ' + entry.timer.status)
+            }
+
+            if (this.hasDetailValue(entry.child_status)) {
+                details.push('child / ' + entry.child_status)
+            }
+
+            if (entry.failure && this.hasDetailValue(entry.failure.propagation_kind)) {
+                const handled = entry.failure.handled === true
+                    ? 'handled'
+                    : (entry.failure.handled === false ? 'unhandled' : null)
+
+                details.push(
+                    ['failure', entry.failure.propagation_kind, handled]
+                        .filter(Boolean)
+                        .join(' / ')
+                )
+            }
+
+            return details.join(' | ')
         },
 
         commandSource(command) {
