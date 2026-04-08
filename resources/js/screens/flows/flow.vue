@@ -162,6 +162,16 @@
                     </div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.open_wait_id)">
+                    <div class="col-md-2"><strong>Open Wait ID</strong></div>
+                    <div class="col">{{ flow.open_wait_id }}</div>
+                </div>
+
+                <div class="row mb-2" v-if="resumeSourceSummary(flow.resume_source_kind, flow.resume_source_id)">
+                    <div class="col-md-2"><strong>Resume Source</strong></div>
+                    <div class="col">{{ resumeSourceSummary(flow.resume_source_kind, flow.resume_source_id) }}</div>
+                </div>
+
                 <div class="row mb-2" v-if="hasDetailValue(flow.liveness_reason)">
                     <div class="col-md-2"><strong>Liveness</strong></div>
                     <div class="col">
@@ -308,11 +318,17 @@
                     <tbody>
                         <tr v-for="wait in waitRows()" :key="wait.id">
                             <td>
-                                {{ wait.summary }}
+                                <div>
+                                    {{ wait.summary }}
+                                    <span v-if="isCurrentWait(wait)" class="badge badge-info ml-1">Current</span>
+                                </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.target_name) || hasDetailValue(wait.target_type)">
                                     {{ wait.kind }}
                                     <span v-if="hasDetailValue(wait.target_name)"> / {{ wait.target_name }}</span>
                                     <span v-else-if="hasDetailValue(wait.target_type)"> / {{ wait.target_type }}</span>
+                                </div>
+                                <div class="small text-muted" v-if="resumeSourceSummary(wait.resume_source_kind, wait.resume_source_id)">
+                                    resume / {{ resumeSourceSummary(wait.resume_source_kind, wait.resume_source_id) }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.sequence)">
                                     step {{ wait.sequence }}
@@ -857,6 +873,28 @@ export default {
 
         runNavigationRows() {
             return this.flow.run_navigation || []
+        },
+
+        isCurrentWait(wait) {
+            return this.hasDetailValue(this.flow.open_wait_id) && this.flow.open_wait_id === wait.id
+        },
+
+        resumeSourceSummary(kind, id) {
+            if (!this.hasDetailValue(kind) && !this.hasDetailValue(id)) {
+                return ''
+            }
+
+            const parts = []
+
+            if (this.hasDetailValue(kind)) {
+                parts.push(String(kind).replace(/_/g, ' '))
+            }
+
+            if (this.hasDetailValue(id)) {
+                parts.push(id)
+            }
+
+            return parts.join(' / ')
         },
 
         waitBacking(wait) {

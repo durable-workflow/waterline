@@ -234,6 +234,8 @@ class V2DashboardWorkflowTest extends TestCase
             'wait_kind' => 'signal',
             'wait_reason' => 'Waiting for signal approved-by',
             'wait_started_at' => now()->subSeconds(30),
+            'open_wait_id' => 'signal-wait-1',
+            'resume_source_kind' => 'signal',
             'next_task_at' => now()->subSeconds(5),
             'liveness_state' => 'waiting_for_signal',
             'liveness_reason' => 'Waiting for signal approved-by.',
@@ -252,6 +254,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('current_run_status_bucket', 'running')
             ->assertJsonPath('wait_kind', 'signal')
             ->assertJsonPath('wait_reason', 'Waiting for signal approved-by')
+            ->assertJsonPath('open_wait_id', 'signal-wait-1')
+            ->assertJsonPath('resume_source_kind', 'signal')
+            ->assertJsonPath('resume_source_id', null)
             ->assertJsonPath('liveness_state', 'waiting_for_signal')
             ->assertJsonPath('liveness_reason', 'Waiting for signal approved-by.')
             ->assertJsonPath('declared_signals', [])
