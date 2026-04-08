@@ -78,6 +78,7 @@ class V2CompatibilityDashboardWorkflowTest extends TestCase
                 'Workflow task 01JTESTFLOWTASKCOMPAT00001 is ready but waiting for a compatible worker. Requires compatibility [build-a]; this worker supports [build-b]. No active worker heartbeat for connection [redis] queue [default] advertises compatibility [build-a].'
             )
             ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('repair_blocked_reason', 'waiting_for_compatible_worker')
             ->assertJsonPath('tasks.0.compatibility', 'build-a')
             ->assertJsonPath('tasks.0.compatibility_supported', false)
             ->assertJsonPath('tasks.0.compatibility_supported_in_fleet', false)

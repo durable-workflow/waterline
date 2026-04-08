@@ -6,19 +6,19 @@
                 <h5 v-if="ready">{{ flow.class }}</h5>
 
                 <div class="d-flex align-items-center">
-                    <button v-if="ready && flow.can_repair"
+                    <button v-if="ready && canAction('repair')"
                         class="btn btn-outline-info btn-sm mr-2"
                         @click="issueCommand('repair')">
                         Repair
                     </button>
 
-                    <button v-if="ready && flow.can_issue_terminal_commands"
+                    <button v-if="ready && canAction('cancel', flow.can_issue_terminal_commands)"
                         class="btn btn-outline-warning btn-sm mr-2"
                         @click="issueCommand('cancel')">
                         Cancel
                     </button>
 
-                    <button v-if="ready && flow.can_issue_terminal_commands"
+                    <button v-if="ready && canAction('terminate', flow.can_issue_terminal_commands)"
                         class="btn btn-outline-danger btn-sm mr-3"
                         @click="issueCommand('terminate')">
                         Terminate
@@ -68,6 +68,16 @@
                 <div class="row mb-2" v-if="hasDetailValue(flow.read_only_reason)">
                     <div class="col-md-2"><strong>Mode</strong></div>
                     <div class="col">{{ flow.read_only_reason }}</div>
+                </div>
+
+                <div class="row mb-2" v-if="actionStateRows().length">
+                    <div class="col-md-2"><strong>Actions</strong></div>
+                    <div class="col">
+                        <div v-for="action in actionStateRows()" :key="action.name">
+                            {{ action.label }}: {{ action.allowed ? 'available' : 'blocked' }}
+                            <span v-if="hasDetailValue(action.reason)" class="text-muted">({{ action.reason }})</span>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="row mb-2">
@@ -910,6 +920,47 @@ export default {
             return this.flow.activities && this.flow.activities.length
                 ? this.flow.activities
                 : (this.flow.logs || [])
+        },
+
+        canAction(name, fallback = false) {
+            const key = 'can_' + name
+
+            if (this.hasDetailValue(this.flow[key])) {
+                return this.flow[key] === true
+            }
+
+            return fallback === true
+        },
+
+        actionBlockedReason(name) {
+            const key = name + '_blocked_reason'
+
+            return this.hasDetailValue(this.flow[key])
+                ? this.flow[key]
+                : null
+        },
+
+        actionStateRows() {
+            const hasExplicitContract = ['signal', 'update', 'repair', 'cancel', 'terminate']
+                .some((name) => this.hasDetailValue(this.flow['can_' + name]) || this.hasDetailValue(this.flow[name + '_blocked_reason']))
+
+            if (!hasExplicitContract) {
+                return []
+            }
+
+            return [
+                { name: 'signal', label: 'Signal' },
+                { name: 'update', label: 'Update' },
+                { name: 'repair', label: 'Repair' },
+                { name: 'cancel', label: 'Cancel' },
+                { name: 'terminate', label: 'Terminate' },
+            ].map((action) => ({
+                ...action,
+                allowed: this.canAction(action.name, action.name === 'cancel' || action.name === 'terminate'
+                    ? this.flow.can_issue_terminal_commands
+                    : false),
+                reason: this.actionBlockedReason(action.name),
+            }))
         },
 
         waitRows() {
