@@ -1200,7 +1200,7 @@ export default {
         },
 
         canIssueQuery() {
-            return this.queryTargets().length > 0
+            return this.canAction('query', true) && this.queryTargets().length > 0
         },
 
         canIssueSignal() {
@@ -1543,6 +1543,10 @@ export default {
                     return 'The selected run is already closed.'
                 case 'repair_not_needed':
                     return 'The selected run already has a durable resume path.'
+                case 'workflow_definition_unavailable':
+                    return commandType === 'query'
+                        ? 'The durable query target is known, but this run cannot be replayed because its workflow definition is unavailable.'
+                        : 'The durable target is known, but this run cannot execute because its workflow definition is unavailable.'
                 default:
                     return reason
             }
@@ -2002,8 +2006,16 @@ export default {
                     ? validationMessages.join(' ')
                     : (error.response
                         && error.response.data
+                        && error.response.data.blocked_reason
+                        ? this.commandRejectionMessage(error.response.data.blocked_reason, commandType)
+                        : error.response
+                        && error.response.data
                         && error.response.data.rejection_reason
                         ? this.commandRejectionMessage(error.response.data.rejection_reason, commandType)
+                        : error.response
+                        && error.response.data
+                        && error.response.data.message
+                        ? error.response.data.message
                         : 'Command was rejected.')
 
                 Swal.fire({

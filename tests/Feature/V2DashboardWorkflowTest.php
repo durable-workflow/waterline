@@ -1227,6 +1227,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_query_targets.1.name', 'stageMatches')
             ->assertJsonPath('declared_query_targets.1.has_contract', true)
             ->assertJsonPath('declared_query_targets.1.parameters.0.name', 'stage')
+            ->assertJsonPath('can_query', true)
+            ->assertJsonPath('query_blocked_reason', null)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
             ->assertJsonPath('declared_signal_contracts.0.name', 'approved-by')
             ->assertJsonPath('declared_signal_contracts.0.parameters.0.name', 'actor')
@@ -1314,6 +1316,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_query_targets.0.has_contract', true)
             ->assertJsonPath('declared_query_targets.1.name', 'stageMatches')
             ->assertJsonPath('declared_query_targets.1.has_contract', true)
+            ->assertJsonPath('can_query', true)
+            ->assertJsonPath('query_blocked_reason', null)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
             ->assertJsonPath('declared_signal_contracts.0.name', 'approved-by')
             ->assertJsonPath('declared_signal_contracts.0.parameters.0.name', 'actor')
@@ -1470,6 +1474,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_query_targets.0.has_contract', true)
             ->assertJsonPath('declared_query_targets.1.name', 'stageMatches')
             ->assertJsonPath('declared_query_targets.1.has_contract', true)
+            ->assertJsonPath('can_query', false)
+            ->assertJsonPath('query_blocked_reason', 'workflow_definition_unavailable')
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
             ->assertJsonPath('declared_signal_contracts.0.name', 'approved-by')
             ->assertJsonPath('declared_signal_contracts.0.parameters.0.name', 'actor')
@@ -1477,11 +1483,15 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_signal_targets.0.has_contract', true)
             ->assertJsonPath('declared_signal_targets.1.name', 'rejected-by')
             ->assertJsonPath('declared_signal_targets.1.has_contract', false)
+            ->assertJsonPath('can_signal', true)
+            ->assertJsonPath('signal_blocked_reason', null)
             ->assertJsonPath('declared_updates', ['mark-approved'])
             ->assertJsonPath('declared_update_contracts.0.name', 'mark-approved')
             ->assertJsonPath('declared_update_contracts.0.parameters.0.name', 'approved')
             ->assertJsonPath('declared_update_targets.0.name', 'mark-approved')
             ->assertJsonPath('declared_update_targets.0.has_contract', true)
+            ->assertJsonPath('can_update', false)
+            ->assertJsonPath('update_blocked_reason', 'workflow_definition_unavailable')
             ->assertJsonPath('declared_contract_source', 'durable_history');
     }
 
@@ -4205,6 +4215,44 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('target_scope', 'instance')
             ->assertJsonPath('validation_errors.prefix.0', 'The prefix argument is required.')
             ->assertJsonPath('validation_errors.extra.0', 'Unknown argument [extra].');
+    }
+
+    public function testQueryReturnsBlockedReasonWhenWorkflowDefinitionCannotBeResolved(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-query-definition-unavailable');
+        $workflow->start();
+
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
+
+        WorkflowRun::query()->whereKey($workflow->runId())->update([
+            'workflow_class' => 'Missing\\Workflow\\TestOperatorCommandWorkflow',
+            'workflow_type' => 'missing-operator-command-workflow',
+        ]);
+
+        $response = $this->postJson(
+            '/waterline/api/instances/' . $workflow->id() . '/queries/events-starting-with',
+            ['arguments' => ['prefix' => 'start']],
+        );
+
+        $response
+            ->assertStatus(409)
+            ->assertJsonPath('query_name', 'events-starting-with')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'instance')
+            ->assertJsonPath('blocked_reason', 'workflow_definition_unavailable')
+            ->assertJsonPath(
+                'message',
+                sprintf(
+                    'Workflow %s [%s] cannot execute query [%s] because the workflow definition is unavailable for durable type [%s].',
+                    $workflow->runId(),
+                    $workflow->id(),
+                    'events-starting-with',
+                    'missing-operator-command-workflow',
+                ),
+            );
     }
 
     public function testSignalReturnsValidationErrorsForInvalidArguments(): void

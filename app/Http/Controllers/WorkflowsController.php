@@ -5,6 +5,7 @@ namespace Waterline\Http\Controllers;
 use Illuminate\Http\Request;
 use LogicException;
 use Workflow\V2\Exceptions\InvalidQueryArgumentsException;
+use Workflow\V2\Exceptions\WorkflowExecutionUnavailableException;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Support\CommandResponse;
 use Workflow\V2\WorkflowStub as V2WorkflowStub;
@@ -365,6 +366,15 @@ class WorkflowsController extends Controller
                 'message' => $exception->getMessage(),
                 'validation_errors' => $exception->validationErrors(),
             ], 422);
+        } catch (WorkflowExecutionUnavailableException $exception) {
+            return response()->json([
+                'query_name' => $exception->targetName(),
+                'workflow_id' => $workflow->id(),
+                'run_id' => $workflow->runId(),
+                'target_scope' => $targetScope,
+                'blocked_reason' => $exception->blockedReason(),
+                'message' => $exception->getMessage(),
+            ], 409);
         } catch (LogicException $exception) {
             return response()->json([
                 'query_name' => $query,
