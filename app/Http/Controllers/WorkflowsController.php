@@ -2,6 +2,7 @@
 
 namespace Waterline\Http\Controllers;
 
+use Illuminate\Http\Request;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Support\CommandResponse;
 use Workflow\V2\WorkflowStub as V2WorkflowStub;
@@ -57,6 +58,100 @@ class WorkflowsController extends Controller
             CommandResponse::payload($result),
             $result->accepted() ? 200 : 409,
         );
+    }
+
+    public function signal(
+        string $id,
+        string $signal,
+        Request $request,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $flow = $repository->findFlow($id);
+        $result = V2WorkflowStub::loadRun($flow->id)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptSignalWithArguments($signal, $this->commandArguments($request));
+
+        return $this->commandResponse($result);
+    }
+
+    public function signalInstance(
+        string $instanceId,
+        string $signal,
+        Request $request,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $result = V2WorkflowStub::load($instanceId)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptSignalWithArguments($signal, $this->commandArguments($request));
+
+        return $this->commandResponse($result);
+    }
+
+    public function signalSelection(
+        string $instanceId,
+        string $runId,
+        string $signal,
+        Request $request,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $result = V2WorkflowStub::loadSelection($instanceId, $runId)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptSignalWithArguments($signal, $this->commandArguments($request));
+
+        return $this->commandResponse($result);
+    }
+
+    public function update(
+        string $id,
+        string $update,
+        Request $request,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $flow = $repository->findFlow($id);
+        $result = V2WorkflowStub::loadRun($flow->id)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptUpdateWithArguments($update, $this->commandArguments($request));
+
+        return $this->commandResponse($result);
+    }
+
+    public function updateInstance(
+        string $instanceId,
+        string $update,
+        Request $request,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $result = V2WorkflowStub::load($instanceId)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptUpdateWithArguments($update, $this->commandArguments($request));
+
+        return $this->commandResponse($result);
+    }
+
+    public function updateSelection(
+        string $instanceId,
+        string $runId,
+        string $update,
+        Request $request,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $result = V2WorkflowStub::loadSelection($instanceId, $runId)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptUpdateWithArguments($update, $this->commandArguments($request));
+
+        return $this->commandResponse($result);
     }
 
     public function cancelInstance(string $instanceId, WorkflowRepositoryInterface $repository)
@@ -167,6 +262,30 @@ class WorkflowsController extends Controller
             ->withCommandContext(CommandContext::waterline(request()))
             ->attemptTerminate();
 
+        return response()->json(
+            CommandResponse::payload($result),
+            $result->accepted() ? 200 : 409,
+        );
+    }
+
+    /**
+     * @return array<int|string, mixed>
+     */
+    private function commandArguments(Request $request): array
+    {
+        if (! $request->exists('arguments')) {
+            return [];
+        }
+
+        $arguments = $request->input('arguments');
+
+        return is_array($arguments)
+            ? $arguments
+            : [$arguments];
+    }
+
+    private function commandResponse($result)
+    {
         return response()->json(
             CommandResponse::payload($result),
             $result->accepted() ? 200 : 409,

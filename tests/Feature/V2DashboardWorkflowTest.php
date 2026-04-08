@@ -6,6 +6,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
+use Waterline\Tests\Fixtures\V2\TestOperatorCommandWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Enums\HistoryEventType;
@@ -26,6 +27,7 @@ use Workflow\V2\Support\ActivitySnapshot;
 use Workflow\V2\Support\RunSummaryProjector;
 use Workflow\V2\Support\WorkflowInstanceId;
 use Workflow\V2\TaskWatchdog;
+use Workflow\V2\WorkflowStub;
 
 class V2DashboardWorkflowTest extends TestCase
 {
@@ -3595,6 +3597,144 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame('waterline.instances.cancel', $command->requestRouteName());
     }
 
+    public function testUpdateTargetsCurrentInstanceRouteAndReturnsAcceptedResponse(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-update-current');
+        $workflow->start();
+
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
+
+        $response = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/updates/mark-approved', [
+            'arguments' => [
+                'approved' => true,
+                'source' => 'waterline-ui',
+            ],
+        ]);
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'update_completed')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'instance')
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('command_source', 'waterline')
+            ->assertJsonPath('validation_errors', [])
+            ->assertJsonPath('result.approved', true)
+            ->assertJsonPath('result.events.0', 'started')
+            ->assertJsonPath('result.events.1', 'approved:yes:waterline-ui');
+
+        $commandId = $response->json('command_id');
+
+        $this->assertDatabaseHas('workflow_commands', [
+            'id' => $commandId,
+            'workflow_instance_id' => $workflow->id(),
+            'workflow_run_id' => $workflow->runId(),
+            'command_type' => 'update',
+            'source' => 'waterline',
+            'target_scope' => 'instance',
+            'status' => 'accepted',
+            'outcome' => 'update_completed',
+        ]);
+
+        $command = WorkflowCommand::query()->findOrFail($commandId);
+
+        $this->assertSame('mark-approved', $command->targetName());
+        $this->assertSame(
+            '/waterline/api/instances/'.$workflow->id().'/updates/mark-approved',
+            $command->requestPath(),
+        );
+        $this->assertSame('waterline.instances.update', $command->requestRouteName());
+    }
+
+    public function testUpdateReturnsValidationErrorsForInvalidArguments(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-update-invalid');
+        $workflow->start();
+
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
+
+        $response = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/updates/mark-approved', [
+            'arguments' => [
+                'source' => 'console',
+                'extra' => true,
+            ],
+        ]);
+
+        $response
+            ->assertStatus(409)
+            ->assertJsonPath('outcome', 'rejected_invalid_arguments')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'instance')
+            ->assertJsonPath('command_status', 'rejected')
+            ->assertJsonPath('rejection_reason', 'invalid_update_arguments')
+            ->assertJsonPath('validation_errors.approved.0', 'The approved argument is required.')
+            ->assertJsonPath('validation_errors.extra.0', 'Unknown argument [extra].');
+    }
+
+    public function testSignalTargetsSelectedRunRouteAndAcceptsScalarJsonPayload(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-signal-selected-run');
+        $workflow->start();
+
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
+
+        $response = $this->postJson(
+            '/waterline/api/instances/' . $workflow->id() . '/runs/' . $workflow->runId() . '/signals/name-provided',
+            ['arguments' => 'Taylor'],
+        );
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'signal_received')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'run')
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('command_source', 'waterline')
+            ->assertJsonPath('rejection_reason', null);
+
+        $commandId = $response->json('command_id');
+
+        $this->assertDatabaseHas('workflow_commands', [
+            'id' => $commandId,
+            'workflow_instance_id' => $workflow->id(),
+            'workflow_run_id' => $workflow->runId(),
+            'command_type' => 'signal',
+            'source' => 'waterline',
+            'target_scope' => 'run',
+            'status' => 'accepted',
+            'outcome' => 'signal_received',
+        ]);
+
+        $command = WorkflowCommand::query()->findOrFail($commandId);
+
+        $this->assertSame('name-provided', $command->targetName());
+        $this->assertSame(['Taylor'], $command->payloadArguments());
+        $this->assertSame(
+            '/waterline/api/instances/'.$workflow->id().'/runs/'.$workflow->runId().'/signals/name-provided',
+            $command->requestPath(),
+        );
+        $this->assertSame('waterline.instances.runs.signal', $command->requestRouteName());
+
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->completed());
+
+        $this->assertSame([
+            'approved' => false,
+            'events' => ['started', 'signal:Taylor'],
+            'name' => 'Taylor',
+            'workflow_id' => 'order-signal-selected-run',
+            'run_id' => $workflow->runId(),
+        ], $workflow->output());
+    }
+
     public function testRepairTargetsSelectedCurrentRunAndReturnsAcceptedResponse(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -4091,5 +4231,18 @@ class V2DashboardWorkflowTest extends TestCase
     {
         Cache::forget(TaskWatchdog::LOOP_THROTTLE_KEY);
         TaskWatchdog::wake();
+    }
+
+    private function waitForWorkflowState(callable $condition, int $attempts = 50): void
+    {
+        for ($attempt = 0; $attempt < $attempts; $attempt++) {
+            if ($condition()) {
+                return;
+            }
+
+            usleep(100000);
+        }
+
+        $this->fail('Workflow did not reach the expected state before timeout.');
     }
 }

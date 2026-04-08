@@ -6,6 +6,18 @@
                 <h5 v-if="ready">{{ flow.class }}</h5>
 
                 <div class="d-flex align-items-center">
+                    <button v-if="ready && canIssueSignal()"
+                        class="btn btn-outline-primary btn-sm mr-2"
+                        @click="issueCommand('signal')">
+                        Signal
+                    </button>
+
+                    <button v-if="ready && canIssueUpdate()"
+                        class="btn btn-outline-success btn-sm mr-2"
+                        @click="issueCommand('update')">
+                        Update
+                    </button>
+
                     <button v-if="ready && canAction('repair')"
                         class="btn btn-outline-info btn-sm mr-2"
                         @click="issueCommand('repair')">
@@ -110,6 +122,11 @@
                 <div class="row mb-2" v-if="flow.declared_signals && flow.declared_signals.length">
                     <div class="col-md-2"><strong>Signals</strong></div>
                     <div class="col">{{ flow.declared_signals.join(', ') }}</div>
+                </div>
+
+                <div class="row mb-2" v-if="hasDetailValue(flow.declared_contract_source)">
+                    <div class="col-md-2"><strong>Command Contract</strong></div>
+                    <div class="col">{{ contractSourceLabel(flow.declared_contract_source) }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="flow.declared_update_contracts && flow.declared_update_contracts.length">
@@ -977,6 +994,215 @@ export default {
                 : (this.flow.logs || [])
         },
 
+        signalTargets() {
+            return Array.isArray(this.flow.declared_signals)
+                ? this.flow.declared_signals
+                : []
+        },
+
+        updateTargets() {
+            if (Array.isArray(this.flow.declared_update_contracts) && this.flow.declared_update_contracts.length) {
+                return this.flow.declared_update_contracts.map((contract) => ({
+                    name: contract.name,
+                    label: this.updateContractLabel(contract),
+                }))
+            }
+
+            if (Array.isArray(this.flow.declared_updates)) {
+                return this.flow.declared_updates.map((name) => ({
+                    name,
+                    label: name,
+                }))
+            }
+
+            return []
+        },
+
+        canIssueSignal() {
+            return this.canAction('signal') && this.signalTargets().length > 0
+        },
+
+        canIssueUpdate() {
+            return this.canAction('update') && this.updateTargets().length > 0
+        },
+
+        updateContractByName(name) {
+            if (!Array.isArray(this.flow.declared_update_contracts)) {
+                return null
+            }
+
+            return this.flow.declared_update_contracts.find((contract) => contract.name === name) || null
+        },
+
+        defaultSignalArguments() {
+            return '[]'
+        },
+
+        defaultUpdateArguments(name) {
+            const contract = this.updateContractByName(name)
+
+            if (!contract || !Array.isArray(contract.parameters) || !contract.parameters.length) {
+                return '[]'
+            }
+
+            const template = {}
+
+            contract.parameters.forEach((parameter) => {
+                if (!parameter || !parameter.name || parameter.variadic === true) {
+                    return
+                }
+
+                if (parameter.default_available === true) {
+                    template[parameter.name] = parameter.default
+
+                    return
+                }
+
+                template[parameter.name] = null
+            })
+
+            return JSON.stringify(template, null, 2)
+        },
+
+        parseCommandArguments(rawValue) {
+            const value = (rawValue || '').trim()
+
+            if (!value) {
+                return []
+            }
+
+            return JSON.parse(value)
+        },
+
+        async promptForSignalCommand() {
+            const signals = this.signalTargets()
+
+            if (!signals.length) {
+                return null
+            }
+
+            const options = signals.map((signal) =>
+                `<option value="${this.escapeHtml(signal)}">${this.escapeHtml(signal)}</option>`
+            ).join('')
+
+            const result = await Swal.fire({
+                title: 'Send signal',
+                html: `
+                    <label class="d-block text-left mb-2" for="waterline-signal-target">Signal</label>
+                    <select id="waterline-signal-target" class="swal2-input">${options}</select>
+                    <label class="d-block text-left mb-2" for="waterline-signal-arguments">Arguments JSON</label>
+                    <textarea id="waterline-signal-arguments" class="swal2-textarea" style="min-height: 8rem;">${this.defaultSignalArguments()}</textarea>
+                    <div class="small text-muted text-left">Use a JSON array for positional arguments or any other JSON value for one payload.</div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Send signal',
+                focusConfirm: false,
+                background: '#1c1c1c',
+                preConfirm: () => {
+                    const target = document.getElementById('waterline-signal-target').value
+                    const rawArguments = document.getElementById('waterline-signal-arguments').value
+
+                    if (!target) {
+                        Swal.showValidationMessage('Select a signal.')
+
+                        return false
+                    }
+
+                    try {
+                        return {
+                            targetName: target,
+                            arguments: this.parseCommandArguments(rawArguments),
+                        }
+                    } catch (error) {
+                        Swal.showValidationMessage('Arguments must be valid JSON.')
+
+                        return false
+                    }
+                },
+            })
+
+            return result.isConfirmed ? result.value : null
+        },
+
+        async promptForUpdateCommand() {
+            const updates = this.updateTargets()
+
+            if (!updates.length) {
+                return null
+            }
+
+            const options = updates.map((update) =>
+                `<option value="${this.escapeHtml(update.name)}">${this.escapeHtml(update.label)}</option>`
+            ).join('')
+
+            const firstUpdate = updates[0].name
+
+            const result = await Swal.fire({
+                title: 'Apply update',
+                html: `
+                    <label class="d-block text-left mb-2" for="waterline-update-target">Update</label>
+                    <select id="waterline-update-target" class="swal2-input">${options}</select>
+                    <label class="d-block text-left mb-2" for="waterline-update-arguments">Arguments JSON</label>
+                    <textarea id="waterline-update-arguments" class="swal2-textarea" style="min-height: 10rem;">${this.escapeHtml(this.defaultUpdateArguments(firstUpdate))}</textarea>
+                    <div class="small text-muted text-left">Use a JSON object for named arguments or a JSON array for positional arguments.</div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Apply update',
+                focusConfirm: false,
+                background: '#1c1c1c',
+                didOpen: () => {
+                    const select = document.getElementById('waterline-update-target')
+                    const textarea = document.getElementById('waterline-update-arguments')
+
+                    if (!select || !textarea) {
+                        return
+                    }
+
+                    select.addEventListener('change', () => {
+                        textarea.value = this.defaultUpdateArguments(select.value)
+                    })
+                },
+                preConfirm: () => {
+                    const target = document.getElementById('waterline-update-target').value
+                    const rawArguments = document.getElementById('waterline-update-arguments').value
+
+                    if (!target) {
+                        Swal.showValidationMessage('Select an update.')
+
+                        return false
+                    }
+
+                    try {
+                        return {
+                            targetName: target,
+                            arguments: this.parseCommandArguments(rawArguments),
+                        }
+                    } catch (error) {
+                        Swal.showValidationMessage('Arguments must be valid JSON.')
+
+                        return false
+                    }
+                },
+            })
+
+            return result.isConfirmed ? result.value : null
+        },
+
+        commandRequestBody(argumentsValue) {
+            return {
+                arguments: argumentsValue,
+            }
+        },
+
+        escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;')
+        },
+
         canAction(name, fallback = false) {
             const key = 'can_' + name
 
@@ -1321,6 +1547,14 @@ export default {
         },
 
         async issueCommand(commandType) {
+            if (commandType === 'signal') {
+                return this.issueInteractiveCommand(commandType, await this.promptForSignalCommand())
+            }
+
+            if (commandType === 'update') {
+                return this.issueInteractiveCommand(commandType, await this.promptForUpdateCommand())
+            }
+
             const copy = {
                 repair: {
                     title: 'Repair run?',
@@ -1352,17 +1586,30 @@ export default {
                 return
             }
 
+            return this.issueInteractiveCommand(commandType, null)
+        },
+
+        async issueInteractiveCommand(commandType, interactiveCommand = null) {
+            if ((commandType === 'signal' || commandType === 'update') && !interactiveCommand) {
+                return
+            }
+
             try {
-                const response = await this.$http.post(this.commandEndpoint(commandType))
+                const response = await this.$http.post(
+                    this.commandEndpoint(commandType, interactiveCommand ? interactiveCommand.targetName : null),
+                    interactiveCommand ? this.commandRequestBody(interactiveCommand.arguments) : {},
+                )
                 await this.loadRouteFlow()
 
-                const successText = commandType === 'repair'
-                    ? (
-                        response.data.outcome === 'repair_dispatched'
-                            ? 'Waterline recreated the durable task and re-dispatched it.'
-                            : 'Waterline recorded the repair command, and no new task was needed.'
-                    )
-                    : 'Waterline recorded the command durably.'
+                const successText = {
+                    signal: 'Waterline recorded the signal command durably.',
+                    update: 'Waterline recorded the update command durably.',
+                    repair: response.data.outcome === 'repair_dispatched'
+                        ? 'Waterline recreated the durable task and re-dispatched it.'
+                        : 'Waterline recorded the repair command, and no new task was needed.',
+                    cancel: 'Waterline recorded the command durably.',
+                    terminate: 'Waterline recorded the command durably.',
+                }[commandType] || 'Waterline recorded the command durably.'
 
                 Swal.fire({
                     title: 'Command accepted',
@@ -1388,18 +1635,22 @@ export default {
             }
         },
 
-        commandEndpoint(commandType) {
+        commandEndpoint(commandType, targetName = null) {
+            const suffix = targetName
+                ? commandType + 's/' + encodeURIComponent(targetName)
+                : commandType
+
             if (this.flow.instance_id) {
                 const selectedRunId = this.flow.selected_run_id || this.flow.run_id || this.flow.id
 
                 if (selectedRunId) {
-                    return Waterline.basePath + '/api/instances/' + this.flow.instance_id + '/runs/' + selectedRunId + '/' + commandType
+                    return Waterline.basePath + '/api/instances/' + this.flow.instance_id + '/runs/' + selectedRunId + '/' + suffix
                 }
 
-                return Waterline.basePath + '/api/instances/' + this.flow.instance_id + '/' + commandType
+                return Waterline.basePath + '/api/instances/' + this.flow.instance_id + '/' + suffix
             }
 
-            return Waterline.basePath + '/api/flows/' + (this.flow.run_id || this.flow.id) + '/' + commandType
+            return Waterline.basePath + '/api/flows/' + (this.flow.run_id || this.flow.id) + '/' + suffix
         },
     }
 }
