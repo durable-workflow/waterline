@@ -6,6 +6,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
+use Waterline\Tests\Fixtures\V2\TestLinearizedOperatorWorkflow;
 use Waterline\Tests\Fixtures\V2\TestOperatorCommandWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
@@ -2873,8 +2874,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('terminate_blocked_reason', null)
             ->assertJsonPath('can_signal', true)
             ->assertJsonPath('signal_blocked_reason', null)
-            ->assertJsonPath('can_update', false)
-            ->assertJsonPath('update_blocked_reason', 'earlier_signal_pending')
+            ->assertJsonPath('can_update', true)
+            ->assertJsonPath('update_blocked_reason', null)
             ->assertJsonPath('can_repair', true)
             ->assertJsonPath('repair_blocked_reason', null)
             ->assertJsonPath('commands.1.type', 'signal')
@@ -3994,6 +3995,57 @@ class V2DashboardWorkflowTest extends TestCase
             $command->requestPath(),
         );
         $this->assertSame('waterline.instances.update', $command->requestRouteName());
+    }
+
+    public function testUpdateStaysAvailableWhenAnEarlierSignalCanBeLinearized(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $workflow = WorkflowStub::make(TestLinearizedOperatorWorkflow::class, 'order-update-linearized');
+        $workflow->start();
+
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
+
+        Queue::fake();
+
+        $signal = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/signals/advance', [
+            'arguments' => [
+                'name' => 'Taylor',
+            ],
+        ]);
+
+        $signal
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'signal_received')
+            ->assertJsonPath('command_status', 'accepted');
+
+        $this->get('/waterline/api/instances/' . $workflow->id())
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'workflow-task')
+            ->assertJsonPath('liveness_state', 'workflow_task_ready')
+            ->assertJsonPath('can_update', true)
+            ->assertJsonPath('update_blocked_reason', null);
+
+        $response = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/updates/mark-approved', [
+            'arguments' => [
+                'approved' => true,
+                'source' => 'waterline-ui',
+            ],
+        ]);
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'update_completed')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('rejection_reason', null)
+            ->assertJsonPath('result.stage', 'waiting-for-finish')
+            ->assertJsonPath('result.name', 'Taylor')
+            ->assertJsonPath('result.approved', true)
+            ->assertJsonPath('result.events.0', 'started')
+            ->assertJsonPath('result.events.1', 'signal:Taylor')
+            ->assertJsonPath('result.events.2', 'approved:yes:waterline-ui');
     }
 
     public function testUpdateReturnsValidationErrorsForInvalidArguments(): void
