@@ -226,6 +226,11 @@
                     <div class="col">{{ flow.open_wait_id }}</div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.open_wait_count) && flow.open_wait_count > 1">
+                    <div class="col-md-2"><strong>Open Waits</strong></div>
+                    <div class="col">{{ flow.open_wait_count }}</div>
+                </div>
+
                 <div class="row mb-2" v-if="resumeSourceSummary(flow.resume_source_kind, flow.resume_source_id)">
                     <div class="col-md-2"><strong>Resume Source</strong></div>
                     <div class="col">{{ resumeSourceSummary(flow.resume_source_kind, flow.resume_source_id) }}</div>
@@ -356,7 +361,10 @@
 
         <div class="card mt-4" v-if="ready && waitRows().length">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Waits</h5>
+                <h5>
+                    Waits
+                    <span v-if="openWaitCount() > 1" class="small text-muted">({{ openWaitCount() }} open)</span>
+                </h5>
 
                 <a data-toggle="collapse" href="#collapseWaits" role="button">
                     Collapse
@@ -391,6 +399,9 @@
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.sequence)">
                                     step {{ wait.sequence }}
+                                </div>
+                                <div class="small text-muted" v-if="parallelGroupLabel(wait)">
+                                    {{ parallelGroupLabel(wait) }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id) || hasDetailValue(wait.command_sequence) || hasDetailValue(wait.timeout_seconds)">
                                     <span v-if="hasDetailValue(wait.signal_wait_id)">signal wait / {{ wait.signal_wait_id }}</span>
@@ -1355,6 +1366,16 @@ export default {
             return this.flow.waits || []
         },
 
+        openWaitCount() {
+            if (this.hasDetailValue(this.flow.open_wait_count)) {
+                return this.flow.open_wait_count
+            }
+
+            return this.waitRows()
+                .filter((wait) => wait.status === 'open')
+                .length
+        },
+
         taskRows() {
             return this.flow.tasks || []
         },
@@ -1437,6 +1458,24 @@ export default {
             }
 
             return '-'
+        },
+
+        parallelGroupLabel(wait) {
+            if (!this.hasDetailValue(wait.parallel_group_size) || wait.parallel_group_size <= 1) {
+                return ''
+            }
+
+            const position = this.hasDetailValue(wait.parallel_group_index)
+                ? wait.parallel_group_index + 1
+                : null
+
+            if (!this.hasDetailValue(position)) {
+                return 'parallel child group'
+            }
+
+            return ['parallel child group', position + '/' + wait.parallel_group_size]
+                .filter(Boolean)
+                .join(' / ')
         },
 
         historySource(entry) {
