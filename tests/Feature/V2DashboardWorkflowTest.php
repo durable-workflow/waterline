@@ -942,6 +942,134 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('parents.0.status_bucket', 'running');
     }
 
+    public function testShowUsesHistoryToRenderCurrentContinuedChildWithoutLinks(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $parentInstance = WorkflowInstance::create([
+            'id' => 'order-child-parent',
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'run_count' => 1,
+        ]);
+
+        $childInstance = WorkflowInstance::create([
+            'id' => 'order-child-chain',
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'run_count' => 2,
+        ]);
+
+        $parentRun = WorkflowRun::create([
+            'id' => '01JTESTPARENTCHILDHIST0001',
+            'workflow_instance_id' => $parentInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(5),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $historicalChildRun = WorkflowRun::create([
+            'id' => '01JTESTCHILDCONTINUED0001',
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'completed',
+            'closed_reason' => 'continued',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(4),
+            'closed_at' => now()->subMinutes(3),
+            'last_progress_at' => now()->subMinutes(3),
+        ]);
+
+        $currentChildRun = WorkflowRun::create([
+            'id' => '01JTESTCHILDCURRENT000001',
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 2,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $parentInstance->update(['current_run_id' => $parentRun->id]);
+        $childInstance->update(['current_run_id' => $currentChildRun->id]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTPARENTCHILDSCHED001',
+            'workflow_run_id' => $parentRun->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::ChildWorkflowScheduled->value,
+            'payload' => [
+                'sequence' => 1,
+                'child_workflow_instance_id' => $childInstance->id,
+                'child_workflow_run_id' => $historicalChildRun->id,
+                'child_workflow_class' => $historicalChildRun->workflow_class,
+                'child_workflow_type' => $historicalChildRun->workflow_type,
+                'child_run_number' => 1,
+            ],
+            'recorded_at' => now()->subMinutes(4),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTPARENTCHILDSTART001',
+            'workflow_run_id' => $parentRun->id,
+            'sequence' => 2,
+            'event_type' => HistoryEventType::ChildRunStarted->value,
+            'payload' => [
+                'sequence' => 1,
+                'child_workflow_instance_id' => $childInstance->id,
+                'child_workflow_run_id' => $historicalChildRun->id,
+                'child_workflow_class' => $historicalChildRun->workflow_class,
+                'child_workflow_type' => $historicalChildRun->workflow_type,
+                'child_run_number' => 1,
+            ],
+            'recorded_at' => now()->subMinutes(4),
+        ]);
+
+        WorkflowRunSummary::create([
+            'id' => $currentChildRun->id,
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 2,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $currentChildRun->started_at,
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        RunSummaryProjector::project($parentRun->fresh());
+
+        $this->get('/waterline/api/flows/' . $parentRun->id)
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'child')
+            ->assertJsonPath('continuedWorkflows.0.link_type', 'child_workflow')
+            ->assertJsonPath('continuedWorkflows.0.child_workflow_run_id', $currentChildRun->id)
+            ->assertJsonPath('continuedWorkflows.0.status', 'waiting')
+            ->assertJsonPath('continuedWorkflows.0.status_bucket', 'running')
+            ->assertJsonPath('waits.0.kind', 'child')
+            ->assertJsonPath('waits.0.resume_source_id', $currentChildRun->id)
+            ->assertJsonPath('waits.0.target_name', $childInstance->id);
+    }
+
     public function testShowPrefersTypedChildResolutionHistoryWhenChildRunRowDrifts(): void
     {
         config()->set('waterline.engine_source', 'v2');
