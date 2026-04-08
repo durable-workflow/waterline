@@ -1629,6 +1629,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('can_update', true)
             ->assertJsonPath('update_blocked_reason', null)
             ->assertJsonPath('can_signal', true)
+            ->assertJsonPath('commands.0.context', [])
             ->assertJsonPath('commands.0.type', 'update')
             ->assertJsonPath('commands.0.target_name', 'approve')
             ->assertJsonPath('commands.0.source', 'webhook')
@@ -2554,7 +2555,7 @@ class V2DashboardWorkflowTest extends TestCase
 
         $instance->update(['current_run_id' => $run->id]);
 
-        $response = $this->post('/waterline/api/flows/' . $instance->id . '/cancel');
+        $response = $this->post('/waterline/api/instances/' . $instance->id . '/cancel');
 
         $response
             ->assertStatus(200)
@@ -2573,7 +2574,7 @@ class V2DashboardWorkflowTest extends TestCase
             'workflow_run_id' => $run->id,
             'command_type' => 'cancel',
             'source' => 'waterline',
-            'target_scope' => 'run',
+            'target_scope' => 'instance',
             'status' => 'accepted',
             'outcome' => 'cancelled',
         ]);
@@ -2584,8 +2585,8 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame('authorized', $command->authStatus());
         $this->assertSame('waterline', $command->authMethod());
         $this->assertSame('POST', $command->requestMethod());
-        $this->assertSame('/waterline/api/flows/'.$instance->id.'/cancel', $command->requestPath());
-        $this->assertSame('waterline.cancel', $command->requestRouteName());
+        $this->assertSame('/waterline/api/instances/'.$instance->id.'/cancel', $command->requestPath());
+        $this->assertSame('waterline.instances.cancel', $command->requestRouteName());
     }
 
     public function testRepairTargetsSelectedCurrentRunAndReturnsAcceptedResponse(): void
@@ -2616,7 +2617,7 @@ class V2DashboardWorkflowTest extends TestCase
 
         $instance->update(['current_run_id' => $run->id]);
 
-        $response = $this->post('/waterline/api/flows/' . $instance->id . '/repair');
+        $response = $this->post('/waterline/api/instances/' . $instance->id . '/repair');
 
         $response
             ->assertStatus(200)
@@ -2633,7 +2634,7 @@ class V2DashboardWorkflowTest extends TestCase
             'workflow_instance_id' => $instance->id,
             'workflow_run_id' => $run->id,
             'command_type' => 'repair',
-            'target_scope' => 'run',
+            'target_scope' => 'instance',
             'status' => 'accepted',
             'outcome' => 'repair_dispatched',
         ]);
@@ -2644,6 +2645,67 @@ class V2DashboardWorkflowTest extends TestCase
             'status' => 'ready',
             'repair_count' => 1,
         ]);
+    }
+
+    public function testTerminateTargetsCurrentInstanceRouteAndReturnsAcceptedResponse(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-terminate-current',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNTERMCURRENT01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $response = $this->post('/waterline/api/instances/' . $instance->id . '/terminate');
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'terminated')
+            ->assertJsonPath('workflow_id', $instance->id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('command_source', 'waterline')
+            ->assertJsonPath('rejection_reason', null);
+
+        $commandId = $response->json('command_id');
+
+        $this->assertDatabaseHas('workflow_commands', [
+            'id' => $commandId,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_type' => 'terminate',
+            'source' => 'waterline',
+            'target_scope' => 'instance',
+            'status' => 'accepted',
+            'outcome' => 'terminated',
+        ]);
+
+        $command = WorkflowCommand::query()->findOrFail($commandId);
+
+        $this->assertSame('Waterline UI', $command->callerLabel());
+        $this->assertSame('authorized', $command->authStatus());
+        $this->assertSame('waterline', $command->authMethod());
+        $this->assertSame('POST', $command->requestMethod());
+        $this->assertSame('/waterline/api/instances/'.$instance->id.'/terminate', $command->requestPath());
+        $this->assertSame('waterline.instances.terminate', $command->requestRouteName());
     }
 
     public function testRepairRedispatchesOverdueReadyWorkflowTaskAndClearsRepairNeededFromFlowDetail(): void
@@ -2697,7 +2759,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('can_repair', true)
             ->assertJsonPath('next_task_id', $task->id);
 
-        $this->post('/waterline/api/flows/' . $instance->id . '/repair')
+        $this->post('/waterline/api/instances/' . $instance->id . '/repair')
             ->assertStatus(200)
             ->assertJsonPath('outcome', 'repair_dispatched')
             ->assertJsonPath('workflow_id', $instance->id)

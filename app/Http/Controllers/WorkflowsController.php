@@ -59,6 +59,20 @@ class WorkflowsController extends Controller
         );
     }
 
+    public function cancelInstance(string $instanceId, WorkflowRepositoryInterface $repository)
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $result = V2WorkflowStub::load($instanceId)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptCancel();
+
+        return response()->json(
+            CommandResponse::payload($result),
+            $result->accepted() ? 200 : 409,
+        );
+    }
+
     public function repair(string $id, WorkflowRepositoryInterface $repository)
     {
         abort_unless($repository->engineSource() === 'v2', 404);
@@ -74,12 +88,40 @@ class WorkflowsController extends Controller
         );
     }
 
+    public function repairInstance(string $instanceId, WorkflowRepositoryInterface $repository)
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $result = V2WorkflowStub::load($instanceId)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptRepair();
+
+        return response()->json(
+            CommandResponse::payload($result),
+            $result->accepted() ? 200 : 409,
+        );
+    }
+
     public function terminate(string $id, WorkflowRepositoryInterface $repository)
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
         $flow = $repository->findFlow($id);
         $result = V2WorkflowStub::loadRun($flow->id)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptTerminate();
+
+        return response()->json(
+            CommandResponse::payload($result),
+            $result->accepted() ? 200 : 409,
+        );
+    }
+
+    public function terminateInstance(string $instanceId, WorkflowRepositoryInterface $repository)
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $result = V2WorkflowStub::load($instanceId)
             ->withCommandContext(CommandContext::waterline(request()))
             ->attemptTerminate();
 

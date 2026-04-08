@@ -1019,17 +1019,17 @@ export default {
             const copy = {
                 repair: {
                     title: 'Repair run?',
-                    text: 'This recreates the durable next task for the selected run when liveness shows repair is needed. It does not restart an activity that is already marked running.',
+                    text: 'This recreates the durable next task for the current active run when liveness shows repair is needed. It does not restart an activity that is already marked running.',
                     confirmButtonText: 'Repair run',
                 },
                 cancel: {
                     title: 'Cancel run?',
-                    text: 'This action applies to the selected run only.',
+                    text: 'This action applies to the current active run.',
                     confirmButtonText: 'Cancel run',
                 },
                 terminate: {
                     title: 'Terminate run?',
-                    text: 'This action applies to the selected run only.',
+                    text: 'This action applies to the current active run.',
                     confirmButtonText: 'Terminate run',
                 },
             }[commandType]
@@ -1048,9 +1048,7 @@ export default {
             }
 
             try {
-                const response = await this.$http.post(
-                    Waterline.basePath + '/api/flows/' + (this.flow.run_id || this.flow.id) + '/' + commandType
-                )
+                const response = await this.$http.post(this.commandEndpoint(commandType))
                 await this.loadRouteFlow()
 
                 const successText = commandType === 'repair'
@@ -1083,6 +1081,14 @@ export default {
                     background: '#1c1c1c',
                 })
             }
+        },
+
+        commandEndpoint(commandType) {
+            if (this.flow.instance_id) {
+                return Waterline.basePath + '/api/instances/' + this.flow.instance_id + '/' + commandType
+            }
+
+            return Waterline.basePath + '/api/flows/' + (this.flow.run_id || this.flow.id) + '/' + commandType
         },
     }
 }
