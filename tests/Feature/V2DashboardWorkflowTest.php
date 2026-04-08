@@ -765,7 +765,7 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
-            ->assertJsonPath('declared_updates', ['approve'])
+            ->assertJsonPath('declared_updates', ['mark-approved'])
             ->assertJsonPath('declared_contract_source', 'live_definition')
             ->assertJsonPath('commands.0.type', 'signal')
             ->assertJsonPath('commands.0.target_name', 'not-declared')
@@ -834,7 +834,7 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
-            ->assertJsonPath('declared_updates', ['approve'])
+            ->assertJsonPath('declared_updates', ['mark-approved'])
             ->assertJsonPath('declared_contract_source', 'durable_history');
 
         /** @var WorkflowHistoryEvent $started */
@@ -844,7 +844,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->sole();
 
         $this->assertSame(['approved-by', 'rejected-by'], $started->payload['declared_signals'] ?? null);
-        $this->assertSame(['approve'], $started->payload['declared_updates'] ?? null);
+        $this->assertSame(['mark-approved'], $started->payload['declared_updates'] ?? null);
     }
 
     public function testShowUsesDurableCommandContractHistoryWhenWorkflowClassCannotBeResolved(): void
@@ -898,7 +898,7 @@ class V2DashboardWorkflowTest extends TestCase
             'event_type' => HistoryEventType::WorkflowStarted->value,
             'payload' => [
                 'declared_signals' => ['approved-by', 'rejected-by'],
-                'declared_updates' => ['approve'],
+                'declared_updates' => ['mark-approved'],
             ],
             'recorded_at' => now()->subSeconds(19),
         ]);
@@ -906,7 +906,7 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
             ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
-            ->assertJsonPath('declared_updates', ['approve'])
+            ->assertJsonPath('declared_updates', ['mark-approved'])
             ->assertJsonPath('declared_contract_source', 'durable_history');
     }
 

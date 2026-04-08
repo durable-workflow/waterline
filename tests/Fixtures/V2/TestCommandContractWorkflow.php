@@ -25,7 +25,7 @@ final class TestCommandContractWorkflow extends Workflow
         return [];
     }
 
-    #[UpdateMethod]
+    #[UpdateMethod('mark-approved')]
     public function approve(bool $approved): array
     {
         return ['approved' => $approved];
