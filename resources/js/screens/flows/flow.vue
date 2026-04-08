@@ -349,10 +349,16 @@
                                 <div class="small text-muted" v-if="hasDetailValue(wait.sequence)">
                                     step {{ wait.sequence }}
                                 </div>
-                                <div class="small text-muted" v-if="hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.command_sequence)">
+                                <div class="small text-muted" v-if="hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id) || hasDetailValue(wait.command_sequence) || hasDetailValue(wait.timeout_seconds)">
                                     <span v-if="hasDetailValue(wait.signal_wait_id)">signal wait / {{ wait.signal_wait_id }}</span>
+                                    <span v-if="hasDetailValue(wait.condition_wait_id)">
+                                        <span v-if="hasDetailValue(wait.signal_wait_id)"> | </span>condition wait / {{ wait.condition_wait_id }}
+                                    </span>
                                     <span v-if="hasDetailValue(wait.command_sequence)">
-                                        <span v-if="hasDetailValue(wait.signal_wait_id)"> | </span>command / #{{ wait.command_sequence }}
+                                        <span v-if="hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id)"> | </span>command / #{{ wait.command_sequence }}
+                                    </span>
+                                    <span v-if="hasDetailValue(wait.timeout_seconds)">
+                                        <span v-if="hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id) || hasDetailValue(wait.command_sequence)"> | </span>timeout / {{ wait.timeout_seconds }}s
                                     </span>
                                 </div>
                             </td>
@@ -1003,6 +1009,22 @@ export default {
         },
 
         waitBacking(wait) {
+            if (wait.kind === 'condition' && this.hasDetailValue(wait.timeout_seconds)) {
+                if (!wait.task_backed && this.hasDetailValue(wait.task_id)) {
+                    return ['stale timeout task', wait.task_status, 'external input']
+                        .filter(Boolean)
+                        .join(' / ')
+                }
+
+                if (!wait.task_backed) {
+                    return 'external input / timeout task missing'
+                }
+
+                return [wait.task_type || 'timer', wait.task_status, 'external input']
+                    .filter(Boolean)
+                    .join(' / ')
+            }
+
             if (wait.kind === 'child') {
                 return 'child run'
             }
@@ -1156,6 +1178,14 @@ export default {
         taskTarget(task) {
             if (this.hasDetailValue(task.activity_type)) {
                 return task.activity_type
+            }
+
+            if (this.hasDetailValue(task.condition_wait_id)) {
+                if (this.hasDetailValue(task.timer_sequence)) {
+                    return 'condition timeout #' + task.timer_sequence
+                }
+
+                return 'condition timeout'
             }
 
             if (this.hasDetailValue(task.timer_sequence)) {
