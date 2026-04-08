@@ -1653,15 +1653,21 @@ export default {
                 return ''
             }
 
+            const groupKind = this.hasDetailValue(wait.parallel_group_kind)
+                ? String(wait.parallel_group_kind)
+                : (wait.kind === 'activity' ? 'activity' : 'child')
             const position = this.hasDetailValue(wait.parallel_group_index)
                 ? wait.parallel_group_index + 1
                 : null
+            const label = groupKind === 'activity'
+                ? 'parallel activity group'
+                : (groupKind === 'mixed' ? 'parallel group' : 'parallel child group')
 
             if (!this.hasDetailValue(position)) {
-                return 'parallel child group'
+                return label
             }
 
-            return ['parallel child group', position + '/' + wait.parallel_group_size]
+            return [label, position + '/' + wait.parallel_group_size]
                 .filter(Boolean)
                 .join(' / ')
         },
