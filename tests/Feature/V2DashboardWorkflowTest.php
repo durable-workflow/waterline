@@ -452,6 +452,98 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('next_task_lease_expires_at', $leaseExpiresAt->jsonSerialize());
     }
 
+    public function testShowReturnsBackfilledHeartbeatMetadataForLegacyRunningActivity(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $startedAt = now()->subMinutes(4);
+        $heartbeatAt = now()->subMinute();
+        $leaseExpiresAt = now()->addMinutes(ActivityLease::DURATION_MINUTES);
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-heartbeat-backfilled',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $startedAt,
+            'last_progress_at' => $startedAt,
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $activity = ActivityExecution::create([
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ActivityClass',
+            'activity_type' => 'activity.test',
+            'status' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'attempt_count' => 0,
+            'started_at' => $startedAt,
+            'last_heartbeat_at' => $heartbeatAt,
+        ]);
+
+        $task = WorkflowTask::create([
+            'workflow_run_id' => $run->id,
+            'task_type' => 'activity',
+            'status' => 'leased',
+            'payload' => [
+                'activity_execution_id' => $activity->id,
+            ],
+            'connection' => 'redis',
+            'queue' => 'default',
+            'leased_at' => $startedAt,
+            'lease_owner' => 'backfilled-heartbeat-worker',
+            'lease_expires_at' => $leaseExpiresAt,
+            'attempt_count' => 1,
+        ]);
+
+        $migration = require dirname(__DIR__, 3) . '/workflow/src/migrations/2026_04_08_000125_backfill_activity_attempt_identity.php';
+        $migration->up();
+
+        $activity->refresh();
+
+        RunSummaryProjector::project($run->fresh([
+            'instance',
+            'tasks',
+            'activityExecutions',
+            'timers',
+            'failures',
+            'historyEvents',
+        ]));
+
+        $response = $this->get('/waterline/api/instances/' . $instance->id);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('wait_kind', 'activity')
+            ->assertJsonPath('liveness_state', 'activity_task_leased')
+            ->assertJsonPath('activities.0.id', $activity->id)
+            ->assertJsonPath('activities.0.status', 'running')
+            ->assertJsonPath('activities.0.attempt_id', $activity->current_attempt_id)
+            ->assertJsonPath('activities.0.attempt_count', 1)
+            ->assertJsonPath('activities.0.last_heartbeat_at', $heartbeatAt->jsonSerialize())
+            ->assertJsonPath('activities.0.attempts.0.id', $activity->current_attempt_id)
+            ->assertJsonPath('activities.0.attempts.0.attempt_number', 1)
+            ->assertJsonPath('activities.0.attempts.0.status', 'running')
+            ->assertJsonPath('activities.0.attempts.0.lease_owner', 'backfilled-heartbeat-worker')
+            ->assertJsonPath('activities.0.attempts.0.last_heartbeat_at', $heartbeatAt->jsonSerialize())
+            ->assertJsonPath('activities.0.attempts.0.lease_expires_at', $leaseExpiresAt->jsonSerialize())
+            ->assertJsonPath('tasks.0.id', $task->id)
+            ->assertJsonPath('tasks.0.status', 'leased');
+    }
+
     public function testShowReturnsSideEffectTimelineEntries(): void
     {
         config()->set('waterline.engine_source', 'v2');
