@@ -2546,8 +2546,22 @@ class V2DashboardWorkflowTest extends TestCase
             'last_progress_at' => now()->subMinute(),
         ]);
 
+        WorkflowRun::create([
+            'id' => '01JTESTCHILDBOGUS00000001',
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 3,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->addMinute(),
+            'last_progress_at' => now()->addMinute(),
+        ]);
+
         $parentInstance->update(['current_run_id' => $parentRun->id]);
-        $childInstance->update(['current_run_id' => $currentChildRun->id]);
+        $childInstance->update(['current_run_id' => null]);
 
         WorkflowHistoryEvent::create([
             'id' => '01JTESTPARENTCHILDSCHED001',
@@ -2583,6 +2597,23 @@ class V2DashboardWorkflowTest extends TestCase
             'recorded_at' => now()->subMinutes(4),
         ]);
 
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTPARENTCHILDSTART002',
+            'workflow_run_id' => $parentRun->id,
+            'sequence' => 3,
+            'event_type' => HistoryEventType::ChildRunStarted->value,
+            'payload' => [
+                'child_call_id' => $childCallId,
+                'sequence' => 1,
+                'child_workflow_instance_id' => $childInstance->id,
+                'child_workflow_run_id' => $currentChildRun->id,
+                'child_workflow_class' => $currentChildRun->workflow_class,
+                'child_workflow_type' => $currentChildRun->workflow_type,
+                'child_run_number' => 2,
+            ],
+            'recorded_at' => now()->subMinutes(2),
+        ]);
+
         WorkflowRunSummary::create([
             'id' => $currentChildRun->id,
             'workflow_instance_id' => $childInstance->id,
@@ -2611,6 +2642,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('continuedWorkflows.0.child_workflow_run_id', $currentChildRun->id)
             ->assertJsonPath('continuedWorkflows.0.status', 'waiting')
             ->assertJsonPath('continuedWorkflows.0.status_bucket', 'running')
+            ->assertJsonCount(1, 'continuedWorkflows')
             ->assertJsonPath('waits.0.kind', 'child')
             ->assertJsonPath('waits.0.child_call_id', $childCallId)
             ->assertJsonPath('waits.0.resume_source_id', $currentChildRun->id)
