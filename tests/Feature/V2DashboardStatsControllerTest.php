@@ -8,6 +8,8 @@ use Workflow\V2\Models\WorkflowFailure;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Models\WorkflowTask;
+use Workflow\V2\Support\WorkerCompatibilityFleet;
 
 class V2DashboardStatsControllerTest extends TestCase
 {
@@ -131,5 +133,80 @@ class V2DashboardStatsControllerTest extends TestCase
         $this->get('/waterline/api/stats')
             ->assertStatus(200)
             ->assertJsonPath('failed_flows_past_week', 0);
+    }
+
+    public function testIndexIncludesV2OperatorMetrics(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+        config()->set('workflows.v2.compatibility.namespace', 'waterline-metrics-test');
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        $instance = WorkflowInstance::create([
+            'id' => '01JTESTFLOWINSTANCEMETRICS',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNMETRICS00000',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'started_at' => now()->subMinutes(10),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'started_at' => $run->started_at,
+            'liveness_state' => 'repair_needed',
+            'created_at' => now()->subMinutes(10),
+            'updated_at' => now(),
+        ]);
+
+        WorkflowTask::create([
+            'id' => '01JTESTFLOWTASKMETRICS0000',
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'ready',
+            'available_at' => now()->subSecond(),
+            'payload' => [],
+            'connection' => 'redis',
+            'queue' => 'default',
+            'compatibility' => 'build-a',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        WorkerCompatibilityFleet::record(['build-a'], 'redis', 'default', 'waterline-worker-a');
+
+        $this->get('/waterline/api/stats')
+            ->assertStatus(200)
+            ->assertJsonPath('operator_metrics.runs.running', 1)
+            ->assertJsonPath('operator_metrics.backlog.runnable_tasks', 1)
+            ->assertJsonPath('operator_metrics.backlog.repair_needed_runs', 1)
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'waterline-metrics-test')
+            ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 1)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 1)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 1);
     }
 }

@@ -33,4 +33,6 @@ interface WorkflowRepositoryInterface
     public function maxExceptionsWorkflow();
 
     public function totalFlows();
+
+    public function operatorMetrics();
 }

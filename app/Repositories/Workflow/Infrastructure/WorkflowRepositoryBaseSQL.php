@@ -113,6 +113,11 @@ abstract class WorkflowRepositoryBaseSQL implements WorkflowRepositoryInterface
         return $this->workflowModel::count();
     }
 
+    public function operatorMetrics()
+    {
+        return null;
+    }
+
     protected function orderedFlowsQuery(): Builder
     {
         return $this->workflowModel::query()

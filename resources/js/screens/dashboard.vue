@@ -95,6 +95,17 @@
             exceptionCount(flow) {
                 return flow.exceptions_count ?? flow.exception_count ?? 0;
             },
+
+            operatorMetric(section, key) {
+                const metrics = this.stats.operator_metrics || {};
+                const group = metrics[section] || {};
+
+                return group[key] || 0;
+            },
+
+            operatorMetricLabel(section, key) {
+                return this.operatorMetric(section, key).toLocaleString();
+            },
         }
     }
 </script>
@@ -203,6 +214,63 @@
                     </div>
                 </div>
 
+            </div>
+        </div>
+
+        <div class="card mt-4" v-if="stats.operator_metrics">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5>v2 Operator Metrics</h5>
+                <small class="text-muted" v-if="stats.operator_metrics.generated_at">
+                    {{ stats.operator_metrics.generated_at }}
+                </small>
+            </div>
+
+            <div class="card-bg-secondary">
+                <div class="d-flex">
+                    <div class="w-25 border-right">
+                        <div class="p-4">
+                            <small class="text-uppercase">Runnable Tasks</small>
+
+                            <h4 class="mt-4 mb-0">
+                                {{ operatorMetricLabel('backlog', 'runnable_tasks') }}
+                            </h4>
+                        </div>
+                    </div>
+
+                    <div class="w-25 border-right">
+                        <div class="p-4">
+                            <small class="text-uppercase">Repair Needed Runs</small>
+
+                            <h4 class="mt-4 mb-0">
+                                {{ operatorMetricLabel('backlog', 'repair_needed_runs') }}
+                            </h4>
+                        </div>
+                    </div>
+
+                    <div class="w-25 border-right">
+                        <div class="p-4">
+                            <small class="text-uppercase">Compatibility Blocked</small>
+
+                            <h4 class="mt-4 mb-0">
+                                {{ operatorMetricLabel('backlog', 'compatibility_blocked_runs') }}
+                            </h4>
+                        </div>
+                    </div>
+
+                    <div class="w-25">
+                        <div class="p-4">
+                            <small class="text-uppercase">Active Workers</small>
+
+                            <h4 class="mt-4 mb-0">
+                                {{ operatorMetricLabel('workers', 'active_workers') }}
+                            </h4>
+
+                            <small class="mt-1 text-muted">
+                                {{ operatorMetricLabel('workers', 'active_worker_scopes') }} queue scopes
+                            </small>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 

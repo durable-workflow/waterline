@@ -3,6 +3,7 @@
 namespace Waterline\Repositories\Workflow\Infrastructure;
 
 use Workflow\V2\Support\CurrentRunResolver;
+use Workflow\V2\Support\OperatorMetrics;
 use Workflow\V2\Support\RunSummarySortKey;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 
@@ -152,6 +153,11 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     public function totalFlows(): int
     {
         return $this->runSummaryModel::count();
+    }
+
+    public function operatorMetrics()
+    {
+        return OperatorMetrics::snapshot();
     }
 
     protected function orderedRunsQuery()

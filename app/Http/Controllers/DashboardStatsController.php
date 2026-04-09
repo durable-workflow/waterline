@@ -22,6 +22,7 @@ class DashboardStatsController extends Controller
             'max_wait_time_workflow' => $repository->maxWaitTimeWorkflow(),
             'max_duration_workflow' => $repository->maxDurationWorkflow(),
             'max_exceptions_workflow' => $repository->maxExceptionsWorkflow(),
+            'operator_metrics' => $repository->operatorMetrics(),
         ]);
     }
 }
