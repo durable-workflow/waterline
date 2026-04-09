@@ -117,6 +117,12 @@
             operatorPolicyMetricLabel(key) {
                 return this.operatorPolicyMetric(key).toLocaleString();
             },
+
+            operatorDurationMetricLabel(section, key) {
+                const value = this.operatorMetric(section, key);
+
+                return value > 0 ? moment.duration(value).humanize() : '-';
+            },
         }
     }
 </script>
@@ -278,6 +284,52 @@
 
                             <small class="mt-1 text-muted">
                                 {{ operatorMetricLabel('workers', 'active_worker_scopes') }} queue scopes
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex border-top">
+                    <div class="w-25 border-right">
+                        <div class="p-4">
+                            <small class="text-uppercase">Pending Starts</small>
+
+                            <h4 class="mt-4 mb-0">
+                                {{ operatorMetricLabel('starts', 'pending_runs') }}
+                            </h4>
+                        </div>
+                    </div>
+
+                    <div class="w-25 border-right">
+                        <div class="p-4">
+                            <small class="text-uppercase">Start Commands</small>
+
+                            <h4 class="mt-4 mb-0">
+                                {{ operatorMetricLabel('starts', 'pending_commands') }}
+                            </h4>
+                        </div>
+                    </div>
+
+                    <div class="w-25 border-right">
+                        <div class="p-4">
+                            <small class="text-uppercase">Due Start Tasks</small>
+
+                            <h4 class="mt-4 mb-0">
+                                {{ operatorMetricLabel('starts', 'ready_tasks') }}
+                            </h4>
+                        </div>
+                    </div>
+
+                    <div class="w-25">
+                        <div class="p-4">
+                            <small class="text-uppercase">Max Start Latency</small>
+
+                            <h4 class="mt-4 mb-0">
+                                {{ operatorDurationMetricLabel('starts', 'max_pending_ms') }}
+                            </h4>
+
+                            <small class="mt-1 text-muted" v-if="stats.operator_metrics.starts && stats.operator_metrics.starts.oldest_pending_start_at">
+                                {{ stats.operator_metrics.starts.oldest_pending_start_at }}
                             </small>
                         </div>
                     </div>

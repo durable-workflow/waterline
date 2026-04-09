@@ -4,6 +4,10 @@ namespace Waterline\Tests\Feature;
 
 use Carbon\CarbonInterval;
 use Waterline\Tests\TestCase;
+use Workflow\V2\Enums\CommandOutcome;
+use Workflow\V2\Enums\CommandStatus;
+use Workflow\V2\Enums\CommandType;
+use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowFailure;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
@@ -164,7 +168,7 @@ class V2DashboardStatsControllerTest extends TestCase
             'run_number' => 1,
             'workflow_class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
-            'status' => 'waiting',
+            'status' => 'pending',
             'started_at' => now()->subMinutes(10),
             'last_progress_at' => now()->subMinute(),
         ]);
@@ -179,7 +183,7 @@ class V2DashboardStatsControllerTest extends TestCase
             'engine_source' => 'v2',
             'class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
-            'status' => 'waiting',
+            'status' => 'pending',
             'status_bucket' => 'running',
             'started_at' => $run->started_at,
             'liveness_state' => 'repair_needed',
@@ -188,6 +192,15 @@ class V2DashboardStatsControllerTest extends TestCase
             'continue_as_new_recommended' => true,
             'created_at' => now()->subMinutes(10),
             'updated_at' => now(),
+        ]);
+
+        WorkflowCommand::record($instance, $run, [
+            'command_type' => CommandType::Start->value,
+            'target_scope' => 'instance',
+            'status' => CommandStatus::Accepted->value,
+            'outcome' => CommandOutcome::StartedNew->value,
+            'accepted_at' => now()->subSeconds(30),
+            'applied_at' => now()->subSeconds(30),
         ]);
 
         WorkflowTask::create([
@@ -211,6 +224,9 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.runs.running', 1)
             ->assertJsonPath('operator_metrics.backlog.runnable_tasks', 1)
             ->assertJsonPath('operator_metrics.backlog.repair_needed_runs', 1)
+            ->assertJsonPath('operator_metrics.starts.pending_runs', 1)
+            ->assertJsonPath('operator_metrics.starts.pending_commands', 1)
+            ->assertJsonPath('operator_metrics.starts.ready_tasks', 1)
             ->assertJsonPath('operator_metrics.history.continue_as_new_recommended_runs', 1)
             ->assertJsonPath('operator_metrics.history.max_event_count', 12)
             ->assertJsonPath('operator_metrics.history.event_threshold', 10)
