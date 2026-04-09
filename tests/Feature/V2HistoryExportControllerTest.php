@@ -5,6 +5,7 @@ namespace Waterline\Tests\Feature;
 use Illuminate\Support\Str;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
+use Workflow\V2\Contracts\HistoryExportRedactor;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
@@ -47,6 +48,34 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('workflow.run_id', $run->id)
             ->assertJsonPath('history_events.0.type', 'WorkflowStarted')
             ->assertJsonPath('history_events.1.type', 'WorkflowCompleted');
+    }
+
+    public function testHistoryExportRoutesApplyConfiguredRedactionPolicy(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.history_export.redactor', new class() implements HistoryExportRedactor {
+            /**
+             * @param array<string, mixed> $context
+             *
+             * @return array<string, mixed>
+             */
+            public function redact(mixed $value, array $context): array
+            {
+                return [
+                    'redacted' => true,
+                    'path' => $context['path'],
+                ];
+            }
+        });
+
+        [$instance, $run] = $this->createCompletedRunWithHistory();
+
+        $this->get('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
+            ->assertStatus(200)
+            ->assertJsonPath('redaction.applied', true)
+            ->assertJsonPath('payloads.arguments.data.redacted', true)
+            ->assertJsonPath('payloads.arguments.data.path', 'payloads.arguments.data')
+            ->assertJsonPath('history_events.0.payload.path', 'history_events.0.payload');
     }
 
     /**
