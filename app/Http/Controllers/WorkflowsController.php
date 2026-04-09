@@ -5,6 +5,7 @@ namespace Waterline\Http\Controllers;
 use Illuminate\Http\Request;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Support\CommandResponse;
+use Workflow\V2\Support\HistoryExport;
 use Workflow\V2\Support\QueryResponse;
 use Workflow\V2\WorkflowStub as V2WorkflowStub;
 use Waterline\Http\Resources\StoredWorkflowResource;
@@ -54,6 +55,27 @@ class WorkflowsController extends Controller
         return $repository->engineSource() === 'v2'
             ? V2StoredWorkflowResource::make($flow)
             : StoredWorkflowResource::make($flow);
+    }
+
+    public function historyExport(string $id, WorkflowRepositoryInterface $repository)
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $flow = $repository->findFlow($id);
+
+        return response()->json(HistoryExport::forRun($flow));
+    }
+
+    public function historyExportSelection(
+        string $instanceId,
+        string $runId,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $flow = $repository->findFlowSelection($instanceId, $runId);
+
+        return response()->json(HistoryExport::forRun($flow));
     }
 
     public function query(

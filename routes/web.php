@@ -23,6 +23,7 @@ Route::prefix('api')->group(function () {
     Route::get('/flows/running', 'WorkflowsController@running')->name('waterline.running');
     Route::get('/instances/{instanceId}', 'WorkflowsController@showSelection')->name('waterline.instances.show');
     Route::get('/instances/{instanceId}/runs/{runId}', 'WorkflowsController@showSelection')->name('waterline.instances.runs.show');
+    Route::get('/instances/{instanceId}/runs/{runId}/history-export', 'WorkflowsController@historyExportSelection')->name('waterline.instances.runs.history-export');
     Route::post('/instances/{instanceId}/runs/{runId}/queries/{query}', 'WorkflowsController@querySelection')->name('waterline.instances.runs.query');
     Route::post('/instances/{instanceId}/runs/{runId}/signals/{signal}', 'WorkflowsController@signalSelection')->name('waterline.instances.runs.signal');
     Route::post('/instances/{instanceId}/runs/{runId}/updates/{update}', 'WorkflowsController@updateSelection')->name('waterline.instances.runs.update');
@@ -36,6 +37,7 @@ Route::prefix('api')->group(function () {
     Route::post('/instances/{instanceId}/cancel', 'WorkflowsController@cancelInstance')->name('waterline.instances.cancel');
     Route::post('/instances/{instanceId}/terminate', 'WorkflowsController@terminateInstance')->name('waterline.instances.terminate');
     Route::get('/flows/{id}', 'WorkflowsController@show')->name('waterline.show');
+    Route::get('/flows/{id}/history-export', 'WorkflowsController@historyExport')->name('waterline.history-export');
     Route::post('/flows/{id}/queries/{query}', 'WorkflowsController@query')->name('waterline.query');
     Route::post('/flows/{id}/signals/{signal}', 'WorkflowsController@signal')->name('waterline.signal');
     Route::post('/flows/{id}/updates/{update}', 'WorkflowsController@update')->name('waterline.update');
