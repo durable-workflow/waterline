@@ -4344,6 +4344,74 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame('waterline.instances.update', $command->requestRouteName());
     }
 
+    public function testUpdateCanReturnAfterAcceptedOnlyModeAndLetWorkerApplyIt(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-update-current-accepted');
+        $workflow->start();
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $response = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/updates/mark-approved', [
+            'wait_for' => 'accepted',
+            'arguments' => [
+                'approved' => true,
+                'source' => 'waterline-ui',
+            ],
+        ]);
+
+        $response
+            ->assertStatus(202)
+            ->assertJsonPath('outcome', null)
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'instance')
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('update_status', 'accepted')
+            ->assertJsonPath('command_source', 'waterline')
+            ->assertJsonPath('validation_errors', [])
+            ->assertJsonPath('result', null);
+
+        $commandId = $response->json('command_id');
+        $updateId = $response->json('update_id');
+
+        $this->assertDatabaseHas('workflow_commands', [
+            'id' => $commandId,
+            'workflow_instance_id' => $workflow->id(),
+            'workflow_run_id' => $workflow->runId(),
+            'command_type' => 'update',
+            'source' => 'waterline',
+            'target_scope' => 'instance',
+            'status' => 'accepted',
+            'outcome' => null,
+        ]);
+
+        $this->assertDatabaseHas('workflow_updates', [
+            'id' => $updateId,
+            'workflow_command_id' => $commandId,
+            'workflow_instance_id' => $workflow->id(),
+            'workflow_run_id' => $workflow->runId(),
+            'update_name' => 'mark-approved',
+            'status' => 'accepted',
+            'outcome' => null,
+            'workflow_sequence' => null,
+        ]);
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $this->assertDatabaseHas('workflow_updates', [
+            'id' => $updateId,
+            'status' => 'completed',
+            'outcome' => 'update_completed',
+            'workflow_sequence' => 1,
+        ]);
+    }
+
     public function testUpdateIsBlockedWhileAnEarlierSignalIsStillPending(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -5496,6 +5564,19 @@ class V2DashboardWorkflowTest extends TestCase
     {
         Cache::forget(TaskWatchdog::LOOP_THROTTLE_KEY);
         TaskWatchdog::wake();
+    }
+
+    private function runReadyWorkflowTask(string $runId): void
+    {
+        /** @var WorkflowTask $task */
+        $task = WorkflowTask::query()
+            ->where('workflow_run_id', $runId)
+            ->where('task_type', 'workflow')
+            ->where('status', 'ready')
+            ->orderBy('created_at')
+            ->firstOrFail();
+
+        $this->app->call([new RunWorkflowTask($task->id), 'handle']);
     }
 
     private function waitForWorkflowState(callable $condition, int $attempts = 50): void

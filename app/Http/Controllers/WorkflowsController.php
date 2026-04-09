@@ -7,6 +7,7 @@ use Workflow\V2\CommandContext;
 use Workflow\V2\Support\CommandResponse;
 use Workflow\V2\Support\HistoryExport;
 use Workflow\V2\Support\QueryResponse;
+use Workflow\V2\UpdateResult;
 use Workflow\V2\WorkflowStub as V2WorkflowStub;
 use Waterline\Http\Resources\StoredWorkflowResource;
 use Waterline\Http\Resources\V2StoredWorkflowResource;
@@ -200,9 +201,11 @@ class WorkflowsController extends Controller
         abort_unless($repository->engineSource() === 'v2', 404);
 
         $flow = $repository->findFlow($id);
-        $result = V2WorkflowStub::loadRun($flow->id)
-            ->withCommandContext(CommandContext::waterline(request()))
-            ->attemptUpdateWithArguments($update, $this->commandArguments($request));
+        $stub = V2WorkflowStub::loadRun($flow->id)
+            ->withCommandContext(CommandContext::waterline(request()));
+        $result = $this->shouldSubmitUpdate($request)
+            ? $stub->submitUpdateWithArguments($update, $this->commandArguments($request))
+            : $stub->attemptUpdateWithArguments($update, $this->commandArguments($request));
 
         return $this->commandResponse($result);
     }
@@ -215,9 +218,11 @@ class WorkflowsController extends Controller
     ) {
         abort_unless($repository->engineSource() === 'v2', 404);
 
-        $result = V2WorkflowStub::load($instanceId)
-            ->withCommandContext(CommandContext::waterline(request()))
-            ->attemptUpdateWithArguments($update, $this->commandArguments($request));
+        $stub = V2WorkflowStub::load($instanceId)
+            ->withCommandContext(CommandContext::waterline(request()));
+        $result = $this->shouldSubmitUpdate($request)
+            ? $stub->submitUpdateWithArguments($update, $this->commandArguments($request))
+            : $stub->attemptUpdateWithArguments($update, $this->commandArguments($request));
 
         return $this->commandResponse($result);
     }
@@ -231,9 +236,11 @@ class WorkflowsController extends Controller
     ) {
         abort_unless($repository->engineSource() === 'v2', 404);
 
-        $result = V2WorkflowStub::loadSelection($instanceId, $runId)
-            ->withCommandContext(CommandContext::waterline(request()))
-            ->attemptUpdateWithArguments($update, $this->commandArguments($request));
+        $stub = V2WorkflowStub::loadSelection($instanceId, $runId)
+            ->withCommandContext(CommandContext::waterline(request()));
+        $result = $this->shouldSubmitUpdate($request)
+            ? $stub->submitUpdateWithArguments($update, $this->commandArguments($request))
+            : $stub->attemptUpdateWithArguments($update, $this->commandArguments($request));
 
         return $this->commandResponse($result);
     }
@@ -422,11 +429,20 @@ class WorkflowsController extends Controller
         return $reason === '' ? null : $reason;
     }
 
+    private function shouldSubmitUpdate(Request $request): bool
+    {
+        return $request->input('wait_for') === 'accepted';
+    }
+
     private function commandResponse($result)
     {
+        $status = $result instanceof UpdateResult && $result->updateStatus() === 'accepted'
+            ? 202
+            : ($result->accepted() ? 200 : 409);
+
         return response()->json(
             CommandResponse::payload($result),
-            $result->accepted() ? 200 : 409,
+            $status,
         );
     }
 

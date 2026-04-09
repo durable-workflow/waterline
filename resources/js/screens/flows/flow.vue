@@ -1833,6 +1833,11 @@ export default {
                     <select id="waterline-update-target" class="swal2-input">${options}</select>
                     <label class="d-block text-left mb-2" for="waterline-update-arguments">Arguments JSON</label>
                     <textarea id="waterline-update-arguments" class="swal2-textarea" style="min-height: 10rem;">${this.escapeHtml(this.defaultUpdateArguments(firstUpdate))}</textarea>
+                    <label class="d-block text-left mb-2" for="waterline-update-wait-for">Return after</label>
+                    <select id="waterline-update-wait-for" class="swal2-input">
+                        <option value="completed">Update completes</option>
+                        <option value="accepted">Command is accepted</option>
+                    </select>
                     <div class="small text-muted text-left">Use a JSON object for named arguments or a JSON array for positional arguments.</div>
                 `,
                 showCancelButton: true,
@@ -1854,6 +1859,7 @@ export default {
                 preConfirm: () => {
                     const target = document.getElementById('waterline-update-target').value
                     const rawArguments = document.getElementById('waterline-update-arguments').value
+                    const waitFor = document.getElementById('waterline-update-wait-for').value
 
                     if (!target) {
                         Swal.showValidationMessage('Select an update.')
@@ -1865,6 +1871,7 @@ export default {
                         return {
                             targetName: target,
                             arguments: this.parseCommandArguments(rawArguments),
+                            waitFor,
                         }
                     } catch (error) {
                         Swal.showValidationMessage('Arguments must be valid JSON.')
@@ -1877,10 +1884,16 @@ export default {
             return result.isConfirmed ? result.value : null
         },
 
-        commandRequestBody(argumentsValue) {
-            return {
-                arguments: argumentsValue,
+        commandRequestBody(command) {
+            const body = {
+                arguments: command.arguments,
             }
+
+            if (command.waitFor === 'accepted') {
+                body.wait_for = 'accepted'
+            }
+
+            return body
         },
 
         escapeHtml(value) {
@@ -2410,7 +2423,7 @@ export default {
             try {
                 const response = await this.$http.post(
                     this.commandEndpoint(commandType, interactiveCommand ? interactiveCommand.targetName : null),
-                    interactiveCommand ? this.commandRequestBody(interactiveCommand.arguments) : {},
+                    interactiveCommand ? this.commandRequestBody(interactiveCommand) : {},
                 )
 
                 if (commandType === 'query') {
@@ -2427,7 +2440,9 @@ export default {
 
                 const successText = {
                     signal: 'Waterline recorded the signal command durably.',
-                    update: 'Waterline recorded the update command durably.',
+                    update: response.data.update_status === 'accepted'
+                        ? 'Waterline accepted the update command and queued a workflow task to apply it.'
+                        : 'Waterline recorded the update command durably.',
                     repair: response.data.outcome === 'repair_dispatched'
                         ? 'Waterline recreated the durable task and re-dispatched it.'
                         : 'Waterline recorded the repair command, and no new task was needed.',
