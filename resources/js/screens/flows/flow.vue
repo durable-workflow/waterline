@@ -205,7 +205,7 @@
                 <div class="row mb-2" v-if="hasDetailValue(flow.workflow_determinism_status)">
                     <div class="col-md-2"><strong>Replay Safety</strong></div>
                     <div class="col">
-                        <div>{{ workflowDeterminismStatusLabel(flow.workflow_determinism_status) }}</div>
+                        <div>{{ workflowDeterminismStatusLabel(flow.workflow_determinism_status, flow.workflow_determinism_source) }}</div>
                         <div class="small text-muted" v-if="hasDetailValue(flow.workflow_determinism_source)">
                             Source: {{ contractSourceLabel(flow.workflow_determinism_source) }}
                         </div>
@@ -1263,6 +1263,8 @@ export default {
             switch (source) {
                 case 'durable_history':
                     return 'Durable start history'
+                case 'definition_drift':
+                    return 'Definition drift'
                 case 'live_definition':
                     return 'Live workflow definition'
                 case 'unavailable':
@@ -1272,11 +1274,14 @@ export default {
             }
         },
 
-        workflowDeterminismStatusLabel(status) {
+        workflowDeterminismStatusLabel(status, source = null) {
             switch (status) {
                 case 'clean':
                     return 'No obvious replay-unsafe calls detected in the loadable workflow definition.'
                 case 'warning':
+                    if (source === 'definition_drift') {
+                        return 'Current-source replay-safety findings are suppressed because this run started on a different workflow definition.'
+                    }
                     return 'Replay-unsafe calls detected in the loadable workflow definition.'
                 case 'unavailable':
                     return 'Workflow definition is unavailable, so replay-safety diagnostics could not run.'

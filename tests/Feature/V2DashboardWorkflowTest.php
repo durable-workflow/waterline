@@ -287,9 +287,12 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
-            ->assertJsonPath('workflow_determinism_status', 'clean')
-            ->assertJsonPath('workflow_determinism_source', 'live_definition')
-            ->assertJsonPath('workflow_determinism_findings', []);
+            ->assertJsonPath('workflow_determinism_status', 'warning')
+            ->assertJsonPath('workflow_determinism_source', 'definition_drift')
+            ->assertJsonPath('workflow_determinism_findings.0.rule', 'workflow_definition_drift')
+            ->assertJsonPath('workflow_determinism_findings.0.symbol', 'workflow.operator-command')
+            ->assertJsonPath('workflow_determinism_findings.0.file', null)
+            ->assertJsonPath('workflow_determinism_findings.0.line', null);
     }
 
     public function testShowUsesTypedActivityHistoryWhenActivityRowIsMissing(): void
