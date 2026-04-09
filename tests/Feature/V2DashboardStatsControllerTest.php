@@ -141,6 +141,8 @@ class V2DashboardStatsControllerTest extends TestCase
         config()->set('workflows.v2.compatibility.current', 'build-a');
         config()->set('workflows.v2.compatibility.supported', ['build-a']);
         config()->set('workflows.v2.compatibility.namespace', 'waterline-metrics-test');
+        config()->set('workflows.v2.history_budget.continue_as_new_event_threshold', 10);
+        config()->set('workflows.v2.history_budget.continue_as_new_size_bytes_threshold', 10000);
         WorkerCompatibilityFleet::clear();
         $this->beforeApplicationDestroyed(static function (): void {
             WorkerCompatibilityFleet::clear();
@@ -178,6 +180,9 @@ class V2DashboardStatsControllerTest extends TestCase
             'status_bucket' => 'running',
             'started_at' => $run->started_at,
             'liveness_state' => 'repair_needed',
+            'history_event_count' => 12,
+            'history_size_bytes' => 2048,
+            'continue_as_new_recommended' => true,
             'created_at' => now()->subMinutes(10),
             'updated_at' => now(),
         ]);
@@ -203,6 +208,9 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.runs.running', 1)
             ->assertJsonPath('operator_metrics.backlog.runnable_tasks', 1)
             ->assertJsonPath('operator_metrics.backlog.repair_needed_runs', 1)
+            ->assertJsonPath('operator_metrics.history.continue_as_new_recommended_runs', 1)
+            ->assertJsonPath('operator_metrics.history.max_event_count', 12)
+            ->assertJsonPath('operator_metrics.history.event_threshold', 10)
             ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'waterline-metrics-test')
             ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
             ->assertJsonPath('operator_metrics.workers.active_workers', 1)

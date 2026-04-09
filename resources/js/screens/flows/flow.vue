@@ -279,6 +279,16 @@
                     </div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.history_event_count) || hasDetailValue(flow.history_size_bytes)">
+                    <div class="col-md-2"><strong>History</strong></div>
+                    <div class="col">
+                        {{ historyBudgetSummary(flow) }}
+                        <span v-if="flow.continue_as_new_recommended" class="badge badge-warning ml-1">
+                            Continue as new recommended
+                        </span>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="lineageEntries().length">
                     <div class="col-md-2"><strong>Lineage</strong></div>
                     <div class="col">
@@ -1056,6 +1066,48 @@ export default {
             return encoded === undefined
                 ? 'null'
                 : encoded
+        },
+
+        historyBudgetSummary(flow) {
+            const eventCount = this.hasDetailValue(flow.history_event_count)
+                ? Number(flow.history_event_count).toLocaleString() + ' events'
+                : '- events'
+            const size = this.formatBytes(flow.history_size_bytes)
+            const thresholds = []
+
+            if (this.hasDetailValue(flow.history_event_threshold)) {
+                thresholds.push(Number(flow.history_event_threshold).toLocaleString() + ' events')
+            }
+
+            if (this.hasDetailValue(flow.history_size_bytes_threshold)) {
+                thresholds.push(this.formatBytes(flow.history_size_bytes_threshold))
+            }
+
+            return thresholds.length
+                ? eventCount + ' / ' + size + ' (threshold ' + thresholds.join(' or ') + ')'
+                : eventCount + ' / ' + size
+        },
+
+        formatBytes(value) {
+            if (!this.hasDetailValue(value)) {
+                return '-'
+            }
+
+            const bytes = Number(value)
+
+            if (!Number.isFinite(bytes)) {
+                return value
+            }
+
+            if (bytes < 1024) {
+                return bytes.toLocaleString() + ' B'
+            }
+
+            if (bytes < 1024 * 1024) {
+                return (bytes / 1024).toFixed(1) + ' KiB'
+            }
+
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MiB'
         },
 
         duration(start, end) {

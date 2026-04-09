@@ -81,6 +81,9 @@ class V2DashboardWorkflowTest extends TestCase
             'closed_at' => $run->closed_at,
             'duration_ms' => 300000,
             'exception_count' => 1,
+            'history_event_count' => 42,
+            'history_size_bytes' => 65536,
+            'continue_as_new_recommended' => true,
             'created_at' => now()->subMinutes(10),
             'updated_at' => now()->subMinutes(5),
         ]);
@@ -171,6 +174,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('duration_ms', 300000)
             ->assertJsonPath('exception_count', 1)
             ->assertJsonPath('exceptions_count', 1)
+            ->assertJsonPath('history_event_count', 42)
+            ->assertJsonPath('history_size_bytes', 65536)
+            ->assertJsonPath('continue_as_new_recommended', true)
             ->assertJsonPath('declared_signals', [])
             ->assertJsonPath('declared_updates', [])
             ->assertJsonPath('can_issue_terminal_commands', false)
