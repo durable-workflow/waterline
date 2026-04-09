@@ -85,6 +85,38 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('data.1.sort_key', $older->sort_key);
     }
 
+    public function testTerminalListEndpointsFilterByRawStatus(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $failed = $this->createTerminalSummary('terminal-failed', 'run-failed', 'failed');
+        $cancelled = $this->createTerminalSummary('terminal-cancelled', 'run-cancelled', 'cancelled');
+        $terminated = $this->createTerminalSummary('terminal-terminated', 'run-terminated', 'terminated');
+
+        $this->get('/waterline/api/flows/failed')
+            ->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $failed->id)
+            ->assertJsonPath('data.0.status', 'failed')
+            ->assertJsonPath('data.0.is_terminal', true);
+
+        $this->get('/waterline/api/flows/cancelled')
+            ->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $cancelled->id)
+            ->assertJsonPath('data.0.status', 'cancelled')
+            ->assertJsonPath('data.0.status_bucket', 'failed')
+            ->assertJsonPath('data.0.is_terminal', true);
+
+        $this->get('/waterline/api/flows/terminated')
+            ->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $terminated->id)
+            ->assertJsonPath('data.0.status', 'terminated')
+            ->assertJsonPath('data.0.status_bucket', 'failed')
+            ->assertJsonPath('data.0.is_terminal', true);
+    }
+
     private function createRunningSummary(
         string $instanceId,
         string $runId,
@@ -128,6 +160,59 @@ class V2DashboardWorkflowListTest extends TestCase
             'sort_key' => RunSummarySortKey::key($startedAt, $createdAt, $createdAt, $run->id),
             'created_at' => $createdAt,
             'updated_at' => $createdAt,
+        ]);
+    }
+
+    private function createTerminalSummary(
+        string $instanceId,
+        string $runId,
+        string $status,
+    ): WorkflowRunSummary {
+        $startedAt = Carbon::parse('2022-01-01 12:00:00');
+        $closedAt = Carbon::parse('2022-01-01 12:05:00');
+
+        $instance = WorkflowInstance::create([
+            'id' => $instanceId,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => $runId,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => $status,
+            'closed_reason' => $status,
+            'started_at' => $startedAt,
+            'closed_at' => $closedAt,
+            'last_progress_at' => $closedAt,
+            'created_at' => $startedAt,
+            'updated_at' => $closedAt,
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        return WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => $status,
+            'status_bucket' => 'failed',
+            'closed_reason' => $status,
+            'started_at' => $startedAt,
+            'closed_at' => $closedAt,
+            'duration_ms' => $closedAt->diffInMilliseconds($startedAt),
+            'sort_timestamp' => $startedAt,
+            'sort_key' => RunSummarySortKey::key($startedAt, $startedAt, $closedAt, $run->id),
+            'created_at' => $startedAt,
+            'updated_at' => $closedAt,
         ]);
     }
 }

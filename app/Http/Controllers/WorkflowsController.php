@@ -23,6 +23,16 @@ class WorkflowsController extends Controller
         return $repository->failedFlows();
     }
 
+    public function cancelled(WorkflowRepositoryInterface $repository)
+    {
+        return $repository->cancelledFlows();
+    }
+
+    public function terminated(WorkflowRepositoryInterface $repository)
+    {
+        return $repository->terminatedFlows();
+    }
+
     public function running(WorkflowRepositoryInterface $repository)
     {
         return $repository->runningFlows();

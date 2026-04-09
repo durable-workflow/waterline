@@ -68,9 +68,9 @@
             },
 
             routeName(flow) {
-                const type = flow.status_bucket || (['failed', 'cancelled', 'terminated'].includes(flow.status)
-                    ? 'failed'
-                    : (flow.status === 'completed' ? 'completed' : 'running'));
+                const type = ['failed', 'cancelled', 'terminated', 'completed'].includes(flow.status)
+                    ? flow.status
+                    : (flow.status_bucket || 'running');
 
                 return type + '-flows-preview';
             },

@@ -73,6 +73,22 @@
                             <span>Failed</span>
                         </router-link>
                     </li>
+                    <li class="nav-item">
+                        <router-link active-class="active" to="/cancelled" class="nav-link d-flex align-items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                <path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32zM6 10h8v2H6v-2z"></path>
+                            </svg>
+                            <span>Cancelled</span>
+                        </router-link>
+                    </li>
+                    <li class="nav-item">
+                        <router-link active-class="active" to="/terminated" class="nav-link d-flex align-items-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                                <path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm1.41-1.41A8 8 0 1 0 15.66 4.34 8 8 0 0 0 4.34 15.66zM7 7h6v6H7V7z"></path>
+                            </svg>
+                            <span>Terminated</span>
+                        </router-link>
+                    </li>
                 </ul>
             </div>
 

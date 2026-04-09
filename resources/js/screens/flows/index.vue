@@ -142,11 +142,27 @@
              * Update the page title.
              */
             updatePageTitle() {
-                document.title = this.$route.params.type == 'running'
-                        ? 'Waterline - Running Flows'
-                        : document.title = this.$route.params.type == 'failed'
-                        ? 'Waterline - Failed Flows'
-                        : 'Waterline - Completed Flows';
+                document.title = 'Waterline - ' + this.flowCollectionLabel() + ' Flows';
+            },
+
+            flowCollectionLabel() {
+                return {
+                    running: 'Running',
+                    completed: 'Completed',
+                    failed: 'Failed',
+                    cancelled: 'Cancelled',
+                    terminated: 'Terminated',
+                }[this.$route.params.type] || 'Workflow';
+            },
+
+            isTerminalCollection() {
+                return ['completed', 'failed', 'cancelled', 'terminated'].includes(this.$route.params.type);
+            },
+
+            closedAtLabel() {
+                return this.$route.params.type === 'completed'
+                    ? 'Completed At'
+                    : this.flowCollectionLabel() + ' At';
             }
         }
     }
@@ -156,9 +172,7 @@
     <div>
         <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5 v-if="$route.params.type == 'running'">Running Flows</h5>
-                <h5 v-if="$route.params.type == 'completed'">Completed Flows</h5>
-                <h5 v-if="$route.params.type == 'failed'">Failed Flows</h5>
+                <h5>{{ flowCollectionLabel() }} Flows</h5>
             </div>
 
             <div v-if="!ready"
@@ -182,10 +196,9 @@
                 <tr>
                     <th>Flow</th>
                     <th v-if="$route.params.type=='running'" class="text-right">Started At</th>
-                    <th v-if="$route.params.type=='completed' || $route.params.type=='failed'">Started At</th>
-                    <th v-if="$route.params.type=='completed'">Completed At</th>
-                    <th v-if="$route.params.type=='failed'">Failed At</th>
-                    <th v-if="$route.params.type=='completed' || $route.params.type=='failed'" class="text-right">Duration</th>
+                    <th v-if="isTerminalCollection()">Started At</th>
+                    <th v-if="isTerminalCollection()">{{ closedAtLabel() }}</th>
+                    <th v-if="isTerminalCollection()" class="text-right">Duration</th>
                 </tr>
                 </thead>
 

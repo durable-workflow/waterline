@@ -83,7 +83,7 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('max_exceptions_workflow.id', $run->id);
     }
 
-    public function testIndexCountsCancelledRunsInFailedBucketForWeeklyTotals(): void
+    public function testIndexCountsOnlyActualFailuresForWeeklyFailedTotals(): void
     {
         config()->set('waterline.engine_source', 'v2');
 
@@ -130,6 +130,6 @@ class V2DashboardStatsControllerTest extends TestCase
 
         $this->get('/waterline/api/stats')
             ->assertStatus(200)
-            ->assertJsonPath('failed_flows_past_week', 1);
+            ->assertJsonPath('failed_flows_past_week', 0);
     }
 }

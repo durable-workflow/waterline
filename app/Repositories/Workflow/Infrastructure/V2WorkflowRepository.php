@@ -28,16 +28,22 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function completedFlows()
     {
-        return $this->orderedRunsQuery()
-            ->where('status_bucket', 'completed')
-            ->paginate(50);
+        return $this->statusFlows('completed');
     }
 
     public function failedFlows()
     {
-        return $this->orderedRunsQuery()
-            ->where('status_bucket', 'failed')
-            ->paginate(50);
+        return $this->statusFlows('failed');
+    }
+
+    public function cancelledFlows()
+    {
+        return $this->statusFlows('cancelled');
+    }
+
+    public function terminatedFlows()
+    {
+        return $this->statusFlows('terminated');
     }
 
     public function runningFlows()
@@ -107,7 +113,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function failedFlowsPastWeek(): int
     {
-        return $this->runSummaryModel::where('status_bucket', 'failed')
+        return $this->runSummaryModel::where('status', 'failed')
             ->where('updated_at', '>=', now()->subDays(7))
             ->count();
     }
@@ -151,6 +157,13 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     protected function orderedRunsQuery()
     {
         return RunSummarySortKey::applyDescending($this->runSummaryModel::query());
+    }
+
+    protected function statusFlows(string $status)
+    {
+        return $this->orderedRunsQuery()
+            ->where('status', $status)
+            ->paginate(50);
     }
 
     protected function detailRelations(): array

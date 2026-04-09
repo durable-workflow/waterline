@@ -36,6 +36,20 @@ abstract class WorkflowRepositoryBaseSQL implements WorkflowRepositoryInterface
             ->paginate(50);
     }
 
+    public function cancelledFlows()
+    {
+        return $this->orderedFlowsQuery()
+            ->whereRaw('1 = 0')
+            ->paginate(50);
+    }
+
+    public function terminatedFlows()
+    {
+        return $this->orderedFlowsQuery()
+            ->whereRaw('1 = 0')
+            ->paginate(50);
+    }
+
     public function runningFlows()
     {
         return $this->orderedFlowsQuery()->whereIn('status', [

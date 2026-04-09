@@ -38,6 +38,18 @@ export default [
     },
 
     {
+        path: '/cancelled/:flowId',
+        name: 'cancelled-flows-preview',
+        component: require('./screens/flows/flow').default,
+    },
+
+    {
+        path: '/terminated/:flowId',
+        name: 'terminated-flows-preview',
+        component: require('./screens/flows/flow').default,
+    },
+
+    {
         path: '/:type',
         name: 'flows',
         component: require('./screens/flows/index').default,

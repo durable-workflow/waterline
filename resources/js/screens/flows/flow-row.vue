@@ -14,7 +14,9 @@
             <br>
 
             <small class="text-muted">
-                Run: {{ flow.run_id || flow.id }} <span v-if="flow.status === 'continued' || flow.closed_reason === 'continued'" class="badge badge-info ml-1">Continued</span>
+                Run: {{ flow.run_id || flow.id }}
+                <span v-if="flow.status === 'continued' || flow.closed_reason === 'continued'" class="badge badge-info ml-1">Continued</span>
+                <span v-if="showStatusBadge(flow)" :class="statusBadgeClass(flow)" class="badge ml-1">{{ statusBadgeLabel(flow) }}</span>
             </small>
         </td>
 
@@ -22,11 +24,11 @@
             {{ timestamp(flow.started_at || flow.created_at) }}
         </td>
 
-        <td v-if="$route.params.type=='completed' || $route.params.type=='failed'" class="table-fit">
+        <td v-if="isTerminalCollection()" class="table-fit">
             {{ timestamp(flow.closed_at || flow.updated_at) }}
         </td>
 
-        <td v-if="$route.params.type=='completed' || $route.params.type=='failed'" class="table-fit">
+        <td v-if="isTerminalCollection()" class="table-fit">
             <span>{{ duration(flow.started_at || flow.created_at, flow.closed_at || flow.updated_at) }}</span>
         </td>
     </tr>
@@ -71,6 +73,27 @@
                         runId,
                     },
                 }
+            },
+
+            isTerminalCollection() {
+                return ['completed', 'failed', 'cancelled', 'terminated'].includes(this.$route.params.type)
+            },
+
+            showStatusBadge(flow) {
+                return ['failed', 'cancelled', 'terminated'].includes(flow.status)
+                    && this.$route.params.type !== flow.status
+            },
+
+            statusBadgeLabel(flow) {
+                return flow.status.charAt(0).toUpperCase() + flow.status.slice(1)
+            },
+
+            statusBadgeClass(flow) {
+                return {
+                    'failed': 'badge-danger',
+                    'cancelled': 'badge-warning',
+                    'terminated': 'badge-dark',
+                }[flow.status] || 'badge-secondary'
             },
         }
     }

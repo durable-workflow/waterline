@@ -10,6 +10,10 @@ interface WorkflowRepositoryInterface
 
     public function failedFlows();
 
+    public function cancelledFlows();
+
+    public function terminatedFlows();
+
     public function runningFlows();
 
     public function findFlow(string $id);
