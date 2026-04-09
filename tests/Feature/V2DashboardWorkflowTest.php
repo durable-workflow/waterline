@@ -433,6 +433,124 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame('Hello, Taylor!', unserialize($response->json('logs.0.result')));
     }
 
+    public function testShowKeepsTypedFailureDetailWhenFailureRowIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'failure-history-fallback',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNFAILUREHIST001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'failed',
+            'closed_reason' => 'failed',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(6),
+            'closed_at' => now()->subMinutes(3),
+            'last_progress_at' => now()->subMinutes(3),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        ActivityExecution::create([
+            'id' => '01JTESTACTIVITYFAILHISTORY01',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ActivityClass',
+            'activity_type' => 'activity.test',
+            'status' => 'failed',
+            'arguments' => Serializer::serialize(['Taylor']),
+            'started_at' => now()->subMinutes(5),
+            'closed_at' => now()->subMinutes(4),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYFAILUREONLY01',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::ActivityFailed->value,
+            'payload' => [
+                'activity_execution_id' => '01JTESTACTIVITYFAILHISTORY01',
+                'activity_class' => 'ActivityClass',
+                'activity_type' => 'activity.test',
+                'sequence' => 1,
+                'failure_id' => '01JTESTFAILUREHISTORYONLY01',
+                'exception_class' => \RuntimeException::class,
+                'message' => 'history-only boom',
+                'exception' => [
+                    'class' => \RuntimeException::class,
+                    'message' => 'history-only boom',
+                    'code' => 422,
+                    'file' => __FILE__,
+                    'line' => 77,
+                    'trace' => [[
+                        'class' => 'Tests\\Fixtures\\Workflow',
+                        'type' => '->',
+                        'function' => 'handle',
+                        'file' => __FILE__,
+                        'line' => 99,
+                    ]],
+                    'properties' => [[
+                        'declaring_class' => 'Tests\\Fixtures\\Workflow',
+                        'name' => 'orderId',
+                        'value' => 'order-123',
+                    ]],
+                ],
+                'activity' => [
+                    'id' => '01JTESTACTIVITYFAILHISTORY01',
+                    'sequence' => 1,
+                    'type' => 'activity.test',
+                    'class' => 'ActivityClass',
+                    'status' => 'failed',
+                    'attempt_count' => 1,
+                    'connection' => 'redis',
+                    'queue' => 'default',
+                    'started_at' => now()->subMinutes(5)->jsonSerialize(),
+                    'closed_at' => now()->subMinutes(4)->jsonSerialize(),
+                ],
+            ],
+            'recorded_at' => now()->subMinutes(4),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $response = $this->get('/waterline/api/flows/' . $run->id);
+        $exception = unserialize($response->json('exceptions.0.exception'));
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('exception_count', 1)
+            ->assertJsonPath('exceptions_count', 1)
+            ->assertJsonPath('exceptions.0.id', '01JTESTFAILUREHISTORYONLY01')
+            ->assertJsonPath('exceptions.0.class', 'ActivityClass')
+            ->assertJsonPath('timeline.0.type', 'ActivityFailed')
+            ->assertJsonPath('timeline.0.failure_id', '01JTESTFAILUREHISTORYONLY01')
+            ->assertJsonPath('timeline.0.failure.exception_class', \RuntimeException::class)
+            ->assertJsonPath('timeline.0.failure.message', 'history-only boom')
+            ->assertJsonPath('timeline.0.failure.file', __FILE__)
+            ->assertJsonPath('timeline.0.failure.line', 77);
+
+        $this->assertSame(\RuntimeException::class, $exception['__constructor']);
+        $this->assertSame('history-only boom', $exception['message']);
+        $this->assertSame(422, $exception['code']);
+        $this->assertSame(
+            'order-123',
+            collect($exception['properties'] ?? [])->keyBy('name')->get('orderId')['value'] ?? null
+        );
+    }
+
     public function testShowReturnsLiveHeartbeatMetadataForRunningActivity(): void
     {
         config()->set('waterline.engine_source', 'v2');
