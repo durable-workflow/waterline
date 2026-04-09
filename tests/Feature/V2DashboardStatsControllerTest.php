@@ -235,6 +235,10 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.workers.active_workers', 1)
             ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 1)
             ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 1)
+            ->assertJsonPath('operator_metrics.backend.queue.connection', 'sync')
+            ->assertJsonPath('operator_metrics.backend.queue.driver', 'sync')
+            ->assertJsonPath('operator_metrics.backend.supported', false)
+            ->assertJsonFragment(['code' => 'queue_sync_unsupported'])
             ->assertJsonPath('operator_metrics.repair_policy.redispatch_after_seconds', 8)
             ->assertJsonPath('operator_metrics.repair_policy.loop_throttle_seconds', 12)
             ->assertJsonPath('operator_metrics.repair_policy.scan_limit', 16);
