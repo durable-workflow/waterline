@@ -1887,6 +1887,7 @@ class V2DashboardWorkflowTest extends TestCase
             'event_type' => 'ChildWorkflowScheduled',
             'payload' => [
                 'workflow_link_id' => $link->id,
+                'child_call_id' => $link->id,
                 'sequence' => 1,
                 'child_workflow_instance_id' => $childInstance->id,
                 'child_workflow_run_id' => $childRun->id,
@@ -1905,8 +1906,10 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('wait_kind', 'child')
             ->assertJsonPath('wait_reason', 'Waiting for child workflow workflow.child')
+            ->assertJsonPath('open_wait_id', 'child:' . $link->id)
             ->assertJsonPath('waits.0.kind', 'child')
             ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.child_call_id', $link->id)
             ->assertJsonPath('waits.0.target_name', $childInstance->id)
             ->assertJsonPath('waits.0.target_type', 'workflow.child')
             ->assertJsonPath('waits.0.task_backed', false)
@@ -1914,6 +1917,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.resume_source_kind', 'child_workflow_run')
             ->assertJsonPath('waits.0.resume_source_id', $childRun->id)
             ->assertJsonPath('continuedWorkflows.0.link_type', 'child_workflow')
+            ->assertJsonPath('continuedWorkflows.0.child_call_id', $link->id)
             ->assertJsonPath('continuedWorkflows.0.child_workflow_run_id', $childRun->id)
             ->assertJsonPath('continuedWorkflows.0.workflow_run_id', $childRun->id)
             ->assertJsonPath('continuedWorkflows.0.status', 'waiting')
@@ -2133,6 +2137,7 @@ class V2DashboardWorkflowTest extends TestCase
     public function testShowUsesHistoryToRenderCurrentContinuedChildWithoutLinks(): void
     {
         config()->set('waterline.engine_source', 'v2');
+        $childCallId = '01JTESTPARENTCHILDCALL001';
 
         $parentInstance = WorkflowInstance::create([
             'id' => 'order-child-parent',
@@ -2201,6 +2206,7 @@ class V2DashboardWorkflowTest extends TestCase
             'sequence' => 1,
             'event_type' => HistoryEventType::ChildWorkflowScheduled->value,
             'payload' => [
+                'child_call_id' => $childCallId,
                 'sequence' => 1,
                 'child_workflow_instance_id' => $childInstance->id,
                 'child_workflow_run_id' => $historicalChildRun->id,
@@ -2217,6 +2223,7 @@ class V2DashboardWorkflowTest extends TestCase
             'sequence' => 2,
             'event_type' => HistoryEventType::ChildRunStarted->value,
             'payload' => [
+                'child_call_id' => $childCallId,
                 'sequence' => 1,
                 'child_workflow_instance_id' => $childInstance->id,
                 'child_workflow_run_id' => $historicalChildRun->id,
@@ -2249,11 +2256,14 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $parentRun->id)
             ->assertStatus(200)
             ->assertJsonPath('wait_kind', 'child')
+            ->assertJsonPath('open_wait_id', 'child:' . $childCallId)
             ->assertJsonPath('continuedWorkflows.0.link_type', 'child_workflow')
+            ->assertJsonPath('continuedWorkflows.0.child_call_id', $childCallId)
             ->assertJsonPath('continuedWorkflows.0.child_workflow_run_id', $currentChildRun->id)
             ->assertJsonPath('continuedWorkflows.0.status', 'waiting')
             ->assertJsonPath('continuedWorkflows.0.status_bucket', 'running')
             ->assertJsonPath('waits.0.kind', 'child')
+            ->assertJsonPath('waits.0.child_call_id', $childCallId)
             ->assertJsonPath('waits.0.resume_source_id', $currentChildRun->id)
             ->assertJsonPath('waits.0.target_name', $childInstance->id);
     }
@@ -3436,6 +3446,7 @@ class V2DashboardWorkflowTest extends TestCase
                     'parent_instance_id' => 'order-continued-current',
                     'parent_run_id' => '01JTESTFLOWRUNWORKFLOWSRC0',
                     'sequence' => 2,
+                    'child_call_id' => '01JTESTCHILDCALLWORKFLOW01',
                 ],
             ],
             'workflow_class' => 'WorkflowClass',
@@ -3456,7 +3467,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('commands.0.caller_label', 'Workflow')
             ->assertJsonPath('commands.0.context.workflow.parent_instance_id', 'order-continued-current')
             ->assertJsonPath('commands.0.context.workflow.parent_run_id', '01JTESTFLOWRUNWORKFLOWSRC0')
-            ->assertJsonPath('commands.0.context.workflow.sequence', 2);
+            ->assertJsonPath('commands.0.context.workflow.sequence', 2)
+            ->assertJsonPath('commands.0.context.workflow.child_call_id', '01JTESTCHILDCALLWORKFLOW01');
     }
 
     public function testShowMarksRepairableCurrentRun(): void

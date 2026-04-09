@@ -272,6 +272,9 @@
                             <span v-if="entry.status">
                                 - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
                             </span>
+                            <div class="small text-muted" v-if="hasDetailValue(entry.child_call_id)">
+                                child call / {{ entry.child_call_id }}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -401,6 +404,9 @@
                                 </div>
                                 <div class="small text-muted" v-if="resumeSourceSummary(wait.resume_source_kind, wait.resume_source_id)">
                                     resume / {{ resumeSourceSummary(wait.resume_source_kind, wait.resume_source_id) }}
+                                </div>
+                                <div class="small text-muted" v-if="hasDetailValue(wait.child_call_id)">
+                                    child call / {{ wait.child_call_id }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.sequence)">
                                     step {{ wait.sequence }}
@@ -1748,6 +1754,10 @@ export default {
                 details.push('child / ' + entry.child_status)
             }
 
+            if (this.hasDetailValue(entry.child_call_id)) {
+                details.push('child call / ' + entry.child_call_id)
+            }
+
             if (entry.failure && this.hasDetailValue(entry.failure.propagation_kind)) {
                 const handled = entry.failure.handled === true
                     ? 'handled'
@@ -1786,6 +1796,10 @@ export default {
 
                 if (workflow.sequence !== null && workflow.sequence !== undefined) {
                     workflowDetails.push('step ' + workflow.sequence)
+                }
+
+                if (workflow.child_call_id) {
+                    workflowDetails.push('child call ' + workflow.child_call_id)
                 }
 
                 if (workflowDetails.length) {
@@ -1882,6 +1896,7 @@ export default {
                 run_number: parent.run_number,
                 status: parent.status,
                 status_bucket: parent.status_bucket,
+                child_call_id: parent.child_call_id || null,
             }))
 
             const continued = (this.flow.continuedWorkflows || []).map((link) => ({
@@ -1893,6 +1908,7 @@ export default {
                 run_number: link.run_number,
                 status: link.status,
                 status_bucket: link.status_bucket,
+                child_call_id: link.child_call_id || null,
             }))
 
             return [...parents, ...continued]
