@@ -284,6 +284,12 @@ class V2DashboardWorkflowTest extends TestCase
                 WorkflowDefinition::fingerprint(TestOperatorCommandWorkflow::class)
             )
             ->assertJsonPath('workflow_definition_matches_current', false);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('workflow_determinism_status', 'clean')
+            ->assertJsonPath('workflow_determinism_source', 'live_definition')
+            ->assertJsonPath('workflow_determinism_findings', []);
     }
 
     public function testShowUsesTypedActivityHistoryWhenActivityRowIsMissing(): void

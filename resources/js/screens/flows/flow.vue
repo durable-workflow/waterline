@@ -202,6 +202,23 @@
                     </div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.workflow_determinism_status)">
+                    <div class="col-md-2"><strong>Replay Safety</strong></div>
+                    <div class="col">
+                        <div>{{ workflowDeterminismStatusLabel(flow.workflow_determinism_status) }}</div>
+                        <div class="small text-muted" v-if="hasDetailValue(flow.workflow_determinism_source)">
+                            Source: {{ contractSourceLabel(flow.workflow_determinism_source) }}
+                        </div>
+                        <div
+                            v-for="finding in workflowDeterminismFindings()"
+                            :key="workflowDeterminismFindingKey(finding)"
+                            class="small text-muted"
+                        >
+                            {{ workflowDeterminismFindingLabel(finding) }}
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="hasDetailValue(flow.compatibility) || flow.compatibility_supported === false || hasDetailValue(flow.compatibility_supported_in_fleet)">
                     <div class="col-md-2"><strong>Compatibility</strong></div>
                     <div class="col">
@@ -1251,6 +1268,46 @@ export default {
                 default:
                     return source
             }
+        },
+
+        workflowDeterminismStatusLabel(status) {
+            switch (status) {
+                case 'clean':
+                    return 'No obvious replay-unsafe calls detected in the loadable workflow definition.'
+                case 'warning':
+                    return 'Replay-unsafe calls detected in the loadable workflow definition.'
+                case 'unavailable':
+                    return 'Workflow definition is unavailable, so replay-safety diagnostics could not run.'
+                default:
+                    return status
+            }
+        },
+
+        workflowDeterminismFindings() {
+            return Array.isArray(this.flow.workflow_determinism_findings)
+                ? this.flow.workflow_determinism_findings
+                : []
+        },
+
+        workflowDeterminismFindingKey(finding) {
+            return [
+                finding && finding.rule ? finding.rule : 'rule',
+                finding && finding.symbol ? finding.symbol : 'symbol',
+                finding && finding.file ? finding.file : 'file',
+                finding && finding.line ? finding.line : 'line',
+            ].join(':')
+        },
+
+        workflowDeterminismFindingLabel(finding) {
+            const symbol = finding && finding.symbol ? finding.symbol : 'unknown symbol'
+            const location = finding && finding.file
+                ? `${finding.file}${finding.line ? ':' + finding.line : ''}`
+                : ''
+            const message = finding && finding.message ? finding.message : ''
+
+            return [symbol, location, message]
+                .filter(Boolean)
+                .join(' / ')
         },
 
         commandContractLabel(contract) {
