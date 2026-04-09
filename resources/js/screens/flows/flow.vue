@@ -528,6 +528,9 @@
                                 <div class="small text-muted" v-if="hasDetailValue(task.last_dispatch_attempt_at)">
                                     {{ timestamp(task.last_dispatch_attempt_at) }}
                                 </div>
+                                <div class="small text-muted" v-if="hasDetailValue(task.last_claim_failed_at)">
+                                    Claim failed {{ timestamp(task.last_claim_failed_at) }}
+                                </div>
                             </td>
                             <td>{{ taskTarget(task) }}</td>
                             <td>{{ task.queue || '-' }}</td>
@@ -547,6 +550,9 @@
                                 <div>{{ task.summary }}</div>
                                 <div class="small text-muted" v-if="hasDetailValue(task.last_dispatch_error)">
                                     {{ task.last_dispatch_error }}
+                                </div>
+                                <div class="small text-muted" v-if="hasDetailValue(task.last_claim_error)">
+                                    {{ task.last_claim_error }}
                                 </div>
                             </td>
                             <td>{{ taskAvailability(task) }}</td>

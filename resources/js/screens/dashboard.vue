@@ -435,6 +435,12 @@
                             {{ issue.message || 'Capability issue detected.' }}
                         </div>
                     </div>
+
+                    <div class="mt-2 text-muted" v-if="operatorMetric('tasks', 'claim_failed') || operatorMetric('backlog', 'claim_failed_runs')">
+                        {{ operatorMetricLabel('tasks', 'claim_failed') }} task claims failed across
+                        {{ operatorMetricLabel('backlog', 'claim_failed_runs') }} runs. Fix backend capability
+                        issues before retrying those workers.
+                    </div>
                 </div>
             </div>
         </div>

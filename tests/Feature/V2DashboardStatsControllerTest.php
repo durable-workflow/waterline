@@ -216,6 +216,42 @@ class V2DashboardStatsControllerTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        $claimFailedInstance = WorkflowInstance::create([
+            'id' => str_pad('01JTESTCLAIMINSTANCE', 26, '0'),
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $claimFailedRun = WorkflowRun::create([
+            'id' => str_pad('01JTESTCLAIMRUN', 26, '0'),
+            'workflow_instance_id' => $claimFailedInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'started_at' => now()->subMinutes(9),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $claimFailedInstance->update(['current_run_id' => $claimFailedRun->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $claimFailedRun->id,
+            'workflow_instance_id' => $claimFailedInstance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'started_at' => $claimFailedRun->started_at,
+            'liveness_state' => 'workflow_task_claim_failed',
+            'created_at' => now()->subMinutes(9),
+            'updated_at' => now(),
+        ]);
+
         WorkflowCommand::record($instance, $run, [
             'command_type' => CommandType::Start->value,
             'target_scope' => 'instance',
@@ -239,21 +275,40 @@ class V2DashboardStatsControllerTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        WorkflowTask::create([
+            'id' => str_pad('01JTESTCLAIMTASK', 26, '0'),
+            'workflow_run_id' => $claimFailedRun->id,
+            'task_type' => 'workflow',
+            'status' => 'ready',
+            'available_at' => now()->subSecond(),
+            'payload' => [],
+            'connection' => 'sync',
+            'queue' => 'default',
+            'compatibility' => 'build-a',
+            'last_claim_failed_at' => now()->subSecond(),
+            'last_claim_error' => 'Workflow v2 backend capabilities are unsupported: [queue_sync_unsupported] sync.',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         WorkerCompatibilityFleet::record(['build-a'], 'redis', 'default', 'waterline-worker-a');
 
         $this->get('/waterline/api/stats')
             ->assertStatus(200)
-            ->assertJsonPath('operator_metrics.runs.running', 1)
-            ->assertJsonPath('operator_metrics.backlog.runnable_tasks', 1)
+            ->assertJsonPath('operator_metrics.runs.running', 2)
+            ->assertJsonPath('operator_metrics.runs.claim_failed', 1)
+            ->assertJsonPath('operator_metrics.tasks.claim_failed', 1)
+            ->assertJsonPath('operator_metrics.backlog.runnable_tasks', 2)
             ->assertJsonPath('operator_metrics.backlog.repair_needed_runs', 1)
+            ->assertJsonPath('operator_metrics.backlog.claim_failed_runs', 1)
             ->assertJsonPath('operator_metrics.starts.pending_runs', 1)
             ->assertJsonPath('operator_metrics.starts.pending_commands', 1)
             ->assertJsonPath('operator_metrics.starts.ready_tasks', 1)
             ->assertJsonPath('operator_metrics.history.continue_as_new_recommended_runs', 1)
             ->assertJsonPath('operator_metrics.history.max_event_count', 12)
             ->assertJsonPath('operator_metrics.history.event_threshold', 10)
-            ->assertJsonPath('operator_metrics.projections.run_summaries.runs', 2)
-            ->assertJsonPath('operator_metrics.projections.run_summaries.summaries', 1)
+            ->assertJsonPath('operator_metrics.projections.run_summaries.runs', 3)
+            ->assertJsonPath('operator_metrics.projections.run_summaries.summaries', 2)
             ->assertJsonPath('operator_metrics.projections.run_summaries.missing', 1)
             ->assertJsonPath('operator_metrics.projections.run_summaries.orphaned', 0)
             ->assertJsonPath('operator_metrics.projections.run_summaries.needs_rebuild', 1)
