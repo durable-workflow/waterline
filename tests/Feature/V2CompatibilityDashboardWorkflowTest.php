@@ -352,6 +352,75 @@ class V2CompatibilityDashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.summary', 'Workflow task ready to resume the selected run.');
     }
 
+    public function testShowCountsLegacyCacheFleetHeartbeatUnderConfiguredNamespaceDuringMixedUpgrade(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.compatibility.supported', ['build-b']);
+        config()->set('workflows.v2.compatibility.namespace', 'waterline-app');
+
+        $this->seedLegacyFleetHeartbeat('worker-legacy-build-a', ['build-a'], 'redis', ['default']);
+
+        $instance = WorkflowInstance::create([
+            'id' => 'compat-waterline-legacy-namespaced',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNLEGACYNAMESP',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'compatibility' => 'build-a',
+            'arguments' => Serializer::serialize(['name' => 'Taylor']),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(10),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowTask::create([
+            'id' => '01JTESTFLOWTASKLEGACYNAMES',
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'ready',
+            'available_at' => now()->subMinute(),
+            'payload' => [],
+            'connection' => 'redis',
+            'queue' => 'default',
+            'compatibility' => 'build-a',
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('compatibility_namespace', 'waterline-app')
+            ->assertJsonPath('compatibility_supported', false)
+            ->assertJsonPath('compatibility_supported_in_fleet', true)
+            ->assertJsonPath('compatibility_fleet_reason', null)
+            ->assertJsonPath('compatibility_fleet.0.worker_id', 'worker-legacy-build-a')
+            ->assertJsonPath('compatibility_fleet.0.namespace', null)
+            ->assertJsonPath('compatibility_fleet.0.connection', 'redis')
+            ->assertJsonPath('compatibility_fleet.0.queue', 'default')
+            ->assertJsonPath('compatibility_fleet.0.supported.0', 'build-a')
+            ->assertJsonPath('compatibility_fleet.0.supports_required', true)
+            ->assertJsonPath('compatibility_fleet.0.source', 'cache')
+            ->assertJsonPath('liveness_state', 'workflow_task_ready')
+            ->assertJsonPath('wait_reason', 'Workflow task ready')
+            ->assertJsonPath('tasks.0.compatibility_supported', false)
+            ->assertJsonPath('tasks.0.compatibility_supported_in_fleet', true)
+            ->assertJsonPath('tasks.0.compatibility_fleet_reason', null)
+            ->assertJsonPath('tasks.0.summary', 'Workflow task ready to resume the selected run.');
+    }
+
     /**
      * @param  list<string>  $supported
      * @param  list<string>  $queues
