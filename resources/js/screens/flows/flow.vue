@@ -50,6 +50,12 @@
                         Terminate
                     </button>
 
+                    <button v-if="ready && canAction('archive')"
+                        class="btn btn-outline-secondary btn-sm mr-3"
+                        @click="issueCommand('archive')">
+                        Archive
+                    </button>
+
                     <a data-toggle="collapse" href="#collapseDetails" role="button">
                         Collapse
                     </a>
@@ -94,6 +100,14 @@
                 <div class="row mb-2" v-if="hasDetailValue(flow.read_only_reason)">
                     <div class="col-md-2"><strong>Mode</strong></div>
                     <div class="col">{{ flow.read_only_reason }}</div>
+                </div>
+
+                <div class="row mb-2" v-if="hasDetailValue(flow.archived_at)">
+                    <div class="col-md-2"><strong>Archived At</strong></div>
+                    <div class="col">
+                        {{ timestamp(flow.archived_at) }}
+                        <span v-if="hasDetailValue(flow.archive_reason)" class="text-muted"> / {{ flow.archive_reason }}</span>
+                    </div>
                 </div>
 
                 <div class="row mb-2" v-if="actionStateRows().length">
@@ -1817,6 +1831,10 @@ export default {
                     return 'The selected run is already closed.'
                 case 'repair_not_needed':
                     return 'The selected run already has a durable resume path.'
+                case 'run_not_closed':
+                    return 'Only closed runs can be archived.'
+                case 'run_archived':
+                    return 'The selected run is already archived.'
                 case 'workflow_definition_unavailable':
                     return commandType === 'query'
                         ? 'The durable query target is known, but this run cannot be replayed because its workflow definition is unavailable.'
@@ -1827,7 +1845,7 @@ export default {
         },
 
         actionStateRows() {
-            const hasExplicitContract = ['signal', 'update', 'repair', 'cancel', 'terminate']
+            const hasExplicitContract = ['signal', 'update', 'repair', 'cancel', 'terminate', 'archive']
                 .some((name) => this.hasDetailValue(this.flow['can_' + name]) || this.hasDetailValue(this.flow[name + '_blocked_reason']))
 
             if (!hasExplicitContract) {
@@ -1840,6 +1858,7 @@ export default {
                 { name: 'repair', label: 'Repair' },
                 { name: 'cancel', label: 'Cancel' },
                 { name: 'terminate', label: 'Terminate' },
+                { name: 'archive', label: 'Archive' },
             ].map((action) => ({
                 ...action,
                 allowed: this.canAction(action.name, action.name === 'cancel' || action.name === 'terminate'
@@ -2265,6 +2284,11 @@ export default {
                     text: 'This action applies to the current active run.',
                     confirmButtonText: 'Terminate run',
                 },
+                archive: {
+                    title: 'Archive run?',
+                    text: 'This marks the selected closed run as archived while preserving its durable history and command audit trail.',
+                    confirmButtonText: 'Archive run',
+                },
             }[commandType]
 
             const confirmed = await Swal.fire({
@@ -2314,6 +2338,9 @@ export default {
                         : 'Waterline recorded the repair command, and no new task was needed.',
                     cancel: 'Waterline recorded the command durably.',
                     terminate: 'Waterline recorded the command durably.',
+                    archive: response.data.outcome === 'archive_not_needed'
+                        ? 'Waterline recorded the archive command; the run was already archived.'
+                        : 'Waterline archived the selected run durably.',
                 }[commandType] || 'Waterline recorded the command durably.'
 
                 Swal.fire({

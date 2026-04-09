@@ -30,12 +30,14 @@ Route::prefix('api')->group(function () {
     Route::post('/instances/{instanceId}/runs/{runId}/repair', 'WorkflowsController@repairSelection')->name('waterline.instances.runs.repair');
     Route::post('/instances/{instanceId}/runs/{runId}/cancel', 'WorkflowsController@cancelSelection')->name('waterline.instances.runs.cancel');
     Route::post('/instances/{instanceId}/runs/{runId}/terminate', 'WorkflowsController@terminateSelection')->name('waterline.instances.runs.terminate');
+    Route::post('/instances/{instanceId}/runs/{runId}/archive', 'WorkflowsController@archiveSelection')->name('waterline.instances.runs.archive');
     Route::post('/instances/{instanceId}/queries/{query}', 'WorkflowsController@queryInstance')->name('waterline.instances.query');
     Route::post('/instances/{instanceId}/signals/{signal}', 'WorkflowsController@signalInstance')->name('waterline.instances.signal');
     Route::post('/instances/{instanceId}/updates/{update}', 'WorkflowsController@updateInstance')->name('waterline.instances.update');
     Route::post('/instances/{instanceId}/repair', 'WorkflowsController@repairInstance')->name('waterline.instances.repair');
     Route::post('/instances/{instanceId}/cancel', 'WorkflowsController@cancelInstance')->name('waterline.instances.cancel');
     Route::post('/instances/{instanceId}/terminate', 'WorkflowsController@terminateInstance')->name('waterline.instances.terminate');
+    Route::post('/instances/{instanceId}/archive', 'WorkflowsController@archiveInstance')->name('waterline.instances.archive');
     Route::get('/flows/{id}', 'WorkflowsController@show')->name('waterline.show');
     Route::get('/flows/{id}/history-export', 'WorkflowsController@historyExport')->name('waterline.history-export');
     Route::post('/flows/{id}/queries/{query}', 'WorkflowsController@query')->name('waterline.query');
@@ -44,6 +46,7 @@ Route::prefix('api')->group(function () {
     Route::post('/flows/{id}/repair', 'WorkflowsController@repair')->name('waterline.repair');
     Route::post('/flows/{id}/cancel', 'WorkflowsController@cancel')->name('waterline.cancel');
     Route::post('/flows/{id}/terminate', 'WorkflowsController@terminate')->name('waterline.terminate');
+    Route::post('/flows/{id}/archive', 'WorkflowsController@archive')->name('waterline.archive');
 });
 
 Route::get('/{view?}', 'DashboardController@index')->where('view', '(.*)')->name('waterline.index');

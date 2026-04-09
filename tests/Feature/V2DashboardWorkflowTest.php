@@ -5045,6 +5045,213 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame('waterline.instances.runs.terminate', $command->requestRouteName());
     }
 
+    public function testArchiveTargetsCurrentClosedInstanceRouteAndReturnsAcceptedResponse(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-archive-current',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNARCHCURRENT01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'started_at' => now()->subMinutes(5),
+            'closed_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $response = $this->postJson('/waterline/api/instances/' . $instance->id . '/archive', [
+            'reason' => 'exported to cold storage',
+        ]);
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'archived')
+            ->assertJsonPath('workflow_id', $instance->id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('target_scope', 'instance')
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('command_source', 'waterline')
+            ->assertJsonPath('rejection_reason', null);
+
+        $commandId = $response->json('command_id');
+
+        $this->assertDatabaseHas('workflow_commands', [
+            'id' => $commandId,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_type' => 'archive',
+            'source' => 'waterline',
+            'target_scope' => 'instance',
+            'status' => 'accepted',
+            'outcome' => 'archived',
+        ]);
+
+        $this->assertDatabaseHas('workflow_run_summaries', [
+            'id' => $run->id,
+            'archive_command_id' => $commandId,
+            'archive_reason' => 'exported to cold storage',
+        ]);
+
+        $this->get('/waterline/api/instances/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('archived_at', fn ($value): bool => is_string($value) && $value !== '')
+            ->assertJsonPath('archive_command_id', $commandId)
+            ->assertJsonPath('archive_reason', 'exported to cold storage')
+            ->assertJsonPath('can_archive', false)
+            ->assertJsonPath('archive_blocked_reason', 'run_archived')
+            ->assertJsonPath('read_only_reason', 'Run is archived.')
+            ->assertJsonPath('commands.0.type', 'archive')
+            ->assertJsonPath('timeline.0.type', 'ArchiveRequested')
+            ->assertJsonPath('timeline.1.type', 'WorkflowArchived');
+
+        $command = WorkflowCommand::query()->findOrFail($commandId);
+
+        $this->assertSame('/waterline/api/instances/'.$instance->id.'/archive', $command->requestPath());
+        $this->assertSame('waterline.instances.archive', $command->requestRouteName());
+    }
+
+    public function testArchiveSelectedHistoricalClosedRunDoesNotRedirectToCurrentRun(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-archive-historical',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 2,
+        ]);
+
+        $historicalRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNARCHHIST001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'started_at' => now()->subMinutes(10),
+            'closed_at' => now()->subMinutes(8),
+            'last_progress_at' => now()->subMinutes(8),
+        ]);
+
+        $currentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNARCHCURR001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $currentRun->id]);
+
+        RunSummaryProjector::project(
+            $historicalRun->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+        RunSummaryProjector::project(
+            $currentRun->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $response = $this->postJson(
+            '/waterline/api/instances/' . $instance->id . '/runs/' . $historicalRun->id . '/archive',
+            ['reason' => 'historical run retained offline'],
+        );
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'archived')
+            ->assertJsonPath('workflow_id', $instance->id)
+            ->assertJsonPath('run_id', $historicalRun->id)
+            ->assertJsonPath('requested_run_id', $historicalRun->id)
+            ->assertJsonPath('resolved_run_id', $historicalRun->id)
+            ->assertJsonPath('target_scope', 'run')
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('rejection_reason', null);
+
+        $commandId = $response->json('command_id');
+
+        $this->assertDatabaseHas('workflow_commands', [
+            'id' => $commandId,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $historicalRun->id,
+            'command_type' => 'archive',
+            'target_scope' => 'run',
+            'status' => 'accepted',
+            'outcome' => 'archived',
+        ]);
+
+        $this->assertDatabaseHas('workflow_run_summaries', [
+            'id' => $historicalRun->id,
+            'archive_command_id' => $commandId,
+            'archive_reason' => 'historical run retained offline',
+        ]);
+        $this->assertNull(WorkflowRun::query()->findOrFail($currentRun->id)->archived_at);
+    }
+
+    public function testArchiveRejectsOpenRun(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-archive-open',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNARCHOPEN001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $response = $this->post('/waterline/api/instances/' . $instance->id . '/archive');
+
+        $response
+            ->assertStatus(409)
+            ->assertJsonPath('outcome', 'rejected_run_not_closed')
+            ->assertJsonPath('workflow_id', $instance->id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('target_scope', 'instance')
+            ->assertJsonPath('command_status', 'rejected')
+            ->assertJsonPath('rejection_reason', 'run_not_closed');
+
+        $this->assertNull(WorkflowRun::query()->findOrFail($run->id)->archived_at);
+    }
+
     private function wakeTaskWatchdog(): void
     {
         Cache::forget(TaskWatchdog::LOOP_THROTTLE_KEY);

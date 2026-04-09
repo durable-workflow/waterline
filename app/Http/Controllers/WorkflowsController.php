@@ -352,6 +352,44 @@ class WorkflowsController extends Controller
         );
     }
 
+    public function archive(string $id, Request $request, WorkflowRepositoryInterface $repository)
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $flow = $repository->findFlow($id);
+        $result = V2WorkflowStub::loadRun($flow->id)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptArchive($this->archiveReason($request));
+
+        return $this->commandResponse($result);
+    }
+
+    public function archiveInstance(string $instanceId, Request $request, WorkflowRepositoryInterface $repository)
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $result = V2WorkflowStub::load($instanceId)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptArchive($this->archiveReason($request));
+
+        return $this->commandResponse($result);
+    }
+
+    public function archiveSelection(
+        string $instanceId,
+        string $runId,
+        Request $request,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $result = V2WorkflowStub::loadSelection($instanceId, $runId)
+            ->withCommandContext(CommandContext::waterline(request()))
+            ->attemptArchive($this->archiveReason($request));
+
+        return $this->commandResponse($result);
+    }
+
     /**
      * @return array<int|string, mixed>
      */
@@ -366,6 +404,22 @@ class WorkflowsController extends Controller
         return is_array($arguments)
             ? $arguments
             : [$arguments];
+    }
+
+    private function archiveReason(Request $request): ?string
+    {
+        $reason = $request->input('reason');
+
+        if (! is_string($reason)) {
+            $arguments = $request->input('arguments');
+            $reason = is_array($arguments) && is_string($arguments['reason'] ?? null)
+                ? $arguments['reason']
+                : null;
+        }
+
+        $reason = is_string($reason) ? trim($reason) : '';
+
+        return $reason === '' ? null : $reason;
     }
 
     private function commandResponse($result)
