@@ -2962,6 +2962,83 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.status', 'completed');
     }
 
+    public function testShowKeepsTimerWaitAndTaskMetadataFromTypedHistoryWhenTimerRowIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-detail-history-timer',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNHISTORYTIMER1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $timerId = '01JTESTFLOWTIMERHISTORY0001';
+        $deadlineAt = now()->addMinute()->startOfSecond();
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::TimerScheduled, [
+            'timer_id' => $timerId,
+            'sequence' => 1,
+            'delay_seconds' => 60,
+            'fire_at' => $deadlineAt->toJSON(),
+        ]);
+
+        $task = WorkflowTask::create([
+            'id' => '01JTESTFLOWTASKHISTORYTMR1',
+            'workflow_run_id' => $run->id,
+            'task_type' => 'timer',
+            'status' => 'ready',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'payload' => ['timer_id' => $timerId],
+            'available_at' => $deadlineAt,
+            'created_at' => now()->subSeconds(30),
+            'updated_at' => now()->subSeconds(30),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'timer')
+            ->assertJsonPath('wait_reason', 'Waiting for timer')
+            ->assertJsonPath('liveness_state', 'timer_scheduled')
+            ->assertJsonPath('resume_source_kind', 'timer')
+            ->assertJsonPath('resume_source_id', $timerId)
+            ->assertJsonPath('wait_deadline_at', $deadlineAt->toJSON())
+            ->assertJsonPath('waits.0.kind', 'timer')
+            ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.task_backed', true)
+            ->assertJsonPath('waits.0.task_id', $task->id)
+            ->assertJsonPath('waits.0.deadline_at', $deadlineAt->toJSON())
+            ->assertJsonPath('tasks.0.id', $task->id)
+            ->assertJsonPath('tasks.0.type', 'timer')
+            ->assertJsonPath('tasks.0.timer_id', $timerId)
+            ->assertJsonPath('tasks.0.timer_sequence', 1)
+            ->assertJsonPath('tasks.0.timer_fire_at', $deadlineAt->toJSON())
+            ->assertJsonPath('timers.0.id', $timerId)
+            ->assertJsonPath('timers.0.status', 'pending')
+            ->assertJsonPath('timers.0.fire_at', $deadlineAt->toJSON());
+    }
+
     public function testShowIncludesCompletedUpdateResultsInCommandHistory(): void
     {
         config()->set('waterline.engine_source', 'v2');
