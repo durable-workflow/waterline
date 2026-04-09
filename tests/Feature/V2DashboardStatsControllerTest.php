@@ -7,6 +7,8 @@ use Waterline\Tests\TestCase;
 use Workflow\V2\Enums\CommandOutcome;
 use Workflow\V2\Enums\CommandStatus;
 use Workflow\V2\Enums\CommandType;
+use Workflow\V2\Models\ActivityAttempt;
+use Workflow\V2\Models\ActivityExecution;
 use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowFailure;
 use Workflow\V2\Models\WorkflowInstance;
@@ -291,6 +293,34 @@ class V2DashboardStatsControllerTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        ActivityExecution::create([
+            'id' => '01JTESTRETRYACTIVITY000000',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'RetryActivity',
+            'activity_type' => 'activity.retry',
+            'status' => 'pending',
+            'arguments' => serialize([]),
+            'connection' => 'redis',
+            'queue' => 'activities',
+            'attempt_count' => 2,
+            'current_attempt_id' => '01JTESTRETRYATTEMPT2000000',
+            'started_at' => now()->subMinutes(2),
+            'created_at' => now()->subMinutes(3),
+            'updated_at' => now(),
+        ]);
+
+        ActivityAttempt::create([
+            'id' => '01JTESTRETRYATTEMPT1000000',
+            'workflow_run_id' => $run->id,
+            'activity_execution_id' => '01JTESTRETRYACTIVITY000000',
+            'workflow_task_id' => '01JTESTFLOWTASKMETRICS0000',
+            'attempt_number' => 1,
+            'status' => 'failed',
+            'started_at' => now()->subMinutes(2),
+            'closed_at' => now()->subMinute(),
+        ]);
+
         WorkerCompatibilityFleet::record(['build-a'], 'redis', 'default', 'waterline-worker-a');
 
         $this->get('/waterline/api/stats')
@@ -298,7 +328,13 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.runs.running', 2)
             ->assertJsonPath('operator_metrics.runs.claim_failed', 1)
             ->assertJsonPath('operator_metrics.tasks.claim_failed', 1)
+            ->assertJsonPath('operator_metrics.activities.retrying', 1)
+            ->assertJsonPath('operator_metrics.activities.pending', 1)
+            ->assertJsonPath('operator_metrics.activities.running', 0)
+            ->assertJsonPath('operator_metrics.activities.failed_attempts', 1)
+            ->assertJsonPath('operator_metrics.activities.max_attempt_count', 2)
             ->assertJsonPath('operator_metrics.backlog.runnable_tasks', 2)
+            ->assertJsonPath('operator_metrics.backlog.retrying_activities', 1)
             ->assertJsonPath('operator_metrics.backlog.repair_needed_runs', 1)
             ->assertJsonPath('operator_metrics.backlog.claim_failed_runs', 1)
             ->assertJsonPath('operator_metrics.starts.pending_runs', 1)

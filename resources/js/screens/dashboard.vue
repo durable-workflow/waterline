@@ -389,6 +389,17 @@
                 </div>
 
                 <div class="border-top p-4">
+                    <small class="text-uppercase">Activity Attempts</small>
+
+                    <div class="mt-2 text-muted">
+                        {{ operatorMetricLabel('activities', 'retrying') }} retrying,
+                        {{ operatorMetricLabel('activities', 'running') }} running,
+                        {{ operatorMetricLabel('activities', 'failed_attempts') }} failed attempts,
+                        max {{ operatorMetricLabel('activities', 'max_attempt_count') }} attempts.
+                    </div>
+                </div>
+
+                <div class="border-top p-4">
                     <small class="text-uppercase">Run Summary Projection</small>
 
                     <div class="mt-2 text-muted">
