@@ -117,16 +117,49 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('data.0.is_terminal', true);
     }
 
+    public function testV2ListRoutesCanFilterByVisibilityFields(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $matching = $this->createRunningSummary(
+            'visible-order',
+            'run-visible-order',
+            Carbon::parse('2022-01-01 12:05:00'),
+            Carbon::parse('2022-01-01 12:05:00'),
+            businessKey: 'order-123',
+            visibilityLabels: ['tenant' => 'acme', 'region' => 'us-east'],
+        );
+        $this->createRunningSummary(
+            'other-order',
+            'run-other-order',
+            Carbon::parse('2022-01-01 12:06:00'),
+            Carbon::parse('2022-01-01 12:06:00'),
+            businessKey: 'order-456',
+            visibilityLabels: ['tenant' => 'beta', 'region' => 'us-east'],
+        );
+
+        $this->get('/waterline/api/flows/running?workflow_type=workflow.test&business_key=order-123&label[tenant]=acme')
+            ->assertStatus(200)
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $matching->id)
+            ->assertJsonPath('data.0.business_key', 'order-123')
+            ->assertJsonPath('data.0.visibility_labels.tenant', 'acme');
+    }
+
     private function createRunningSummary(
         string $instanceId,
         string $runId,
         Carbon $startedAt,
         Carbon $createdAt,
+        ?string $businessKey = null,
+        array $visibilityLabels = [],
     ): WorkflowRunSummary {
         $instance = WorkflowInstance::create([
             'id' => $instanceId,
             'workflow_class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
+            'business_key' => $businessKey,
+            'visibility_labels' => $visibilityLabels === [] ? null : $visibilityLabels,
             'run_count' => 1,
         ]);
 
@@ -136,6 +169,8 @@ class V2DashboardWorkflowListTest extends TestCase
             'run_number' => 1,
             'workflow_class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
+            'business_key' => $businessKey,
+            'visibility_labels' => $visibilityLabels === [] ? null : $visibilityLabels,
             'status' => 'waiting',
             'started_at' => $startedAt,
             'last_progress_at' => $startedAt,
@@ -153,6 +188,8 @@ class V2DashboardWorkflowListTest extends TestCase
             'engine_source' => 'v2',
             'class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
+            'business_key' => $businessKey,
+            'visibility_labels' => $visibilityLabels === [] ? null : $visibilityLabels,
             'status' => 'waiting',
             'status_bucket' => 'running',
             'started_at' => $startedAt,

@@ -9,6 +9,8 @@ use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 
 class V2WorkflowRepository implements WorkflowRepositoryInterface
 {
+    private const VISIBILITY_LABEL_KEY_PATTERN = '/^[A-Za-z0-9_.:-]{1,64}$/';
+
     protected $instanceModel;
     protected $runModel;
     protected $runSummaryModel;
@@ -162,7 +164,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     protected function orderedRunsQuery()
     {
-        return RunSummarySortKey::applyDescending($this->runSummaryModel::query());
+        return RunSummarySortKey::applyDescending($this->filteredRunsQuery());
     }
 
     protected function statusFlows(string $status)
@@ -170,6 +172,39 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         return $this->orderedRunsQuery()
             ->where('status', $status)
             ->paginate(50);
+    }
+
+    protected function filteredRunsQuery()
+    {
+        $query = $this->runSummaryModel::query();
+        $request = request();
+
+        foreach (['workflow_type', 'business_key', 'compatibility', 'queue', 'connection'] as $field) {
+            $value = $request->query($field);
+
+            if (is_string($value) && $value !== '') {
+                $query->where($field, $value);
+            }
+        }
+
+        $labels = $request->query('label', $request->query('labels', []));
+
+        if (is_array($labels)) {
+            foreach ($labels as $key => $value) {
+                if (
+                    ! is_string($key)
+                    || preg_match(self::VISIBILITY_LABEL_KEY_PATTERN, $key) !== 1
+                    || ! is_string($value)
+                    || $value === ''
+                ) {
+                    continue;
+                }
+
+                $query->where("visibility_labels->{$key}", $value);
+            }
+        }
+
+        return $query;
     }
 
     protected function detailRelations(): array
