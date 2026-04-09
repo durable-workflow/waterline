@@ -23,6 +23,7 @@ use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\Models\WorkflowTimer;
+use Workflow\V2\Models\WorkflowUpdate;
 use Workflow\V2\Support\ActivityLease;
 use Workflow\V2\Support\ActivitySnapshot;
 use Workflow\V2\Support\RunSummaryProjector;
@@ -2746,6 +2747,31 @@ class V2DashboardWorkflowTest extends TestCase
             'updated_at' => now()->subSeconds(49),
         ]);
 
+        WorkflowUpdate::create([
+            'id' => '01JTESTUPDATECOMPLETE000001',
+            'workflow_command_id' => '01JTESTCOMMANDUPDATECOMPLETE',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'target_scope' => 'instance',
+            'resolved_workflow_run_id' => $run->id,
+            'update_name' => 'mark-approved',
+            'status' => 'completed',
+            'outcome' => 'update_completed',
+            'command_sequence' => 2,
+            'workflow_sequence' => 1,
+            'payload_codec' => Serializer::class,
+            'arguments' => Serializer::serialize([true, 'waterline']),
+            'result' => Serializer::serialize([
+                'approved' => true,
+                'events' => ['started', 'approved:yes:waterline'],
+            ]),
+            'accepted_at' => now()->subSeconds(50),
+            'applied_at' => now()->subSeconds(49),
+            'closed_at' => now()->subSeconds(49),
+            'created_at' => now()->subSeconds(50),
+            'updated_at' => now()->subSeconds(49),
+        ]);
+
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
             ->assertJsonPath('can_cancel', true)
@@ -2775,11 +2801,25 @@ class V2DashboardWorkflowTest extends TestCase
                 'name' => 'mark-approved',
                 'arguments' => [true, 'waterline'],
             ]))
+            ->assertJsonPath('commands.0.update_id', '01JTESTUPDATECOMPLETE000001')
+            ->assertJsonPath('commands.0.update_status', 'completed')
             ->assertJsonPath('commands.0.result_available', true)
             ->assertJsonPath('commands.0.failure_id', null)
             ->assertJsonPath('commands.0.failure_message', null)
             ->assertJsonPath('commands.0.completed_at', now()->subSeconds(49)->jsonSerialize())
+            ->assertJsonPath('updates.0.id', '01JTESTUPDATECOMPLETE000001')
+            ->assertJsonPath('updates.0.command_id', '01JTESTCOMMANDUPDATECOMPLETE')
+            ->assertJsonPath('updates.0.command_sequence', 2)
+            ->assertJsonPath('updates.0.workflow_sequence', 1)
+            ->assertJsonPath('updates.0.name', 'mark-approved')
+            ->assertJsonPath('updates.0.status', 'completed')
+            ->assertJsonPath('updates.0.outcome', 'update_completed')
+            ->assertJsonPath('updates.0.result_available', true)
             ->assertJsonPath('commands.0.result', serialize([
+                'approved' => true,
+                'events' => ['started', 'approved:yes:waterline'],
+            ]))
+            ->assertJsonPath('updates.0.result', serialize([
                 'approved' => true,
                 'events' => ['started', 'approved:yes:waterline'],
             ]));
@@ -2935,6 +2975,26 @@ class V2DashboardWorkflowTest extends TestCase
             'updated_at' => now()->subSeconds(18),
         ]);
 
+        WorkflowUpdate::create([
+            'id' => '01JTESTUPDATEBLOCKED000001',
+            'workflow_command_id' => '01JTESTCOMMANDUPDATEBLOCK01',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'target_scope' => 'instance',
+            'resolved_workflow_run_id' => $run->id,
+            'update_name' => 'approve',
+            'status' => 'rejected',
+            'outcome' => 'rejected_pending_signal',
+            'command_sequence' => 3,
+            'payload_codec' => Serializer::class,
+            'arguments' => Serializer::serialize([true, 'waterline']),
+            'rejection_reason' => 'earlier_signal_pending',
+            'rejected_at' => now()->subSeconds(18),
+            'closed_at' => now()->subSeconds(18),
+            'created_at' => now()->subSeconds(18),
+            'updated_at' => now()->subSeconds(18),
+        ]);
+
         WorkflowTask::create([
             'id' => '01JTESTTASKUPDBLOCKED000001',
             'workflow_run_id' => $run->id,
@@ -2971,6 +3031,14 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('commands.2.target_name', 'approve')
             ->assertJsonPath('commands.2.status', 'rejected')
             ->assertJsonPath('commands.2.outcome', 'rejected_pending_signal')
+            ->assertJsonPath('commands.2.update_id', '01JTESTUPDATEBLOCKED000001')
+            ->assertJsonPath('commands.2.update_status', 'rejected')
+            ->assertJsonPath('updates.0.id', '01JTESTUPDATEBLOCKED000001')
+            ->assertJsonPath('updates.0.command_id', '01JTESTCOMMANDUPDATEBLOCK01')
+            ->assertJsonPath('updates.0.name', 'approve')
+            ->assertJsonPath('updates.0.status', 'rejected')
+            ->assertJsonPath('updates.0.outcome', 'rejected_pending_signal')
+            ->assertJsonPath('updates.0.rejection_reason', 'earlier_signal_pending')
             ->assertJsonPath('waits.0.kind', 'signal')
             ->assertJsonPath('waits.0.source_status', 'received')
             ->assertJsonPath('waits.0.command_sequence', 2)

@@ -602,6 +602,86 @@
             </div>
         </div>
 
+        <div class="card mt-4" v-if="ready && updateRows().length">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5>Updates</h5>
+
+                <a data-toggle="collapse" href="#collapseUpdates" role="button">
+                    Collapse
+                </a>
+            </div>
+
+            <div class="card-body collapse show" id="collapseUpdates">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Update</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Target</th>
+                            <th scope="col">Result</th>
+                            <th scope="col">Accepted</th>
+                            <th scope="col">Closed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="update in updateRows()" :key="update.id || update.command_id">
+                            <td>
+                                <div>{{ update.name || '-' }}</div>
+                                <div v-if="hasDetailValue(update.id)" class="small text-muted">
+                                    update / {{ update.id }}
+                                </div>
+                                <div v-if="hasDetailValue(update.command_id)" class="small text-muted">
+                                    command / {{ update.command_id }}
+                                </div>
+                                <div v-if="hasDetailValue(update.command_sequence)" class="small text-muted">
+                                    command seq / #{{ update.command_sequence }}
+                                </div>
+                                <div v-if="hasDetailValue(update.workflow_sequence)" class="small text-muted">
+                                    step / {{ update.workflow_sequence }}
+                                </div>
+                            </td>
+                            <td>
+                                <div>{{ update.status || '-' }}</div>
+                                <div v-if="hasDetailValue(update.outcome)" class="small text-muted">
+                                    {{ update.outcome }}
+                                </div>
+                                <div v-if="hasDetailValue(update.rejection_reason)" class="small text-muted">
+                                    {{ update.rejection_reason }}
+                                </div>
+                                <small
+                                    v-for="(message, index) in commandValidationMessages(update)"
+                                    :key="(update.id || update.command_id || 'update') + '-validation-' + index"
+                                    class="text-muted d-block"
+                                >
+                                    {{ message }}
+                                </small>
+                            </td>
+                            <td>
+                                <div>{{ update.target_scope || '-' }}</div>
+                                <small v-if="commandTargetDetail(update)" class="text-muted">
+                                    {{ commandTargetDetail(update) }}
+                                </small>
+                            </td>
+                            <td>
+                                <button
+                                    v-if="update.result_available"
+                                    title="View Result"
+                                    class="btn btn-outline-primary ml-auto"
+                                    @click="showResult(update.result, 'Update Result')"
+                                >View</button>
+                                <div v-else-if="hasDetailValue(update.failure_message)" class="small text-muted">
+                                    {{ update.failure_message }}
+                                </div>
+                                <span v-else>-</span>
+                            </td>
+                            <td>{{ timestamp(update.accepted_at || update.rejected_at || update.closed_at) }}</td>
+                            <td>{{ timestamp(update.closed_at) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="card mt-4" v-if="ready && activityRows().length">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Activities</h5>
@@ -1127,6 +1207,12 @@ export default {
             return this.flow.activities && this.flow.activities.length
                 ? this.flow.activities
                 : (this.flow.logs || [])
+        },
+
+        updateRows() {
+            return Array.isArray(this.flow.updates)
+                ? this.flow.updates
+                : []
         },
 
         declaredSignalTargets() {

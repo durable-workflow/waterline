@@ -100,6 +100,8 @@ class WaterlineServiceProvider extends ServiceProvider
      */
     public function register()
     {
+        $this->mergeConfigFrom(__DIR__.'/../config/waterline.php', 'waterline');
+
         if (! defined('WATERLINE_PATH')) {
             define('WATERLINE_PATH', realpath(__DIR__.'/../'));
         }
