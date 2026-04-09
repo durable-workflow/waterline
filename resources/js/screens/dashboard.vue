@@ -106,6 +106,17 @@
             operatorMetricLabel(section, key) {
                 return this.operatorMetric(section, key).toLocaleString();
             },
+
+            operatorPolicyMetric(key) {
+                const metrics = this.stats.operator_metrics || {};
+                const policy = metrics.repair_policy || {};
+
+                return policy[key] || 0;
+            },
+
+            operatorPolicyMetricLabel(key) {
+                return this.operatorPolicyMetric(key).toLocaleString();
+            },
         }
     }
 </script>
@@ -269,6 +280,16 @@
                                 {{ operatorMetricLabel('workers', 'active_worker_scopes') }} queue scopes
                             </small>
                         </div>
+                    </div>
+                </div>
+
+                <div class="border-top p-4">
+                    <small class="text-uppercase">Repair Policy</small>
+
+                    <div class="mt-2 text-muted">
+                        Redispatch after {{ operatorPolicyMetricLabel('redispatch_after_seconds') }}s,
+                        throttle worker sweeps for {{ operatorPolicyMetricLabel('loop_throttle_seconds') }}s,
+                        scan {{ operatorPolicyMetricLabel('scan_limit') }} rows per pass.
                     </div>
                 </div>
             </div>

@@ -143,6 +143,9 @@ class V2DashboardStatsControllerTest extends TestCase
         config()->set('workflows.v2.compatibility.namespace', 'waterline-metrics-test');
         config()->set('workflows.v2.history_budget.continue_as_new_event_threshold', 10);
         config()->set('workflows.v2.history_budget.continue_as_new_size_bytes_threshold', 10000);
+        config()->set('workflows.v2.task_repair.redispatch_after_seconds', 8);
+        config()->set('workflows.v2.task_repair.loop_throttle_seconds', 12);
+        config()->set('workflows.v2.task_repair.scan_limit', 16);
         WorkerCompatibilityFleet::clear();
         $this->beforeApplicationDestroyed(static function (): void {
             WorkerCompatibilityFleet::clear();
@@ -215,6 +218,9 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
             ->assertJsonPath('operator_metrics.workers.active_workers', 1)
             ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 1)
-            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 1);
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 1)
+            ->assertJsonPath('operator_metrics.repair_policy.redispatch_after_seconds', 8)
+            ->assertJsonPath('operator_metrics.repair_policy.loop_throttle_seconds', 12)
+            ->assertJsonPath('operator_metrics.repair_policy.scan_limit', 16);
     }
 }
