@@ -839,6 +839,9 @@
                                 <div v-if="activity.attempts && activity.attempts.length" class="small text-muted mt-2">
                                     <div v-for="attempt in activity.attempts" :key="attempt.id">
                                         #{{ attempt.attempt_number }} / {{ attempt.status || '-' }}
+                                        <div v-if="attempt.task_id">task / {{ attempt.task_id }}</div>
+                                        <div v-if="attempt.lease_owner">worker / {{ attempt.lease_owner }}</div>
+                                        <div v-if="attempt.lease_expires_at">lease / {{ timestamp(attempt.lease_expires_at) }}</div>
                                     </div>
                                 </div>
                             </td>
