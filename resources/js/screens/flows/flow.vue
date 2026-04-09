@@ -24,6 +24,14 @@
                         Update
                     </button>
 
+                    <a v-if="ready && historyExportEndpoint()"
+                        class="btn btn-outline-secondary btn-sm mr-2"
+                        :href="historyExportEndpoint()"
+                        target="_blank"
+                        rel="noopener">
+                        Export History
+                    </a>
+
                     <button v-if="ready && canAction('repair')"
                         class="btn btn-outline-info btn-sm mr-2"
                         @click="issueCommand('repair')">
@@ -2278,6 +2286,28 @@ export default {
             }
 
             return Waterline.basePath + '/api/flows/' + (this.flow.run_id || this.flow.id) + '/' + suffix
+        },
+
+        historyExportEndpoint() {
+            if (!this.flow || this.flow.engine_source !== 'v2') {
+                return null
+            }
+
+            if (this.flow.instance_id) {
+                const selectedRunId = this.flow.selected_run_id || this.flow.run_id || this.flow.id
+
+                if (!selectedRunId) {
+                    return null
+                }
+
+                return Waterline.basePath + '/api/instances/' + this.flow.instance_id + '/runs/' + selectedRunId + '/history-export'
+            }
+
+            const runId = this.flow.run_id || this.flow.id
+
+            return runId
+                ? Waterline.basePath + '/api/flows/' + runId + '/history-export'
+                : null
         },
     }
 }
