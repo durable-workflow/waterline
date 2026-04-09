@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('api')->group(function () {
     Route::get('/stats', 'DashboardStatsController@index')->name('waterline.stats.index');
+    Route::get('/v2/health', 'V2HealthController@show')->name('waterline.v2.health');
     Route::get('/saved-views', 'SavedViewsController@index')->name('waterline.saved-views.index');
     Route::post('/saved-views', 'SavedViewsController@store')->name('waterline.saved-views.store');
     Route::get('/saved-views/{view}', 'SavedViewsController@show')->name('waterline.saved-views.show');
