@@ -31,6 +31,9 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('workflow.status', 'completed')
             ->assertJsonPath('payloads.arguments.available', true)
             ->assertJsonPath('summary.history_event_count', 2)
+            ->assertJsonPath('integrity.canonicalization', 'json-recursive-ksort-v1')
+            ->assertJsonPath('integrity.checksum_algorithm', 'sha256')
+            ->assertJsonPath('integrity.signature', null)
             ->assertJsonPath('history_events.0.type', 'WorkflowStarted')
             ->assertJsonPath('history_events.1.type', 'WorkflowCompleted');
     }
@@ -75,6 +78,7 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('redaction.applied', true)
             ->assertJsonPath('payloads.arguments.data.redacted', true)
             ->assertJsonPath('payloads.arguments.data.path', 'payloads.arguments.data')
+            ->assertJsonPath('integrity.checksum', fn ($value): bool => is_string($value) && preg_match('/^[a-f0-9]{64}$/', $value) === 1)
             ->assertJsonPath('history_events.0.payload.path', 'history_events.0.payload');
     }
 
