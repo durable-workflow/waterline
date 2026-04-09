@@ -1040,6 +1040,7 @@ export default {
                 snapshot && snapshot.worker_id ? snapshot.worker_id : 'worker',
                 snapshot && snapshot.connection ? snapshot.connection : 'connection',
                 snapshot && snapshot.queue ? snapshot.queue : 'queue',
+                snapshot && snapshot.source ? snapshot.source : 'source',
             ].join(':')
         },
 
@@ -1072,6 +1073,10 @@ export default {
 
             if (snapshot && snapshot.supports_required === true) {
                 parts.push('matches selected marker')
+            }
+
+            if (snapshot && snapshot.source === 'cache') {
+                parts.push('legacy cache heartbeat')
             }
 
             return parts.join(' / ')
