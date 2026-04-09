@@ -1860,7 +1860,9 @@ export default {
                         <option value="completed">Worker applies update</option>
                         <option value="accepted">Command is accepted</option>
                     </select>
-                    <div class="small text-muted text-left">Use a JSON object for named arguments or a JSON array for positional arguments. Waterline always records the update durably first; this control decides whether the response waits for the workflow worker to apply it.</div>
+                    <label class="d-block text-left mb-2" for="waterline-update-wait-timeout-seconds">Completion wait timeout (seconds)</label>
+                    <input id="waterline-update-wait-timeout-seconds" type="number" min="1" class="swal2-input" placeholder="Use package default">
+                    <div class="small text-muted text-left">Use a JSON object for named arguments or a JSON array for positional arguments. Waterline always records the update durably first; choose whether to return immediately after acceptance or wait briefly for worker-applied completion before falling back to an accepted lifecycle.</div>
                 `,
                 showCancelButton: true,
                 confirmButtonText: 'Apply update',
@@ -1882,6 +1884,7 @@ export default {
                     const target = document.getElementById('waterline-update-target').value
                     const rawArguments = document.getElementById('waterline-update-arguments').value
                     const waitFor = document.getElementById('waterline-update-wait-for').value
+                    const waitTimeoutSeconds = document.getElementById('waterline-update-wait-timeout-seconds').value
 
                     if (!target) {
                         Swal.showValidationMessage('Select an update.')
@@ -1894,6 +1897,7 @@ export default {
                             targetName: target,
                             arguments: this.parseCommandArguments(rawArguments),
                             waitFor,
+                            waitTimeoutSeconds,
                         }
                     } catch (error) {
                         Swal.showValidationMessage('Arguments must be valid JSON.')
@@ -1913,6 +1917,8 @@ export default {
 
             if (command.waitFor === 'accepted') {
                 body.wait_for = 'accepted'
+            } else if (command.waitTimeoutSeconds !== undefined && command.waitTimeoutSeconds !== null && command.waitTimeoutSeconds !== '') {
+                body.wait_timeout_seconds = Number(command.waitTimeoutSeconds)
             }
 
             return body
@@ -2523,9 +2529,11 @@ export default {
 
                 const successText = {
                     signal: 'Waterline recorded the signal command durably.',
-                    update: response.data.update_status === 'accepted'
-                        ? 'Waterline accepted the update command and queued a workflow task to apply it.'
-                        : 'Waterline recorded the update command durably and the workflow worker applied it.',
+                    update: response.data.wait_timed_out === true
+                        ? 'Waterline accepted the update command, waited for worker-applied completion, and returned the still-open lifecycle when that wait budget expired.'
+                        : (response.data.update_status === 'accepted'
+                            ? 'Waterline accepted the update command and queued a workflow task to apply it.'
+                            : 'Waterline recorded the update command durably and the workflow worker applied it.'),
                     repair: response.data.outcome === 'repair_dispatched'
                         ? 'Waterline recreated the durable task and re-dispatched it.'
                         : 'Waterline recorded the repair command, and no new task was needed.',

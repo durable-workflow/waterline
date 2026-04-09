@@ -149,6 +149,8 @@ class V2DashboardStatsControllerTest extends TestCase
         config()->set('workflows.v2.compatibility.namespace', 'waterline-metrics-test');
         config()->set('workflows.v2.history_budget.continue_as_new_event_threshold', 10);
         config()->set('workflows.v2.history_budget.continue_as_new_size_bytes_threshold', 10000);
+        config()->set('workflows.v2.update_wait.completion_timeout_seconds', 9);
+        config()->set('workflows.v2.update_wait.poll_interval_milliseconds', 25);
         config()->set('workflows.v2.task_repair.redispatch_after_seconds', 8);
         config()->set('workflows.v2.task_repair.loop_throttle_seconds', 12);
         config()->set('workflows.v2.task_repair.scan_limit', 16);
@@ -357,6 +359,8 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.backend.queue.driver', 'sync')
             ->assertJsonPath('operator_metrics.backend.supported', false)
             ->assertJsonFragment(['code' => 'queue_sync_unsupported'])
+            ->assertJsonPath('operator_metrics.update_wait.completion_timeout_seconds', 9)
+            ->assertJsonPath('operator_metrics.update_wait.poll_interval_milliseconds', 25)
             ->assertJsonPath('operator_metrics.repair_policy.redispatch_after_seconds', 8)
             ->assertJsonPath('operator_metrics.repair_policy.loop_throttle_seconds', 12)
             ->assertJsonPath('operator_metrics.repair_policy.scan_limit', 16);

@@ -4420,11 +4420,15 @@ class V2DashboardWorkflowTest extends TestCase
     public function testUpdateTargetsCurrentInstanceRouteAndReturnsAcceptedResponse(): void
     {
         config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'database');
+        config()->set('queue.connections.database.driver', 'database');
+
+        Queue::fake();
 
         $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-update-current');
         $workflow->start();
 
-        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
+        $this->runReadyWorkflowTask($workflow->runId());
 
         $response = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/updates/mark-approved', [
             'arguments' => [
@@ -4442,6 +4446,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('command_status', 'accepted')
             ->assertJsonPath('command_source', 'waterline')
             ->assertJsonPath('validation_errors', [])
+            ->assertJsonPath('wait_for', 'completed')
+            ->assertJsonPath('wait_timed_out', false)
+            ->assertJsonPath('wait_timeout_seconds', 10)
             ->assertJsonPath('result.approved', true)
             ->assertJsonPath('result.events.0', 'started')
             ->assertJsonPath('result.events.1', 'approved:yes:waterline-ui');
@@ -4472,8 +4479,8 @@ class V2DashboardWorkflowTest extends TestCase
     public function testUpdateCanReturnAfterAcceptedOnlyModeAndLetWorkerApplyIt(): void
     {
         config()->set('waterline.engine_source', 'v2');
-        config()->set('queue.default', 'redis');
-        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('queue.default', 'database');
+        config()->set('queue.connections.database.driver', 'database');
 
         Queue::fake();
 
@@ -4500,6 +4507,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('update_status', 'accepted')
             ->assertJsonPath('command_source', 'waterline')
             ->assertJsonPath('validation_errors', [])
+            ->assertJsonPath('wait_for', 'accepted')
+            ->assertJsonPath('wait_timed_out', false)
+            ->assertJsonPath('wait_timeout_seconds', null)
             ->assertJsonPath('result', null);
 
         $commandId = $response->json('command_id');
@@ -4535,6 +4545,45 @@ class V2DashboardWorkflowTest extends TestCase
             'outcome' => 'update_completed',
             'workflow_sequence' => 1,
         ]);
+    }
+
+    public function testUpdateCanReturnAcceptedLifecycleWhenCompletionWaitTimesOut(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'database');
+        config()->set('queue.connections.database.driver', 'database');
+        config()->set('workflows.v2.update_wait.poll_interval_milliseconds', 10);
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-update-current-timeout');
+        $workflow->start();
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        WorkflowRun::query()->findOrFail($workflow->runId())->forceFill([
+            'compatibility' => 'waterline-timeout-build',
+        ])->save();
+
+        $response = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/updates/mark-approved', [
+            'wait_timeout_seconds' => 1,
+            'arguments' => [
+                'approved' => true,
+                'source' => 'waterline-ui',
+            ],
+        ]);
+
+        $response
+            ->assertStatus(202)
+            ->assertJsonPath('outcome', null)
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'instance')
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('update_status', 'accepted')
+            ->assertJsonPath('command_source', 'waterline')
+            ->assertJsonPath('wait_for', 'completed')
+            ->assertJsonPath('wait_timed_out', true)
+            ->assertJsonPath('wait_timeout_seconds', 1)
+            ->assertJsonPath('result', null);
     }
 
     public function testUpdateIsBlockedWhileAnEarlierSignalIsStillPending(): void

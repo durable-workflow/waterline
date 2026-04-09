@@ -118,6 +118,17 @@
                 return this.operatorPolicyMetric(key).toLocaleString();
             },
 
+            operatorUpdateWaitMetric(key) {
+                const metrics = this.stats.operator_metrics || {};
+                const policy = metrics.update_wait || {};
+
+                return policy[key] || 0;
+            },
+
+            operatorUpdateWaitMetricLabel(key) {
+                return this.operatorUpdateWaitMetric(key).toLocaleString();
+            },
+
             operatorProjectionMetric(key) {
                 const metrics = this.stats.operator_metrics || {};
                 const projections = metrics.projections || {};
@@ -422,6 +433,15 @@
                         Redispatch after {{ operatorPolicyMetricLabel('redispatch_after_seconds') }}s,
                         throttle worker sweeps for {{ operatorPolicyMetricLabel('loop_throttle_seconds') }}s,
                         scan {{ operatorPolicyMetricLabel('scan_limit') }} rows per pass.
+                    </div>
+                </div>
+
+                <div class="border-top p-4">
+                    <small class="text-uppercase">Update Wait Policy</small>
+
+                    <div class="mt-2 text-muted">
+                        Wait up to {{ operatorUpdateWaitMetricLabel('completion_timeout_seconds') }}s for completion responses,
+                        polling every {{ operatorUpdateWaitMetricLabel('poll_interval_milliseconds') }}ms before returning an accepted lifecycle.
                     </div>
                 </div>
 
