@@ -26,6 +26,7 @@ use Workflow\V2\Models\WorkflowTimer;
 use Workflow\V2\Support\ActivityLease;
 use Workflow\V2\Support\ActivitySnapshot;
 use Workflow\V2\Support\RunSummaryProjector;
+use Workflow\V2\Support\WorkflowDefinition;
 use Workflow\V2\Support\WorkflowInstanceId;
 use Workflow\V2\TaskWatchdog;
 use Workflow\V2\WorkflowStub;
@@ -205,6 +206,67 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame('handle', $exception['trace'][0]['function']);
         $this->assertSame('orderId', $exception['properties'][0]['name']);
         $this->assertSame('order-123', $exception['properties'][0]['value']);
+    }
+
+    public function testShowIncludesWorkflowDefinitionFingerprintState(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => '01JTESTFLOWINSTANCEDEFSTATE01',
+            'workflow_class' => TestOperatorCommandWorkflow::class,
+            'workflow_type' => 'workflow.operator-command',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNDEFSTATE0001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => TestOperatorCommandWorkflow::class,
+            'workflow_type' => 'workflow.operator-command',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(10),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYDEFSTATE000001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [
+                'workflow_class' => TestOperatorCommandWorkflow::class,
+                'workflow_type' => 'workflow.operator-command',
+                'workflow_definition_fingerprint' => WorkflowDefinition::fingerprint(TestCommandContractWorkflow::class),
+            ],
+            'recorded_at' => now()->subMinutes(10),
+        ]);
+
+        $run->forceFill([
+            'last_history_sequence' => 1,
+        ])->save();
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath(
+                'workflow_definition_fingerprint',
+                WorkflowDefinition::fingerprint(TestCommandContractWorkflow::class)
+            )
+            ->assertJsonPath(
+                'workflow_definition_current_fingerprint',
+                WorkflowDefinition::fingerprint(TestOperatorCommandWorkflow::class)
+            )
+            ->assertJsonPath('workflow_definition_matches_current', false);
     }
 
     public function testShowUsesTypedActivityHistoryWhenActivityRowIsMissing(): void

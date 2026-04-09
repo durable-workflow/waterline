@@ -162,6 +162,24 @@
                     <div class="col">{{ contractSourceLabel(flow.declared_contract_source) }}</div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.workflow_definition_fingerprint) || hasDetailValue(flow.workflow_definition_current_fingerprint) || flow.workflow_definition_matches_current !== null">
+                    <div class="col-md-2"><strong>Definition</strong></div>
+                    <div class="col">
+                        <div v-if="hasDetailValue(flow.workflow_definition_fingerprint)">
+                            Start fingerprint: {{ flow.workflow_definition_fingerprint }}
+                        </div>
+                        <div class="small text-muted" v-if="hasDetailValue(flow.workflow_definition_current_fingerprint)">
+                            Current fingerprint: {{ flow.workflow_definition_current_fingerprint }}
+                        </div>
+                        <div class="small text-muted" v-if="flow.workflow_definition_matches_current === true">
+                            Matches the current loadable workflow definition.
+                        </div>
+                        <div class="small text-muted" v-else-if="flow.workflow_definition_matches_current === false">
+                            Selected run started on a different workflow definition than the current loadable class.
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="hasDetailValue(flow.compatibility) || flow.compatibility_supported === false || hasDetailValue(flow.compatibility_supported_in_fleet)">
                     <div class="col-md-2"><strong>Compatibility</strong></div>
                     <div class="col">
