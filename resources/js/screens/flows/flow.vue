@@ -291,6 +291,15 @@
                     <div class="col">{{ flow.open_wait_id }}</div>
                 </div>
 
+                <div class="row mb-2" v-if="currentChildIdentityRows().length">
+                    <div class="col-md-2"><strong>Current Child</strong></div>
+                    <div class="col">
+                        <div v-for="detail in currentChildIdentityRows()" :key="detail">
+                            {{ detail }}
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="hasDetailValue(flow.open_wait_count) && flow.open_wait_count > 1">
                     <div class="col-md-2"><strong>Open Waits</strong></div>
                     <div class="col">{{ flow.open_wait_count }}</div>
@@ -342,8 +351,12 @@
                             <span v-if="entry.status">
                                 - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
                             </span>
-                            <div class="small text-muted" v-if="hasDetailValue(entry.child_call_id)">
-                                child call / {{ entry.child_call_id }}
+                            <div
+                                v-for="detail in lineageIdentityRows(entry)"
+                                :key="entry.key + '-' + detail"
+                                class="small text-muted"
+                            >
+                                {{ detail }}
                             </div>
                         </div>
                     </div>
@@ -472,11 +485,15 @@
                                     <span v-if="hasDetailValue(wait.target_name)"> / {{ wait.target_name }}</span>
                                     <span v-else-if="hasDetailValue(wait.target_type)"> / {{ wait.target_type }}</span>
                                 </div>
+                                <div
+                                    v-for="detail in childWaitIdentityRows(wait)"
+                                    :key="wait.id + '-child-' + detail"
+                                    class="small text-muted"
+                                >
+                                    {{ detail }}
+                                </div>
                                 <div class="small text-muted" v-if="resumeSourceSummary(wait.resume_source_kind, wait.resume_source_id)">
                                     resume / {{ resumeSourceSummary(wait.resume_source_kind, wait.resume_source_id) }}
-                                </div>
-                                <div class="small text-muted" v-if="hasDetailValue(wait.child_call_id)">
-                                    child call / {{ wait.child_call_id }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.sequence)">
                                     step {{ wait.sequence }}
@@ -2325,6 +2342,67 @@ export default {
             }
 
             return '-'
+        },
+
+        currentChildIdentityRows() {
+            const wait = this.waitRows().find((entry) => entry.kind === 'child' && this.isCurrentWait(entry))
+                || this.waitRows().find((entry) => entry.kind === 'child' && entry.status === 'open')
+
+            if (!wait) {
+                return []
+            }
+
+            return this.childIdentityRows({
+                instance_id: wait.target_name || null,
+                run_id: wait.resume_source_id || null,
+                child_call_id: wait.child_call_id || null,
+            })
+        },
+
+        childWaitIdentityRows(wait) {
+            if (!wait || wait.kind !== 'child') {
+                return []
+            }
+
+            return this.childIdentityRows({
+                instance_id: wait.target_name || null,
+                run_id: wait.resume_source_id || null,
+                child_call_id: wait.child_call_id || null,
+            })
+        },
+
+        lineageIdentityRows(entry) {
+            if (!entry) {
+                return []
+            }
+
+            return this.childIdentityRows({
+                instance_id: entry.instance_id || null,
+                run_id: entry.run_id || null,
+                child_call_id: entry.child_call_id || null,
+            })
+        },
+
+        childIdentityRows(subject) {
+            if (!subject) {
+                return []
+            }
+
+            const details = []
+
+            if (this.hasDetailValue(subject.instance_id)) {
+                details.push('instance / ' + subject.instance_id)
+            }
+
+            if (this.hasDetailValue(subject.run_id)) {
+                details.push('run / ' + subject.run_id)
+            }
+
+            if (this.hasDetailValue(subject.child_call_id)) {
+                details.push('child call / ' + subject.child_call_id)
+            }
+
+            return details
         },
 
         lineageEntries() {
