@@ -11,6 +11,7 @@ use Waterline\Tests\Fixtures\V2\TestOperatorCommandWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Enums\HistoryEventType;
+use Workflow\V2\Jobs\RunActivityTask;
 use Workflow\V2\Jobs\RunWorkflowTask;
 use Workflow\V2\Models\ActivityAttempt;
 use Workflow\V2\Models\ActivityExecution;
@@ -4817,6 +4818,129 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('next_task_id', $repairedTask->id)
             ->assertJsonPath('liveness_state', 'workflow_task_ready')
             ->assertJsonPath('can_repair', false);
+    }
+
+    public function testRepairRecreatesMissingDelayedActivityRetryTaskForFlowDetail(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        Queue::fake();
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-repair-retry-task',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNREPAIRRETRY1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(30),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $activity = ActivityExecution::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ActivityClass',
+            'activity_type' => 'activity.test',
+            'status' => 'pending',
+            'arguments' => Serializer::serialize(['Taylor']),
+            'connection' => 'redis',
+            'queue' => 'activities',
+            'attempt_count' => 1,
+            'retry_policy' => [
+                'snapshot_version' => 1,
+                'max_attempts' => 3,
+                'backoff_seconds' => [30, 60],
+            ],
+        ]);
+
+        $failedAttemptId = (string) Str::ulid();
+        $retryAvailableAt = now()->addSeconds(30);
+        $originalRetryTaskId = (string) Str::ulid();
+        $retryOfTaskId = (string) Str::ulid();
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::ActivityRetryScheduled, [
+            'activity_execution_id' => $activity->id,
+            'activity_class' => $activity->activity_class,
+            'activity_type' => $activity->activity_type,
+            'sequence' => $activity->sequence,
+            'retry_task_id' => $originalRetryTaskId,
+            'retry_available_at' => $retryAvailableAt->toJSON(),
+            'retry_backoff_seconds' => 30,
+            'retry_after_attempt_id' => $failedAttemptId,
+            'retry_after_attempt' => 1,
+            'retry_of_task_id' => $retryOfTaskId,
+            'max_attempts' => 3,
+            'retry_policy' => $activity->retry_policy,
+            'activity' => ActivitySnapshot::fromExecution($activity),
+        ], $originalRetryTaskId);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('next_task_id', null)
+            ->assertJsonPath('tasks', []);
+
+        $this->post('/waterline/api/instances/' . $instance->id . '/repair')
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'repair_dispatched')
+            ->assertJsonPath('workflow_id', $instance->id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('command_status', 'accepted');
+
+        /** @var WorkflowTask $repairedTask */
+        $repairedTask = WorkflowTask::query()
+            ->where('workflow_run_id', $run->id)
+            ->where('task_type', 'activity')
+            ->sole();
+
+        $this->assertNotSame($originalRetryTaskId, $repairedTask->id);
+        $this->assertSame($retryAvailableAt->toJSON(), $repairedTask->available_at?->toJSON());
+        $this->assertSame($activity->id, $repairedTask->payload['activity_execution_id'] ?? null);
+        $this->assertSame($retryOfTaskId, $repairedTask->payload['retry_of_task_id'] ?? null);
+        $this->assertSame($failedAttemptId, $repairedTask->payload['retry_after_attempt_id'] ?? null);
+        $this->assertSame(1, $repairedTask->payload['retry_after_attempt'] ?? null);
+        $this->assertSame(30, $repairedTask->payload['retry_backoff_seconds'] ?? null);
+        $this->assertSame(3, $repairedTask->payload['max_attempts'] ?? null);
+        $this->assertSame($activity->retry_policy, $repairedTask->payload['retry_policy'] ?? null);
+        $this->assertSame(1, $repairedTask->attempt_count);
+        $this->assertSame(1, $repairedTask->repair_count);
+
+        Queue::assertPushed(
+            RunActivityTask::class,
+            static fn (RunActivityTask $job): bool => $job->taskId === $repairedTask->id
+        );
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('next_task_id', $repairedTask->id)
+            ->assertJsonPath('next_task_type', 'activity')
+            ->assertJsonPath('liveness_state', 'activity_task_ready')
+            ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('tasks.0.transport_state', 'scheduled')
+            ->assertJsonPath('tasks.0.retry_of_task_id', $retryOfTaskId)
+            ->assertJsonPath('tasks.0.retry_after_attempt_id', $failedAttemptId)
+            ->assertJsonPath('tasks.0.retry_after_attempt', 1)
+            ->assertJsonPath('tasks.0.retry_backoff_seconds', 30)
+            ->assertJsonPath('tasks.0.retry_max_attempts', 3)
+            ->assertJsonPath('tasks.0.retry_policy.max_attempts', 3);
     }
 
     public function testAutomaticWorkerRecoveryRecreatesMissingWorkflowTaskAndClearsRepairNeededFromFlowDetail(): void
