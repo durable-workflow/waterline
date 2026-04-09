@@ -21,6 +21,7 @@ use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowLink;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Models\WorkflowSignal;
 use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\Models\WorkflowTimer;
 use Workflow\V2\Models\WorkflowUpdate;
@@ -2988,6 +2989,25 @@ class V2DashboardWorkflowTest extends TestCase
             'updated_at' => now()->subSeconds(20),
         ]);
 
+        WorkflowSignal::create([
+            'id' => '01JTESTSIGNALRECORD001',
+            'workflow_command_id' => '01JTESTCOMMANDSIGNALBLOCK01',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'target_scope' => 'instance',
+            'resolved_workflow_run_id' => $run->id,
+            'signal_name' => 'name-provided',
+            'signal_wait_id' => 'signal-wait-1',
+            'status' => 'received',
+            'outcome' => 'signal_received',
+            'command_sequence' => 2,
+            'payload_codec' => Serializer::class,
+            'arguments' => Serializer::serialize(['Taylor']),
+            'received_at' => now()->subSeconds(20),
+            'created_at' => now()->subSeconds(20),
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
         WorkflowHistoryEvent::create([
             'id' => '01JTESTHISTORYUPDATEREJ001',
             'workflow_run_id' => $run->id,
@@ -3070,6 +3090,17 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('commands.1.type', 'signal')
             ->assertJsonPath('commands.1.target_name', 'name-provided')
             ->assertJsonPath('commands.1.outcome', 'signal_received')
+            ->assertJsonPath('commands.1.signal_id', '01JTESTSIGNALRECORD001')
+            ->assertJsonPath('commands.1.signal_status', 'received')
+            ->assertJsonPath('signals_scope', 'selected_run')
+            ->assertJsonPath('signals.0.id', '01JTESTSIGNALRECORD001')
+            ->assertJsonPath('signals.0.command_id', '01JTESTCOMMANDSIGNALBLOCK01')
+            ->assertJsonPath('signals.0.name', 'name-provided')
+            ->assertJsonPath('signals.0.signal_wait_id', 'signal-wait-1')
+            ->assertJsonPath('signals.0.status', 'received')
+            ->assertJsonPath('signals.0.outcome', 'signal_received')
+            ->assertJsonPath('signals.0.arguments_available', true)
+            ->assertJsonPath('signals.0.arguments', serialize(['Taylor']))
             ->assertJsonPath('commands.2.type', 'update')
             ->assertJsonPath('commands.2.target_name', 'approve')
             ->assertJsonPath('commands.2.status', 'rejected')

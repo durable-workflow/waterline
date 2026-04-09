@@ -620,6 +620,86 @@
             </div>
         </div>
 
+        <div class="card mt-4" v-if="ready && signalRows().length">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5>Signals</h5>
+
+                <a data-toggle="collapse" href="#collapseSignals" role="button">
+                    Collapse
+                </a>
+            </div>
+
+            <div class="card-body collapse show" id="collapseSignals">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Signal</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Target</th>
+                            <th scope="col">Arguments</th>
+                            <th scope="col">Received</th>
+                            <th scope="col">Closed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="signal in signalRows()" :key="signal.id || signal.command_id">
+                            <td>
+                                <div>{{ signal.name || '-' }}</div>
+                                <div v-if="hasDetailValue(signal.id)" class="small text-muted">
+                                    signal / {{ signal.id }}
+                                </div>
+                                <div v-if="hasDetailValue(signal.signal_wait_id)" class="small text-muted">
+                                    wait / {{ signal.signal_wait_id }}
+                                </div>
+                                <div v-if="hasDetailValue(signal.command_id)" class="small text-muted">
+                                    command / {{ signal.command_id }}
+                                </div>
+                                <div v-if="hasDetailValue(signal.command_sequence)" class="small text-muted">
+                                    command seq / #{{ signal.command_sequence }}
+                                </div>
+                                <div v-if="hasDetailValue(signal.workflow_sequence)" class="small text-muted">
+                                    step / {{ signal.workflow_sequence }}
+                                </div>
+                            </td>
+                            <td>
+                                <div>{{ signal.status || '-' }}</div>
+                                <div v-if="hasDetailValue(signal.outcome)" class="small text-muted">
+                                    {{ signal.outcome }}
+                                </div>
+                                <div v-if="hasDetailValue(signal.rejection_reason)" class="small text-muted">
+                                    {{ signal.rejection_reason }}
+                                </div>
+                                <small
+                                    v-for="(message, index) in commandValidationMessages(signal)"
+                                    :key="(signal.id || signal.command_id || 'signal') + '-validation-' + index"
+                                    class="text-muted d-block"
+                                >
+                                    {{ message }}
+                                </small>
+                            </td>
+                            <td>
+                                <div>{{ signal.target_scope || '-' }}</div>
+                                <small v-if="commandTargetDetail(signal)" class="text-muted">
+                                    {{ commandTargetDetail(signal) }}
+                                </small>
+                            </td>
+                            <td>
+                                <button
+                                    v-if="signal.arguments_available"
+                                    title="View Arguments"
+                                    class="btn btn-outline-primary ml-auto"
+                                    @click="showResult(signal.arguments, 'Signal Arguments')"
+                                >View</button>
+                                <span v-else>-</span>
+                            </td>
+                            <td>{{ timestamp(signal.received_at || signal.rejected_at) }}</td>
+                            <td>{{ timestamp(signal.closed_at || signal.applied_at || signal.rejected_at) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="card mt-4" v-if="ready && updateRows().length">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Updates</h5>
@@ -1272,6 +1352,12 @@ export default {
         updateRows() {
             return Array.isArray(this.flow.updates)
                 ? this.flow.updates
+                : []
+        },
+
+        signalRows() {
+            return Array.isArray(this.flow.signals)
+                ? this.flow.signals
                 : []
         },
 

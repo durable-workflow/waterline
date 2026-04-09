@@ -177,6 +177,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         return [
             'summary',
             'commands',
+            'signals.command',
             'updates.command',
             'updates.failure',
             'tasks',
