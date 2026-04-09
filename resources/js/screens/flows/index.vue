@@ -2,6 +2,58 @@
     import FlowRow from './flow-row';
     import Swal from 'sweetalert2';
 
+    const fallbackVisibilityFilterDefinition = {
+        fields: {
+            instance_id: { label: 'Instance ID', type: 'string', input: 'text', operator: 'exact', order: 0, query_parameter: 'instance_id' },
+            run_id: { label: 'Run ID', type: 'string', input: 'text', operator: 'exact', order: 1, query_parameter: 'run_id' },
+            workflow_type: { label: 'Workflow Type', type: 'string', input: 'text', operator: 'exact', order: 2, query_parameter: 'workflow_type' },
+            business_key: { label: 'Business Key', type: 'string', input: 'text', operator: 'exact', order: 3, query_parameter: 'business_key' },
+            compatibility: { label: 'Compatibility', type: 'string', input: 'text', operator: 'exact', order: 4, query_parameter: 'compatibility' },
+            queue: { label: 'Queue', type: 'string', input: 'text', operator: 'exact', order: 5, query_parameter: 'queue' },
+            connection: { label: 'Connection', type: 'string', input: 'text', operator: 'exact', order: 6, query_parameter: 'connection' },
+            status: { label: 'Status', type: 'string', input: 'text', operator: 'exact', order: 7, query_parameter: 'status' },
+            status_bucket: { label: 'Status Bucket', type: 'string', input: 'text', operator: 'exact', order: 8, query_parameter: 'status_bucket' },
+            closed_reason: { label: 'Closed Reason', type: 'string', input: 'text', operator: 'exact', order: 9, query_parameter: 'closed_reason' },
+            wait_kind: { label: 'Wait Kind', type: 'string', input: 'text', operator: 'exact', order: 10, query_parameter: 'wait_kind' },
+            liveness_state: { label: 'Liveness State', type: 'string', input: 'text', operator: 'exact', order: 11, query_parameter: 'liveness_state' },
+            archived: {
+                label: 'Archived',
+                type: 'boolean',
+                input: 'boolean_select',
+                operator: 'exact',
+                order: 12,
+                query_parameter: 'archived',
+                options: [
+                    { label: 'Yes', value: true },
+                    { label: 'No', value: false },
+                ],
+            },
+            is_terminal: {
+                label: 'Terminal',
+                type: 'boolean',
+                input: 'boolean_select',
+                operator: 'exact',
+                order: 13,
+                query_parameter: 'is_terminal',
+                options: [
+                    { label: 'Yes', value: true },
+                    { label: 'No', value: false },
+                ],
+            },
+        },
+        labels: {
+            label: 'Labels',
+            type: 'map<string,string>',
+            input: 'key_value_textarea',
+            operator: 'exact',
+            query_parameters: ['label[key]', 'labels[key]'],
+            key_pattern: '^[A-Za-z0-9_.:-]{1,64}$',
+            key_value_separator: '=',
+            placeholder: 'tenant=acme\nregion=us-east',
+            help: 'One exact-match label per line in key=value format.',
+        },
+    }
+
     export default {
         /**
          * The component's data.
@@ -17,6 +69,7 @@
                 savedViews: [],
                 selectedSavedView: null,
                 visibilityFilters: null,
+                filterDefinition: null,
             };
         },
 
@@ -42,7 +95,7 @@
                     : this.currentFilterPayload()
                 const entries = []
 
-                this.visibilityFieldNames().forEach((field) => {
+                this.visibilityFieldEntries().forEach(([field]) => {
                     if (applied[field] === undefined || applied[field] === null || applied[field] === '') {
                         return
                     }
@@ -119,6 +172,9 @@
                 this.$http.get(Waterline.basePath + '/api/flows/' + this.$route.params.type + '?' + this.apiQueryString(page))
                     .then(response => {
                         this.visibilityFilters = response.data.visibility_filters || null;
+                        this.filterDefinition = response.data.visibility_filters && response.data.visibility_filters.definition
+                            ? response.data.visibility_filters.definition
+                            : this.filterDefinition
 
                         const incomingFirst = _.first(response.data.data);
                         const currentFirst = _.first(this.flows);
@@ -142,6 +198,7 @@
                 return this.$http.get(Waterline.basePath + '/api/saved-views?bucket=' + encodeURIComponent(this.$route.params.type))
                     .then(response => {
                         this.savedViews = response.data.data || [];
+                        this.filterDefinition = response.data.filter_definition || this.filterDefinition
 
                         if (this.selectedSavedView && !this.savedViews.find((view) => view.id === this.selectedSavedView)) {
                             this.selectedSavedView = null;
@@ -205,18 +262,16 @@
                 const filters = {};
                 const labels = {};
 
-                this.visibilityFieldNames().forEach((field) => {
-                    const value = this.$route.query[field];
+                this.visibilityFieldEntries().forEach(([field]) => {
+                    const value = this.normalizeFilterValue(field, this.$route.query[field])
 
-                    if (typeof value === 'string' && value.length > 0) {
-                        filters[field] = value;
-                    } else if (typeof value === 'boolean') {
-                        filters[field] = value;
+                    if (value !== undefined) {
+                        filters[field] = value
                     }
-                });
+                })
 
                 Object.entries(this.$route.query || {}).forEach(([key, value]) => {
-                    const match = key.match(/^labels?\[([A-Za-z0-9_.:-]{1,64})\]$/);
+                    const match = key.match(this.labelQueryParameterPattern());
 
                     if (match && typeof value === 'string' && value.length > 0) {
                         labels[match[1]] = value;
@@ -231,7 +286,7 @@
                     }
 
                     Object.entries(value).forEach(([labelKey, labelValue]) => {
-                        if (/^[A-Za-z0-9_.:-]{1,64}$/.test(labelKey) && typeof labelValue === 'string' && labelValue.length > 0) {
+                        if (this.labelKeyRegExp().test(labelKey) && typeof labelValue === 'string' && labelValue.length > 0) {
                             labels[labelKey] = labelValue;
                         }
                     });
@@ -244,47 +299,112 @@
                 return filters;
             },
 
+            visibilityFilterContract() {
+                return this.filterDefinition
+                    || (this.visibilityFilters && this.visibilityFilters.definition)
+                    || fallbackVisibilityFilterDefinition
+            },
+
+            visibilityFieldEntries() {
+                return Object.entries(this.visibilityFilterContract().fields || {})
+                    .sort(([, left], [, right]) => {
+                        const leftOrder = typeof left.order === 'number' ? left.order : Number.MAX_SAFE_INTEGER
+                        const rightOrder = typeof right.order === 'number' ? right.order : Number.MAX_SAFE_INTEGER
+
+                        return leftOrder - rightOrder
+                    })
+            },
+
             visibilityFieldNames() {
-                return [
-                    'instance_id',
-                    'run_id',
-                    'workflow_type',
-                    'business_key',
-                    'compatibility',
-                    'queue',
-                    'connection',
-                    'status',
-                    'status_bucket',
-                    'closed_reason',
-                    'wait_kind',
-                    'liveness_state',
-                    'archived',
-                    'is_terminal',
-                ]
+                return this.visibilityFieldEntries().map(([field]) => field)
+            },
+
+            visibilityFieldDefinition(field) {
+                return this.visibilityFilterContract().fields[field] || null
+            },
+
+            visibilityLabelsDefinition() {
+                return this.visibilityFilterContract().labels || fallbackVisibilityFilterDefinition.labels
+            },
+
+            labelKeyPattern() {
+                return this.visibilityLabelsDefinition().key_pattern || '^[A-Za-z0-9_.:-]{1,64}$'
+            },
+
+            labelKeyRegExp() {
+                return new RegExp(this.labelKeyPattern())
+            },
+
+            labelQueryParameterPattern() {
+                const keyPattern = this.labelKeyPattern()
+                    .replace(/^\^/, '')
+                    .replace(/\$$/, '')
+
+                return new RegExp(`^labels?\\[(${keyPattern})\\]$`)
             },
 
             filterFieldLabel(field) {
-                return {
-                    instance_id: 'Instance',
-                    run_id: 'Run',
-                    workflow_type: 'Workflow Type',
-                    business_key: 'Business Key',
-                    compatibility: 'Compatibility',
-                    queue: 'Queue',
-                    connection: 'Connection',
-                    status: 'Status',
-                    status_bucket: 'Status Bucket',
-                    closed_reason: 'Closed Reason',
-                    wait_kind: 'Wait Kind',
-                    liveness_state: 'Liveness',
-                    archived: 'Archived',
-                    is_terminal: 'Terminal',
-                }[field] || field
+                const definition = this.visibilityFieldDefinition(field)
+
+                return definition && definition.label
+                    ? definition.label
+                    : field
+            },
+
+            normalizeFilterValue(field, value) {
+                const definition = this.visibilityFieldDefinition(field)
+
+                if (!definition) {
+                    return undefined
+                }
+
+                if (definition.type === 'boolean') {
+                    return this.parseBooleanFilterValue(value)
+                }
+
+                if (typeof value !== 'string') {
+                    return undefined
+                }
+
+                const normalized = value.trim()
+
+                return normalized.length > 0
+                    ? normalized
+                    : undefined
+            },
+
+            parseBooleanFilterValue(value) {
+                if (value === true || value === 1) {
+                    return true
+                }
+
+                if (value === false || value === 0) {
+                    return false
+                }
+
+                if (typeof value !== 'string') {
+                    return undefined
+                }
+
+                switch (value.trim().toLowerCase()) {
+                    case '1':
+                    case 'true':
+                    case 'yes':
+                        return true
+                    case '0':
+                    case 'false':
+                    case 'no':
+                        return false
+                    default:
+                        return undefined
+                }
             },
 
             formatAppliedFilterValue(field, value) {
-                if (field === 'archived' || field === 'is_terminal') {
-                    return value === true || value === 'true' || value === '1'
+                const definition = this.visibilityFieldDefinition(field)
+
+                if (definition && definition.type === 'boolean') {
+                    return this.parseBooleanFilterValue(value) === true
                         ? 'Yes'
                         : 'No'
                 }
@@ -298,6 +418,10 @@
                 return value === undefined || value === null
                     ? ''
                     : String(value)
+            },
+
+            fieldInputId(field) {
+                return `waterline-filter-${field.replace(/_/g, '-')}`
             },
 
             labelsText(filters) {
@@ -319,38 +443,51 @@
                     <label class="d-block text-left mb-1" for="${id}">${label}</label>
                     <input id="${id}" class="swal2-input" value="${this.escapeHtml(value)}">
                 `
-                const booleanInput = (id, label, value) => `
+                const booleanInput = (id, label, value, options) => `
                     <label class="d-block text-left mb-1" for="${id}">${label}</label>
                     <select id="${id}" class="swal2-input">
                         <option value="" ${value === '' ? 'selected' : ''}>Any</option>
-                        <option value="true" ${value === 'true' ? 'selected' : ''}>Yes</option>
-                        <option value="false" ${value === 'false' ? 'selected' : ''}>No</option>
+                        ${options.map((option) => `
+                            <option value="${option.value ? 'true' : 'false'}" ${value === (option.value ? 'true' : 'false') ? 'selected' : ''}>${this.escapeHtml(option.label)}</option>
+                        `).join('')}
                     </select>
                 `
+                const labelsDefinition = this.visibilityLabelsDefinition()
+                const labelPlaceholder = this.escapeHtml(labelsDefinition.placeholder || 'tenant=acme\nregion=us-east')
+                    .replace(/\n/g, '&#10;')
+                const fieldsHtml = this.visibilityFieldEntries()
+                    .map(([field, definition]) => {
+                        const id = this.fieldInputId(field)
+                        const label = this.escapeHtml(definition.label || field)
+                        const value = this.filterValue(field, filters)
+
+                        if (definition.type === 'boolean') {
+                            return booleanInput(id, label, value, definition.options || [
+                                { label: 'Yes', value: true },
+                                { label: 'No', value: false },
+                            ])
+                        }
+
+                        return textInput(id, label, value)
+                    })
+                    .join('')
 
                 return `
                     <div class="text-left">
-                        ${textInput('waterline-filter-instance-id', 'Instance ID', this.filterValue('instance_id', filters))}
-                        ${textInput('waterline-filter-run-id', 'Run ID', this.filterValue('run_id', filters))}
-                        ${textInput('waterline-filter-workflow-type', 'Workflow Type', this.filterValue('workflow_type', filters))}
-                        ${textInput('waterline-filter-business-key', 'Business Key', this.filterValue('business_key', filters))}
-                        ${textInput('waterline-filter-compatibility', 'Compatibility', this.filterValue('compatibility', filters))}
-                        ${textInput('waterline-filter-connection', 'Connection', this.filterValue('connection', filters))}
-                        ${textInput('waterline-filter-queue', 'Queue', this.filterValue('queue', filters))}
-                        ${textInput('waterline-filter-status', 'Status', this.filterValue('status', filters))}
-                        ${textInput('waterline-filter-status-bucket', 'Status Bucket', this.filterValue('status_bucket', filters))}
-                        ${textInput('waterline-filter-closed-reason', 'Closed Reason', this.filterValue('closed_reason', filters))}
-                        ${textInput('waterline-filter-wait-kind', 'Wait Kind', this.filterValue('wait_kind', filters))}
-                        ${textInput('waterline-filter-liveness-state', 'Liveness State', this.filterValue('liveness_state', filters))}
-                        ${booleanInput('waterline-filter-archived', 'Archived', this.filterValue('archived', filters))}
-                        ${booleanInput('waterline-filter-is-terminal', 'Terminal', this.filterValue('is_terminal', filters))}
-                        <label class="d-block text-left mb-1" for="waterline-filter-labels">Labels</label>
-                        <textarea id="waterline-filter-labels" class="swal2-textarea" rows="4" placeholder="tenant=acme&#10;region=us-east">${this.escapeHtml(this.labelsText(filters))}</textarea>
+                        ${fieldsHtml}
+                        <label class="d-block text-left mb-1" for="waterline-filter-labels">${this.escapeHtml(labelsDefinition.label || 'Labels')}</label>
+                        <textarea id="waterline-filter-labels" class="swal2-textarea" rows="4" placeholder="${labelPlaceholder}">${this.escapeHtml(this.labelsText(filters))}</textarea>
+                        ${labelsDefinition.help
+                            ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(labelsDefinition.help)}</small>`
+                            : ''}
                     </div>
                 `
             },
 
             parseLabelText(value) {
+                const labelsDefinition = this.visibilityLabelsDefinition()
+                const separatorToken = labelsDefinition.key_value_separator || '='
+                const separator = String(separatorToken)
                 const labels = {}
                 const lines = String(value || '')
                     .split('\n')
@@ -358,17 +495,17 @@
                     .filter((line) => line.length > 0)
 
                 for (const line of lines) {
-                    const separator = line.indexOf('=')
+                    const separatorIndex = line.indexOf(separator)
 
-                    if (separator === -1) {
-                        throw new Error('Use key=value for label filters.')
+                    if (separatorIndex === -1) {
+                        throw new Error(`Use key${separator}value for label filters.`)
                     }
 
-                    const key = line.slice(0, separator).trim()
-                    const labelValue = line.slice(separator + 1).trim()
+                    const key = line.slice(0, separatorIndex).trim()
+                    const labelValue = line.slice(separatorIndex + separator.length).trim()
 
-                    if (!/^[A-Za-z0-9_.:-]{1,64}$/.test(key)) {
-                        throw new Error('Label keys must match ^[A-Za-z0-9_.:-]{1,64}$.')
+                    if (!this.labelKeyRegExp().test(key)) {
+                        throw new Error(`Label keys must match ${this.labelKeyPattern()}.`)
                     }
 
                     if (!labelValue) {
@@ -392,7 +529,7 @@
                 delete query.labels
 
                 Object.keys(query).forEach((key) => {
-                    if (/^labels?\[[A-Za-z0-9_.:-]{1,64}\]$/.test(key)) {
+                    if (this.labelQueryParameterPattern().test(key)) {
                         delete query[key]
                     }
                 })
@@ -443,50 +580,17 @@
                     preConfirm: () => {
                         try {
                             const filters = {}
-                            const stringFields = [
-                                'instance_id',
-                                'run_id',
-                                'workflow_type',
-                                'business_key',
-                                'compatibility',
-                                'connection',
-                                'queue',
-                                'status',
-                                'status_bucket',
-                                'closed_reason',
-                                'wait_kind',
-                                'liveness_state',
-                            ]
-                            const ids = {
-                                instance_id: 'waterline-filter-instance-id',
-                                run_id: 'waterline-filter-run-id',
-                                workflow_type: 'waterline-filter-workflow-type',
-                                business_key: 'waterline-filter-business-key',
-                                compatibility: 'waterline-filter-compatibility',
-                                connection: 'waterline-filter-connection',
-                                queue: 'waterline-filter-queue',
-                                status: 'waterline-filter-status',
-                                status_bucket: 'waterline-filter-status-bucket',
-                                closed_reason: 'waterline-filter-closed-reason',
-                                wait_kind: 'waterline-filter-wait-kind',
-                                liveness_state: 'waterline-filter-liveness-state',
-                            }
+                            this.visibilityFieldEntries().forEach(([field]) => {
+                                const element = document.getElementById(this.fieldInputId(field))
 
-                            stringFields.forEach((field) => {
-                                const value = document.getElementById(ids[field]).value.trim()
-
-                                if (value) {
-                                    filters[field] = value
+                                if (!element) {
+                                    return
                                 }
-                            })
 
-                            ;['archived', 'is_terminal'].forEach((field) => {
-                                const value = document.getElementById(`waterline-filter-${field.replace('_', '-')}`).value
+                                const value = this.normalizeFilterValue(field, element.value)
 
-                                if (value === 'true') {
-                                    filters[field] = true
-                                } else if (value === 'false') {
-                                    filters[field] = false
+                                if (value !== undefined) {
+                                    filters[field] = value
                                 }
                             })
 

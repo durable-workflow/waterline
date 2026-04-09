@@ -16,6 +16,7 @@ class SavedViewsController extends Controller
             return response()->json([
                 'data' => [],
                 'filter_version' => VisibilityFilters::VERSION,
+                'filter_definition' => VisibilityFilters::definition(),
             ]);
         }
 

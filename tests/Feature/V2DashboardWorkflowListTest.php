@@ -270,8 +270,13 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.applied.run_id', $matching->id)
             ->assertJsonPath('visibility_filters.applied.archived', false)
             ->assertJsonPath('visibility_filters.applied.is_terminal', false)
+            ->assertJsonPath('visibility_filters.definition.fields.instance_id.label', 'Instance ID')
             ->assertJsonPath('visibility_filters.definition.fields.instance_id.type', 'string')
+            ->assertJsonPath('visibility_filters.definition.fields.instance_id.input', 'text')
             ->assertJsonPath('visibility_filters.definition.fields.archived.type', 'boolean')
+            ->assertJsonPath('visibility_filters.definition.fields.archived.input', 'boolean_select')
+            ->assertJsonPath('visibility_filters.definition.labels.label', 'Labels')
+            ->assertJsonPath('visibility_filters.definition.labels.input', 'key_value_textarea')
             ->assertJsonPath('visibility_filters.definition.labels.operator', 'exact');
     }
 
@@ -342,8 +347,11 @@ class V2DashboardWorkflowListTest extends TestCase
         $this->get('/waterline/api/saved-views?bucket=running')
             ->assertOk()
             ->assertJsonPath('filter_version', VisibilityFilters::VERSION)
+            ->assertJsonPath('filter_definition.fields.instance_id.label', 'Instance ID')
             ->assertJsonPath('filter_definition.fields.instance_id.type', 'string')
-            ->assertJsonPath('filter_definition.fields.archived.type', 'boolean');
+            ->assertJsonPath('filter_definition.fields.archived.type', 'boolean')
+            ->assertJsonPath('filter_definition.fields.archived.input', 'boolean_select')
+            ->assertJsonPath('filter_definition.labels.input', 'key_value_textarea');
 
         $this->delete('/waterline/api/saved-views/'.$id)
             ->assertNoContent();
@@ -351,6 +359,20 @@ class V2DashboardWorkflowListTest extends TestCase
         $this->assertDatabaseMissing('waterline_saved_views', [
             'id' => $id,
         ]);
+    }
+
+    public function testSavedViewsIndexStillEchoesFilterDefinitionWhenDisabled(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.saved_views.enabled', false);
+
+        $this->get('/waterline/api/saved-views?bucket=running')
+            ->assertOk()
+            ->assertJsonPath('data', [])
+            ->assertJsonPath('filter_version', VisibilityFilters::VERSION)
+            ->assertJsonPath('filter_definition.fields.instance_id.label', 'Instance ID')
+            ->assertJsonPath('filter_definition.fields.archived.input', 'boolean_select')
+            ->assertJsonPath('filter_definition.labels.help', 'One exact-match label per line in key=value format.');
     }
 
     private function createRunningSummary(
