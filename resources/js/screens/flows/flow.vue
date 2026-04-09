@@ -859,6 +859,8 @@
                                         <div v-if="attempt.task_id">task / {{ attempt.task_id }}</div>
                                         <div v-if="attempt.lease_owner">worker / {{ attempt.lease_owner }}</div>
                                         <div v-if="attempt.lease_expires_at">lease / {{ timestamp(attempt.lease_expires_at) }}</div>
+                                        <div v-if="attempt.cancel_requested">cancel requested</div>
+                                        <div v-if="attempt.stop_reason">stop / {{ attempt.stop_reason }}</div>
                                     </div>
                                 </div>
                             </td>

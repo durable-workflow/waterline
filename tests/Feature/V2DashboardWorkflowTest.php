@@ -564,6 +564,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('activities.0.attempts.0.status', 'running')
             ->assertJsonPath('activities.0.attempts.0.lease_owner', 'heartbeat-worker')
             ->assertJsonPath('activities.0.attempts.0.lease_expires_at', $leaseExpiresAt->jsonSerialize())
+            ->assertJsonPath('activities.0.attempts.0.can_continue', true)
+            ->assertJsonPath('activities.0.attempts.0.cancel_requested', false)
+            ->assertJsonPath('activities.0.attempts.0.stop_reason', null)
             ->assertJsonPath('tasks.0.id', $taskId)
             ->assertJsonPath('tasks.0.status', 'leased')
             ->assertJsonPath('tasks.0.lease_expires_at', $leaseExpiresAt->jsonSerialize())
@@ -575,6 +578,105 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('timeline.0.activity_status', 'running')
             ->assertJsonPath('timeline.0.activity.last_heartbeat_at', $heartbeatAt->jsonSerialize())
             ->assertJsonPath('timeline.0.task.status', 'leased');
+    }
+
+    public function testShowReturnsActivityAttemptCancellationObservationFields(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $startedAt = now()->subMinutes(4);
+        $closedAt = now()->subMinute();
+        $runId = (string) Str::ulid();
+        $activityId = (string) Str::ulid();
+        $taskId = (string) Str::ulid();
+        $attemptId = (string) Str::ulid();
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-activity-cancel-observed',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => $runId,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'cancelled',
+            'closed_reason' => 'cancelled',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $startedAt,
+            'closed_at' => $closedAt,
+            'last_progress_at' => $closedAt,
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $activity = ActivityExecution::create([
+            'id' => $activityId,
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ActivityClass',
+            'activity_type' => 'activity.test',
+            'status' => 'cancelled',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'attempt_count' => 1,
+            'current_attempt_id' => $attemptId,
+            'started_at' => $startedAt,
+            'closed_at' => $closedAt,
+        ]);
+
+        ActivityAttempt::create([
+            'id' => $attemptId,
+            'workflow_run_id' => $run->id,
+            'activity_execution_id' => $activity->id,
+            'workflow_task_id' => $taskId,
+            'attempt_number' => 1,
+            'status' => 'cancelled',
+            'lease_owner' => 'bridge-worker',
+            'started_at' => $startedAt,
+            'closed_at' => $closedAt,
+        ]);
+
+        WorkflowTask::create([
+            'id' => $taskId,
+            'workflow_run_id' => $run->id,
+            'task_type' => 'activity',
+            'status' => 'cancelled',
+            'payload' => [
+                'activity_execution_id' => $activity->id,
+            ],
+            'connection' => 'redis',
+            'queue' => 'default',
+            'leased_at' => $startedAt,
+            'lease_owner' => 'bridge-worker',
+            'attempt_count' => 1,
+        ]);
+
+        RunSummaryProjector::project($run->fresh([
+            'instance',
+            'tasks',
+            'activityExecutions',
+            'timers',
+            'failures',
+            'historyEvents',
+        ]));
+
+        $response = $this->get('/waterline/api/instances/' . $instance->id);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('status', 'cancelled')
+            ->assertJsonPath('activities.0.status', 'cancelled')
+            ->assertJsonPath('activities.0.attempts.0.id', $attemptId)
+            ->assertJsonPath('activities.0.attempts.0.status', 'cancelled')
+            ->assertJsonPath('activities.0.attempts.0.can_continue', false)
+            ->assertJsonPath('activities.0.attempts.0.cancel_requested', true)
+            ->assertJsonPath('activities.0.attempts.0.stop_reason', 'attempt_cancelled');
     }
 
     public function testShowReturnsBackfilledHeartbeatMetadataForLegacyRunningActivity(): void
