@@ -118,6 +118,47 @@
                 return this.operatorPolicyMetric(key).toLocaleString();
             },
 
+            operatorBackend() {
+                const metrics = this.stats.operator_metrics || {};
+
+                return metrics.backend || {};
+            },
+
+            operatorBackendStatusLabel() {
+                return this.operatorBackend().supported ? 'Supported' : 'Needs attention';
+            },
+
+            operatorBackendComponentLabel(component) {
+                const backend = this.operatorBackend();
+                const detail = backend[component] || {};
+
+                if (component === 'cache') {
+                    return [
+                        detail.store || 'unknown',
+                        detail.driver || 'unknown',
+                    ].join('/');
+                }
+
+                return [
+                    detail.connection || 'unknown',
+                    detail.driver || 'unknown',
+                ].join('/');
+            },
+
+            operatorBackendIssues() {
+                const issues = this.operatorBackend().issues;
+
+                return Array.isArray(issues) ? issues : [];
+            },
+
+            operatorBackendIssueKey(issue, index) {
+                return [
+                    issue && issue.component ? issue.component : 'backend',
+                    issue && issue.code ? issue.code : 'capability_issue',
+                    index,
+                ].join(':');
+            },
+
             operatorDurationMetricLabel(section, key) {
                 const value = this.operatorMetric(section, key);
 
@@ -342,6 +383,29 @@
                         Redispatch after {{ operatorPolicyMetricLabel('redispatch_after_seconds') }}s,
                         throttle worker sweeps for {{ operatorPolicyMetricLabel('loop_throttle_seconds') }}s,
                         scan {{ operatorPolicyMetricLabel('scan_limit') }} rows per pass.
+                    </div>
+                </div>
+
+                <div class="border-top p-4">
+                    <small class="text-uppercase">Backend Capability</small>
+
+                    <div class="mt-2">
+                        <span :class="operatorBackend().supported ? 'badge badge-success' : 'badge badge-warning'">
+                            {{ operatorBackendStatusLabel() }}
+                        </span>
+
+                        <span class="ml-2 text-muted">
+                            Database {{ operatorBackendComponentLabel('database') }},
+                            queue {{ operatorBackendComponentLabel('queue') }},
+                            cache {{ operatorBackendComponentLabel('cache') }}.
+                        </span>
+                    </div>
+
+                    <div class="mt-2 text-muted" v-if="operatorBackendIssues().length">
+                        <div v-for="(issue, index) in operatorBackendIssues()" :key="operatorBackendIssueKey(issue, index)">
+                            <strong>{{ issue.code || 'capability_issue' }}</strong>:
+                            {{ issue.message || 'Capability issue detected.' }}
+                        </div>
                     </div>
                 </div>
             </div>
