@@ -35,6 +35,7 @@ class SavedViewsController extends Controller
                 ...$saved,
             ],
             'filter_version' => VisibilityFilters::VERSION,
+            'filter_definition' => VisibilityFilters::definition(),
         ]);
     }
 

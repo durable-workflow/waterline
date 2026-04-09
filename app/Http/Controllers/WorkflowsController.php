@@ -2,42 +2,45 @@
 
 namespace Waterline\Http\Controllers;
 
+use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Request;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Support\CommandResponse;
 use Workflow\V2\Support\HistoryExport;
 use Workflow\V2\Support\QueryResponse;
+use Workflow\V2\Support\VisibilityFilters;
 use Workflow\V2\UpdateResult;
 use Workflow\V2\WorkflowStub as V2WorkflowStub;
 use Waterline\Http\Resources\StoredWorkflowResource;
 use Waterline\Http\Resources\V2StoredWorkflowResource;
+use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 
 class WorkflowsController extends Controller
 {
     public function completed(WorkflowRepositoryInterface $repository)
     {
-        return $repository->completedFlows();
+        return $this->listResponse('completed', $repository, $repository->completedFlows());
     }
 
     public function failed(WorkflowRepositoryInterface $repository)
     {
-        return $repository->failedFlows();
+        return $this->listResponse('failed', $repository, $repository->failedFlows());
     }
 
     public function cancelled(WorkflowRepositoryInterface $repository)
     {
-        return $repository->cancelledFlows();
+        return $this->listResponse('cancelled', $repository, $repository->cancelledFlows());
     }
 
     public function terminated(WorkflowRepositoryInterface $repository)
     {
-        return $repository->terminatedFlows();
+        return $this->listResponse('terminated', $repository, $repository->terminatedFlows());
     }
 
     public function running(WorkflowRepositoryInterface $repository)
     {
-        return $repository->runningFlows();
+        return $this->listResponse('running', $repository, $repository->runningFlows());
     }
 
     public function show(string $id, WorkflowRepositoryInterface $repository)
@@ -432,6 +435,25 @@ class WorkflowsController extends Controller
     private function shouldSubmitUpdate(Request $request): bool
     {
         return $request->input('wait_for') === 'accepted';
+    }
+
+    private function listResponse(string $bucket, WorkflowRepositoryInterface $repository, mixed $result)
+    {
+        if ($repository->engineSource() !== 'v2' || ! $result instanceof Arrayable) {
+            return $result;
+        }
+
+        $context = V2VisibilityFilterContext::resolve(request(), $bucket);
+        $payload = $result->toArray();
+        $payload['visibility_filters'] = [
+            'version' => VisibilityFilters::VERSION,
+            'bucket' => $bucket,
+            'definition' => $context['definition'],
+            'applied' => $context['applied_filters'],
+            'saved_view' => $context['saved_view'],
+        ];
+
+        return response()->json($payload);
     }
 
     private function commandResponse($result)

@@ -8,6 +8,7 @@ use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Support\RunSummarySortKey;
+use Workflow\V2\Support\VisibilityFilters;
 
 class V2DashboardWorkflowListTest extends TestCase
 {
@@ -217,6 +218,141 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function testV2ListRoutesCanFilterByExpandedVisibilityFieldsAndEchoAppliedContract(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.saved_views.scope', 'ops');
+
+        $matching = $this->createRunningSummary(
+            'visible-signal-order',
+            'run-visible-signal-order',
+            Carbon::parse('2022-01-01 12:05:00'),
+            Carbon::parse('2022-01-01 12:05:00'),
+            businessKey: 'order-123',
+            visibilityLabels: ['tenant' => 'acme'],
+            waitKind: 'signal',
+            livenessState: 'waiting_for_signal',
+        );
+        $this->createRunningSummary(
+            'visible-timer-order',
+            'run-visible-timer-order',
+            Carbon::parse('2022-01-01 12:06:00'),
+            Carbon::parse('2022-01-01 12:06:00'),
+            businessKey: 'order-123',
+            visibilityLabels: ['tenant' => 'acme'],
+            waitKind: 'timer',
+            livenessState: 'timer_scheduled',
+        );
+
+        $savedViewId = $this->postJson('/waterline/api/saved-views', [
+            'name' => 'Signal waits',
+            'bucket' => 'running',
+            'filters' => [
+                'workflow_type' => 'workflow.test',
+                'wait_kind' => 'signal',
+                'archived' => false,
+                'is_terminal' => false,
+            ],
+            'shared' => true,
+        ])->assertCreated()->json('id');
+
+        $this->get('/waterline/api/flows/running?view='.$savedViewId.'&instance_id='.$matching->workflow_instance_id.'&run_id='.$matching->id.'&liveness_state=waiting_for_signal')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $matching->id)
+            ->assertJsonPath('visibility_filters.version', VisibilityFilters::VERSION)
+            ->assertJsonPath('visibility_filters.bucket', 'running')
+            ->assertJsonPath('visibility_filters.saved_view.id', $savedViewId)
+            ->assertJsonPath('visibility_filters.applied.workflow_type', 'workflow.test')
+            ->assertJsonPath('visibility_filters.applied.wait_kind', 'signal')
+            ->assertJsonPath('visibility_filters.applied.liveness_state', 'waiting_for_signal')
+            ->assertJsonPath('visibility_filters.applied.instance_id', $matching->workflow_instance_id)
+            ->assertJsonPath('visibility_filters.applied.run_id', $matching->id)
+            ->assertJsonPath('visibility_filters.applied.archived', false)
+            ->assertJsonPath('visibility_filters.applied.is_terminal', false)
+            ->assertJsonPath('visibility_filters.definition.fields.instance_id.type', 'string')
+            ->assertJsonPath('visibility_filters.definition.fields.archived.type', 'boolean')
+            ->assertJsonPath('visibility_filters.definition.labels.operator', 'exact');
+    }
+
+    public function testCompletedListRoutesCanFilterByArchivedTerminalFlags(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $archived = $this->createTerminalSummary(
+            'terminal-archived',
+            'run-terminal-archived',
+            'completed',
+            archivedAt: Carbon::parse('2022-01-01 12:06:00'),
+        );
+        $this->createTerminalSummary(
+            'terminal-open',
+            'run-terminal-open',
+            'completed',
+        );
+
+        $this->get('/waterline/api/flows/completed?instance_id='.$archived->workflow_instance_id.'&archived=true&is_terminal=true&closed_reason=completed')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $archived->id)
+            ->assertJsonPath('visibility_filters.applied.archived', true)
+            ->assertJsonPath('visibility_filters.applied.is_terminal', true)
+            ->assertJsonPath('visibility_filters.applied.closed_reason', 'completed');
+    }
+
+    public function testV2SavedViewsCanBeUpdatedAndDeleted(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.saved_views.scope', 'ops');
+
+        $id = $this->postJson('/waterline/api/saved-views', [
+            'name' => 'Acme waits',
+            'bucket' => 'running',
+            'filters' => [
+                'workflow_type' => 'workflow.test',
+                'labels' => [
+                    'tenant' => 'acme',
+                ],
+            ],
+            'shared' => true,
+        ])->assertCreated()->json('id');
+
+        $this->putJson('/waterline/api/saved-views/'.$id, [
+            'name' => 'Acme signal waits',
+            'bucket' => 'running',
+            'filters' => [
+                'instance_id' => 'order-123',
+                'wait_kind' => 'signal',
+                'archived' => false,
+            ],
+            'shared' => false,
+        ])->assertOk()
+            ->assertJsonPath('name', 'Acme signal waits')
+            ->assertJsonPath('shared', false)
+            ->assertJsonPath('filters.instance_id', 'order-123')
+            ->assertJsonPath('filters.wait_kind', 'signal')
+            ->assertJsonPath('filters.archived', false);
+
+        $this->get('/waterline/api/saved-views/'.$id)
+            ->assertOk()
+            ->assertJsonPath('name', 'Acme signal waits')
+            ->assertJsonPath('filters.wait_kind', 'signal')
+            ->assertJsonPath('filters.archived', false);
+
+        $this->get('/waterline/api/saved-views?bucket=running')
+            ->assertOk()
+            ->assertJsonPath('filter_version', VisibilityFilters::VERSION)
+            ->assertJsonPath('filter_definition.fields.instance_id.type', 'string')
+            ->assertJsonPath('filter_definition.fields.archived.type', 'boolean');
+
+        $this->delete('/waterline/api/saved-views/'.$id)
+            ->assertNoContent();
+
+        $this->assertDatabaseMissing('waterline_saved_views', [
+            'id' => $id,
+        ]);
+    }
+
     private function createRunningSummary(
         string $instanceId,
         string $runId,
@@ -224,6 +360,9 @@ class V2DashboardWorkflowListTest extends TestCase
         Carbon $createdAt,
         ?string $businessKey = null,
         array $visibilityLabels = [],
+        ?string $waitKind = null,
+        ?string $livenessState = null,
+        ?Carbon $archivedAt = null,
     ): WorkflowRunSummary {
         $instance = WorkflowInstance::create([
             'id' => $instanceId,
@@ -245,6 +384,7 @@ class V2DashboardWorkflowListTest extends TestCase
             'status' => 'waiting',
             'started_at' => $startedAt,
             'last_progress_at' => $startedAt,
+            'archived_at' => $archivedAt,
             'created_at' => $createdAt,
             'updated_at' => $createdAt,
         ]);
@@ -263,6 +403,9 @@ class V2DashboardWorkflowListTest extends TestCase
             'visibility_labels' => $visibilityLabels === [] ? null : $visibilityLabels,
             'status' => 'waiting',
             'status_bucket' => 'running',
+            'wait_kind' => $waitKind,
+            'liveness_state' => $livenessState,
+            'archived_at' => $archivedAt,
             'started_at' => $startedAt,
             'sort_timestamp' => $startedAt,
             'sort_key' => RunSummarySortKey::key($startedAt, $createdAt, $createdAt, $run->id),
@@ -275,6 +418,7 @@ class V2DashboardWorkflowListTest extends TestCase
         string $instanceId,
         string $runId,
         string $status,
+        ?Carbon $archivedAt = null,
     ): WorkflowRunSummary {
         $startedAt = Carbon::parse('2022-01-01 12:00:00');
         $closedAt = Carbon::parse('2022-01-01 12:05:00');
@@ -297,6 +441,7 @@ class V2DashboardWorkflowListTest extends TestCase
             'started_at' => $startedAt,
             'closed_at' => $closedAt,
             'last_progress_at' => $closedAt,
+            'archived_at' => $archivedAt,
             'created_at' => $startedAt,
             'updated_at' => $closedAt,
         ]);
@@ -314,6 +459,7 @@ class V2DashboardWorkflowListTest extends TestCase
             'status' => $status,
             'status_bucket' => 'failed',
             'closed_reason' => $status,
+            'archived_at' => $archivedAt,
             'started_at' => $startedAt,
             'closed_at' => $closedAt,
             'duration_ms' => $closedAt->diffInMilliseconds($startedAt),

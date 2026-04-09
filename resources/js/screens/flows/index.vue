@@ -15,7 +15,8 @@
                 totalPages: 1,
                 flows: [],
                 savedViews: [],
-                selectedSavedView: null
+                selectedSavedView: null,
+                visibilityFilters: null,
             };
         },
 
@@ -24,6 +25,49 @@
          */
         components: {
             FlowRow,
+        },
+
+        computed: {
+            selectedCustomView() {
+                if (!this.selectedSavedView) {
+                    return null
+                }
+
+                return this.savedViews.find((view) => view.id === this.selectedSavedView && !view.system) || null
+            },
+
+            appliedFilterEntries() {
+                const applied = this.visibilityFilters && this.visibilityFilters.applied
+                    ? this.visibilityFilters.applied
+                    : this.currentFilterPayload()
+                const entries = []
+
+                this.visibilityFieldNames().forEach((field) => {
+                    if (applied[field] === undefined || applied[field] === null || applied[field] === '') {
+                        return
+                    }
+
+                    entries.push({
+                        key: field,
+                        label: this.filterFieldLabel(field),
+                        value: this.formatAppliedFilterValue(field, applied[field]),
+                    })
+                })
+
+                Object.entries(applied.labels || {}).forEach(([key, value]) => {
+                    entries.push({
+                        key: 'label:' + key,
+                        label: 'Label',
+                        value: key + '=' + value,
+                    })
+                })
+
+                return entries
+            },
+
+            hasActiveFilters() {
+                return this.appliedFilterEntries.length > 0 || !!this.selectedSavedView
+            },
         },
 
         /**
@@ -74,6 +118,8 @@
 
                 this.$http.get(Waterline.basePath + '/api/flows/' + this.$route.params.type + '?' + this.apiQueryString(page))
                     .then(response => {
+                        this.visibilityFilters = response.data.visibility_filters || null;
+
                         const incomingFirst = _.first(response.data.data);
                         const currentFirst = _.first(this.flows);
 
@@ -159,10 +205,12 @@
                 const filters = {};
                 const labels = {};
 
-                ['workflow_type', 'business_key', 'compatibility', 'queue', 'connection'].forEach((field) => {
+                this.visibilityFieldNames().forEach((field) => {
                     const value = this.$route.query[field];
 
                     if (typeof value === 'string' && value.length > 0) {
+                        filters[field] = value;
+                    } else if (typeof value === 'boolean') {
                         filters[field] = value;
                     }
                 });
@@ -194,6 +242,375 @@
                 }
 
                 return filters;
+            },
+
+            visibilityFieldNames() {
+                return [
+                    'instance_id',
+                    'run_id',
+                    'workflow_type',
+                    'business_key',
+                    'compatibility',
+                    'queue',
+                    'connection',
+                    'status',
+                    'status_bucket',
+                    'closed_reason',
+                    'wait_kind',
+                    'liveness_state',
+                    'archived',
+                    'is_terminal',
+                ]
+            },
+
+            filterFieldLabel(field) {
+                return {
+                    instance_id: 'Instance',
+                    run_id: 'Run',
+                    workflow_type: 'Workflow Type',
+                    business_key: 'Business Key',
+                    compatibility: 'Compatibility',
+                    queue: 'Queue',
+                    connection: 'Connection',
+                    status: 'Status',
+                    status_bucket: 'Status Bucket',
+                    closed_reason: 'Closed Reason',
+                    wait_kind: 'Wait Kind',
+                    liveness_state: 'Liveness',
+                    archived: 'Archived',
+                    is_terminal: 'Terminal',
+                }[field] || field
+            },
+
+            formatAppliedFilterValue(field, value) {
+                if (field === 'archived' || field === 'is_terminal') {
+                    return value === true || value === 'true' || value === '1'
+                        ? 'Yes'
+                        : 'No'
+                }
+
+                return value
+            },
+
+            filterValue(field, filters) {
+                const value = filters[field]
+
+                return value === undefined || value === null
+                    ? ''
+                    : String(value)
+            },
+
+            labelsText(filters) {
+                return Object.entries(filters.labels || {})
+                    .map(([key, value]) => key + '=' + value)
+                    .join('\n')
+            },
+
+            escapeHtml(value) {
+                return String(value || '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+            },
+
+            filterEditorHtml(filters) {
+                const textInput = (id, label, value) => `
+                    <label class="d-block text-left mb-1" for="${id}">${label}</label>
+                    <input id="${id}" class="swal2-input" value="${this.escapeHtml(value)}">
+                `
+                const booleanInput = (id, label, value) => `
+                    <label class="d-block text-left mb-1" for="${id}">${label}</label>
+                    <select id="${id}" class="swal2-input">
+                        <option value="" ${value === '' ? 'selected' : ''}>Any</option>
+                        <option value="true" ${value === 'true' ? 'selected' : ''}>Yes</option>
+                        <option value="false" ${value === 'false' ? 'selected' : ''}>No</option>
+                    </select>
+                `
+
+                return `
+                    <div class="text-left">
+                        ${textInput('waterline-filter-instance-id', 'Instance ID', this.filterValue('instance_id', filters))}
+                        ${textInput('waterline-filter-run-id', 'Run ID', this.filterValue('run_id', filters))}
+                        ${textInput('waterline-filter-workflow-type', 'Workflow Type', this.filterValue('workflow_type', filters))}
+                        ${textInput('waterline-filter-business-key', 'Business Key', this.filterValue('business_key', filters))}
+                        ${textInput('waterline-filter-compatibility', 'Compatibility', this.filterValue('compatibility', filters))}
+                        ${textInput('waterline-filter-connection', 'Connection', this.filterValue('connection', filters))}
+                        ${textInput('waterline-filter-queue', 'Queue', this.filterValue('queue', filters))}
+                        ${textInput('waterline-filter-status', 'Status', this.filterValue('status', filters))}
+                        ${textInput('waterline-filter-status-bucket', 'Status Bucket', this.filterValue('status_bucket', filters))}
+                        ${textInput('waterline-filter-closed-reason', 'Closed Reason', this.filterValue('closed_reason', filters))}
+                        ${textInput('waterline-filter-wait-kind', 'Wait Kind', this.filterValue('wait_kind', filters))}
+                        ${textInput('waterline-filter-liveness-state', 'Liveness State', this.filterValue('liveness_state', filters))}
+                        ${booleanInput('waterline-filter-archived', 'Archived', this.filterValue('archived', filters))}
+                        ${booleanInput('waterline-filter-is-terminal', 'Terminal', this.filterValue('is_terminal', filters))}
+                        <label class="d-block text-left mb-1" for="waterline-filter-labels">Labels</label>
+                        <textarea id="waterline-filter-labels" class="swal2-textarea" rows="4" placeholder="tenant=acme&#10;region=us-east">${this.escapeHtml(this.labelsText(filters))}</textarea>
+                    </div>
+                `
+            },
+
+            parseLabelText(value) {
+                const labels = {}
+                const lines = String(value || '')
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .filter((line) => line.length > 0)
+
+                for (const line of lines) {
+                    const separator = line.indexOf('=')
+
+                    if (separator === -1) {
+                        throw new Error('Use key=value for label filters.')
+                    }
+
+                    const key = line.slice(0, separator).trim()
+                    const labelValue = line.slice(separator + 1).trim()
+
+                    if (!/^[A-Za-z0-9_.:-]{1,64}$/.test(key)) {
+                        throw new Error('Label keys must match ^[A-Za-z0-9_.:-]{1,64}$.')
+                    }
+
+                    if (!labelValue) {
+                        throw new Error('Label values cannot be empty.')
+                    }
+
+                    labels[key] = labelValue
+                }
+
+                return labels
+            },
+
+            filteredQueryWithoutVisibilityFields() {
+                const query = {...this.$route.query}
+
+                this.visibilityFieldNames().forEach((field) => {
+                    delete query[field]
+                })
+
+                delete query.label
+                delete query.labels
+
+                Object.keys(query).forEach((key) => {
+                    if (/^labels?\[[A-Za-z0-9_.:-]{1,64}\]$/.test(key)) {
+                        delete query[key]
+                    }
+                })
+
+                return query
+            },
+
+            pushVisibilityFilters(filters, options = {}) {
+                const query = this.filteredQueryWithoutVisibilityFields()
+
+                if (options.clearView) {
+                    delete query.view
+                }
+
+                Object.entries(filters).forEach(([field, value]) => {
+                    if (field === 'labels') {
+                        Object.entries(value || {}).forEach(([labelKey, labelValue]) => {
+                            query[`labels[${labelKey}]`] = labelValue
+                        })
+
+                        return
+                    }
+
+                    if (value === undefined || value === null || value === '') {
+                        return
+                    }
+
+                    query[field] = typeof value === 'boolean'
+                        ? (value ? 'true' : 'false')
+                        : value
+                })
+
+                this.$router.push({
+                    name: this.$route.name,
+                    params: this.$route.params,
+                    query,
+                })
+            },
+
+            async editFilters() {
+                const current = this.currentFilterPayload()
+                const result = await Swal.fire({
+                    title: 'Edit Filters',
+                    html: this.filterEditorHtml(current),
+                    showCancelButton: true,
+                    confirmButtonText: 'Apply Filters',
+                    background: '#1c1c1c',
+                    preConfirm: () => {
+                        try {
+                            const filters = {}
+                            const stringFields = [
+                                'instance_id',
+                                'run_id',
+                                'workflow_type',
+                                'business_key',
+                                'compatibility',
+                                'connection',
+                                'queue',
+                                'status',
+                                'status_bucket',
+                                'closed_reason',
+                                'wait_kind',
+                                'liveness_state',
+                            ]
+                            const ids = {
+                                instance_id: 'waterline-filter-instance-id',
+                                run_id: 'waterline-filter-run-id',
+                                workflow_type: 'waterline-filter-workflow-type',
+                                business_key: 'waterline-filter-business-key',
+                                compatibility: 'waterline-filter-compatibility',
+                                connection: 'waterline-filter-connection',
+                                queue: 'waterline-filter-queue',
+                                status: 'waterline-filter-status',
+                                status_bucket: 'waterline-filter-status-bucket',
+                                closed_reason: 'waterline-filter-closed-reason',
+                                wait_kind: 'waterline-filter-wait-kind',
+                                liveness_state: 'waterline-filter-liveness-state',
+                            }
+
+                            stringFields.forEach((field) => {
+                                const value = document.getElementById(ids[field]).value.trim()
+
+                                if (value) {
+                                    filters[field] = value
+                                }
+                            })
+
+                            ;['archived', 'is_terminal'].forEach((field) => {
+                                const value = document.getElementById(`waterline-filter-${field.replace('_', '-')}`).value
+
+                                if (value === 'true') {
+                                    filters[field] = true
+                                } else if (value === 'false') {
+                                    filters[field] = false
+                                }
+                            })
+
+                            const labels = this.parseLabelText(document.getElementById('waterline-filter-labels').value)
+
+                            if (Object.keys(labels).length > 0) {
+                                filters.labels = labels
+                            }
+
+                            return filters
+                        } catch (error) {
+                            Swal.showValidationMessage(error.message)
+                        }
+                    },
+                })
+
+                if (result.isConfirmed) {
+                    this.pushVisibilityFilters(result.value || {}, {clearView: false})
+                }
+            },
+
+            clearFilters() {
+                this.pushVisibilityFilters({}, {clearView: true})
+            },
+
+            async manageCurrentView() {
+                if (!this.selectedCustomView) {
+                    return
+                }
+
+                const view = this.selectedCustomView
+                const result = await Swal.fire({
+                    title: 'Manage View',
+                    html: `
+                        <label class="d-block text-left mb-1" for="waterline-view-name">Name</label>
+                        <input id="waterline-view-name" class="swal2-input" value="${this.escapeHtml(view.name)}">
+                        <label class="d-flex align-items-center justify-content-start mt-2">
+                            <input id="waterline-view-shared" type="checkbox" class="mr-2" ${view.shared ? 'checked' : ''}>
+                            <span>Shared within this Waterline scope</span>
+                        </label>
+                        <small class="d-block text-left text-muted mt-3">Update uses the current route filters.</small>
+                    `,
+                    showCancelButton: true,
+                    showDenyButton: true,
+                    confirmButtonText: 'Update View',
+                    denyButtonText: 'Delete View',
+                    background: '#1c1c1c',
+                    preConfirm: () => {
+                        const name = document.getElementById('waterline-view-name').value.trim()
+
+                        if (!name) {
+                            Swal.showValidationMessage('Enter a view name.')
+                            return
+                        }
+
+                        return {
+                            name,
+                            shared: document.getElementById('waterline-view-shared').checked,
+                        }
+                    },
+                })
+
+                if (result.isDenied) {
+                    const confirmDelete = await Swal.fire({
+                        title: 'Delete view?',
+                        text: `Waterline will remove ${view.name}.`,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Delete View',
+                        background: '#1c1c1c',
+                    })
+
+                    if (!confirmDelete.isConfirmed) {
+                        return
+                    }
+
+                    try {
+                        await this.$http.delete(Waterline.basePath + '/api/saved-views/' + view.id)
+                        await this.loadSavedViews()
+                        this.selectedSavedView = null
+                        this.selectSavedView()
+                    } catch (error) {
+                        const message = error.response && error.response.data && error.response.data.message
+                            ? error.response.data.message
+                            : 'Waterline could not delete this view.'
+
+                        Swal.fire({
+                            title: 'View not deleted',
+                            text: message,
+                            icon: 'error',
+                            confirmButtonText: 'Okay',
+                            background: '#1c1c1c',
+                        })
+                    }
+
+                    return
+                }
+
+                if (!result.isConfirmed) {
+                    return
+                }
+
+                try {
+                    await this.$http.put(Waterline.basePath + '/api/saved-views/' + view.id, {
+                        name: result.value.name,
+                        bucket: this.$route.params.type,
+                        filters: this.currentFilterPayload(),
+                        shared: result.value.shared,
+                    })
+
+                    await this.loadSavedViews()
+                } catch (error) {
+                    const message = error.response && error.response.data && error.response.data.message
+                        ? error.response.data.message
+                        : 'Waterline could not update this view.'
+
+                    Swal.fire({
+                        title: 'View not updated',
+                        text: message,
+                        icon: 'error',
+                        confirmButtonText: 'Okay',
+                        background: '#1c1c1c',
+                    })
+                }
             },
 
             async saveCurrentView() {
@@ -335,11 +752,11 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>{{ flowCollectionLabel() }} Flows</h5>
 
-                <div class="d-flex align-items-center">
+                <div class="d-flex align-items-center flex-wrap justify-content-end">
                     <select v-if="savedViews.length"
                             v-model="selectedSavedView"
                             @change="selectSavedView"
-                            class="custom-select custom-select-sm mr-2"
+                            class="custom-select custom-select-sm mr-2 mb-2"
                             style="width: 14rem;">
                         <option :value="null">System view</option>
                         <option v-for="view in savedViews" :key="view.id" :value="view.id">
@@ -347,11 +764,44 @@
                         </option>
                     </select>
 
+                    <button class="btn btn-outline-secondary btn-sm mr-2 mb-2"
+                            @click="editFilters">
+                        Filters
+                    </button>
+
+                    <button v-if="hasActiveFilters"
+                            class="btn btn-outline-secondary btn-sm mr-2 mb-2"
+                            @click="clearFilters">
+                        Clear
+                    </button>
+
                     <button v-if="savedViews.length"
-                            class="btn btn-outline-secondary btn-sm"
+                            class="btn btn-outline-secondary btn-sm mr-2 mb-2"
                             @click="saveCurrentView">
                         Save View
                     </button>
+
+                    <button v-if="selectedCustomView"
+                            class="btn btn-outline-secondary btn-sm mb-2"
+                            @click="manageCurrentView">
+                        Manage View
+                    </button>
+                </div>
+            </div>
+
+            <div v-if="ready && (selectedSavedView || appliedFilterEntries.length)"
+                 class="border-bottom px-3 py-2 card-bg-secondary">
+                <div class="d-flex flex-wrap align-items-center">
+                    <span v-if="visibilityFilters && visibilityFilters.saved_view"
+                          class="badge badge-primary mr-2 mb-1">
+                        View: {{ visibilityFilters.saved_view.name }}
+                    </span>
+
+                    <span v-for="entry in appliedFilterEntries"
+                          :key="entry.key"
+                          class="badge badge-secondary mr-2 mb-1">
+                        {{ entry.label }}: {{ entry.value }}
+                    </span>
                 </div>
             </div>
 

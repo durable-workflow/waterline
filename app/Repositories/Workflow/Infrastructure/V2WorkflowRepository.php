@@ -6,7 +6,6 @@ use Workflow\V2\Support\CurrentRunResolver;
 use Workflow\V2\Support\OperatorMetrics;
 use Workflow\V2\Support\RunSummarySortKey;
 use Workflow\V2\Support\VisibilityFilters;
-use Waterline\Models\SavedWorkflowView;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 
 class V2WorkflowRepository implements WorkflowRepositoryInterface
@@ -177,57 +176,14 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     protected function filteredRunsQuery(?string $bucket = null)
     {
         $query = $this->runSummaryModel::query();
-        $request = request();
-        $savedFilters = [];
-        $view = $request->query('view');
-
-        if (is_string($view) && $view !== '') {
-            $savedView = $this->savedView($view);
-
-            abort_if($savedView === null, 404, 'Waterline saved view not found.');
-            abort_if(
-                $bucket !== null
-                && is_string($savedView['bucket'] ?? null)
-                && $savedView['bucket'] !== $bucket,
-                422,
-                'Waterline saved view bucket does not match the current list.',
-            );
-
-            $savedFilters = is_array($savedView['filters'] ?? null) ? $savedView['filters'] : [];
-        }
+        $context = V2VisibilityFilterContext::resolve(request(), $bucket);
 
         VisibilityFilters::apply(
             $query,
-            VisibilityFilters::merge($savedFilters, VisibilityFilters::fromRequest($request)),
+            $context['applied_filters'],
         );
 
         return $query;
-    }
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    private function savedView(string $id): ?array
-    {
-        if (! config('waterline.saved_views.enabled', true)) {
-            return null;
-        }
-
-        $system = SavedWorkflowView::systemView($id);
-
-        if ($system !== null) {
-            return $system;
-        }
-
-        $model = config('waterline.saved_views.model', SavedWorkflowView::class);
-        $model = is_string($model) && is_a($model, SavedWorkflowView::class, true)
-            ? $model
-            : SavedWorkflowView::class;
-
-        /** @var SavedWorkflowView|null $view */
-        $view = $model::currentScopeQuery()->find($id);
-
-        return $view?->toWaterlinePayload();
     }
 
     protected function detailRelations(): array
