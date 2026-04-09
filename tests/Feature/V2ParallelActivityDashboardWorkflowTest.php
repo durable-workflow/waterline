@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Waterline\Tests\Feature;
 
 use Illuminate\Support\Facades\Queue;
+use Waterline\Tests\Fixtures\V2\TestNestedParallelActivityWorkflow;
 use Waterline\Tests\Fixtures\V2\TestParallelActivityWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\V2\Enums\TaskStatus;
@@ -37,12 +38,82 @@ final class V2ParallelActivityDashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.parallel_group_id', 'parallel-activities:1:2')
             ->assertJsonPath('waits.0.parallel_group_size', 2)
             ->assertJsonPath('waits.0.parallel_group_index', 0)
+            ->assertJsonPath('waits.0.parallel_group_path.0.parallel_group_id', 'parallel-activities:1:2')
             ->assertJsonPath('waits.1.parallel_group_kind', 'activity')
             ->assertJsonPath('waits.1.parallel_group_id', 'parallel-activities:1:2')
             ->assertJsonPath('waits.1.parallel_group_size', 2)
             ->assertJsonPath('waits.1.parallel_group_index', 1)
+            ->assertJsonPath('waits.1.parallel_group_path.0.parallel_group_id', 'parallel-activities:1:2')
             ->assertJsonPath('waits.0.summary', 'Waiting for activity parallel-greeting.')
             ->assertJsonPath('waits.1.summary', 'Waiting for activity parallel-greeting.');
+    }
+
+    public function testShowReturnsNestedParallelActivityWaitPathsForSelectedRun(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestNestedParallelActivityWorkflow::class, 'waterline-nested-parallel-activity');
+        $workflow->start('Taylor', 'Abigail', 'Selena');
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $response = $this->get('/waterline/api/flows/' . $workflow->runId());
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('wait_kind', 'activity')
+            ->assertJsonPath('open_wait_count', 3);
+
+        $waits = collect($response->json('waits'))
+            ->where('status', 'open')
+            ->values();
+
+        $this->assertCount(3, $waits);
+        $this->assertSame('parallel-activities:1:3', $waits[0]['parallel_group_id']);
+        $this->assertSame([
+            [
+                'parallel_group_id' => 'parallel-activities:1:3',
+                'parallel_group_kind' => 'activity',
+                'parallel_group_base_sequence' => 1,
+                'parallel_group_size' => 3,
+                'parallel_group_index' => 0,
+            ],
+        ], $waits[0]['parallel_group_path']);
+        $this->assertSame('parallel-activities:2:2', $waits[1]['parallel_group_id']);
+        $this->assertSame([
+            [
+                'parallel_group_id' => 'parallel-activities:1:3',
+                'parallel_group_kind' => 'activity',
+                'parallel_group_base_sequence' => 1,
+                'parallel_group_size' => 3,
+                'parallel_group_index' => 1,
+            ],
+            [
+                'parallel_group_id' => 'parallel-activities:2:2',
+                'parallel_group_kind' => 'activity',
+                'parallel_group_base_sequence' => 2,
+                'parallel_group_size' => 2,
+                'parallel_group_index' => 0,
+            ],
+        ], $waits[1]['parallel_group_path']);
+        $this->assertSame('parallel-activities:2:2', $waits[2]['parallel_group_id']);
+        $this->assertSame([
+            [
+                'parallel_group_id' => 'parallel-activities:1:3',
+                'parallel_group_kind' => 'activity',
+                'parallel_group_base_sequence' => 1,
+                'parallel_group_size' => 3,
+                'parallel_group_index' => 2,
+            ],
+            [
+                'parallel_group_id' => 'parallel-activities:2:2',
+                'parallel_group_kind' => 'activity',
+                'parallel_group_base_sequence' => 2,
+                'parallel_group_size' => 2,
+                'parallel_group_index' => 1,
+            ],
+        ], $waits[2]['parallel_group_path']);
     }
 
     private function runReadyWorkflowTask(?string $runId): void

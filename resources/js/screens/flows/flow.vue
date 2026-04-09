@@ -1698,27 +1698,41 @@ export default {
         },
 
         parallelGroupLabel(wait) {
-            if (!this.hasDetailValue(wait.parallel_group_size) || wait.parallel_group_size <= 1) {
+            const path = Array.isArray(wait.parallel_group_path)
+                ? wait.parallel_group_path.filter((entry) => this.hasDetailValue(entry?.parallel_group_size) && entry.parallel_group_size > 1)
+                : []
+
+            if (path.length === 0 && (!this.hasDetailValue(wait.parallel_group_size) || wait.parallel_group_size <= 1)) {
                 return ''
             }
 
-            const groupKind = this.hasDetailValue(wait.parallel_group_kind)
-                ? String(wait.parallel_group_kind)
-                : (wait.kind === 'activity' ? 'activity' : 'child')
-            const position = this.hasDetailValue(wait.parallel_group_index)
-                ? wait.parallel_group_index + 1
-                : null
-            const label = groupKind === 'activity'
-                ? 'parallel activity group'
-                : (groupKind === 'mixed' ? 'parallel group' : 'parallel child group')
+            const groups = path.length > 0
+                ? path
+                : [{
+                    parallel_group_kind: wait.parallel_group_kind,
+                    parallel_group_index: wait.parallel_group_index,
+                    parallel_group_size: wait.parallel_group_size,
+                }]
 
-            if (!this.hasDetailValue(position)) {
-                return label
-            }
+            return groups.map((group) => {
+                const groupKind = this.hasDetailValue(group.parallel_group_kind)
+                    ? String(group.parallel_group_kind)
+                    : (wait.kind === 'activity' ? 'activity' : 'child')
+                const position = this.hasDetailValue(group.parallel_group_index)
+                    ? group.parallel_group_index + 1
+                    : null
+                const label = groupKind === 'activity'
+                    ? 'parallel activity group'
+                    : (groupKind === 'mixed' ? 'parallel group' : 'parallel child group')
 
-            return [label, position + '/' + wait.parallel_group_size]
-                .filter(Boolean)
-                .join(' / ')
+                if (!this.hasDetailValue(position) || !this.hasDetailValue(group.parallel_group_size)) {
+                    return label
+                }
+
+                return [label, position + '/' + group.parallel_group_size]
+                    .filter(Boolean)
+                    .join(' / ')
+            }).join(' -> ')
         },
 
         historySource(entry) {
