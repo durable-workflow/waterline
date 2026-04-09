@@ -1934,6 +1934,10 @@ export default {
                 details.push('activity / ' + entry.activity_status)
             }
 
+            if (entry.activity && this.hasDetailValue(entry.activity.last_heartbeat_at)) {
+                details.push('heartbeat / ' + this.timestamp(entry.activity.last_heartbeat_at))
+            }
+
             if (entry.timer && this.hasDetailValue(entry.timer.status)) {
                 details.push('timer / ' + entry.timer.status)
             }

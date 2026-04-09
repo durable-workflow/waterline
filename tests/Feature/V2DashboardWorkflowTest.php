@@ -492,6 +492,36 @@ class V2DashboardWorkflowTest extends TestCase
             'attempt_count' => 1,
         ]);
 
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::ActivityHeartbeatRecorded->value,
+            'payload' => [
+                'activity_execution_id' => $activity->id,
+                'activity_attempt_id' => $attemptId,
+                'activity_class' => 'ActivityClass',
+                'activity_type' => 'activity.test',
+                'sequence' => 1,
+                'attempt_number' => 1,
+                'heartbeat_at' => $heartbeatAt->toJSON(),
+                'lease_expires_at' => $leaseExpiresAt->toJSON(),
+                'activity' => ActivitySnapshot::fromExecution($activity),
+                'activity_attempt' => [
+                    'id' => $attemptId,
+                    'attempt_number' => 1,
+                    'status' => 'running',
+                    'task_id' => $taskId,
+                    'lease_owner' => 'heartbeat-worker',
+                    'started_at' => $startedAt->toJSON(),
+                    'last_heartbeat_at' => $heartbeatAt->toJSON(),
+                    'lease_expires_at' => $leaseExpiresAt->toJSON(),
+                ],
+            ],
+            'workflow_task_id' => $taskId,
+            'recorded_at' => $heartbeatAt,
+        ]);
+
         RunSummaryProjector::project($run->fresh([
             'instance',
             'tasks',
@@ -521,7 +551,14 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.id', $taskId)
             ->assertJsonPath('tasks.0.status', 'leased')
             ->assertJsonPath('tasks.0.lease_expires_at', $leaseExpiresAt->jsonSerialize())
-            ->assertJsonPath('next_task_lease_expires_at', $leaseExpiresAt->jsonSerialize());
+            ->assertJsonPath('next_task_lease_expires_at', $leaseExpiresAt->jsonSerialize())
+            ->assertJsonPath('timeline.0.type', 'ActivityHeartbeatRecorded')
+            ->assertJsonPath('timeline.0.kind', 'activity')
+            ->assertJsonPath('timeline.0.source_kind', 'activity_execution')
+            ->assertJsonPath('timeline.0.source_id', $activity->id)
+            ->assertJsonPath('timeline.0.activity_status', 'running')
+            ->assertJsonPath('timeline.0.activity.last_heartbeat_at', $heartbeatAt->jsonSerialize())
+            ->assertJsonPath('timeline.0.task.status', 'leased');
     }
 
     public function testShowReturnsBackfilledHeartbeatMetadataForLegacyRunningActivity(): void
