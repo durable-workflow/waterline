@@ -2159,6 +2159,128 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('parents.0.status_bucket', 'running');
     }
 
+    public function testShowKeepsOpenChildWaitWhenChildRowDriftsTerminalBeforeParentResolutionHistory(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $parentInstance = WorkflowInstance::create([
+            'id' => 'order-child-authority-parent',
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'run_count' => 1,
+        ]);
+
+        $childInstance = WorkflowInstance::create([
+            'id' => 'order-child-authority-child',
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'run_count' => 1,
+        ]);
+
+        $parentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDAUTH001',
+            'workflow_instance_id' => $parentInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $childRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDAUTH002',
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(3),
+            'last_progress_at' => now()->subMinutes(2),
+        ]);
+
+        $parentInstance->update(['current_run_id' => $parentRun->id]);
+        $childInstance->update(['current_run_id' => $childRun->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $childRun->id,
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $childRun->started_at,
+            'created_at' => now()->subMinutes(3),
+            'updated_at' => now()->subMinutes(2),
+        ]);
+
+        $link = WorkflowLink::create([
+            'id' => '01JTESTFLOWLINKCHILDAUTH01',
+            'link_type' => 'child_workflow',
+            'sequence' => 1,
+            'parent_workflow_instance_id' => $parentInstance->id,
+            'parent_workflow_run_id' => $parentRun->id,
+            'child_workflow_instance_id' => $childInstance->id,
+            'child_workflow_run_id' => $childRun->id,
+            'is_primary_parent' => true,
+            'created_at' => now()->subSeconds(90),
+            'updated_at' => now()->subSeconds(90),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYCHILDAUTH001',
+            'workflow_run_id' => $parentRun->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::ChildWorkflowScheduled->value,
+            'payload' => [
+                'workflow_link_id' => $link->id,
+                'child_call_id' => $link->id,
+                'sequence' => 1,
+                'child_workflow_instance_id' => $childInstance->id,
+                'child_workflow_run_id' => $childRun->id,
+                'child_workflow_type' => $childRun->workflow_type,
+                'child_workflow_class' => $childRun->workflow_class,
+                'child_run_number' => $childRun->run_number,
+            ],
+            'recorded_at' => now()->subSeconds(90),
+            'created_at' => now()->subSeconds(90),
+            'updated_at' => now()->subSeconds(90),
+        ]);
+
+        $childRun->forceFill([
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'output' => Serializer::serialize([
+                'child' => 'corrupted-terminal-row',
+            ]),
+            'closed_at' => now()->subSeconds(30),
+        ])->save();
+
+        RunSummaryProjector::project($childRun->fresh());
+        RunSummaryProjector::project($parentRun->fresh());
+
+        $this->get('/waterline/api/flows/' . $parentRun->id)
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'child')
+            ->assertJsonPath('liveness_state', 'waiting_for_child')
+            ->assertJsonPath('open_wait_id', 'child:' . $link->id)
+            ->assertJsonPath('waits.0.kind', 'child')
+            ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.source_status', 'waiting')
+            ->assertJsonPath('waits.0.resume_source_id', $childRun->id);
+    }
+
     public function testShowIncludesOpenWaitCountAndParallelChildGroupMetadata(): void
     {
         config()->set('waterline.engine_source', 'v2');
