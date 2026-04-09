@@ -1857,10 +1857,10 @@ export default {
                     <textarea id="waterline-update-arguments" class="swal2-textarea" style="min-height: 10rem;">${this.escapeHtml(this.defaultUpdateArguments(firstUpdate))}</textarea>
                     <label class="d-block text-left mb-2" for="waterline-update-wait-for">Return after</label>
                     <select id="waterline-update-wait-for" class="swal2-input">
-                        <option value="completed">Update completes</option>
+                        <option value="completed">Worker applies update</option>
                         <option value="accepted">Command is accepted</option>
                     </select>
-                    <div class="small text-muted text-left">Use a JSON object for named arguments or a JSON array for positional arguments.</div>
+                    <div class="small text-muted text-left">Use a JSON object for named arguments or a JSON array for positional arguments. Waterline always records the update durably first; this control decides whether the response waits for the workflow worker to apply it.</div>
                 `,
                 showCancelButton: true,
                 confirmButtonText: 'Apply update',
@@ -2525,7 +2525,7 @@ export default {
                     signal: 'Waterline recorded the signal command durably.',
                     update: response.data.update_status === 'accepted'
                         ? 'Waterline accepted the update command and queued a workflow task to apply it.'
-                        : 'Waterline recorded the update command durably.',
+                        : 'Waterline recorded the update command durably and the workflow worker applied it.',
                     repair: response.data.outcome === 'repair_dispatched'
                         ? 'Waterline recreated the durable task and re-dispatched it.'
                         : 'Waterline recorded the repair command, and no new task was needed.',
