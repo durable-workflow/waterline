@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace Waterline\Tests\Feature;
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Waterline\Tests\Fixtures\V2\TestAwaitWithTimeoutWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\V2\Enums\TaskStatus;
 use Workflow\V2\Enums\TaskType;
 use Workflow\V2\Jobs\RunWorkflowTask;
+use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowTask;
+use Workflow\V2\Models\WorkflowTimer;
+use Workflow\V2\Support\RunSummaryProjector;
 use Workflow\V2\WorkflowStub;
 
 final class V2ConditionWaitDashboardWorkflowTest extends TestCase
@@ -47,6 +51,56 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
             'Condition timeout for 5 seconds',
             (string) $response->json('tasks.0.summary')
         );
+    }
+
+    public function testCanonicalDetailKeepsConditionWaitProjectionWhenTimerRowDrifts(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        Queue::fake();
+
+        Carbon::setTestNow(Carbon::parse('2026-04-08 14:00:00'));
+
+        try {
+            $workflow = WorkflowStub::make(TestAwaitWithTimeoutWorkflow::class, 'waterline-await-timeout-drift');
+            $workflow->start();
+
+            $this->runReadyWorkflowTask($workflow->runId());
+
+            /** @var WorkflowTimer $timer */
+            $timer = WorkflowTimer::query()
+                ->where('workflow_run_id', $workflow->runId())
+                ->firstOrFail();
+
+            $timerId = $timer->id;
+            $deadlineAt = $timer->fire_at?->toJSON();
+
+            $timer->delete();
+
+            RunSummaryProjector::project(WorkflowRun::query()->findOrFail($workflow->runId()));
+
+            $response = $this->get('/waterline/api/instances/waterline-await-timeout-drift');
+
+            $response
+                ->assertOk()
+                ->assertJsonPath('wait_kind', 'condition')
+                ->assertJsonPath('wait_reason', 'Waiting for condition or timeout')
+                ->assertJsonPath('liveness_state', 'waiting_for_condition')
+                ->assertJsonPath('resume_source_kind', 'timer')
+                ->assertJsonPath('resume_source_id', $timerId)
+                ->assertJsonPath('wait_deadline_at', $deadlineAt)
+                ->assertJsonPath('waits.0.kind', 'condition')
+                ->assertJsonPath('waits.0.status', 'open')
+                ->assertJsonPath('waits.0.resume_source_kind', 'timer')
+                ->assertJsonPath('waits.0.resume_source_id', $timerId)
+                ->assertJsonPath('waits.0.deadline_at', $deadlineAt)
+                ->assertJsonPath('waits.0.timeout_seconds', 5)
+                ->assertJsonPath('waits.0.task_backed', true)
+                ->assertJsonPath('tasks.0.type', 'timer')
+                ->assertJsonPath('tasks.0.timer_id', $timerId)
+                ->assertJsonPath('tasks.0.condition_wait_id', $response->json('waits.0.condition_wait_id'));
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 
     private function runReadyWorkflowTask(string $runId): void
