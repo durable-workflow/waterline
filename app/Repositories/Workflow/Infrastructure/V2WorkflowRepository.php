@@ -5,12 +5,12 @@ namespace Waterline\Repositories\Workflow\Infrastructure;
 use Workflow\V2\Support\CurrentRunResolver;
 use Workflow\V2\Support\OperatorMetrics;
 use Workflow\V2\Support\RunSummarySortKey;
+use Workflow\V2\Support\VisibilityFilters;
+use Waterline\Models\SavedWorkflowView;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 
 class V2WorkflowRepository implements WorkflowRepositoryInterface
 {
-    private const VISIBILITY_LABEL_KEY_PATTERN = '/^[A-Za-z0-9_.:-]{1,64}$/';
-
     protected $instanceModel;
     protected $runModel;
     protected $runSummaryModel;
@@ -51,7 +51,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function runningFlows()
     {
-        return $this->orderedRunsQuery()
+        return $this->orderedRunsQuery('running')
             ->where('status_bucket', 'running')
             ->paginate(50);
     }
@@ -162,49 +162,72 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         return OperatorMetrics::snapshot();
     }
 
-    protected function orderedRunsQuery()
+    protected function orderedRunsQuery(?string $bucket = null)
     {
-        return RunSummarySortKey::applyDescending($this->filteredRunsQuery());
+        return RunSummarySortKey::applyDescending($this->filteredRunsQuery($bucket));
     }
 
     protected function statusFlows(string $status)
     {
-        return $this->orderedRunsQuery()
+        return $this->orderedRunsQuery($status)
             ->where('status', $status)
             ->paginate(50);
     }
 
-    protected function filteredRunsQuery()
+    protected function filteredRunsQuery(?string $bucket = null)
     {
         $query = $this->runSummaryModel::query();
         $request = request();
+        $savedFilters = [];
+        $view = $request->query('view');
 
-        foreach (['workflow_type', 'business_key', 'compatibility', 'queue', 'connection'] as $field) {
-            $value = $request->query($field);
+        if (is_string($view) && $view !== '') {
+            $savedView = $this->savedView($view);
 
-            if (is_string($value) && $value !== '') {
-                $query->where($field, $value);
-            }
+            abort_if($savedView === null, 404, 'Waterline saved view not found.');
+            abort_if(
+                $bucket !== null
+                && is_string($savedView['bucket'] ?? null)
+                && $savedView['bucket'] !== $bucket,
+                422,
+                'Waterline saved view bucket does not match the current list.',
+            );
+
+            $savedFilters = is_array($savedView['filters'] ?? null) ? $savedView['filters'] : [];
         }
 
-        $labels = $request->query('label', $request->query('labels', []));
-
-        if (is_array($labels)) {
-            foreach ($labels as $key => $value) {
-                if (
-                    ! is_string($key)
-                    || preg_match(self::VISIBILITY_LABEL_KEY_PATTERN, $key) !== 1
-                    || ! is_string($value)
-                    || $value === ''
-                ) {
-                    continue;
-                }
-
-                $query->where("visibility_labels->{$key}", $value);
-            }
-        }
+        VisibilityFilters::apply(
+            $query,
+            VisibilityFilters::merge($savedFilters, VisibilityFilters::fromRequest($request)),
+        );
 
         return $query;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function savedView(string $id): ?array
+    {
+        if (! config('waterline.saved_views.enabled', true)) {
+            return null;
+        }
+
+        $system = SavedWorkflowView::systemView($id);
+
+        if ($system !== null) {
+            return $system;
+        }
+
+        $model = config('waterline.saved_views.model', SavedWorkflowView::class);
+        $model = is_string($model) && is_a($model, SavedWorkflowView::class, true)
+            ? $model
+            : SavedWorkflowView::class;
+
+        /** @var SavedWorkflowView|null $view */
+        $view = $model::currentScopeQuery()->find($id);
+
+        return $view?->toWaterlinePayload();
     }
 
     protected function detailRelations(): array

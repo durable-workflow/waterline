@@ -146,6 +146,77 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('data.0.visibility_labels.tenant', 'acme');
     }
 
+    public function testV2ListRoutesCanApplySavedVisibilityViews(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.saved_views.scope', 'ops');
+
+        $matching = $this->createRunningSummary(
+            'saved-visible-order',
+            'run-saved-visible-order',
+            Carbon::parse('2022-01-01 12:05:00'),
+            Carbon::parse('2022-01-01 12:05:00'),
+            businessKey: 'order-123',
+            visibilityLabels: ['tenant' => 'acme', 'region' => 'us-east'],
+        );
+        $this->createRunningSummary(
+            'saved-other-order',
+            'run-saved-other-order',
+            Carbon::parse('2022-01-01 12:06:00'),
+            Carbon::parse('2022-01-01 12:06:00'),
+            businessKey: 'order-456',
+            visibilityLabels: ['tenant' => 'beta', 'region' => 'us-east'],
+        );
+
+        $saved = $this->postJson('/waterline/api/saved-views', [
+            'name' => 'Acme invoice sync',
+            'bucket' => 'running',
+            'filters' => [
+                'workflow_type' => 'workflow.test',
+                'labels' => [
+                    'tenant' => 'acme',
+                ],
+            ],
+            'shared' => true,
+        ]);
+
+        $id = $saved
+            ->assertCreated()
+            ->assertJsonPath('name', 'Acme invoice sync')
+            ->assertJsonPath('bucket', 'running')
+            ->assertJsonPath('scope', 'ops')
+            ->assertJsonPath('shared', true)
+            ->assertJsonPath('system', false)
+            ->assertJsonPath('filters.workflow_type', 'workflow.test')
+            ->assertJsonPath('filters.labels.tenant', 'acme')
+            ->json('id');
+
+        $this->assertDatabaseHas('waterline_saved_views', [
+            'id' => $id,
+            'scope' => 'ops',
+            'bucket' => 'running',
+            'name' => 'Acme invoice sync',
+        ]);
+
+        $this->get('/waterline/api/saved-views?bucket=running')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', 'system:running')
+            ->assertJsonPath('data.1.id', $id)
+            ->assertJsonPath('data.1.filters.labels.tenant', 'acme');
+
+        $this->get('/waterline/api/flows/running?view='.$id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $matching->id);
+
+        $this->get('/waterline/api/flows/running?view='.$id.'&label[region]=eu-west')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+
+        $this->get('/waterline/api/flows/completed?view='.$id)
+            ->assertStatus(422);
+    }
+
     private function createRunningSummary(
         string $instanceId,
         string $runId,

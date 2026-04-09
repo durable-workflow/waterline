@@ -46,6 +46,7 @@ class WaterlineServiceProvider extends ServiceProvider
     protected function registerResources()
     {
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'waterline');
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
     }
 
     /**

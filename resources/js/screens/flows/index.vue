@@ -1,5 +1,6 @@
 <script type="text/ecmascript-6">
     import FlowRow from './flow-row';
+    import Swal from 'sweetalert2';
 
     export default {
         /**
@@ -12,7 +13,9 @@
                 hasNewEntries: false,
                 page: 1,
                 totalPages: 1,
-                flows: []
+                flows: [],
+                savedViews: [],
+                selectedSavedView: null
             };
         },
 
@@ -28,6 +31,8 @@
          */
         mounted() {
             this.updatePageTitle();
+
+            this.loadSavedViews();
 
             this.loadFlows();
 
@@ -51,6 +56,8 @@
 
                 this.page = 1;
 
+                this.loadSavedViews();
+
                 this.loadFlows();
             }
         },
@@ -65,7 +72,7 @@
                     this.ready = false;
                 }
 
-                this.$http.get(Waterline.basePath + '/api/flows/' + this.$route.params.type + '?page=' + page)
+                this.$http.get(Waterline.basePath + '/api/flows/' + this.$route.params.type + '?' + this.apiQueryString(page))
                     .then(response => {
                         const incomingFirst = _.first(response.data.data);
                         const currentFirst = _.first(this.flows);
@@ -83,6 +90,160 @@
                     });
             },
 
+            loadSavedViews() {
+                this.selectedSavedView = this.$route.query.view || null;
+
+                return this.$http.get(Waterline.basePath + '/api/saved-views?bucket=' + encodeURIComponent(this.$route.params.type))
+                    .then(response => {
+                        this.savedViews = response.data.data || [];
+
+                        if (this.selectedSavedView && !this.savedViews.find((view) => view.id === this.selectedSavedView)) {
+                            this.selectedSavedView = null;
+                        }
+                    })
+                    .catch(() => {
+                        this.savedViews = [];
+                        this.selectedSavedView = null;
+                    });
+            },
+
+            apiQueryString(page) {
+                const params = new URLSearchParams();
+
+                params.set('page', page);
+
+                Object.entries(this.$route.query || {}).forEach(([key, value]) => {
+                    if (key === 'page' || value === undefined || value === null || value === '') {
+                        return;
+                    }
+
+                    if (Array.isArray(value)) {
+                        value.forEach((entry) => params.append(key, entry));
+
+                        return;
+                    }
+
+                    if (typeof value === 'object') {
+                        Object.entries(value).forEach(([childKey, childValue]) => {
+                            if (childValue !== undefined && childValue !== null && childValue !== '') {
+                                params.append(key + '[' + childKey + ']', childValue);
+                            }
+                        });
+
+                        return;
+                    }
+
+                    params.set(key, value);
+                });
+
+                return params.toString();
+            },
+
+            selectSavedView() {
+                const query = {...this.$route.query};
+
+                if (this.selectedSavedView) {
+                    query.view = this.selectedSavedView;
+                } else {
+                    delete query.view;
+                }
+
+                this.$router.push({
+                    name: this.$route.name,
+                    params: this.$route.params,
+                    query,
+                });
+            },
+
+            currentFilterPayload() {
+                const filters = {};
+                const labels = {};
+
+                ['workflow_type', 'business_key', 'compatibility', 'queue', 'connection'].forEach((field) => {
+                    const value = this.$route.query[field];
+
+                    if (typeof value === 'string' && value.length > 0) {
+                        filters[field] = value;
+                    }
+                });
+
+                Object.entries(this.$route.query || {}).forEach(([key, value]) => {
+                    const match = key.match(/^labels?\[([A-Za-z0-9_.:-]{1,64})\]$/);
+
+                    if (match && typeof value === 'string' && value.length > 0) {
+                        labels[match[1]] = value;
+                    }
+                });
+
+                ['label', 'labels'].forEach((key) => {
+                    const value = this.$route.query[key];
+
+                    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+                        return;
+                    }
+
+                    Object.entries(value).forEach(([labelKey, labelValue]) => {
+                        if (/^[A-Za-z0-9_.:-]{1,64}$/.test(labelKey) && typeof labelValue === 'string' && labelValue.length > 0) {
+                            labels[labelKey] = labelValue;
+                        }
+                    });
+                });
+
+                if (Object.keys(labels).length > 0) {
+                    filters.labels = labels;
+                }
+
+                return filters;
+            },
+
+            async saveCurrentView() {
+                const result = await Swal.fire({
+                    title: 'Save view',
+                    input: 'text',
+                    inputLabel: 'Name',
+                    inputPlaceholder: this.flowCollectionLabel() + ' view',
+                    showCancelButton: true,
+                    confirmButtonText: 'Save view',
+                    background: '#1c1c1c',
+                    inputValidator: (value) => {
+                        if (!value || !value.trim()) {
+                            return 'Enter a view name.';
+                        }
+
+                        return null;
+                    },
+                });
+
+                if (!result.isConfirmed) {
+                    return;
+                }
+
+                try {
+                    const response = await this.$http.post(Waterline.basePath + '/api/saved-views', {
+                        name: result.value.trim(),
+                        bucket: this.$route.params.type,
+                        filters: this.currentFilterPayload(),
+                        shared: true,
+                    });
+
+                    await this.loadSavedViews();
+
+                    this.selectedSavedView = response.data.id;
+                    this.selectSavedView();
+                } catch (error) {
+                    const message = error.response && error.response.data && error.response.data.message
+                        ? error.response.data.message
+                        : 'Waterline could not save this view.';
+
+                    Swal.fire({
+                        title: 'View not saved',
+                        text: message,
+                        icon: 'error',
+                        confirmButtonText: 'Okay',
+                        background: '#1c1c1c',
+                    });
+                }
+            },
 
             loadNewEntries() {
                 this.flows = [];
@@ -173,6 +334,25 @@
         <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>{{ flowCollectionLabel() }} Flows</h5>
+
+                <div class="d-flex align-items-center">
+                    <select v-if="savedViews.length"
+                            v-model="selectedSavedView"
+                            @change="selectSavedView"
+                            class="custom-select custom-select-sm mr-2"
+                            style="width: 14rem;">
+                        <option :value="null">System view</option>
+                        <option v-for="view in savedViews" :key="view.id" :value="view.id">
+                            {{ view.name }}
+                        </option>
+                    </select>
+
+                    <button v-if="savedViews.length"
+                            class="btn btn-outline-secondary btn-sm"
+                            @click="saveCurrentView">
+                        Save View
+                    </button>
+                </div>
             </div>
 
             <div v-if="!ready"

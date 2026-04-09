@@ -15,6 +15,11 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('api')->group(function () {
     Route::get('/stats', 'DashboardStatsController@index')->name('waterline.stats.index');
+    Route::get('/saved-views', 'SavedViewsController@index')->name('waterline.saved-views.index');
+    Route::post('/saved-views', 'SavedViewsController@store')->name('waterline.saved-views.store');
+    Route::get('/saved-views/{view}', 'SavedViewsController@show')->name('waterline.saved-views.show');
+    Route::put('/saved-views/{view}', 'SavedViewsController@update')->name('waterline.saved-views.update');
+    Route::delete('/saved-views/{view}', 'SavedViewsController@destroy')->name('waterline.saved-views.destroy');
 
     Route::get('/flows/completed', 'WorkflowsController@completed')->name('waterline.completed');
     Route::get('/flows/failed', 'WorkflowsController@failed')->name('waterline.failed');

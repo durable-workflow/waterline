@@ -56,6 +56,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Saved Workflow Views
+    |--------------------------------------------------------------------------
+    |
+    | Waterline v2 saved views persist repeatable operator filters over the
+    | workflow run-summary visibility contract. The scope lets one database
+    | partition saved views by app, environment, tenant, or operator namespace.
+    |
+    */
+
+    'saved_views' => [
+        'enabled' => env('WATERLINE_SAVED_VIEWS_ENABLED', true),
+        'scope' => env('WATERLINE_SAVED_VIEW_SCOPE', 'default'),
+        'model' => \Waterline\Models\SavedWorkflowView::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Workflow Sort Column
     |--------------------------------------------------------------------------
     |
