@@ -816,6 +816,7 @@
                             <th scope="col">Activity</th>
                             <th scope="col">Status</th>
                             <th scope="col">Attempts</th>
+                            <th scope="col">Retry Policy</th>
                             <th scope="col">Queue</th>
                             <th scope="col">Started</th>
                             <th scope="col">Heartbeat</th>
@@ -825,7 +826,12 @@
                     </thead>
                     <tbody>
                         <tr v-for="activity in activityRows()" :key="activity.id">
-                            <td>{{ activity.type || activity.class }}</td>
+                            <td>
+                                {{ activity.type || activity.class }}
+                                <div v-if="activity.idempotency_key" class="small text-muted">
+                                    idempotency / {{ activity.idempotency_key }}
+                                </div>
+                            </td>
                             <td>{{ activity.status || '-' }}</td>
                             <td>
                                 {{ activity.attempt_count || 0 }}
@@ -836,6 +842,7 @@
                                     </div>
                                 </div>
                             </td>
+                            <td>{{ activityRetryPolicy(activity) }}</td>
                             <td>{{ activity.queue || '-' }}</td>
                             <td>{{ timestamp(activity.started_at) }}</td>
                             <td>{{ timestamp(activity.last_heartbeat_at) }}</td>
@@ -1367,6 +1374,26 @@ export default {
             return this.flow.activities && this.flow.activities.length
                 ? this.flow.activities
                 : (this.flow.logs || [])
+        },
+
+        activityRetryPolicy(activity) {
+            const policy = activity && activity.retry_policy ? activity.retry_policy : null
+
+            if (!policy) {
+                return '-'
+            }
+
+            const parts = []
+
+            if (Object.prototype.hasOwnProperty.call(policy, 'max_attempts')) {
+                parts.push(policy.max_attempts === null ? 'unlimited attempts' : `${policy.max_attempts} attempts`)
+            }
+
+            if (Array.isArray(policy.backoff_seconds) && policy.backoff_seconds.length) {
+                parts.push(`backoff ${policy.backoff_seconds.join(', ')}s`)
+            }
+
+            return parts.length ? parts.join(' / ') : '-'
         },
 
         updateRows() {

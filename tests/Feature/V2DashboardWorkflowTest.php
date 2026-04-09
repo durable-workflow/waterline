@@ -98,6 +98,11 @@ class V2DashboardWorkflowTest extends TestCase
             'status' => 'completed',
             'arguments' => Serializer::serialize(['Taylor']),
             'result' => Serializer::serialize('Hello, Taylor!'),
+            'retry_policy' => [
+                'snapshot_version' => 1,
+                'max_attempts' => 2,
+                'backoff_seconds' => [1, 5],
+            ],
             'started_at' => now()->subMinutes(9),
             'closed_at' => now()->subMinutes(8),
         ]);
@@ -193,6 +198,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('repair_blocked_reason', 'run_closed')
             ->assertJsonPath('read_only_reason', 'Run is closed.')
             ->assertJsonPath('activities.0.class', 'ActivityClass')
+            ->assertJsonPath('activities.0.idempotency_key', '01JTESTACTIVITY00000000000')
+            ->assertJsonPath('activities.0.retry_policy.max_attempts', 2)
+            ->assertJsonPath('activities.0.retry_policy.backoff_seconds.1', 5)
             ->assertJsonPath('logs.0.class', 'ActivityClass')
             ->assertJsonPath('exceptions.0.class', 'ActivityClass')
             ->assertJsonPath('exceptions.0.code', 'trace')
