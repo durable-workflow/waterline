@@ -118,6 +118,18 @@
                 return this.operatorPolicyMetric(key).toLocaleString();
             },
 
+            operatorProjectionMetric(key) {
+                const metrics = this.stats.operator_metrics || {};
+                const projections = metrics.projections || {};
+                const runSummaries = projections.run_summaries || {};
+
+                return runSummaries[key] || 0;
+            },
+
+            operatorProjectionMetricLabel(key) {
+                return this.operatorProjectionMetric(key).toLocaleString();
+            },
+
             operatorBackend() {
                 const metrics = this.stats.operator_metrics || {};
 
@@ -373,6 +385,22 @@
                                 {{ stats.operator_metrics.starts.oldest_pending_start_at }}
                             </small>
                         </div>
+                    </div>
+                </div>
+
+                <div class="border-top p-4">
+                    <small class="text-uppercase">Run Summary Projection</small>
+
+                    <div class="mt-2 text-muted">
+                        {{ operatorProjectionMetricLabel('summaries') }} summaries for
+                        {{ operatorProjectionMetricLabel('runs') }} runs,
+                        {{ operatorProjectionMetricLabel('missing') }} missing,
+                        {{ operatorProjectionMetricLabel('orphaned') }} orphaned.
+                    </div>
+
+                    <div class="mt-1 text-muted" v-if="operatorProjectionMetric('needs_rebuild')">
+                        Run <code>php artisan workflow:v2:rebuild-projections --missing --prune-stale</code>
+                        to refresh the run-summary bridge.
                     </div>
                 </div>
 

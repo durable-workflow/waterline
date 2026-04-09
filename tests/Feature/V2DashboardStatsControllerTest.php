@@ -175,6 +175,28 @@ class V2DashboardStatsControllerTest extends TestCase
 
         $instance->update(['current_run_id' => $run->id]);
 
+        $missingSummaryInstance = WorkflowInstance::create([
+            'id' => str_pad('01JTESTMISSINGINSTANCE', 26, '0'),
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $missingSummaryRun = WorkflowRun::create([
+            'id' => str_pad('01JTESTMISSINGRUN', 26, '0'),
+            'workflow_instance_id' => $missingSummaryInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'started_at' => now()->subMinutes(20),
+            'closed_at' => now()->subMinutes(15),
+            'last_progress_at' => now()->subMinutes(15),
+        ]);
+
+        $missingSummaryInstance->update(['current_run_id' => $missingSummaryRun->id]);
+
         WorkflowRunSummary::create([
             'id' => $run->id,
             'workflow_instance_id' => $instance->id,
@@ -230,6 +252,11 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.history.continue_as_new_recommended_runs', 1)
             ->assertJsonPath('operator_metrics.history.max_event_count', 12)
             ->assertJsonPath('operator_metrics.history.event_threshold', 10)
+            ->assertJsonPath('operator_metrics.projections.run_summaries.runs', 2)
+            ->assertJsonPath('operator_metrics.projections.run_summaries.summaries', 1)
+            ->assertJsonPath('operator_metrics.projections.run_summaries.missing', 1)
+            ->assertJsonPath('operator_metrics.projections.run_summaries.orphaned', 0)
+            ->assertJsonPath('operator_metrics.projections.run_summaries.needs_rebuild', 1)
             ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'waterline-metrics-test')
             ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
             ->assertJsonPath('operator_metrics.workers.active_workers', 1)
