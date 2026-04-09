@@ -535,7 +535,12 @@
                         <tr v-for="command in flow.commands" :key="command.id">
                             <td>{{ hasDetailValue(command.sequence) ? '#' + command.sequence : '-' }}</td>
                             <td>{{ command.type }}</td>
-                            <td>{{ command.target_name || command.target_scope }}</td>
+                            <td>
+                                <div>{{ command.target_name || command.target_scope }}</div>
+                                <small v-if="commandTargetDetail(command)" class="text-muted">
+                                    {{ commandTargetDetail(command) }}
+                                </small>
+                            </td>
                             <td>{{ command.outcome || '-' }}</td>
                             <td>{{ command.status }}</td>
                             <td>
@@ -1788,6 +1793,29 @@ export default {
 
         commandSource(command) {
             return command.caller_label || command.source || '-'
+        },
+
+        commandTargetDetail(command) {
+            if (!command) {
+                return ''
+            }
+
+            const requested = command.requested_run_id || null
+            const resolved = command.resolved_run_id || null
+
+            if (requested && resolved && requested !== resolved) {
+                return 'requested run ' + requested + ' -> resolved run ' + resolved
+            }
+
+            if (requested) {
+                return 'requested run ' + requested
+            }
+
+            if (resolved && command.target_scope === 'instance') {
+                return 'resolved run ' + resolved
+            }
+
+            return ''
         },
 
         commandSourceDetail(command) {

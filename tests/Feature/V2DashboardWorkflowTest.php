@@ -721,8 +721,8 @@ class V2DashboardWorkflowTest extends TestCase
 
         $instance = WorkflowInstance::create([
             'id' => 'order-123',
-            'workflow_class' => 'WorkflowClass',
-            'workflow_type' => 'workflow.test',
+            'workflow_class' => TestCommandContractWorkflow::class,
+            'workflow_type' => 'workflow.command-contract',
             'run_count' => 1,
         ]);
 
@@ -730,8 +730,8 @@ class V2DashboardWorkflowTest extends TestCase
             'id' => '01JTESTFLOWRUNCURRENT000001',
             'workflow_instance_id' => $instance->id,
             'run_number' => 1,
-            'workflow_class' => 'WorkflowClass',
-            'workflow_type' => 'workflow.test',
+            'workflow_class' => TestCommandContractWorkflow::class,
+            'workflow_type' => 'workflow.command-contract',
             'status' => 'waiting',
             'arguments' => Serializer::serialize([]),
             'connection' => 'redis',
@@ -748,8 +748,8 @@ class V2DashboardWorkflowTest extends TestCase
             'run_number' => 1,
             'is_current_run' => true,
             'engine_source' => 'v2',
-            'class' => 'WorkflowClass',
-            'workflow_type' => 'workflow.test',
+            'class' => TestCommandContractWorkflow::class,
+            'workflow_type' => 'workflow.command-contract',
             'status' => 'waiting',
             'status_bucket' => 'running',
             'connection' => 'redis',
@@ -783,8 +783,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('resume_source_id', null)
             ->assertJsonPath('liveness_state', 'waiting_for_signal')
             ->assertJsonPath('liveness_reason', 'Waiting for signal approved-by.')
-            ->assertJsonPath('declared_signals', [])
-            ->assertJsonPath('declared_updates', [])
+            ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
+            ->assertJsonPath('declared_updates', ['mark-approved'])
             ->assertJsonPath('can_issue_terminal_commands', true)
             ->assertJsonPath('can_cancel', true)
             ->assertJsonPath('cancel_blocked_reason', null)
@@ -2587,8 +2587,8 @@ class V2DashboardWorkflowTest extends TestCase
 
         $instance = WorkflowInstance::create([
             'id' => 'order-update-command',
-            'workflow_class' => 'WorkflowClass',
-            'workflow_type' => 'workflow.test',
+            'workflow_class' => TestOperatorCommandWorkflow::class,
+            'workflow_type' => 'workflow.operator-command',
             'run_count' => 1,
         ]);
 
@@ -2596,8 +2596,8 @@ class V2DashboardWorkflowTest extends TestCase
             'id' => '01JTESTFLOWRUNUPDATECOMMAND1',
             'workflow_instance_id' => $instance->id,
             'run_number' => 1,
-            'workflow_class' => 'WorkflowClass',
-            'workflow_type' => 'workflow.test',
+            'workflow_class' => TestOperatorCommandWorkflow::class,
+            'workflow_type' => 'workflow.operator-command',
             'status' => 'waiting',
             'arguments' => Serializer::serialize([]),
             'connection' => 'redis',
@@ -2614,8 +2614,8 @@ class V2DashboardWorkflowTest extends TestCase
             'run_number' => 1,
             'is_current_run' => true,
             'engine_source' => 'v2',
-            'class' => 'WorkflowClass',
-            'workflow_type' => 'workflow.test',
+            'class' => TestOperatorCommandWorkflow::class,
+            'workflow_type' => 'workflow.operator-command',
             'status' => 'waiting',
             'status_bucket' => 'running',
             'connection' => 'redis',
@@ -2644,18 +2644,18 @@ class V2DashboardWorkflowTest extends TestCase
                 ],
                 'request' => [
                     'method' => 'POST',
-                    'path' => '/webhooks/instances/order-update-command/updates/approve',
+                    'path' => '/webhooks/instances/order-update-command/updates/mark-approved',
                     'route_name' => 'workflows.v2.update',
                     'fingerprint' => 'sha256:test-update-command',
                 ],
             ],
             'status' => 'accepted',
             'outcome' => 'update_completed',
-            'workflow_class' => 'WorkflowClass',
-            'workflow_type' => 'workflow.test',
+            'workflow_class' => TestOperatorCommandWorkflow::class,
+            'workflow_type' => 'workflow.operator-command',
             'payload_codec' => Serializer::class,
             'payload' => Serializer::serialize([
-                'name' => 'approve',
+                'name' => 'mark-approved',
                 'arguments' => [true, 'waterline'],
             ]),
             'accepted_at' => now()->subSeconds(50),
@@ -2671,7 +2671,7 @@ class V2DashboardWorkflowTest extends TestCase
             'event_type' => 'UpdateCompleted',
             'payload' => [
                 'workflow_command_id' => '01JTESTCOMMANDUPDATECOMPLETE',
-                'update_name' => 'approve',
+                'update_name' => 'mark-approved',
                 'sequence' => 1,
                 'result' => Serializer::serialize([
                     'approved' => true,
@@ -2698,19 +2698,19 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('repair_blocked_reason', 'repair_not_needed')
             ->assertJsonPath('commands.0.context', [])
             ->assertJsonPath('commands.0.type', 'update')
-            ->assertJsonPath('commands.0.target_name', 'approve')
+            ->assertJsonPath('commands.0.target_name', 'mark-approved')
             ->assertJsonPath('commands.0.source', 'webhook')
             ->assertJsonPath('commands.0.caller_label', 'Webhook')
             ->assertJsonPath('commands.0.auth_status', 'not_configured')
             ->assertJsonPath('commands.0.auth_method', 'none')
             ->assertJsonPath('commands.0.request_method', 'POST')
-            ->assertJsonPath('commands.0.request_path', '/webhooks/instances/order-update-command/updates/approve')
+            ->assertJsonPath('commands.0.request_path', '/webhooks/instances/order-update-command/updates/mark-approved')
             ->assertJsonPath('commands.0.request_route_name', 'workflows.v2.update')
             ->assertJsonPath('commands.0.request_fingerprint', 'sha256:test-update-command')
             ->assertJsonPath('commands.0.payload_codec', Serializer::class)
             ->assertJsonPath('commands.0.payload_available', true)
             ->assertJsonPath('commands.0.payload', serialize([
-                'name' => 'approve',
+                'name' => 'mark-approved',
                 'arguments' => [true, 'waterline'],
             ]))
             ->assertJsonPath('commands.0.result_available', true)
@@ -4743,6 +4743,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('outcome', 'rejected_not_current')
             ->assertJsonPath('workflow_id', $instance->id)
             ->assertJsonPath('run_id', $historicalRun->id)
+            ->assertJsonPath('requested_run_id', $historicalRun->id)
+            ->assertJsonPath('resolved_run_id', $currentRun->id)
             ->assertJsonPath('command_status', 'rejected')
             ->assertJsonPath('rejection_reason', 'selected_run_not_current');
 
@@ -4808,6 +4810,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('outcome', 'rejected_not_current')
             ->assertJsonPath('workflow_id', $instance->id)
             ->assertJsonPath('run_id', $historicalRun->id)
+            ->assertJsonPath('requested_run_id', $historicalRun->id)
+            ->assertJsonPath('resolved_run_id', $currentRun->id)
             ->assertJsonPath('target_scope', 'run')
             ->assertJsonPath('command_status', 'rejected')
             ->assertJsonPath('rejection_reason', 'selected_run_not_current');
@@ -4826,6 +4830,9 @@ class V2DashboardWorkflowTest extends TestCase
         ]);
 
         $command = WorkflowCommand::query()->findOrFail($commandId);
+
+        $this->assertSame($historicalRun->id, $command->requestedRunId());
+        $this->assertSame($currentRun->id, $command->resolvedRunId());
 
         $this->assertSame(
             '/waterline/api/instances/'.$instance->id.'/runs/'.$historicalRun->id.'/terminate',
