@@ -4205,6 +4205,30 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame(1, unserialize((string) $response->json('result')));
     }
 
+    public function testQueryResponseUsesDurableQueryNameWhenCalledWithPhpMethodName(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-query-method-name');
+        $workflow->start();
+
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
+
+        $response = $this->postJson(
+            '/waterline/api/instances/' . $workflow->id() . '/queries/countEventsByPrefix',
+            ['arguments' => ['prefix' => 'start']],
+        );
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('query_name', 'events-starting-with')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'instance');
+
+        $this->assertSame(1, unserialize((string) $response->json('result')));
+    }
+
     public function testQueryReturnsValidationErrorsForInvalidArguments(): void
     {
         config()->set('waterline.engine_source', 'v2');

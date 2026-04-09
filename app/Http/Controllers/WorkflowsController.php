@@ -3,11 +3,9 @@
 namespace Waterline\Http\Controllers;
 
 use Illuminate\Http\Request;
-use LogicException;
-use Workflow\V2\Exceptions\InvalidQueryArgumentsException;
-use Workflow\V2\Exceptions\WorkflowExecutionUnavailableException;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Support\CommandResponse;
+use Workflow\V2\Support\QueryResponse;
 use Workflow\V2\WorkflowStub as V2WorkflowStub;
 use Waterline\Http\Resources\StoredWorkflowResource;
 use Waterline\Http\Resources\V2StoredWorkflowResource;
@@ -355,42 +353,8 @@ class WorkflowsController extends Controller
         array $arguments,
         string $targetScope,
     ) {
-        try {
-            $result = $workflow->queryWithArguments($query, $arguments);
-        } catch (InvalidQueryArgumentsException $exception) {
-            return response()->json([
-                'query_name' => $exception->queryName(),
-                'workflow_id' => $workflow->id(),
-                'run_id' => $workflow->runId(),
-                'target_scope' => $targetScope,
-                'message' => $exception->getMessage(),
-                'validation_errors' => $exception->validationErrors(),
-            ], 422);
-        } catch (WorkflowExecutionUnavailableException $exception) {
-            return response()->json([
-                'query_name' => $exception->targetName(),
-                'workflow_id' => $workflow->id(),
-                'run_id' => $workflow->runId(),
-                'target_scope' => $targetScope,
-                'blocked_reason' => $exception->blockedReason(),
-                'message' => $exception->getMessage(),
-            ], 409);
-        } catch (LogicException $exception) {
-            return response()->json([
-                'query_name' => $query,
-                'workflow_id' => $workflow->id(),
-                'run_id' => $workflow->runId(),
-                'target_scope' => $targetScope,
-                'message' => $exception->getMessage(),
-            ], 409);
-        }
+        $response = QueryResponse::execute($workflow, $query, $arguments, $targetScope);
 
-        return response()->json([
-            'query_name' => $query,
-            'workflow_id' => $workflow->id(),
-            'run_id' => $workflow->runId(),
-            'target_scope' => $targetScope,
-            'result' => serialize($result),
-        ]);
+        return response()->json($response['payload'], $response['status']);
     }
 }
