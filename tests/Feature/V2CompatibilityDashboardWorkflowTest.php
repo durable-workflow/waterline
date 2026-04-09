@@ -17,6 +17,7 @@ class V2CompatibilityDashboardWorkflowTest extends TestCase
     {
         parent::setUp();
 
+        config()->set('workflows.v2.compatibility.namespace', null);
         WorkerCompatibilityFleet::clear();
     }
 
@@ -150,6 +151,7 @@ class V2CompatibilityDashboardWorkflowTest extends TestCase
     {
         config()->set('waterline.engine_source', 'v2');
         config()->set('workflows.v2.compatibility.supported', ['build-b']);
+        config()->set('workflows.v2.compatibility.namespace', 'waterline-app');
 
         WorkerCompatibilityFleet::record(['build-a'], 'redis', 'default', 'worker-build-a');
 
@@ -195,11 +197,13 @@ class V2CompatibilityDashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
+            ->assertJsonPath('compatibility_namespace', 'waterline-app')
             ->assertJsonPath('compatibility_supported', false)
             ->assertJsonPath('compatibility_supported_in_fleet', true)
             ->assertJsonPath('compatibility_reason', 'Requires compatibility [build-a]; this worker supports [build-b].')
             ->assertJsonPath('compatibility_fleet_reason', null)
             ->assertJsonPath('compatibility_fleet.0.worker_id', 'worker-build-a')
+            ->assertJsonPath('compatibility_fleet.0.namespace', 'waterline-app')
             ->assertJsonPath('compatibility_fleet.0.connection', 'redis')
             ->assertJsonPath('compatibility_fleet.0.queue', 'default')
             ->assertJsonPath('compatibility_fleet.0.supported.0', 'build-a')
@@ -211,6 +215,73 @@ class V2CompatibilityDashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.compatibility_supported_in_fleet', true)
             ->assertJsonPath('tasks.0.compatibility_fleet_reason', null)
             ->assertJsonPath('tasks.0.summary', 'Workflow task ready to resume the selected run.');
+    }
+
+    public function testShowScopesFleetHeartbeatsToConfiguredNamespace(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.compatibility.supported', ['build-b']);
+        config()->set('workflows.v2.compatibility.namespace', 'other-app');
+
+        WorkerCompatibilityFleet::record(['build-a'], 'redis', 'default', 'worker-build-a');
+
+        config()->set('workflows.v2.compatibility.namespace', 'waterline-app');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'compat-waterline-namespace',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNNAMESPACE01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'compatibility' => 'build-a',
+            'arguments' => Serializer::serialize(['name' => 'Taylor']),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(10),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowTask::create([
+            'id' => '01JTESTFLOWTASKNAMESPACE01',
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'ready',
+            'available_at' => now()->subMinute(),
+            'payload' => [],
+            'connection' => 'redis',
+            'queue' => 'default',
+            'compatibility' => 'build-a',
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('compatibility_namespace', 'waterline-app')
+            ->assertJsonPath('compatibility_supported', false)
+            ->assertJsonPath('compatibility_supported_in_fleet', false)
+            ->assertJsonPath('compatibility_fleet', [])
+            ->assertJsonPath(
+                'compatibility_fleet_reason',
+                'No active worker heartbeat for namespace [waterline-app] connection [redis] queue [default] advertises compatibility [build-a].'
+            )
+            ->assertJsonPath('tasks.0.compatibility_supported_in_fleet', false)
+            ->assertJsonPath(
+                'tasks.0.compatibility_fleet_reason',
+                'No active worker heartbeat for namespace [waterline-app] connection [redis] queue [default] advertises compatibility [build-a].'
+            );
     }
 
     public function testShowFallsBackToLegacyCacheFleetHeartbeatDuringMixedUpgrade(): void

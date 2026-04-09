@@ -166,6 +166,9 @@
                     <div class="col-md-2"><strong>Compatibility</strong></div>
                     <div class="col">
                         <div>{{ flow.compatibility || '-' }}</div>
+                        <div class="small text-muted" v-if="hasDetailValue(flow.compatibility_namespace)">
+                            Namespace: {{ flow.compatibility_namespace }}
+                        </div>
                         <div class="small text-muted" v-if="flow.compatibility_supported === false && hasDetailValue(flow.compatibility_reason)">
                             This build: {{ flow.compatibility_reason }}
                         </div>
@@ -1038,6 +1041,7 @@ export default {
         compatibilityFleetKey(snapshot) {
             return [
                 snapshot && snapshot.worker_id ? snapshot.worker_id : 'worker',
+                snapshot && snapshot.namespace ? snapshot.namespace : 'namespace',
                 snapshot && snapshot.connection ? snapshot.connection : 'connection',
                 snapshot && snapshot.queue ? snapshot.queue : 'queue',
                 snapshot && snapshot.source ? snapshot.source : 'source',
@@ -1052,6 +1056,10 @@ export default {
 
             if (this.hasDetailValue(snapshot && snapshot.worker_id)) {
                 parts.push(snapshot.worker_id)
+            }
+
+            if (this.hasDetailValue(snapshot && snapshot.namespace)) {
+                parts.push(`namespace ${snapshot.namespace}`)
             }
 
             if (this.hasDetailValue(snapshot && snapshot.host)) {
