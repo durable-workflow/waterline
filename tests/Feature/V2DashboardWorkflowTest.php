@@ -5490,8 +5490,10 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('result', null);
 
         $updateId = $response->json('update_id');
+        $commandId = $response->json('command_id');
 
         $this->assertIsString($updateId);
+        $this->assertIsString($commandId);
 
         $detailResponse = $this->getJson('/waterline/api/flows/' . $workflow->runId());
         $detail = $detailResponse->json();
@@ -5508,7 +5510,13 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('resume_source_kind', 'workflow_update')
             ->assertJsonPath('resume_source_id', $updateId)
             ->assertJsonPath('liveness_state', 'workflow_task_waiting_for_compatible_worker')
-            ->assertJsonPath('open_wait_count', 2);
+            ->assertJsonPath('open_wait_count', 2)
+            ->assertJsonPath('tasks.0.workflow_wait_kind', 'update')
+            ->assertJsonPath('tasks.0.workflow_open_wait_id', 'update:' . $updateId)
+            ->assertJsonPath('tasks.0.workflow_resume_source_kind', 'workflow_update')
+            ->assertJsonPath('tasks.0.workflow_resume_source_id', $updateId)
+            ->assertJsonPath('tasks.0.workflow_update_id', $updateId)
+            ->assertJsonPath('tasks.0.workflow_command_id', $commandId);
 
         $this->assertIsArray($updateWait);
         $this->assertSame($updateId, $updateWait['update_id']);
@@ -5549,9 +5557,11 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('command_source', 'waterline');
 
         $runId = $workflow->runId();
+        $commandId = $accepted->json('command_id');
         $updateId = $accepted->json('update_id');
 
         $this->assertIsString($runId);
+        $this->assertIsString($commandId);
         $this->assertIsString($updateId);
 
         WorkflowTask::query()
@@ -5604,6 +5614,7 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->assertSame(1, $repairedTask->repair_count);
         $this->assertSame($updateId, $repairedTask->payload['workflow_update_id'] ?? null);
+        $this->assertSame($commandId, $repairedTask->payload['workflow_command_id'] ?? null);
 
         $this->getJson('/waterline/api/flows/' . $runId)
             ->assertStatus(200)
@@ -5614,6 +5625,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.summary', 'Workflow task ready to apply accepted update.')
             ->assertJsonPath('tasks.0.workflow_wait_kind', 'update')
             ->assertJsonPath('tasks.0.workflow_update_id', $updateId)
+            ->assertJsonPath('tasks.0.workflow_command_id', $commandId)
             ->assertJsonPath('tasks.0.workflow_resume_source_kind', 'workflow_update')
             ->assertJsonPath('tasks.0.workflow_resume_source_id', $updateId);
 
@@ -5708,6 +5720,7 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->assertSame(1, $repairedTask->repair_count);
         $this->assertSame($signal->id, $repairedTask->payload['workflow_signal_id'] ?? null);
+        $this->assertSame($commandId, $repairedTask->payload['workflow_command_id'] ?? null);
 
         $this->getJson('/waterline/api/flows/' . $runId)
             ->assertStatus(200)
@@ -5717,6 +5730,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.summary', 'Workflow task ready to apply accepted signal.')
             ->assertJsonPath('tasks.0.workflow_wait_kind', 'signal')
             ->assertJsonPath('tasks.0.workflow_signal_id', $signal->id)
+            ->assertJsonPath('tasks.0.workflow_command_id', $commandId)
             ->assertJsonPath('tasks.0.workflow_resume_source_kind', 'workflow_signal')
             ->assertJsonPath('tasks.0.workflow_resume_source_id', $signal->id);
 
@@ -5729,9 +5743,12 @@ class V2DashboardWorkflowTest extends TestCase
     public function testUpdateIsBlockedWhileAnEarlierSignalIsStillPending(): void
     {
         config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'database');
+        config()->set('queue.connections.database.driver', 'database');
 
         $workflow = WorkflowStub::make(TestLinearizedOperatorWorkflow::class, 'order-update-linearized');
         $workflow->start();
+        $this->runReadyWorkflowTask($workflow->runId());
 
         $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->status() === 'waiting');
 
@@ -5748,10 +5765,18 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('outcome', 'signal_received')
             ->assertJsonPath('command_status', 'accepted');
 
+        $commandId = $signal->json('command_id');
+
+        $this->assertIsString($commandId);
+
         $this->get('/waterline/api/instances/' . $workflow->id())
             ->assertStatus(200)
             ->assertJsonPath('wait_kind', 'workflow-task')
             ->assertJsonPath('liveness_state', 'workflow_task_ready')
+            ->assertJsonPath('tasks.0.summary', 'Workflow task ready to apply accepted signal.')
+            ->assertJsonPath('tasks.0.workflow_wait_kind', 'signal')
+            ->assertJsonPath('tasks.0.workflow_resume_source_kind', 'workflow_signal')
+            ->assertJsonPath('tasks.0.workflow_command_id', $commandId)
             ->assertJsonPath('can_update', false)
             ->assertJsonPath('update_blocked_reason', 'earlier_signal_pending');
 
