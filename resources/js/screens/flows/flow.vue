@@ -2352,6 +2352,14 @@ export default {
                 return 'update / ' + task.workflow_update_id
             }
 
+            if (this.hasDetailValue(task.workflow_signal_id)) {
+                return 'signal / ' + task.workflow_signal_id
+            }
+
+            if (this.hasDetailValue(task.workflow_command_id)) {
+                return 'command / ' + task.workflow_command_id
+            }
+
             if (this.hasDetailValue(task.workflow_wait_kind)) {
                 return String(task.workflow_wait_kind).replace(/_/g, ' ')
             }

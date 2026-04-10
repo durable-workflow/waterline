@@ -2289,10 +2289,13 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
-            ->assertJsonPath('wait_kind', null)
-            ->assertJsonPath('wait_reason', null)
+            ->assertJsonPath('wait_kind', 'signal')
+            ->assertJsonPath('wait_reason', 'Waiting to apply signal approved-by')
+            ->assertJsonPath('open_wait_id', 'signal-application:01JTESTCOMMANDSIGNALREPAIR01')
+            ->assertJsonPath('resume_source_kind', 'workflow_command')
+            ->assertJsonPath('resume_source_id', '01JTESTCOMMANDSIGNALREPAIR01')
             ->assertJsonPath('liveness_state', 'repair_needed')
-            ->assertJsonPath('liveness_reason', 'Run is non-terminal but has no durable next-resume source.')
+            ->assertJsonPath('liveness_reason', 'Accepted signal approved-by is received without an open workflow task.')
             ->assertJsonPath('can_repair', true)
             ->assertJsonPath('waits.0.kind', 'signal')
             ->assertJsonPath('waits.0.status', 'resolved')
@@ -5173,6 +5176,100 @@ class V2DashboardWorkflowTest extends TestCase
             'outcome' => 'update_completed',
             'workflow_sequence' => 1,
         ]);
+    }
+
+    public function testRepairRestoresAcceptedSignalWorkflowTaskWithSignalTargetDetail(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'database');
+        config()->set('queue.connections.database.driver', 'database');
+
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-signal-waterline-repair');
+        $workflow->start();
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $accepted = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/signals/name-provided', [
+            'arguments' => [
+                'name' => 'Taylor',
+            ],
+        ]);
+
+        $accepted
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'signal_received')
+            ->assertJsonPath('command_source', 'waterline');
+
+        $runId = $workflow->runId();
+        $commandId = $accepted->json('command_id');
+
+        $this->assertIsString($runId);
+        $this->assertIsString($commandId);
+
+        /** @var WorkflowSignal $signal */
+        $signal = WorkflowSignal::query()
+            ->where('workflow_command_id', $commandId)
+            ->sole();
+
+        WorkflowTask::query()
+            ->where('workflow_run_id', $runId)
+            ->where('task_type', 'workflow')
+            ->whereIn('status', ['ready', 'leased'])
+            ->delete();
+
+        /** @var WorkflowRun $run */
+        $run = WorkflowRun::query()->findOrFail($runId);
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->getJson('/waterline/api/flows/' . $runId)
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'signal')
+            ->assertJsonPath('open_wait_id', 'signal-application:' . $signal->id)
+            ->assertJsonPath('resume_source_kind', 'workflow_signal')
+            ->assertJsonPath('resume_source_id', $signal->id)
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath('can_repair', true);
+
+        $repair = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/repair');
+
+        $repair
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'repair_dispatched')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $runId)
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('command_source', 'waterline')
+            ->assertJsonPath('rejection_reason', null);
+
+        /** @var WorkflowTask $repairedTask */
+        $repairedTask = WorkflowTask::query()
+            ->where('workflow_run_id', $runId)
+            ->where('task_type', 'workflow')
+            ->where('status', 'ready')
+            ->sole();
+
+        $this->assertSame(1, $repairedTask->repair_count);
+        $this->assertSame($signal->id, $repairedTask->payload['workflow_signal_id'] ?? null);
+
+        $this->getJson('/waterline/api/flows/' . $runId)
+            ->assertStatus(200)
+            ->assertJsonPath('liveness_state', 'workflow_task_ready')
+            ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('tasks.0.id', $repairedTask->id)
+            ->assertJsonPath('tasks.0.summary', 'Workflow task ready to apply accepted signal.')
+            ->assertJsonPath('tasks.0.workflow_wait_kind', 'signal')
+            ->assertJsonPath('tasks.0.workflow_signal_id', $signal->id)
+            ->assertJsonPath('tasks.0.workflow_resume_source_kind', 'workflow_signal')
+            ->assertJsonPath('tasks.0.workflow_resume_source_id', $signal->id);
+
+        Queue::assertPushed(
+            RunWorkflowTask::class,
+            static fn (RunWorkflowTask $job): bool => $job->taskId === $repairedTask->id
+        );
     }
 
     public function testUpdateIsBlockedWhileAnEarlierSignalIsStillPending(): void
