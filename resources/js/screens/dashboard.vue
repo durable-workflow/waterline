@@ -187,6 +187,28 @@
 
                 return value > 0 ? moment.duration(value).humanize() : '-';
             },
+
+            operatorRepairScopes() {
+                const metrics = this.stats.operator_metrics || {};
+                const repair = metrics.repair || {};
+                const scopes = Array.isArray(repair.scopes) ? repair.scopes : [];
+
+                return scopes.slice(0, 3);
+            },
+
+            operatorRepairScopeLabel(scope) {
+                return [
+                    scope.connection || 'default',
+                    scope.queue || 'default',
+                    scope.compatibility || 'any',
+                ].join(' / ');
+            },
+
+            operatorRepairScopeDuration(scope, key) {
+                const value = scope[key] || 0;
+
+                return value > 0 ? moment.duration(value).humanize() : '-';
+            },
         }
     }
 </script>
@@ -444,6 +466,18 @@
 
                     <div class="mt-1 text-muted" v-if="stats.operator_metrics.repair && stats.operator_metrics.repair.scan_pressure">
                         Repair scan limit reached on this snapshot. Increase scan limit or add workers before backlog age keeps growing.
+                    </div>
+
+                    <div class="mt-2 text-muted" v-if="operatorRepairScopes().length">
+                        <div v-for="scope in operatorRepairScopes()" :key="scope.scope_key">
+                            <code>{{ operatorRepairScopeLabel(scope) }}</code>:
+                            {{ scope.total_candidates.toLocaleString() }} candidates
+                            ({{ scope.existing_task_candidates.toLocaleString() }} tasks,
+                            {{ scope.missing_task_candidates.toLocaleString() }} missing runs),
+                            oldest {{ operatorRepairScopeDuration(scope, 'max_task_candidate_age_ms') }},
+                            missing {{ operatorRepairScopeDuration(scope, 'max_missing_run_age_ms') }}.
+                            <span v-if="scope.scan_limited_by_global_policy">Scan limited.</span>
+                        </div>
                     </div>
                 </div>
 
