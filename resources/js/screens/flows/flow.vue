@@ -621,6 +621,12 @@
                                 <div class="small text-danger" v-if="task.replay_blocked === true">
                                     Replay blocked<span v-if="hasDetailValue(task.replay_blocked_reason)"> / {{ task.replay_blocked_reason }}</span>
                                 </div>
+                                <div class="small text-muted" v-if="hasDetailValue(task.replay_blocked_expected_history_shape)">
+                                    expected step / {{ task.replay_blocked_expected_history_shape }}
+                                </div>
+                                <div class="small text-muted" v-if="task.replay_blocked_recorded_event_types && task.replay_blocked_recorded_event_types.length">
+                                    recorded events / {{ task.replay_blocked_recorded_event_types.join(', ') }}
+                                </div>
                                 <div class="small text-muted" v-if="hasDetailValue(task.replay_blocked_recorded_condition_definition_fingerprint)">
                                     recorded predicate / {{ task.replay_blocked_recorded_condition_definition_fingerprint }}
                                 </div>

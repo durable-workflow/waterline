@@ -210,6 +210,51 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
         );
     }
 
+    public function testShowSurfacesConditionWaitHistoryShapeReplayBlock(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestAwaitWithTimeoutWorkflow::class, 'waterline-await-history-shape-blocked');
+        $workflow->start();
+
+        /** @var WorkflowRun $run */
+        $run = WorkflowRun::query()->findOrFail($workflow->runId());
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::TimerScheduled, [
+            'timer_id' => 'timer-from-older-definition',
+            'sequence' => 1,
+            'delay_seconds' => 60,
+            'fire_at' => now()->addMinute()->toJSON(),
+        ]);
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $response = $this->get('/waterline/api/flows/' . $workflow->runId());
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('tasks.0.status', 'failed')
+            ->assertJsonPath('tasks.0.transport_state', 'replay_blocked')
+            ->assertJsonPath('tasks.0.replay_blocked', true)
+            ->assertJsonPath('tasks.0.replay_blocked_reason', 'history_shape_mismatch')
+            ->assertJsonPath('tasks.0.replay_blocked_workflow_sequence', 1)
+            ->assertJsonPath('tasks.0.replay_blocked_expected_history_shape', 'condition wait')
+            ->assertJsonPath('tasks.0.replay_blocked_recorded_event_types', ['TimerScheduled']);
+
+        $this->assertStringContainsString(
+            'history recorded [TimerScheduled]',
+            (string) $response->json('liveness_reason')
+        );
+        $this->assertStringContainsString(
+            'history shape drift',
+            (string) $response->json('tasks.0.summary')
+        );
+    }
+
     public function testShowSurfacesReplayBlockWhenConditionPredicateFingerprintDrifts(): void
     {
         config()->set('waterline.engine_source', 'v2');
