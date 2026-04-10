@@ -196,6 +196,7 @@ class V2HistoryExportControllerTest extends TestCase
         config()->set('waterline.engine_source', 'v2');
 
         [$instance, $run] = $this->createCompletedRunWithHistory();
+        $attemptId = (string) Str::ulid();
 
         /** @var ActivityExecution $activity */
         $activity = ActivityExecution::create([
@@ -210,6 +211,7 @@ class V2HistoryExportControllerTest extends TestCase
             'connection' => 'redis',
             'queue' => 'activities',
             'attempt_count' => 1,
+            'current_attempt_id' => $attemptId,
             'started_at' => now()->subMinutes(2),
             'closed_at' => now()->subMinute(),
         ]);
@@ -223,6 +225,11 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('activities.0.history_authority', 'unsupported_terminal_without_history')
             ->assertJsonPath('activities.0.history_unsupported_reason', 'terminal_activity_row_without_typed_history')
             ->assertJsonPath('activities.0.history_event_types', [])
+            ->assertJsonPath('activities.0.current_attempt_id', $attemptId)
+            ->assertJsonPath('activities.0.attempts.0.id', $attemptId)
+            ->assertJsonPath('activities.0.attempts.0.activity_execution_id', $activity->id)
+            ->assertJsonPath('activities.0.attempts.0.workflow_task_id', null)
+            ->assertJsonPath('activities.0.attempts.0.status', 'failed')
             ->assertJsonPath('activities.0.result', null)
             ->assertJsonPath('activities.0.closed_at', null);
     }
