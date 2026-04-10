@@ -566,6 +566,9 @@
                                 <div class="small text-muted" v-if="hasDetailValue(task.last_claim_failed_at)">
                                     Claim failed {{ timestamp(task.last_claim_failed_at) }}
                                 </div>
+                                <div class="small text-muted" v-if="hasDetailValue(task.repair_available_at)">
+                                    Repair after {{ timestamp(task.repair_available_at) }}
+                                </div>
                             </td>
                             <td>{{ taskTarget(task) }}</td>
                             <td>{{ task.queue || '-' }}</td>
@@ -2393,6 +2396,7 @@ export default {
                 lease_expired: 'lease expired',
                 dispatch_overdue: 'dispatch overdue',
                 dispatch_failed: 'dispatch failed',
+                repair_backoff: 'repair backoff',
                 completed: 'completed',
                 cancelled: 'cancelled',
                 failed: 'failed',
@@ -2404,6 +2408,10 @@ export default {
         taskAvailability(task) {
             if (this.hasDetailValue(task.leased_at)) {
                 return this.timestamp(task.leased_at)
+            }
+
+            if (task.transport_state === 'repair_backoff' && this.hasDetailValue(task.repair_available_at)) {
+                return this.timestamp(task.repair_available_at)
             }
 
             if (this.hasDetailValue(task.available_at)) {

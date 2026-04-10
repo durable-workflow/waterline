@@ -154,6 +154,7 @@ class V2DashboardStatsControllerTest extends TestCase
         config()->set('workflows.v2.task_repair.redispatch_after_seconds', 8);
         config()->set('workflows.v2.task_repair.loop_throttle_seconds', 12);
         config()->set('workflows.v2.task_repair.scan_limit', 16);
+        config()->set('workflows.v2.task_repair.failure_backoff_max_seconds', 32);
         WorkerCompatibilityFleet::clear();
         $this->beforeApplicationDestroyed(static function (): void {
             WorkerCompatibilityFleet::clear();
@@ -380,6 +381,8 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.repair_policy.redispatch_after_seconds', 8)
             ->assertJsonPath('operator_metrics.repair_policy.loop_throttle_seconds', 12)
             ->assertJsonPath('operator_metrics.repair_policy.scan_limit', 16)
-            ->assertJsonPath('operator_metrics.repair_policy.scan_strategy', 'scope_fair_round_robin');
+            ->assertJsonPath('operator_metrics.repair_policy.scan_strategy', 'scope_fair_round_robin')
+            ->assertJsonPath('operator_metrics.repair_policy.failure_backoff_max_seconds', 32)
+            ->assertJsonPath('operator_metrics.repair_policy.failure_backoff_strategy', 'exponential_by_repair_count');
     }
 }
