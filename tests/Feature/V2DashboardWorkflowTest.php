@@ -3660,6 +3660,166 @@ class V2DashboardWorkflowTest extends TestCase
             ]));
     }
 
+    public function testShowProjectsFailedUpdateFromTypedHistoryWhenUpdateRowsDrift(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $commandId = (string) Str::ulid();
+        $updateId = (string) Str::ulid();
+        $failureId = (string) Str::ulid();
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-update-failure-history',
+            'workflow_class' => TestOperatorCommandWorkflow::class,
+            'workflow_type' => 'workflow.operator-command',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => (string) Str::ulid(),
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => TestOperatorCommandWorkflow::class,
+            'workflow_type' => 'workflow.operator-command',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => TestOperatorCommandWorkflow::class,
+            'workflow_type' => 'workflow.operator-command',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'exception_count' => 1,
+            'started_at' => $run->started_at,
+            'created_at' => now()->subMinutes(2),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        WorkflowCommand::create([
+            'id' => $commandId,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => 2,
+            'command_type' => 'update',
+            'target_scope' => 'instance',
+            'source' => 'waterline',
+            'status' => 'accepted',
+            'outcome' => 'update_completed',
+            'workflow_class' => TestOperatorCommandWorkflow::class,
+            'workflow_type' => 'workflow.operator-command',
+            'payload_codec' => Serializer::class,
+            'payload' => Serializer::serialize([
+                'name' => 'mark-approved',
+                'arguments' => [true, 'waterline'],
+            ]),
+            'accepted_at' => now()->subSeconds(50),
+            'applied_at' => now()->subSeconds(49),
+            'created_at' => now()->subSeconds(50),
+            'updated_at' => now()->subSeconds(49),
+        ]);
+
+        WorkflowFailure::create([
+            'id' => $failureId,
+            'workflow_run_id' => $run->id,
+            'source_kind' => 'workflow_command',
+            'source_id' => $commandId,
+            'propagation_kind' => 'update',
+            'handled' => false,
+            'exception_class' => \RuntimeException::class,
+            'message' => 'corrupted failure row',
+            'file' => __FILE__,
+            'line' => 1,
+            'trace_preview' => '',
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::UpdateCompleted->value,
+            'payload' => [
+                'workflow_command_id' => $commandId,
+                'update_id' => $updateId,
+                'update_name' => 'mark-approved',
+                'sequence' => 1,
+                'failure_id' => $failureId,
+                'exception_class' => 'App\\Legacy\\UpdateBoom',
+                'message' => 'typed update boom',
+                'code' => 42,
+                'exception' => [
+                    'class' => 'App\\Legacy\\UpdateBoom',
+                    'message' => 'typed update boom',
+                    'code' => 42,
+                    'file' => __FILE__,
+                    'line' => 444,
+                    'trace' => [],
+                    'properties' => [],
+                ],
+            ],
+            'workflow_command_id' => $commandId,
+            'recorded_at' => now()->subSeconds(49),
+            'created_at' => now()->subSeconds(49),
+            'updated_at' => now()->subSeconds(49),
+        ]);
+
+        WorkflowUpdate::create([
+            'id' => $updateId,
+            'workflow_command_id' => $commandId,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'target_scope' => 'instance',
+            'resolved_workflow_run_id' => $run->id,
+            'update_name' => 'mark-approved',
+            'status' => 'completed',
+            'outcome' => 'update_completed',
+            'command_sequence' => 2,
+            'workflow_sequence' => 1,
+            'payload_codec' => Serializer::class,
+            'arguments' => Serializer::serialize([true, 'waterline']),
+            'result' => Serializer::serialize(['wrong' => true]),
+            'accepted_at' => now()->subSeconds(50),
+            'applied_at' => now()->subSeconds(49),
+            'closed_at' => now()->subSeconds(49),
+            'created_at' => now()->subSeconds(50),
+            'updated_at' => now()->subSeconds(49),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('commands.0.update_id', $updateId)
+            ->assertJsonPath('commands.0.update_status', 'failed')
+            ->assertJsonPath('commands.0.failure_id', $failureId)
+            ->assertJsonPath('commands.0.failure_message', 'typed update boom')
+            ->assertJsonPath('commands.0.result_available', false)
+            ->assertJsonPath('updates.0.id', $updateId)
+            ->assertJsonPath('updates.0.command_id', $commandId)
+            ->assertJsonPath('updates.0.status', 'failed')
+            ->assertJsonPath('updates.0.outcome', 'update_failed')
+            ->assertJsonPath('updates.0.failure_id', $failureId)
+            ->assertJsonPath('updates.0.failure_message', 'typed update boom')
+            ->assertJsonPath('updates.0.result_available', false)
+            ->assertJsonPath('updates.0.result', null)
+            ->assertJsonPath('updates.0.exception_class', 'App\\Legacy\\UpdateBoom')
+            ->assertJsonPath('updates.0.exception_resolution_source', 'unresolved')
+            ->assertJsonPath('updates.0.exception_replay_blocked', true)
+            ->assertJsonPath('exceptions.0.exception_class', 'App\\Legacy\\UpdateBoom')
+            ->assertJsonPath('exceptions.0.exception_replay_blocked', true);
+    }
+
     public function testShowMarksUpdateAsBlockedWhenAnEarlierSignalIsPending(): void
     {
         config()->set('waterline.engine_source', 'v2');

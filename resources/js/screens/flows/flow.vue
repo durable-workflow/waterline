@@ -822,8 +822,19 @@
                                     class="btn btn-outline-primary ml-auto"
                                     @click="showResult(update.result, 'Update Result')"
                                 >View</button>
-                                <div v-else-if="hasDetailValue(update.failure_message)" class="small text-muted">
-                                    {{ update.failure_message }}
+                                <div
+                                    v-else-if="hasDetailValue(update.failure_message) || update.exception_replay_blocked === true || hasDetailValue(update.exception_resolution_source)"
+                                    class="small text-muted"
+                                >
+                                    <div v-if="hasDetailValue(update.failure_message)">
+                                        {{ update.failure_message }}
+                                    </div>
+                                    <div v-if="update.exception_replay_blocked === true" class="text-danger">
+                                        Exception mapping unresolved.
+                                    </div>
+                                    <div v-else-if="hasDetailValue(update.exception_resolution_source)">
+                                        exception / {{ update.exception_resolution_source }}
+                                    </div>
                                 </div>
                                 <span v-else>-</span>
                             </td>
