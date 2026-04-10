@@ -624,8 +624,8 @@
                                 <div class="small text-muted" v-if="hasDetailValue(task.replay_blocked_expected_history_shape)">
                                     expected step / {{ task.replay_blocked_expected_history_shape }}
                                 </div>
-                                <div class="small text-muted" v-if="task.replay_blocked_recorded_event_types && task.replay_blocked_recorded_event_types.length">
-                                    recorded events / {{ task.replay_blocked_recorded_event_types.join(', ') }}
+                                <div class="small text-muted" v-if="replayBlockedRecordedEvents(task).length">
+                                    recorded events / {{ replayBlockedRecordedEvents(task).join(', ') }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(task.replay_blocked_recorded_condition_definition_fingerprint)">
                                     recorded predicate / {{ task.replay_blocked_recorded_condition_definition_fingerprint }}
@@ -2466,6 +2466,20 @@ export default {
             }
 
             return labels[task.transport_state] || task.transport_state || '-'
+        },
+
+        replayBlockedRecordedEvents(task) {
+            if (!Array.isArray(task.replay_blocked_recorded_event_types)) {
+                return []
+            }
+
+            return task.replay_blocked_recorded_event_types.map((eventType) => {
+                if (eventType === 'NoTypedHistory') {
+                    return 'no typed history'
+                }
+
+                return eventType
+            })
         },
 
         taskAvailability(task) {
