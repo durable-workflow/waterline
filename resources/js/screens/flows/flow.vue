@@ -501,6 +501,9 @@
                                 <div class="small text-muted" v-if="hasDetailValue(wait.condition_key)">
                                     condition key / {{ wait.condition_key }}
                                 </div>
+                                <div class="small text-muted" v-if="hasDetailValue(wait.condition_definition_fingerprint)">
+                                    predicate fingerprint / {{ wait.condition_definition_fingerprint }}
+                                </div>
                                 <div class="small text-muted" v-if="parallelGroupLabel(wait)">
                                     {{ parallelGroupLabel(wait) }}
                                 </div>
@@ -612,6 +615,12 @@
                                 </div>
                                 <div class="small text-danger" v-if="task.replay_blocked === true">
                                     Replay blocked<span v-if="hasDetailValue(task.replay_blocked_reason)"> / {{ task.replay_blocked_reason }}</span>
+                                </div>
+                                <div class="small text-muted" v-if="hasDetailValue(task.replay_blocked_recorded_condition_definition_fingerprint)">
+                                    recorded predicate / {{ task.replay_blocked_recorded_condition_definition_fingerprint }}
+                                </div>
+                                <div class="small text-muted" v-if="hasDetailValue(task.replay_blocked_current_condition_definition_fingerprint)">
+                                    current predicate / {{ task.replay_blocked_current_condition_definition_fingerprint }}
                                 </div>
                             </td>
                             <td>{{ taskAvailability(task) }}</td>

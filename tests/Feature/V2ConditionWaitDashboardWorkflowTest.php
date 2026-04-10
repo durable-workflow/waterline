@@ -55,6 +55,16 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.condition_wait_id', $response->json('waits.0.condition_wait_id'))
             ->assertJsonPath('tasks.0.timer_sequence', 1);
 
+        $this->assertIsString($response->json('waits.0.condition_definition_fingerprint'));
+        $this->assertSame(
+            $response->json('waits.0.condition_definition_fingerprint'),
+            $response->json('tasks.0.condition_definition_fingerprint'),
+        );
+        $this->assertSame(
+            $response->json('waits.0.condition_definition_fingerprint'),
+            $response->json('timers.0.condition_definition_fingerprint'),
+        );
+
         $this->assertStringContainsString(
             'Condition timeout for 5 seconds',
             (string) $response->json('tasks.0.summary')
@@ -196,6 +206,54 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
 
         $this->assertStringContainsString(
             'recorded condition key [none] does not match the current yielded key [approval.ready]',
+            (string) $response->json('liveness_reason')
+        );
+    }
+
+    public function testShowSurfacesReplayBlockWhenConditionPredicateFingerprintDrifts(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestAwaitWithTimeoutWorkflow::class, 'waterline-await-fingerprint-replay-blocked');
+        $workflow->start();
+
+        /** @var WorkflowRun $run */
+        $run = WorkflowRun::query()->findOrFail($workflow->runId());
+        $recordedFingerprint = 'sha256:' . str_repeat('2', 64);
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::ConditionWaitOpened, [
+            'condition_wait_id' => 'condition:1',
+            'condition_key' => 'approval.ready',
+            'condition_definition_fingerprint' => $recordedFingerprint,
+            'sequence' => 1,
+        ]);
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $response = $this->get('/waterline/api/flows/' . $workflow->runId());
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('tasks.0.status', 'failed')
+            ->assertJsonPath('tasks.0.transport_state', 'replay_blocked')
+            ->assertJsonPath('tasks.0.replay_blocked', true)
+            ->assertJsonPath('tasks.0.replay_blocked_reason', 'condition_wait_definition_mismatch')
+            ->assertJsonPath('tasks.0.replay_blocked_condition_wait_id', 'condition:1')
+            ->assertJsonPath('tasks.0.replay_blocked_recorded_condition_key', 'approval.ready')
+            ->assertJsonPath('tasks.0.replay_blocked_current_condition_key', 'approval.ready')
+            ->assertJsonPath('tasks.0.replay_blocked_recorded_condition_definition_fingerprint', $recordedFingerprint);
+
+        $this->assertIsString($response->json('tasks.0.replay_blocked_current_condition_definition_fingerprint'));
+        $this->assertNotSame(
+            $recordedFingerprint,
+            $response->json('tasks.0.replay_blocked_current_condition_definition_fingerprint')
+        );
+        $this->assertStringContainsString(
+            'predicate fingerprint',
             (string) $response->json('liveness_reason')
         );
     }
@@ -354,8 +412,10 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
 
             $show = $this->get('/waterline/api/instances/waterline-await-timeout-repair');
             $conditionWaitId = $show->json('waits.0.condition_wait_id');
+            $conditionDefinitionFingerprint = $show->json('waits.0.condition_definition_fingerprint');
 
             $this->assertIsString($conditionWaitId);
+            $this->assertIsString($conditionDefinitionFingerprint);
             $this->assertNotNull($deadlineAt);
 
             $timerTask->delete();
@@ -409,6 +469,7 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
                 'timer_id' => $timerId,
                 'condition_wait_id' => $conditionWaitId,
                 'condition_key' => 'approval.ready',
+                'condition_definition_fingerprint' => $conditionDefinitionFingerprint,
             ], $repairedTask->payload);
             $this->assertSame($deadlineAt, $repairedTask->available_at?->toJSON());
             $this->assertSame(1, $repairedTask->repair_count);
