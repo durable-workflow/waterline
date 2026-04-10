@@ -501,16 +501,17 @@
                                 <div class="small text-muted" v-if="parallelGroupLabel(wait)">
                                     {{ parallelGroupLabel(wait) }}
                                 </div>
-                                <div class="small text-muted" v-if="hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id) || hasDetailValue(wait.command_sequence) || hasDetailValue(wait.timeout_seconds)">
+                                <div class="small text-muted" v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id) || hasDetailValue(wait.command_sequence) || hasDetailValue(wait.timeout_seconds)">
+                                    <span v-if="hasDetailValue(wait.update_id)">update / {{ wait.update_id }}</span>
                                     <span v-if="hasDetailValue(wait.signal_wait_id)">signal wait / {{ wait.signal_wait_id }}</span>
                                     <span v-if="hasDetailValue(wait.condition_wait_id)">
-                                        <span v-if="hasDetailValue(wait.signal_wait_id)"> | </span>condition wait / {{ wait.condition_wait_id }}
+                                        <span v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id)"> | </span>condition wait / {{ wait.condition_wait_id }}
                                     </span>
                                     <span v-if="hasDetailValue(wait.command_sequence)">
-                                        <span v-if="hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id)"> | </span>command / #{{ wait.command_sequence }}
+                                        <span v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id)"> | </span>command / #{{ wait.command_sequence }}
                                     </span>
                                     <span v-if="hasDetailValue(wait.timeout_seconds)">
-                                        <span v-if="hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id) || hasDetailValue(wait.command_sequence)"> | </span>timeout / {{ wait.timeout_seconds }}s
+                                        <span v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id) || hasDetailValue(wait.command_sequence)"> | </span>timeout / {{ wait.timeout_seconds }}s
                                     </span>
                                 </div>
                             </td>
@@ -2063,6 +2064,10 @@ export default {
                 return [wait.task_type || 'timer', wait.task_status, 'external input']
                     .filter(Boolean)
                     .join(' / ')
+            }
+
+            if (wait.kind === 'update' && !wait.task_backed && !this.hasDetailValue(wait.task_id)) {
+                return 'workflow task missing'
             }
 
             if (wait.kind === 'child') {

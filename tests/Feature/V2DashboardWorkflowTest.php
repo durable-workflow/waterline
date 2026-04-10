@@ -4872,6 +4872,38 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('wait_timed_out', true)
             ->assertJsonPath('wait_timeout_seconds', 1)
             ->assertJsonPath('result', null);
+
+        $updateId = $response->json('update_id');
+
+        $this->assertIsString($updateId);
+
+        $detailResponse = $this->getJson('/waterline/api/flows/' . $workflow->runId());
+        $detail = $detailResponse->json();
+        $updateWait = collect($detail['waits'] ?? [])
+            ->first(static fn (array $wait): bool => ($wait['kind'] ?? null) === 'update');
+        $signalWait = collect($detail['waits'] ?? [])
+            ->first(static fn (array $wait): bool => ($wait['kind'] ?? null) === 'signal');
+
+        $detailResponse
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'update')
+            ->assertJsonPath('wait_reason', 'Waiting for update mark-approved')
+            ->assertJsonPath('open_wait_id', 'update:' . $updateId)
+            ->assertJsonPath('resume_source_kind', 'workflow_update')
+            ->assertJsonPath('resume_source_id', $updateId)
+            ->assertJsonPath('liveness_state', 'workflow_task_waiting_for_compatible_worker')
+            ->assertJsonPath('open_wait_count', 2);
+
+        $this->assertIsArray($updateWait);
+        $this->assertSame($updateId, $updateWait['update_id']);
+        $this->assertSame('open', $updateWait['status']);
+        $this->assertSame('accepted', $updateWait['source_status']);
+        $this->assertTrue($updateWait['task_backed']);
+        $this->assertSame('workflow', $updateWait['task_type']);
+        $this->assertSame('ready', $updateWait['task_status']);
+        $this->assertIsArray($signalWait);
+        $this->assertSame('open', $signalWait['status']);
+        $this->assertSame('waiting', $signalWait['source_status']);
     }
 
     public function testUpdateIsBlockedWhileAnEarlierSignalIsStillPending(): void
