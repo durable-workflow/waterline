@@ -5356,6 +5356,95 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks', []);
     }
 
+    public function testShowKeepsTypedActivityHistoryAuthoritativeWhenExecutionRowDriftsClosed(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-activity-terminal-drift',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNACTDRIFT001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subSeconds(20),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $execution = ActivityExecution::create([
+            'id' => '01JACTDRIFT000000000001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ActivityClass',
+            'activity_type' => 'activity.test',
+            'status' => 'pending',
+            'arguments' => Serializer::serialize(['Taylor']),
+            'connection' => 'redis',
+            'queue' => 'activities',
+        ]);
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::ActivityScheduled, [
+            'activity_execution_id' => $execution->id,
+            'activity_class' => $execution->activity_class,
+            'activity_type' => $execution->activity_type,
+            'sequence' => $execution->sequence,
+            'activity' => ActivitySnapshot::fromExecution($execution),
+        ]);
+
+        $execution->forceFill([
+            'status' => 'running',
+            'attempt_count' => 1,
+            'current_attempt_id' => '01JATTDRIFT000000000001',
+            'started_at' => now()->subSeconds(15),
+        ])->save();
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::ActivityStarted, [
+            'activity_execution_id' => $execution->id,
+            'activity_class' => $execution->activity_class,
+            'activity_type' => $execution->activity_type,
+            'sequence' => $execution->sequence,
+            'activity' => ActivitySnapshot::fromExecution($execution),
+        ]);
+
+        $execution->forceFill([
+            'status' => 'completed',
+            'result' => Serializer::serialize('mutable result'),
+            'closed_at' => now(),
+        ])->save();
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('id', $run->id)
+            ->assertJsonPath('wait_kind', 'activity')
+            ->assertJsonPath('liveness_state', 'activity_running_without_task')
+            ->assertJsonPath('activities.0.id', $execution->id)
+            ->assertJsonPath('activities.0.status', 'running')
+            ->assertJsonPath('activities.0.result', serialize(null))
+            ->assertJsonPath('activities.0.closed_at', null)
+            ->assertJsonPath('waits.0.kind', 'activity')
+            ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.source_status', 'running')
+            ->assertJsonPath('timeline.0.type', 'ActivityScheduled')
+            ->assertJsonPath('timeline.1.type', 'ActivityStarted')
+            ->assertJsonPath('tasks', []);
+    }
+
     public function testShowHistoricalRunIncludesPointerToCurrentRun(): void
     {
         config()->set('waterline.engine_source', 'v2');
