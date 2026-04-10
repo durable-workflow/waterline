@@ -843,9 +843,11 @@ class V2DashboardWorkflowTest extends TestCase
                 'activity_type' => 'activity.test',
                 'sequence' => 1,
                 'failure_id' => '01JTESTFAILUREHANDLED00001',
+                'exception_type' => 'runtime.failure',
                 'exception_class' => \RuntimeException::class,
                 'message' => 'recoverable boom',
                 'exception' => [
+                    'type' => 'runtime.failure',
                     'class' => \RuntimeException::class,
                     'message' => 'recoverable boom',
                     'code' => 0,
@@ -869,6 +871,7 @@ class V2DashboardWorkflowTest extends TestCase
                 'source_kind' => 'activity_execution',
                 'source_id' => '01JTESTACTIVITYHANDLED0001',
                 'propagation_kind' => 'activity',
+                'exception_type' => 'runtime.failure',
                 'exception_class' => \RuntimeException::class,
                 'message' => 'recoverable boom',
                 'handled' => true,
@@ -884,6 +887,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('timeline.1.source_id', '01JTESTFAILUREHANDLED00001')
             ->assertJsonPath('timeline.1.failure_id', '01JTESTFAILUREHANDLED00001')
             ->assertJsonPath('timeline.1.summary', 'Handled failure: recoverable boom.')
+            ->assertJsonPath('timeline.1.exception_type', 'runtime.failure')
+            ->assertJsonPath('timeline.1.failure.exception_type', 'runtime.failure')
             ->assertJsonPath('timeline.1.failure.handled', true);
     }
 
