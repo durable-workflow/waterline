@@ -413,7 +413,12 @@
 
         <div class="card mt-4" v-if="ready && flow.timeline && flow.timeline.length">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>History</h5>
+                <div>
+                    <h5>History</h5>
+                    <div class="small text-muted" v-if="hasDetailValue(flow.timeline_projection_source)">
+                        {{ projectionSourceLabel(flow.timeline_projection_source) }}
+                    </div>
+                </div>
 
                 <a data-toggle="collapse" href="#collapseHistory" role="button">
                     Collapse
@@ -2243,6 +2248,18 @@ export default {
             }
 
             return String(kind).replace(/_/g, ' ')
+        },
+
+        projectionSourceLabel(source) {
+            if (source === 'workflow_run_timeline_entries') {
+                return 'Projection: workflow_run_timeline_entries'
+            }
+
+            if (source === 'live_fallback') {
+                return 'Projection: live fallback'
+            }
+
+            return 'Projection: ' + source
         },
 
         historySnapshot(entry) {

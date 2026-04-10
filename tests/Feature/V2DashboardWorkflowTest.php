@@ -821,6 +821,7 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
+            ->assertJsonPath('timeline_projection_source', 'workflow_run_timeline_entries')
             ->assertJsonPath(
                 'workflow_definition_fingerprint',
                 WorkflowDefinition::fingerprint(TestCommandContractWorkflow::class)
