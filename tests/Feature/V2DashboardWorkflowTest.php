@@ -6630,6 +6630,121 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.retry_policy.max_attempts', 3);
     }
 
+    public function testRepairRecreatesMissingActivityTaskFromTypedHistoryWhenActivityExecutionRowIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        Queue::fake();
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-repair-activity-history',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNREPAIRACT001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(30),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $activity = ActivityExecution::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ActivityClass',
+            'activity_type' => 'activity.test',
+            'status' => 'pending',
+            'arguments' => Serializer::serialize(['Taylor']),
+            'connection' => 'redis',
+            'queue' => 'activities',
+            'attempt_count' => 0,
+            'retry_policy' => [
+                'snapshot_version' => 1,
+                'max_attempts' => 1,
+                'backoff_seconds' => [],
+            ],
+        ]);
+        $activityId = $activity->id;
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::ActivityScheduled, [
+            'activity_execution_id' => $activity->id,
+            'activity_class' => $activity->activity_class,
+            'activity_type' => $activity->activity_type,
+            'sequence' => $activity->sequence,
+            'activity' => ActivitySnapshot::fromExecution($activity),
+        ]);
+
+        $activity->delete();
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'activity')
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('next_task_id', null)
+            ->assertJsonPath('activities.0.id', $activityId)
+            ->assertJsonPath('activities.0.status', 'pending')
+            ->assertJsonPath('tasks.0.type', 'activity')
+            ->assertJsonPath('tasks.0.status', 'missing')
+            ->assertJsonPath('tasks.0.transport_state', 'missing')
+            ->assertJsonPath('tasks.0.task_missing', true)
+            ->assertJsonPath('tasks.0.activity_execution_id', $activityId);
+
+        $this->post('/waterline/api/instances/' . $instance->id . '/repair')
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'repair_dispatched')
+            ->assertJsonPath('workflow_id', $instance->id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('command_status', 'accepted');
+
+        /** @var ActivityExecution $restoredActivity */
+        $restoredActivity = ActivityExecution::query()->findOrFail($activityId);
+
+        $this->assertSame('pending', $restoredActivity->status->value);
+        $this->assertSame('ActivityClass', $restoredActivity->activity_class);
+        $this->assertSame('activity.test', $restoredActivity->activity_type);
+        $this->assertSame(0, $restoredActivity->attempt_count);
+        $this->assertSame(['snapshot_version' => 1, 'max_attempts' => 1, 'backoff_seconds' => []], $restoredActivity->retry_policy);
+
+        /** @var WorkflowTask $repairedTask */
+        $repairedTask = WorkflowTask::query()
+            ->where('workflow_run_id', $run->id)
+            ->where('task_type', 'activity')
+            ->sole();
+
+        $this->assertSame($activityId, $repairedTask->payload['activity_execution_id'] ?? null);
+        $this->assertSame(1, $repairedTask->repair_count);
+
+        Queue::assertPushed(
+            RunActivityTask::class,
+            static fn (RunActivityTask $job): bool => $job->taskId === $repairedTask->id
+        );
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('next_task_id', $repairedTask->id)
+            ->assertJsonPath('next_task_type', 'activity')
+            ->assertJsonPath('liveness_state', 'activity_task_ready')
+            ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('tasks.0.transport_state', 'ready')
+            ->assertJsonPath('tasks.0.activity_execution_id', $activityId);
+    }
+
     public function testAutomaticWorkerRecoveryRecreatesMissingWorkflowTaskAndClearsRepairNeededFromFlowDetail(): void
     {
         config()->set('waterline.engine_source', 'v2');
