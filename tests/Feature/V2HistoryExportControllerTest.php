@@ -36,9 +36,12 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('workflow.status', 'completed')
             ->assertJsonPath('payloads.arguments.available', true)
             ->assertJsonPath('summary.history_event_count', 2)
+            ->assertJsonPath('selected_run.waits_projection_source', 'workflow_run_waits')
+            ->assertJsonPath('selected_run.timeline_projection_source', 'workflow_run_timeline_entries_rebuilt')
             ->assertJsonPath('integrity.canonicalization', 'json-recursive-ksort-v1')
             ->assertJsonPath('integrity.checksum_algorithm', 'sha256')
             ->assertJsonPath('integrity.signature', null)
+            ->assertJsonPath('timeline.0.type', 'WorkflowStarted')
             ->assertJsonPath('history_events.0.type', 'WorkflowStarted')
             ->assertJsonPath('history_events.1.type', 'WorkflowCompleted');
     }
@@ -56,6 +59,8 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('workflow.run_id', $run->id)
             ->assertJsonPath('workflow.current_run_id', $run->id)
             ->assertJsonPath('workflow.current_run_source', 'run_order_fallback')
+            ->assertJsonPath('selected_run.timeline_projection_source', 'workflow_run_timeline_entries_rebuilt')
+            ->assertJsonPath('timeline.1.type', 'WorkflowCompleted')
             ->assertJsonPath('history_events.0.type', 'WorkflowStarted')
             ->assertJsonPath('history_events.1.type', 'WorkflowCompleted');
     }
