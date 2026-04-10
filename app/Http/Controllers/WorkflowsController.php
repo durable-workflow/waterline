@@ -4,6 +4,7 @@ namespace Waterline\Http\Controllers;
 
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Request;
+use LogicException;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Support\CommandResponse;
 use Workflow\V2\Support\HistoryExport;
@@ -258,6 +259,57 @@ class WorkflowsController extends Controller
         return $this->commandResponse($result);
     }
 
+    public function showUpdate(string $id, string $updateId, WorkflowRepositoryInterface $repository)
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $flow = $repository->findFlow($id);
+
+        try {
+            $result = V2WorkflowStub::loadRun($flow->id)->inspectUpdate($updateId);
+        } catch (LogicException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 404);
+        }
+
+        return $this->updateLookupResponse($result);
+    }
+
+    public function showUpdateInstance(string $instanceId, string $updateId, WorkflowRepositoryInterface $repository)
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        try {
+            $result = V2WorkflowStub::load($instanceId)->inspectUpdate($updateId);
+        } catch (LogicException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 404);
+        }
+
+        return $this->updateLookupResponse($result);
+    }
+
+    public function showUpdateSelection(
+        string $instanceId,
+        string $runId,
+        string $updateId,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        try {
+            $result = V2WorkflowStub::loadSelection($instanceId, $runId)->inspectUpdate($updateId);
+        } catch (LogicException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 404);
+        }
+
+        return $this->updateLookupResponse($result);
+    }
+
     public function cancelInstance(string $instanceId, WorkflowRepositoryInterface $repository)
     {
         abort_unless($repository->engineSource() === 'v2', 404);
@@ -486,6 +538,14 @@ class WorkflowsController extends Controller
         return response()->json(
             CommandResponse::payload($result),
             $status,
+        );
+    }
+
+    private function updateLookupResponse(UpdateResult $result)
+    {
+        return response()->json(
+            CommandResponse::payload($result),
+            $result->updateStatus() === 'accepted' ? 202 : 200,
         );
     }
 

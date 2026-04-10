@@ -4774,6 +4774,67 @@ class V2DashboardWorkflowTest extends TestCase
         ]);
     }
 
+    public function testUpdateStatusEndpointCanInspectAcceptedLifecycleByUpdateId(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'database');
+        config()->set('queue.connections.database.driver', 'database');
+
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-update-status-endpoint');
+        $workflow->start();
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $accepted = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/updates/mark-approved', [
+            'wait_for' => 'accepted',
+            'arguments' => [
+                'approved' => true,
+                'source' => 'waterline-status',
+            ],
+        ]);
+
+        $accepted
+            ->assertStatus(202)
+            ->assertJsonPath('update_status', 'accepted');
+
+        $updateId = $accepted->json('update_id');
+
+        $this->assertIsString($updateId);
+
+        $this->getJson('/waterline/api/instances/' . $workflow->id() . '/updates/' . $updateId)
+            ->assertStatus(202)
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('command_source', 'waterline')
+            ->assertJsonPath('command_id', $accepted->json('command_id'))
+            ->assertJsonPath('update_id', $updateId)
+            ->assertJsonPath('update_name', 'mark-approved')
+            ->assertJsonPath('update_status', 'accepted')
+            ->assertJsonPath('workflow_sequence', null)
+            ->assertJsonPath('wait_for', 'status')
+            ->assertJsonPath('wait_timed_out', false)
+            ->assertJsonPath('wait_timeout_seconds', null)
+            ->assertJsonPath('result', null);
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $this->getJson('/waterline/api/flows/' . $workflow->runId() . '/updates/' . $updateId)
+            ->assertStatus(200)
+            ->assertJsonPath('outcome', 'update_completed')
+            ->assertJsonPath('command_source', 'waterline')
+            ->assertJsonPath('update_id', $updateId)
+            ->assertJsonPath('update_name', 'mark-approved')
+            ->assertJsonPath('update_status', 'completed')
+            ->assertJsonPath('workflow_sequence', 1)
+            ->assertJsonPath('wait_for', 'status')
+            ->assertJsonPath('wait_timed_out', false)
+            ->assertJsonPath('result.approved', true)
+            ->assertJsonPath('result.events.0', 'started')
+            ->assertJsonPath('result.events.1', 'approved:yes:waterline-status');
+    }
+
     public function testUpdateCanReturnAcceptedLifecycleWhenCompletionWaitTimesOut(): void
     {
         config()->set('waterline.engine_source', 'v2');
