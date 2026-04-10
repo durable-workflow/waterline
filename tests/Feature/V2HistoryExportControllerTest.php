@@ -9,6 +9,7 @@ use Workflow\V2\Contracts\HistoryExportRedactor;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
+use Workflow\V2\Models\WorkflowLink;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Support\HistoryExport;
@@ -80,6 +81,144 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('payloads.arguments.data.path', 'payloads.arguments.data')
             ->assertJsonPath('integrity.checksum', fn ($value): bool => is_string($value) && preg_match('/^[a-f0-9]{64}$/', $value) === 1)
             ->assertJsonPath('history_events.0.payload.path', 'history_events.0.payload');
+    }
+
+    public function testCanonicalRouteExportsLineageLinksFromTypedHistoryWhenLinkRowsAreMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $parentInstance = WorkflowInstance::create([
+            'id' => 'history-export-waterline-parent',
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.export.parent',
+            'run_count' => 1,
+        ]);
+
+        $parentRun = WorkflowRun::create([
+            'id' => (string) Str::ulid(),
+            'workflow_instance_id' => $parentInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.export.parent',
+            'status' => 'waiting',
+            'payload_codec' => config('workflows.serializer'),
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'last_history_sequence' => 1,
+            'started_at' => now()->subMinutes(5),
+            'last_progress_at' => now()->subMinutes(5),
+        ]);
+        $parentInstance->update(['current_run_id' => $parentRun->id]);
+
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $parentRun->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => ['workflow_type' => 'workflow.export.parent'],
+            'recorded_at' => now()->subMinutes(5),
+        ]);
+
+        $childInstance = WorkflowInstance::create([
+            'id' => 'history-export-waterline-child',
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.export.child',
+            'run_count' => 1,
+        ]);
+
+        $childRun = WorkflowRun::create([
+            'id' => (string) Str::ulid(),
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.export.child',
+            'status' => 'waiting',
+            'payload_codec' => config('workflows.serializer'),
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'last_history_sequence' => 0,
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinutes(4),
+        ]);
+        $childInstance->update(['current_run_id' => $childRun->id]);
+
+        $childCallId = (string) Str::ulid();
+        $link = WorkflowLink::create([
+            'id' => $childCallId,
+            'link_type' => 'child_workflow',
+            'sequence' => 2,
+            'parent_workflow_instance_id' => $parentInstance->id,
+            'parent_workflow_run_id' => $parentRun->id,
+            'child_workflow_instance_id' => $childInstance->id,
+            'child_workflow_run_id' => $childRun->id,
+            'is_primary_parent' => true,
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $parentRun->id,
+            'sequence' => 2,
+            'event_type' => HistoryEventType::ChildRunStarted->value,
+            'payload' => [
+                'sequence' => 2,
+                'workflow_link_id' => $link->id,
+                'child_call_id' => $childCallId,
+                'child_workflow_instance_id' => $childInstance->id,
+                'child_workflow_run_id' => $childRun->id,
+                'child_workflow_class' => $childRun->workflow_class,
+                'child_workflow_type' => $childRun->workflow_type,
+                'child_run_number' => $childRun->run_number,
+                'child_status' => $childRun->status->value,
+            ],
+            'recorded_at' => now()->subMinutes(4),
+        ]);
+        $parentRun->update([
+            'last_history_sequence' => 2,
+            'last_progress_at' => now()->subMinutes(4),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $childRun->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [
+                'workflow_type' => 'workflow.export.child',
+                'workflow_link_id' => $link->id,
+                'parent_workflow_instance_id' => $parentInstance->id,
+                'parent_workflow_run_id' => $parentRun->id,
+                'parent_sequence' => 2,
+                'child_call_id' => $childCallId,
+            ],
+            'recorded_at' => now()->subMinutes(4),
+        ]);
+        $childRun->update(['last_history_sequence' => 1]);
+
+        $link->delete();
+
+        $this->get('/waterline/api/instances/'.$parentInstance->id.'/runs/'.$parentRun->id.'/history-export')
+            ->assertStatus(200)
+            ->assertJsonPath('links.children.0.id', $childCallId)
+            ->assertJsonPath('links.children.0.type', 'child_workflow')
+            ->assertJsonPath('links.children.0.parent_workflow_instance_id', $parentInstance->id)
+            ->assertJsonPath('links.children.0.parent_workflow_run_id', $parentRun->id)
+            ->assertJsonPath('links.children.0.child_workflow_instance_id', $childInstance->id)
+            ->assertJsonPath('links.children.0.child_workflow_run_id', $childRun->id)
+            ->assertJsonPath('links.children.0.child_call_id', $childCallId)
+            ->assertJsonPath('links.children.0.sequence', 2);
+
+        $this->get('/waterline/api/instances/'.$childInstance->id.'/runs/'.$childRun->id.'/history-export')
+            ->assertStatus(200)
+            ->assertJsonPath('links.parents.0.id', $childCallId)
+            ->assertJsonPath('links.parents.0.type', 'child_workflow')
+            ->assertJsonPath('links.parents.0.parent_workflow_instance_id', $parentInstance->id)
+            ->assertJsonPath('links.parents.0.parent_workflow_run_id', $parentRun->id)
+            ->assertJsonPath('links.parents.0.child_workflow_instance_id', $childInstance->id)
+            ->assertJsonPath('links.parents.0.child_workflow_run_id', $childRun->id)
+            ->assertJsonPath('links.parents.0.child_call_id', $childCallId)
+            ->assertJsonPath('links.parents.0.sequence', 2);
     }
 
     /**
