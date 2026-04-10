@@ -25,10 +25,13 @@ use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowLink;
 use Workflow\V2\Models\WorkflowRun;
+use Workflow\V2\Models\WorkflowRunLineageEntry;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Models\WorkflowRunWait;
 use Workflow\V2\Models\WorkflowSignal;
 use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\Models\WorkflowTimer;
+use Workflow\V2\Models\WorkflowTimelineEntry;
 use Workflow\V2\Models\WorkflowUpdate;
 use Workflow\V2\Support\ActivityLease;
 use Workflow\V2\Support\ActivitySnapshot;
@@ -909,6 +912,68 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('workflow_determinism_findings.0.symbol', 'workflow.operator-command')
             ->assertJsonPath('workflow_determinism_findings.0.file', null)
             ->assertJsonPath('workflow_determinism_findings.0.line', null);
+    }
+
+    public function testShowRebuildsTimelineProjectionRowsOnRead(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'waterline-rebuilt-timeline',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTWATERLINETIMELINE01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTWATERLINETIMELINEEV1',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [
+                'workflow_class' => 'WorkflowClass',
+                'workflow_type' => 'workflow.test',
+            ],
+            'recorded_at' => now()->subSeconds(30),
+            'created_at' => now()->subSeconds(30),
+            'updated_at' => now()->subSeconds(30),
+        ]);
+
+        $run->forceFill(['last_history_sequence' => 1])->save();
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        WorkflowTimelineEntry::query()->where('workflow_run_id', $run->id)->delete();
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('timeline_projection_source', 'workflow_run_timeline_entries_rebuilt')
+            ->assertJsonPath('timeline.0.type', HistoryEventType::WorkflowStarted->value)
+            ->assertJsonPath('timeline.0.summary', 'Workflow run started.');
+
+        $this->assertDatabaseHas('workflow_run_timeline_entries', [
+            'workflow_run_id' => $run->id,
+            'history_event_id' => '01JTESTWATERLINETIMELINEEV1',
+            'type' => HistoryEventType::WorkflowStarted->value,
+        ]);
     }
 
     public function testShowExposesTypedFailureHandledTimelineEntries(): void
@@ -3429,6 +3494,68 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.external_only', true);
     }
 
+    public function testShowRebuildsWaitProjectionRowsOnRead(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-detail-rebuilt-waits',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNWAITREBUILD1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYWAITREBUILD01',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => 'SignalWaitOpened',
+            'payload' => [
+                'signal_wait_id' => 'signal-wait-rebuilt',
+                'signal_name' => 'approved-by',
+                'sequence' => 1,
+            ],
+            'recorded_at' => now()->subSeconds(45),
+            'created_at' => now()->subSeconds(45),
+            'updated_at' => now()->subSeconds(45),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        WorkflowRunWait::query()->where('workflow_run_id', $run->id)->delete();
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('waits_projection_source', 'workflow_run_waits_rebuilt')
+            ->assertJsonPath('waits.0.id', 'signal-wait-rebuilt')
+            ->assertJsonPath('waits.0.kind', 'signal')
+            ->assertJsonPath('waits.0.status', 'open');
+
+        $this->assertDatabaseHas('workflow_run_waits', [
+            'workflow_run_id' => $run->id,
+            'wait_id' => 'signal-wait-rebuilt',
+            'kind' => 'signal',
+        ]);
+    }
+
     public function testShowMarksReceivedSignalWithoutWorkflowTaskAsRepairNeeded(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -3673,6 +3800,105 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('parents.0.workflow_run_id', $parentRun->id)
             ->assertJsonPath('parents.0.status', 'waiting')
             ->assertJsonPath('parents.0.status_bucket', 'running');
+    }
+
+    public function testShowRebuildsLineageProjectionRowsOnRead(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $parentInstance = WorkflowInstance::create([
+            'id' => 'order-detail-rebuilt-lineage-parent',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'run_count' => 1,
+        ]);
+
+        $childInstance = WorkflowInstance::create([
+            'id' => 'order-detail-rebuilt-lineage-child',
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'run_count' => 1,
+        ]);
+
+        $parentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNLINREBUILD01',
+            'workflow_instance_id' => $parentInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $childRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNLINREBUILD02',
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $parentInstance->update(['current_run_id' => $parentRun->id]);
+        $childInstance->update(['current_run_id' => $childRun->id]);
+
+        $link = WorkflowLink::create([
+            'id' => '01JTESTFLOWLINKREBUILD001',
+            'link_type' => 'child_workflow',
+            'sequence' => 1,
+            'parent_workflow_instance_id' => $parentInstance->id,
+            'parent_workflow_run_id' => $parentRun->id,
+            'child_workflow_instance_id' => $childInstance->id,
+            'child_workflow_run_id' => $childRun->id,
+            'is_primary_parent' => true,
+            'created_at' => now()->subSeconds(45),
+            'updated_at' => now()->subSeconds(45),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYLINREBUILD01',
+            'workflow_run_id' => $parentRun->id,
+            'sequence' => 1,
+            'event_type' => 'ChildWorkflowScheduled',
+            'payload' => [
+                'workflow_link_id' => $link->id,
+                'child_call_id' => $link->id,
+                'sequence' => 1,
+                'child_workflow_instance_id' => $childInstance->id,
+                'child_workflow_run_id' => $childRun->id,
+                'child_workflow_type' => $childRun->workflow_type,
+                'child_workflow_class' => $childRun->workflow_class,
+                'child_run_number' => $childRun->run_number,
+            ],
+            'recorded_at' => now()->subSeconds(45),
+            'created_at' => now()->subSeconds(45),
+            'updated_at' => now()->subSeconds(45),
+        ]);
+
+        RunSummaryProjector::project($parentRun->fresh());
+
+        WorkflowRunLineageEntry::query()->where('workflow_run_id', $parentRun->id)->delete();
+
+        $this->get('/waterline/api/flows/' . $parentRun->id)
+            ->assertStatus(200)
+            ->assertJsonPath('lineage_projection_source', 'workflow_run_lineage_entries_rebuilt')
+            ->assertJsonPath('continuedWorkflows.0.child_call_id', $link->id)
+            ->assertJsonPath('continuedWorkflows.0.child_workflow_run_id', $childRun->id);
+
+        $this->assertDatabaseHas('workflow_run_lineage_entries', [
+            'workflow_run_id' => $parentRun->id,
+            'lineage_id' => $link->id,
+            'direction' => 'child',
+        ]);
     }
 
     public function testShowIncludesMissingChildResolutionWorkflowTask(): void
