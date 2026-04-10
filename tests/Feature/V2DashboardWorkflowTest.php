@@ -473,7 +473,7 @@ class V2DashboardWorkflowTest extends TestCase
                 'waits.0.history_unsupported_reason',
                 'terminal_activity_row_without_typed_history',
             )
-            ->assertJsonPath('tasks.0.transport_state', 'missing');
+            ->assertJsonCount(0, 'tasks');
     }
 
     public function testShowMarksRowOnlyTerminalTimerFallbackAsUnsupported(): void
@@ -542,7 +542,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('timers.0.row_status', 'fired')
             ->assertJsonPath('timers.0.history_authority', 'unsupported_terminal_without_history')
             ->assertJsonPath('timers.0.history_unsupported_reason', 'terminal_timer_row_without_typed_history')
-            ->assertJsonPath('timers.0.history_event_types', []);
+            ->assertJsonPath('timers.0.history_event_types', [])
+            ->assertJsonCount(0, 'tasks');
     }
 
     public function testShowMarksTerminalChildFallbackWithoutParentHistoryAsUnsupported(): void
@@ -633,10 +634,7 @@ class V2DashboardWorkflowTest extends TestCase
                 'terminal_child_link_without_typed_parent_history',
             )
             ->assertJsonPath('waits.0.child_call_id', $link->id)
-            ->assertJsonPath('tasks.0.transport_state', 'missing')
-            ->assertJsonPath('tasks.0.workflow_wait_kind', 'child')
-            ->assertJsonPath('tasks.0.child_call_id', $link->id)
-            ->assertJsonPath('tasks.0.child_workflow_run_id', $childRun->id);
+            ->assertJsonCount(0, 'tasks');
     }
 
     public function testShowReturnsV2CompatibilityPayload()
