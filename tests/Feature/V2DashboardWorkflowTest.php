@@ -5418,9 +5418,14 @@ class V2DashboardWorkflowTest extends TestCase
             'activity' => ActivitySnapshot::fromExecution($execution),
         ]);
 
+        $recordedStartedAt = $execution->started_at?->toJSON();
+
         $execution->forceFill([
             'status' => 'completed',
             'result' => Serializer::serialize('mutable result'),
+            'current_attempt_id' => '01JATTDRIFTMUTATED000001',
+            'attempt_count' => 42,
+            'started_at' => now()->addDay(),
             'closed_at' => now(),
         ])->save();
 
@@ -5442,6 +5447,11 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.source_status', 'running')
             ->assertJsonPath('timeline.0.type', 'ActivityScheduled')
             ->assertJsonPath('timeline.1.type', 'ActivityStarted')
+            ->assertJsonPath('timeline.1.activity.status', 'running')
+            ->assertJsonPath('timeline.1.activity.attempt_id', '01JATTDRIFT000000000001')
+            ->assertJsonPath('timeline.1.activity.attempt_count', 1)
+            ->assertJsonPath('timeline.1.activity.started_at', $recordedStartedAt)
+            ->assertJsonPath('timeline.1.activity.closed_at', null)
             ->assertJsonPath('tasks', []);
     }
 
