@@ -473,6 +473,75 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.transport_state', 'missing');
     }
 
+    public function testShowMarksRowOnlyTerminalTimerFallbackAsUnsupported(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'waterline-row-only-terminal-timer',
+            'workflow_class' => 'TimerWorkflowClass',
+            'workflow_type' => 'workflow.timer',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNTIMERROW01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'TimerWorkflowClass',
+            'workflow_type' => 'workflow.timer',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([60]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $timer = WorkflowTimer::create([
+            'id' => '01JTESTFLOWTIMERROWONLY01',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'status' => 'fired',
+            'delay_seconds' => 60,
+            'fire_at' => now()->subMinute(),
+            'fired_at' => now()->subSeconds(30),
+            'created_at' => now()->subMinutes(2),
+        ]);
+
+        RunSummaryProjector::project($run->fresh([
+            'instance',
+            'tasks',
+            'activityExecutions',
+            'timers',
+            'failures',
+            'historyEvents',
+            'childLinks.childRun.instance.currentRun',
+            'childLinks.childRun.failures',
+            'childLinks.childRun.historyEvents',
+        ]));
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertOk()
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('waits.0.kind', 'timer')
+            ->assertJsonPath('waits.0.status', 'unsupported')
+            ->assertJsonPath('waits.0.source_status', 'fired')
+            ->assertJsonPath('waits.0.history_authority', 'unsupported_terminal_without_history')
+            ->assertJsonPath('waits.0.history_unsupported_reason', 'terminal_timer_row_without_typed_history')
+            ->assertJsonPath('waits.0.row_status', 'fired')
+            ->assertJsonPath('timers.0.id', $timer->id)
+            ->assertJsonPath('timers.0.status', 'unsupported')
+            ->assertJsonPath('timers.0.source_status', 'fired')
+            ->assertJsonPath('timers.0.row_status', 'fired')
+            ->assertJsonPath('timers.0.history_authority', 'unsupported_terminal_without_history')
+            ->assertJsonPath('timers.0.history_unsupported_reason', 'terminal_timer_row_without_typed_history')
+            ->assertJsonPath('timers.0.history_event_types', []);
+    }
+
     public function testShowMarksTerminalChildFallbackWithoutParentHistoryAsUnsupported(): void
     {
         config()->set('waterline.engine_source', 'v2');
