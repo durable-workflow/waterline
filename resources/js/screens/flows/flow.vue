@@ -518,10 +518,10 @@
                                     {{ parallelGroupLabel(wait) }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.history_authority)">
-                                    history / {{ wait.history_authority }}
+                                    {{ historyAuthorityLabel(wait.history_authority) }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.history_unsupported_reason)">
-                                    unsupported / {{ wait.history_unsupported_reason }}
+                                    {{ historyUnsupportedReasonLabel(wait.history_unsupported_reason) }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id) || hasDetailValue(wait.command_sequence) || hasDetailValue(wait.timeout_seconds)">
                                     <span v-if="hasDetailValue(wait.update_id)">update / {{ wait.update_id }}</span>
@@ -933,10 +933,10 @@
                                     idempotency / {{ activity.idempotency_key }}
                                 </div>
                                 <div v-if="activity.history_authority" class="small text-muted">
-                                    history / {{ activity.history_authority }}
+                                    {{ historyAuthorityLabel(activity.history_authority) }}
                                 </div>
                                 <div v-if="activity.history_unsupported_reason" class="small text-muted">
-                                    unsupported / {{ activity.history_unsupported_reason }}
+                                    {{ historyUnsupportedReasonLabel(activity.history_unsupported_reason) }}
                                 </div>
                                 <div v-if="activity.row_status" class="small text-muted">
                                     row status / {{ activity.row_status }}
@@ -962,8 +962,11 @@
                             <td>{{ timestamp(activity.started_at) }}</td>
                             <td>{{ timestamp(activity.last_heartbeat_at) }}</td>
                             <td>{{ timestamp(activity.closed_at) }}</td>
-                            <td><button title="View Result" class="btn btn-outline-primary ml-auto"
-                                    @click="showResult(activity.result)">View</button></td>
+                            <td>
+                                <button v-if="canViewActivityResult(activity)" title="View Result" class="btn btn-outline-primary ml-auto"
+                                    @click="showResult(activity.result)">View</button>
+                                <span v-else class="text-muted">{{ activityResultUnavailableLabel(activity) }}</span>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -1548,6 +1551,52 @@ export default {
             return this.flow.activities && this.flow.activities.length
                 ? this.flow.activities
                 : (this.flow.logs || [])
+        },
+
+        historyAuthorityLabel(authority) {
+            switch (authority) {
+                case 'typed_history':
+                    return 'History: typed durable history'
+                case 'mutable_open_fallback':
+                    return 'History: older open row diagnostic'
+                case 'unsupported_terminal_without_history':
+                    return 'History: unsupported older terminal row'
+                default:
+                    return 'History: ' + authority
+            }
+        },
+
+        historyUnsupportedReasonLabel(reason) {
+            switch (reason) {
+                case 'terminal_activity_row_without_typed_history':
+                    return 'Reason: terminal activity row has no typed history'
+                case 'terminal_timer_row_without_typed_history':
+                    return 'Reason: terminal timer row has no typed history'
+                case 'terminal_child_link_without_typed_parent_history':
+                    return 'Reason: terminal child link has no typed parent history'
+                default:
+                    return 'Reason: ' + reason
+            }
+        },
+
+        canViewActivityResult(activity) {
+            if (!activity || this.hasDetailValue(activity.history_unsupported_reason)) {
+                return false
+            }
+
+            if (activity.history_authority === 'unsupported_terminal_without_history' || activity.status === 'unsupported') {
+                return false
+            }
+
+            return this.hasDetailValue(activity.result)
+        },
+
+        activityResultUnavailableLabel(activity) {
+            if (activity && this.hasDetailValue(activity.history_unsupported_reason)) {
+                return 'Diagnostic only'
+            }
+
+            return '-'
         },
 
         activityRetryPolicy(activity) {
@@ -2256,7 +2305,7 @@ export default {
             }
 
             if (source === 'live_fallback') {
-                return 'Projection: live fallback'
+                return 'Projection diagnostic: rebuild needed'
             }
 
             return 'Projection: ' + source

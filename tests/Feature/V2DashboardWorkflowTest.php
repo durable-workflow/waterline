@@ -1949,12 +1949,18 @@ class V2DashboardWorkflowTest extends TestCase
         $response
             ->assertOk()
             ->assertJsonPath('status', 'cancelled')
-            ->assertJsonPath('activities.0.status', 'cancelled')
+            ->assertJsonPath('activities.0.status', 'unsupported')
+            ->assertJsonPath('activities.0.row_status', 'cancelled')
+            ->assertJsonPath('activities.0.history_authority', 'unsupported_terminal_without_history')
+            ->assertJsonPath('activities.0.history_unsupported_reason', 'terminal_activity_row_without_typed_history')
             ->assertJsonPath('activities.0.attempts.0.id', $attemptId)
             ->assertJsonPath('activities.0.attempts.0.status', 'cancelled')
             ->assertJsonPath('activities.0.attempts.0.can_continue', false)
             ->assertJsonPath('activities.0.attempts.0.cancel_requested', true)
-            ->assertJsonPath('activities.0.attempts.0.stop_reason', 'attempt_cancelled');
+            ->assertJsonPath('activities.0.attempts.0.stop_reason', 'attempt_cancelled')
+            ->assertJsonPath('waits.0.status', 'unsupported')
+            ->assertJsonPath('waits.0.source_status', 'cancelled')
+            ->assertJsonPath('waits.0.history_unsupported_reason', 'terminal_activity_row_without_typed_history');
     }
 
     public function testShowReturnsBackfilledHeartbeatMetadataForLegacyRunningActivity(): void
