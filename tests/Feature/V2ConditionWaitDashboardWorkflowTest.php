@@ -106,6 +106,45 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
         );
     }
 
+    public function testShowSurfacesReplayBlockWhenPreviouslyUnkeyedConditionWaitGainsCurrentKey(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestAwaitWithTimeoutWorkflow::class, 'waterline-await-unkeyed-replay-blocked');
+        $workflow->start();
+
+        /** @var WorkflowRun $run */
+        $run = WorkflowRun::query()->findOrFail($workflow->runId());
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::ConditionWaitOpened, [
+            'condition_wait_id' => 'condition:1',
+            'sequence' => 1,
+        ]);
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $response = $this->get('/waterline/api/flows/' . $workflow->runId());
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('tasks.0.status', 'failed')
+            ->assertJsonPath('tasks.0.transport_state', 'replay_blocked')
+            ->assertJsonPath('tasks.0.replay_blocked', true)
+            ->assertJsonPath('tasks.0.replay_blocked_reason', 'condition_wait_definition_mismatch')
+            ->assertJsonPath('tasks.0.replay_blocked_condition_wait_id', 'condition:1')
+            ->assertJsonPath('tasks.0.replay_blocked_recorded_condition_key', null)
+            ->assertJsonPath('tasks.0.replay_blocked_current_condition_key', 'approval.ready');
+
+        $this->assertStringContainsString(
+            'recorded condition key [none] does not match the current yielded key [approval.ready]',
+            (string) $response->json('liveness_reason')
+        );
+    }
+
     public function testCanonicalDetailKeepsConditionWaitProjectionWhenTimerRowDrifts(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -341,6 +380,70 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
         }
     }
 
+    public function testDetailShowsMissingWorkflowTaskWhenConditionTimeoutAlreadyFired(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        Carbon::setTestNow(Carbon::parse('2026-04-08 17:00:00'));
+
+        try {
+            $workflow = WorkflowStub::make(TestAwaitWithTimeoutWorkflow::class, 'waterline-await-timeout-fired');
+            $workflow->start();
+
+            $runId = $workflow->runId();
+
+            $this->assertNotNull($runId);
+
+            $this->runReadyWorkflowTask($runId);
+
+            Carbon::setTestNow(now()->addSeconds(5));
+
+            $this->runReadyTimerTask($runId);
+
+            /** @var WorkflowTimer $timer */
+            $timer = WorkflowTimer::query()
+                ->where('workflow_run_id', $runId)
+                ->firstOrFail();
+            /** @var WorkflowTask $resumeTask */
+            $resumeTask = WorkflowTask::query()
+                ->where('workflow_run_id', $runId)
+                ->where('task_type', TaskType::Workflow->value)
+                ->where('status', TaskStatus::Ready->value)
+                ->sole();
+
+            $timerId = $timer->id;
+
+            $timer->delete();
+            $resumeTask->delete();
+
+            RunSummaryProjector::project(WorkflowRun::query()->findOrFail($runId));
+
+            $this->get('/waterline/api/instances/waterline-await-timeout-fired')
+                ->assertOk()
+                ->assertJsonPath('wait_kind', 'condition')
+                ->assertJsonPath('wait_reason', 'Waiting to apply condition approval.ready timeout')
+                ->assertJsonPath('liveness_state', 'repair_needed')
+                ->assertJsonPath('can_repair', true)
+                ->assertJsonPath('waits.0.kind', 'condition')
+                ->assertJsonPath('waits.0.status', 'open')
+                ->assertJsonPath('waits.0.source_status', 'timeout_fired')
+                ->assertJsonPath('waits.0.condition_key', 'approval.ready')
+                ->assertJsonPath('waits.0.timeout_fired_at', now()->toJSON())
+                ->assertJsonPath('tasks.0.type', 'workflow')
+                ->assertJsonPath('tasks.0.status', 'missing')
+                ->assertJsonPath('tasks.0.transport_state', 'missing')
+                ->assertJsonPath('tasks.0.workflow_wait_kind', 'condition')
+                ->assertJsonPath('tasks.0.workflow_resume_source_kind', 'timer')
+                ->assertJsonPath('tasks.0.workflow_resume_source_id', $timerId)
+                ->assertJsonPath('tasks.0.timer_id', $timerId)
+                ->assertJsonPath('tasks.0.condition_key', 'approval.ready');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
     private function runReadyWorkflowTask(string $runId): void
     {
         /** @var WorkflowTask $task */
@@ -352,5 +455,18 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
             ->firstOrFail();
 
         $this->app->call([new RunWorkflowTask($task->id), 'handle']);
+    }
+
+    private function runReadyTimerTask(string $runId): void
+    {
+        /** @var WorkflowTask $task */
+        $task = WorkflowTask::query()
+            ->where('workflow_run_id', $runId)
+            ->where('task_type', TaskType::Timer->value)
+            ->where('status', TaskStatus::Ready->value)
+            ->orderBy('created_at')
+            ->firstOrFail();
+
+        $this->app->call([new RunTimerTask($task->id), 'handle']);
     }
 }
