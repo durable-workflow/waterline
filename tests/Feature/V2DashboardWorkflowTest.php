@@ -295,6 +295,147 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('workflow_determinism_findings.0.line', null);
     }
 
+    public function testShowExposesTypedFailureHandledTimelineEntries(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => '01JTESTFLOWINSTANCEHANDLED01',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNHANDLED000001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'output' => Serializer::serialize('recovered'),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(10),
+            'closed_at' => now()->subMinutes(5),
+            'last_progress_at' => now()->subMinutes(5),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'status_bucket' => 'completed',
+            'closed_reason' => 'completed',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'closed_at' => $run->closed_at,
+            'duration_ms' => 300000,
+            'exception_count' => 1,
+            'created_at' => now()->subMinutes(10),
+            'updated_at' => now()->subMinutes(5),
+        ]);
+
+        ActivityExecution::create([
+            'id' => '01JTESTACTIVITYHANDLED0001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ActivityClass',
+            'activity_type' => 'activity.test',
+            'status' => 'failed',
+            'arguments' => Serializer::serialize([]),
+            'exception' => Serializer::serialize([
+                'class' => \RuntimeException::class,
+                'message' => 'recoverable boom',
+                'code' => 0,
+                'file' => __FILE__,
+                'line' => 42,
+                'trace' => [],
+                'properties' => [],
+            ]),
+            'started_at' => now()->subMinutes(9),
+            'closed_at' => now()->subMinutes(8),
+        ]);
+
+        WorkflowFailure::create([
+            'id' => '01JTESTFAILUREHANDLED00001',
+            'workflow_run_id' => $run->id,
+            'source_kind' => 'activity_execution',
+            'source_id' => '01JTESTACTIVITYHANDLED0001',
+            'propagation_kind' => 'activity',
+            'handled' => false,
+            'exception_class' => \RuntimeException::class,
+            'message' => 'recoverable boom',
+            'file' => __FILE__,
+            'line' => 42,
+            'trace_preview' => '',
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYHANDLEDFAIL01',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::ActivityFailed->value,
+            'payload' => [
+                'activity_execution_id' => '01JTESTACTIVITYHANDLED0001',
+                'activity_class' => 'ActivityClass',
+                'activity_type' => 'activity.test',
+                'sequence' => 1,
+                'failure_id' => '01JTESTFAILUREHANDLED00001',
+                'exception_class' => \RuntimeException::class,
+                'message' => 'recoverable boom',
+                'exception' => [
+                    'class' => \RuntimeException::class,
+                    'message' => 'recoverable boom',
+                    'code' => 0,
+                    'file' => __FILE__,
+                    'line' => 42,
+                    'trace' => [],
+                    'properties' => [],
+                ],
+            ],
+            'recorded_at' => now()->subMinutes(7),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYHANDLEDOK001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 2,
+            'event_type' => HistoryEventType::FailureHandled->value,
+            'payload' => [
+                'failure_id' => '01JTESTFAILUREHANDLED00001',
+                'sequence' => 1,
+                'source_kind' => 'activity_execution',
+                'source_id' => '01JTESTACTIVITYHANDLED0001',
+                'propagation_kind' => 'activity',
+                'exception_class' => \RuntimeException::class,
+                'message' => 'recoverable boom',
+                'handled' => true,
+            ],
+            'recorded_at' => now()->subMinutes(6),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('timeline.1.type', 'FailureHandled')
+            ->assertJsonPath('timeline.1.kind', 'failure')
+            ->assertJsonPath('timeline.1.source_kind', 'workflow_failure')
+            ->assertJsonPath('timeline.1.source_id', '01JTESTFAILUREHANDLED00001')
+            ->assertJsonPath('timeline.1.failure_id', '01JTESTFAILUREHANDLED00001')
+            ->assertJsonPath('timeline.1.summary', 'Handled failure: recoverable boom.')
+            ->assertJsonPath('timeline.1.failure.handled', true);
+    }
+
     public function testShowUsesTypedActivityHistoryWhenActivityRowIsMissing(): void
     {
         config()->set('waterline.engine_source', 'v2');
