@@ -462,10 +462,15 @@
 
         <div class="card mt-4" v-if="ready && waitRows().length">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>
-                    Waits
-                    <span v-if="openWaitCount() > 1" class="small text-muted">({{ openWaitCount() }} open)</span>
-                </h5>
+                <div>
+                    <h5>
+                        Waits
+                        <span v-if="openWaitCount() > 1" class="small text-muted">({{ openWaitCount() }} open)</span>
+                    </h5>
+                    <div class="small text-muted" v-if="hasDetailValue(flow.waits_projection_source)">
+                        {{ projectionSourceLabel(flow.waits_projection_source) }}
+                    </div>
+                </div>
 
                 <a data-toggle="collapse" href="#collapseWaits" role="button">
                     Collapse
@@ -2302,6 +2307,10 @@ export default {
         projectionSourceLabel(source) {
             if (source === 'workflow_run_timeline_entries') {
                 return 'Projection: workflow_run_timeline_entries'
+            }
+
+            if (source === 'workflow_run_waits') {
+                return 'Projection: workflow_run_waits'
             }
 
             if (source === 'live_fallback') {
