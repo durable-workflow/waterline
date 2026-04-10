@@ -236,8 +236,14 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
                 ->assertJsonPath('waits.0.resume_source_kind', 'timer')
                 ->assertJsonPath('waits.0.resume_source_id', $timerId)
                 ->assertJsonPath('waits.0.deadline_at', $deadlineAt)
-                ->assertJsonPath('tasks.0.type', 'workflow')
-                ->assertJsonMissingPath('tasks.1');
+                ->assertJsonPath('tasks.0.type', 'timer')
+                ->assertJsonPath('tasks.0.status', 'missing')
+                ->assertJsonPath('tasks.0.transport_state', 'missing')
+                ->assertJsonPath('tasks.0.task_missing', true)
+                ->assertJsonPath('tasks.0.timer_id', $timerId)
+                ->assertJsonPath('tasks.0.condition_wait_id', $conditionWaitId)
+                ->assertJsonPath('tasks.0.condition_key', 'approval.ready')
+                ->assertJsonPath('tasks.1.type', 'workflow');
 
             $this->post('/waterline/api/instances/waterline-await-timeout-repair/repair')
                 ->assertStatus(200)

@@ -2465,7 +2465,17 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.external_only', true)
             ->assertJsonPath('waits.0.resume_source_kind', 'signal')
             ->assertJsonPath('waits.0.command_sequence', 2)
-            ->assertJsonPath('waits.0.command_outcome', 'signal_received');
+            ->assertJsonPath('waits.0.command_outcome', 'signal_received')
+            ->assertJsonPath('tasks.0.type', 'workflow')
+            ->assertJsonPath('tasks.0.status', 'missing')
+            ->assertJsonPath('tasks.0.transport_state', 'missing')
+            ->assertJsonPath('tasks.0.task_missing', true)
+            ->assertJsonPath('tasks.0.synthetic', true)
+            ->assertJsonPath('tasks.0.workflow_wait_kind', 'signal')
+            ->assertJsonPath('tasks.0.workflow_open_wait_id', 'signal-application:01JTESTCOMMANDSIGNALREPAIR01')
+            ->assertJsonPath('tasks.0.workflow_resume_source_kind', 'workflow_command')
+            ->assertJsonPath('tasks.0.workflow_resume_source_id', '01JTESTCOMMANDSIGNALREPAIR01')
+            ->assertJsonPath('tasks.0.workflow_command_id', '01JTESTCOMMANDSIGNALREPAIR01');
     }
 
     public function testShowIncludesChildWaitAndChildWorkflowLineage(): void
@@ -3328,8 +3338,12 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.task_id', null)
             ->assertJsonPath('waits.0.task_type', null)
             ->assertJsonPath('waits.0.task_status', null)
-            ->assertJsonPath('tasks.0.type', 'workflow')
-            ->assertJsonMissingPath('tasks.1');
+            ->assertJsonPath('tasks.0.type', 'timer')
+            ->assertJsonPath('tasks.0.status', 'missing')
+            ->assertJsonPath('tasks.0.transport_state', 'missing')
+            ->assertJsonPath('tasks.0.task_missing', true)
+            ->assertJsonPath('tasks.0.timer_id', '01JTESTFLOWTIMERREPAIR0001')
+            ->assertJsonPath('tasks.1.type', 'workflow');
     }
 
     public function testShowExposesHistoricalTimerTaskMetadataWhenOpenTimerWaitLostItsBackingTask(): void
@@ -3398,8 +3412,13 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.task_id', $task->id)
             ->assertJsonPath('waits.0.task_type', 'timer')
             ->assertJsonPath('waits.0.task_status', 'completed')
-            ->assertJsonPath('tasks.0.id', $task->id)
-            ->assertJsonPath('tasks.0.status', 'completed');
+            ->assertJsonPath('tasks.0.type', 'timer')
+            ->assertJsonPath('tasks.0.status', 'missing')
+            ->assertJsonPath('tasks.0.transport_state', 'missing')
+            ->assertJsonPath('tasks.0.task_missing', true)
+            ->assertJsonPath('tasks.0.timer_id', $timer->id)
+            ->assertJsonPath('tasks.1.id', $task->id)
+            ->assertJsonPath('tasks.1.status', 'completed');
     }
 
     public function testShowKeepsTimerWaitAndTaskMetadataFromTypedHistoryWhenTimerRowIsMissing(): void
@@ -5587,7 +5606,17 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('resume_source_kind', 'workflow_update')
             ->assertJsonPath('resume_source_id', $updateId)
             ->assertJsonPath('liveness_state', 'repair_needed')
-            ->assertJsonPath('can_repair', true);
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('tasks.0.type', 'workflow')
+            ->assertJsonPath('tasks.0.status', 'missing')
+            ->assertJsonPath('tasks.0.transport_state', 'missing')
+            ->assertJsonPath('tasks.0.task_missing', true)
+            ->assertJsonPath('tasks.0.workflow_wait_kind', 'update')
+            ->assertJsonPath('tasks.0.workflow_open_wait_id', 'update:' . $updateId)
+            ->assertJsonPath('tasks.0.workflow_resume_source_kind', 'workflow_update')
+            ->assertJsonPath('tasks.0.workflow_resume_source_id', $updateId)
+            ->assertJsonPath('tasks.0.workflow_update_id', $updateId)
+            ->assertJsonPath('tasks.0.workflow_command_id', $commandId);
 
         $this->assertIsArray($updateWait);
         $this->assertSame($updateId, $updateWait['update_id']);
@@ -5698,7 +5727,17 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('resume_source_kind', 'workflow_signal')
             ->assertJsonPath('resume_source_id', $signal->id)
             ->assertJsonPath('liveness_state', 'repair_needed')
-            ->assertJsonPath('can_repair', true);
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('tasks.0.type', 'workflow')
+            ->assertJsonPath('tasks.0.status', 'missing')
+            ->assertJsonPath('tasks.0.transport_state', 'missing')
+            ->assertJsonPath('tasks.0.task_missing', true)
+            ->assertJsonPath('tasks.0.workflow_wait_kind', 'signal')
+            ->assertJsonPath('tasks.0.workflow_open_wait_id', 'signal-application:' . $signal->id)
+            ->assertJsonPath('tasks.0.workflow_resume_source_kind', 'workflow_signal')
+            ->assertJsonPath('tasks.0.workflow_resume_source_id', $signal->id)
+            ->assertJsonPath('tasks.0.workflow_signal_id', $signal->id)
+            ->assertJsonPath('tasks.0.workflow_command_id', $commandId);
 
         $repair = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/repair');
 
@@ -6411,7 +6450,18 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('liveness_state', 'repair_needed')
             ->assertJsonPath('can_repair', true)
             ->assertJsonPath('next_task_id', null)
-            ->assertJsonPath('tasks', []);
+            ->assertJsonPath('tasks.0.type', 'activity')
+            ->assertJsonPath('tasks.0.status', 'missing')
+            ->assertJsonPath('tasks.0.transport_state', 'missing')
+            ->assertJsonPath('tasks.0.task_missing', true)
+            ->assertJsonPath('tasks.0.expected_task_id', $originalRetryTaskId)
+            ->assertJsonPath('tasks.0.activity_execution_id', $activity->id)
+            ->assertJsonPath('tasks.0.retry_of_task_id', $retryOfTaskId)
+            ->assertJsonPath('tasks.0.retry_after_attempt_id', $failedAttemptId)
+            ->assertJsonPath('tasks.0.retry_after_attempt', 1)
+            ->assertJsonPath('tasks.0.retry_backoff_seconds', 30)
+            ->assertJsonPath('tasks.0.retry_max_attempts', 3)
+            ->assertJsonPath('tasks.0.retry_policy.max_attempts', 3);
 
         $this->post('/waterline/api/instances/' . $instance->id . '/repair')
             ->assertStatus(200)

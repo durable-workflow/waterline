@@ -573,7 +573,12 @@
                                     Repair after {{ timestamp(task.repair_available_at) }}
                                 </div>
                             </td>
-                            <td>{{ taskTarget(task) }}</td>
+                            <td>
+                                <div>{{ taskTarget(task) }}</div>
+                                <div class="small text-muted" v-if="hasDetailValue(task.expected_task_id)">
+                                    expected task / {{ task.expected_task_id }}
+                                </div>
+                            </td>
                             <td>{{ task.queue || '-' }}</td>
                             <td>
                                 <div>{{ task.compatibility || '-' }}</div>
@@ -2404,6 +2409,7 @@ export default {
                 dispatch_overdue: 'dispatch overdue',
                 dispatch_failed: 'dispatch failed',
                 repair_backoff: 'repair backoff',
+                missing: 'missing',
                 completed: 'completed',
                 cancelled: 'cancelled',
                 failed: 'failed',
