@@ -3132,6 +3132,62 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.is_open', false);
     }
 
+    public function testShowSurfacesProjectedSelectedRunWaitRows(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-detail-projected-waits',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNWAITPROJ001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYWAITPROJ0001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => 'SignalWaitOpened',
+            'payload' => [
+                'signal_wait_id' => 'signal-wait-projected',
+                'signal_name' => 'approved-by',
+                'sequence' => 1,
+            ],
+            'recorded_at' => now()->subSeconds(45),
+            'created_at' => now()->subSeconds(45),
+            'updated_at' => now()->subSeconds(45),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('waits_projection_source', 'workflow_run_waits')
+            ->assertJsonPath('waits.0.id', 'signal-wait-projected')
+            ->assertJsonPath('waits.0.kind', 'signal')
+            ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.target_name', 'approved-by')
+            ->assertJsonPath('waits.0.external_only', true);
+    }
+
     public function testShowMarksReceivedSignalWithoutWorkflowTaskAsRepairNeeded(): void
     {
         config()->set('waterline.engine_source', 'v2');
