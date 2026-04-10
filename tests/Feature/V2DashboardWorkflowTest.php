@@ -2579,15 +2579,180 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('selected_run_id', $currentRun->id)
             ->assertJsonPath('run_id', $currentRun->id)
             ->assertJsonPath('is_current_run', true)
-            ->assertJsonPath('current_run_id', $currentRun->id);
+            ->assertJsonPath('current_run_id', $currentRun->id)
+            ->assertJsonPath('current_run_source', 'run_order_fallback');
 
         $this->get('/waterline/api/instances/' . $instance->id . '/runs/' . $historicalRun->id)
             ->assertStatus(200)
             ->assertJsonPath('id', $historicalRun->id)
             ->assertJsonPath('is_current_run', false)
             ->assertJsonPath('current_run_id', $currentRun->id)
+            ->assertJsonPath('current_run_source', 'run_order_fallback')
             ->assertJsonPath('run_navigation.1.run_id', $currentRun->id)
             ->assertJsonPath('run_navigation.1.is_current_run', true);
+    }
+
+    public function testInstanceDetailPrefersContinueAsNewLineageWhenCurrentRunPointerIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-history-lineage-drift',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 3,
+        ]);
+
+        $historicalRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNLINEAGEDRIFT001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'closed_reason' => 'continued',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(10),
+            'closed_at' => now()->subMinutes(9),
+            'last_progress_at' => now()->subMinutes(9),
+        ]);
+
+        $currentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNLINEAGEDRIFT002',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinutes(2),
+        ]);
+
+        $strayRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNLINEAGEDRIFT003',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 3,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update([
+            'current_run_id' => null,
+            'run_count' => 3,
+        ]);
+
+        WorkflowHistoryEvent::record($historicalRun, HistoryEventType::WorkflowStarted, [
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $historicalRun->id,
+        ]);
+        WorkflowHistoryEvent::record($currentRun, HistoryEventType::WorkflowStarted, [
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $currentRun->id,
+            'continued_from_run_id' => $historicalRun->id,
+        ]);
+        WorkflowHistoryEvent::record($strayRun, HistoryEventType::WorkflowStarted, [
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $strayRun->id,
+        ]);
+
+        WorkflowRunSummary::create([
+            'id' => $historicalRun->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => false,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'completed',
+            'status_bucket' => 'completed',
+            'closed_reason' => 'continued',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $historicalRun->started_at,
+            'closed_at' => $historicalRun->closed_at,
+            'created_at' => now()->subMinutes(10),
+            'updated_at' => now()->subMinutes(9),
+        ]);
+
+        WorkflowRunSummary::create([
+            'id' => $currentRun->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $currentRun->started_at,
+            'wait_kind' => 'signal',
+            'wait_reason' => 'Waiting for signal approved-by',
+            'wait_started_at' => now()->subMinutes(2),
+            'created_at' => now()->subMinutes(4),
+            'updated_at' => now()->subMinutes(2),
+        ]);
+
+        WorkflowRunSummary::create([
+            'id' => $strayRun->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 3,
+            'is_current_run' => false,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $strayRun->started_at,
+            'wait_kind' => 'signal',
+            'wait_reason' => 'Waiting for signal stray',
+            'wait_started_at' => now()->subMinute(),
+            'created_at' => now()->subMinute(),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        $this->get('/waterline/api/instances/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('id', $currentRun->id)
+            ->assertJsonPath('instance_id', $instance->id)
+            ->assertJsonPath('selected_run_id', $currentRun->id)
+            ->assertJsonPath('run_id', $currentRun->id)
+            ->assertJsonPath('is_current_run', true)
+            ->assertJsonPath('current_run_id', $currentRun->id)
+            ->assertJsonPath('current_run_source', 'continue_as_new_lineage')
+            ->assertJsonPath('current_run_status', 'waiting')
+            ->assertJsonPath('current_run_status_bucket', 'running');
+
+        $this->get('/waterline/api/instances/' . $instance->id . '/runs/' . $historicalRun->id)
+            ->assertStatus(200)
+            ->assertJsonPath('id', $historicalRun->id)
+            ->assertJsonPath('is_current_run', false)
+            ->assertJsonPath('current_run_id', $currentRun->id)
+            ->assertJsonPath('current_run_source', 'continue_as_new_lineage')
+            ->assertJsonPath('run_navigation.1.run_id', $currentRun->id)
+            ->assertJsonPath('run_navigation.1.is_current_run', true)
+            ->assertJsonPath('run_navigation.2.run_id', $strayRun->id)
+            ->assertJsonPath('run_navigation.2.is_current_run', false);
     }
 
     public function testShowIncludesTaskDispatchFailureMetadata(): void

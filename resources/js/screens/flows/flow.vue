@@ -263,6 +263,13 @@
                     </div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.current_run_source)">
+                    <div class="col-md-2"><strong>Current Run Source</strong></div>
+                    <div class="col">
+                        {{ currentRunSourceLabel(flow.current_run_source) }}
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="runNavigationRows().length > 1">
                     <div class="col-md-2"><strong>Runs</strong></div>
                     <div class="col">
@@ -2325,6 +2332,18 @@ export default {
             }
 
             return 'Projection: ' + source
+        },
+
+        currentRunSourceLabel(source) {
+            if (source === 'continue_as_new_lineage') {
+                return 'Resolved from typed continue-as-new lineage'
+            }
+
+            if (source === 'run_order_fallback') {
+                return 'Resolved from durable run ordering fallback'
+            }
+
+            return source
         },
 
         historySnapshot(entry) {
