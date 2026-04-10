@@ -8,12 +8,14 @@ use Workflow\Serializers\Serializer;
 use Workflow\V2\Contracts\HistoryExportRedactor;
 use Workflow\V2\Enums\ActivityStatus;
 use Workflow\V2\Enums\HistoryEventType;
+use Workflow\V2\Enums\TimerStatus;
 use Workflow\V2\Models\ActivityExecution;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowLink;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Models\WorkflowTimer;
 use Workflow\V2\Support\HistoryExport;
 
 class V2HistoryExportControllerTest extends TestCase
@@ -90,6 +92,35 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('activities.0.history_event_types', [])
             ->assertJsonPath('activities.0.result', null)
             ->assertJsonPath('activities.0.closed_at', null);
+    }
+
+    public function testHistoryExportMarksRowOnlyTerminalTimersAsUnsupported(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        [$instance, $run] = $this->createCompletedRunWithHistory();
+
+        /** @var WorkflowTimer $timer */
+        $timer = WorkflowTimer::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 2,
+            'status' => TimerStatus::Fired->value,
+            'delay_seconds' => 60,
+            'fire_at' => now()->subMinutes(2),
+            'fired_at' => now()->subMinute(),
+        ]);
+
+        $this->get('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
+            ->assertStatus(200)
+            ->assertJsonPath('timers.0.id', $timer->id)
+            ->assertJsonPath('timers.0.status', 'unsupported')
+            ->assertJsonPath('timers.0.source_status', 'fired')
+            ->assertJsonPath('timers.0.row_status', 'fired')
+            ->assertJsonPath('timers.0.history_authority', 'unsupported_terminal_without_history')
+            ->assertJsonPath('timers.0.history_unsupported_reason', 'terminal_timer_row_without_typed_history')
+            ->assertJsonPath('timers.0.history_event_types', [])
+            ->assertJsonPath('timers.0.fired_at', null);
     }
 
     public function testHistoryExportRoutesApplyConfiguredRedactionPolicy(): void
