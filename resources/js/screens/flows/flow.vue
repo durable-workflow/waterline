@@ -578,6 +578,13 @@
                                 <div class="small text-muted" v-if="hasDetailValue(task.expected_task_id)">
                                     expected task / {{ task.expected_task_id }}
                                 </div>
+                                <div
+                                    v-for="detail in taskChildIdentityRows(task)"
+                                    :key="task.id + '-child-' + detail"
+                                    class="small text-muted"
+                                >
+                                    {{ detail }}
+                                </div>
                             </td>
                             <td>{{ task.queue || '-' }}</td>
                             <td>
@@ -2395,6 +2402,14 @@ export default {
                 return 'timer #' + task.timer_sequence
             }
 
+            if (
+                task.workflow_wait_kind === 'child'
+                || this.hasDetailValue(task.child_call_id)
+                || this.hasDetailValue(task.child_workflow_run_id)
+            ) {
+                return 'child workflow'
+            }
+
             if (this.hasDetailValue(task.workflow_update_id)) {
                 return 'update / ' + task.workflow_update_id
             }
@@ -2447,6 +2462,20 @@ export default {
             }
 
             return '-'
+        },
+
+        taskChildIdentityRows(task) {
+            if (
+                !this.hasDetailValue(task.child_call_id)
+                && !this.hasDetailValue(task.child_workflow_run_id)
+            ) {
+                return []
+            }
+
+            return this.childIdentityRows({
+                run_id: task.child_workflow_run_id || null,
+                child_call_id: task.child_call_id || null,
+            })
         },
 
         currentChildIdentityRows() {

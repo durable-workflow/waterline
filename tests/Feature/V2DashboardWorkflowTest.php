@@ -2609,6 +2609,119 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('parents.0.status_bucket', 'running');
     }
 
+    public function testShowIncludesMissingChildResolutionWorkflowTask(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $parentInstance = WorkflowInstance::create([
+            'id' => 'order-child-resolution-parent',
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'run_count' => 1,
+        ]);
+
+        $childInstance = WorkflowInstance::create([
+            'id' => 'order-child-resolution-child',
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'run_count' => 1,
+        ]);
+
+        $parentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDRES001',
+            'workflow_instance_id' => $parentInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $childRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDRES002',
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'output' => Serializer::serialize(['ok' => true]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(3),
+            'closed_at' => now()->subSeconds(30),
+            'last_progress_at' => now()->subSeconds(30),
+        ]);
+
+        $parentInstance->update(['current_run_id' => $parentRun->id]);
+        $childInstance->update(['current_run_id' => $childRun->id]);
+
+        $link = WorkflowLink::create([
+            'id' => '01JTESTFLOWLINKCHILDRES01',
+            'link_type' => 'child_workflow',
+            'sequence' => 1,
+            'parent_workflow_instance_id' => $parentInstance->id,
+            'parent_workflow_run_id' => $parentRun->id,
+            'child_workflow_instance_id' => $childInstance->id,
+            'child_workflow_run_id' => $childRun->id,
+            'is_primary_parent' => true,
+        ]);
+
+        foreach ([
+            ['01JTESTHISTORYCHILDRES001', 1, 'ChildWorkflowScheduled'],
+            ['01JTESTHISTORYCHILDRES002', 2, 'ChildRunCompleted'],
+        ] as [$id, $eventSequence, $eventType]) {
+            WorkflowHistoryEvent::create([
+                'id' => $id,
+                'workflow_run_id' => $parentRun->id,
+                'sequence' => $eventSequence,
+                'event_type' => $eventType,
+                'payload' => [
+                    'workflow_link_id' => $link->id,
+                    'child_call_id' => $link->id,
+                    'sequence' => 1,
+                    'child_workflow_instance_id' => $childInstance->id,
+                    'child_workflow_run_id' => $childRun->id,
+                    'child_workflow_type' => $childRun->workflow_type,
+                    'child_workflow_class' => $childRun->workflow_class,
+                    'child_status' => $childRun->status->value,
+                    'output' => $eventType === 'ChildRunCompleted' ? $childRun->output : null,
+                ],
+                'recorded_at' => now()->subSeconds(90 - ($eventSequence * 30)),
+            ]);
+        }
+
+        RunSummaryProjector::project($parentRun->fresh());
+
+        $this->get('/waterline/api/flows/' . $parentRun->id)
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'child')
+            ->assertJsonPath('wait_reason', 'Waiting to apply child workflow workflow.child result')
+            ->assertJsonPath('open_wait_id', 'child:' . $link->id)
+            ->assertJsonPath('resume_source_kind', 'child_workflow_run')
+            ->assertJsonPath('resume_source_id', $childRun->id)
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath('liveness_reason', 'Child workflow workflow.child is resolved without an open workflow task.')
+            ->assertJsonPath('waits.0.kind', 'child')
+            ->assertJsonPath('waits.0.status', 'resolved')
+            ->assertJsonPath('waits.0.task_backed', false)
+            ->assertJsonPath('tasks.0.type', 'workflow')
+            ->assertJsonPath('tasks.0.status', 'missing')
+            ->assertJsonPath('tasks.0.transport_state', 'missing')
+            ->assertJsonPath('tasks.0.task_missing', true)
+            ->assertJsonPath('tasks.0.workflow_wait_kind', 'child')
+            ->assertJsonPath('tasks.0.workflow_open_wait_id', 'child:' . $link->id)
+            ->assertJsonPath('tasks.0.workflow_resume_source_kind', 'child_workflow_run')
+            ->assertJsonPath('tasks.0.workflow_resume_source_id', $childRun->id)
+            ->assertJsonPath('tasks.0.child_call_id', $link->id)
+            ->assertJsonPath('tasks.0.child_workflow_run_id', $childRun->id);
+    }
+
     public function testShowKeepsOpenChildWaitWhenChildRowDriftsTerminalBeforeParentResolutionHistory(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -4827,7 +4940,16 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('can_issue_terminal_commands', true)
             ->assertJsonPath('can_repair', true)
             ->assertJsonPath('liveness_state', 'repair_needed')
-            ->assertJsonPath('read_only_reason', null);
+            ->assertJsonPath('read_only_reason', null)
+            ->assertJsonPath('tasks.0.id', 'missing:workflow:' . $run->id)
+            ->assertJsonPath('tasks.0.type', 'workflow')
+            ->assertJsonPath('tasks.0.status', 'missing')
+            ->assertJsonPath('tasks.0.transport_state', 'missing')
+            ->assertJsonPath('tasks.0.task_missing', true)
+            ->assertJsonPath('tasks.0.synthetic', true)
+            ->assertJsonPath('tasks.0.summary', 'Workflow task missing for selected run.')
+            ->assertJsonPath('tasks.0.workflow_wait_kind', null)
+            ->assertJsonPath('tasks.0.workflow_open_wait_id', null);
     }
 
     public function testShowMarksRunningActivityWithoutTaskAsNonRepairable(): void
