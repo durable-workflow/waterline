@@ -10,6 +10,7 @@ use Waterline\Tests\Fixtures\V2\TestAwaitWithTimeoutWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\V2\Enums\TaskStatus;
 use Workflow\V2\Enums\TaskType;
+use Workflow\V2\Jobs\RunTimerTask;
 use Workflow\V2\Jobs\RunWorkflowTask;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowTask;
@@ -22,6 +23,7 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
     public function testShowReturnsConditionWaitPayloadForAwaitWithTimeoutRun(): void
     {
         config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
         Queue::fake();
 
         $workflow = WorkflowStub::make(TestAwaitWithTimeoutWorkflow::class, 'waterline-await-timeout');
@@ -56,6 +58,7 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
     public function testCanonicalDetailKeepsConditionWaitProjectionWhenTimerRowDrifts(): void
     {
         config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
         Queue::fake();
 
         Carbon::setTestNow(Carbon::parse('2026-04-08 14:00:00'));
@@ -98,6 +101,114 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
                 ->assertJsonPath('tasks.0.type', 'timer')
                 ->assertJsonPath('tasks.0.timer_id', $timerId)
                 ->assertJsonPath('tasks.0.condition_wait_id', $response->json('waits.0.condition_wait_id'));
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function testRepairRestoresTimeoutTimerTransportWhenTimerRowAndTaskDrift(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        Carbon::setTestNow(Carbon::parse('2026-04-08 15:30:00'));
+
+        try {
+            $workflow = WorkflowStub::make(TestAwaitWithTimeoutWorkflow::class, 'waterline-await-timeout-repair');
+            $workflow->start();
+
+            $runId = $workflow->runId();
+
+            $this->assertNotNull($runId);
+
+            $this->runReadyWorkflowTask($runId);
+
+            /** @var WorkflowTimer $timer */
+            $timer = WorkflowTimer::query()
+                ->where('workflow_run_id', $runId)
+                ->firstOrFail();
+            /** @var WorkflowTask $timerTask */
+            $timerTask = WorkflowTask::query()
+                ->where('workflow_run_id', $runId)
+                ->where('task_type', TaskType::Timer->value)
+                ->where('status', TaskStatus::Ready->value)
+                ->sole();
+
+            $timerId = $timer->id;
+            $deadlineAt = $timer->fire_at?->toJSON();
+
+            $show = $this->get('/waterline/api/instances/waterline-await-timeout-repair');
+            $conditionWaitId = $show->json('waits.0.condition_wait_id');
+
+            $this->assertIsString($conditionWaitId);
+            $this->assertNotNull($deadlineAt);
+
+            $timerTask->delete();
+            $timer->delete();
+
+            RunSummaryProjector::project(WorkflowRun::query()->findOrFail($runId));
+
+            $this->get('/waterline/api/instances/waterline-await-timeout-repair')
+                ->assertOk()
+                ->assertJsonPath('wait_kind', 'condition')
+                ->assertJsonPath('resume_source_kind', 'timer')
+                ->assertJsonPath('resume_source_id', $timerId)
+                ->assertJsonPath('liveness_state', 'repair_needed')
+                ->assertJsonPath('can_repair', true)
+                ->assertJsonPath('waits.0.kind', 'condition')
+                ->assertJsonPath('waits.0.status', 'open')
+                ->assertJsonPath('waits.0.task_backed', false)
+                ->assertJsonPath('waits.0.condition_wait_id', $conditionWaitId)
+                ->assertJsonPath('waits.0.resume_source_kind', 'timer')
+                ->assertJsonPath('waits.0.resume_source_id', $timerId)
+                ->assertJsonPath('waits.0.deadline_at', $deadlineAt)
+                ->assertJsonPath('tasks.0.type', 'workflow')
+                ->assertJsonMissingPath('tasks.1');
+
+            $this->post('/waterline/api/instances/waterline-await-timeout-repair/repair')
+                ->assertStatus(200)
+                ->assertJsonPath('outcome', 'repair_dispatched')
+                ->assertJsonPath('workflow_id', 'waterline-await-timeout-repair')
+                ->assertJsonPath('run_id', $runId)
+                ->assertJsonPath('target_scope', 'instance')
+                ->assertJsonPath('command_status', 'accepted');
+
+            /** @var WorkflowTimer $restoredTimer */
+            $restoredTimer = WorkflowTimer::query()->findOrFail($timerId);
+            /** @var WorkflowTask $repairedTask */
+            $repairedTask = WorkflowTask::query()
+                ->where('workflow_run_id', $runId)
+                ->where('task_type', TaskType::Timer->value)
+                ->where('status', TaskStatus::Ready->value)
+                ->sole();
+
+            $this->assertSame('pending', $restoredTimer->status->value);
+            $this->assertSame($deadlineAt, $restoredTimer->fire_at?->toJSON());
+            $this->assertSame([
+                'timer_id' => $timerId,
+                'condition_wait_id' => $conditionWaitId,
+            ], $repairedTask->payload);
+            $this->assertSame($deadlineAt, $repairedTask->available_at?->toJSON());
+            $this->assertSame(1, $repairedTask->repair_count);
+
+            Queue::assertPushed(
+                RunTimerTask::class,
+                static fn (RunTimerTask $job): bool => $job->taskId === $repairedTask->id,
+            );
+
+            $this->get('/waterline/api/instances/waterline-await-timeout-repair')
+                ->assertOk()
+                ->assertJsonPath('wait_kind', 'condition')
+                ->assertJsonPath('liveness_state', 'waiting_for_condition')
+                ->assertJsonPath('can_repair', false)
+                ->assertJsonPath('waits.0.kind', 'condition')
+                ->assertJsonPath('waits.0.task_backed', true)
+                ->assertJsonPath('waits.0.condition_wait_id', $conditionWaitId)
+                ->assertJsonPath('tasks.0.id', $repairedTask->id)
+                ->assertJsonPath('tasks.0.type', 'timer')
+                ->assertJsonPath('tasks.0.timer_id', $timerId)
+                ->assertJsonPath('tasks.0.condition_wait_id', $conditionWaitId);
         } finally {
             Carbon::setTestNow();
         }
