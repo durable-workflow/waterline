@@ -181,7 +181,12 @@
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.declared_contract_source)">
                     <div class="col-md-2"><strong>Contract Source</strong></div>
-                    <div class="col">{{ contractSourceLabel(flow.declared_contract_source) }}</div>
+                    <div class="col">
+                        {{ contractSourceLabel(flow.declared_contract_source) }}
+                        <div class="small text-muted" v-if="flow.declared_contract_source === 'live_definition'">
+                            Command targets are coming from the current PHP definition. Run php artisan workflow:v2:backfill-command-contracts before relying on this run after a class move.
+                        </div>
+                    </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.workflow_definition_fingerprint) || hasDetailValue(flow.workflow_definition_current_fingerprint) || flow.workflow_definition_matches_current !== null">
