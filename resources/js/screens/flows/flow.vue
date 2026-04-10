@@ -345,6 +345,9 @@
                 <div class="row mb-2" v-if="lineageEntries().length">
                     <div class="col-md-2"><strong>Lineage</strong></div>
                     <div class="col">
+                        <div class="small text-muted mb-1" v-if="hasDetailValue(flow.lineage_projection_source)">
+                            {{ projectionSourceLabel(flow.lineage_projection_source) }}
+                        </div>
                         <div v-for="entry in lineageEntries()" :key="entry.key">
                             <strong>{{ entry.label }}:</strong>
                             <router-link v-if="entry.instance_id && entry.run_id"
@@ -2311,6 +2314,10 @@ export default {
 
             if (source === 'workflow_run_waits') {
                 return 'Projection: workflow_run_waits'
+            }
+
+            if (source === 'workflow_run_lineage_entries') {
+                return 'Projection: workflow_run_lineage_entries'
             }
 
             if (source === 'live_fallback') {

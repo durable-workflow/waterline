@@ -14,7 +14,9 @@ use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowFailure;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
+use Workflow\V2\Models\WorkflowLink;
 use Workflow\V2\Models\WorkflowRun;
+use Workflow\V2\Models\WorkflowRunLineageEntry;
 use Workflow\V2\Models\WorkflowRunWait;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowTask;
@@ -292,6 +294,53 @@ class V2DashboardStatsControllerTest extends TestCase
             'recorded_at' => now(),
         ]);
 
+        WorkflowLink::create([
+            'id' => '01JTESTFLOWLINKMETRICS0001',
+            'link_type' => 'child_workflow',
+            'parent_workflow_instance_id' => $missingSummaryInstance->id,
+            'parent_workflow_run_id' => $missingSummaryRun->id,
+            'child_workflow_instance_id' => $instance->id,
+            'child_workflow_run_id' => $run->id,
+            'is_primary_parent' => true,
+        ]);
+
+        WorkflowRunLineageEntry::create([
+            'id' => 'metrics-lineage-entry',
+            'workflow_run_id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'direction' => 'parent',
+            'lineage_id' => '01JTESTFLOWLINKMETRICS0001',
+            'position' => 0,
+            'link_type' => 'child_workflow',
+            'is_primary_parent' => true,
+            'related_workflow_instance_id' => $missingSummaryInstance->id,
+            'related_workflow_run_id' => $missingSummaryRun->id,
+            'related_run_number' => $missingSummaryRun->run_number,
+            'status' => 'completed',
+            'status_bucket' => 'completed',
+            'closed_reason' => 'completed',
+            'linked_at' => now()->subMinute(),
+            'payload' => [],
+        ]);
+
+        WorkflowRunLineageEntry::create([
+            'id' => 'metrics-lineage-orphan',
+            'workflow_run_id' => str_pad('01JWLLINEAGEMISSRUN', 26, '0'),
+            'workflow_instance_id' => 'waterline-lineage-orphan-instance',
+            'direction' => 'parent',
+            'lineage_id' => 'lineage-orphan',
+            'position' => 0,
+            'link_type' => 'continue_as_new',
+            'is_primary_parent' => true,
+            'related_workflow_instance_id' => $instance->id,
+            'related_workflow_run_id' => $run->id,
+            'related_run_number' => $run->run_number,
+            'status' => 'pending',
+            'status_bucket' => 'running',
+            'linked_at' => now()->subMinute(),
+            'payload' => [],
+        ]);
+
         WorkflowCommand::record($instance, $run, [
             'command_type' => CommandType::Start->value,
             'target_scope' => 'instance',
@@ -415,6 +464,14 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.missing_history_events', 1)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.orphaned', 1)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.needs_rebuild', 2)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.runs', 3)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.rows', 2)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.projected_runs', 2)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.runs_with_lineage', 2)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.projected_runs_with_lineage', 1)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.missing_runs_with_lineage', 1)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.orphaned', 1)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.needs_rebuild', 2)
             ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'waterline-metrics-test')
             ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
             ->assertJsonPath('operator_metrics.workers.active_workers', 1)

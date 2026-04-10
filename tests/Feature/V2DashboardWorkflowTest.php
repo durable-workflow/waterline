@@ -3481,6 +3481,7 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/flows/' . $parentRun->id)
             ->assertStatus(200)
+            ->assertJsonPath('lineage_projection_source', 'workflow_run_lineage_entries')
             ->assertJsonPath('wait_kind', 'child')
             ->assertJsonPath('wait_reason', 'Waiting for child workflow workflow.child')
             ->assertJsonPath('open_wait_id', 'child:' . $link->id)

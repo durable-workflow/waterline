@@ -149,7 +149,8 @@
             operatorProjectionNeedsRebuild() {
                 return this.operatorProjectionMetric('run_summaries', 'needs_rebuild')
                     + this.operatorProjectionMetric('run_waits', 'needs_rebuild')
-                    + this.operatorProjectionMetric('run_timeline_entries', 'needs_rebuild');
+                    + this.operatorProjectionMetric('run_timeline_entries', 'needs_rebuild')
+                    + this.operatorProjectionMetric('run_lineage_entries', 'needs_rebuild');
             },
 
             operatorBackend() {
@@ -469,6 +470,14 @@
                         {{ operatorProjectionMetricLabel('run_timeline_entries', 'history_events') }} history events,
                         {{ operatorProjectionMetricLabel('run_timeline_entries', 'missing_history_events') }} missing history events,
                         {{ operatorProjectionMetricLabel('run_timeline_entries', 'orphaned') }} orphaned.
+                    </div>
+
+                    <div class="mt-1 text-muted">
+                        Lineage rows:
+                        {{ operatorProjectionMetricLabel('run_lineage_entries', 'rows') }} rows across
+                        {{ operatorProjectionMetricLabel('run_lineage_entries', 'projected_runs') }} projected runs,
+                        {{ operatorProjectionMetricLabel('run_lineage_entries', 'missing_runs_with_lineage') }} lineage runs missing,
+                        {{ operatorProjectionMetricLabel('run_lineage_entries', 'orphaned') }} orphaned.
                     </div>
 
                     <div class="mt-1 text-muted" v-if="operatorProjectionNeedsRebuild()">
