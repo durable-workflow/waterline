@@ -7,14 +7,18 @@ use Waterline\Tests\TestCase;
 use Workflow\V2\Enums\CommandOutcome;
 use Workflow\V2\Enums\CommandStatus;
 use Workflow\V2\Enums\CommandType;
+use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Models\ActivityAttempt;
 use Workflow\V2\Models\ActivityExecution;
 use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowFailure;
+use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
+use Workflow\V2\Models\WorkflowRunWait;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowTask;
+use Workflow\V2\Models\WorkflowTimelineEntry;
 use Workflow\V2\Support\WorkerCompatibilityFleet;
 
 class V2DashboardStatsControllerTest extends TestCase
@@ -252,9 +256,40 @@ class V2DashboardStatsControllerTest extends TestCase
             'status' => 'waiting',
             'status_bucket' => 'running',
             'started_at' => $claimFailedRun->started_at,
+            'open_wait_id' => 'signal:missing',
             'liveness_state' => 'workflow_task_claim_failed',
             'created_at' => now()->subMinutes(9),
             'updated_at' => now(),
+        ]);
+
+        $timelineEvent = WorkflowHistoryEvent::record($run, HistoryEventType::WorkflowStarted, [
+            'workflow_run_id' => $run->id,
+        ]);
+
+        WorkflowRunWait::create([
+            'id' => 'waterline-wait-orphan',
+            'workflow_run_id' => str_pad('01JWLWAITMISSRUN', 26, '0'),
+            'workflow_instance_id' => 'waterline-wait-orphan-instance',
+            'wait_id' => 'signal:orphan',
+            'position' => 0,
+            'kind' => 'signal',
+            'status' => 'open',
+            'source_status' => 'open',
+            'task_backed' => false,
+            'external_only' => true,
+        ]);
+
+        WorkflowTimelineEntry::create([
+            'id' => 'waterline-timeline-orphan',
+            'workflow_run_id' => str_pad('01JWLTIMEMISSRUN', 26, '0'),
+            'workflow_instance_id' => 'waterline-timeline-orphan-instance',
+            'history_event_id' => str_pad('01JWLTIMEMISSEVENT', 26, '0'),
+            'sequence' => $timelineEvent->sequence,
+            'type' => 'WorkflowStarted',
+            'kind' => 'workflow',
+            'entry_kind' => 'point',
+            'summary' => 'Orphaned timeline row.',
+            'recorded_at' => now(),
         ]);
 
         WorkflowCommand::record($instance, $run, [
@@ -368,6 +403,18 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.projections.run_summaries.orphaned', 0)
             ->assertJsonPath('operator_metrics.projections.run_summaries.stale', 0)
             ->assertJsonPath('operator_metrics.projections.run_summaries.needs_rebuild', 1)
+            ->assertJsonPath('operator_metrics.projections.run_waits.runs', 3)
+            ->assertJsonPath('operator_metrics.projections.run_waits.rows', 1)
+            ->assertJsonPath('operator_metrics.projections.run_waits.summaries_with_open_waits', 1)
+            ->assertJsonPath('operator_metrics.projections.run_waits.missing_current_open_waits', 1)
+            ->assertJsonPath('operator_metrics.projections.run_waits.orphaned', 1)
+            ->assertJsonPath('operator_metrics.projections.run_waits.needs_rebuild', 2)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.runs', 3)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.history_events', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.rows', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.missing_history_events', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.orphaned', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.needs_rebuild', 2)
             ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'waterline-metrics-test')
             ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
             ->assertJsonPath('operator_metrics.workers.active_workers', 1)

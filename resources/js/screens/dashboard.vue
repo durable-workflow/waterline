@@ -129,16 +129,27 @@
                 return this.operatorUpdateWaitMetric(key).toLocaleString();
             },
 
-            operatorProjectionMetric(key) {
+            operatorProjectionMetric(group, key = null) {
+                if (key === null) {
+                    key = group
+                    group = 'run_summaries'
+                }
+
                 const metrics = this.stats.operator_metrics || {};
                 const projections = metrics.projections || {};
-                const runSummaries = projections.run_summaries || {};
+                const projection = projections[group] || {};
 
-                return runSummaries[key] || 0;
+                return projection[key] || 0;
             },
 
-            operatorProjectionMetricLabel(key) {
-                return this.operatorProjectionMetric(key).toLocaleString();
+            operatorProjectionMetricLabel(group, key = null) {
+                return this.operatorProjectionMetric(group, key).toLocaleString();
+            },
+
+            operatorProjectionNeedsRebuild() {
+                return this.operatorProjectionMetric('run_summaries', 'needs_rebuild')
+                    + this.operatorProjectionMetric('run_waits', 'needs_rebuild')
+                    + this.operatorProjectionMetric('run_timeline_entries', 'needs_rebuild');
             },
 
             operatorBackend() {
@@ -433,9 +444,10 @@
                 </div>
 
                 <div class="border-top p-4">
-                    <small class="text-uppercase">Run Summary Projection</small>
+                    <small class="text-uppercase">Projection Health</small>
 
                     <div class="mt-2 text-muted">
+                        Run summaries:
                         {{ operatorProjectionMetricLabel('summaries') }} summaries for
                         {{ operatorProjectionMetricLabel('runs') }} runs,
                         {{ operatorProjectionMetricLabel('missing') }} missing,
@@ -443,9 +455,25 @@
                         {{ operatorProjectionMetricLabel('stale') }} stale.
                     </div>
 
-                    <div class="mt-1 text-muted" v-if="operatorProjectionMetric('needs_rebuild')">
+                    <div class="mt-1 text-muted">
+                        Wait rows:
+                        {{ operatorProjectionMetricLabel('run_waits', 'rows') }} rows across
+                        {{ operatorProjectionMetricLabel('run_waits', 'projected_runs') }} runs,
+                        {{ operatorProjectionMetricLabel('run_waits', 'missing_current_open_waits') }} missing current open waits,
+                        {{ operatorProjectionMetricLabel('run_waits', 'orphaned') }} orphaned.
+                    </div>
+
+                    <div class="mt-1 text-muted">
+                        Timeline rows:
+                        {{ operatorProjectionMetricLabel('run_timeline_entries', 'rows') }} rows for
+                        {{ operatorProjectionMetricLabel('run_timeline_entries', 'history_events') }} history events,
+                        {{ operatorProjectionMetricLabel('run_timeline_entries', 'missing_history_events') }} missing history events,
+                        {{ operatorProjectionMetricLabel('run_timeline_entries', 'orphaned') }} orphaned.
+                    </div>
+
+                    <div class="mt-1 text-muted" v-if="operatorProjectionNeedsRebuild()">
                         Run <code>php artisan workflow:v2:rebuild-projections --needs-rebuild --prune-stale</code>
-                        to refresh the run-summary bridge.
+                        to refresh the Waterline projection bridge.
                     </div>
                 </div>
 
