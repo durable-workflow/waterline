@@ -434,6 +434,17 @@
                         throttle worker sweeps for {{ operatorPolicyMetricLabel('loop_throttle_seconds') }}s,
                         scan {{ operatorPolicyMetricLabel('scan_limit') }} rows per pass.
                     </div>
+
+                    <div class="mt-2 text-muted" v-if="stats.operator_metrics.repair">
+                        {{ operatorMetricLabel('repair', 'existing_task_candidates') }} existing task candidates,
+                        {{ operatorMetricLabel('repair', 'missing_task_candidates') }} missing-task runs,
+                        oldest task candidate {{ operatorDurationMetricLabel('repair', 'max_task_candidate_age_ms') }},
+                        oldest missing run {{ operatorDurationMetricLabel('repair', 'max_missing_run_age_ms') }}.
+                    </div>
+
+                    <div class="mt-1 text-muted" v-if="stats.operator_metrics.repair && stats.operator_metrics.repair.scan_pressure">
+                        Repair scan limit reached on this snapshot. Increase scan limit or add workers before backlog age keeps growing.
+                    </div>
                 </div>
 
                 <div class="border-top p-4">
