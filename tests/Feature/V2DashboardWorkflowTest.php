@@ -133,9 +133,11 @@ class V2DashboardWorkflowTest extends TestCase
                 'activity_type' => 'activity.test',
                 'sequence' => 1,
                 'failure_id' => '01JTESTFAILURE000000000001',
+                'exception_type' => 'runtime.failure',
                 'exception_class' => \RuntimeException::class,
                 'message' => 'boom',
                 'exception' => [
+                    'type' => 'runtime.failure',
                     'class' => \RuntimeException::class,
                     'message' => 'boom',
                     'code' => 422,
@@ -204,6 +206,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('activities.0.retry_policy.backoff_seconds.1', 5)
             ->assertJsonPath('logs.0.class', 'ActivityClass')
             ->assertJsonPath('exceptions.0.class', 'ActivityClass')
+            ->assertJsonPath('exceptions.0.exception_type', 'runtime.failure')
             ->assertJsonPath('exceptions.0.code', 'trace')
             ->assertJsonPath('commands', [])
             ->assertJsonPath('timeline.0.type', 'ActivityFailed')
@@ -211,12 +214,15 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('timeline.0.source_kind', 'activity_execution')
             ->assertJsonPath('timeline.0.source_id', '01JTESTACTIVITY00000000000')
             ->assertJsonPath('timeline.0.failure_id', '01JTESTFAILURE000000000001')
+            ->assertJsonPath('timeline.0.exception_type', 'runtime.failure')
+            ->assertJsonPath('timeline.0.failure.exception_type', 'runtime.failure')
             ->assertJsonPath('timeline.0.activity_status', 'failed')
             ->assertJsonPath('timeline.0.failure.handled', false)
             ->assertJsonPath('chartData.0.type', 'Workflow')
             ->assertJsonPath('chartData.1.type', 'Activity');
 
         $this->assertSame(\RuntimeException::class, $exception['__constructor']);
+        $this->assertSame('runtime.failure', $exception['type']);
         $this->assertSame('boom', $exception['message']);
         $this->assertSame(422, $exception['code']);
         $this->assertCount(1, $exception['trace']);
@@ -626,9 +632,11 @@ class V2DashboardWorkflowTest extends TestCase
                 'activity_type' => 'activity.test',
                 'sequence' => 1,
                 'failure_id' => '01JTESTFAILUREHISTORYONLY01',
+                'exception_type' => 'runtime.failure',
                 'exception_class' => \RuntimeException::class,
                 'message' => 'history-only boom',
                 'exception' => [
+                    'type' => 'runtime.failure',
                     'class' => \RuntimeException::class,
                     'message' => 'history-only boom',
                     'code' => 422,
@@ -676,14 +684,17 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('exceptions_count', 1)
             ->assertJsonPath('exceptions.0.id', '01JTESTFAILUREHISTORYONLY01')
             ->assertJsonPath('exceptions.0.class', 'ActivityClass')
+            ->assertJsonPath('exceptions.0.exception_type', 'runtime.failure')
             ->assertJsonPath('timeline.0.type', 'ActivityFailed')
             ->assertJsonPath('timeline.0.failure_id', '01JTESTFAILUREHISTORYONLY01')
+            ->assertJsonPath('timeline.0.failure.exception_type', 'runtime.failure')
             ->assertJsonPath('timeline.0.failure.exception_class', \RuntimeException::class)
             ->assertJsonPath('timeline.0.failure.message', 'history-only boom')
             ->assertJsonPath('timeline.0.failure.file', __FILE__)
             ->assertJsonPath('timeline.0.failure.line', 77);
 
         $this->assertSame(\RuntimeException::class, $exception['__constructor']);
+        $this->assertSame('runtime.failure', $exception['type']);
         $this->assertSame('history-only boom', $exception['message']);
         $this->assertSame(422, $exception['code']);
         $this->assertSame(

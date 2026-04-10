@@ -909,6 +909,7 @@
                     <thead>
                         <tr>
                             <th scope="col">Activity</th>
+                            <th scope="col">Type</th>
                             <th scope="col">Trace</th>
                             <th scope="col">Logged At</th>
                         </tr>
@@ -917,6 +918,7 @@
                         <template v-for="exception in flow.exceptions">
                             <tr>
                                 <td>{{ exception.class }}</td>
+                                <td>{{ exception.exception_type || '-' }}</td>
                                 <td v-if="exception.code"><button title="View Exception" class="btn btn-outline-primary ml-auto"
                                         data-toggle="collapse" :href="'#collapse' + exception.id" aria-expanded="false"
                                         :aria-controls="'collapse' + exception.id">View</button></td>
@@ -924,10 +926,13 @@
                                 <td>{{ timestamp(exception.created_at) }}</td>
                             </tr>
                             <tr :id="'collapse' + exception.id" class="collapse">
-                                <td colspan="3">
+                                <td colspan="4">
                                     <div class="code-bg text-white">
                                         <div v-for="exception in [unserialize(exception.exception)]">
                                             <b>{{ exception.__constructor }}("{{ exception.message }}")</b>
+                                            <span v-if="exception.type">
+                                                [type {{ exception.type }}]
+                                            </span>
                                             <span v-if="exception.code !== undefined && exception.code !== null">
                                                 [code {{ exception.code }}]
                                             </span><br />
@@ -2214,6 +2219,10 @@ export default {
                         .filter(Boolean)
                         .join(' / ')
                 )
+
+                if (this.hasDetailValue(entry.failure.exception_type)) {
+                    details.push('exception type / ' + entry.failure.exception_type)
+                }
             }
 
             return details.join(' | ')
