@@ -6,7 +6,9 @@ use Illuminate\Support\Str;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Contracts\HistoryExportRedactor;
+use Workflow\V2\Enums\ActivityStatus;
 use Workflow\V2\Enums\HistoryEventType;
+use Workflow\V2\Models\ActivityExecution;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowLink;
@@ -52,6 +54,42 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('workflow.run_id', $run->id)
             ->assertJsonPath('history_events.0.type', 'WorkflowStarted')
             ->assertJsonPath('history_events.1.type', 'WorkflowCompleted');
+    }
+
+    public function testHistoryExportMarksRowOnlyTerminalActivityResultsAsUnsupported(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        [$instance, $run] = $this->createCompletedRunWithHistory();
+
+        /** @var ActivityExecution $activity */
+        $activity = ActivityExecution::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 2,
+            'activity_class' => 'App\\Activities\\WaterlineRowOnlyActivity',
+            'activity_type' => 'waterline.row-only.activity',
+            'status' => ActivityStatus::Failed->value,
+            'arguments' => Serializer::serialize(['order-123']),
+            'result' => Serializer::serialize('mutable failure result'),
+            'connection' => 'redis',
+            'queue' => 'activities',
+            'attempt_count' => 1,
+            'started_at' => now()->subMinutes(2),
+            'closed_at' => now()->subMinute(),
+        ]);
+
+        $this->get('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
+            ->assertStatus(200)
+            ->assertJsonPath('activities.0.id', $activity->id)
+            ->assertJsonPath('activities.0.status', 'unsupported')
+            ->assertJsonPath('activities.0.source_status', 'failed')
+            ->assertJsonPath('activities.0.row_status', 'failed')
+            ->assertJsonPath('activities.0.history_authority', 'unsupported_terminal_without_history')
+            ->assertJsonPath('activities.0.history_unsupported_reason', 'terminal_activity_row_without_typed_history')
+            ->assertJsonPath('activities.0.history_event_types', [])
+            ->assertJsonPath('activities.0.result', null)
+            ->assertJsonPath('activities.0.closed_at', null);
     }
 
     public function testHistoryExportRoutesApplyConfiguredRedactionPolicy(): void
