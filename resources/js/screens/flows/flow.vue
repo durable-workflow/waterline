@@ -2348,6 +2348,14 @@ export default {
                 return 'timer #' + task.timer_sequence
             }
 
+            if (this.hasDetailValue(task.workflow_update_id)) {
+                return 'update / ' + task.workflow_update_id
+            }
+
+            if (this.hasDetailValue(task.workflow_wait_kind)) {
+                return String(task.workflow_wait_kind).replace(/_/g, ' ')
+            }
+
             return 'selected run'
         },
 
