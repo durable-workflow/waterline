@@ -1023,6 +1023,86 @@ class V2DashboardWorkflowTest extends TestCase
         );
     }
 
+    public function testShowKeepsMultipleReplayBlockedFailuresOrdered(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => (string) Str::ulid(),
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+        $run = WorkflowRun::create([
+            'id' => (string) Str::ulid(),
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'failed',
+            'closed_reason' => 'failed',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(10),
+            'closed_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinutes(2),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $earlierFailureId = (string) Str::ulid();
+        $laterFailureId = (string) Str::ulid();
+
+        WorkflowFailure::create([
+            'id' => $earlierFailureId,
+            'workflow_run_id' => $run->id,
+            'source_kind' => 'activity_execution',
+            'source_id' => 'activity-earlier',
+            'propagation_kind' => 'activity',
+            'handled' => false,
+            'exception_class' => 'App\\Legacy\\EarlierFailure',
+            'message' => 'earlier replay-blocked failure',
+            'file' => __FILE__,
+            'line' => 42,
+            'trace_preview' => 'earlier trace',
+            'created_at' => now()->subMinutes(8),
+            'updated_at' => now()->subMinutes(8),
+        ]);
+        WorkflowFailure::create([
+            'id' => $laterFailureId,
+            'workflow_run_id' => $run->id,
+            'source_kind' => 'activity_execution',
+            'source_id' => 'activity-later',
+            'propagation_kind' => 'activity',
+            'handled' => false,
+            'exception_class' => TestAbstractWaterlineException::class,
+            'message' => 'later replay-blocked failure',
+            'file' => __FILE__,
+            'line' => 84,
+            'trace_preview' => 'later trace',
+            'created_at' => now()->subMinutes(6),
+            'updated_at' => now()->subMinutes(6),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $response = $this->get('/waterline/api/flows/' . $run->id);
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('exception_count', 2)
+            ->assertJsonPath('exceptions_count', 2)
+            ->assertJsonPath('exceptions.0.id', $earlierFailureId)
+            ->assertJsonPath('exceptions.0.exception_resolution_source', 'unresolved')
+            ->assertJsonPath('exceptions.0.exception_replay_blocked', true)
+            ->assertJsonPath('exceptions.1.id', $laterFailureId)
+            ->assertJsonPath('exceptions.1.exception_resolution_source', 'unrestorable')
+            ->assertJsonPath('exceptions.1.exception_replay_blocked', true);
+    }
+
     public function testShowReturnsLiveHeartbeatMetadataForRunningActivity(): void
     {
         config()->set('waterline.engine_source', 'v2');
