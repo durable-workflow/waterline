@@ -43,6 +43,121 @@ use Workflow\V2\WorkflowStub;
 
 class V2DashboardWorkflowTest extends TestCase
 {
+    public function testShowUsesBackfilledCommandLifecycleRowsForLegacySignalAndUpdateData(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'waterline-command-lifecycle-backfill',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.command-lifecycle',
+            'run_count' => 1,
+            'reserved_at' => now()->subMinute(),
+            'started_at' => now()->subMinute(),
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTWATERLINECMDLIFE01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.command-lifecycle',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(10),
+        ]);
+
+        $instance->update([
+            'current_run_id' => $run->id,
+        ]);
+
+        $signalCommand = WorkflowCommand::record($instance, $run, [
+            'command_type' => 'signal',
+            'target_scope' => 'instance',
+            'status' => 'accepted',
+            'outcome' => 'signal_received',
+            'payload_codec' => config('workflows.serializer'),
+            'payload' => Serializer::serialize([
+                'name' => 'approved-by',
+                'arguments' => ['Taylor'],
+            ]),
+            'accepted_at' => now()->subSeconds(20),
+        ]);
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::SignalReceived, [
+            'workflow_command_id' => $signalCommand->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'signal_name' => 'approved-by',
+            'signal_wait_id' => 'legacy-signal-wait',
+        ], null, $signalCommand);
+
+        $updateCommand = WorkflowCommand::record($instance, $run, [
+            'command_type' => 'update',
+            'target_scope' => 'instance',
+            'status' => 'accepted',
+            'outcome' => 'update_completed',
+            'payload_codec' => config('workflows.serializer'),
+            'payload' => Serializer::serialize([
+                'name' => 'mark-approved',
+                'arguments' => [true, 'api'],
+            ]),
+            'accepted_at' => now()->subSeconds(15),
+            'applied_at' => now()->subSeconds(10),
+        ]);
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::UpdateAccepted, [
+            'workflow_command_id' => $updateCommand->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'update_name' => 'mark-approved',
+            'arguments' => Serializer::serialize([true, 'api']),
+        ], null, $updateCommand);
+        WorkflowHistoryEvent::record($run, HistoryEventType::UpdateCompleted, [
+            'workflow_command_id' => $updateCommand->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'update_name' => 'mark-approved',
+            'sequence' => 1,
+            'result' => Serializer::serialize([
+                'approved' => true,
+                'source' => 'api',
+            ]),
+        ], null, $updateCommand);
+
+        $this->artisan('workflow:v2:backfill-command-lifecycles', [
+            '--instance-id' => $instance->id,
+        ])->assertSuccessful();
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $signalId = WorkflowSignal::query()
+            ->where('workflow_command_id', $signalCommand->id)
+            ->value('id');
+        $updateId = WorkflowUpdate::query()
+            ->where('workflow_command_id', $updateCommand->id)
+            ->value('id');
+
+        $this->assertIsString($signalId);
+        $this->assertIsString($updateId);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertOk()
+            ->assertJsonPath('signals.0.id', $signalId)
+            ->assertJsonPath('signals.0.signal_wait_id', 'legacy-signal-wait')
+            ->assertJsonPath('signals.0.status', 'received')
+            ->assertJsonPath('commands.0.signal_id', $signalId)
+            ->assertJsonPath('updates.0.id', $updateId)
+            ->assertJsonPath('updates.0.status', 'completed')
+            ->assertJsonPath('commands.1.update_id', $updateId)
+            ->assertJsonPath('commands.1.update_status', 'completed');
+    }
+
     public function testV2OperatorPayloadsUseWorkflowObservabilityRepositoryContract(): void
     {
         config()->set('waterline.engine_source', 'v2');
