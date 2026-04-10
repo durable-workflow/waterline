@@ -6127,6 +6127,117 @@ class V2DashboardWorkflowTest extends TestCase
         ]);
     }
 
+    public function testAcceptedUpdateWaitDoesNotBorrowUnrelatedWorkflowTaskInDetailPayload(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'waterline-update-unrelated-task',
+            'workflow_class' => TestOperatorCommandWorkflow::class,
+            'workflow_type' => 'waterline.operator-command',
+            'run_count' => 1,
+            'reserved_at' => now()->subMinute(),
+            'started_at' => now()->subMinute(),
+        ]);
+
+        $run = WorkflowRun::create([
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => TestOperatorCommandWorkflow::class,
+            'workflow_type' => 'waterline.operator-command',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(30),
+        ]);
+
+        $instance->update([
+            'current_run_id' => $run->id,
+        ]);
+
+        $command = WorkflowCommand::record($instance, $run, [
+            'command_type' => 'update',
+            'target_scope' => 'instance',
+            'status' => 'accepted',
+            'payload_codec' => config('workflows.serializer'),
+            'payload' => Serializer::serialize([
+                'name' => 'mark-approved',
+                'arguments' => [true, 'waterline'],
+                'validation_errors' => [],
+            ]),
+            'accepted_at' => now()->subSeconds(20),
+        ]);
+
+        $update = WorkflowUpdate::create([
+            'workflow_command_id' => $command->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'target_scope' => 'instance',
+            'resolved_workflow_run_id' => $run->id,
+            'update_name' => 'mark-approved',
+            'status' => 'accepted',
+            'command_sequence' => $command->command_sequence,
+            'payload_codec' => config('workflows.serializer'),
+            'arguments' => Serializer::serialize([true, 'waterline']),
+            'accepted_at' => $command->accepted_at,
+        ]);
+
+        $unrelatedTask = WorkflowTask::create([
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'ready',
+            'available_at' => now()->subSeconds(10),
+            'payload' => [
+                'workflow_wait_kind' => 'signal',
+                'open_wait_id' => 'signal-application:waterline-signal',
+                'resume_source_kind' => 'workflow_signal',
+                'resume_source_id' => 'waterline-signal',
+                'workflow_signal_id' => 'waterline-signal',
+                'workflow_command_id' => 'waterline-signal-command',
+            ],
+            'connection' => 'redis',
+            'queue' => 'default',
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $response = $this->getJson('/waterline/api/flows/' . $run->id);
+        $updateWait = collect($response->json('waits') ?? [])
+            ->first(static fn (array $wait): bool => ($wait['kind'] ?? null) === 'update');
+        $missingUpdateTask = collect($response->json('tasks') ?? [])
+            ->first(static fn (array $task): bool => ($task['task_missing'] ?? false) === true
+                && ($task['workflow_wait_kind'] ?? null) === 'update');
+        $openSignalTask = collect($response->json('tasks') ?? [])
+            ->first(static fn (array $task): bool => ($task['id'] ?? null) === $unrelatedTask->id);
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'update')
+            ->assertJsonPath('wait_reason', 'Waiting for update mark-approved')
+            ->assertJsonPath('open_wait_id', 'update:' . $update->id)
+            ->assertJsonPath('resume_source_kind', 'workflow_update')
+            ->assertJsonPath('resume_source_id', $update->id)
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath('liveness_reason', 'Accepted update mark-approved is open without an open workflow task.')
+            ->assertJsonPath('next_task_id', null)
+            ->assertJsonPath('can_repair', true);
+
+        $this->assertIsArray($updateWait);
+        $this->assertFalse($updateWait['task_backed']);
+        $this->assertNull($updateWait['task_id']);
+        $this->assertIsArray($openSignalTask);
+        $this->assertSame('signal', $openSignalTask['workflow_wait_kind']);
+        $this->assertIsArray($missingUpdateTask);
+        $this->assertSame('missing', $missingUpdateTask['transport_state']);
+        $this->assertSame('update:' . $update->id, $missingUpdateTask['workflow_open_wait_id']);
+        $this->assertSame($update->id, $missingUpdateTask['workflow_update_id']);
+        $this->assertSame($command->id, $missingUpdateTask['workflow_command_id']);
+    }
+
     public function testRepairRestoresAcceptedSignalWorkflowTaskWithSignalTargetDetail(): void
     {
         config()->set('waterline.engine_source', 'v2');
