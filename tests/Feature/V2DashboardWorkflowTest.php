@@ -9,6 +9,7 @@ use Waterline\Tests\Fixtures\V2\TestAbstractWaterlineException;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
 use Waterline\Tests\Fixtures\V2\TestLinearizedOperatorWorkflow;
 use Waterline\Tests\Fixtures\V2\TestOperatorCommandWorkflow;
+use Waterline\Tests\Fixtures\V2\TestNestedParallelActivityWorkflow;
 use Waterline\Tests\Fixtures\V2\TestParallelActivityWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
@@ -75,6 +76,61 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->assertStringContainsString(
             'history recorded [TimerScheduled]',
+            (string) $response->json('liveness_reason')
+        );
+    }
+
+    public function testShowSurfacesReplayBlockWhenParallelBarrierTopologyDrifts(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(
+            TestNestedParallelActivityWorkflow::class,
+            'waterline-parallel-topology-replay-blocked',
+        );
+        $workflow->start('Taylor', 'Abigail', 'Selena');
+        $runId = $workflow->runId();
+
+        $this->assertNotNull($runId);
+
+        $this->runReadyWorkflowTask($runId);
+        $this->replaceActivityScheduledParallelPath($runId, 2, [[
+            'parallel_group_id' => 'parallel-activities:1:3',
+            'parallel_group_kind' => 'activity',
+            'parallel_group_base_sequence' => 1,
+            'parallel_group_size' => 3,
+            'parallel_group_index' => 1,
+        ]]);
+
+        $this->runReadyActivityTaskForSequence($runId, 1);
+        $this->runReadyActivityTaskForSequence($runId, 2);
+        $this->runReadyActivityTaskForSequence($runId, 3);
+        $this->runReadyWorkflowTask($runId);
+
+        $response = $this->get('/waterline/api/flows/' . $runId);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('tasks.0.status', 'failed')
+            ->assertJsonPath('tasks.0.transport_state', 'replay_blocked')
+            ->assertJsonPath('tasks.0.replay_blocked', true)
+            ->assertJsonPath('tasks.0.replay_blocked_reason', 'history_shape_mismatch')
+            ->assertJsonPath('tasks.0.replay_blocked_workflow_sequence', 2)
+            ->assertJsonPath(
+                'tasks.0.replay_blocked_expected_history_shape',
+                'parallel all barrier matching current topology',
+            )
+            ->assertJsonPath(
+                'tasks.0.replay_blocked_recorded_event_types',
+                ['ActivityScheduled', 'ActivityStarted', 'ActivityCompleted'],
+            );
+
+        $this->assertStringContainsString(
+            'parallel all barrier matching current topology',
             (string) $response->json('liveness_reason')
         );
     }
@@ -7688,6 +7744,51 @@ class V2DashboardWorkflowTest extends TestCase
             ->firstOrFail();
 
         $this->app->call([new RunWorkflowTask($task->id), 'handle']);
+    }
+
+    private function runReadyActivityTaskForSequence(string $runId, int $sequence): void
+    {
+        /** @var ActivityExecution $execution */
+        $execution = ActivityExecution::query()
+            ->where('workflow_run_id', $runId)
+            ->where('sequence', $sequence)
+            ->firstOrFail();
+
+        /** @var WorkflowTask $task */
+        $task = WorkflowTask::query()
+            ->where('workflow_run_id', $runId)
+            ->where('task_type', 'activity')
+            ->where('status', 'ready')
+            ->get()
+            ->sole(
+                static fn (WorkflowTask $task): bool => ($task->payload['activity_execution_id'] ?? null) === $execution->id
+            );
+
+        $this->app->call([new RunActivityTask($task->id), 'handle']);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $path
+     */
+    private function replaceActivityScheduledParallelPath(string $runId, int $sequence, array $path): void
+    {
+        /** @var WorkflowHistoryEvent $event */
+        $event = WorkflowHistoryEvent::query()
+            ->where('workflow_run_id', $runId)
+            ->where('event_type', HistoryEventType::ActivityScheduled->value)
+            ->get()
+            ->sole(
+                static fn (WorkflowHistoryEvent $event): bool => ($event->payload['sequence'] ?? null) === $sequence
+            );
+
+        $payload = is_array($event->payload) ? $event->payload : [];
+        $last = $path[array_key_last($path)] ?? [];
+
+        $event->forceFill([
+            'payload' => array_merge($payload, $last, [
+                'parallel_group_path' => $path,
+            ]),
+        ])->save();
     }
 
     private function waitForWorkflowState(callable $condition, int $attempts = 50): void
