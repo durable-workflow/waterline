@@ -9,6 +9,7 @@ use Waterline\Tests\Fixtures\V2\TestAbstractWaterlineException;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
 use Waterline\Tests\Fixtures\V2\TestLinearizedOperatorWorkflow;
 use Waterline\Tests\Fixtures\V2\TestOperatorCommandWorkflow;
+use Waterline\Tests\Fixtures\V2\TestParallelActivityWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Enums\HistoryEventType;
@@ -37,6 +38,47 @@ use Workflow\V2\WorkflowStub;
 
 class V2DashboardWorkflowTest extends TestCase
 {
+    public function testShowSurfacesReplayBlockWhenActivityHistoryShapeDrifts(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestParallelActivityWorkflow::class, 'waterline-activity-shape-replay-blocked');
+        $workflow->start('Ada', 'Grace');
+
+        /** @var WorkflowRun $run */
+        $run = WorkflowRun::query()->findOrFail($workflow->runId());
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::TimerScheduled, [
+            'timer_id' => 'timer-from-older-definition',
+            'sequence' => 1,
+            'delay_seconds' => 60,
+            'fire_at' => now()->addMinute()->toJSON(),
+        ]);
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $response = $this->get('/waterline/api/flows/' . $workflow->runId());
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('tasks.0.status', 'failed')
+            ->assertJsonPath('tasks.0.transport_state', 'replay_blocked')
+            ->assertJsonPath('tasks.0.replay_blocked', true)
+            ->assertJsonPath('tasks.0.replay_blocked_reason', 'history_shape_mismatch')
+            ->assertJsonPath('tasks.0.replay_blocked_workflow_sequence', 1)
+            ->assertJsonPath('tasks.0.replay_blocked_expected_history_shape', 'activity')
+            ->assertJsonPath('tasks.0.replay_blocked_recorded_event_types', ['TimerScheduled']);
+
+        $this->assertStringContainsString(
+            'history recorded [TimerScheduled]',
+            (string) $response->json('liveness_reason')
+        );
+    }
+
     public function testShowReturnsV2CompatibilityPayload()
     {
         config()->set('waterline.engine_source', 'v2');
