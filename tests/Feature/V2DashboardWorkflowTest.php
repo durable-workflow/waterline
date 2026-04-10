@@ -177,6 +177,131 @@ class V2DashboardWorkflowTest extends TestCase
             );
     }
 
+    public function testShowSurfacesReplayBlockWhenChildParentHistoryIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $parentInstance = WorkflowInstance::create([
+            'id' => 'waterline-child-replay-block-parent',
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'run_count' => 1,
+        ]);
+
+        $childInstance = WorkflowInstance::create([
+            'id' => 'waterline-child-replay-block-child',
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'run_count' => 1,
+        ]);
+
+        $parentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDBLOCK1',
+            'workflow_instance_id' => $parentInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $childRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDBLOCK2',
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'output' => Serializer::serialize(['ok' => true]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(3),
+            'closed_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $parentInstance->update(['current_run_id' => $parentRun->id]);
+        $childInstance->update(['current_run_id' => $childRun->id]);
+
+        $link = WorkflowLink::create([
+            'id' => '01JTESTFLOWLINKCHILDBLOCK',
+            'link_type' => 'child_workflow',
+            'sequence' => 1,
+            'parent_workflow_instance_id' => $parentInstance->id,
+            'parent_workflow_run_id' => $parentRun->id,
+            'child_workflow_instance_id' => $childInstance->id,
+            'child_workflow_run_id' => $childRun->id,
+            'is_primary_parent' => true,
+        ]);
+
+        WorkflowTask::create([
+            'workflow_run_id' => $parentRun->id,
+            'task_type' => 'workflow',
+            'status' => 'failed',
+            'available_at' => now()->subMinute(),
+            'payload' => [
+                'workflow_wait_kind' => 'child',
+                'open_wait_id' => 'child:' . $link->id,
+                'resume_source_kind' => 'child_workflow_run',
+                'resume_source_id' => $childRun->id,
+                'workflow_sequence' => 1,
+                'child_call_id' => $link->id,
+                'child_workflow_run_id' => $childRun->id,
+                'replay_blocked' => true,
+                'replay_blocked_reason' => 'history_shape_mismatch',
+                'replay_blocked_workflow_sequence' => 1,
+                'replay_blocked_expected_history_shape' => 'child workflow',
+                'replay_blocked_recorded_event_types' => ['no typed history'],
+            ],
+            'last_error' => 'Workflow history at workflow sequence 1 recorded [no typed history], but the current workflow yielded child workflow.',
+            'connection' => 'redis',
+            'queue' => 'default',
+        ]);
+
+        RunSummaryProjector::project($parentRun->fresh([
+            'instance',
+            'tasks',
+            'activityExecutions',
+            'timers',
+            'failures',
+            'historyEvents',
+            'childLinks.childRun.instance.currentRun',
+            'childLinks.childRun.failures',
+            'childLinks.childRun.historyEvents',
+        ]));
+
+        $response = $this->get('/waterline/api/flows/' . $parentRun->id);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('tasks.0.status', 'failed')
+            ->assertJsonPath('tasks.0.transport_state', 'replay_blocked')
+            ->assertJsonPath('tasks.0.workflow_wait_kind', 'child')
+            ->assertJsonPath('tasks.0.workflow_open_wait_id', 'child:' . $link->id)
+            ->assertJsonPath('tasks.0.workflow_resume_source_kind', 'child_workflow_run')
+            ->assertJsonPath('tasks.0.workflow_resume_source_id', $childRun->id)
+            ->assertJsonPath('tasks.0.child_call_id', $link->id)
+            ->assertJsonPath('tasks.0.child_workflow_run_id', $childRun->id)
+            ->assertJsonPath('tasks.0.replay_blocked', true)
+            ->assertJsonPath('tasks.0.replay_blocked_reason', 'history_shape_mismatch')
+            ->assertJsonPath('tasks.0.replay_blocked_workflow_sequence', 1)
+            ->assertJsonPath('tasks.0.replay_blocked_expected_history_shape', 'child workflow')
+            ->assertJsonPath('tasks.0.replay_blocked_recorded_event_types', ['no typed history']);
+
+        $this->assertStringContainsString(
+            'history recorded [no typed history]',
+            (string) $response->json('liveness_reason')
+        );
+    }
+
     public function testShowReturnsV2CompatibilityPayload()
     {
         config()->set('waterline.engine_source', 'v2');
