@@ -6,8 +6,8 @@ use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Request;
 use LogicException;
 use Workflow\V2\CommandContext;
+use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Support\CommandResponse;
-use Workflow\V2\Support\HistoryExport;
 use Workflow\V2\Support\QueryResponse;
 use Workflow\V2\Support\UpdateWaitPolicy;
 use Workflow\V2\Support\VisibilityFilters;
@@ -63,25 +63,30 @@ class WorkflowsController extends Controller
             : StoredWorkflowResource::make($flow);
     }
 
-    public function historyExport(string $id, WorkflowRepositoryInterface $repository)
+    public function historyExport(
+        string $id,
+        WorkflowRepositoryInterface $repository,
+        OperatorObservabilityRepository $observability,
+    )
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
         $flow = $repository->findFlow($id);
 
-        return response()->json(HistoryExport::forRun($flow));
+        return response()->json($observability->runHistoryExport($flow));
     }
 
     public function historyExportSelection(
         string $instanceId,
         string $runId,
         WorkflowRepositoryInterface $repository,
+        OperatorObservabilityRepository $observability,
     ) {
         abort_unless($repository->engineSource() === 'v2', 404);
 
         $flow = $repository->findFlowSelection($instanceId, $runId);
 
-        return response()->json(HistoryExport::forRun($flow));
+        return response()->json($observability->runHistoryExport($flow));
     }
 
     public function query(

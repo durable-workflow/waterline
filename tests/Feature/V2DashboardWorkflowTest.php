@@ -13,6 +13,7 @@ use Waterline\Tests\Fixtures\V2\TestNestedParallelActivityWorkflow;
 use Waterline\Tests\Fixtures\V2\TestParallelActivityWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
+use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Jobs\RunActivityTask;
 use Workflow\V2\Jobs\RunWorkflowTask;
@@ -39,6 +40,81 @@ use Workflow\V2\WorkflowStub;
 
 class V2DashboardWorkflowTest extends TestCase
 {
+    public function testV2OperatorPayloadsUseWorkflowObservabilityRepositoryContract(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'waterline-observability-contract',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.contract',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTWATERLINECONTRACT01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.contract',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(10),
+        ]);
+
+        $instance->update([
+            'current_run_id' => $run->id,
+        ]);
+
+        $this->app->instance(OperatorObservabilityRepository::class, new class implements OperatorObservabilityRepository
+        {
+            public function runDetail(WorkflowRun $run): array
+            {
+                return [
+                    'id' => $run->id,
+                    'run_id' => $run->id,
+                    'contract_boundary' => 'detail',
+                ];
+            }
+
+            public function runHistoryExport(
+                WorkflowRun $run,
+                ?\Carbon\CarbonInterface $exportedAt = null,
+                \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+            ): array {
+                return [
+                    'schema' => 'test.operator-observability',
+                    'run_id' => $run->id,
+                    'contract_boundary' => 'history_export',
+                ];
+            }
+
+            public function metrics(?\Carbon\CarbonInterface $now = null): array
+            {
+                return [
+                    'contract_boundary' => 'metrics',
+                ];
+            }
+        });
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertOk()
+            ->assertJsonPath('contract_boundary', 'detail')
+            ->assertJsonPath('run_id', $run->id);
+
+        $this->get('/waterline/api/flows/' . $run->id . '/history-export')
+            ->assertOk()
+            ->assertJsonPath('contract_boundary', 'history_export')
+            ->assertJsonPath('run_id', $run->id);
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.contract_boundary', 'metrics');
+    }
+
     public function testShowSurfacesReplayBlockWhenActivityHistoryShapeDrifts(): void
     {
         config()->set('waterline.engine_source', 'v2');

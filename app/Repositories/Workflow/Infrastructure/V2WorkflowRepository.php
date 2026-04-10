@@ -2,8 +2,8 @@
 
 namespace Waterline\Repositories\Workflow\Infrastructure;
 
+use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Support\CurrentRunResolver;
-use Workflow\V2\Support\OperatorMetrics;
 use Workflow\V2\Support\RunSummarySortKey;
 use Workflow\V2\Support\VisibilityFilters;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
@@ -158,7 +158,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function operatorMetrics()
     {
-        return OperatorMetrics::snapshot();
+        return app(OperatorObservabilityRepository::class)->metrics();
     }
 
     protected function orderedRunsQuery(?string $bucket = null)
