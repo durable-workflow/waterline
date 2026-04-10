@@ -61,6 +61,61 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
         );
     }
 
+    public function testShowKeepsConditionWaitSelectedWhenUnrelatedWorkflowTaskExists(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestAwaitWithTimeoutWorkflow::class, 'waterline-await-stray-workflow-task');
+        $workflow->start();
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $initial = $this->get('/waterline/api/flows/' . $workflow->runId());
+        $conditionWaitId = (string) $initial->json('waits.0.condition_wait_id');
+        $timerId = (string) $initial->json('waits.0.resume_source_id');
+
+        /** @var WorkflowRun $run */
+        $run = WorkflowRun::query()
+            ->with(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+            ->findOrFail($workflow->runId());
+
+        /** @var WorkflowTask $strayTask */
+        $strayTask = WorkflowTask::query()->create([
+            'workflow_run_id' => $run->id,
+            'task_type' => TaskType::Workflow->value,
+            'status' => TaskStatus::Ready->value,
+            'available_at' => now(),
+            'payload' => [
+                'resume_source_kind' => 'workflow_task',
+                'resume_source_id' => 'unrelated',
+            ],
+            'connection' => $run->connection,
+            'queue' => $run->queue,
+            'compatibility' => $run->compatibility,
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $response = $this->get('/waterline/api/flows/' . $workflow->runId());
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('wait_kind', 'condition')
+            ->assertJsonPath('wait_reason', 'Waiting for condition approval.ready or timeout')
+            ->assertJsonPath('open_wait_id', $conditionWaitId)
+            ->assertJsonPath('resume_source_kind', 'timer')
+            ->assertJsonPath('resume_source_id', $timerId)
+            ->assertJsonPath('liveness_state', 'waiting_for_condition')
+            ->assertJsonPath('waits.0.condition_wait_id', $conditionWaitId)
+            ->assertJsonPath('waits.0.resume_source_id', $timerId);
+
+        $this->assertNotSame('workflow-task:' . $strayTask->id, $response->json('open_wait_id'));
+    }
+
     public function testShowSurfacesConditionWaitReplayBlockWithoutTerminalFailure(): void
     {
         config()->set('waterline.engine_source', 'v2');
