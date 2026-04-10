@@ -928,19 +928,25 @@
                             <tr :id="'collapse' + exception.id" class="collapse">
                                 <td colspan="4">
                                     <div class="code-bg text-white">
-                                        <div v-for="exception in [unserialize(exception.exception)]">
-                                            <b>{{ exception.__constructor }}("{{ exception.message }}")</b>
-                                            <span v-if="exception.type">
-                                                [type {{ exception.type }}]
+                                        <div v-for="decodedException in [unserialize(exception.exception)]">
+                                            <b>{{ decodedException.__constructor }}("{{ decodedException.message }}")</b>
+                                            <span v-if="decodedException.type">
+                                                [type {{ decodedException.type }}]
                                             </span>
-                                            <span v-if="exception.code !== undefined && exception.code !== null">
-                                                [code {{ exception.code }}]
+                                            <span v-if="decodedException.code !== undefined && decodedException.code !== null">
+                                                [code {{ decodedException.code }}]
+                                            </span>
+                                            <span v-if="hasDetailValue(exception.exception_resolved_class)">
+                                                [resolved {{ exception.exception_resolved_class }} via {{ exception.exception_resolution_source || 'unknown' }}]
+                                            </span>
+                                            <span v-if="hasDetailValue(exception.exception_resolution_error)">
+                                                [resolution error {{ exception.exception_resolution_error }}]
                                             </span><br />
-                                            <span style="opacity: 0.8">in {{ exception.file }} (line {{ exception.line
+                                            <span style="opacity: 0.8">in {{ decodedException.file }} (line {{ decodedException.line
                                             }})</span><br /><br />
-                                            <div v-if="exception.properties && exception.properties.length">
+                                            <div v-if="decodedException.properties && decodedException.properties.length">
                                                 <b>Custom Properties</b><br /><br />
-                                                <div v-for="property in exception.properties"
+                                                <div v-for="property in decodedException.properties"
                                                     :key="property.declaring_class + ':' + property.name">
                                                     <b>{{ property.declaring_class }}::{{ property.name }}</b>
                                                     <pre class="mb-3">{{ prettyJson(property.value) }}</pre>
@@ -2222,6 +2228,15 @@ export default {
 
                 if (this.hasDetailValue(entry.failure.exception_type)) {
                     details.push('exception type / ' + entry.failure.exception_type)
+                }
+
+                if (this.hasDetailValue(entry.failure.exception_resolved_class)) {
+                    details.push(
+                        'exception resolves / ' +
+                        entry.failure.exception_resolved_class +
+                        ' via ' +
+                        (entry.failure.exception_resolution_source || 'unknown')
+                    )
                 }
             }
 
