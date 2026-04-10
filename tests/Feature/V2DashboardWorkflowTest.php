@@ -135,6 +135,48 @@ class V2DashboardWorkflowTest extends TestCase
         );
     }
 
+    public function testShowSurfacesReplayBlockWhenParallelBarrierMetadataIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(
+            TestParallelActivityWorkflow::class,
+            'waterline-parallel-missing-metadata-replay-blocked',
+        );
+        $workflow->start('Taylor', 'Abigail');
+        $runId = $workflow->runId();
+
+        $this->assertNotNull($runId);
+
+        $this->runReadyWorkflowTask($runId);
+        $this->runReadyActivityTaskForSequence($runId, 1);
+        $this->runReadyActivityTaskForSequence($runId, 2);
+        $this->removeActivityHistoryParallelMetadata($runId, 1);
+        $this->runReadyWorkflowTask($runId);
+
+        $response = $this->get('/waterline/api/flows/' . $runId);
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('tasks.0.status', 'failed')
+            ->assertJsonPath('tasks.0.transport_state', 'replay_blocked')
+            ->assertJsonPath('tasks.0.replay_blocked', true)
+            ->assertJsonPath('tasks.0.replay_blocked_reason', 'history_shape_mismatch')
+            ->assertJsonPath('tasks.0.replay_blocked_workflow_sequence', 1)
+            ->assertJsonPath(
+                'tasks.0.replay_blocked_expected_history_shape',
+                'parallel all barrier matching current topology',
+            )
+            ->assertJsonPath(
+                'tasks.0.replay_blocked_recorded_event_types',
+                ['ActivityScheduled', 'ActivityStarted', 'ActivityCompleted'],
+            );
+    }
+
     public function testShowReturnsV2CompatibilityPayload()
     {
         config()->set('waterline.engine_source', 'v2');
@@ -7789,6 +7831,39 @@ class V2DashboardWorkflowTest extends TestCase
                 'parallel_group_path' => $path,
             ]),
         ])->save();
+    }
+
+    private function removeActivityHistoryParallelMetadata(string $runId, int $sequence): void
+    {
+        WorkflowHistoryEvent::query()
+            ->where('workflow_run_id', $runId)
+            ->whereIn('event_type', [
+                HistoryEventType::ActivityScheduled->value,
+                HistoryEventType::ActivityStarted->value,
+                HistoryEventType::ActivityHeartbeatRecorded->value,
+                HistoryEventType::ActivityRetryScheduled->value,
+                HistoryEventType::ActivityCompleted->value,
+                HistoryEventType::ActivityFailed->value,
+            ])
+            ->get()
+            ->each(static function (WorkflowHistoryEvent $event) use ($sequence): void {
+                $payload = is_array($event->payload) ? $event->payload : [];
+
+                if (($payload['sequence'] ?? null) !== $sequence) {
+                    return;
+                }
+
+                unset(
+                    $payload['parallel_group_id'],
+                    $payload['parallel_group_kind'],
+                    $payload['parallel_group_base_sequence'],
+                    $payload['parallel_group_size'],
+                    $payload['parallel_group_index'],
+                    $payload['parallel_group_path'],
+                );
+
+                $event->forceFill(['payload' => $payload])->save();
+            });
     }
 
     private function waitForWorkflowState(callable $condition, int $attempts = 50): void
