@@ -3,8 +3,8 @@
 namespace Waterline\Repositories\Workflow\Infrastructure;
 
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
-use Workflow\V2\Support\CurrentRunResolver;
 use Workflow\V2\Support\RunSummarySortKey;
+use Workflow\V2\Support\SelectedRunLocator;
 use Workflow\V2\Support\VisibilityFilters;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 
@@ -57,42 +57,12 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function findFlow(string $id)
     {
-        $run = $this->runModel::query()
-            ->with($this->detailRelations())
-            ->find($id);
-
-        if ($run !== null) {
-            return $run;
-        }
-
-        $instance = $this->instanceModel::query()
-            ->with('runs.summary')
-            ->findOrFail($id);
-
-        $currentRun = CurrentRunResolver::forInstance($instance, ['summary']);
-
-        abort_if($currentRun === null, 404);
-
-        return $this->runModel::query()
-            ->with($this->detailRelations())
-            ->findOrFail($currentRun->id);
+        return SelectedRunLocator::forIdOrFail($id, $this->detailRelations());
     }
 
     public function findFlowSelection(string $instanceId, ?string $runId = null)
     {
-        $instance = $this->instanceModel::query()
-            ->with('runs.summary')
-            ->findOrFail($instanceId);
-
-        $selectedRunId = $runId ?? CurrentRunResolver::forInstance($instance, ['summary'])?->id;
-
-        abort_if($selectedRunId === null, 404);
-
-        return $this->runModel::query()
-            ->with($this->detailRelations())
-            ->where('workflow_instance_id', $instanceId)
-            ->whereKey($selectedRunId)
-            ->firstOrFail();
+        return SelectedRunLocator::forInstanceIdOrFail($instanceId, $runId, $this->detailRelations());
     }
 
     public function dashboardStats(): array

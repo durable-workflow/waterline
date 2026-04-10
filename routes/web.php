@@ -29,6 +29,7 @@ Route::prefix('api')->group(function () {
     Route::get('/flows/running', 'WorkflowsController@running')->name('waterline.running');
     Route::get('/instances/{instanceId}', 'WorkflowsController@showSelection')->name('waterline.instances.show');
     Route::get('/instances/{instanceId}/runs/{runId}', 'WorkflowsController@showSelection')->name('waterline.instances.runs.show');
+    Route::get('/instances/{instanceId}/history-export', 'WorkflowsController@historyExportInstance')->name('waterline.instances.history-export');
     Route::get('/instances/{instanceId}/runs/{runId}/history-export', 'WorkflowsController@historyExportSelection')->name('waterline.instances.runs.history-export');
     Route::get('/instances/{instanceId}/runs/{runId}/updates/{updateId}', 'WorkflowsController@showUpdateSelection')->name('waterline.instances.runs.updates.show');
     Route::post('/instances/{instanceId}/runs/{runId}/queries/{query}', 'WorkflowsController@querySelection')->name('waterline.instances.runs.query');

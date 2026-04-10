@@ -2886,6 +2886,10 @@ export default {
             }
 
             if (this.flow.instance_id) {
+                if (this.flow.is_current_run) {
+                    return Waterline.basePath + '/api/instances/' + this.flow.instance_id + '/history-export'
+                }
+
                 const selectedRunId = this.flow.selected_run_id || this.flow.run_id || this.flow.id
 
                 if (!selectedRunId) {

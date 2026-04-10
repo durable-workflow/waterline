@@ -43,6 +43,23 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('history_events.1.type', 'WorkflowCompleted');
     }
 
+    public function testCurrentRunRouteExportsCurrentSelectedRunHistoryBundle(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        [$instance, $run] = $this->createCompletedRunWithHistory();
+
+        $this->get('/waterline/api/instances/'.$instance->id.'/history-export')
+            ->assertStatus(200)
+            ->assertJsonPath('schema', HistoryExport::SCHEMA)
+            ->assertJsonPath('workflow.instance_id', $instance->id)
+            ->assertJsonPath('workflow.run_id', $run->id)
+            ->assertJsonPath('workflow.current_run_id', $run->id)
+            ->assertJsonPath('workflow.current_run_source', 'run_order_fallback')
+            ->assertJsonPath('history_events.0.type', 'WorkflowStarted')
+            ->assertJsonPath('history_events.1.type', 'WorkflowCompleted');
+    }
+
     public function testLegacyRunRouteExportsTheSameBundleShape(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -56,6 +73,117 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('workflow.run_id', $run->id)
             ->assertJsonPath('history_events.0.type', 'WorkflowStarted')
             ->assertJsonPath('history_events.1.type', 'WorkflowCompleted');
+    }
+
+    public function testCurrentRunHistoryExportRoutePrefersContinueAsNewLineageWhenCurrentRunPointerIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'history-export-lineage-current',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.export',
+            'run_count' => 3,
+        ]);
+
+        $historicalRun = WorkflowRun::create([
+            'id' => (string) Str::ulid(),
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.export',
+            'status' => 'completed',
+            'closed_reason' => 'continued',
+            'payload_codec' => config('workflows.serializer'),
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'last_history_sequence' => 1,
+            'started_at' => now()->subMinutes(10),
+            'closed_at' => now()->subMinutes(9),
+            'last_progress_at' => now()->subMinutes(9),
+        ]);
+
+        $continuedRun = WorkflowRun::create([
+            'id' => (string) Str::ulid(),
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 2,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.export',
+            'status' => 'waiting',
+            'payload_codec' => config('workflows.serializer'),
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'last_history_sequence' => 1,
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinutes(3),
+        ]);
+
+        $strayRun = WorkflowRun::create([
+            'id' => (string) Str::ulid(),
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 3,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.export',
+            'status' => 'waiting',
+            'payload_codec' => config('workflows.serializer'),
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'last_history_sequence' => 1,
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => null]);
+
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $historicalRun->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [
+                'workflow_type' => 'workflow.export',
+                'workflow_instance_id' => $instance->id,
+                'workflow_run_id' => $historicalRun->id,
+            ],
+            'recorded_at' => now()->subMinutes(10),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $continuedRun->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [
+                'workflow_type' => 'workflow.export',
+                'workflow_instance_id' => $instance->id,
+                'workflow_run_id' => $continuedRun->id,
+                'continued_from_run_id' => $historicalRun->id,
+            ],
+            'recorded_at' => now()->subMinutes(4),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $strayRun->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [
+                'workflow_type' => 'workflow.export',
+                'workflow_instance_id' => $instance->id,
+                'workflow_run_id' => $strayRun->id,
+            ],
+            'recorded_at' => now()->subMinute(),
+        ]);
+
+        $this->get('/waterline/api/instances/'.$instance->id.'/history-export')
+            ->assertStatus(200)
+            ->assertJsonPath('workflow.instance_id', $instance->id)
+            ->assertJsonPath('workflow.run_id', $continuedRun->id)
+            ->assertJsonPath('workflow.current_run_id', $continuedRun->id)
+            ->assertJsonPath('workflow.current_run_source', 'continue_as_new_lineage');
     }
 
     public function testHistoryExportMarksRowOnlyTerminalActivityResultsAsUnsupported(): void

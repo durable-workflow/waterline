@@ -76,6 +76,18 @@ class WorkflowsController extends Controller
         return response()->json($observability->runHistoryExport($flow));
     }
 
+    public function historyExportInstance(
+        string $instanceId,
+        WorkflowRepositoryInterface $repository,
+        OperatorObservabilityRepository $observability,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $flow = $repository->findFlowSelection($instanceId);
+
+        return response()->json($observability->runHistoryExport($flow));
+    }
+
     public function historyExportSelection(
         string $instanceId,
         string $runId,
