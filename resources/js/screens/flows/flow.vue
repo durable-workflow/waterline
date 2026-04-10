@@ -941,6 +941,9 @@
                                             </span>
                                             <span v-if="hasDetailValue(exception.exception_resolution_error)">
                                                 [resolution error {{ exception.exception_resolution_error }}]
+                                            </span>
+                                            <span v-if="exception.exception_replay_blocked === true">
+                                                [replay blocked until this exception mapping is fixed]
                                             </span><br />
                                             <span style="opacity: 0.8">in {{ decodedException.file }} (line {{ decodedException.line
                                             }})</span><br /><br />
@@ -2237,6 +2240,10 @@ export default {
                         ' via ' +
                         (entry.failure.exception_resolution_source || 'unknown')
                     )
+                }
+
+                if (entry.failure.exception_replay_blocked === true) {
+                    details.push('exception replay blocked')
                 }
             }
 
