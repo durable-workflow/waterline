@@ -439,11 +439,12 @@
                         {{ operatorProjectionMetricLabel('summaries') }} summaries for
                         {{ operatorProjectionMetricLabel('runs') }} runs,
                         {{ operatorProjectionMetricLabel('missing') }} missing,
-                        {{ operatorProjectionMetricLabel('orphaned') }} orphaned.
+                        {{ operatorProjectionMetricLabel('orphaned') }} orphaned,
+                        {{ operatorProjectionMetricLabel('stale') }} stale.
                     </div>
 
                     <div class="mt-1 text-muted" v-if="operatorProjectionMetric('needs_rebuild')">
-                        Run <code>php artisan workflow:v2:rebuild-projections --missing --prune-stale</code>
+                        Run <code>php artisan workflow:v2:rebuild-projections --needs-rebuild --prune-stale</code>
                         to refresh the run-summary bridge.
                     </div>
                 </div>

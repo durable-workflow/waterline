@@ -366,6 +366,7 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.projections.run_summaries.summaries', 2)
             ->assertJsonPath('operator_metrics.projections.run_summaries.missing', 1)
             ->assertJsonPath('operator_metrics.projections.run_summaries.orphaned', 0)
+            ->assertJsonPath('operator_metrics.projections.run_summaries.stale', 0)
             ->assertJsonPath('operator_metrics.projections.run_summaries.needs_rebuild', 1)
             ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'waterline-metrics-test')
             ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
