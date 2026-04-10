@@ -454,12 +454,14 @@
                     <div class="mt-2 text-muted">
                         Redispatch after {{ operatorPolicyMetricLabel('redispatch_after_seconds') }}s,
                         throttle worker sweeps for {{ operatorPolicyMetricLabel('loop_throttle_seconds') }}s,
-                        scan {{ operatorPolicyMetricLabel('scan_limit') }} rows per pass.
+                        scan {{ operatorPolicyMetricLabel('scan_limit') }} rows per pass using {{ operatorPolicyMetric('scan_strategy') || 'global scan' }}.
                     </div>
 
                     <div class="mt-2 text-muted" v-if="stats.operator_metrics.repair">
                         {{ operatorMetricLabel('repair', 'existing_task_candidates') }} existing task candidates,
                         {{ operatorMetricLabel('repair', 'missing_task_candidates') }} missing-task runs,
+                        selects {{ operatorMetricLabel('repair', 'selected_existing_task_candidates') }} task candidates and
+                        {{ operatorMetricLabel('repair', 'selected_missing_task_candidates') }} missing-task runs this pass,
                         oldest task candidate {{ operatorDurationMetricLabel('repair', 'max_task_candidate_age_ms') }},
                         oldest missing run {{ operatorDurationMetricLabel('repair', 'max_missing_run_age_ms') }}.
                     </div>
@@ -474,6 +476,9 @@
                             {{ scope.total_candidates.toLocaleString() }} candidates
                             ({{ scope.existing_task_candidates.toLocaleString() }} tasks,
                             {{ scope.missing_task_candidates.toLocaleString() }} missing runs),
+                            selects {{ (scope.selected_total_candidates || 0).toLocaleString() }}
+                            ({{ (scope.selected_existing_task_candidates || 0).toLocaleString() }} tasks,
+                            {{ (scope.selected_missing_task_candidates || 0).toLocaleString() }} missing runs),
                             oldest {{ operatorRepairScopeDuration(scope, 'max_task_candidate_age_ms') }},
                             missing {{ operatorRepairScopeDuration(scope, 'max_missing_run_age_ms') }}.
                             <span v-if="scope.scan_limited_by_global_policy">Scan limited.</span>

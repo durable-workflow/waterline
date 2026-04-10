@@ -343,10 +343,17 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.repair.missing_task_candidates', 1)
             ->assertJsonPath('operator_metrics.repair.total_candidates', 1)
             ->assertJsonPath('operator_metrics.repair.scan_limit', 16)
+            ->assertJsonPath('operator_metrics.repair.scan_strategy', 'scope_fair_round_robin')
+            ->assertJsonPath('operator_metrics.repair.selected_existing_task_candidates', 0)
+            ->assertJsonPath('operator_metrics.repair.selected_missing_task_candidates', 1)
+            ->assertJsonPath('operator_metrics.repair.selected_total_candidates', 1)
             ->assertJsonPath('operator_metrics.repair.scan_pressure', false)
             ->assertJsonPath('operator_metrics.repair.scopes.0.scope_key', 'default:default:any')
             ->assertJsonPath('operator_metrics.repair.scopes.0.missing_task_candidates', 1)
             ->assertJsonPath('operator_metrics.repair.scopes.0.existing_task_candidates', 0)
+            ->assertJsonPath('operator_metrics.repair.scopes.0.selected_missing_task_candidates', 1)
+            ->assertJsonPath('operator_metrics.repair.scopes.0.selected_existing_task_candidates', 0)
+            ->assertJsonPath('operator_metrics.repair.scopes.0.selected_total_candidates', 1)
             ->assertJsonPath('operator_metrics.repair.scopes.0.scan_limited_by_global_policy', false)
             ->assertJsonPath('operator_metrics.starts.pending_runs', 1)
             ->assertJsonPath('operator_metrics.starts.pending_commands', 1)
@@ -372,6 +379,7 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.update_wait.poll_interval_milliseconds', 25)
             ->assertJsonPath('operator_metrics.repair_policy.redispatch_after_seconds', 8)
             ->assertJsonPath('operator_metrics.repair_policy.loop_throttle_seconds', 12)
-            ->assertJsonPath('operator_metrics.repair_policy.scan_limit', 16);
+            ->assertJsonPath('operator_metrics.repair_policy.scan_limit', 16)
+            ->assertJsonPath('operator_metrics.repair_policy.scan_strategy', 'scope_fair_round_robin');
     }
 }
