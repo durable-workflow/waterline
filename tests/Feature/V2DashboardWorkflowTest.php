@@ -5,6 +5,7 @@ namespace Waterline\Tests\Feature;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
+use Waterline\Tests\Fixtures\V2\TestAbstractWaterlineException;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
 use Waterline\Tests\Fixtures\V2\TestLinearizedOperatorWorkflow;
 use Waterline\Tests\Fixtures\V2\TestOperatorCommandWorkflow;
@@ -867,6 +868,158 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame(
             'order-123',
             collect($exception['properties'] ?? [])->keyBy('name')->get('orderId')['value'] ?? null
+        );
+    }
+
+    public function testShowFlagsMisconfiguredDurableFailureAliasesAsReplayBlocked(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.types.exceptions.runtime.failure', \stdClass::class);
+
+        $instance = WorkflowInstance::create([
+            'id' => 'failure-misconfigured-alias',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNFAILALIAS01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'failed',
+            'closed_reason' => 'failed',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(6),
+            'closed_at' => now()->subMinutes(3),
+            'last_progress_at' => now()->subMinutes(3),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYFAILALIAS001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::ActivityFailed->value,
+            'payload' => [
+                'activity_execution_id' => '01JTESTACTIVITYFAILALIAS1',
+                'activity_class' => 'ActivityClass',
+                'activity_type' => 'activity.test',
+                'sequence' => 1,
+                'failure_id' => '01JTESTFAILUREALIAS000001',
+                'exception_type' => 'runtime.failure',
+                'exception_class' => \RuntimeException::class,
+                'message' => 'history-only boom',
+                'exception' => [
+                    'type' => 'runtime.failure',
+                    'class' => \RuntimeException::class,
+                    'message' => 'history-only boom',
+                    'code' => 422,
+                    'file' => __FILE__,
+                    'line' => 77,
+                    'trace' => [],
+                    'properties' => [],
+                ],
+            ],
+            'recorded_at' => now()->subMinutes(4),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('exceptions.0.id', '01JTESTFAILUREALIAS000001')
+            ->assertJsonPath('exceptions.0.exception_type', 'runtime.failure')
+            ->assertJsonPath('exceptions.0.exception_resolved_class', null)
+            ->assertJsonPath('exceptions.0.exception_resolution_source', 'misconfigured')
+            ->assertJsonPath('exceptions.0.exception_replay_blocked', true)
+            ->assertJsonPath('timeline.0.failure.exception_resolution_source', 'misconfigured')
+            ->assertJsonPath('timeline.0.failure.exception_replay_blocked', true)
+            ->assertJsonPath('timeline.0.exception_resolution_source', 'misconfigured');
+    }
+
+    public function testShowFlagsUnrestorableFailureClassesAsReplayBlocked(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'failure-unrestorable-class',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNFAILUNREST01',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'failed',
+            'closed_reason' => 'failed',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(6),
+            'closed_at' => now()->subMinutes(3),
+            'last_progress_at' => now()->subMinutes(3),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTORYFAILUNREST01',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::ActivityFailed->value,
+            'payload' => [
+                'activity_execution_id' => '01JTESTACTIVITYFAILUNREST',
+                'activity_class' => 'ActivityClass',
+                'activity_type' => 'activity.test',
+                'sequence' => 1,
+                'failure_id' => '01JTESTFAILUREUNREST0001',
+                'exception_class' => TestAbstractWaterlineException::class,
+                'message' => 'abstract history boom',
+                'exception' => [
+                    'class' => TestAbstractWaterlineException::class,
+                    'message' => 'abstract history boom',
+                    'code' => 500,
+                    'file' => __FILE__,
+                    'line' => 88,
+                    'trace' => [],
+                    'properties' => [],
+                ],
+            ],
+            'recorded_at' => now()->subMinutes(4),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $response = $this->get('/waterline/api/flows/' . $run->id);
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('exceptions.0.id', '01JTESTFAILUREUNREST0001')
+            ->assertJsonPath('exceptions.0.exception_class', TestAbstractWaterlineException::class)
+            ->assertJsonPath('exceptions.0.exception_resolved_class', TestAbstractWaterlineException::class)
+            ->assertJsonPath('exceptions.0.exception_resolution_source', 'unrestorable')
+            ->assertJsonPath('exceptions.0.exception_replay_blocked', true)
+            ->assertJsonPath('timeline.0.failure.exception_resolution_source', 'unrestorable')
+            ->assertJsonPath('timeline.0.failure.exception_replay_blocked', true)
+            ->assertJsonPath('timeline.0.exception_resolution_source', 'unrestorable');
+
+        $this->assertStringContainsString(
+            'abstract throwable',
+            (string) $response->json('exceptions.0.exception_resolution_error')
         );
     }
 
