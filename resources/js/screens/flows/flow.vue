@@ -600,6 +600,12 @@
                                 <div class="small text-muted" v-if="hasDetailValue(task.last_claim_error)">
                                     {{ task.last_claim_error }}
                                 </div>
+                                <div class="small text-muted" v-if="hasDetailValue(task.last_error)">
+                                    {{ task.last_error }}
+                                </div>
+                                <div class="small text-danger" v-if="task.replay_blocked === true">
+                                    Replay blocked<span v-if="hasDetailValue(task.replay_blocked_reason)"> / {{ task.replay_blocked_reason }}</span>
+                                </div>
                             </td>
                             <td>{{ taskAvailability(task) }}</td>
                             <td>{{ task.attempt_count }}<span v-if="task.repair_count"> / repair {{ task.repair_count }}</span></td>
@@ -2365,6 +2371,14 @@ export default {
                 return task.activity_type
             }
 
+            if (this.hasDetailValue(task.replay_blocked_condition_wait_id)) {
+                const conditionLabel = this.hasDetailValue(task.replay_blocked_recorded_condition_key)
+                    ? ' / ' + task.replay_blocked_recorded_condition_key
+                    : ''
+
+                return 'condition wait' + conditionLabel + ' / ' + task.replay_blocked_condition_wait_id
+            }
+
             if (this.hasDetailValue(task.condition_wait_id)) {
                 const conditionLabel = this.hasDetailValue(task.condition_key)
                     ? ' / ' + task.condition_key
@@ -2409,6 +2423,7 @@ export default {
                 dispatch_overdue: 'dispatch overdue',
                 dispatch_failed: 'dispatch failed',
                 repair_backoff: 'repair backoff',
+                replay_blocked: 'replay blocked',
                 missing: 'missing',
                 completed: 'completed',
                 cancelled: 'cancelled',

@@ -8,10 +8,12 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Queue;
 use Waterline\Tests\Fixtures\V2\TestAwaitWithTimeoutWorkflow;
 use Waterline\Tests\TestCase;
+use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Enums\TaskStatus;
 use Workflow\V2\Enums\TaskType;
 use Workflow\V2\Jobs\RunTimerTask;
 use Workflow\V2\Jobs\RunWorkflowTask;
+use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\Models\WorkflowTimer;
@@ -55,6 +57,51 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
 
         $this->assertStringContainsString(
             'Condition timeout for 5 seconds',
+            (string) $response->json('tasks.0.summary')
+        );
+    }
+
+    public function testShowSurfacesConditionWaitReplayBlockWithoutTerminalFailure(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestAwaitWithTimeoutWorkflow::class, 'waterline-await-replay-blocked');
+        $workflow->start();
+
+        /** @var WorkflowRun $run */
+        $run = WorkflowRun::query()->findOrFail($workflow->runId());
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::ConditionWaitOpened, [
+            'condition_wait_id' => 'condition:1',
+            'condition_key' => 'approval.changed',
+            'sequence' => 1,
+        ]);
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $response = $this->get('/waterline/api/flows/' . $workflow->runId());
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('status', 'pending')
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('tasks.0.status', 'failed')
+            ->assertJsonPath('tasks.0.transport_state', 'replay_blocked')
+            ->assertJsonPath('tasks.0.replay_blocked', true)
+            ->assertJsonPath('tasks.0.replay_blocked_reason', 'condition_wait_definition_mismatch')
+            ->assertJsonPath('tasks.0.replay_blocked_condition_wait_id', 'condition:1')
+            ->assertJsonPath('tasks.0.replay_blocked_recorded_condition_key', 'approval.changed')
+            ->assertJsonPath('tasks.0.replay_blocked_current_condition_key', 'approval.ready');
+
+        $this->assertStringContainsString(
+            'Run this workflow on a compatible build',
+            (string) $response->json('liveness_reason')
+        );
+        $this->assertStringContainsString(
+            'condition wait definition drift',
             (string) $response->json('tasks.0.summary')
         );
     }
