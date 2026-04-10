@@ -11,6 +11,7 @@ use Waterline\Tests\TestCase;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Enums\TaskStatus;
 use Workflow\V2\Enums\TaskType;
+use Workflow\V2\Enums\TimerStatus;
 use Workflow\V2\Jobs\RunTimerTask;
 use Workflow\V2\Jobs\RunWorkflowTask;
 use Workflow\V2\Models\WorkflowHistoryEvent;
@@ -351,6 +352,94 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
                 ->assertJsonPath('tasks.0.timer_id', $timerId)
                 ->assertJsonPath('tasks.0.condition_key', 'approval.ready')
                 ->assertJsonPath('tasks.0.condition_wait_id', $response->json('waits.0.condition_wait_id'));
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function testCanonicalDetailDoesNotTreatDriftedFiredTimerRowAsConditionTimeout(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        Carbon::setTestNow(Carbon::parse('2026-04-08 14:15:00'));
+
+        try {
+            $workflow = WorkflowStub::make(
+                TestAwaitWithTimeoutWorkflow::class,
+                'waterline-await-timeout-row-fired-without-history',
+            );
+            $workflow->start();
+
+            $runId = $workflow->runId();
+
+            $this->assertNotNull($runId);
+
+            $this->runReadyWorkflowTask($runId);
+
+            $initial = $this->get('/waterline/api/instances/waterline-await-timeout-row-fired-without-history');
+            $conditionWaitId = $initial->json('waits.0.condition_wait_id');
+            $conditionDefinitionFingerprint = $initial->json('waits.0.condition_definition_fingerprint');
+
+            /** @var WorkflowTimer $timer */
+            $timer = WorkflowTimer::query()
+                ->where('workflow_run_id', $runId)
+                ->firstOrFail();
+            /** @var WorkflowRun $run */
+            $run = WorkflowRun::query()->findOrFail($runId);
+
+            $timer->forceFill([
+                'status' => TimerStatus::Fired->value,
+                'fired_at' => now()->addSeconds(5),
+            ])->save();
+
+            WorkflowTask::query()->create([
+                'workflow_run_id' => $runId,
+                'task_type' => TaskType::Workflow->value,
+                'status' => TaskStatus::Ready->value,
+                'available_at' => now()->addSeconds(5),
+                'payload' => [
+                    'workflow_wait_kind' => 'condition',
+                    'open_wait_id' => $conditionWaitId,
+                    'resume_source_kind' => 'timer',
+                    'resume_source_id' => $timer->id,
+                    'timer_id' => $timer->id,
+                    'condition_wait_id' => $conditionWaitId,
+                    'condition_key' => 'approval.ready',
+                    'condition_definition_fingerprint' => $conditionDefinitionFingerprint,
+                    'workflow_sequence' => 1,
+                ],
+                'connection' => $run->connection,
+                'queue' => $run->queue,
+                'compatibility' => $run->compatibility,
+            ]);
+
+            Carbon::setTestNow(now()->addSeconds(5));
+
+            $this->runReadyWorkflowTask($runId);
+
+            $this->get('/waterline/api/instances/waterline-await-timeout-row-fired-without-history')
+                ->assertOk()
+                ->assertJsonPath('wait_kind', 'condition')
+                ->assertJsonPath('wait_reason', 'Waiting for condition approval.ready or timeout')
+                ->assertJsonPath('waits.0.kind', 'condition')
+                ->assertJsonPath('waits.0.status', 'open')
+                ->assertJsonPath('waits.0.source_status', 'waiting')
+                ->assertJsonPath('waits.0.condition_wait_id', $conditionWaitId)
+                ->assertJsonPath('waits.0.resume_source_kind', 'timer')
+                ->assertJsonPath('waits.0.resume_source_id', $timer->id)
+                ->assertJsonPath('timers.0.id', $timer->id)
+                ->assertJsonPath('timers.0.status', 'pending');
+
+            $this->assertDatabaseMissing('workflow_history_events', [
+                'workflow_run_id' => $runId,
+                'event_type' => HistoryEventType::TimerFired->value,
+            ]);
+            $this->assertDatabaseMissing('workflow_history_events', [
+                'workflow_run_id' => $runId,
+                'event_type' => HistoryEventType::ConditionWaitTimedOut->value,
+            ]);
         } finally {
             Carbon::setTestNow();
         }
