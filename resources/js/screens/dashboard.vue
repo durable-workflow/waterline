@@ -460,6 +460,9 @@
                         Wait rows:
                         {{ operatorProjectionMetricLabel('run_waits', 'rows') }} rows across
                         {{ operatorProjectionMetricLabel('run_waits', 'projected_runs') }} runs,
+                        {{ operatorProjectionMetricLabel('run_waits', 'runs_with_waits') }} canonical waits,
+                        {{ operatorProjectionMetricLabel('run_waits', 'missing_runs_with_waits') }} runs missing,
+                        {{ operatorProjectionMetricLabel('run_waits', 'stale_projected_runs') }} stale,
                         {{ operatorProjectionMetricLabel('run_waits', 'missing_current_open_waits') }} missing current open waits,
                         {{ operatorProjectionMetricLabel('run_waits', 'orphaned') }} orphaned.
                     </div>
@@ -468,6 +471,8 @@
                         Timeline rows:
                         {{ operatorProjectionMetricLabel('run_timeline_entries', 'rows') }} rows for
                         {{ operatorProjectionMetricLabel('run_timeline_entries', 'history_events') }} history events,
+                        {{ operatorProjectionMetricLabel('run_timeline_entries', 'missing_runs_with_history') }} runs missing,
+                        {{ operatorProjectionMetricLabel('run_timeline_entries', 'stale_projected_runs') }} stale,
                         {{ operatorProjectionMetricLabel('run_timeline_entries', 'missing_history_events') }} missing history events,
                         {{ operatorProjectionMetricLabel('run_timeline_entries', 'orphaned') }} orphaned.
                     </div>
@@ -477,6 +482,7 @@
                         {{ operatorProjectionMetricLabel('run_lineage_entries', 'rows') }} rows across
                         {{ operatorProjectionMetricLabel('run_lineage_entries', 'projected_runs') }} projected runs,
                         {{ operatorProjectionMetricLabel('run_lineage_entries', 'missing_runs_with_lineage') }} lineage runs missing,
+                        {{ operatorProjectionMetricLabel('run_lineage_entries', 'stale_projected_runs') }} stale,
                         {{ operatorProjectionMetricLabel('run_lineage_entries', 'orphaned') }} orphaned.
                     </div>
 
