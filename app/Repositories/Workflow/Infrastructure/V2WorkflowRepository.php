@@ -95,6 +95,11 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
             ->firstOrFail();
     }
 
+    public function dashboardStats(): array
+    {
+        return app(OperatorObservabilityRepository::class)->dashboardSummary();
+    }
+
     public function flowsPastHour(): int
     {
         $cutoff = now()->subHour();

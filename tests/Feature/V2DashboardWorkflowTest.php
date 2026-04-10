@@ -92,6 +92,24 @@ class V2DashboardWorkflowTest extends TestCase
                 ];
             }
 
+            public function dashboardSummary(?\Carbon\CarbonInterface $now = null): array
+            {
+                return [
+                    'flows' => 12,
+                    'flows_per_minute' => 0.2,
+                    'flows_past_hour' => 12,
+                    'exceptions_past_hour' => 0,
+                    'failed_flows_past_week' => 0,
+                    'max_wait_time_workflow' => null,
+                    'max_duration_workflow' => null,
+                    'max_exceptions_workflow' => null,
+                    'operator_metrics' => [
+                        'contract_boundary' => 'dashboard_summary',
+                    ],
+                    'contract_boundary' => 'dashboard_summary',
+                ];
+            }
+
             public function metrics(?\Carbon\CarbonInterface $now = null): array
             {
                 return [
@@ -112,7 +130,8 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/stats')
             ->assertOk()
-            ->assertJsonPath('operator_metrics.contract_boundary', 'metrics');
+            ->assertJsonPath('contract_boundary', 'dashboard_summary')
+            ->assertJsonPath('operator_metrics.contract_boundary', 'dashboard_summary');
     }
 
     public function testShowSurfacesReplayBlockWhenActivityHistoryShapeDrifts(): void

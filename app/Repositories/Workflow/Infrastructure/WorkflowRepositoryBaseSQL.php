@@ -75,6 +75,23 @@ abstract class WorkflowRepositoryBaseSQL implements WorkflowRepositoryInterface
         return $this->findFlow($runId ?? $instanceId);
     }
 
+    public function dashboardStats(): array
+    {
+        $flowsPastHour = $this->flowsPastHour();
+
+        return [
+            'flows' => $this->totalFlows(),
+            'flows_per_minute' => $flowsPastHour / 60,
+            'flows_past_hour' => $flowsPastHour,
+            'exceptions_past_hour' => $this->exceptionsPastHour(),
+            'failed_flows_past_week' => $this->failedFlowsPastWeek(),
+            'max_wait_time_workflow' => $this->maxWaitTimeWorkflow(),
+            'max_duration_workflow' => $this->maxDurationWorkflow(),
+            'max_exceptions_workflow' => $this->maxExceptionsWorkflow(),
+            'operator_metrics' => $this->operatorMetrics(),
+        ];
+    }
+
     public function flowsPastHour(): int
     {
         return $this->workflowModel::where('updated_at', '>=', now()->subHour())->count();
