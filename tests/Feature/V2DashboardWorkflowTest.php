@@ -451,6 +451,164 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('timeline.1.failure.handled', true);
     }
 
+    public function testShowProjectsParentChildFailuresFromTypedHistoryWhenChildFailureRowIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => '01JTESTCHILDFAILPARENT01',
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'run_count' => 1,
+        ]);
+        $childInstance = WorkflowInstance::create([
+            'id' => '01JTESTCHILDFAILCHILD001',
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTCHILDFAILRUN00001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'output' => Serializer::serialize('recovered'),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(10),
+            'closed_at' => now()->subMinutes(5),
+            'last_progress_at' => now()->subMinutes(5),
+        ]);
+        $childRun = WorkflowRun::create([
+            'id' => '01JTESTCHILDFAILCHILDRUN1',
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'failed',
+            'closed_reason' => 'failed',
+            'arguments' => Serializer::serialize([]),
+            'output' => null,
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(9),
+            'closed_at' => now()->subMinutes(8),
+            'last_progress_at' => now()->subMinutes(8),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+        $childInstance->update(['current_run_id' => $childRun->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'status' => 'completed',
+            'status_bucket' => 'completed',
+            'closed_reason' => 'completed',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'closed_at' => $run->closed_at,
+            'duration_ms' => 300000,
+            'exception_count' => 1,
+            'created_at' => now()->subMinutes(10),
+            'updated_at' => now()->subMinutes(5),
+        ]);
+
+        WorkflowLink::create([
+            'id' => '01JTESTCHILDFAILLINK0001',
+            'link_type' => 'child_workflow',
+            'sequence' => 1,
+            'parent_workflow_instance_id' => $instance->id,
+            'parent_workflow_run_id' => $run->id,
+            'child_workflow_instance_id' => $childInstance->id,
+            'child_workflow_run_id' => $childRun->id,
+            'is_primary_parent' => true,
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTCHILDFAILHISTORY01',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::ChildRunFailed->value,
+            'payload' => [
+                'sequence' => 1,
+                'failure_id' => '01JTESTCHILDFAILFAILURE01',
+                'child_call_id' => '01JTESTCHILDFAILLINK0001',
+                'child_workflow_instance_id' => $childInstance->id,
+                'child_workflow_run_id' => $childRun->id,
+                'child_workflow_class' => 'ChildWorkflowClass',
+                'child_workflow_type' => 'workflow.child',
+                'child_status' => 'failed',
+                'exception_class' => \RuntimeException::class,
+                'message' => 'child boom',
+                'code' => 503,
+                'exception' => [
+                    'class' => \RuntimeException::class,
+                    'message' => 'child boom',
+                    'code' => 503,
+                    'file' => __FILE__,
+                    'line' => 42,
+                    'trace' => [],
+                    'properties' => [],
+                ],
+            ],
+            'recorded_at' => now()->subMinutes(7),
+        ]);
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTCHILDFAILHANDLED1',
+            'workflow_run_id' => $run->id,
+            'sequence' => 2,
+            'event_type' => HistoryEventType::FailureHandled->value,
+            'payload' => [
+                'failure_id' => '01JTESTCHILDFAILFAILURE01',
+                'sequence' => 1,
+                'source_kind' => 'child_workflow_run',
+                'source_id' => $childRun->id,
+                'propagation_kind' => 'child',
+                'exception_class' => \RuntimeException::class,
+                'message' => 'child boom',
+                'handled' => true,
+            ],
+            'recorded_at' => now()->subMinutes(6),
+        ]);
+
+        $response = $this->get('/waterline/api/flows/' . $run->id);
+        $exception = unserialize($response->json('exceptions.0.exception'));
+
+        $response
+            ->assertStatus(200)
+            ->assertJsonPath('exception_count', 1)
+            ->assertJsonPath('exceptions_count', 1)
+            ->assertJsonPath('exceptions.0.class', \RuntimeException::class)
+            ->assertJsonPath('exceptions.0.exception_class', \RuntimeException::class)
+            ->assertJsonPath('exceptions.0.exception_resolved_class', \RuntimeException::class)
+            ->assertJsonPath('exceptions.0.exception_resolution_source', 'recorded_class')
+            ->assertJsonPath('exceptions.0.exception_replay_blocked', false)
+            ->assertJsonPath('timeline.0.type', 'ChildRunFailed')
+            ->assertJsonPath('timeline.0.source_kind', 'child_workflow_run')
+            ->assertJsonPath('timeline.0.source_id', $childRun->id)
+            ->assertJsonPath('timeline.0.failure_id', '01JTESTCHILDFAILFAILURE01')
+            ->assertJsonPath('timeline.0.failure.propagation_kind', 'child')
+            ->assertJsonPath('timeline.0.failure.handled', true)
+            ->assertJsonPath('timeline.1.type', 'FailureHandled')
+            ->assertJsonPath('timeline.1.failure.handled', true);
+
+        $this->assertSame(\RuntimeException::class, $exception['__constructor']);
+        $this->assertSame('child boom', $exception['message']);
+        $this->assertSame(503, $exception['code']);
+    }
+
     public function testShowUsesTypedActivityHistoryWhenActivityRowIsMissing(): void
     {
         config()->set('waterline.engine_source', 'v2');
