@@ -302,6 +302,176 @@ class V2DashboardWorkflowTest extends TestCase
         );
     }
 
+    public function testShowMarksRowOnlyTerminalActivityFallbackAsUnsupported(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'waterline-row-only-terminal-activity',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNACTROWONLY1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $execution = ActivityExecution::create([
+            'id' => '01JTESTACTROWONLY0000001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ActivityClass',
+            'activity_type' => 'activity.test',
+            'status' => 'completed',
+            'arguments' => Serializer::serialize(['Taylor']),
+            'result' => Serializer::serialize('mutable result'),
+            'connection' => 'redis',
+            'queue' => 'activities',
+            'closed_at' => now()->subMinute(),
+        ]);
+
+        RunSummaryProjector::project($run->fresh([
+            'instance',
+            'tasks',
+            'activityExecutions',
+            'timers',
+            'failures',
+            'historyEvents',
+            'childLinks.childRun.instance.currentRun',
+            'childLinks.childRun.failures',
+            'childLinks.childRun.historyEvents',
+        ]));
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertOk()
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('activities.0.id', $execution->id)
+            ->assertJsonPath('activities.0.status', 'unsupported')
+            ->assertJsonPath('activities.0.history_authority', 'unsupported_terminal_without_history')
+            ->assertJsonPath(
+                'activities.0.history_unsupported_reason',
+                'terminal_activity_row_without_typed_history',
+            )
+            ->assertJsonPath('activities.0.row_status', 'completed')
+            ->assertJsonPath('activities.0.result', serialize(null))
+            ->assertJsonPath('waits.0.kind', 'activity')
+            ->assertJsonPath('waits.0.status', 'unsupported')
+            ->assertJsonPath('waits.0.source_status', 'completed')
+            ->assertJsonPath(
+                'waits.0.history_unsupported_reason',
+                'terminal_activity_row_without_typed_history',
+            )
+            ->assertJsonPath('tasks.0.transport_state', 'missing');
+    }
+
+    public function testShowMarksTerminalChildFallbackWithoutParentHistoryAsUnsupported(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $parentInstance = WorkflowInstance::create([
+            'id' => 'waterline-row-only-child-parent',
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'run_count' => 1,
+        ]);
+
+        $childInstance = WorkflowInstance::create([
+            'id' => 'waterline-row-only-child-child',
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'run_count' => 1,
+        ]);
+
+        $parentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDROW01',
+            'workflow_instance_id' => $parentInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $childRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDROW02',
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'output' => Serializer::serialize(['ok' => true]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(3),
+            'closed_at' => now()->subMinute(),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $parentInstance->update(['current_run_id' => $parentRun->id]);
+        $childInstance->update(['current_run_id' => $childRun->id]);
+
+        $link = WorkflowLink::create([
+            'id' => '01JTESTFLOWLINKCHILDROW',
+            'link_type' => 'child_workflow',
+            'sequence' => 1,
+            'parent_workflow_instance_id' => $parentInstance->id,
+            'parent_workflow_run_id' => $parentRun->id,
+            'child_workflow_instance_id' => $childInstance->id,
+            'child_workflow_run_id' => $childRun->id,
+            'is_primary_parent' => true,
+        ]);
+
+        RunSummaryProjector::project($parentRun->fresh([
+            'instance',
+            'tasks',
+            'activityExecutions',
+            'timers',
+            'failures',
+            'historyEvents',
+            'childLinks.childRun.instance.currentRun',
+            'childLinks.childRun.failures',
+            'childLinks.childRun.historyEvents',
+        ]));
+
+        $this->get('/waterline/api/flows/' . $parentRun->id)
+            ->assertOk()
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('waits.0.kind', 'child')
+            ->assertJsonPath('waits.0.status', 'unsupported')
+            ->assertJsonPath('waits.0.source_status', 'completed')
+            ->assertJsonPath('waits.0.history_authority', 'unsupported_terminal_without_history')
+            ->assertJsonPath(
+                'waits.0.history_unsupported_reason',
+                'terminal_child_link_without_typed_parent_history',
+            )
+            ->assertJsonPath('waits.0.child_call_id', $link->id)
+            ->assertJsonPath('tasks.0.transport_state', 'missing')
+            ->assertJsonPath('tasks.0.workflow_wait_kind', 'child')
+            ->assertJsonPath('tasks.0.child_call_id', $link->id)
+            ->assertJsonPath('tasks.0.child_workflow_run_id', $childRun->id);
+    }
+
     public function testShowReturnsV2CompatibilityPayload()
     {
         config()->set('waterline.engine_source', 'v2');

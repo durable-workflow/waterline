@@ -512,6 +512,12 @@
                                 <div class="small text-muted" v-if="parallelGroupLabel(wait)">
                                     {{ parallelGroupLabel(wait) }}
                                 </div>
+                                <div class="small text-muted" v-if="hasDetailValue(wait.history_authority)">
+                                    history / {{ wait.history_authority }}
+                                </div>
+                                <div class="small text-muted" v-if="hasDetailValue(wait.history_unsupported_reason)">
+                                    unsupported / {{ wait.history_unsupported_reason }}
+                                </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id) || hasDetailValue(wait.command_sequence) || hasDetailValue(wait.timeout_seconds)">
                                     <span v-if="hasDetailValue(wait.update_id)">update / {{ wait.update_id }}</span>
                                     <span v-if="hasDetailValue(wait.signal_wait_id)">signal wait / {{ wait.signal_wait_id }}</span>
@@ -920,6 +926,15 @@
                                 {{ activity.type || activity.class }}
                                 <div v-if="activity.idempotency_key" class="small text-muted">
                                     idempotency / {{ activity.idempotency_key }}
+                                </div>
+                                <div v-if="activity.history_authority" class="small text-muted">
+                                    history / {{ activity.history_authority }}
+                                </div>
+                                <div v-if="activity.history_unsupported_reason" class="small text-muted">
+                                    unsupported / {{ activity.history_unsupported_reason }}
+                                </div>
+                                <div v-if="activity.row_status" class="small text-muted">
+                                    row status / {{ activity.row_status }}
                                 </div>
                             </td>
                             <td>{{ activity.status || '-' }}</td>
