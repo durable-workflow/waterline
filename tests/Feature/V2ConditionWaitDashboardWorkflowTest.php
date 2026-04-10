@@ -36,16 +36,20 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
         $response
             ->assertOk()
             ->assertJsonPath('wait_kind', 'condition')
-            ->assertJsonPath('wait_reason', 'Waiting for condition or timeout')
+            ->assertJsonPath('wait_reason', 'Waiting for condition approval.ready or timeout')
             ->assertJsonPath('liveness_state', 'waiting_for_condition')
             ->assertJsonPath('resume_source_kind', 'timer')
             ->assertJsonPath('waits.0.kind', 'condition')
             ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.condition_key', 'approval.ready')
+            ->assertJsonPath('waits.0.target_name', 'approval.ready')
             ->assertJsonPath('waits.0.source_status', 'waiting')
             ->assertJsonPath('waits.0.external_only', true)
             ->assertJsonPath('waits.0.task_backed', true)
             ->assertJsonPath('waits.0.timeout_seconds', 5)
             ->assertJsonPath('tasks.0.type', 'timer')
+            ->assertJsonPath('tasks.0.condition_key', 'approval.ready')
+            ->assertJsonPath('timers.0.condition_key', 'approval.ready')
             ->assertJsonPath('tasks.0.condition_wait_id', $response->json('waits.0.condition_wait_id'))
             ->assertJsonPath('tasks.0.timer_sequence', 1);
 
@@ -86,13 +90,14 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
             $response
                 ->assertOk()
                 ->assertJsonPath('wait_kind', 'condition')
-                ->assertJsonPath('wait_reason', 'Waiting for condition or timeout')
+                ->assertJsonPath('wait_reason', 'Waiting for condition approval.ready or timeout')
                 ->assertJsonPath('liveness_state', 'waiting_for_condition')
                 ->assertJsonPath('resume_source_kind', 'timer')
                 ->assertJsonPath('resume_source_id', $timerId)
                 ->assertJsonPath('wait_deadline_at', $deadlineAt)
                 ->assertJsonPath('waits.0.kind', 'condition')
                 ->assertJsonPath('waits.0.status', 'open')
+                ->assertJsonPath('waits.0.condition_key', 'approval.ready')
                 ->assertJsonPath('waits.0.resume_source_kind', 'timer')
                 ->assertJsonPath('waits.0.resume_source_id', $timerId)
                 ->assertJsonPath('waits.0.deadline_at', $deadlineAt)
@@ -100,6 +105,7 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
                 ->assertJsonPath('waits.0.task_backed', true)
                 ->assertJsonPath('tasks.0.type', 'timer')
                 ->assertJsonPath('tasks.0.timer_id', $timerId)
+                ->assertJsonPath('tasks.0.condition_key', 'approval.ready')
                 ->assertJsonPath('tasks.0.condition_wait_id', $response->json('waits.0.condition_wait_id'));
         } finally {
             Carbon::setTestNow();
@@ -255,6 +261,7 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
             $this->assertSame([
                 'timer_id' => $timerId,
                 'condition_wait_id' => $conditionWaitId,
+                'condition_key' => 'approval.ready',
             ], $repairedTask->payload);
             $this->assertSame($deadlineAt, $repairedTask->available_at?->toJSON());
             $this->assertSame(1, $repairedTask->repair_count);

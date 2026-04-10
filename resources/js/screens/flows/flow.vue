@@ -498,6 +498,9 @@
                                 <div class="small text-muted" v-if="hasDetailValue(wait.sequence)">
                                     step {{ wait.sequence }}
                                 </div>
+                                <div class="small text-muted" v-if="hasDetailValue(wait.condition_key)">
+                                    condition key / {{ wait.condition_key }}
+                                </div>
                                 <div class="small text-muted" v-if="parallelGroupLabel(wait)">
                                     {{ parallelGroupLabel(wait) }}
                                 </div>
@@ -2358,11 +2361,15 @@ export default {
             }
 
             if (this.hasDetailValue(task.condition_wait_id)) {
+                const conditionLabel = this.hasDetailValue(task.condition_key)
+                    ? ' / ' + task.condition_key
+                    : ''
+
                 if (this.hasDetailValue(task.timer_sequence)) {
-                    return 'condition timeout #' + task.timer_sequence
+                    return 'condition timeout' + conditionLabel + ' #' + task.timer_sequence
                 }
 
-                return 'condition timeout'
+                return 'condition timeout' + conditionLabel
             }
 
             if (this.hasDetailValue(task.timer_sequence)) {

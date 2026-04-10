@@ -17,7 +17,7 @@ final class TestAwaitWithTimeoutWorkflow extends Workflow
 
     public function execute(): Generator
     {
-        $approved = yield awaitWithTimeout(5, fn (): bool => $this->approved);
+        $approved = yield awaitWithTimeout(5, fn (): bool => $this->approved, 'approval.ready');
 
         return [
             'approved' => $approved,
