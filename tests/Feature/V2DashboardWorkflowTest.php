@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Waterline\Tests\Fixtures\V2\TestAbstractWaterlineException;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
+use Waterline\Tests\Fixtures\V2\TestExecuteCompatibilityWaterlineWorkflow;
 use Waterline\Tests\Fixtures\V2\TestLinearizedOperatorWorkflow;
 use Waterline\Tests\Fixtures\V2\TestOperatorCommandWorkflow;
 use Waterline\Tests\Fixtures\V2\TestNestedParallelActivityWorkflow;
@@ -251,6 +252,35 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertOk()
             ->assertJsonPath('contract_boundary', 'dashboard_summary')
             ->assertJsonPath('operator_metrics.contract_boundary', 'dashboard_summary');
+    }
+
+    public function testShowExposesDeclaredEntryMethodContractForCanonicalAndCompatibilityRuns(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        $handleWorkflow = WorkflowStub::make(TestCommandContractWorkflow::class, 'waterline-handle-entry');
+        $handleWorkflow->start();
+        $this->runReadyWorkflowTask((string) $handleWorkflow->runId());
+
+        $this->get('/waterline/api/flows/' . $handleWorkflow->runId())
+            ->assertOk()
+            ->assertJsonPath('declared_entry_method', 'handle')
+            ->assertJsonPath('declared_entry_mode', 'canonical')
+            ->assertJsonPath('declared_entry_declaring_class', TestCommandContractWorkflow::class)
+            ->assertJsonPath('declared_contract_source', 'durable_history');
+
+        $compatWorkflow = WorkflowStub::make(TestExecuteCompatibilityWaterlineWorkflow::class, 'waterline-execute-entry');
+        $compatWorkflow->start('Jordan');
+        $this->runReadyWorkflowTask((string) $compatWorkflow->runId());
+
+        $this->get('/waterline/api/flows/' . $compatWorkflow->runId())
+            ->assertOk()
+            ->assertJsonPath('declared_entry_method', 'execute')
+            ->assertJsonPath('declared_entry_mode', 'compatibility')
+            ->assertJsonPath('declared_entry_declaring_class', TestExecuteCompatibilityWaterlineWorkflow::class)
+            ->assertJsonPath('declared_contract_source', 'durable_history');
     }
 
     public function testShowSurfacesReplayBlockWhenActivityHistoryShapeDrifts(): void
@@ -2487,6 +2517,8 @@ class V2DashboardWorkflowTest extends TestCase
             'updated_at' => now()->subMinute(),
         ]);
 
+        $this->recordWorkflowStartedCommandContractSnapshot($run, TestCommandContractWorkflow::class);
+
         $this->get('/waterline/api/instances/' . $instance->id)
             ->assertStatus(200)
             ->assertJsonPath('id', $run->id)
@@ -3080,6 +3112,8 @@ class V2DashboardWorkflowTest extends TestCase
             'updated_at' => now()->subSeconds(20),
         ]);
 
+        $this->recordWorkflowStartedCommandContractSnapshot($run, TestCommandContractWorkflow::class);
+
         WorkflowCommand::create([
             'id' => '01JTESTCOMMANDREJECTEDSIGNAL1',
             'workflow_instance_id' => $instance->id,
@@ -3233,6 +3267,9 @@ class V2DashboardWorkflowTest extends TestCase
         $this->assertSame('approved-by', $started->payload['declared_signal_contracts'][0]['name'] ?? null);
         $this->assertSame(['mark-approved'], $started->payload['declared_updates'] ?? null);
         $this->assertSame('mark-approved', $started->payload['declared_update_contracts'][0]['name'] ?? null);
+        $this->assertSame('handle', $started->payload['declared_entry_method'] ?? null);
+        $this->assertSame('canonical', $started->payload['declared_entry_mode'] ?? null);
+        $this->assertSame(TestCommandContractWorkflow::class, $started->payload['declared_entry_declaring_class'] ?? null);
     }
 
     public function testShowUsesDurableCommandContractHistoryWhenWorkflowClassCannotBeResolved(): void
@@ -3285,6 +3322,10 @@ class V2DashboardWorkflowTest extends TestCase
             'sequence' => 1,
             'event_type' => HistoryEventType::WorkflowStarted->value,
             'payload' => [
+                'workflow_class' => TestCommandContractWorkflow::class,
+                'workflow_type' => 'workflow.command-contract',
+                'workflow_instance_id' => $instance->id,
+                'workflow_run_id' => $run->id,
                 'declared_queries' => ['current-stage', 'stageMatches'],
                 'declared_query_contracts' => [
                     [
@@ -3343,6 +3384,9 @@ class V2DashboardWorkflowTest extends TestCase
                         ],
                     ],
                 ],
+                'declared_entry_method' => 'handle',
+                'declared_entry_mode' => 'canonical',
+                'declared_entry_declaring_class' => TestCommandContractWorkflow::class,
             ],
             'recorded_at' => now()->subSeconds(19),
         ]);
@@ -3428,6 +3472,10 @@ class V2DashboardWorkflowTest extends TestCase
             'sequence' => 1,
             'event_type' => HistoryEventType::WorkflowStarted->value,
             'payload' => [
+                'workflow_class' => TestCommandContractWorkflow::class,
+                'workflow_type' => 'workflow.command-contract',
+                'workflow_instance_id' => $instance->id,
+                'workflow_run_id' => $run->id,
                 'declared_queries' => ['current-stage', 'stageMatches'],
                 'declared_query_contracts' => [
                     [
@@ -3455,6 +3503,9 @@ class V2DashboardWorkflowTest extends TestCase
                 ],
                 'declared_updates' => ['mark-approved'],
                 'declared_update_contracts' => [],
+                'declared_entry_method' => 'handle',
+                'declared_entry_mode' => 'canonical',
+                'declared_entry_declaring_class' => TestCommandContractWorkflow::class,
             ],
             'recorded_at' => now()->subSeconds(19),
         ]);
@@ -6234,6 +6285,9 @@ class V2DashboardWorkflowTest extends TestCase
             'workflow_type' => $run->workflow_type,
             'declared_signals' => ['name-provided'],
             'declared_updates' => [],
+            'declared_entry_method' => 'handle',
+            'declared_entry_mode' => 'canonical',
+            'declared_entry_declaring_class' => TestOperatorCommandWorkflow::class,
         ], null, $startCommand);
 
         WorkflowHistoryEvent::record($run, HistoryEventType::SignalWaitOpened, [
@@ -8676,6 +8730,9 @@ class V2DashboardWorkflowTest extends TestCase
                 'workflow_run_id' => $workflow->runId(),
                 'declared_signals' => ['name-provided'],
                 'declared_updates' => ['mark-approved'],
+                'declared_entry_method' => 'handle',
+                'declared_entry_mode' => 'canonical',
+                'declared_entry_declaring_class' => TestOperatorCommandWorkflow::class,
             ],
         ])->save();
 
@@ -9812,6 +9869,27 @@ class V2DashboardWorkflowTest extends TestCase
     {
         Cache::forget(TaskWatchdog::LOOP_THROTTLE_KEY);
         TaskWatchdog::wake();
+    }
+
+    private function recordWorkflowStartedCommandContractSnapshot(WorkflowRun $run, string $workflowClass): void
+    {
+        $contract = WorkflowDefinition::commandContract($workflowClass);
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::WorkflowStarted, [
+            'workflow_class' => $workflowClass,
+            'workflow_type' => $run->workflow_type,
+            'workflow_instance_id' => $run->workflow_instance_id,
+            'workflow_run_id' => $run->id,
+            'declared_queries' => $contract['queries'],
+            'declared_query_contracts' => $contract['query_contracts'],
+            'declared_signals' => $contract['signals'],
+            'declared_signal_contracts' => $contract['signal_contracts'],
+            'declared_updates' => $contract['updates'],
+            'declared_update_contracts' => $contract['update_contracts'],
+            'declared_entry_method' => $contract['entry_method'],
+            'declared_entry_mode' => $contract['entry_mode'],
+            'declared_entry_declaring_class' => $contract['entry_declaring_class'],
+        ]);
     }
 
     private function runReadyWorkflowTask(string $runId): void

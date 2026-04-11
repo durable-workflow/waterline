@@ -170,6 +170,27 @@
                     <div class="col">{{ contractSourceLabel(flow.declared_contract_source) }}</div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.declared_entry_method)">
+                    <div class="col-md-2"><strong>Entry Method</strong></div>
+                    <div class="col">
+                        <div>
+                            <code>{{ flow.declared_entry_method }}()</code>
+                            <span v-if="flow.declared_entry_mode === 'compatibility'" class="small text-muted">
+                                compatibility-only
+                            </span>
+                        </div>
+                        <div class="small text-muted" v-if="hasDetailValue(flow.declared_entry_declaring_class)">
+                            Declared on {{ flow.declared_entry_declaring_class }}
+                        </div>
+                        <div class="small text-muted" v-if="flow.declared_entry_mode === 'canonical'">
+                            This run uses the canonical v2 entry contract.
+                        </div>
+                        <div class="small text-muted" v-else-if="flow.declared_entry_mode === 'compatibility'">
+                            This run still depends on the legacy <code>execute()</code> compatibility path. New v2 workflows and activities should use <code>handle()</code>.
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="declaredUpdateTargets().length">
                     <div class="col-md-2"><strong>Updates</strong></div>
                     <div class="col">
