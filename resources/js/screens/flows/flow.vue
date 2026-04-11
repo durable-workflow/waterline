@@ -746,6 +746,15 @@
                                 <small v-if="commandTargetDetail(command)" class="text-muted">
                                     {{ commandTargetDetail(command) }}
                                 </small>
+                                <div v-if="hasDetailValue(command.current_task_id)" class="small text-muted">
+                                    current task / {{ command.current_task_id }}<span v-if="hasDetailValue(command.current_task_status)"> ({{ command.current_task_status }})</span>
+                                </div>
+                                <div v-if="historicalTaskIds(command).length" class="small text-muted">
+                                    tasks / {{ historicalTaskIds(command).join(', ') }}
+                                </div>
+                                <div v-if="command.task_missing === true && !hasDetailValue(command.current_task_id)" class="small text-muted">
+                                    transport / {{ command.task_transport_state || 'missing' }}
+                                </div>
                             </td>
                             <td>{{ command.outcome || '-' }}</td>
                             <td>{{ command.status }}</td>
@@ -830,6 +839,15 @@
                                 <div v-if="hasDetailValue(signal.workflow_sequence)" class="small text-muted">
                                     step / {{ signal.workflow_sequence }}
                                 </div>
+                                <div v-if="hasDetailValue(signal.current_task_id)" class="small text-muted">
+                                    current task / {{ signal.current_task_id }}<span v-if="hasDetailValue(signal.current_task_status)"> ({{ signal.current_task_status }})</span>
+                                </div>
+                                <div v-if="historicalTaskIds(signal).length" class="small text-muted">
+                                    tasks / {{ historicalTaskIds(signal).join(', ') }}
+                                </div>
+                                <div v-if="signal.task_missing === true && !hasDetailValue(signal.current_task_id)" class="small text-muted">
+                                    transport / {{ signal.task_transport_state || 'missing' }}
+                                </div>
                             </td>
                             <td>
                                 <div>{{ signal.status || '-' }}</div>
@@ -906,6 +924,15 @@
                                 </div>
                                 <div v-if="hasDetailValue(update.workflow_sequence)" class="small text-muted">
                                     step / {{ update.workflow_sequence }}
+                                </div>
+                                <div v-if="hasDetailValue(update.current_task_id)" class="small text-muted">
+                                    current task / {{ update.current_task_id }}<span v-if="hasDetailValue(update.current_task_status)"> ({{ update.current_task_status }})</span>
+                                </div>
+                                <div v-if="historicalTaskIds(update).length" class="small text-muted">
+                                    tasks / {{ historicalTaskIds(update).join(', ') }}
+                                </div>
+                                <div v-if="update.task_missing === true && !hasDetailValue(update.current_task_id)" class="small text-muted">
+                                    transport / {{ update.task_transport_state || 'missing' }}
                                 </div>
                             </td>
                             <td>
@@ -1857,6 +1884,25 @@ export default {
             return Array.isArray(this.flow.signals)
                 ? this.flow.signals
                 : []
+        },
+
+        linkedTaskIds(subject) {
+            if (!subject || !Array.isArray(subject.task_ids)) {
+                return []
+            }
+
+            return subject.task_ids
+                .filter((taskId) => this.hasDetailValue(taskId))
+                .map((taskId) => String(taskId))
+        },
+
+        historicalTaskIds(subject) {
+            const currentTaskId = this.hasDetailValue(subject && subject.current_task_id)
+                ? String(subject.current_task_id)
+                : null
+
+            return this.linkedTaskIds(subject)
+                .filter((taskId) => taskId !== currentTaskId)
         },
 
         declaredSignalTargets() {
