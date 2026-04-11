@@ -742,6 +742,77 @@
             </div>
         </div>
 
+        <div class="card mt-4" v-if="ready && linkedIntakeRows().length">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5>Linked Intakes</h5>
+
+                <a data-toggle="collapse" href="#collapseLinkedIntakes" role="button">
+                    Collapse
+                </a>
+            </div>
+
+            <div class="card-body collapse show" id="collapseLinkedIntakes">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Mode</th>
+                            <th scope="col">Group</th>
+                            <th scope="col">Start</th>
+                            <th scope="col">Primary</th>
+                            <th scope="col">Commands</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="intake in linkedIntakeRows()" :key="intake.group_id">
+                            <td>
+                                <div>{{ linkedIntakeModeLabel(intake) }}</div>
+                                <div v-if="intake.complete === false" class="small text-muted">
+                                    Incomplete
+                                </div>
+                            </td>
+                            <td>
+                                <div>{{ intake.group_id }}</div>
+                                <div v-if="hasDetailValue(intake.source)" class="small text-muted">
+                                    {{ intake.source }}
+                                </div>
+                                <div v-if="intake.missing_expected_command_types && intake.missing_expected_command_types.length" class="small text-muted">
+                                    missing / {{ intake.missing_expected_command_types.join(', ') }}
+                                </div>
+                            </td>
+                            <td>
+                                <div v-if="hasDetailValue(intake.start_outcome) || hasDetailValue(intake.start_command_status)">
+                                    {{ intake.start_outcome || '-' }}
+                                    <span v-if="hasDetailValue(intake.start_command_status)"> / {{ intake.start_command_status }}</span>
+                                </div>
+                                <div v-if="hasDetailValue(intake.start_command_id)" class="small text-muted">
+                                    {{ intake.start_command_id }}
+                                    <span v-if="hasDetailValue(intake.start_command_sequence)"> / #{{ intake.start_command_sequence }}</span>
+                                </div>
+                                <div v-else>-</div>
+                            </td>
+                            <td>
+                                <div v-if="hasDetailValue(intake.primary_command_type)">
+                                    {{ intake.primary_command_type }}
+                                    <span v-if="hasDetailValue(intake.primary_outcome)"> / {{ intake.primary_outcome }}</span>
+                                    <span v-if="hasDetailValue(intake.primary_command_status)"> / {{ intake.primary_command_status }}</span>
+                                </div>
+                                <div v-if="hasDetailValue(intake.primary_command_id)" class="small text-muted">
+                                    {{ intake.primary_command_id }}
+                                    <span v-if="hasDetailValue(intake.primary_command_sequence)"> / #{{ intake.primary_command_sequence }}</span>
+                                </div>
+                                <div v-else>-</div>
+                            </td>
+                            <td>
+                                <div v-for="command in linkedIntakeCommandRows(intake)" :key="command.id">
+                                    {{ linkedIntakeCommandLabel(command) }}
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="card mt-4" v-if="ready && flow.commands && flow.commands.length">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Commands</h5>
@@ -2760,6 +2831,58 @@ export default {
 
         commandSource(command) {
             return command.caller_label || command.source || '-'
+        },
+
+        linkedIntakeRows() {
+            if (!this.flow || !Array.isArray(this.flow.linked_intakes)) {
+                return []
+            }
+
+            return this.flow.linked_intakes
+        },
+
+        linkedIntakeModeLabel(intake) {
+            if (!intake || !this.hasDetailValue(intake.mode)) {
+                return '-'
+            }
+
+            return intake.mode.replace(/_/g, ' ')
+        },
+
+        linkedIntakeCommandRows(intake) {
+            if (!intake || !Array.isArray(intake.commands)) {
+                return []
+            }
+
+            return intake.commands
+        },
+
+        linkedIntakeCommandLabel(command) {
+            if (!command) {
+                return '-'
+            }
+
+            const parts = []
+
+            if (this.hasDetailValue(command.sequence)) {
+                parts.push('#' + command.sequence)
+            }
+
+            if (this.hasDetailValue(command.type)) {
+                parts.push(command.type)
+            }
+
+            if (this.hasDetailValue(command.outcome)) {
+                parts.push(command.outcome)
+            } else if (this.hasDetailValue(command.status)) {
+                parts.push(command.status)
+            }
+
+            if (this.hasDetailValue(command.target_name)) {
+                parts.push(command.target_name)
+            }
+
+            return parts.length ? parts.join(' / ') : '-'
         },
 
         commandTargetDetail(command) {
