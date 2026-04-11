@@ -1002,6 +1002,70 @@
             </div>
         </div>
 
+        <div class="card mt-4" v-if="ready && timerRows().length">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <div>
+                    <h5>Timers</h5>
+                    <div class="small text-muted" v-if="hasDetailValue(flow.timers_projection_source)">
+                        {{ projectionSourceLabel(flow.timers_projection_source) }}
+                    </div>
+                </div>
+
+                <a data-toggle="collapse" href="#collapseTimers" role="button">
+                    Collapse
+                </a>
+            </div>
+
+            <div class="card-body code-bg text-white collapse show" id="collapseTimers">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Timer</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Delay</th>
+                            <th scope="col">Fire At</th>
+                            <th scope="col">Closed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="timer in timerRows()" :key="timer.id">
+                            <td>
+                                {{ timer.timer_kind || 'timer' }}
+                                <div class="small text-muted">{{ timer.id }}</div>
+                                <div class="small text-muted" v-if="hasDetailValue(timer.condition_wait_id)">
+                                    condition wait / {{ timer.condition_wait_id }}
+                                </div>
+                                <div class="small text-muted" v-if="hasDetailValue(timer.condition_key)">
+                                    condition key / {{ timer.condition_key }}
+                                </div>
+                                <div class="small text-muted" v-if="hasDetailValue(timer.condition_definition_fingerprint)">
+                                    predicate fingerprint / {{ timer.condition_definition_fingerprint }}
+                                </div>
+                                <div class="small text-muted" v-if="hasDetailValue(timer.history_authority)">
+                                    {{ historyAuthorityLabel(timer.history_authority) }}
+                                </div>
+                                <div class="small text-muted" v-if="hasDetailValue(timer.history_unsupported_reason)">
+                                    {{ historyUnsupportedReasonLabel(timer.history_unsupported_reason) }}
+                                </div>
+                                <div class="small text-muted" v-if="hasDetailValue(timer.row_status)">
+                                    row status / {{ timer.row_status }}
+                                </div>
+                            </td>
+                            <td>
+                                {{ timer.status || '-' }}
+                                <div class="small text-muted" v-if="hasDetailValue(timer.source_status)">
+                                    {{ timer.source_status }}
+                                </div>
+                            </td>
+                            <td>{{ hasDetailValue(timer.delay_seconds) ? timer.delay_seconds + 's' : '-' }}</td>
+                            <td>{{ timestamp(timer.fire_at) }}</td>
+                            <td>{{ timestamp(timer.fired_at || timer.cancelled_at) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="card mt-4" v-if="ready && flow.exceptions && flow.exceptions.length">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Exceptions</h5>
@@ -1580,6 +1644,12 @@ export default {
             return this.flow.activities && this.flow.activities.length
                 ? this.flow.activities
                 : (this.flow.logs || [])
+        },
+
+        timerRows() {
+            return this.flow.timers && this.flow.timers.length
+                ? this.flow.timers
+                : []
         },
 
         historyAuthorityLabel(authority) {
@@ -2343,6 +2413,10 @@ export default {
 
             if (source === 'workflow_run_lineage_entries') {
                 return 'Projection: workflow_run_lineage_entries'
+            }
+
+            if (source === 'workflow_run_timer_entries') {
+                return 'Projection: workflow_run_timer_entries'
             }
 
             if (source === 'live_fallback') {

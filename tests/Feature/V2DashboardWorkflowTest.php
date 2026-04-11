@@ -5011,6 +5011,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('wait_kind', 'timer')
             ->assertJsonPath('wait_reason', 'Waiting for timer')
             ->assertJsonPath('liveness_state', 'timer_scheduled')
+            ->assertJsonPath('timers_projection_source', 'workflow_run_timer_entries')
             ->assertJsonPath('resume_source_kind', 'timer')
             ->assertJsonPath('resume_source_id', $timerId)
             ->assertJsonPath('wait_deadline_at', $deadlineAt->toJSON())

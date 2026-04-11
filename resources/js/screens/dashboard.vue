@@ -150,6 +150,7 @@
                 return this.operatorProjectionMetric('run_summaries', 'needs_rebuild')
                     + this.operatorProjectionMetric('run_waits', 'needs_rebuild')
                     + this.operatorProjectionMetric('run_timeline_entries', 'needs_rebuild')
+                    + this.operatorProjectionMetric('run_timer_entries', 'needs_rebuild')
                     + this.operatorProjectionMetric('run_lineage_entries', 'needs_rebuild');
             },
 
@@ -475,6 +476,15 @@
                         {{ operatorProjectionMetricLabel('run_timeline_entries', 'stale_projected_runs') }} stale,
                         {{ operatorProjectionMetricLabel('run_timeline_entries', 'missing_history_events') }} missing history events,
                         {{ operatorProjectionMetricLabel('run_timeline_entries', 'orphaned') }} orphaned.
+                    </div>
+
+                    <div class="mt-1 text-muted">
+                        Timer rows:
+                        {{ operatorProjectionMetricLabel('run_timer_entries', 'rows') }} rows across
+                        {{ operatorProjectionMetricLabel('run_timer_entries', 'projected_runs') }} projected runs,
+                        {{ operatorProjectionMetricLabel('run_timer_entries', 'missing_runs_with_timers') }} timer runs missing,
+                        {{ operatorProjectionMetricLabel('run_timer_entries', 'stale_projected_runs') }} stale,
+                        {{ operatorProjectionMetricLabel('run_timer_entries', 'orphaned') }} orphaned.
                     </div>
 
                     <div class="mt-1 text-muted">

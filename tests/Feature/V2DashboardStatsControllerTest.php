@@ -18,6 +18,7 @@ use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowLink;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunLineageEntry;
+use Workflow\V2\Models\WorkflowRunTimerEntry;
 use Workflow\V2\Models\WorkflowRunWait;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowTask;
@@ -294,6 +295,29 @@ class V2DashboardStatsControllerTest extends TestCase
             'summary' => 'Orphaned timeline row.',
             'recorded_at' => now(),
         ]);
+        WorkflowHistoryEvent::record($run, HistoryEventType::TimerScheduled, [
+            'timer_id' => 'waterline-selected-timer',
+            'sequence' => 2,
+            'delay_seconds' => 60,
+            'fire_at' => now()->addMinute()->toJSON(),
+        ]);
+        WorkflowRunTimerEntry::create([
+            'id' => 'waterline-timer-orphan',
+            'workflow_run_id' => str_pad('01JWLTIMERMISSRUN', 26, '0'),
+            'workflow_instance_id' => 'waterline-timer-orphan-instance',
+            'timer_id' => 'waterline-orphan-timer',
+            'position' => 0,
+            'status' => 'pending',
+            'source_status' => 'pending',
+            'history_authority' => 'typed_history',
+            'payload' => [
+                'id' => 'waterline-orphan-timer',
+                'status' => 'pending',
+                'source_status' => 'pending',
+                'history_authority' => 'typed_history',
+                'history_event_types' => [],
+            ],
+        ]);
 
         WorkflowLink::create([
             'id' => '01JTESTFLOWLINKMETRICS0001',
@@ -466,16 +490,25 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.projections.run_waits.orphaned', 1)
             ->assertJsonPath('operator_metrics.projections.run_waits.needs_rebuild', 2)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.runs', 3)
-            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.history_events', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.history_events', 2)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.rows', 1)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.projected_runs', 1)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.runs_with_history', 1)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.projected_runs_with_history', 0)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.missing_runs_with_history', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.missing_history_events', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.missing_history_events', 2)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.stale_projected_runs', 0)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.orphaned', 1)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.needs_rebuild', 2)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.runs', 3)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.rows', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.projected_runs', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.runs_with_timers', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.projected_runs_with_timers', 0)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.missing_runs_with_timers', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.stale_projected_runs', 0)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.orphaned', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.needs_rebuild', 2)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.runs', 3)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.rows', 2)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.projected_runs', 2)
