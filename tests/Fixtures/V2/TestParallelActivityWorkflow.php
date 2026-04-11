@@ -12,7 +12,7 @@ use Workflow\V2\Workflow;
 #[Type('waterline-test-parallel-activity-workflow')]
 final class TestParallelActivityWorkflow extends Workflow
 {
-    public function execute(string $firstName, string $secondName): array
+    public function handle(string $firstName, string $secondName): array
     {
         return all([
             startActivity(TestParallelGreetingActivity::class, $firstName),

@@ -11,7 +11,7 @@ use Workflow\V2\Workflow;
 #[Type('waterline-test-timer-child-workflow')]
 final class TestTimerChildWorkflow extends Workflow
 {
-    public function execute(int $seconds): array
+    public function handle(int $seconds): array
     {
         timer($seconds);
 

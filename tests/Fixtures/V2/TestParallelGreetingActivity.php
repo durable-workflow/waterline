@@ -10,7 +10,7 @@ use Workflow\V2\Activity;
 #[Type('parallel-greeting')]
 final class TestParallelGreetingActivity extends Activity
 {
-    public function execute(string $name): string
+    public function handle(string $name): string
     {
         return "Hello, {$name}!";
     }

@@ -12,7 +12,7 @@ use Workflow\V2\Workflow;
 #[Type('waterline-test-async-workflow')]
 final class TestAsyncWorkflow extends Workflow
 {
-    public function execute(string $name): string
+    public function handle(string $name): string
     {
         return async(static fn (): string => activity(TestParallelGreetingActivity::class, $name));
     }

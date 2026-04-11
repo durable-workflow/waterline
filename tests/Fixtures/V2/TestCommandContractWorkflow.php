@@ -17,7 +17,7 @@ use Workflow\V2\Workflow;
 #[Signal('rejected-by')]
 final class TestCommandContractWorkflow extends Workflow
 {
-    public function execute(): array
+    public function handle(): array
     {
         return [];
     }
