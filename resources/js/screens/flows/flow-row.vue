@@ -23,6 +23,12 @@
                       :title="repairBadgeTitle(flow)">
                     {{ repairBadgeLabel(flow) }}
                 </span>
+                <span v-if="showTaskProblemBadge(flow)"
+                      :class="taskProblemBadgeClass(flow)"
+                      class="badge ml-1"
+                      :title="taskProblemBadgeTitle(flow)">
+                    {{ taskProblemBadgeLabel(flow) }}
+                </span>
                 <span
                     v-if="showCompatibilityEntryBadge(flow)"
                     class="badge badge-info ml-1"
@@ -148,6 +154,40 @@
             repairBlocked(flow) {
                 return flow && flow.repair_blocked
                     ? flow.repair_blocked
+                    : null
+            },
+
+            showTaskProblemBadge(flow) {
+                const taskProblem = this.taskProblem(flow)
+
+                return taskProblem ? taskProblem.badge_visible === true : false
+            },
+
+            taskProblemBadgeLabel(flow) {
+                const taskProblem = this.taskProblem(flow)
+
+                return taskProblem && taskProblem.label
+                    ? taskProblem.label
+                    : 'Task Problem'
+            },
+
+            taskProblemBadgeTitle(flow) {
+                const taskProblem = this.taskProblem(flow)
+
+                return taskProblem && taskProblem.description
+                    ? taskProblem.description
+                    : 'This run recorded workflow-task problems.'
+            },
+
+            taskProblemBadgeClass(flow) {
+                const taskProblem = this.taskProblem(flow)
+
+                return this.badgeClassForTone(taskProblem && taskProblem.tone ? taskProblem.tone : 'secondary')
+            },
+
+            taskProblem(flow) {
+                return flow && flow.task_problem_badge
+                    ? flow.task_problem_badge
                     : null
             },
 

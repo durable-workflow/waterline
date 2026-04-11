@@ -71,29 +71,9 @@ class SavedWorkflowView extends Model
      */
     public static function systemViews(?string $bucket = null): array
     {
-        return collect(self::BUCKETS)
-            ->when($bucket !== null, static fn ($buckets) => $buckets->filter(static fn (string $candidate): bool => $candidate === $bucket))
-            ->map(static function (string $candidate): array {
-                $versionMetadata = VisibilityFilters::versionMetadata(VisibilityFilters::VERSION);
-
-                return [
-                    'id' => 'system:'.$candidate,
-                    'name' => ucfirst($candidate),
-                    'bucket' => $candidate,
-                    'scope' => 'system',
-                    'shared' => true,
-                    'system' => true,
-                    'filters' => [],
-                    'filter_version' => VisibilityFilters::VERSION,
-                    'filter_version_supported' => $versionMetadata['supported'],
-                    'filter_version_status' => $versionMetadata['status'],
-                    'filter_version_message' => $versionMetadata['message'],
-                    'current_filter_version' => $versionMetadata['current_version'],
-                    'supported_filter_versions' => $versionMetadata['supported_versions'],
-                    'created_at' => null,
-                    'updated_at' => null,
-                ];
-            })
+        return collect(self::systemViewDefinitions())
+            ->when($bucket !== null, static fn ($views) => $views->filter(static fn (array $candidate): bool => $candidate['bucket'] === $bucket))
+            ->map(static fn (array $view): array => self::systemViewPayload($view))
             ->values()
             ->all();
     }
@@ -135,6 +115,71 @@ class SavedWorkflowView extends Model
             'supported_filter_versions' => $versionMetadata['supported_versions'],
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+        ];
+    }
+
+    /**
+     * @return list<array{
+     *     id: string,
+     *     name: string,
+     *     bucket: string,
+     *     filters: array<string, mixed>
+     * }>
+     */
+    private static function systemViewDefinitions(): array
+    {
+        $definitions = [];
+
+        foreach (self::BUCKETS as $bucket) {
+            $definitions[] = [
+                'id' => 'system:'.$bucket,
+                'name' => ucfirst($bucket),
+                'bucket' => $bucket,
+                'filters' => [],
+            ];
+        }
+
+        $definitions[] = [
+            'id' => 'system:running-task-problems',
+            'name' => 'Task Problems',
+            'bucket' => 'running',
+            'filters' => [
+                'task_problem' => true,
+            ],
+        ];
+
+        return $definitions;
+    }
+
+    /**
+     * @param array{
+     *     id: string,
+     *     name: string,
+     *     bucket: string,
+     *     filters: array<string, mixed>
+     * } $view
+     * @return array<string, mixed>
+     */
+    private static function systemViewPayload(array $view): array
+    {
+        $versionMetadata = VisibilityFilters::versionMetadata(VisibilityFilters::VERSION);
+
+        return [
+            'id' => $view['id'],
+            'name' => $view['name'],
+            'bucket' => $view['bucket'],
+            'scope' => 'system',
+            'shared' => true,
+            'system' => true,
+            'filters' => $view['filters'],
+            'filter_version' => VisibilityFilters::VERSION,
+            'filter_version_supported' => $versionMetadata['supported'],
+            'filter_version_status' => $versionMetadata['status'],
+            'filter_version_message' => $versionMetadata['message'],
+            'current_filter_version' => $versionMetadata['current_version'],
+            'supported_filter_versions' => $versionMetadata['supported_versions'],
+            'created_at' => null,
+            'updated_at' => null,
         ];
     }
 }

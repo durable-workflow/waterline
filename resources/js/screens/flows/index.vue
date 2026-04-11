@@ -160,7 +160,7 @@
                         const views = response.data.data || [];
 
                         this.savedViewsEnabled = views.some((view) => view.system === true);
-                        this.savedViews = views.filter((view) => !view.system);
+                        this.savedViews = views.filter((view) => !this.isDefaultSystemView(view));
                         this.filterDefinition = response.data.filter_definition || this.filterDefinition
 
                         if (this.selectedSavedView && !this.savedViews.find((view) => view.id === this.selectedSavedView)) {
@@ -964,11 +964,21 @@
                 }[this.$route.params.type] || 'Workflow';
             },
 
+            isDefaultSystemView(view) {
+                return !!view
+                    && view.system === true
+                    && view.id === `system:${this.$route.params.type}`
+            },
+
             savedViewVersionSupported(view) {
                 return !view || view.filter_version_supported !== false
             },
 
             savedViewOptionLabel(view) {
+                if (view && view.system === true) {
+                    return `System: ${view.name}`
+                }
+
                 if (this.savedViewVersionSupported(view)) {
                     return view.name
                 }
@@ -1014,7 +1024,7 @@
                             @change="selectSavedView"
                             class="custom-select custom-select-sm mr-2 mb-2"
                             style="width: 14rem;">
-                        <option :value="null">System view</option>
+                        <option :value="null">Default View</option>
                         <option v-for="view in savedViews" :key="view.id" :value="view.id">
                             {{ savedViewOptionLabel(view) }}
                         </option>

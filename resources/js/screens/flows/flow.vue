@@ -97,6 +97,16 @@
                     </div>
                 </div>
 
+                <div class="row mb-2" v-if="taskProblemBadge(flow)">
+                    <div class="col-md-2"><strong>Task Problems</strong></div>
+                    <div class="col">
+                        <span :class="taskProblemBadgeClass(flow)" class="badge mr-2">
+                            {{ taskProblemBadge(flow).label }}
+                        </span>
+                        <span class="text-muted">{{ taskProblemBadge(flow).description }}</span>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="hasDetailValue(flow.read_only_reason)">
                     <div class="col-md-2"><strong>Mode</strong></div>
                     <div class="col">{{ flow.read_only_reason }}</div>
@@ -1690,6 +1700,26 @@ export default {
 
         queryContractLabel(contract) {
             return this.commandContractLabel(contract)
+        },
+
+        taskProblemBadge(flow) {
+            return flow && flow.task_problem_badge
+                ? flow.task_problem_badge
+                : null
+        },
+
+        taskProblemBadgeClass(flow) {
+            const badge = this.taskProblemBadge(flow)
+
+            return {
+                dark: 'badge badge-dark',
+                danger: 'badge badge-danger',
+                info: 'badge badge-info',
+                primary: 'badge badge-primary',
+                secondary: 'badge badge-secondary',
+                success: 'badge badge-success',
+                warning: 'badge badge-warning',
+            }[(badge && badge.tone) || 'secondary'] || 'badge badge-secondary'
         },
 
         compatibilityFleetSummary(supported) {
