@@ -297,6 +297,7 @@ class V2DashboardWorkflowListTest extends TestCase
             waitKind: 'signal',
             livenessState: 'waiting_for_signal',
             repairBlockedReason: 'unsupported_history',
+            continueAsNewRecommended: true,
         );
         $this->createRunningSummary(
             'visible-timer-order',
@@ -308,6 +309,8 @@ class V2DashboardWorkflowListTest extends TestCase
             waitKind: 'timer',
             livenessState: 'timer_scheduled',
             repairBlockedReason: 'repair_not_needed',
+            isCurrentRun: false,
+            continueAsNewRecommended: false,
         );
 
         $savedViewId = $this->postJson('/waterline/api/saved-views', [
@@ -317,13 +320,14 @@ class V2DashboardWorkflowListTest extends TestCase
                 'workflow_type' => 'workflow.test',
                 'wait_kind' => 'signal',
                 'repair_blocked_reason' => 'unsupported_history',
+                'continue_as_new_recommended' => true,
                 'archived' => false,
                 'is_terminal' => false,
             ],
             'shared' => true,
         ])->assertCreated()->json('id');
 
-        $this->get('/waterline/api/flows/running?view='.$savedViewId.'&instance_id='.$matching->workflow_instance_id.'&run_id='.$matching->id.'&liveness_state=waiting_for_signal')
+        $this->get('/waterline/api/flows/running?view='.$savedViewId.'&instance_id='.$matching->workflow_instance_id.'&run_id='.$matching->id.'&is_current_run=true&liveness_state=waiting_for_signal')
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $matching->id)
@@ -335,6 +339,8 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.applied.wait_kind', 'signal')
             ->assertJsonPath('visibility_filters.applied.liveness_state', 'waiting_for_signal')
             ->assertJsonPath('visibility_filters.applied.repair_blocked_reason', 'unsupported_history')
+            ->assertJsonPath('visibility_filters.applied.is_current_run', true)
+            ->assertJsonPath('visibility_filters.applied.continue_as_new_recommended', true)
             ->assertJsonPath('visibility_filters.applied.instance_id', $matching->workflow_instance_id)
             ->assertJsonPath('visibility_filters.applied.run_id', $matching->id)
             ->assertJsonPath('visibility_filters.applied.archived', false)
@@ -342,8 +348,14 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.definition.fields.instance_id.label', 'Instance ID')
             ->assertJsonPath('visibility_filters.definition.fields.instance_id.type', 'string')
             ->assertJsonPath('visibility_filters.definition.fields.instance_id.input', 'text')
+            ->assertJsonPath('visibility_filters.definition.fields.status_bucket.input', 'select')
+            ->assertJsonPath('visibility_filters.definition.fields.is_current_run.type', 'boolean')
+            ->assertJsonPath('visibility_filters.definition.fields.is_current_run.input', 'boolean_select')
+            ->assertJsonPath('visibility_filters.definition.fields.continue_as_new_recommended.type', 'boolean')
+            ->assertJsonPath('visibility_filters.definition.fields.continue_as_new_recommended.input', 'boolean_select')
             ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.label', 'Repair Blocked Reason')
             ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.type', 'string')
+            ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.input', 'select')
             ->assertJsonPath('visibility_filters.definition.fields.archived.type', 'boolean')
             ->assertJsonPath('visibility_filters.definition.fields.archived.input', 'boolean_select')
             ->assertJsonPath('visibility_filters.definition.labels.label', 'Labels')
@@ -385,11 +397,11 @@ class V2DashboardWorkflowListTest extends TestCase
             'name' => 'Acme waits',
             'bucket' => 'running',
             'filters' => [
-                'workflow_type' => 'workflow.test',
-                'labels' => [
-                    'tenant' => 'acme',
-                ],
+            'workflow_type' => 'workflow.test',
+            'labels' => [
+                'tenant' => 'acme',
             ],
+        ],
             'shared' => true,
         ])->assertCreated()->json('id');
 
@@ -424,6 +436,9 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('filter_definition.fields.instance_id.label', 'Instance ID')
             ->assertJsonPath('filter_definition.fields.instance_id.type', 'string')
             ->assertJsonPath('filter_definition.fields.repair_blocked_reason.label', 'Repair Blocked Reason')
+            ->assertJsonPath('filter_definition.fields.repair_blocked_reason.input', 'select')
+            ->assertJsonPath('filter_definition.fields.is_current_run.type', 'boolean')
+            ->assertJsonPath('filter_definition.fields.continue_as_new_recommended.type', 'boolean')
             ->assertJsonPath('filter_definition.fields.archived.type', 'boolean')
             ->assertJsonPath('filter_definition.fields.archived.input', 'boolean_select')
             ->assertJsonPath('filter_definition.labels.input', 'key_value_textarea');
@@ -461,6 +476,8 @@ class V2DashboardWorkflowListTest extends TestCase
         ?string $livenessState = null,
         ?string $repairBlockedReason = null,
         ?Carbon $archivedAt = null,
+        bool $isCurrentRun = true,
+        bool $continueAsNewRecommended = false,
     ): WorkflowRunSummary {
         $instance = WorkflowInstance::create([
             'id' => $instanceId,
@@ -487,13 +504,13 @@ class V2DashboardWorkflowListTest extends TestCase
             'updated_at' => $createdAt,
         ]);
 
-        $instance->update(['current_run_id' => $run->id]);
+        $instance->update(['current_run_id' => $isCurrentRun ? $run->id : null]);
 
         return WorkflowRunSummary::create([
             'id' => $run->id,
             'workflow_instance_id' => $instance->id,
             'run_number' => 1,
-            'is_current_run' => true,
+            'is_current_run' => $isCurrentRun,
             'engine_source' => 'v2',
             'class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
@@ -504,6 +521,7 @@ class V2DashboardWorkflowListTest extends TestCase
             'wait_kind' => $waitKind,
             'liveness_state' => $livenessState,
             'repair_blocked_reason' => $repairBlockedReason,
+            'continue_as_new_recommended' => $continueAsNewRecommended,
             'archived_at' => $archivedAt,
             'started_at' => $startedAt,
             'sort_timestamp' => $startedAt,

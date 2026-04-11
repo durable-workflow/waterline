@@ -11,18 +11,114 @@
             compatibility: { label: 'Compatibility', type: 'string', input: 'text', operator: 'exact', order: 4, query_parameter: 'compatibility' },
             queue: { label: 'Queue', type: 'string', input: 'text', operator: 'exact', order: 5, query_parameter: 'queue' },
             connection: { label: 'Connection', type: 'string', input: 'text', operator: 'exact', order: 6, query_parameter: 'connection' },
-            status: { label: 'Status', type: 'string', input: 'text', operator: 'exact', order: 7, query_parameter: 'status' },
-            status_bucket: { label: 'Status Bucket', type: 'string', input: 'text', operator: 'exact', order: 8, query_parameter: 'status_bucket' },
-            closed_reason: { label: 'Closed Reason', type: 'string', input: 'text', operator: 'exact', order: 9, query_parameter: 'closed_reason' },
-            wait_kind: { label: 'Wait Kind', type: 'string', input: 'text', operator: 'exact', order: 10, query_parameter: 'wait_kind' },
+            status: {
+                label: 'Status',
+                type: 'string',
+                input: 'select',
+                operator: 'exact',
+                order: 7,
+                query_parameter: 'status',
+                options: [
+                    { label: 'Pending', value: 'pending' },
+                    { label: 'Running', value: 'running' },
+                    { label: 'Waiting', value: 'waiting' },
+                    { label: 'Cancelled', value: 'cancelled' },
+                    { label: 'Terminated', value: 'terminated' },
+                    { label: 'Completed', value: 'completed' },
+                    { label: 'Failed', value: 'failed' },
+                ],
+            },
+            status_bucket: {
+                label: 'Status Bucket',
+                type: 'string',
+                input: 'select',
+                operator: 'exact',
+                order: 8,
+                query_parameter: 'status_bucket',
+                options: [
+                    { label: 'Running', value: 'running' },
+                    { label: 'Completed', value: 'completed' },
+                    { label: 'Failed', value: 'failed' },
+                ],
+            },
+            closed_reason: {
+                label: 'Closed Reason',
+                type: 'string',
+                input: 'select',
+                operator: 'exact',
+                order: 9,
+                query_parameter: 'closed_reason',
+                options: [
+                    { label: 'Completed', value: 'completed' },
+                    { label: 'Failed', value: 'failed' },
+                    { label: 'Cancelled', value: 'cancelled' },
+                    { label: 'Terminated', value: 'terminated' },
+                    { label: 'Continued', value: 'continued' },
+                ],
+            },
+            wait_kind: {
+                label: 'Wait Kind',
+                type: 'string',
+                input: 'select',
+                operator: 'exact',
+                order: 10,
+                query_parameter: 'wait_kind',
+                options: [
+                    { label: 'Activity', value: 'activity' },
+                    { label: 'Update', value: 'update' },
+                    { label: 'Signal', value: 'signal' },
+                    { label: 'Timer', value: 'timer' },
+                    { label: 'Condition', value: 'condition' },
+                    { label: 'Workflow Task', value: 'workflow-task' },
+                    { label: 'Child', value: 'child' },
+                ],
+            },
             liveness_state: { label: 'Liveness State', type: 'string', input: 'text', operator: 'exact', order: 11, query_parameter: 'liveness_state' },
-            repair_blocked_reason: { label: 'Repair Blocked Reason', type: 'string', input: 'text', operator: 'exact', order: 12, query_parameter: 'repair_blocked_reason' },
+            repair_blocked_reason: {
+                label: 'Repair Blocked Reason',
+                type: 'string',
+                input: 'select',
+                operator: 'exact',
+                order: 12,
+                query_parameter: 'repair_blocked_reason',
+                options: [
+                    { label: 'Replay Blocked', value: 'unsupported_history' },
+                    { label: 'Compat Blocked', value: 'waiting_for_compatible_worker' },
+                    { label: 'Selected Run Not Current', value: 'selected_run_not_current' },
+                    { label: 'Run Closed', value: 'run_closed' },
+                    { label: 'Repair Not Needed', value: 'repair_not_needed' },
+                ],
+            },
+            is_current_run: {
+                label: 'Current Run',
+                type: 'boolean',
+                input: 'boolean_select',
+                operator: 'exact',
+                order: 13,
+                query_parameter: 'is_current_run',
+                options: [
+                    { label: 'Yes', value: true },
+                    { label: 'No', value: false },
+                ],
+            },
+            continue_as_new_recommended: {
+                label: 'Continue As New Recommended',
+                type: 'boolean',
+                input: 'boolean_select',
+                operator: 'exact',
+                order: 14,
+                query_parameter: 'continue_as_new_recommended',
+                options: [
+                    { label: 'Yes', value: true },
+                    { label: 'No', value: false },
+                ],
+            },
             archived: {
                 label: 'Archived',
                 type: 'boolean',
                 input: 'boolean_select',
                 operator: 'exact',
-                order: 13,
+                order: 15,
                 query_parameter: 'archived',
                 options: [
                     { label: 'Yes', value: true },
@@ -34,7 +130,7 @@
                 type: 'boolean',
                 input: 'boolean_select',
                 operator: 'exact',
-                order: 14,
+                order: 16,
                 query_parameter: 'is_terminal',
                 options: [
                     { label: 'Yes', value: true },
@@ -68,6 +164,7 @@
                 totalPages: 1,
                 flows: [],
                 savedViews: [],
+                savedViewsEnabled: false,
                 selectedSavedView: null,
                 visibilityFilters: null,
                 filterDefinition: null,
@@ -128,12 +225,7 @@
          * Prepare the component.
          */
         mounted() {
-            this.updatePageTitle();
-
-            this.loadSavedViews();
-
-            this.loadFlows();
-
+            this.handleRouteChange();
             this.refreshFlowsPeriodically();
         },
 
@@ -150,18 +242,25 @@
          */
         watch: {
             '$route'() {
-                this.updatePageTitle();
-
-                this.page = 1;
-
-                this.loadSavedViews();
-
-                this.loadFlows();
+                this.handleRouteChange();
             }
         },
 
 
         methods: {
+            async handleRouteChange() {
+                this.updatePageTitle();
+                this.page = 1;
+
+                await this.loadSavedViews();
+
+                if (await this.normalizeRouteViewQuery()) {
+                    return;
+                }
+
+                await this.loadFlows();
+            },
+
             /**
              * Load the flows of the given tag.
              */
@@ -170,7 +269,7 @@
                     this.ready = false;
                 }
 
-                this.$http.get(Waterline.basePath + '/api/flows/' + this.$route.params.type + '?' + this.apiQueryString(page))
+                return this.$http.get(Waterline.basePath + '/api/flows/' + this.$route.params.type + '?' + this.apiQueryString(page))
                     .then(response => {
                         this.visibilityFilters = response.data.visibility_filters || null;
                         this.filterDefinition = response.data.visibility_filters && response.data.visibility_filters.definition
@@ -190,6 +289,15 @@
                         }
 
                         this.ready = true;
+                    })
+                    .catch(() => {
+                        if (!refreshing) {
+                            this.flows = [];
+                            this.totalPages = 1;
+                            this.visibilityFilters = null;
+                        }
+
+                        this.ready = true;
                     });
             },
 
@@ -198,7 +306,10 @@
 
                 return this.$http.get(Waterline.basePath + '/api/saved-views?bucket=' + encodeURIComponent(this.$route.params.type))
                     .then(response => {
-                        this.savedViews = response.data.data || [];
+                        const views = response.data.data || [];
+
+                        this.savedViewsEnabled = views.some((view) => view.system === true);
+                        this.savedViews = views.filter((view) => !view.system);
                         this.filterDefinition = response.data.filter_definition || this.filterDefinition
 
                         if (this.selectedSavedView && !this.savedViews.find((view) => view.id === this.selectedSavedView)) {
@@ -207,8 +318,40 @@
                     })
                     .catch(() => {
                         this.savedViews = [];
+                        this.savedViewsEnabled = false;
                         this.selectedSavedView = null;
                     });
+            },
+
+            normalizeRouteViewValue() {
+                return this.selectedSavedView || null
+            },
+
+            async normalizeRouteViewQuery() {
+                const routeView = typeof this.$route.query.view === 'string' && this.$route.query.view.length > 0
+                    ? this.$route.query.view
+                    : null
+                const normalizedView = this.normalizeRouteViewValue()
+
+                if (routeView === normalizedView) {
+                    return false
+                }
+
+                const query = {...this.$route.query}
+
+                if (normalizedView) {
+                    query.view = normalizedView
+                } else {
+                    delete query.view
+                }
+
+                await this.$router.replace({
+                    name: this.$route.name,
+                    params: this.$route.params,
+                    query,
+                })
+
+                return true
             },
 
             apiQueryString(page) {
@@ -245,9 +388,10 @@
 
             selectSavedView() {
                 const query = {...this.$route.query};
+                const selectedView = this.normalizeRouteViewValue();
 
-                if (this.selectedSavedView) {
-                    query.view = this.selectedSavedView;
+                if (selectedView) {
+                    query.view = selectedView;
                 } else {
                     delete query.view;
                 }
@@ -352,6 +496,56 @@
                     : field
             },
 
+            optionValueString(value) {
+                if (value === true) {
+                    return 'true'
+                }
+
+                if (value === false) {
+                    return 'false'
+                }
+
+                return value === undefined || value === null
+                    ? ''
+                    : String(value)
+            },
+
+            fieldOptions(field, selectedValue = '') {
+                const definition = this.visibilityFieldDefinition(field)
+                const options = definition && Array.isArray(definition.options)
+                    ? definition.options.map((option) => ({...option}))
+                    : []
+                const normalizedSelected = this.optionValueString(selectedValue)
+
+                if (!normalizedSelected) {
+                    return options
+                }
+
+                if (!options.find((option) => this.optionValueString(option.value) === normalizedSelected)) {
+                    options.push({
+                        label: normalizedSelected,
+                        value: normalizedSelected,
+                    })
+                }
+
+                return options
+            },
+
+            optionLabel(field, value) {
+                const normalizedValue = this.optionValueString(value)
+
+                if (!normalizedValue) {
+                    return value
+                }
+
+                const match = this.fieldOptions(field, value)
+                    .find((option) => this.optionValueString(option.value) === normalizedValue)
+
+                return match && match.label
+                    ? match.label
+                    : value
+            },
+
             normalizeFilterValue(field, value) {
                 const definition = this.visibilityFieldDefinition(field)
 
@@ -404,13 +598,24 @@
             formatAppliedFilterValue(field, value) {
                 const definition = this.visibilityFieldDefinition(field)
 
-                if (definition && definition.type === 'boolean') {
-                    return this.parseBooleanFilterValue(value) === true
-                        ? 'Yes'
-                        : 'No'
+                if (definition && Array.isArray(definition.options)) {
+                    return this.optionLabel(field, value)
                 }
 
                 return value
+            },
+
+            effectiveFilterPayload() {
+                const applied = this.visibilityFilters && this.visibilityFilters.applied
+                    ? this.visibilityFilters.applied
+                    : this.currentFilterPayload()
+
+                return {
+                    ...applied,
+                    labels: applied.labels
+                        ? {...applied.labels}
+                        : undefined,
+                }
             },
 
             filterValue(field, filters) {
@@ -444,12 +649,12 @@
                     <label class="d-block text-left mb-1" for="${id}">${label}</label>
                     <input id="${id}" class="swal2-input" value="${this.escapeHtml(value)}">
                 `
-                const booleanInput = (id, label, value, options) => `
+                const selectInput = (id, label, value, options) => `
                     <label class="d-block text-left mb-1" for="${id}">${label}</label>
                     <select id="${id}" class="swal2-input">
                         <option value="" ${value === '' ? 'selected' : ''}>Any</option>
                         ${options.map((option) => `
-                            <option value="${option.value ? 'true' : 'false'}" ${value === (option.value ? 'true' : 'false') ? 'selected' : ''}>${this.escapeHtml(option.label)}</option>
+                            <option value="${this.escapeHtml(this.optionValueString(option.value))}" ${value === this.optionValueString(option.value) ? 'selected' : ''}>${this.escapeHtml(option.label)}</option>
                         `).join('')}
                     </select>
                 `
@@ -462,11 +667,8 @@
                         const label = this.escapeHtml(definition.label || field)
                         const value = this.filterValue(field, filters)
 
-                        if (definition.type === 'boolean') {
-                            return booleanInput(id, label, value, definition.options || [
-                                { label: 'Yes', value: true },
-                                { label: 'No', value: false },
-                            ])
+                        if (definition.input === 'boolean_select' || definition.input === 'select') {
+                            return selectInput(id, label, value, this.fieldOptions(field, value))
                         }
 
                         return textInput(id, label, value)
@@ -632,7 +834,7 @@
                             <input id="waterline-view-shared" type="checkbox" class="mr-2" ${view.shared ? 'checked' : ''}>
                             <span>Shared within this Waterline scope</span>
                         </label>
-                        <small class="d-block text-left text-muted mt-3">Update uses the current route filters.</small>
+                        <small class="d-block text-left text-muted mt-3">Update uses the current applied filters.</small>
                     `,
                     showCancelButton: true,
                     showDenyButton: true,
@@ -698,11 +900,12 @@
                     await this.$http.put(Waterline.basePath + '/api/saved-views/' + view.id, {
                         name: result.value.name,
                         bucket: this.$route.params.type,
-                        filters: this.currentFilterPayload(),
+                        filters: this.effectiveFilterPayload(),
                         shared: result.value.shared,
                     })
 
                     await this.loadSavedViews()
+                    await this.loadFlows(this.page)
                 } catch (error) {
                     const message = error.response && error.response.data && error.response.data.message
                         ? error.response.data.message
@@ -744,7 +947,7 @@
                     const response = await this.$http.post(Waterline.basePath + '/api/saved-views', {
                         name: result.value.trim(),
                         bucket: this.$route.params.type,
-                        filters: this.currentFilterPayload(),
+                        filters: this.effectiveFilterPayload(),
                         shared: true,
                     });
 
@@ -880,7 +1083,7 @@
                         Clear
                     </button>
 
-                    <button v-if="savedViews.length"
+                    <button v-if="savedViewsEnabled"
                             class="btn btn-outline-secondary btn-sm mr-2 mb-2"
                             @click="saveCurrentView">
                         Save View
