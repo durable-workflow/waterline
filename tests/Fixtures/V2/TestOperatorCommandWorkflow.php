@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Waterline\Tests\Fixtures\V2;
 
-use Generator;
 use Workflow\QueryMethod;
 use Workflow\UpdateMethod;
 use Workflow\V2\Attributes\Signal;
@@ -25,11 +24,11 @@ final class TestOperatorCommandWorkflow extends Workflow
      */
     private array $events = [];
 
-    public function execute(): Generator
+    public function execute(): array
     {
         $this->events[] = 'started';
 
-        $name = yield awaitSignal('name-provided');
+        $name = awaitSignal('name-provided');
 
         $this->events[] = sprintf('signal:%s', $name);
 
