@@ -31,6 +31,7 @@ use Workflow\V2\Models\WorkflowLink;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunLineageEntry;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Models\WorkflowRunTimerEntry;
 use Workflow\V2\Models\WorkflowRunWait;
 use Workflow\V2\Models\WorkflowSignal;
 use Workflow\V2\Models\WorkflowTask;
@@ -5663,6 +5664,108 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('timers.0.status', 'pending')
             ->assertJsonPath('timers.0.diagnostic_only', false)
             ->assertJsonPath('timers.0.fire_at', $deadlineAt->toJSON());
+    }
+
+    public function testShowRebuildsLegacyProjectedTimerRowsWithoutRowStatus(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'waterline-timer-projection-legacy',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNHISTORYTIMER2',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        /** @var WorkflowTimer $timer */
+        $timer = WorkflowTimer::create([
+            'id' => '01JTESTFLOWTIMERLEGACY0001',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'status' => 'pending',
+            'delay_seconds' => 60,
+            'fire_at' => now()->addMinute()->startOfSecond(),
+            'created_at' => now()->subSeconds(30),
+            'updated_at' => now()->subSeconds(30),
+        ]);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        WorkflowRunTimerEntry::query()->updateOrCreate(
+            [
+                'id' => hash('sha256', $run->id . '|' . $timer->id),
+            ],
+            [
+                'workflow_run_id' => $run->id,
+                'workflow_instance_id' => $instance->id,
+                'timer_id' => $timer->id,
+                'schema_version' => WorkflowRunTimerEntry::LEGACY_SCHEMA_VERSION,
+                'position' => 0,
+                'sequence' => 1,
+                'status' => 'pending',
+                'source_status' => 'pending',
+                'delay_seconds' => 60,
+                'fire_at' => $timer->fire_at,
+                'timer_kind' => null,
+                'condition_wait_id' => null,
+                'condition_key' => null,
+                'condition_definition_fingerprint' => null,
+                'history_authority' => 'mutable_open_fallback',
+                'history_unsupported_reason' => null,
+                'payload' => [
+                    'id' => $timer->id,
+                    'sequence' => 1,
+                    'status' => 'pending',
+                    'source_status' => 'pending',
+                    'delay_seconds' => 60,
+                    'fire_at' => $timer->fire_at?->toJSON(),
+                    'fired_at' => null,
+                    'cancelled_at' => null,
+                    'timer_kind' => null,
+                    'condition_wait_id' => null,
+                    'condition_key' => null,
+                    'condition_definition_fingerprint' => null,
+                    'history_authority' => 'mutable_open_fallback',
+                    'history_unsupported_reason' => null,
+                    'diagnostic_only' => true,
+                    'created_at' => $timer->created_at?->toJSON(),
+                ],
+            ],
+        );
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('timers_projection_source', 'workflow_run_timer_entries_rebuilt')
+            ->assertJsonPath('timers.0.id', $timer->id)
+            ->assertJsonPath('timers.0.status', 'pending')
+            ->assertJsonPath('timers.0.source_status', 'pending')
+            ->assertJsonPath('timers.0.row_status', 'pending')
+            ->assertJsonPath('timers.0.history_authority', 'mutable_open_fallback')
+            ->assertJsonPath('timers.0.diagnostic_only', true);
+
+        $this->assertDatabaseHas('workflow_run_timer_entries', [
+            'workflow_run_id' => $run->id,
+            'timer_id' => $timer->id,
+            'schema_version' => WorkflowRunTimerEntry::CURRENT_SCHEMA_VERSION,
+        ]);
     }
 
     public function testShowIncludesCompletedUpdateResultsInCommandHistory(): void

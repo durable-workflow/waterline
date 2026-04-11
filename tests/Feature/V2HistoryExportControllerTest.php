@@ -16,6 +16,7 @@ use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowLink;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Models\WorkflowRunTimerEntry;
 use Workflow\V2\Models\WorkflowTimer;
 use Workflow\V2\Support\HistoryExport;
 
@@ -350,6 +351,56 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('timers.0.history_unsupported_reason', 'terminal_timer_row_without_typed_history')
             ->assertJsonPath('timers.0.history_event_types', [])
             ->assertJsonPath('timers.0.fired_at', null);
+    }
+
+    public function testHistoryExportRebuildsLegacyProjectedTimerRowsWithoutRowStatus(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        [$instance, $run] = $this->createCompletedRunWithHistory();
+
+        /** @var WorkflowTimer $timer */
+        $timer = WorkflowTimer::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 2,
+            'status' => TimerStatus::Fired->value,
+            'delay_seconds' => 60,
+            'fire_at' => now()->subMinutes(2),
+            'fired_at' => now()->subMinute(),
+        ]);
+
+        $this->get('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
+            ->assertStatus(200);
+
+        $entry = WorkflowRunTimerEntry::query()
+            ->where('workflow_run_id', $run->id)
+            ->where('timer_id', $timer->id)
+            ->firstOrFail();
+
+        $payload = $entry->payload;
+        unset($payload['row_status']);
+
+        $entry->forceFill([
+            'schema_version' => WorkflowRunTimerEntry::LEGACY_SCHEMA_VERSION,
+            'payload' => $payload,
+        ])->save();
+
+        $this->get('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
+            ->assertStatus(200)
+            ->assertJsonPath('selected_run.timers_projection_source', 'workflow_run_timer_entries_rebuilt')
+            ->assertJsonPath('timers.0.id', $timer->id)
+            ->assertJsonPath('timers.0.status', 'unsupported')
+            ->assertJsonPath('timers.0.source_status', 'fired')
+            ->assertJsonPath('timers.0.row_status', 'fired')
+            ->assertJsonPath('timers.0.history_authority', 'unsupported_terminal_without_history')
+            ->assertJsonPath('timers.0.diagnostic_only', true);
+
+        $this->assertDatabaseHas('workflow_run_timer_entries', [
+            'workflow_run_id' => $run->id,
+            'timer_id' => $timer->id,
+            'schema_version' => WorkflowRunTimerEntry::CURRENT_SCHEMA_VERSION,
+        ]);
     }
 
     public function testHistoryExportRoutesApplyConfiguredRedactionPolicy(): void
