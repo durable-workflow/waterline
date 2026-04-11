@@ -1953,6 +1953,15 @@ class V2DashboardWorkflowTest extends TestCase
         $activityId = (string) Str::ulid();
         $taskId = (string) Str::ulid();
         $attemptId = (string) Str::ulid();
+        $progress = [
+            'message' => 'Downloading chunk',
+            'current' => 2,
+            'total' => 4,
+            'unit' => 'chunks',
+            'details' => [
+                'phase' => 'stream',
+            ],
+        ];
 
         $instance = WorkflowInstance::create([
             'id' => 'order-heartbeat-live',
@@ -2034,6 +2043,7 @@ class V2DashboardWorkflowTest extends TestCase
                 'attempt_number' => 1,
                 'heartbeat_at' => $heartbeatAt->toJSON(),
                 'lease_expires_at' => $leaseExpiresAt->toJSON(),
+                'progress' => $progress,
                 'activity' => ActivitySnapshot::fromExecution($activity),
                 'activity_attempt' => [
                     'id' => $attemptId,
@@ -2071,11 +2081,14 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('activities.0.attempt_id', $attemptId)
             ->assertJsonPath('activities.0.attempt_count', 1)
             ->assertJsonPath('activities.0.last_heartbeat_at', $heartbeatAt->jsonSerialize())
+            ->assertJsonPath('activities.0.last_heartbeat_progress.message', 'Downloading chunk')
+            ->assertJsonPath('activities.0.last_heartbeat_progress.current', 2)
             ->assertJsonPath('activities.0.attempts.0.id', $attemptId)
             ->assertJsonPath('activities.0.attempts.0.attempt_number', 1)
             ->assertJsonPath('activities.0.attempts.0.status', 'running')
             ->assertJsonPath('activities.0.attempts.0.lease_owner', 'heartbeat-worker')
             ->assertJsonPath('activities.0.attempts.0.lease_expires_at', $leaseExpiresAt->jsonSerialize())
+            ->assertJsonPath('activities.0.attempts.0.last_heartbeat_progress.unit', 'chunks')
             ->assertJsonPath('activities.0.attempts.0.can_continue', true)
             ->assertJsonPath('activities.0.attempts.0.cancel_requested', false)
             ->assertJsonPath('activities.0.attempts.0.stop_reason', null)
@@ -2089,6 +2102,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('timeline.0.source_id', $activity->id)
             ->assertJsonPath('timeline.0.activity_status', 'running')
             ->assertJsonPath('timeline.0.activity.last_heartbeat_at', $heartbeatAt->jsonSerialize())
+            ->assertJsonPath('timeline.0.activity.last_heartbeat_progress.details.phase', 'stream')
             ->assertJsonPath('timeline.0.task.status', 'leased');
     }
 

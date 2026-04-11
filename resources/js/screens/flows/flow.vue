@@ -1015,6 +1015,13 @@
                                         <div v-if="attempt.task_id">task / {{ attempt.task_id }}</div>
                                         <div v-if="attempt.lease_owner">worker / {{ attempt.lease_owner }}</div>
                                         <div v-if="attempt.lease_expires_at">lease / {{ timestamp(attempt.lease_expires_at) }}</div>
+                                        <div v-if="attempt.last_heartbeat_progress">{{ heartbeatProgressLabel(attempt.last_heartbeat_progress) }}</div>
+                                        <div
+                                            v-for="detail in heartbeatProgressDetails(attempt.last_heartbeat_progress)"
+                                            :key="`${attempt.id}-progress-${detail}`"
+                                        >
+                                            {{ detail }}
+                                        </div>
                                         <div v-if="attempt.cancel_requested">cancel requested</div>
                                         <div v-if="attempt.stop_reason">stop / {{ attempt.stop_reason }}</div>
                                     </div>
@@ -1023,7 +1030,19 @@
                             <td>{{ activityRetryPolicy(activity) }}</td>
                             <td>{{ activity.queue || '-' }}</td>
                             <td>{{ timestamp(activity.started_at) }}</td>
-                            <td>{{ timestamp(activity.last_heartbeat_at) }}</td>
+                            <td>
+                                {{ timestamp(activity.last_heartbeat_at) }}
+                                <div v-if="activity.last_heartbeat_progress" class="small text-muted">
+                                    {{ heartbeatProgressLabel(activity.last_heartbeat_progress) }}
+                                </div>
+                                <div
+                                    v-for="detail in heartbeatProgressDetails(activity.last_heartbeat_progress)"
+                                    :key="`${activity.id}-progress-${detail}`"
+                                    class="small text-muted"
+                                >
+                                    {{ detail }}
+                                </div>
+                            </td>
                             <td>{{ timestamp(activity.closed_at) }}</td>
                             <td>
                                 <button v-if="canViewActivityResult(activity)" title="View Result" class="btn btn-outline-primary ml-auto"
@@ -1784,6 +1803,50 @@ export default {
             return parts.length ? parts.join(' / ') : '-'
         },
 
+        heartbeatProgressLabel(progress) {
+            if (!progress || typeof progress !== 'object') {
+                return null
+            }
+
+            const parts = []
+
+            if (this.hasDetailValue(progress.message)) {
+                parts.push(progress.message)
+            }
+
+            const numeric = []
+
+            if (this.hasDetailValue(progress.current)) {
+                numeric.push(String(progress.current))
+            }
+
+            if (this.hasDetailValue(progress.total)) {
+                numeric.push('/ ' + String(progress.total))
+            }
+
+            if (numeric.length) {
+                let summary = numeric.join(' ')
+
+                if (this.hasDetailValue(progress.unit)) {
+                    summary += ' ' + progress.unit
+                }
+
+                parts.push(summary)
+            }
+
+            return parts.length ? parts.join(' / ') : null
+        },
+
+        heartbeatProgressDetails(progress) {
+            if (!progress || typeof progress !== 'object' || !progress.details || typeof progress.details !== 'object') {
+                return []
+            }
+
+            return Object.entries(progress.details)
+                .filter(([key, value]) => this.hasDetailValue(key) && this.hasDetailValue(value))
+                .map(([key, value]) => `${key}: ${String(value)}`)
+        },
+
         updateRows() {
             return Array.isArray(this.flow.updates)
                 ? this.flow.updates
@@ -2535,6 +2598,14 @@ export default {
 
             if (entry.activity && this.hasDetailValue(entry.activity.last_heartbeat_at)) {
                 details.push('heartbeat / ' + this.timestamp(entry.activity.last_heartbeat_at))
+            }
+
+            if (entry.activity && this.hasDetailValue(entry.activity.last_heartbeat_progress)) {
+                const progressLabel = this.heartbeatProgressLabel(entry.activity.last_heartbeat_progress)
+
+                if (this.hasDetailValue(progressLabel)) {
+                    details.push('progress / ' + progressLabel)
+                }
             }
 
             if (entry.timer && this.hasDetailValue(entry.timer.status)) {
