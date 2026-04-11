@@ -2,8 +2,10 @@
 
 namespace Waterline\Tests\Feature;
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Queue;
 use Waterline\Tests\Fixtures\V2\TestAbstractWaterlineException;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
@@ -1072,6 +1074,90 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('workflow_determinism_findings.0.symbol', 'workflow.operator-command')
             ->assertJsonPath('workflow_determinism_findings.0.file', null)
             ->assertJsonPath('workflow_determinism_findings.0.line', null);
+    }
+
+    public function testShowUsesConfiguredSummaryAndHistoryModels(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.run_summary_model', ConfiguredWaterlineDetailRunSummary::class);
+        config()->set('workflows.v2.history_event_model', ConfiguredWaterlineDetailHistoryEvent::class);
+
+        $this->createConfiguredDetailSummaryTable();
+        $this->createConfiguredDetailHistoryTable();
+
+        $instance = WorkflowInstance::create([
+            'id' => 'configured-waterline-detail-instance',
+            'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
+            'workflow_type' => 'configured.waterline.workflow',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTWATERLINECONFIG0001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
+            'workflow_type' => 'configured.waterline.workflow',
+            'status' => RunStatus::Waiting->value,
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        ConfiguredWaterlineDetailRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'Missing\\ConfiguredWaterlineWorkflow',
+            'workflow_type' => 'configured.waterline.workflow',
+            'business_key' => 'configured-waterline-business',
+            'status' => RunStatus::Waiting->value,
+            'status_bucket' => 'running',
+            'started_at' => $run->started_at,
+            'history_event_count' => 1,
+            'history_size_bytes' => 128,
+            'continue_as_new_recommended' => false,
+            'sort_timestamp' => $run->started_at,
+            'sort_key' => 'configured-waterline-sort-key',
+            'created_at' => $run->started_at,
+            'updated_at' => $run->last_progress_at,
+        ]);
+
+        ConfiguredWaterlineDetailHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [
+                'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
+                'workflow_type' => 'configured.waterline.workflow',
+                'workflow_definition_fingerprint' => 'configured-waterline-fingerprint',
+                'declared_queries' => [],
+                'declared_query_contracts' => [],
+                'declared_signals' => ['configured-waterline-signal'],
+                'declared_signal_contracts' => [],
+                'declared_updates' => [],
+                'declared_update_contracts' => [],
+                'declared_entry_method' => 'handle',
+                'declared_entry_mode' => 'canonical',
+                'declared_entry_declaring_class' => 'Missing\\ConfiguredWaterlineWorkflow',
+            ],
+            'recorded_at' => $run->started_at,
+        ]);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertOk()
+            ->assertJsonPath('status_bucket', 'running')
+            ->assertJsonPath('business_key', 'configured-waterline-business')
+            ->assertJsonPath('declared_contract_source', 'durable_history')
+            ->assertJsonPath('declared_signals.0', 'configured-waterline-signal')
+            ->assertJsonPath('workflow_definition_fingerprint', 'configured-waterline-fingerprint');
     }
 
     public function testShowRebuildsTimelineProjectionRowsOnRead(): void
@@ -9938,6 +10024,42 @@ class V2DashboardWorkflowTest extends TestCase
         TaskWatchdog::wake();
     }
 
+    private function createConfiguredDetailSummaryTable(): void
+    {
+        Schema::create('waterline_configured_detail_run_summaries', static function (Blueprint $table): void {
+            $table->string('id', 26)->primary();
+            $table->string('workflow_instance_id', 191)->index();
+            $table->unsignedInteger('run_number');
+            $table->boolean('is_current_run')->default(false);
+            $table->string('engine_source')->nullable();
+            $table->string('class');
+            $table->string('workflow_type');
+            $table->string('business_key')->nullable();
+            $table->string('status');
+            $table->string('status_bucket')->nullable();
+            $table->unsignedInteger('history_event_count')->default(0);
+            $table->unsignedBigInteger('history_size_bytes')->default(0);
+            $table->boolean('continue_as_new_recommended')->default(false);
+            $table->timestamp('started_at', 6)->nullable();
+            $table->timestamp('sort_timestamp', 6)->nullable();
+            $table->string('sort_key')->nullable();
+            $table->timestamps(6);
+        });
+    }
+
+    private function createConfiguredDetailHistoryTable(): void
+    {
+        Schema::create('waterline_configured_detail_history_events', static function (Blueprint $table): void {
+            $table->string('id', 26)->primary();
+            $table->string('workflow_run_id', 26)->index();
+            $table->unsignedInteger('sequence');
+            $table->string('event_type');
+            $table->json('payload')->nullable();
+            $table->timestamp('recorded_at', 6)->nullable();
+            $table->timestamps(6);
+        });
+    }
+
     private function recordWorkflowStartedCommandContractSnapshot(WorkflowRun $run, string $workflowClass): void
     {
         $contract = WorkflowDefinition::commandContract($workflowClass);
@@ -10062,4 +10184,14 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->fail('Workflow did not reach the expected state before timeout.');
     }
+}
+
+final class ConfiguredWaterlineDetailRunSummary extends WorkflowRunSummary
+{
+    protected $table = 'waterline_configured_detail_run_summaries';
+}
+
+final class ConfiguredWaterlineDetailHistoryEvent extends WorkflowHistoryEvent
+{
+    protected $table = 'waterline_configured_detail_history_events';
 }

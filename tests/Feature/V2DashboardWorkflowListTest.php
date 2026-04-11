@@ -3,7 +3,10 @@
 namespace Waterline\Tests\Feature;
 
 use Illuminate\Support\Carbon;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use Waterline\Tests\TestCase;
+use Workflow\V2\Enums\RunStatus;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
@@ -12,6 +15,67 @@ use Workflow\V2\Support\VisibilityFilters;
 
 class V2DashboardWorkflowListTest extends TestCase
 {
+    public function testRunningFlowsUseConfiguredRunSummaryModel(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.run_summary_model', ConfiguredWaterlineListRunSummary::class);
+
+        $this->createConfiguredSummaryTable();
+
+        $startedAt = Carbon::parse('2022-01-01 12:05:00');
+        $createdAt = Carbon::parse('2022-01-01 12:00:00');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'configured-list-instance',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'business_key' => 'configured-list-business',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => 'configured-list-run',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'business_key' => 'configured-list-business',
+            'status' => RunStatus::Waiting->value,
+            'started_at' => $startedAt,
+            'last_progress_at' => $startedAt,
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        ConfiguredWaterlineListRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'business_key' => 'configured-list-business',
+            'status' => RunStatus::Waiting->value,
+            'status_bucket' => 'running',
+            'started_at' => $startedAt,
+            'sort_timestamp' => $startedAt,
+            'sort_key' => RunSummarySortKey::key($startedAt, $createdAt, $createdAt, $run->id),
+            'config_marker' => 'configured-summary',
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+
+        $this->get('/waterline/api/flows/running')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $run->id)
+            ->assertJsonPath('data.0.business_key', 'configured-list-business')
+            ->assertJsonPath('data.0.config_marker', 'configured-summary');
+    }
+
     public function testRunningFlowsAreSortedByStableV2SortContract(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -491,4 +555,30 @@ class V2DashboardWorkflowListTest extends TestCase
             'updated_at' => $closedAt,
         ]);
     }
+
+    private function createConfiguredSummaryTable(): void
+    {
+        Schema::create('waterline_configured_list_run_summaries', static function (Blueprint $table): void {
+            $table->string('id', 26)->primary();
+            $table->string('workflow_instance_id', 191)->index();
+            $table->unsignedInteger('run_number');
+            $table->boolean('is_current_run')->default(false);
+            $table->string('engine_source')->nullable();
+            $table->string('class');
+            $table->string('workflow_type');
+            $table->string('business_key')->nullable();
+            $table->string('status');
+            $table->string('status_bucket')->nullable();
+            $table->timestamp('started_at', 6)->nullable();
+            $table->timestamp('sort_timestamp', 6)->nullable();
+            $table->string('sort_key')->nullable();
+            $table->string('config_marker')->nullable();
+            $table->timestamps(6);
+        });
+    }
+}
+
+final class ConfiguredWaterlineListRunSummary extends WorkflowRunSummary
+{
+    protected $table = 'waterline_configured_list_run_summaries';
 }
