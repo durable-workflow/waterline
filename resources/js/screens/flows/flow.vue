@@ -147,6 +147,25 @@
                     <div class="col">{{ flow.queue }}</div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.business_key)">
+                    <div class="col-md-2"><strong>Business Key</strong></div>
+                    <div class="col">{{ flow.business_key }}</div>
+                </div>
+
+                <div class="row mb-2" v-if="hasObjectEntries(flow.visibility_labels)">
+                    <div class="col-md-2"><strong>Labels</strong></div>
+                    <div class="col">
+                        <pre class="mb-0">{{ prettyJson(flow.visibility_labels) }}</pre>
+                    </div>
+                </div>
+
+                <div class="row mb-2" v-if="hasObjectEntries(flow.memo)">
+                    <div class="col-md-2"><strong>Memo</strong></div>
+                    <div class="col">
+                        <pre class="mb-0">{{ prettyJson(flow.memo) }}</pre>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="declaredSignalTargets().length">
                     <div class="col-md-2"><strong>Signals</strong></div>
                     <div class="col">
@@ -1565,6 +1584,14 @@ export default {
 
         hasDetailValue(value) {
             return value !== null && value !== undefined && value !== ''
+        },
+
+        hasObjectEntries(value) {
+            return value !== null
+                && value !== undefined
+                && typeof value === 'object'
+                && !Array.isArray(value)
+                && Object.keys(value).length > 0
         },
 
         contractSourceLabel(source) {

@@ -1097,6 +1097,11 @@ class V2DashboardWorkflowTest extends TestCase
             'id' => 'configured-waterline-detail-instance',
             'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
             'workflow_type' => 'configured.waterline.workflow',
+            'memo' => [
+                'customer' => [
+                    'name' => 'Taylor',
+                ],
+            ],
             'run_count' => 1,
         ]);
 
@@ -1107,6 +1112,14 @@ class V2DashboardWorkflowTest extends TestCase
             'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
             'workflow_type' => 'configured.waterline.workflow',
             'status' => RunStatus::Waiting->value,
+            'memo' => [
+                'customer' => [
+                    'name' => 'Taylor',
+                ],
+                'order' => [
+                    'id' => 123,
+                ],
+            ],
             'arguments' => Serializer::serialize([]),
             'connection' => 'redis',
             'queue' => 'default',
@@ -1163,6 +1176,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertOk()
             ->assertJsonPath('status_bucket', 'running')
             ->assertJsonPath('business_key', 'configured-waterline-business')
+            ->assertJsonPath('memo.customer.name', 'Taylor')
+            ->assertJsonPath('memo.order.id', 123)
             ->assertJsonPath('declared_contract_source', 'durable_history')
             ->assertJsonPath('declared_signals.0', 'configured-waterline-signal')
             ->assertJsonPath('workflow_definition_fingerprint', 'configured-waterline-fingerprint');
