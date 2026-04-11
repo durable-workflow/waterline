@@ -187,9 +187,11 @@
                             class="small text-muted"
                             v-if="flow.declared_contract_backfill_needed === true && flow.declared_contract_backfill_available === true"
                         >
-                            This run still needs command-contract normalization. Run
+                            This run still needs command-contract normalization. Use
+                            <code>php artisan workflow:v2:rebuild-projections --needs-rebuild</code>
+                            to sweep it with the rest of the selected-run projection drift, or run
                             <code>php artisan workflow:v2:backfill-command-contracts --dry-run</code>
-                            and then rerun the command without <code>--dry-run</code> before relying on this run after a class move.
+                            and then rerun that command without <code>--dry-run</code> before relying on this run after a class move.
                         </div>
                         <div
                             class="small text-muted"
