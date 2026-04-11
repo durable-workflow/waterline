@@ -3,6 +3,7 @@
 namespace Waterline\Tests\Feature;
 
 use Illuminate\Support\Str;
+use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Contracts\HistoryExportRedactor;
@@ -80,6 +81,85 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('workflow.run_id', $run->id)
             ->assertJsonPath('history_events.0.type', 'WorkflowStarted')
             ->assertJsonPath('history_events.1.type', 'WorkflowCompleted');
+    }
+
+    public function testHistoryExportBackfillsLoadableLegacyCommandContracts(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'history-export-command-contract-backfill',
+            'workflow_class' => TestCommandContractWorkflow::class,
+            'workflow_type' => 'workflow.command-contract',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => (string) Str::ulid(),
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => TestCommandContractWorkflow::class,
+            'workflow_type' => 'workflow.command-contract',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(20),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => TestCommandContractWorkflow::class,
+            'workflow_type' => 'workflow.command-contract',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'created_at' => now()->subMinute(),
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [
+                'workflow_class' => TestCommandContractWorkflow::class,
+                'workflow_type' => 'workflow.command-contract',
+                'workflow_instance_id' => $instance->id,
+                'workflow_run_id' => $run->id,
+            ],
+            'recorded_at' => now()->subSeconds(19),
+        ]);
+
+        $this->get('/waterline/api/flows/'.$run->id.'/history-export')
+            ->assertOk()
+            ->assertJsonPath('history_events.0.type', 'WorkflowStarted')
+            ->assertJsonPath('history_events.0.payload.declared_query_contracts.0.name', 'current-stage')
+            ->assertJsonPath('history_events.0.payload.declared_signal_contracts.0.name', 'approved-by')
+            ->assertJsonPath('history_events.0.payload.declared_update_contracts.0.name', 'mark-approved');
+
+        /** @var WorkflowHistoryEvent $started */
+        $started = WorkflowHistoryEvent::query()
+            ->where('workflow_run_id', $run->id)
+            ->where('event_type', HistoryEventType::WorkflowStarted->value)
+            ->sole();
+
+        $this->assertSame(['current-stage', 'stageMatches'], $started->payload['declared_queries'] ?? null);
+        $this->assertSame('current-stage', $started->payload['declared_query_contracts'][0]['name'] ?? null);
+        $this->assertSame(['approved-by', 'rejected-by'], $started->payload['declared_signals'] ?? null);
+        $this->assertSame('approved-by', $started->payload['declared_signal_contracts'][0]['name'] ?? null);
+        $this->assertSame(['mark-approved'], $started->payload['declared_updates'] ?? null);
+        $this->assertSame('mark-approved', $started->payload['declared_update_contracts'][0]['name'] ?? null);
     }
 
     public function testCurrentRunHistoryExportRoutePrefersContinueAsNewLineageWhenCurrentRunPointerIsMissing(): void

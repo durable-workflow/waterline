@@ -513,10 +513,11 @@
 
                     <div class="mt-1 text-muted" v-if="operatorMetric('command_contracts', 'backfill_needed_runs')">
                         Run <code>php artisan workflow:v2:rebuild-projections --needs-rebuild --prune-stale</code>
-                        to sweep loadable preview-era command contracts alongside projection drift, or use
+                        to sweep untouched loadable preview-era command contracts alongside projection drift, or use
                         <code>php artisan workflow:v2:backfill-command-contracts --dry-run</code> and then rerun it
                         without <code>--dry-run</code> for a targeted contract-only pass while a compatible build is
-                        still available.
+                        still available. Opening selected-run detail or exporting selected-run history now normalizes
+                        loadable runs one at a time.
                     </div>
                 </div>
 
