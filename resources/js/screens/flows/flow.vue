@@ -2205,6 +2205,8 @@ export default {
                     return 'The selected run is already closed.'
                 case 'repair_not_needed':
                     return 'The selected run already has a durable resume path.'
+                case 'unsupported_history':
+                    return 'The selected run only has older diagnostic history and no durable resume path for repair.'
                 case 'run_not_closed':
                     return 'Only closed runs can be archived.'
                 case 'run_archived':

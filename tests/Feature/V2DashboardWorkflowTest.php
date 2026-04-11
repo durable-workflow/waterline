@@ -571,7 +571,8 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertOk()
             ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
-            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('repair_blocked_reason', 'unsupported_history')
             ->assertJsonPath('activities.0.id', $execution->id)
             ->assertJsonPath('activities.0.status', 'unsupported')
             ->assertJsonPath('activities.0.history_authority', 'unsupported_terminal_without_history')
@@ -647,7 +648,8 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertOk()
             ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
-            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('repair_blocked_reason', 'unsupported_history')
             ->assertJsonPath('waits.0.kind', 'timer')
             ->assertJsonPath('waits.0.status', 'unsupported')
             ->assertJsonPath('waits.0.source_status', 'fired')
@@ -745,7 +747,8 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $parentRun->id)
             ->assertOk()
             ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
-            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('repair_blocked_reason', 'unsupported_history')
             ->assertJsonPath('waits.0.kind', 'child')
             ->assertJsonPath('waits.0.status', 'unsupported')
             ->assertJsonPath('waits.0.source_status', 'completed')
@@ -6418,23 +6421,222 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $instance->id)
             ->assertStatus(200)
             ->assertJsonPath('id', $run->id)
-            ->assertJsonPath('wait_kind', 'activity')
-            ->assertJsonPath('liveness_state', 'activity_running_without_task')
+            ->assertJsonPath('wait_kind', null)
+            ->assertJsonPath('open_wait_id', null)
+            ->assertJsonPath('resume_source_kind', null)
+            ->assertJsonPath('resume_source_id', null)
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
             ->assertJsonPath(
                 'liveness_reason',
                 sprintf(
-                    'Activity %s is already running without an open activity task. Repair is deferred to avoid duplicating in-flight work.',
-                    $execution->id,
+                    'Activity %s is visible only from an older mutable row without typed activity history. This row is diagnostic-only and does not satisfy the durable resume-path invariant.',
+                    'activity.test',
                 ),
             )
             ->assertJsonPath('can_issue_terminal_commands', true)
             ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('repair_blocked_reason', 'unsupported_history')
             ->assertJsonPath('waits.0.kind', 'activity')
             ->assertJsonPath('waits.0.status', 'open')
             ->assertJsonPath('waits.0.source_status', 'running')
+            ->assertJsonPath(
+                'waits.0.summary',
+                'Activity activity.test is visible only from an older mutable row without typed activity history.',
+            )
+            ->assertJsonPath('waits.0.diagnostic_only', true)
             ->assertJsonPath('waits.0.task_backed', false)
-            ->assertJsonPath('waits.0.resume_source_kind', 'activity_execution')
-            ->assertJsonPath('waits.0.resume_source_id', $execution->id)
+            ->assertJsonPath('waits.0.history_authority', 'mutable_open_fallback')
+            ->assertJsonPath('waits.0.resume_source_kind', null)
+            ->assertJsonPath('waits.0.resume_source_id', null)
+            ->assertJsonPath('tasks', []);
+    }
+
+    public function testShowMarksRowOnlyPendingTimerFallbackAsUnsupportedHistory(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'waterline-row-only-open-timer',
+            'workflow_class' => 'TimerWorkflowClass',
+            'workflow_type' => 'workflow.timer',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNOPENROWTMR1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'TimerWorkflowClass',
+            'workflow_type' => 'workflow.timer',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([60]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $timer = WorkflowTimer::create([
+            'id' => '01JTESTFLOWTIMEROPENROW01',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'status' => 'pending',
+            'delay_seconds' => 60,
+            'fire_at' => now()->addMinute(),
+            'created_at' => now()->subSeconds(30),
+            'updated_at' => now()->subSeconds(30),
+        ]);
+
+        RunSummaryProjector::project($run->fresh([
+            'instance',
+            'tasks',
+            'activityExecutions',
+            'timers',
+            'failures',
+            'historyEvents',
+            'childLinks.childRun.instance.currentRun',
+            'childLinks.childRun.failures',
+            'childLinks.childRun.historyEvents',
+        ]));
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertOk()
+            ->assertJsonPath('wait_kind', null)
+            ->assertJsonPath('open_wait_id', null)
+            ->assertJsonPath('resume_source_kind', null)
+            ->assertJsonPath('resume_source_id', null)
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath(
+                'liveness_reason',
+                sprintf(
+                    'Timer %s is visible only from an older mutable row without typed timer history. This row is diagnostic-only and does not satisfy the durable resume-path invariant.',
+                    $timer->id,
+                ),
+            )
+            ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('repair_blocked_reason', 'unsupported_history')
+            ->assertJsonPath('waits.0.kind', 'timer')
+            ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.source_status', 'pending')
+            ->assertJsonPath(
+                'waits.0.summary',
+                'Timer is visible only from an older mutable row without typed timer history.',
+            )
+            ->assertJsonPath('waits.0.diagnostic_only', true)
+            ->assertJsonPath('waits.0.task_backed', false)
+            ->assertJsonPath('waits.0.history_authority', 'mutable_open_fallback')
+            ->assertJsonPath('waits.0.resume_source_kind', null)
+            ->assertJsonPath('waits.0.resume_source_id', null)
+            ->assertJsonPath('timers.0.id', $timer->id)
+            ->assertJsonPath('timers.0.status', 'pending')
+            ->assertJsonPath('timers.0.history_authority', 'mutable_open_fallback')
+            ->assertJsonPath('tasks', []);
+    }
+
+    public function testShowMarksRowOnlyOpenChildFallbackAsUnsupportedHistory(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $parentInstance = WorkflowInstance::create([
+            'id' => 'waterline-row-only-open-child-parent',
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'run_count' => 1,
+        ]);
+
+        $childInstance = WorkflowInstance::create([
+            'id' => 'waterline-row-only-open-child-child',
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'run_count' => 1,
+        ]);
+
+        $parentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDOPEN01',
+            'workflow_instance_id' => $parentInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $childRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDOPEN02',
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(3),
+            'last_progress_at' => now()->subMinutes(2),
+        ]);
+
+        $parentInstance->update(['current_run_id' => $parentRun->id]);
+        $childInstance->update(['current_run_id' => $childRun->id]);
+
+        $link = WorkflowLink::create([
+            'id' => '01JTESTFLOWLINKCHILDOPEN01',
+            'link_type' => 'child_workflow',
+            'sequence' => 1,
+            'parent_workflow_instance_id' => $parentInstance->id,
+            'parent_workflow_run_id' => $parentRun->id,
+            'child_workflow_instance_id' => $childInstance->id,
+            'child_workflow_run_id' => $childRun->id,
+            'is_primary_parent' => true,
+            'created_at' => now()->subSeconds(45),
+            'updated_at' => now()->subSeconds(45),
+        ]);
+
+        RunSummaryProjector::project($parentRun->fresh([
+            'instance',
+            'tasks',
+            'activityExecutions',
+            'timers',
+            'failures',
+            'historyEvents',
+            'childLinks.childRun.instance.currentRun',
+            'childLinks.childRun.failures',
+            'childLinks.childRun.historyEvents',
+        ]));
+
+        $this->get('/waterline/api/flows/' . $parentRun->id)
+            ->assertOk()
+            ->assertJsonPath('wait_kind', null)
+            ->assertJsonPath('open_wait_id', null)
+            ->assertJsonPath('resume_source_kind', null)
+            ->assertJsonPath('resume_source_id', null)
+            ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
+            ->assertJsonPath(
+                'liveness_reason',
+                'Child workflow workflow.child is visible only from an older mutable row or link without typed parent child history. This state is diagnostic-only and does not satisfy the durable resume-path invariant.',
+            )
+            ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('repair_blocked_reason', 'unsupported_history')
+            ->assertJsonPath('waits.0.kind', 'child')
+            ->assertJsonPath('waits.0.status', 'open')
+            ->assertJsonPath('waits.0.source_status', 'waiting')
+            ->assertJsonPath(
+                'waits.0.summary',
+                'Child workflow workflow.child is visible only from an older mutable row or link without typed parent child history.',
+            )
+            ->assertJsonPath('waits.0.diagnostic_only', true)
+            ->assertJsonPath('waits.0.task_backed', false)
+            ->assertJsonPath('waits.0.history_authority', 'mutable_open_fallback')
+            ->assertJsonPath('waits.0.resume_source_kind', null)
+            ->assertJsonPath('waits.0.resume_source_id', null)
+            ->assertJsonPath('waits.0.child_call_id', $link->id)
+            ->assertJsonPath('waits.0.child_workflow_run_id', $childRun->id)
+            ->assertJsonPath('waits.0.target_name', $childInstance->id)
             ->assertJsonPath('tasks', []);
     }
 
