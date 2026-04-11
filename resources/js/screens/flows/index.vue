@@ -370,6 +370,18 @@
                     : null
             },
 
+            metadataContractEntries(sectionKey) {
+                const contract = this.visibilityFilterContract()
+                const section = contract && contract[sectionKey] && typeof contract[sectionKey] === 'object'
+                    ? contract[sectionKey]
+                    : {}
+
+                return Object.entries(section).map(([key, definition]) => ({
+                    key,
+                    ...(definition && typeof definition === 'object' ? definition : {}),
+                }))
+            },
+
             labelKeyPattern() {
                 const definition = this.visibilityLabelsDefinition()
 
@@ -552,6 +564,38 @@
                     .replace(/>/g, '&gt;')
             },
 
+            filterMetadataNoticeHtml() {
+                const sections = [
+                    {
+                        label: 'Indexed metadata',
+                        entries: this.metadataContractEntries('indexed_metadata'),
+                    },
+                    {
+                        label: 'Detail only',
+                        entries: this.metadataContractEntries('detail_metadata'),
+                    },
+                ].filter((section) => section.entries.length > 0)
+
+                if (sections.length === 0) {
+                    return ''
+                }
+
+                return `
+                    <div class="text-left card-bg-secondary rounded px-3 py-2 mb-3">
+                        ${sections.map((section, index) => `
+                            <div class="${index > 0 ? 'mt-2' : ''}">
+                                <strong>${this.escapeHtml(section.label)}</strong>
+                                <ul class="mb-0 pl-3 small">
+                                    ${section.entries.map((entry) => `
+                                        <li><span class="font-weight-bold">${this.escapeHtml(entry.label || entry.key)}</span>${entry.description ? ': ' + this.escapeHtml(entry.description) : ''}</li>
+                                    `).join('')}
+                                </ul>
+                            </div>
+                        `).join('')}
+                    </div>
+                `
+            },
+
             filterEditorHtml(filters) {
                 const labelsDefinition = this.visibilityLabelsDefinition()
 
@@ -559,11 +603,12 @@
                     return '<div class="text-left">Visibility filters are unavailable.</div>'
                 }
 
-                const textInput = (id, label, value) => `
+                const textInput = (id, label, value, help = '') => `
                     <label class="d-block text-left mb-1" for="${id}">${label}</label>
                     <input id="${id}" class="swal2-input" value="${this.escapeHtml(value)}">
+                    ${help}
                 `
-                const selectInput = (id, label, value, options) => `
+                const selectInput = (id, label, value, options, help = '') => `
                     <label class="d-block text-left mb-1" for="${id}">${label}</label>
                     <select id="${id}" class="swal2-input">
                         <option value="" ${value === '' ? 'selected' : ''}>Any</option>
@@ -571,6 +616,7 @@
                             <option value="${this.escapeHtml(this.optionValueString(option.value))}" ${value === this.optionValueString(option.value) ? 'selected' : ''}>${this.escapeHtml(option.label)}</option>
                         `).join('')}
                     </select>
+                    ${help}
                 `
                 const labelPlaceholder = this.escapeHtml(labelsDefinition.placeholder || '')
                     .replace(/\n/g, '&#10;')
@@ -579,17 +625,21 @@
                         const id = this.fieldInputId(field)
                         const label = this.escapeHtml(definition.label || field)
                         const value = this.filterValue(field, filters)
+                        const help = definition.help
+                            ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(definition.help)}</small>`
+                            : ''
 
                         if (definition.input === 'boolean_select' || definition.input === 'select') {
-                            return selectInput(id, label, value, this.fieldOptions(field, value))
+                            return selectInput(id, label, value, this.fieldOptions(field, value), help)
                         }
 
-                        return textInput(id, label, value)
+                        return textInput(id, label, value, help)
                     })
                     .join('')
 
                 return `
                     <div class="text-left">
+                        ${this.filterMetadataNoticeHtml()}
                         ${fieldsHtml}
                         <label class="d-block text-left mb-1" for="waterline-filter-labels">${this.escapeHtml(labelsDefinition.label || 'Labels')}</label>
                         <textarea id="waterline-filter-labels" class="swal2-textarea" rows="4" placeholder="${labelPlaceholder}">${this.escapeHtml(this.labelsText(filters))}</textarea>

@@ -388,6 +388,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.definition.fields.instance_id.label', 'Instance ID')
             ->assertJsonPath('visibility_filters.definition.fields.instance_id.type', 'string')
             ->assertJsonPath('visibility_filters.definition.fields.instance_id.input', 'text')
+            ->assertJsonPath('visibility_filters.definition.fields.business_key.help', 'Exact-match indexed operator metadata copied onto the run summary and saved-view contract.')
             ->assertJsonPath('visibility_filters.definition.fields.status_bucket.input', 'select')
             ->assertJsonPath('visibility_filters.definition.fields.is_current_run.type', 'boolean')
             ->assertJsonPath('visibility_filters.definition.fields.is_current_run.input', 'boolean_select')
@@ -435,7 +436,17 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.definition.fields.archived.input', 'boolean_select')
             ->assertJsonPath('visibility_filters.definition.labels.label', 'Labels')
             ->assertJsonPath('visibility_filters.definition.labels.input', 'key_value_textarea')
-            ->assertJsonPath('visibility_filters.definition.labels.operator', 'exact');
+            ->assertJsonPath('visibility_filters.definition.labels.operator', 'exact')
+            ->assertJsonPath(
+                'visibility_filters.definition.labels.help',
+                'One exact-match label per line in key=value format. Labels are indexed operator metadata and saved-view compatible.',
+            )
+            ->assertJsonPath('visibility_filters.definition.indexed_metadata.business_key.filter_field', 'business_key')
+            ->assertJsonPath('visibility_filters.definition.indexed_metadata.business_key.saved_view_compatible', true)
+            ->assertJsonPath('visibility_filters.definition.indexed_metadata.labels.indexed', true)
+            ->assertJsonPath('visibility_filters.definition.indexed_metadata.labels.filterable', true)
+            ->assertJsonPath('visibility_filters.definition.detail_metadata.memo.filterable', false)
+            ->assertJsonPath('visibility_filters.definition.detail_metadata.memo.saved_view_compatible', false);
     }
 
     public function testV2ListRoutesMarkUnsupportedSavedViewVersionsWithoutApplyingTheirFilters(): void
@@ -647,7 +658,9 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('filter_definition.fields.continue_as_new_recommended.type', 'boolean')
             ->assertJsonPath('filter_definition.fields.archived.type', 'boolean')
             ->assertJsonPath('filter_definition.fields.archived.input', 'boolean_select')
-            ->assertJsonPath('filter_definition.labels.input', 'key_value_textarea');
+            ->assertJsonPath('filter_definition.labels.input', 'key_value_textarea')
+            ->assertJsonPath('filter_definition.indexed_metadata.business_key.indexed', true)
+            ->assertJsonPath('filter_definition.detail_metadata.memo.filterable', false);
 
         $this->delete('/waterline/api/saved-views/'.$id)
             ->assertNoContent();
@@ -723,7 +736,12 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('filter_definition.fields.repair_attention.input', 'boolean_select')
             ->assertJsonPath('filter_definition.fields.task_problem.input', 'boolean_select')
             ->assertJsonPath('filter_definition.fields.archived.input', 'boolean_select')
-            ->assertJsonPath('filter_definition.labels.help', 'One exact-match label per line in key=value format.');
+            ->assertJsonPath(
+                'filter_definition.labels.help',
+                'One exact-match label per line in key=value format. Labels are indexed operator metadata and saved-view compatible.',
+            )
+            ->assertJsonPath('filter_definition.indexed_metadata.labels.saved_view_compatible', true)
+            ->assertJsonPath('filter_definition.detail_metadata.memo.saved_view_compatible', false);
     }
 
     private function createRunningSummary(
