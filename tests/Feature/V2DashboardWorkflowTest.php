@@ -1528,6 +1528,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('activities.0.class', 'ActivityClass')
             ->assertJsonPath('activities.0.type', 'activity.test')
             ->assertJsonPath('activities.0.status', 'completed')
+            ->assertJsonPath('activities.0.diagnostic_only', false)
             ->assertJsonPath('activities.0.attempt_id', '01JTESTATTEMPT000000000001')
             ->assertJsonPath('activities.0.attempt_count', 1)
             ->assertJsonPath('activities.0.attempts.0.id', '01JTESTATTEMPT000000000001')
@@ -1539,8 +1540,12 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('activities.0.last_heartbeat_at', null)
             ->assertJsonPath('activities.0.closed_at', $closedAt->jsonSerialize())
             ->assertJsonPath('logs.0.class', 'ActivityClass')
+            ->assertJsonPath('logs.0.history_authority', 'typed_history')
+            ->assertJsonPath('logs.0.diagnostic_only', false)
             ->assertJsonPath('chartData.1.type', 'Activity')
-            ->assertJsonPath('chartData.1.x', 'ActivityClass');
+            ->assertJsonPath('chartData.1.x', 'ActivityClass')
+            ->assertJsonPath('chartData.1.history_authority', 'typed_history')
+            ->assertJsonPath('chartData.1.diagnostic_only', false);
 
         $this->assertSame('Hello, Taylor!', unserialize($response->json('activities.0.result')));
         $this->assertSame(['Taylor'], unserialize($response->json('activities.0.arguments')));
@@ -2148,6 +2153,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertOk()
             ->assertJsonPath('status', 'cancelled')
             ->assertJsonPath('activities.0.status', 'unsupported')
+            ->assertJsonPath('activities.0.diagnostic_only', true)
             ->assertJsonPath('activities.0.row_status', 'cancelled')
             ->assertJsonPath('activities.0.history_authority', 'unsupported_terminal_without_history')
             ->assertJsonPath('activities.0.history_unsupported_reason', 'terminal_activity_row_without_typed_history')
@@ -2156,6 +2162,10 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('activities.0.attempts.0.can_continue', false)
             ->assertJsonPath('activities.0.attempts.0.cancel_requested', true)
             ->assertJsonPath('activities.0.attempts.0.stop_reason', 'attempt_cancelled')
+            ->assertJsonPath('logs.0.history_authority', 'unsupported_terminal_without_history')
+            ->assertJsonPath('logs.0.diagnostic_only', true)
+            ->assertJsonPath('chartData.1.history_authority', 'unsupported_terminal_without_history')
+            ->assertJsonPath('chartData.1.diagnostic_only', true)
             ->assertJsonPath('waits.0.status', 'unsupported')
             ->assertJsonPath('waits.0.source_status', 'cancelled')
             ->assertJsonPath('waits.0.diagnostic_only', true)

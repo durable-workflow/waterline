@@ -425,7 +425,12 @@
 
         <div class="card mt-4" v-if="ready && flow.chartData && flow.chartData.length">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Timeline Chart</h5>
+                <div>
+                    <h5>Timeline Chart</h5>
+                    <div class="small text-muted" v-if="chartHasDiagnosticRows()">
+                        Compatibility chart entries marked from older mutable activity rows are diagnostic only. Use Activities and History for the durable contract.
+                    </div>
+                </div>
 
                 <a data-toggle="collapse" href="#collapseTimeline" role="button">
                     Collapse
@@ -966,6 +971,9 @@
                                 <div v-if="activity.history_authority" class="small text-muted">
                                     {{ historyAuthorityLabel(activity.history_authority) }}
                                 </div>
+                                <div v-if="activity.diagnostic_only === true" class="small text-muted">
+                                    diagnostic only
+                                </div>
                                 <div v-if="activity.history_unsupported_reason" class="small text-muted">
                                     {{ historyUnsupportedReasonLabel(activity.history_unsupported_reason) }}
                                 </div>
@@ -1209,10 +1217,24 @@ export default {
                     custom: ({ series, seriesIndex, dataPointIndex, w }) => {
                         if (seriesIndex === 0) {
                             let data = w.globals.initialSeries[seriesIndex].data[dataPointIndex]
+                            let details = [
+                                '<b>'+data.type+'</b>: ' + data.x.split('_')[0],
+                                '<b>Time</b>: ' + (data.y[1] - data.y[0]) + 'ms',
+                            ]
 
-                            return '<div style="padding: 1em">' +
-                                '<b>'+data.type+'</b>: ' + data.x.split('_')[0] + '<br />' +
-                                '<b>Time</b>: ' + (data.y[1] - data.y[0]) + 'ms </div>'
+                            if (data.diagnostic_only === true) {
+                                details.push('<b>Detail</b>: diagnostic only')
+                            }
+
+                            if (this.hasDetailValue(data.history_authority)) {
+                                details.push('<b>History</b>: ' + this.historyAuthorityLabel(data.history_authority))
+                            }
+
+                            if (this.hasDetailValue(data.history_unsupported_reason)) {
+                                details.push('<b>Reason</b>: ' + this.historyUnsupportedReasonLabel(data.history_unsupported_reason))
+                            }
+
+                            return '<div style="padding: 1em">' + details.join('<br />') + '</div>'
                         }
                         if (seriesIndex === 1) {
                             let exception = phpunserialize(this.flow.exceptions[dataPointIndex].exception)
@@ -1654,6 +1676,11 @@ export default {
             return this.flow.activities && this.flow.activities.length
                 ? this.flow.activities
                 : (this.flow.logs || [])
+        },
+
+        chartHasDiagnosticRows() {
+            return Array.isArray(this.flow && this.flow.chartData)
+                && this.flow.chartData.some((entry) => entry && entry.diagnostic_only === true)
         },
 
         timerRows() {
