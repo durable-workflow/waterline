@@ -5,6 +5,7 @@ namespace Waterline\Tests\Feature;
 use Illuminate\Support\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Waterline\Models\SavedWorkflowView;
 use Waterline\Tests\TestCase;
 use Workflow\V2\Enums\RunStatus;
 use Workflow\V2\Models\WorkflowInstance;
@@ -377,6 +378,62 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.definition.labels.operator', 'exact');
     }
 
+    public function testV2ListRoutesMarkUnsupportedSavedViewVersionsWithoutApplyingTheirFilters(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.saved_views.scope', 'ops');
+
+        $signal = $this->createRunningSummary(
+            'unsupported-view-signal',
+            'run-unsup-view-signal-01',
+            Carbon::parse('2022-01-01 12:05:00'),
+            Carbon::parse('2022-01-01 12:05:00'),
+            waitKind: 'signal',
+        );
+        $timer = $this->createRunningSummary(
+            'unsupported-view-timer',
+            'run-unsup-view-timer-01',
+            Carbon::parse('2022-01-01 12:06:00'),
+            Carbon::parse('2022-01-01 12:06:00'),
+            waitKind: 'timer',
+        );
+
+        $savedView = SavedWorkflowView::create([
+            'name' => 'Signal waits (old contract)',
+            'scope' => 'ops',
+            'bucket' => 'running',
+            'filters' => [
+                'wait_kind' => 'signal',
+            ],
+            'filter_version' => 99,
+            'shared' => true,
+        ]);
+
+        $this->get('/waterline/api/flows/running?view='.$savedView->id.'&instance_id='.$timer->workflow_instance_id)
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $timer->id)
+            ->assertJsonPath('visibility_filters.version', VisibilityFilters::VERSION)
+            ->assertJsonPath('visibility_filters.supported_versions.0', VisibilityFilters::VERSION)
+            ->assertJsonPath('visibility_filters.saved_view.id', $savedView->id)
+            ->assertJsonPath('visibility_filters.saved_view.filter_version', 99)
+            ->assertJsonPath('visibility_filters.saved_view.filter_version_supported', false)
+            ->assertJsonPath('visibility_filters.saved_view.filter_version_status', 'unsupported')
+            ->assertJsonPath(
+                'visibility_filters.saved_view.filter_version_message',
+                'This saved view uses visibility filter version 99, but this Waterline build supports version 1.',
+            )
+            ->assertJsonPath('visibility_filters.saved_view_applied', false)
+            ->assertJsonPath(
+                'visibility_filters.saved_view_warning',
+                'This saved view uses visibility filter version 99, but this Waterline build supports version 1.',
+            )
+            ->assertJsonPath('visibility_filters.applied.instance_id', $timer->workflow_instance_id)
+            ->assertJsonMissingPath('visibility_filters.applied.wait_kind');
+
+        $this->assertNotSame($signal->id, $timer->id);
+    }
+
     public function testCompletedListRoutesCanFilterByArchivedTerminalFlags(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -468,6 +525,59 @@ class V2DashboardWorkflowListTest extends TestCase
 
         $this->assertDatabaseMissing('waterline_saved_views', [
             'id' => $id,
+        ]);
+    }
+
+    public function testSavedViewsSurfaceVersionMetadataAndUpdatesRewriteToCurrentVersion(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.saved_views.scope', 'ops');
+
+        $view = SavedWorkflowView::create([
+            'name' => 'Legacy signal waits',
+            'scope' => 'ops',
+            'bucket' => 'running',
+            'filters' => [
+                'wait_kind' => 'signal',
+            ],
+            'filter_version' => 99,
+            'shared' => true,
+        ]);
+
+        $this->get('/waterline/api/saved-views/'.$view->id)
+            ->assertOk()
+            ->assertJsonPath('id', $view->id)
+            ->assertJsonPath('filter_version', 99)
+            ->assertJsonPath('filter_version_supported', false)
+            ->assertJsonPath('filter_version_status', 'unsupported')
+            ->assertJsonPath(
+                'filter_version_message',
+                'This saved view uses visibility filter version 99, but this Waterline build supports version 1.',
+            )
+            ->assertJsonPath('current_filter_version', VisibilityFilters::VERSION)
+            ->assertJsonPath('supported_filter_versions.0', VisibilityFilters::VERSION);
+
+        $this->putJson('/waterline/api/saved-views/'.$view->id, [
+            'name' => 'Current signal waits',
+            'bucket' => 'running',
+            'filters' => [
+                'wait_kind' => 'signal',
+                'archived' => false,
+            ],
+            'shared' => false,
+        ])->assertOk()
+            ->assertJsonPath('name', 'Current signal waits')
+            ->assertJsonPath('filter_version', VisibilityFilters::VERSION)
+            ->assertJsonPath('filter_version_supported', true)
+            ->assertJsonPath('filter_version_status', 'supported')
+            ->assertJsonPath('filter_version_message', null)
+            ->assertJsonPath('current_filter_version', VisibilityFilters::VERSION)
+            ->assertJsonPath('supported_filter_versions.0', VisibilityFilters::VERSION);
+
+        $this->assertDatabaseHas('waterline_saved_views', [
+            'id' => $view->id,
+            'filter_version' => VisibilityFilters::VERSION,
+            'name' => 'Current signal waits',
         ]);
     }
 

@@ -295,6 +295,39 @@
                 return filters;
             },
 
+            mergeFilterPayloads(...payloads) {
+                const merged = {}
+
+                payloads.forEach((payload) => {
+                    if (!payload || typeof payload !== 'object') {
+                        return
+                    }
+
+                    Object.entries(payload).forEach(([field, value]) => {
+                        if (field === 'labels') {
+                            merged.labels = {
+                                ...(merged.labels || {}),
+                                ...(value || {}),
+                            }
+
+                            return
+                        }
+
+                        if (value === undefined || value === null || value === '') {
+                            return
+                        }
+
+                        merged[field] = value
+                    })
+                })
+
+                if (merged.labels && Object.keys(merged.labels).length === 0) {
+                    delete merged.labels
+                }
+
+                return merged
+            },
+
             visibilityFilterContract() {
                 return this.filterDefinition
                     || (this.visibilityFilters && this.visibilityFilters.definition)
@@ -475,9 +508,15 @@
             },
 
             effectiveFilterPayload() {
-                const applied = this.visibilityFilters && this.visibilityFilters.applied
+                const requestOrApplied = this.visibilityFilters && this.visibilityFilters.applied
                     ? this.visibilityFilters.applied
                     : this.currentFilterPayload()
+                const usesIncompatibleSavedView = this.selectedCustomView
+                    && !this.savedViewVersionSupported(this.selectedCustomView)
+                    && (!this.visibilityFilters || this.visibilityFilters.saved_view_applied === false)
+                const applied = usesIncompatibleSavedView
+                    ? this.mergeFilterPayloads(this.selectedCustomView.filters || {}, requestOrApplied)
+                    : requestOrApplied
 
                 return {
                     ...applied,
@@ -652,7 +691,9 @@
             },
 
             async editFilters() {
-                const current = this.currentFilterPayload()
+                const current = this.selectedCustomView && !this.savedViewVersionSupported(this.selectedCustomView)
+                    ? this.mergeFilterPayloads(this.selectedCustomView.filters || {}, this.currentFilterPayload())
+                    : this.currentFilterPayload()
                 const result = await Swal.fire({
                     title: 'Edit Filters',
                     html: this.filterEditorHtml(current),
@@ -704,6 +745,9 @@
                 }
 
                 const view = this.selectedCustomView
+                const updateNote = view.filter_version_supported === false
+                    ? `This view uses filter version ${view.filter_version}. Updating rewrites it to the current contract with the stored view filters plus any query refinements.`
+                    : 'Update uses the current applied filters.'
                 const result = await Swal.fire({
                     title: 'Manage View',
                     html: `
@@ -713,7 +757,7 @@
                             <input id="waterline-view-shared" type="checkbox" class="mr-2" ${view.shared ? 'checked' : ''}>
                             <span>Shared within this Waterline scope</span>
                         </label>
-                        <small class="d-block text-left text-muted mt-3">Update uses the current applied filters.</small>
+                        <small class="d-block text-left text-muted mt-3">${this.escapeHtml(updateNote)}</small>
                     `,
                     showCancelButton: true,
                     showDenyButton: true,
@@ -920,6 +964,31 @@
                 }[this.$route.params.type] || 'Workflow';
             },
 
+            savedViewVersionSupported(view) {
+                return !view || view.filter_version_supported !== false
+            },
+
+            savedViewOptionLabel(view) {
+                if (this.savedViewVersionSupported(view)) {
+                    return view.name
+                }
+
+                return `${view.name} (upgrade needed)`
+            },
+
+            selectedSavedViewWarning() {
+                if (this.visibilityFilters && this.visibilityFilters.saved_view_warning) {
+                    return this.visibilityFilters.saved_view_warning
+                }
+
+                if (this.selectedCustomView && this.selectedCustomView.filter_version_supported === false) {
+                    return this.selectedCustomView.filter_version_message
+                        || 'This saved view uses an unsupported visibility filter contract.'
+                }
+
+                return null
+            },
+
             isTerminalCollection() {
                 return ['completed', 'failed', 'cancelled', 'terminated'].includes(this.$route.params.type);
             },
@@ -947,7 +1016,7 @@
                             style="width: 14rem;">
                         <option :value="null">System view</option>
                         <option v-for="view in savedViews" :key="view.id" :value="view.id">
-                            {{ view.name }}
+                            {{ savedViewOptionLabel(view) }}
                         </option>
                     </select>
 
@@ -983,6 +1052,11 @@
                     <span v-if="visibilityFilters && visibilityFilters.saved_view"
                           class="badge badge-primary mr-2 mb-1">
                         View: {{ visibilityFilters.saved_view.name }}
+                    </span>
+
+                    <span v-if="selectedSavedViewWarning()"
+                          class="badge badge-dark mr-2 mb-1">
+                        {{ selectedSavedViewWarning() }}
                     </span>
 
                     <span v-for="entry in appliedFilterEntries"

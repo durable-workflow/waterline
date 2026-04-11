@@ -73,18 +73,27 @@ class SavedWorkflowView extends Model
     {
         return collect(self::BUCKETS)
             ->when($bucket !== null, static fn ($buckets) => $buckets->filter(static fn (string $candidate): bool => $candidate === $bucket))
-            ->map(static fn (string $candidate): array => [
-                'id' => 'system:'.$candidate,
-                'name' => ucfirst($candidate),
-                'bucket' => $candidate,
-                'scope' => 'system',
-                'shared' => true,
-                'system' => true,
-                'filters' => [],
-                'filter_version' => VisibilityFilters::VERSION,
-                'created_at' => null,
-                'updated_at' => null,
-            ])
+            ->map(static function (string $candidate): array {
+                $versionMetadata = VisibilityFilters::versionMetadata(VisibilityFilters::VERSION);
+
+                return [
+                    'id' => 'system:'.$candidate,
+                    'name' => ucfirst($candidate),
+                    'bucket' => $candidate,
+                    'scope' => 'system',
+                    'shared' => true,
+                    'system' => true,
+                    'filters' => [],
+                    'filter_version' => VisibilityFilters::VERSION,
+                    'filter_version_supported' => $versionMetadata['supported'],
+                    'filter_version_status' => $versionMetadata['status'],
+                    'filter_version_message' => $versionMetadata['message'],
+                    'current_filter_version' => $versionMetadata['current_version'],
+                    'supported_filter_versions' => $versionMetadata['supported_versions'],
+                    'created_at' => null,
+                    'updated_at' => null,
+                ];
+            })
             ->values()
             ->all();
     }
@@ -108,6 +117,8 @@ class SavedWorkflowView extends Model
      */
     public function toWaterlinePayload(): array
     {
+        $versionMetadata = VisibilityFilters::versionMetadata($this->getRawOriginal('filter_version') ?? $this->filter_version);
+
         return [
             'id' => $this->id,
             'name' => $this->name,
@@ -116,7 +127,12 @@ class SavedWorkflowView extends Model
             'shared' => (bool) $this->shared,
             'system' => false,
             'filters' => VisibilityFilters::normalize($this->filters ?? []),
-            'filter_version' => (int) ($this->filter_version ?? VisibilityFilters::VERSION),
+            'filter_version' => $versionMetadata['version'],
+            'filter_version_supported' => $versionMetadata['supported'],
+            'filter_version_status' => $versionMetadata['status'],
+            'filter_version_message' => $versionMetadata['message'],
+            'current_filter_version' => $versionMetadata['current_version'],
+            'supported_filter_versions' => $versionMetadata['supported_versions'],
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

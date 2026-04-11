@@ -16,6 +16,7 @@ class SavedViewsController extends Controller
             return response()->json([
                 'data' => [],
                 'filter_version' => VisibilityFilters::VERSION,
+                'supported_filter_versions' => VisibilityFilters::supportedVersions(),
                 'filter_definition' => VisibilityFilters::definition(),
             ]);
         }
@@ -36,6 +37,7 @@ class SavedViewsController extends Controller
                 ...$saved,
             ],
             'filter_version' => VisibilityFilters::VERSION,
+            'supported_filter_versions' => VisibilityFilters::supportedVersions(),
             'filter_definition' => VisibilityFilters::definition(),
         ]);
     }

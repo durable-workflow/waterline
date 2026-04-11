@@ -537,10 +537,13 @@ class WorkflowsController extends Controller
         $payload = $result->toArray();
         $payload['visibility_filters'] = [
             'version' => VisibilityFilters::VERSION,
+            'supported_versions' => VisibilityFilters::supportedVersions(),
             'bucket' => $bucket,
             'definition' => $context['definition'],
             'applied' => $context['applied_filters'],
             'saved_view' => $context['saved_view'],
+            'saved_view_applied' => $context['saved_view_applied'],
+            'saved_view_warning' => $context['saved_view_warning'],
         ];
 
         return response()->json($payload);

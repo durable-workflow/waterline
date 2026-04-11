@@ -30,11 +30,16 @@ final class V2VisibilityFilterContext
             );
         }
 
-        $savedFilters = is_array($savedView['filters'] ?? null) ? $savedView['filters'] : [];
+        $savedViewApplied = $savedView === null
+            ? null
+            : (($savedView['filter_version_supported'] ?? true) === true);
+        $savedFilters = $savedViewApplied && is_array($savedView['filters'] ?? null) ? $savedView['filters'] : [];
         $requestFilters = VisibilityFilters::fromRequest($request);
 
         return [
             'saved_view' => $savedView,
+            'saved_view_applied' => $savedViewApplied,
+            'saved_view_warning' => $savedViewApplied ? null : ($savedView['filter_version_message'] ?? null),
             'saved_filters' => $savedFilters,
             'request_filters' => $requestFilters,
             'applied_filters' => VisibilityFilters::merge($savedFilters, $requestFilters),
