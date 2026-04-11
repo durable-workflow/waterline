@@ -512,7 +512,10 @@
                     </div>
 
                     <div class="mt-1 text-muted" v-if="operatorMetric('command_contracts', 'backfill_needed_runs')">
-                        Run <code>php artisan workflow:v2:rebuild-projections --needs-rebuild --prune-stale</code>
+                        Background worker-loop repair passes now backfill loadable preview-era command contracts in
+                        throttled batches. Run <code>php artisan workflow:v2:repair-pass</code> to force the next
+                        batch immediately, use
+                        <code>php artisan workflow:v2:rebuild-projections --needs-rebuild --prune-stale</code>
                         to sweep untouched loadable preview-era command contracts alongside projection drift, or use
                         <code>php artisan workflow:v2:backfill-command-contracts --dry-run</code> and then rerun it
                         without <code>--dry-run</code> for a targeted contract-only pass while a compatible build is

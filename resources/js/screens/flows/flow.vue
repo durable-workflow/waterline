@@ -187,8 +187,10 @@
                             class="small text-muted"
                             v-if="flow.declared_contract_backfill_needed === true && flow.declared_contract_backfill_available === true"
                         >
-                            This run still needs command-contract normalization. A compatible selected-run detail or
-                            history-export read can persist it automatically; use
+                            This run still needs command-contract normalization. The background repair/watchdog loop
+                            will keep trying to persist it while a compatible build is active; a compatible
+                            selected-run detail or history-export read can also persist it immediately. Use
+                            <code>php artisan workflow:v2:repair-pass</code> to force the next batch,
                             <code>php artisan workflow:v2:rebuild-projections --needs-rebuild</code>
                             to sweep untouched runs with the rest of the selected-run projection drift, or run
                             <code>php artisan workflow:v2:backfill-command-contracts --dry-run</code>
