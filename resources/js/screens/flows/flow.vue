@@ -2217,6 +2217,10 @@ export default {
         },
 
         waitBacking(wait) {
+            if (wait.diagnostic_only) {
+                return 'diagnostic only'
+            }
+
             if (wait.kind === 'condition' && this.hasDetailValue(wait.timeout_seconds)) {
                 if (!wait.task_backed && this.hasDetailValue(wait.task_id)) {
                     return ['stale timeout task', wait.task_status, 'external input']
@@ -2652,7 +2656,7 @@ export default {
 
             return this.childIdentityRows({
                 instance_id: wait.target_name || null,
-                run_id: wait.resume_source_id || null,
+                run_id: wait.child_workflow_run_id || wait.resume_source_id || null,
                 child_call_id: wait.child_call_id || null,
             })
         },
@@ -2664,7 +2668,7 @@ export default {
 
             return this.childIdentityRows({
                 instance_id: wait.target_name || null,
-                run_id: wait.resume_source_id || null,
+                run_id: wait.child_workflow_run_id || wait.resume_source_id || null,
                 child_call_id: wait.child_call_id || null,
             })
         },

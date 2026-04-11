@@ -584,6 +584,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.kind', 'activity')
             ->assertJsonPath('waits.0.status', 'unsupported')
             ->assertJsonPath('waits.0.source_status', 'completed')
+            ->assertJsonPath('waits.0.diagnostic_only', true)
+            ->assertJsonPath('waits.0.resume_source_kind', null)
+            ->assertJsonPath('waits.0.resume_source_id', null)
             ->assertJsonPath(
                 'waits.0.history_unsupported_reason',
                 'terminal_activity_row_without_typed_history',
@@ -648,6 +651,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.kind', 'timer')
             ->assertJsonPath('waits.0.status', 'unsupported')
             ->assertJsonPath('waits.0.source_status', 'fired')
+            ->assertJsonPath('waits.0.diagnostic_only', true)
+            ->assertJsonPath('waits.0.resume_source_kind', null)
+            ->assertJsonPath('waits.0.resume_source_id', null)
             ->assertJsonPath('waits.0.history_authority', 'unsupported_terminal_without_history')
             ->assertJsonPath('waits.0.history_unsupported_reason', 'terminal_timer_row_without_typed_history')
             ->assertJsonPath('waits.0.row_status', 'fired')
@@ -743,12 +749,16 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.kind', 'child')
             ->assertJsonPath('waits.0.status', 'unsupported')
             ->assertJsonPath('waits.0.source_status', 'completed')
+            ->assertJsonPath('waits.0.diagnostic_only', true)
+            ->assertJsonPath('waits.0.resume_source_kind', null)
+            ->assertJsonPath('waits.0.resume_source_id', null)
             ->assertJsonPath('waits.0.history_authority', 'unsupported_terminal_without_history')
             ->assertJsonPath(
                 'waits.0.history_unsupported_reason',
                 'terminal_child_link_without_typed_parent_history',
             )
             ->assertJsonPath('waits.0.child_call_id', $link->id)
+            ->assertJsonPath('waits.0.child_workflow_run_id', $childRun->id)
             ->assertJsonCount(0, 'tasks');
     }
 
@@ -2138,6 +2148,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('activities.0.attempts.0.stop_reason', 'attempt_cancelled')
             ->assertJsonPath('waits.0.status', 'unsupported')
             ->assertJsonPath('waits.0.source_status', 'cancelled')
+            ->assertJsonPath('waits.0.diagnostic_only', true)
+            ->assertJsonPath('waits.0.resume_source_kind', null)
+            ->assertJsonPath('waits.0.resume_source_id', null)
             ->assertJsonPath('waits.0.history_unsupported_reason', 'terminal_activity_row_without_typed_history');
     }
 

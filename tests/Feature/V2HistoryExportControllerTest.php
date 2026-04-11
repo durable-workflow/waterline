@@ -218,6 +218,9 @@ class V2HistoryExportControllerTest extends TestCase
 
         $this->get('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
             ->assertStatus(200)
+            ->assertJsonPath('waits.0.diagnostic_only', true)
+            ->assertJsonPath('waits.0.resume_source_kind', null)
+            ->assertJsonPath('waits.0.resume_source_id', null)
             ->assertJsonPath('activities.0.id', $activity->id)
             ->assertJsonPath('activities.0.status', 'unsupported')
             ->assertJsonPath('activities.0.source_status', 'failed')
@@ -253,6 +256,9 @@ class V2HistoryExportControllerTest extends TestCase
 
         $this->get('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
             ->assertStatus(200)
+            ->assertJsonPath('waits.0.diagnostic_only', true)
+            ->assertJsonPath('waits.0.resume_source_kind', null)
+            ->assertJsonPath('waits.0.resume_source_id', null)
             ->assertJsonPath('timers.0.id', $timer->id)
             ->assertJsonPath('timers.0.status', 'unsupported')
             ->assertJsonPath('timers.0.source_status', 'fired')
