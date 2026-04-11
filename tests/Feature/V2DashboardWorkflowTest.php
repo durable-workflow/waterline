@@ -662,6 +662,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.row_status', 'fired')
             ->assertJsonPath('timers.0.id', $timer->id)
             ->assertJsonPath('timers.0.status', 'unsupported')
+            ->assertJsonPath('timers.0.diagnostic_only', true)
             ->assertJsonPath('timers.0.source_status', 'fired')
             ->assertJsonPath('timers.0.row_status', 'fired')
             ->assertJsonPath('timers.0.history_authority', 'unsupported_terminal_without_history')
@@ -5417,6 +5418,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.timer_fire_at', $deadlineAt->toJSON())
             ->assertJsonPath('timers.0.id', $timerId)
             ->assertJsonPath('timers.0.status', 'pending')
+            ->assertJsonPath('timers.0.diagnostic_only', false)
             ->assertJsonPath('timers.0.fire_at', $deadlineAt->toJSON());
     }
 
@@ -6918,6 +6920,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.resume_source_id', null)
             ->assertJsonPath('timers.0.id', $timer->id)
             ->assertJsonPath('timers.0.status', 'pending')
+            ->assertJsonPath('timers.0.diagnostic_only', true)
             ->assertJsonPath('timers.0.history_authority', 'mutable_open_fallback')
             ->assertJsonPath('tasks', []);
     }

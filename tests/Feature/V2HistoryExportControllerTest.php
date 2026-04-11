@@ -343,6 +343,7 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('waits.0.resume_source_id', null)
             ->assertJsonPath('timers.0.id', $timer->id)
             ->assertJsonPath('timers.0.status', 'unsupported')
+            ->assertJsonPath('timers.0.diagnostic_only', true)
             ->assertJsonPath('timers.0.source_status', 'fired')
             ->assertJsonPath('timers.0.row_status', 'fired')
             ->assertJsonPath('timers.0.history_authority', 'unsupported_terminal_without_history')

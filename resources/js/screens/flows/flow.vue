@@ -1057,6 +1057,9 @@
                                 <div class="small text-muted" v-if="hasDetailValue(timer.history_authority)">
                                     {{ historyAuthorityLabel(timer.history_authority) }}
                                 </div>
+                                <div class="small text-muted" v-if="timer.diagnostic_only === true">
+                                    Diagnostic only
+                                </div>
                                 <div class="small text-muted" v-if="hasDetailValue(timer.history_unsupported_reason)">
                                     {{ historyUnsupportedReasonLabel(timer.history_unsupported_reason) }}
                                 </div>
