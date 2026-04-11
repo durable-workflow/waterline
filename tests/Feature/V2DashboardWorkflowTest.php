@@ -3377,6 +3377,107 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_contract_backfill_available', false);
     }
 
+    public function testShowMarksPartialLegacyCommandContractsAsUnavailableWhenWorkflowClassCannotBeResolved(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-command-contract-partial-unavailable',
+            'workflow_class' => TestCommandContractWorkflow::class,
+            'workflow_type' => 'workflow.command-contract',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCOMPARUNAVL1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'Missing\\Workflow\\CommandContractWorkflow',
+            'workflow_type' => 'workflow.command-contract',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(20),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'Missing\\Workflow\\CommandContractWorkflow',
+            'workflow_type' => 'workflow.command-contract',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => $run->started_at,
+            'created_at' => now()->subMinute(),
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => '01JTESTHISTCOMMANDPARTUN1',
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [
+                'declared_queries' => ['current-stage', 'stageMatches'],
+                'declared_query_contracts' => [
+                    [
+                        'name' => 'current-stage',
+                        'parameters' => [],
+                    ],
+                ],
+                'declared_signals' => ['approved-by', 'rejected-by'],
+                'declared_signal_contracts' => [
+                    [
+                        'name' => 'approved-by',
+                        'parameters' => [
+                            [
+                                'name' => 'actor',
+                                'position' => 0,
+                                'required' => true,
+                                'variadic' => false,
+                                'default_available' => false,
+                                'default' => null,
+                                'type' => 'string',
+                                'allows_null' => true,
+                            ],
+                        ],
+                    ],
+                ],
+                'declared_updates' => ['mark-approved'],
+                'declared_update_contracts' => [],
+            ],
+            'recorded_at' => now()->subSeconds(19),
+        ]);
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertStatus(200)
+            ->assertJsonPath('declared_queries', ['current-stage', 'stageMatches'])
+            ->assertJsonPath('declared_query_targets.0.name', 'current-stage')
+            ->assertJsonPath('declared_query_targets.0.has_contract', true)
+            ->assertJsonPath('declared_query_targets.1.name', 'stageMatches')
+            ->assertJsonPath('declared_query_targets.1.has_contract', false)
+            ->assertJsonPath('declared_signals', ['approved-by', 'rejected-by'])
+            ->assertJsonPath('declared_signal_targets.0.name', 'approved-by')
+            ->assertJsonPath('declared_signal_targets.0.has_contract', true)
+            ->assertJsonPath('declared_signal_targets.1.name', 'rejected-by')
+            ->assertJsonPath('declared_signal_targets.1.has_contract', false)
+            ->assertJsonPath('declared_updates', ['mark-approved'])
+            ->assertJsonPath('declared_update_targets.0.name', 'mark-approved')
+            ->assertJsonPath('declared_update_targets.0.has_contract', false)
+            ->assertJsonPath('declared_contract_source', 'unavailable')
+            ->assertJsonPath('declared_contract_backfill_needed', true)
+            ->assertJsonPath('declared_contract_backfill_available', false);
+    }
+
     public function testShowReturnsEmptyNormalizedTargetsWhenCommandContractIsUnavailable(): void
     {
         config()->set('waterline.engine_source', 'v2');
