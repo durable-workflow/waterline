@@ -10,12 +10,13 @@ use Waterline\Tests\TestCase;
 use Workflow\V2\Enums\TaskStatus;
 use Workflow\V2\Enums\TaskType;
 use Workflow\V2\Jobs\RunWorkflowTask;
+use Workflow\V2\Models\WorkflowLink;
 use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\WorkflowStub;
 
 final class V2AsyncDashboardWorkflowTest extends TestCase
 {
-    public function testShowReturnsAsyncChildWorkflowWaitPayloadForSelectedRun(): void
+    public function testShowReturnsAsyncChildWorkflowWaitPayloadForSelectedRunAfterCallbackSchedulesWork(): void
     {
         config()->set('waterline.engine_source', 'v2');
         config()->set('queue.default', 'redis');
@@ -26,6 +27,14 @@ final class V2AsyncDashboardWorkflowTest extends TestCase
         $workflow->start('Taylor');
 
         $this->runReadyWorkflowTask($workflow->runId());
+
+        /** @var WorkflowLink $link */
+        $link = WorkflowLink::query()
+            ->where('parent_workflow_run_id', $workflow->runId())
+            ->where('link_type', 'child_workflow')
+            ->firstOrFail();
+
+        $this->runReadyWorkflowTask($link->child_workflow_run_id);
 
         $response = $this->get('/waterline/api/flows/' . $workflow->runId());
 
@@ -39,7 +48,7 @@ final class V2AsyncDashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.summary', 'Waiting for child workflow durable-workflow.async.')
             ->assertJsonPath('continuedWorkflows.0.link_type', 'child_workflow')
             ->assertJsonPath('continuedWorkflows.0.workflow_type', 'durable-workflow.async')
-            ->assertJsonPath('continuedWorkflows.0.status', 'pending');
+            ->assertJsonPath('continuedWorkflows.0.status', 'waiting');
     }
 
     private function runReadyWorkflowTask(?string $runId): void
