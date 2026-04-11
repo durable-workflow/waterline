@@ -7096,6 +7096,38 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('result.events.1', 'approved:yes:waterline-status');
     }
 
+    public function testUpdateRejectsLookupOnlyWaitForModeOnWriteRequests(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'database');
+        config()->set('queue.connections.database.driver', 'database');
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-update-waterline-invalid-wait-for');
+        $workflow->start();
+
+        $this->runReadyWorkflowTask($workflow->runId());
+
+        $response = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/updates/mark-approved', [
+            'wait_for' => 'status',
+            'arguments' => [
+                'approved' => true,
+                'source' => 'waterline-invalid',
+            ],
+        ]);
+
+        $response
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['wait_for'])
+            ->assertJsonPath('errors.wait_for.0', 'The wait_for field must be one of: accepted, completed.');
+
+        $this->assertSame(1, WorkflowCommand::query()
+            ->where('workflow_instance_id', 'order-update-waterline-invalid-wait-for')
+            ->count());
+        $this->assertSame(0, WorkflowUpdate::query()
+            ->where('workflow_instance_id', 'order-update-waterline-invalid-wait-for')
+            ->count());
+    }
+
     public function testUpdateCanReturnAcceptedLifecycleWhenCompletionWaitTimesOut(): void
     {
         config()->set('waterline.engine_source', 'v2');

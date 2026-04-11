@@ -513,7 +513,7 @@ class WorkflowsController extends Controller
 
     private function shouldSubmitUpdate(Request $request): bool
     {
-        return $request->input('wait_for') === 'accepted';
+        return UpdateWaitPolicy::shouldSubmitAcceptedOnly($request->input('wait_for'));
     }
 
     private function updateStub(V2WorkflowStub $stub, Request $request): V2WorkflowStub
