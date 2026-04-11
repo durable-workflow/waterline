@@ -103,28 +103,49 @@
             },
 
             showRepairBadge(flow) {
-                return ['unsupported_history', 'waiting_for_compatible_worker'].includes(flow.repair_blocked_reason)
+                const repair = this.repairBlocked(flow)
+
+                return repair ? repair.badge_visible === true : false
             },
 
             repairBadgeLabel(flow) {
-                return {
-                    'unsupported_history': 'Replay Blocked',
-                    'waiting_for_compatible_worker': 'Compat Blocked',
-                }[flow.repair_blocked_reason] || 'Repair Blocked'
+                const repair = this.repairBlocked(flow)
+
+                return repair && repair.label
+                    ? repair.label
+                    : 'Repair Blocked'
             },
 
             repairBadgeTitle(flow) {
-                return {
-                    'unsupported_history': 'Repair is blocked because only unsupported diagnostic history remains.',
-                    'waiting_for_compatible_worker': 'Repair is blocked because the task is waiting for a compatible worker.',
-                }[flow.repair_blocked_reason] || 'Repair is currently blocked.'
+                const repair = this.repairBlocked(flow)
+
+                return repair && repair.description
+                    ? repair.description
+                    : 'Repair is currently blocked.'
             },
 
             repairBadgeClass(flow) {
+                const repair = this.repairBlocked(flow)
+
+                return this.badgeClassForTone(repair && repair.tone ? repair.tone : 'secondary')
+            },
+
+            repairBlocked(flow) {
+                return flow && flow.repair_blocked
+                    ? flow.repair_blocked
+                    : null
+            },
+
+            badgeClassForTone(tone) {
                 return {
-                    'unsupported_history': 'badge-dark',
-                    'waiting_for_compatible_worker': 'badge-warning',
-                }[flow.repair_blocked_reason] || 'badge-secondary'
+                    'dark': 'badge-dark',
+                    'danger': 'badge-danger',
+                    'info': 'badge-info',
+                    'primary': 'badge-primary',
+                    'secondary': 'badge-secondary',
+                    'success': 'badge-success',
+                    'warning': 'badge-warning',
+                }[tone] || 'badge-secondary'
             },
         }
     }

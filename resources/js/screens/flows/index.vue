@@ -2,155 +2,6 @@
     import FlowRow from './flow-row';
     import Swal from 'sweetalert2';
 
-    const fallbackVisibilityFilterDefinition = {
-        fields: {
-            instance_id: { label: 'Instance ID', type: 'string', input: 'text', operator: 'exact', order: 0, query_parameter: 'instance_id' },
-            run_id: { label: 'Run ID', type: 'string', input: 'text', operator: 'exact', order: 1, query_parameter: 'run_id' },
-            workflow_type: { label: 'Workflow Type', type: 'string', input: 'text', operator: 'exact', order: 2, query_parameter: 'workflow_type' },
-            business_key: { label: 'Business Key', type: 'string', input: 'text', operator: 'exact', order: 3, query_parameter: 'business_key' },
-            compatibility: { label: 'Compatibility', type: 'string', input: 'text', operator: 'exact', order: 4, query_parameter: 'compatibility' },
-            queue: { label: 'Queue', type: 'string', input: 'text', operator: 'exact', order: 5, query_parameter: 'queue' },
-            connection: { label: 'Connection', type: 'string', input: 'text', operator: 'exact', order: 6, query_parameter: 'connection' },
-            status: {
-                label: 'Status',
-                type: 'string',
-                input: 'select',
-                operator: 'exact',
-                order: 7,
-                query_parameter: 'status',
-                options: [
-                    { label: 'Pending', value: 'pending' },
-                    { label: 'Running', value: 'running' },
-                    { label: 'Waiting', value: 'waiting' },
-                    { label: 'Cancelled', value: 'cancelled' },
-                    { label: 'Terminated', value: 'terminated' },
-                    { label: 'Completed', value: 'completed' },
-                    { label: 'Failed', value: 'failed' },
-                ],
-            },
-            status_bucket: {
-                label: 'Status Bucket',
-                type: 'string',
-                input: 'select',
-                operator: 'exact',
-                order: 8,
-                query_parameter: 'status_bucket',
-                options: [
-                    { label: 'Running', value: 'running' },
-                    { label: 'Completed', value: 'completed' },
-                    { label: 'Failed', value: 'failed' },
-                ],
-            },
-            closed_reason: {
-                label: 'Closed Reason',
-                type: 'string',
-                input: 'select',
-                operator: 'exact',
-                order: 9,
-                query_parameter: 'closed_reason',
-                options: [
-                    { label: 'Completed', value: 'completed' },
-                    { label: 'Failed', value: 'failed' },
-                    { label: 'Cancelled', value: 'cancelled' },
-                    { label: 'Terminated', value: 'terminated' },
-                    { label: 'Continued', value: 'continued' },
-                ],
-            },
-            wait_kind: {
-                label: 'Wait Kind',
-                type: 'string',
-                input: 'select',
-                operator: 'exact',
-                order: 10,
-                query_parameter: 'wait_kind',
-                options: [
-                    { label: 'Activity', value: 'activity' },
-                    { label: 'Update', value: 'update' },
-                    { label: 'Signal', value: 'signal' },
-                    { label: 'Timer', value: 'timer' },
-                    { label: 'Condition', value: 'condition' },
-                    { label: 'Workflow Task', value: 'workflow-task' },
-                    { label: 'Child', value: 'child' },
-                ],
-            },
-            liveness_state: { label: 'Liveness State', type: 'string', input: 'text', operator: 'exact', order: 11, query_parameter: 'liveness_state' },
-            repair_blocked_reason: {
-                label: 'Repair Blocked Reason',
-                type: 'string',
-                input: 'select',
-                operator: 'exact',
-                order: 12,
-                query_parameter: 'repair_blocked_reason',
-                options: [
-                    { label: 'Replay Blocked', value: 'unsupported_history' },
-                    { label: 'Compat Blocked', value: 'waiting_for_compatible_worker' },
-                    { label: 'Selected Run Not Current', value: 'selected_run_not_current' },
-                    { label: 'Run Closed', value: 'run_closed' },
-                    { label: 'Repair Not Needed', value: 'repair_not_needed' },
-                ],
-            },
-            is_current_run: {
-                label: 'Current Run',
-                type: 'boolean',
-                input: 'boolean_select',
-                operator: 'exact',
-                order: 13,
-                query_parameter: 'is_current_run',
-                options: [
-                    { label: 'Yes', value: true },
-                    { label: 'No', value: false },
-                ],
-            },
-            continue_as_new_recommended: {
-                label: 'Continue As New Recommended',
-                type: 'boolean',
-                input: 'boolean_select',
-                operator: 'exact',
-                order: 14,
-                query_parameter: 'continue_as_new_recommended',
-                options: [
-                    { label: 'Yes', value: true },
-                    { label: 'No', value: false },
-                ],
-            },
-            archived: {
-                label: 'Archived',
-                type: 'boolean',
-                input: 'boolean_select',
-                operator: 'exact',
-                order: 15,
-                query_parameter: 'archived',
-                options: [
-                    { label: 'Yes', value: true },
-                    { label: 'No', value: false },
-                ],
-            },
-            is_terminal: {
-                label: 'Terminal',
-                type: 'boolean',
-                input: 'boolean_select',
-                operator: 'exact',
-                order: 16,
-                query_parameter: 'is_terminal',
-                options: [
-                    { label: 'Yes', value: true },
-                    { label: 'No', value: false },
-                ],
-            },
-        },
-        labels: {
-            label: 'Labels',
-            type: 'map<string,string>',
-            input: 'key_value_textarea',
-            operator: 'exact',
-            query_parameters: ['label[key]', 'labels[key]'],
-            key_pattern: '^[A-Za-z0-9_.:-]{1,64}$',
-            key_value_separator: '=',
-            placeholder: 'tenant=acme\nregion=us-east',
-            help: 'One exact-match label per line in key=value format.',
-        },
-    }
-
     export default {
         /**
          * The component's data.
@@ -447,11 +298,17 @@
             visibilityFilterContract() {
                 return this.filterDefinition
                     || (this.visibilityFilters && this.visibilityFilters.definition)
-                    || fallbackVisibilityFilterDefinition
+                    || null
+            },
+
+            hasVisibilityFilterContract() {
+                return this.visibilityFilterContract() !== null
             },
 
             visibilityFieldEntries() {
-                return Object.entries(this.visibilityFilterContract().fields || {})
+                const contract = this.visibilityFilterContract()
+
+                return Object.entries((contract && contract.fields) || {})
                     .sort(([, left], [, right]) => {
                         const leftOrder = typeof left.order === 'number' ? left.order : Number.MAX_SAFE_INTEGER
                         const rightOrder = typeof right.order === 'number' ? right.order : Number.MAX_SAFE_INTEGER
@@ -465,15 +322,27 @@
             },
 
             visibilityFieldDefinition(field) {
-                return this.visibilityFilterContract().fields[field] || null
+                const contract = this.visibilityFilterContract()
+
+                return contract && contract.fields
+                    ? (contract.fields[field] || null)
+                    : null
             },
 
             visibilityLabelsDefinition() {
-                return this.visibilityFilterContract().labels || fallbackVisibilityFilterDefinition.labels
+                const contract = this.visibilityFilterContract()
+
+                return contract && contract.labels
+                    ? contract.labels
+                    : null
             },
 
             labelKeyPattern() {
-                return this.visibilityLabelsDefinition().key_pattern || '^[A-Za-z0-9_.:-]{1,64}$'
+                const definition = this.visibilityLabelsDefinition()
+
+                return definition && definition.key_pattern
+                    ? definition.key_pattern
+                    : '^$'
             },
 
             labelKeyRegExp() {
@@ -645,6 +514,12 @@
             },
 
             filterEditorHtml(filters) {
+                const labelsDefinition = this.visibilityLabelsDefinition()
+
+                if (!labelsDefinition) {
+                    return '<div class="text-left">Visibility filters are unavailable.</div>'
+                }
+
                 const textInput = (id, label, value) => `
                     <label class="d-block text-left mb-1" for="${id}">${label}</label>
                     <input id="${id}" class="swal2-input" value="${this.escapeHtml(value)}">
@@ -658,8 +533,7 @@
                         `).join('')}
                     </select>
                 `
-                const labelsDefinition = this.visibilityLabelsDefinition()
-                const labelPlaceholder = this.escapeHtml(labelsDefinition.placeholder || 'tenant=acme\nregion=us-east')
+                const labelPlaceholder = this.escapeHtml(labelsDefinition.placeholder || '')
                     .replace(/\n/g, '&#10;')
                 const fieldsHtml = this.visibilityFieldEntries()
                     .map(([field, definition]) => {
@@ -689,6 +563,11 @@
 
             parseLabelText(value) {
                 const labelsDefinition = this.visibilityLabelsDefinition()
+
+                if (!labelsDefinition) {
+                    return {}
+                }
+
                 const separatorToken = labelsDefinition.key_value_separator || '='
                 const separator = String(separatorToken)
                 const labels = {}
@@ -1072,18 +951,19 @@
                         </option>
                     </select>
 
-                    <button class="btn btn-outline-secondary btn-sm mr-2 mb-2"
+                    <button v-if="hasVisibilityFilterContract()"
+                            class="btn btn-outline-secondary btn-sm mr-2 mb-2"
                             @click="editFilters">
                         Filters
                     </button>
 
-                    <button v-if="hasActiveFilters"
+                    <button v-if="hasVisibilityFilterContract() && hasActiveFilters"
                             class="btn btn-outline-secondary btn-sm mr-2 mb-2"
                             @click="clearFilters">
                         Clear
                     </button>
 
-                    <button v-if="savedViewsEnabled"
+                    <button v-if="savedViewsEnabled && hasVisibilityFilterContract()"
                             class="btn btn-outline-secondary btn-sm mr-2 mb-2"
                             @click="saveCurrentView">
                         Save View

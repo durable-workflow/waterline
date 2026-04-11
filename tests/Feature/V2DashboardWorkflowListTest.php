@@ -332,6 +332,14 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $matching->id)
             ->assertJsonPath('data.0.repair_blocked_reason', 'unsupported_history')
+            ->assertJsonPath('data.0.repair_blocked.code', 'unsupported_history')
+            ->assertJsonPath('data.0.repair_blocked.label', 'Replay Blocked')
+            ->assertJsonPath(
+                'data.0.repair_blocked.description',
+                'Repair is blocked because only unsupported diagnostic history remains.',
+            )
+            ->assertJsonPath('data.0.repair_blocked.tone', 'dark')
+            ->assertJsonPath('data.0.repair_blocked.badge_visible', true)
             ->assertJsonPath('visibility_filters.version', VisibilityFilters::VERSION)
             ->assertJsonPath('visibility_filters.bucket', 'running')
             ->assertJsonPath('visibility_filters.saved_view.id', $savedViewId)
@@ -356,6 +364,12 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.label', 'Repair Blocked Reason')
             ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.type', 'string')
             ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.input', 'select')
+            ->assertJsonPath(
+                'visibility_filters.definition.fields.repair_blocked_reason.options.0.description',
+                'Repair is blocked because only unsupported diagnostic history remains.',
+            )
+            ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.options.0.tone', 'dark')
+            ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.options.0.badge_visible', true)
             ->assertJsonPath('visibility_filters.definition.fields.archived.type', 'boolean')
             ->assertJsonPath('visibility_filters.definition.fields.archived.input', 'boolean_select')
             ->assertJsonPath('visibility_filters.definition.labels.label', 'Labels')
@@ -437,6 +451,12 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('filter_definition.fields.instance_id.type', 'string')
             ->assertJsonPath('filter_definition.fields.repair_blocked_reason.label', 'Repair Blocked Reason')
             ->assertJsonPath('filter_definition.fields.repair_blocked_reason.input', 'select')
+            ->assertJsonPath(
+                'filter_definition.fields.repair_blocked_reason.options.0.description',
+                'Repair is blocked because only unsupported diagnostic history remains.',
+            )
+            ->assertJsonPath('filter_definition.fields.repair_blocked_reason.options.0.tone', 'dark')
+            ->assertJsonPath('filter_definition.fields.repair_blocked_reason.options.0.badge_visible', true)
             ->assertJsonPath('filter_definition.fields.is_current_run.type', 'boolean')
             ->assertJsonPath('filter_definition.fields.continue_as_new_recommended.type', 'boolean')
             ->assertJsonPath('filter_definition.fields.archived.type', 'boolean')

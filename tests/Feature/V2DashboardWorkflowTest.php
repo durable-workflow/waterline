@@ -606,6 +606,14 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('liveness_state', 'workflow_replay_blocked')
             ->assertJsonPath('can_repair', false)
             ->assertJsonPath('repair_blocked_reason', 'unsupported_history')
+            ->assertJsonPath('repair_blocked.code', 'unsupported_history')
+            ->assertJsonPath('repair_blocked.label', 'Replay Blocked')
+            ->assertJsonPath(
+                'repair_blocked.description',
+                'Repair is blocked because only unsupported diagnostic history remains.',
+            )
+            ->assertJsonPath('repair_blocked.tone', 'dark')
+            ->assertJsonPath('repair_blocked.badge_visible', true)
             ->assertJsonPath('activities.0.id', $execution->id)
             ->assertJsonPath('activities.0.status', 'unsupported')
             ->assertJsonPath('activities.0.history_authority', 'unsupported_terminal_without_history')
