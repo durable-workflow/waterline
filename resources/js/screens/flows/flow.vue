@@ -2900,7 +2900,7 @@ export default {
             const copy = {
                 repair: {
                     title: 'Repair run?',
-                    text: 'This recreates the durable next task for the current active run when liveness shows repair is needed. It does not restart an activity that is already marked running.',
+                    text: 'This recreates the durable next task for the current active run when liveness shows repair is needed. It does not restart an activity that is already marked running. For scripted recovery, the matching CLI sweep is workflow:v2:repair-pass --run-id=<current-run-id>.',
                     confirmButtonText: 'Repair run',
                 },
                 cancel: {

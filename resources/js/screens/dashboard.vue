@@ -543,6 +543,11 @@
                         Repair scan limit reached on this snapshot. Increase scan limit or add workers before backlog age keeps growing.
                     </div>
 
+                    <div class="mt-1 text-muted">
+                        Use <code>php artisan workflow:v2:repair-pass --run-id=...</code> for one or more selected runs
+                        or <code>--instance-id=...</code> to sweep one workflow instance with the same repair policy.
+                    </div>
+
                     <div class="mt-2 text-muted" v-if="operatorRepairScopes().length">
                         <div v-for="scope in operatorRepairScopes()" :key="scope.scope_key">
                             <code>{{ operatorRepairScopeLabel(scope) }}</code>:
