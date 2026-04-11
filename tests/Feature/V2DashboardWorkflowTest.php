@@ -939,6 +939,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('exceptions.0.exception_type', 'runtime.failure')
             ->assertJsonPath('exceptions.0.exception_class', \RuntimeException::class)
             ->assertJsonPath('exceptions.0.exception_resolved_class', \RuntimeException::class)
+            ->assertJsonPath('exceptions.0.history_authority', 'typed_history')
+            ->assertJsonPath('exceptions.0.diagnostic_only', false)
             ->assertJsonPath('exceptions.0.exception_resolution_source', 'recorded_class')
             ->assertJsonPath('exceptions.0.exception_replay_blocked', false)
             ->assertJsonPath('exceptions.0.code', 'trace')
@@ -1893,9 +1895,13 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('exception_count', 2)
             ->assertJsonPath('exceptions_count', 2)
             ->assertJsonPath('exceptions.0.id', $earlierFailureId)
+            ->assertJsonPath('exceptions.0.history_authority', 'failure_row_fallback')
+            ->assertJsonPath('exceptions.0.diagnostic_only', true)
             ->assertJsonPath('exceptions.0.exception_resolution_source', 'unresolved')
             ->assertJsonPath('exceptions.0.exception_replay_blocked', true)
             ->assertJsonPath('exceptions.1.id', $laterFailureId)
+            ->assertJsonPath('exceptions.1.history_authority', 'failure_row_fallback')
+            ->assertJsonPath('exceptions.1.diagnostic_only', true)
             ->assertJsonPath('exceptions.1.exception_resolution_source', 'unrestorable')
             ->assertJsonPath('exceptions.1.exception_replay_blocked', true);
     }

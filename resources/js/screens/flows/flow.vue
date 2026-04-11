@@ -1090,7 +1090,15 @@
                     <tbody>
                         <template v-for="exception in flow.exceptions">
                             <tr>
-                                <td>{{ exception.class }}</td>
+                                <td>
+                                    {{ exception.class }}
+                                    <div v-if="hasDetailValue(exception.history_authority)" class="small text-muted">
+                                        {{ historyAuthorityLabel(exception.history_authority) }}
+                                    </div>
+                                    <div v-if="exception.diagnostic_only === true" class="small text-muted">
+                                        diagnostic only
+                                    </div>
+                                </td>
                                 <td>{{ exception.exception_type || '-' }}</td>
                                 <td v-if="exception.code"><button title="View Exception" class="btn btn-outline-primary ml-auto"
                                         data-toggle="collapse" :href="'#collapse' + exception.id" aria-expanded="false"
@@ -1658,6 +1666,8 @@ export default {
             switch (authority) {
                 case 'typed_history':
                     return 'History: typed durable history'
+                case 'failure_row_fallback':
+                    return 'History: failure row compatibility fallback'
                 case 'mutable_open_fallback':
                     return 'History: older open row diagnostic'
                 case 'unsupported_terminal_without_history':
