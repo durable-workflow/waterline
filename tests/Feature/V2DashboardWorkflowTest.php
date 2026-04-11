@@ -10043,6 +10043,10 @@ class V2DashboardWorkflowTest extends TestCase
             $table->string('class');
             $table->string('workflow_type');
             $table->string('business_key')->nullable();
+            $table->string('declared_entry_mode')->nullable();
+            $table->string('declared_contract_source')->nullable();
+            $table->boolean('declared_contract_backfill_needed')->default(false);
+            $table->boolean('declared_contract_backfill_available')->default(false);
             $table->string('status');
             $table->string('status_bucket')->nullable();
             $table->unsignedInteger('history_event_count')->default(0);

@@ -23,6 +23,21 @@
                       :title="repairBadgeTitle(flow)">
                     {{ repairBadgeLabel(flow) }}
                 </span>
+                <span
+                    v-if="showCompatibilityEntryBadge(flow)"
+                    class="badge badge-info ml-1"
+                    :title="compatibilityEntryBadgeTitle(flow)"
+                >
+                    Compat Entry
+                </span>
+                <span
+                    v-if="showContractBackfillBadge(flow)"
+                    :class="contractBackfillBadgeClass(flow)"
+                    class="badge ml-1"
+                    :title="contractBackfillBadgeTitle(flow)"
+                >
+                    {{ contractBackfillBadgeLabel(flow) }}
+                </span>
             </small>
         </td>
 
@@ -134,6 +149,38 @@
                 return flow && flow.repair_blocked
                     ? flow.repair_blocked
                     : null
+            },
+
+            showCompatibilityEntryBadge(flow) {
+                return flow && flow.declared_entry_mode === 'compatibility'
+            },
+
+            compatibilityEntryBadgeTitle() {
+                return 'This run still depends on the legacy execute() compatibility entry path.'
+            },
+
+            showContractBackfillBadge(flow) {
+                return flow && flow.declared_contract_backfill_needed === true
+            },
+
+            contractBackfillBadgeLabel(flow) {
+                return flow && flow.declared_contract_backfill_available === true
+                    ? 'Contract Pending'
+                    : 'Contract Blocked'
+            },
+
+            contractBackfillBadgeTitle(flow) {
+                if (flow && flow.declared_contract_backfill_available === true) {
+                    return 'This run still needs durable command-contract normalization, and a compatible build can backfill it.'
+                }
+
+                return 'This run still needs durable command-contract normalization, but the current build cannot resolve the workflow definition required to finish it.'
+            },
+
+            contractBackfillBadgeClass(flow) {
+                return flow && flow.declared_contract_backfill_available === true
+                    ? 'badge-warning'
+                    : 'badge-dark'
             },
 
             badgeClassForTone(tone) {
