@@ -4293,6 +4293,142 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.child_workflow_run_id', $childRun->id);
     }
 
+    public function testAutomaticWorkerRecoveryRestoresMissingChildResolutionWorkflowTaskForFlowDetail(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        Queue::fake();
+
+        $parentInstance = WorkflowInstance::create([
+            'id' => 'order-child-resolution-watchdog-parent',
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'run_count' => 1,
+        ]);
+
+        $childInstance = WorkflowInstance::create([
+            'id' => 'order-child-resolution-watchdog-child',
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'run_count' => 1,
+        ]);
+
+        $parentRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDWDG001',
+            'workflow_instance_id' => $parentInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ParentWorkflowClass',
+            'workflow_type' => 'workflow.parent',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(4),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $childRun = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNCHILDWDG002',
+            'workflow_instance_id' => $childInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'ChildWorkflowClass',
+            'workflow_type' => 'workflow.child',
+            'status' => 'completed',
+            'closed_reason' => 'completed',
+            'arguments' => Serializer::serialize([]),
+            'output' => Serializer::serialize(['ok' => true]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(3),
+            'closed_at' => now()->subSeconds(30),
+            'last_progress_at' => now()->subSeconds(30),
+        ]);
+
+        $parentInstance->update(['current_run_id' => $parentRun->id]);
+        $childInstance->update(['current_run_id' => $childRun->id]);
+
+        $link = WorkflowLink::create([
+            'id' => '01JTESTFLOWLINKCHILDWDG01',
+            'link_type' => 'child_workflow',
+            'sequence' => 1,
+            'parent_workflow_instance_id' => $parentInstance->id,
+            'parent_workflow_run_id' => $parentRun->id,
+            'child_workflow_instance_id' => $childInstance->id,
+            'child_workflow_run_id' => $childRun->id,
+            'is_primary_parent' => true,
+        ]);
+
+        foreach ([
+            ['01JTESTHISTORYCHILDWDG001', 1, 'ChildWorkflowScheduled'],
+            ['01JTESTHISTORYCHILDWDG002', 2, 'ChildRunCompleted'],
+        ] as [$id, $eventSequence, $eventType]) {
+            WorkflowHistoryEvent::create([
+                'id' => $id,
+                'workflow_run_id' => $parentRun->id,
+                'sequence' => $eventSequence,
+                'event_type' => $eventType,
+                'payload' => [
+                    'workflow_link_id' => $link->id,
+                    'child_call_id' => $link->id,
+                    'sequence' => 1,
+                    'child_workflow_instance_id' => $childInstance->id,
+                    'child_workflow_run_id' => $childRun->id,
+                    'child_workflow_type' => $childRun->workflow_type,
+                    'child_workflow_class' => $childRun->workflow_class,
+                    'child_status' => $childRun->status->value,
+                    'output' => $eventType === 'ChildRunCompleted' ? $childRun->output : null,
+                ],
+                'recorded_at' => now()->subSeconds(90 - ($eventSequence * 30)),
+            ]);
+        }
+
+        RunSummaryProjector::project($parentRun->fresh());
+
+        $this->get('/waterline/api/flows/' . $parentRun->id)
+            ->assertStatus(200)
+            ->assertJsonPath('wait_kind', 'child')
+            ->assertJsonPath('open_wait_id', 'child:' . $link->id)
+            ->assertJsonPath('resume_source_kind', 'child_workflow_run')
+            ->assertJsonPath('resume_source_id', $childRun->id)
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('tasks.0.status', 'missing')
+            ->assertJsonPath('tasks.0.workflow_wait_kind', 'child')
+            ->assertJsonPath('tasks.0.child_call_id', $link->id)
+            ->assertJsonPath('tasks.0.child_workflow_run_id', $childRun->id);
+
+        $this->wakeTaskWatchdog();
+
+        /** @var WorkflowTask $task */
+        $task = WorkflowTask::query()
+            ->where('workflow_run_id', $parentRun->id)
+            ->where('task_type', 'workflow')
+            ->where('status', 'ready')
+            ->sole();
+
+        $this->assertSame(1, $task->repair_count);
+        $this->assertSame('child', $task->payload['workflow_wait_kind'] ?? null);
+        $this->assertSame('child:' . $link->id, $task->payload['open_wait_id'] ?? null);
+        $this->assertSame($link->id, $task->payload['child_call_id'] ?? null);
+        $this->assertSame($childRun->id, $task->payload['child_workflow_run_id'] ?? null);
+
+        Queue::assertPushed(
+            RunWorkflowTask::class,
+            static fn (RunWorkflowTask $job): bool => $job->taskId === $task->id
+        );
+
+        $this->get('/waterline/api/flows/' . $parentRun->id)
+            ->assertStatus(200)
+            ->assertJsonPath('next_task_id', $task->id)
+            ->assertJsonPath('next_task_type', 'workflow')
+            ->assertJsonPath('liveness_state', 'workflow_task_ready')
+            ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('tasks.0.id', $task->id)
+            ->assertJsonPath('tasks.0.summary', 'Workflow task ready to resume the selected run.')
+            ->assertJsonPath('tasks.0.workflow_wait_kind', 'child')
+            ->assertJsonPath('tasks.0.child_call_id', $link->id)
+            ->assertJsonPath('tasks.0.child_workflow_run_id', $childRun->id);
+    }
+
     public function testShowKeepsOpenChildWaitWhenChildRowDriftsTerminalBeforeParentResolutionHistory(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -8878,6 +9014,131 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('next_task_type', 'activity')
             ->assertJsonPath('liveness_state', 'activity_task_ready')
             ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('tasks.0.transport_state', 'scheduled')
+            ->assertJsonPath('tasks.0.retry_of_task_id', $retryOfTaskId)
+            ->assertJsonPath('tasks.0.retry_after_attempt_id', $failedAttemptId)
+            ->assertJsonPath('tasks.0.retry_after_attempt', 1)
+            ->assertJsonPath('tasks.0.retry_backoff_seconds', 30)
+            ->assertJsonPath('tasks.0.retry_max_attempts', 3)
+            ->assertJsonPath('tasks.0.retry_policy.max_attempts', 3);
+    }
+
+    public function testAutomaticWorkerRecoveryRecreatesMissingDelayedActivityRetryTaskForFlowDetail(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        Queue::fake();
+
+        $instance = WorkflowInstance::create([
+            'id' => 'order-watchdog-retry-task',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTFLOWRUNWATCHRETRY1',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(30),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $activity = ActivityExecution::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ActivityClass',
+            'activity_type' => 'activity.test',
+            'status' => 'pending',
+            'arguments' => Serializer::serialize(['Taylor']),
+            'connection' => 'redis',
+            'queue' => 'activities',
+            'attempt_count' => 1,
+            'retry_policy' => [
+                'snapshot_version' => 1,
+                'max_attempts' => 3,
+                'backoff_seconds' => [30, 60],
+            ],
+        ]);
+
+        $failedAttemptId = (string) Str::ulid();
+        $retryAvailableAt = now()->addSeconds(30);
+        $originalRetryTaskId = (string) Str::ulid();
+        $retryOfTaskId = (string) Str::ulid();
+
+        WorkflowHistoryEvent::record($run, HistoryEventType::ActivityRetryScheduled, [
+            'activity_execution_id' => $activity->id,
+            'activity_class' => $activity->activity_class,
+            'activity_type' => $activity->activity_type,
+            'sequence' => $activity->sequence,
+            'retry_task_id' => $originalRetryTaskId,
+            'retry_available_at' => $retryAvailableAt->toJSON(),
+            'retry_backoff_seconds' => 30,
+            'retry_after_attempt_id' => $failedAttemptId,
+            'retry_after_attempt' => 1,
+            'retry_of_task_id' => $retryOfTaskId,
+            'max_attempts' => 3,
+            'retry_policy' => $activity->retry_policy,
+            'activity' => ActivitySnapshot::fromExecution($activity),
+        ], $originalRetryTaskId);
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('liveness_state', 'repair_needed')
+            ->assertJsonPath('can_repair', true)
+            ->assertJsonPath('next_task_id', null)
+            ->assertJsonPath('tasks.0.type', 'activity')
+            ->assertJsonPath('tasks.0.status', 'missing')
+            ->assertJsonPath('tasks.0.expected_task_id', $originalRetryTaskId)
+            ->assertJsonPath('tasks.0.activity_execution_id', $activity->id)
+            ->assertJsonPath('tasks.0.retry_of_task_id', $retryOfTaskId)
+            ->assertJsonPath('tasks.0.retry_after_attempt_id', $failedAttemptId)
+            ->assertJsonPath('tasks.0.retry_backoff_seconds', 30);
+
+        $this->wakeTaskWatchdog();
+
+        /** @var WorkflowTask $repairedTask */
+        $repairedTask = WorkflowTask::query()
+            ->where('workflow_run_id', $run->id)
+            ->where('task_type', 'activity')
+            ->sole();
+
+        $this->assertNotSame($originalRetryTaskId, $repairedTask->id);
+        $this->assertSame($retryAvailableAt->toJSON(), $repairedTask->available_at?->toJSON());
+        $this->assertSame($activity->id, $repairedTask->payload['activity_execution_id'] ?? null);
+        $this->assertSame($retryOfTaskId, $repairedTask->payload['retry_of_task_id'] ?? null);
+        $this->assertSame($failedAttemptId, $repairedTask->payload['retry_after_attempt_id'] ?? null);
+        $this->assertSame(1, $repairedTask->payload['retry_after_attempt'] ?? null);
+        $this->assertSame(30, $repairedTask->payload['retry_backoff_seconds'] ?? null);
+        $this->assertSame(3, $repairedTask->payload['max_attempts'] ?? null);
+        $this->assertSame($activity->retry_policy, $repairedTask->payload['retry_policy'] ?? null);
+        $this->assertSame(1, $repairedTask->attempt_count);
+        $this->assertSame(1, $repairedTask->repair_count);
+
+        Queue::assertPushed(
+            RunActivityTask::class,
+            static fn (RunActivityTask $job): bool => $job->taskId === $repairedTask->id
+        );
+
+        $this->get('/waterline/api/flows/' . $instance->id)
+            ->assertStatus(200)
+            ->assertJsonPath('next_task_id', $repairedTask->id)
+            ->assertJsonPath('next_task_type', 'activity')
+            ->assertJsonPath('liveness_state', 'activity_task_ready')
+            ->assertJsonPath('can_repair', false)
+            ->assertJsonPath('tasks.0.id', $repairedTask->id)
             ->assertJsonPath('tasks.0.transport_state', 'scheduled')
             ->assertJsonPath('tasks.0.retry_of_task_id', $retryOfTaskId)
             ->assertJsonPath('tasks.0.retry_after_attempt_id', $failedAttemptId)
