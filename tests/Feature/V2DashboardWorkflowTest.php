@@ -3110,16 +3110,16 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_update_contracts.0.parameters.0.required', true)
             ->assertJsonPath('declared_update_targets.0.name', 'mark-approved')
             ->assertJsonPath('declared_update_targets.0.has_contract', true)
-            ->assertJsonPath('declared_contract_source', 'live_definition')
-            ->assertJsonPath('declared_contract_backfill_needed', true)
-            ->assertJsonPath('declared_contract_backfill_available', true)
+            ->assertJsonPath('declared_contract_source', 'durable_history')
+            ->assertJsonPath('declared_contract_backfill_needed', false)
+            ->assertJsonPath('declared_contract_backfill_available', false)
             ->assertJsonPath('commands.0.type', 'signal')
             ->assertJsonPath('commands.0.target_name', 'not-declared')
             ->assertJsonPath('commands.0.outcome', 'rejected_unknown_signal')
             ->assertJsonPath('commands.0.rejection_reason', 'unknown_signal');
     }
 
-    public function testShowUsesLiveWorkflowDefinitionWithoutBackfillingWorkflowStartedCommandContract(): void
+    public function testShowBackfillsWorkflowStartedCommandContractSnapshot(): void
     {
         config()->set('waterline.engine_source', 'v2');
 
@@ -3199,9 +3199,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_update_contracts.0.parameters.0.name', 'approved')
             ->assertJsonPath('declared_update_targets.0.name', 'mark-approved')
             ->assertJsonPath('declared_update_targets.0.has_contract', true)
-            ->assertJsonPath('declared_contract_source', 'live_definition')
-            ->assertJsonPath('declared_contract_backfill_needed', true)
-            ->assertJsonPath('declared_contract_backfill_available', true);
+            ->assertJsonPath('declared_contract_source', 'durable_history')
+            ->assertJsonPath('declared_contract_backfill_needed', false)
+            ->assertJsonPath('declared_contract_backfill_available', false);
 
         /** @var WorkflowHistoryEvent $started */
         $started = WorkflowHistoryEvent::query()
@@ -3209,12 +3209,13 @@ class V2DashboardWorkflowTest extends TestCase
             ->where('event_type', HistoryEventType::WorkflowStarted->value)
             ->sole();
 
-        $this->assertArrayNotHasKey('declared_queries', $started->payload);
-        $this->assertArrayNotHasKey('declared_query_contracts', $started->payload);
-        $this->assertArrayNotHasKey('declared_signals', $started->payload);
-        $this->assertArrayNotHasKey('declared_signal_contracts', $started->payload);
-        $this->assertArrayNotHasKey('declared_updates', $started->payload);
-        $this->assertArrayNotHasKey('declared_update_contracts', $started->payload);
+        $this->assertSame(['current-stage', 'stageMatches'], $started->payload['declared_queries'] ?? null);
+        $this->assertSame('current-stage', $started->payload['declared_query_contracts'][0]['name'] ?? null);
+        $this->assertSame('stageMatches', $started->payload['declared_query_contracts'][1]['name'] ?? null);
+        $this->assertSame(['approved-by', 'rejected-by'], $started->payload['declared_signals'] ?? null);
+        $this->assertSame('approved-by', $started->payload['declared_signal_contracts'][0]['name'] ?? null);
+        $this->assertSame(['mark-approved'], $started->payload['declared_updates'] ?? null);
+        $this->assertSame('mark-approved', $started->payload['declared_update_contracts'][0]['name'] ?? null);
     }
 
     public function testShowUsesDurableCommandContractHistoryWhenWorkflowClassCannotBeResolved(): void
