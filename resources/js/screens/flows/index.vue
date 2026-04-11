@@ -16,12 +16,13 @@
             closed_reason: { label: 'Closed Reason', type: 'string', input: 'text', operator: 'exact', order: 9, query_parameter: 'closed_reason' },
             wait_kind: { label: 'Wait Kind', type: 'string', input: 'text', operator: 'exact', order: 10, query_parameter: 'wait_kind' },
             liveness_state: { label: 'Liveness State', type: 'string', input: 'text', operator: 'exact', order: 11, query_parameter: 'liveness_state' },
+            repair_blocked_reason: { label: 'Repair Blocked Reason', type: 'string', input: 'text', operator: 'exact', order: 12, query_parameter: 'repair_blocked_reason' },
             archived: {
                 label: 'Archived',
                 type: 'boolean',
                 input: 'boolean_select',
                 operator: 'exact',
-                order: 12,
+                order: 13,
                 query_parameter: 'archived',
                 options: [
                     { label: 'Yes', value: true },
@@ -33,7 +34,7 @@
                 type: 'boolean',
                 input: 'boolean_select',
                 operator: 'exact',
-                order: 13,
+                order: 14,
                 query_parameter: 'is_terminal',
                 options: [
                     { label: 'Yes', value: true },

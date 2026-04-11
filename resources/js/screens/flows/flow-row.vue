@@ -17,6 +17,12 @@
                 Run: {{ flow.run_id || flow.id }}
                 <span v-if="flow.status === 'continued' || flow.closed_reason === 'continued'" class="badge badge-info ml-1">Continued</span>
                 <span v-if="showStatusBadge(flow)" :class="statusBadgeClass(flow)" class="badge ml-1">{{ statusBadgeLabel(flow) }}</span>
+                <span v-if="showRepairBadge(flow)"
+                      :class="repairBadgeClass(flow)"
+                      class="badge ml-1"
+                      :title="repairBadgeTitle(flow)">
+                    {{ repairBadgeLabel(flow) }}
+                </span>
             </small>
         </td>
 
@@ -94,6 +100,31 @@
                     'cancelled': 'badge-warning',
                     'terminated': 'badge-dark',
                 }[flow.status] || 'badge-secondary'
+            },
+
+            showRepairBadge(flow) {
+                return ['unsupported_history', 'waiting_for_compatible_worker'].includes(flow.repair_blocked_reason)
+            },
+
+            repairBadgeLabel(flow) {
+                return {
+                    'unsupported_history': 'Replay Blocked',
+                    'waiting_for_compatible_worker': 'Compat Blocked',
+                }[flow.repair_blocked_reason] || 'Repair Blocked'
+            },
+
+            repairBadgeTitle(flow) {
+                return {
+                    'unsupported_history': 'Repair is blocked because only unsupported diagnostic history remains.',
+                    'waiting_for_compatible_worker': 'Repair is blocked because the task is waiting for a compatible worker.',
+                }[flow.repair_blocked_reason] || 'Repair is currently blocked.'
+            },
+
+            repairBadgeClass(flow) {
+                return {
+                    'unsupported_history': 'badge-dark',
+                    'waiting_for_compatible_worker': 'badge-warning',
+                }[flow.repair_blocked_reason] || 'badge-secondary'
             },
         }
     }
