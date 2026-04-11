@@ -2790,6 +2790,9 @@ export default {
             const workflow = command.context && command.context.workflow
                 ? command.context.workflow
                 : null
+            const intake = command.context && command.context.intake
+                ? command.context.intake
+                : null
 
             if (workflow) {
                 const workflowDetails = []
@@ -2813,6 +2816,11 @@ export default {
                 if (workflowDetails.length) {
                     details.push(workflowDetails.join(' / '))
                 }
+            }
+
+            if (intake && intake.mode) {
+                const intakeLabel = intake.mode.replace(/_/g, ' ')
+                details.push(intake.group_id ? intakeLabel + ' / ' + intake.group_id : intakeLabel)
             }
 
             if (command.auth_status && command.auth_method) {

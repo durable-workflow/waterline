@@ -8898,6 +8898,32 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('validation_errors.nickname.0', 'Unknown argument [nickname].');
     }
 
+    public function testShowExposesSignalWithStartIntakeContextOnLinkedCommands(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-signal-with-start-waterline');
+        $result = $workflow->signalWithStart('name-provided', ['Taylor']);
+        $runId = $workflow->runId();
+
+        $this->runReadyWorkflowTask($runId);
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->completed());
+
+        $this->get('/waterline/api/flows/' . $runId)
+            ->assertOk()
+            ->assertJsonPath('commands.0.type', 'start')
+            ->assertJsonPath('commands.0.outcome', 'started_new')
+            ->assertJsonPath('commands.0.context.intake.mode', 'signal_with_start')
+            ->assertJsonPath('commands.0.context.intake.group_id', $result->intakeGroupId())
+            ->assertJsonPath('commands.1.type', 'signal')
+            ->assertJsonPath('commands.1.outcome', 'signal_received')
+            ->assertJsonPath('commands.1.context.intake.mode', 'signal_with_start')
+            ->assertJsonPath('commands.1.context.intake.group_id', $result->intakeGroupId());
+    }
+
     public function testSignalRejectsNamedArgumentsWhenLegacyContractNeedsBackfillAndDefinitionIsUnavailable(): void
     {
         config()->set('waterline.engine_source', 'v2');
