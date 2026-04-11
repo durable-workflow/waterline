@@ -6772,6 +6772,10 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.child_call_id', $link->id)
             ->assertJsonPath('waits.0.child_workflow_run_id', $childRun->id)
             ->assertJsonPath('waits.0.target_name', $childInstance->id)
+            ->assertJsonPath('continuedWorkflows.0.history_authority', 'mutable_open_fallback')
+            ->assertJsonPath('continuedWorkflows.0.diagnostic_only', true)
+            ->assertJsonPath('continuedWorkflows.0.child_call_id', $link->id)
+            ->assertJsonPath('continuedWorkflows.0.child_workflow_run_id', $childRun->id)
             ->assertJsonPath('tasks', []);
     }
 

@@ -380,7 +380,7 @@
                             <span v-if="entry.status">
                                 - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
                             </span>
-                            <div
+                        <div
                                 v-for="detail in lineageIdentityRows(entry)"
                                 :key="entry.key + '-' + detail"
                                 class="small text-muted"
@@ -2758,6 +2758,8 @@ export default {
                 instance_id: entry.instance_id || null,
                 run_id: entry.run_id || null,
                 child_call_id: entry.child_call_id || null,
+                history_authority: entry.history_authority || null,
+                diagnostic_only: entry.diagnostic_only === true,
             })
         },
 
@@ -2780,6 +2782,10 @@ export default {
                 details.push('child call / ' + subject.child_call_id)
             }
 
+            if (subject.diagnostic_only === true) {
+                details.push('diagnostic only / ' + (subject.history_authority || 'compatibility fallback'))
+            }
+
             return details
         },
 
@@ -2787,25 +2793,39 @@ export default {
             const parents = (this.flow.parents || []).map((parent) => ({
                 key: 'parent-' + (parent.id || parent.parent_workflow_run_id || parent.parent_workflow_id),
                 label: this.lineageLabel(parent, 'parent'),
-                display_id: parent.workflow_run_id || parent.parent_workflow_run_id || parent.parent_workflow_id,
+                display_id: parent.workflow_run_id
+                    || parent.parent_workflow_run_id
+                    || parent.workflow_instance_id
+                    || parent.parent_workflow_id
+                    || parent.child_call_id
+                    || parent.id,
                 instance_id: parent.workflow_instance_id || parent.parent_workflow_id || null,
                 run_id: parent.workflow_run_id || parent.parent_workflow_run_id || null,
                 run_number: parent.run_number,
                 status: parent.status,
                 status_bucket: parent.status_bucket,
                 child_call_id: parent.child_call_id || null,
+                history_authority: parent.history_authority || null,
+                diagnostic_only: parent.diagnostic_only === true,
             }))
 
             const continued = (this.flow.continuedWorkflows || []).map((link) => ({
                 key: 'continued-' + (link.id || link.child_workflow_run_id || link.child_workflow_id),
                 label: this.lineageLabel(link, 'child'),
-                display_id: link.workflow_run_id || link.child_workflow_run_id || link.child_workflow_id,
+                display_id: link.workflow_run_id
+                    || link.child_workflow_run_id
+                    || link.workflow_instance_id
+                    || link.child_workflow_id
+                    || link.child_call_id
+                    || link.id,
                 instance_id: link.workflow_instance_id || link.child_workflow_id || null,
                 run_id: link.workflow_run_id || link.child_workflow_run_id || null,
                 run_number: link.run_number,
                 status: link.status,
                 status_bucket: link.status_bucket,
                 child_call_id: link.child_call_id || null,
+                history_authority: link.history_authority || null,
+                diagnostic_only: link.diagnostic_only === true,
             }))
 
             return [...parents, ...continued]
