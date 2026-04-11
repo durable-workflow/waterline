@@ -198,7 +198,7 @@
                             class="small text-muted"
                             v-else-if="flow.declared_contract_backfill_needed === true"
                         >
-                            This run still needs command-contract normalization, but the current build can no longer resolve the workflow definition needed to backfill it.
+                            This run still needs command-contract normalization, but the current build can no longer resolve the workflow definition needed to backfill it. Signal targets that still lack a durable parameter contract reject named JSON-object arguments on this build; use a compatible build to normalize first, or send positional signal payloads.
                         </div>
                         <div class="small text-muted" v-else-if="flow.declared_contract_source === 'live_definition'">
                             This response fell back to the current PHP definition before durable command-contract normalization completed.

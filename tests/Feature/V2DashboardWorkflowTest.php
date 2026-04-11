@@ -8410,6 +8410,59 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('validation_errors.nickname.0', 'Unknown argument [nickname].');
     }
 
+    public function testSignalRejectsNamedArgumentsWhenLegacyContractNeedsBackfillAndDefinitionIsUnavailable(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestOperatorCommandWorkflow::class, 'order-signal-contract-unavailable');
+        $workflow->start();
+        $this->runReadyWorkflowTask($workflow->runId());
+        $this->waitForWorkflowState(static fn (): bool => $workflow->refresh()->summary()?->wait_kind === 'signal');
+
+        /** @var WorkflowHistoryEvent $started */
+        $started = WorkflowHistoryEvent::query()
+            ->where('workflow_run_id', $workflow->runId())
+            ->where('event_type', HistoryEventType::WorkflowStarted->value)
+            ->sole();
+
+        $started->forceFill([
+            'payload' => [
+                'workflow_class' => TestOperatorCommandWorkflow::class,
+                'workflow_type' => 'workflow.operator-command',
+                'workflow_instance_id' => $workflow->id(),
+                'workflow_run_id' => $workflow->runId(),
+                'declared_signals' => ['name-provided'],
+                'declared_updates' => ['mark-approved'],
+            ],
+        ])->save();
+
+        WorkflowRun::query()->whereKey($workflow->runId())->update([
+            'workflow_class' => 'Missing\\Workflow\\TestOperatorCommandWorkflow',
+            'workflow_type' => 'missing-operator-command-workflow',
+        ]);
+
+        $response = $this->postJson(
+            '/waterline/api/instances/' . $workflow->id() . '/signals/name-provided',
+            ['arguments' => ['name' => 'Taylor']],
+        );
+
+        $response
+            ->assertStatus(409)
+            ->assertJsonPath('outcome', 'rejected_invalid_arguments')
+            ->assertJsonPath('workflow_id', $workflow->id())
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('target_scope', 'instance')
+            ->assertJsonPath('command_status', 'rejected')
+            ->assertJsonPath('rejection_reason', 'invalid_signal_arguments')
+            ->assertJsonPath(
+                'validation_errors.arguments.0',
+                'Named arguments require a durable or loadable workflow signal contract.'
+            );
+    }
+
     public function testSignalReturnsValidationErrorsForTypeMismatchedArguments(): void
     {
         config()->set('waterline.engine_source', 'v2');
