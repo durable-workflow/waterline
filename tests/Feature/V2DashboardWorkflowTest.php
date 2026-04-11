@@ -3095,6 +3095,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_update_targets.0.name', 'mark-approved')
             ->assertJsonPath('declared_update_targets.0.has_contract', true)
             ->assertJsonPath('declared_contract_source', 'live_definition')
+            ->assertJsonPath('declared_contract_backfill_needed', true)
+            ->assertJsonPath('declared_contract_backfill_available', true)
             ->assertJsonPath('commands.0.type', 'signal')
             ->assertJsonPath('commands.0.target_name', 'not-declared')
             ->assertJsonPath('commands.0.outcome', 'rejected_unknown_signal')
@@ -3181,7 +3183,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_update_contracts.0.parameters.0.name', 'approved')
             ->assertJsonPath('declared_update_targets.0.name', 'mark-approved')
             ->assertJsonPath('declared_update_targets.0.has_contract', true)
-            ->assertJsonPath('declared_contract_source', 'live_definition');
+            ->assertJsonPath('declared_contract_source', 'live_definition')
+            ->assertJsonPath('declared_contract_backfill_needed', true)
+            ->assertJsonPath('declared_contract_backfill_available', true);
 
         /** @var WorkflowHistoryEvent $started */
         $started = WorkflowHistoryEvent::query()
@@ -3335,7 +3339,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_update_targets.0.has_contract', true)
             ->assertJsonPath('can_update', false)
             ->assertJsonPath('update_blocked_reason', 'workflow_definition_unavailable')
-            ->assertJsonPath('declared_contract_source', 'durable_history');
+            ->assertJsonPath('declared_contract_source', 'durable_history')
+            ->assertJsonPath('declared_contract_backfill_needed', false)
+            ->assertJsonPath('declared_contract_backfill_available', false);
     }
 
     public function testShowReturnsEmptyNormalizedTargetsWhenCommandContractIsUnavailable(): void
@@ -3393,7 +3399,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_updates', [])
             ->assertJsonPath('declared_update_contracts', [])
             ->assertJsonPath('declared_update_targets', [])
-            ->assertJsonPath('declared_contract_source', 'unavailable');
+            ->assertJsonPath('declared_contract_source', 'unavailable')
+            ->assertJsonPath('declared_contract_backfill_needed', false)
+            ->assertJsonPath('declared_contract_backfill_available', false);
     }
 
     public function testShowMarksExpiredLeasedTaskAsRepairNeeded(): void

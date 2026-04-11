@@ -493,6 +493,21 @@
                 </div>
 
                 <div class="border-top p-4">
+                    <small class="text-uppercase">Command Contract Normalization</small>
+
+                    <div class="mt-2 text-muted">
+                        {{ operatorMetricLabel('command_contracts', 'backfill_needed_runs') }} runs still need backfill,
+                        {{ operatorMetricLabel('command_contracts', 'backfill_available_runs') }} normalizable on this build,
+                        {{ operatorMetricLabel('command_contracts', 'backfill_unavailable_runs') }} unavailable.
+                    </div>
+
+                    <div class="mt-1 text-muted" v-if="operatorMetric('command_contracts', 'backfill_needed_runs')">
+                        Run <code>php artisan workflow:v2:backfill-command-contracts --dry-run</code>
+                        and then rerun it without <code>--dry-run</code> while a compatible build is still available.
+                    </div>
+                </div>
+
+                <div class="border-top p-4">
                     <small class="text-uppercase">Repair Policy</small>
 
                     <div class="mt-2 text-muted">

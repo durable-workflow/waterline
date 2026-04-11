@@ -183,8 +183,22 @@
                     <div class="col-md-2"><strong>Contract Source</strong></div>
                     <div class="col">
                         {{ contractSourceLabel(flow.declared_contract_source) }}
-                        <div class="small text-muted" v-if="flow.declared_contract_source === 'live_definition'">
-                            This read used the current PHP definition and did not rewrite WorkflowStarted history. Run php artisan workflow:v2:backfill-command-contracts before relying on this run after a class move.
+                        <div
+                            class="small text-muted"
+                            v-if="flow.declared_contract_backfill_needed === true && flow.declared_contract_backfill_available === true"
+                        >
+                            This run still needs command-contract normalization. Run
+                            <code>php artisan workflow:v2:backfill-command-contracts --dry-run</code>
+                            and then rerun the command without <code>--dry-run</code> before relying on this run after a class move.
+                        </div>
+                        <div
+                            class="small text-muted"
+                            v-else-if="flow.declared_contract_backfill_needed === true"
+                        >
+                            This run still needs command-contract normalization, but the current build can no longer resolve the workflow definition needed to backfill it.
+                        </div>
+                        <div class="small text-muted" v-else-if="flow.declared_contract_source === 'live_definition'">
+                            This read used the current PHP definition and did not rewrite WorkflowStarted history.
                         </div>
                     </div>
                 </div>
