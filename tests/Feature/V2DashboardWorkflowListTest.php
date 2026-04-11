@@ -268,8 +268,9 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.id', 'system:running')
             ->assertJsonPath('data.1.id', 'system:running-task-problems')
-            ->assertJsonPath('data.2.id', $id)
-            ->assertJsonPath('data.2.filters.labels.tenant', 'acme');
+            ->assertJsonPath('data.2.id', 'system:running-repair-blocked')
+            ->assertJsonPath('data.3.id', $id)
+            ->assertJsonPath('data.3.filters.labels.tenant', 'acme');
 
         $this->get('/waterline/api/flows/running?view='.$id)
             ->assertOk()
@@ -299,6 +300,7 @@ class V2DashboardWorkflowListTest extends TestCase
             waitKind: 'signal',
             livenessState: 'waiting_for_signal',
             repairBlockedReason: 'unsupported_history',
+            repairAttention: true,
             continueAsNewRecommended: true,
             declaredEntryMode: 'compatibility',
             declaredContractSource: 'live_definition',
@@ -316,6 +318,7 @@ class V2DashboardWorkflowListTest extends TestCase
             waitKind: 'timer',
             livenessState: 'timer_scheduled',
             repairBlockedReason: 'repair_not_needed',
+            repairAttention: false,
             isCurrentRun: false,
             continueAsNewRecommended: false,
             declaredEntryMode: 'canonical',
@@ -332,6 +335,7 @@ class V2DashboardWorkflowListTest extends TestCase
                 'workflow_type' => 'workflow.test',
                 'wait_kind' => 'signal',
                 'repair_blocked_reason' => 'unsupported_history',
+                'repair_attention' => true,
                 'task_problem' => true,
                 'continue_as_new_recommended' => true,
                 'declared_entry_mode' => 'compatibility',
@@ -344,11 +348,12 @@ class V2DashboardWorkflowListTest extends TestCase
             'shared' => true,
         ])->assertCreated()->json('id');
 
-        $this->get('/waterline/api/flows/running?view='.$savedViewId.'&instance_id='.$matching->workflow_instance_id.'&run_id='.$matching->id.'&is_current_run=true&liveness_state=waiting_for_signal&task_problem=true&declared_entry_mode=compatibility&declared_contract_source=live_definition&declared_contract_backfill_needed=true&declared_contract_backfill_available=true')
+        $this->get('/waterline/api/flows/running?view='.$savedViewId.'&instance_id='.$matching->workflow_instance_id.'&run_id='.$matching->id.'&is_current_run=true&liveness_state=waiting_for_signal&repair_attention=true&task_problem=true&declared_entry_mode=compatibility&declared_contract_source=live_definition&declared_contract_backfill_needed=true&declared_contract_backfill_available=true')
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $matching->id)
             ->assertJsonPath('data.0.repair_blocked_reason', 'unsupported_history')
+            ->assertJsonPath('data.0.repair_attention', true)
             ->assertJsonPath('data.0.repair_blocked.code', 'unsupported_history')
             ->assertJsonPath('data.0.repair_blocked.label', 'Replay Blocked')
             ->assertJsonPath(
@@ -368,6 +373,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.applied.wait_kind', 'signal')
             ->assertJsonPath('visibility_filters.applied.liveness_state', 'waiting_for_signal')
             ->assertJsonPath('visibility_filters.applied.repair_blocked_reason', 'unsupported_history')
+            ->assertJsonPath('visibility_filters.applied.repair_attention', true)
             ->assertJsonPath('visibility_filters.applied.task_problem', true)
             ->assertJsonPath('visibility_filters.applied.is_current_run', true)
             ->assertJsonPath('visibility_filters.applied.continue_as_new_recommended', true)
@@ -422,6 +428,9 @@ class V2DashboardWorkflowListTest extends TestCase
             )
             ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.options.0.tone', 'dark')
             ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.options.0.badge_visible', true)
+            ->assertJsonPath('visibility_filters.definition.fields.repair_attention.label', 'Repair Attention')
+            ->assertJsonPath('visibility_filters.definition.fields.repair_attention.type', 'boolean')
+            ->assertJsonPath('visibility_filters.definition.fields.repair_attention.input', 'boolean_select')
             ->assertJsonPath('visibility_filters.definition.fields.archived.type', 'boolean')
             ->assertJsonPath('visibility_filters.definition.fields.archived.input', 'boolean_select')
             ->assertJsonPath('visibility_filters.definition.labels.label', 'Labels')
@@ -472,12 +481,12 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.saved_view.filter_version_status', 'unsupported')
             ->assertJsonPath(
                 'visibility_filters.saved_view.filter_version_message',
-                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2.',
+                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2, 3.',
             )
             ->assertJsonPath('visibility_filters.saved_view_applied', false)
             ->assertJsonPath(
                 'visibility_filters.saved_view_warning',
-                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2.',
+                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2, 3.',
             )
             ->assertJsonPath('visibility_filters.applied.instance_id', $timer->workflow_instance_id)
             ->assertJsonMissingPath('visibility_filters.applied.wait_kind');
@@ -540,6 +549,39 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.applied.task_problem', true);
     }
 
+    public function testV2RunningSystemRepairBlockedViewFiltersActionableRepairStates(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $flagged = $this->createRunningSummary(
+            'repair-blocked-instance',
+            'run-repair-blocked-instance',
+            Carbon::parse('2022-01-01 12:05:00'),
+            Carbon::parse('2022-01-01 12:05:00'),
+            repairBlockedReason: 'unsupported_history',
+            repairAttention: true,
+        );
+        $this->createRunningSummary(
+            'repair-not-needed-instance',
+            'run-repair-not-needed-instance',
+            Carbon::parse('2022-01-01 12:06:00'),
+            Carbon::parse('2022-01-01 12:06:00'),
+            repairBlockedReason: 'repair_not_needed',
+            repairAttention: false,
+        );
+
+        $this->get('/waterline/api/flows/running?view=system:running-repair-blocked')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $flagged->id)
+            ->assertJsonPath('data.0.repair_attention', true)
+            ->assertJsonPath('data.0.repair_blocked_reason', 'unsupported_history')
+            ->assertJsonPath('visibility_filters.saved_view.id', 'system:running-repair-blocked')
+            ->assertJsonPath('visibility_filters.saved_view.system', true)
+            ->assertJsonPath('visibility_filters.saved_view_applied', true)
+            ->assertJsonPath('visibility_filters.applied.repair_attention', true);
+    }
+
     public function testV2SavedViewsCanBeUpdatedAndDeleted(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -589,6 +631,9 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('filter_definition.fields.instance_id.type', 'string')
             ->assertJsonPath('filter_definition.fields.repair_blocked_reason.label', 'Repair Blocked Reason')
             ->assertJsonPath('filter_definition.fields.repair_blocked_reason.input', 'select')
+            ->assertJsonPath('filter_definition.fields.repair_attention.label', 'Repair Attention')
+            ->assertJsonPath('filter_definition.fields.repair_attention.type', 'boolean')
+            ->assertJsonPath('filter_definition.fields.repair_attention.input', 'boolean_select')
             ->assertJsonPath('filter_definition.fields.task_problem.label', 'Task Problem')
             ->assertJsonPath('filter_definition.fields.task_problem.type', 'boolean')
             ->assertJsonPath('filter_definition.fields.task_problem.input', 'boolean_select')
@@ -636,7 +681,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('filter_version_status', 'unsupported')
             ->assertJsonPath(
                 'filter_version_message',
-                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2.',
+                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2, 3.',
             )
             ->assertJsonPath('current_filter_version', VisibilityFilters::VERSION)
             ->assertJsonPath('supported_filter_versions', VisibilityFilters::supportedVersions());
@@ -675,6 +720,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('data', [])
             ->assertJsonPath('filter_version', VisibilityFilters::VERSION)
             ->assertJsonPath('filter_definition.fields.instance_id.label', 'Instance ID')
+            ->assertJsonPath('filter_definition.fields.repair_attention.input', 'boolean_select')
             ->assertJsonPath('filter_definition.fields.task_problem.input', 'boolean_select')
             ->assertJsonPath('filter_definition.fields.archived.input', 'boolean_select')
             ->assertJsonPath('filter_definition.labels.help', 'One exact-match label per line in key=value format.');
@@ -690,6 +736,7 @@ class V2DashboardWorkflowListTest extends TestCase
         ?string $waitKind = null,
         ?string $livenessState = null,
         ?string $repairBlockedReason = null,
+        bool $repairAttention = false,
         ?Carbon $archivedAt = null,
         bool $isCurrentRun = true,
         bool $continueAsNewRecommended = false,
@@ -741,6 +788,7 @@ class V2DashboardWorkflowListTest extends TestCase
             'wait_kind' => $waitKind,
             'liveness_state' => $livenessState,
             'repair_blocked_reason' => $repairBlockedReason,
+            'repair_attention' => $repairAttention,
             'task_problem' => $taskProblem,
             'continue_as_new_recommended' => $continueAsNewRecommended,
             'declared_entry_mode' => $declaredEntryMode,
@@ -827,6 +875,7 @@ class V2DashboardWorkflowListTest extends TestCase
             $table->string('declared_contract_source')->nullable();
             $table->boolean('declared_contract_backfill_needed')->default(false);
             $table->boolean('declared_contract_backfill_available')->default(false);
+            $table->boolean('repair_attention')->default(false);
             $table->string('status');
             $table->string('status_bucket')->nullable();
             $table->timestamp('started_at', 6)->nullable();

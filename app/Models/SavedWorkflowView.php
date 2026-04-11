@@ -148,6 +148,15 @@ class SavedWorkflowView extends Model
             ],
         ];
 
+        $definitions[] = [
+            'id' => 'system:running-repair-blocked',
+            'name' => 'Repair Blocked',
+            'bucket' => 'running',
+            'filters' => [
+                'repair_attention' => true,
+            ],
+        ];
+
         return $definitions;
     }
 
