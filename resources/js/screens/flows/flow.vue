@@ -184,7 +184,7 @@
                     <div class="col">
                         {{ contractSourceLabel(flow.declared_contract_source) }}
                         <div class="small text-muted" v-if="flow.declared_contract_source === 'live_definition'">
-                            Command targets are coming from the current PHP definition. Run php artisan workflow:v2:backfill-command-contracts before relying on this run after a class move.
+                            This read used the current PHP definition and did not rewrite WorkflowStarted history. Run php artisan workflow:v2:backfill-command-contracts before relying on this run after a class move.
                         </div>
                     </div>
                 </div>
@@ -1391,7 +1391,7 @@ export default {
                 case 'definition_drift':
                     return 'Definition drift'
                 case 'live_definition':
-                    return 'Live workflow definition'
+                    return 'Live definition fallback'
                 case 'unavailable':
                     return 'Unavailable'
                 default:
