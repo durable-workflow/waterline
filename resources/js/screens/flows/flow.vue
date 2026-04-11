@@ -629,7 +629,7 @@
                             <td>
                                 {{ wait.status }}
                                 <div class="small text-muted" v-if="hasDetailValue(wait.source_status)">
-                                    {{ wait.source_status }}
+                                    source status / {{ wait.source_status }}
                                 </div>
                             </td>
                             <td>{{ waitBacking(wait) }}</td>
@@ -1165,8 +1165,11 @@
                             </td>
                             <td>
                                 {{ timer.status || '-' }}
-                                <div class="small text-muted" v-if="hasDetailValue(timer.source_status)">
-                                    {{ timer.source_status }}
+                                <div
+                                    class="small text-muted"
+                                    v-if="hasDetailValue(timer.source_status) && timer.source_status !== timer.status"
+                                >
+                                    source status / {{ timer.source_status }}
                                 </div>
                             </td>
                             <td>{{ hasDetailValue(timer.delay_seconds) ? timer.delay_seconds + 's' : '-' }}</td>
