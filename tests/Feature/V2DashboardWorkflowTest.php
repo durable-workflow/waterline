@@ -16,6 +16,7 @@ use Waterline\Tests\Fixtures\V2\TestNestedParallelActivityWorkflow;
 use Waterline\Tests\Fixtures\V2\TestParallelActivityWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
+use Workflow\V2\Contracts\WorkflowTaskBridge;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Enums\RunStatus;
@@ -2606,6 +2607,57 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('timeline.2.version_min_supported', -1)
             ->assertJsonPath('timeline.2.version_max_supported', 2)
             ->assertJsonPath('timeline.2.summary', 'Recorded version marker step-1 = 2.');
+    }
+
+    public function testShowReturnsBridgeAppliedSearchAttributeTimelineAndCurrentValues(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'database');
+        config()->set('queue.connections.database.driver', 'database');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestCommandContractWorkflow::class, 'waterline-bridge-search-attrs');
+        $workflow->start();
+
+        /** @var WorkflowTask $task */
+        $task = WorkflowTask::query()
+            ->where('workflow_run_id', $workflow->runId())
+            ->where('task_type', 'workflow')
+            ->where('status', 'ready')
+            ->firstOrFail();
+
+        /** @var WorkflowTaskBridge $bridge */
+        $bridge = $this->app->make(WorkflowTaskBridge::class);
+
+        $claim = $bridge->claimStatus($task->id, 'waterline-bridge-worker');
+        $this->assertTrue($claim['claimed']);
+
+        $result = $bridge->complete($task->id, [
+            ['type' => 'record_side_effect', 'result' => Serializer::serialize(['seed' => 7])],
+            ['type' => 'upsert_search_attributes', 'attributes' => ['env' => 'staging', 'tenant' => 'acme']],
+            [
+                'type' => 'record_version_marker',
+                'change_id' => 'waterline-bridge-step',
+                'version' => 1,
+                'min_supported' => 1,
+                'max_supported' => 1,
+            ],
+            ['type' => 'complete_workflow', 'result' => Serializer::serialize('done')],
+        ]);
+
+        $this->assertTrue($result['completed']);
+
+        $response = $this->get('/waterline/api/instances/' . $workflow->id());
+
+        $response
+            ->assertOk()
+            ->assertJsonPath('status', 'completed')
+            ->assertJsonPath('search_attributes.env', 'staging')
+            ->assertJsonPath('search_attributes.tenant', 'acme')
+            ->assertJsonPath('timeline.2.type', 'SideEffectRecorded')
+            ->assertJsonPath('timeline.3.type', 'SearchAttributesUpserted')
+            ->assertJsonPath('timeline.3.summary', 'Search attributes upserted.')
+            ->assertJsonPath('timeline.4.type', 'VersionMarkerRecorded');
     }
 
     public function testShowCanResolveCurrentRunFromInstanceId(): void
