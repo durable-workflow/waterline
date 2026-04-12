@@ -46,13 +46,14 @@ return [
     | Workflow Engine Source
     |--------------------------------------------------------------------------
     |
-    | Waterline can read the legacy v1 workflow tables or the v2 run-summary
-    | bridge. The default keeps today's v1 behavior until an application opts
-    | into the v2 compatibility layer explicitly.
+    | Waterline can read the legacy v1 workflow tables or the v2 operator
+    | bridge. The default "auto" mode prefers v2 once the workflow package's
+    | full v2 operator surface is installed; otherwise it falls back to v1.
+    | Set this to "v1" or "v2" to pin the behavior explicitly.
     |
     */
 
-    'engine_source' => env('WATERLINE_ENGINE_SOURCE', 'v1'),
+    'engine_source' => env('WATERLINE_ENGINE_SOURCE', 'auto'),
 
     /*
     |--------------------------------------------------------------------------

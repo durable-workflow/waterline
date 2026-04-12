@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Waterline\Support\WorkflowEngineSourceResolver;
 use Waterline\Http\Resources\V2StoredWorkflowResource;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryMySQL;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryPostgreSQL;
@@ -47,7 +48,7 @@ class WaterlineApplicationServiceProvider extends ServiceProvider
         }
 
         $this->app->bind(WorkflowRepositoryInterface::class, function () {
-            if (config('waterline.engine_source', 'v1') === 'v2') {
+            if (WorkflowEngineSourceResolver::usesV2()) {
                 return app(V2WorkflowRepository::class);
             }
 

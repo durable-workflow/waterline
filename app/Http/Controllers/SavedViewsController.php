@@ -6,6 +6,7 @@ namespace Waterline\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Waterline\Models\SavedWorkflowView;
+use Waterline\Support\WorkflowEngineSourceResolver;
 use Workflow\V2\Support\VisibilityFilters;
 
 class SavedViewsController extends Controller
@@ -190,7 +191,7 @@ class SavedViewsController extends Controller
 
     private function available(): bool
     {
-        return config('waterline.engine_source') === 'v2'
+        return WorkflowEngineSourceResolver::usesV2()
             && config('waterline.saved_views.enabled', true);
     }
 }

@@ -744,6 +744,16 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('filter_definition.detail_metadata.memo.saved_view_compatible', false);
     }
 
+    public function testSavedViewsRemainAvailableWhenEngineSourceIsAuto(): void
+    {
+        config()->set('waterline.engine_source', 'auto');
+
+        $this->get('/waterline/api/saved-views?bucket=running')
+            ->assertOk()
+            ->assertJsonPath('filter_version', VisibilityFilters::VERSION)
+            ->assertJsonPath('filter_definition.fields.instance_id.label', 'Instance ID');
+    }
+
     private function createRunningSummary(
         string $instanceId,
         string $runId,
