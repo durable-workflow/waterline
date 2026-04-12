@@ -6,6 +6,7 @@ namespace Waterline\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Waterline\Models\SavedWorkflowView;
+use Waterline\Support\EngineSourceReadiness;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Workflow\V2\Support\VisibilityFilters;
 
@@ -13,7 +14,13 @@ class SavedViewsController extends Controller
 {
     public function index(Request $request)
     {
-        if (! $this->available()) {
+        $engineSource = WorkflowEngineSourceResolver::status();
+
+        if (EngineSourceReadiness::pinnedV2Unavailable($engineSource)) {
+            return EngineSourceReadiness::unavailableResponse($engineSource);
+        }
+
+        if (! $this->available($engineSource)) {
             return response()->json([
                 'data' => [],
                 'filter_version' => VisibilityFilters::VERSION,
@@ -45,6 +52,7 @@ class SavedViewsController extends Controller
 
     public function store(Request $request)
     {
+        EngineSourceReadiness::throwIfPinnedV2Unavailable();
         abort_unless($this->available(), 404);
 
         $payload = $this->payload($request);
@@ -74,6 +82,7 @@ class SavedViewsController extends Controller
 
     public function show(string $view)
     {
+        EngineSourceReadiness::throwIfPinnedV2Unavailable();
         abort_unless($this->available(), 404);
 
         return response()->json($this->findViewPayload($view));
@@ -81,6 +90,7 @@ class SavedViewsController extends Controller
 
     public function update(string $view, Request $request)
     {
+        EngineSourceReadiness::throwIfPinnedV2Unavailable();
         abort_unless($this->available(), 404);
 
         /** @var SavedWorkflowView $savedView */
@@ -112,6 +122,7 @@ class SavedViewsController extends Controller
 
     public function destroy(string $view)
     {
+        EngineSourceReadiness::throwIfPinnedV2Unavailable();
         abort_unless($this->available(), 404);
 
         $this->findCustomView($view)->delete();
@@ -189,9 +200,14 @@ class SavedViewsController extends Controller
         return $model::currentScopeQuery()->findOrFail($id);
     }
 
-    private function available(): bool
+    /**
+     * @param array<string, mixed>|null $engineSource
+     */
+    private function available(?array $engineSource = null): bool
     {
-        return WorkflowEngineSourceResolver::usesV2()
+        $engineSource ??= WorkflowEngineSourceResolver::status();
+
+        return ($engineSource['uses_v2'] ?? false) === true
             && config('waterline.saved_views.enabled', true);
     }
 }

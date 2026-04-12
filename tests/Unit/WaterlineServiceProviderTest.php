@@ -3,6 +3,7 @@
 namespace Waterline\Tests\Unit;
 
 use Waterline\Tests\TestCase;
+use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLite;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
@@ -51,6 +52,16 @@ class WaterlineServiceProviderTest extends TestCase
         $repository = $this->app->make(WorkflowRepositoryInterface::class);
 
         $this->assertInstanceOf(WorkflowRepositorySQLite::class, $repository);
+    }
+
+    public function testExplicitV2EngineSourceBindsUnavailableRepositoryWhenOperatorSurfaceIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.run_summary_model', MissingWorkflowRunSummary::class);
+
+        $repository = $this->app->make(WorkflowRepositoryInterface::class);
+
+        $this->assertInstanceOf(UnavailableV2WorkflowRepository::class, $repository);
     }
 }
 

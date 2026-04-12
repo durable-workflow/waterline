@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Waterline\Http\Resources\V2StoredWorkflowResource;
+use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryMySQL;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryPostgreSQL;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLite;
@@ -48,8 +49,14 @@ class WaterlineApplicationServiceProvider extends ServiceProvider
         }
 
         $this->app->bind(WorkflowRepositoryInterface::class, function () {
-            if (WorkflowEngineSourceResolver::usesV2()) {
+            $engineSource = WorkflowEngineSourceResolver::status();
+
+            if (($engineSource['uses_v2'] ?? false) === true) {
                 return app(V2WorkflowRepository::class);
+            }
+
+            if (($engineSource['resolved'] ?? null) === 'v2') {
+                return new UnavailableV2WorkflowRepository($engineSource);
             }
 
             $drivers = [

@@ -23,8 +23,11 @@ class V2HealthControllerTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('status', 'ok')
             ->assertJsonPath('healthy', true)
-            ->assertJsonPath('checks.0.name', 'backend_capabilities')
+            ->assertJsonPath('checks.0.name', 'engine_source')
             ->assertJsonPath('checks.0.status', 'ok')
+            ->assertJsonPath('checks.1.name', 'backend_capabilities')
+            ->assertJsonPath('checks.1.status', 'ok')
+            ->assertJsonPath('engine_source.resolved', 'v2')
             ->assertJsonPath('operator_metrics.backend.supported', true);
     }
 
@@ -37,8 +40,9 @@ class V2HealthControllerTest extends TestCase
             ->assertStatus(503)
             ->assertJsonPath('status', 'error')
             ->assertJsonPath('healthy', false)
-            ->assertJsonPath('checks.0.name', 'backend_capabilities')
-            ->assertJsonPath('checks.0.status', 'error')
+            ->assertJsonPath('checks.0.name', 'engine_source')
+            ->assertJsonPath('checks.1.name', 'backend_capabilities')
+            ->assertJsonPath('checks.1.status', 'error')
             ->assertJsonFragment(['code' => 'queue_sync_unsupported']);
     }
 
