@@ -286,6 +286,25 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('declared_contract_source', 'durable_history');
     }
 
+    public function testShowResolvesInstanceScopedDetailForLongPublicWorkflowInstanceIds(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('queue.default', 'redis');
+        Queue::fake();
+
+        $instanceId = 'tenant.alpha:' . str_repeat('x', WorkflowInstanceId::MAX_LENGTH - strlen('tenant.alpha:'));
+
+        $workflow = WorkflowStub::make(TestCommandContractWorkflow::class, $instanceId);
+        $workflow->start();
+        $this->runReadyWorkflowTask((string) $workflow->runId());
+
+        $this->get('/waterline/api/instances/' . $instanceId)
+            ->assertOk()
+            ->assertJsonPath('instance_id', $instanceId)
+            ->assertJsonPath('run_id', $workflow->runId())
+            ->assertJsonPath('selected_run_id', $workflow->runId());
+    }
+
     public function testShowSurfacesReplayBlockWhenActivityHistoryShapeDrifts(): void
     {
         config()->set('waterline.engine_source', 'v2');
