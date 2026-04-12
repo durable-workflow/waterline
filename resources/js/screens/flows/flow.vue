@@ -183,6 +183,24 @@
                     </div>
                 </div>
 
+                <div class="row mb-2" v-if="hasDetailValue(flow.execution_timeout_seconds) || hasDetailValue(flow.run_timeout_seconds)">
+                    <div class="col-md-2"><strong>Timeouts</strong></div>
+                    <div class="col">
+                        <div v-if="hasDetailValue(flow.execution_timeout_seconds)">
+                            Execution: {{ formatTimeoutDuration(flow.execution_timeout_seconds) }}
+                            <span class="small text-muted" v-if="hasDetailValue(flow.execution_deadline_at)">
+                                (deadline {{ readableTimestamp(flow.execution_deadline_at) }})
+                            </span>
+                        </div>
+                        <div v-if="hasDetailValue(flow.run_timeout_seconds)">
+                            Run: {{ formatTimeoutDuration(flow.run_timeout_seconds) }}
+                            <span class="small text-muted" v-if="hasDetailValue(flow.run_deadline_at)">
+                                (deadline {{ readableTimestamp(flow.run_deadline_at) }})
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="declaredSignalTargets().length">
                     <div class="col-md-2"><strong>Signals</strong></div>
                     <div class="col">
@@ -1683,6 +1701,29 @@ export default {
                 && typeof value === 'object'
                 && !Array.isArray(value)
                 && Object.keys(value).length > 0
+        },
+
+        formatTimeoutDuration(seconds) {
+            if (seconds >= 3600) {
+                const h = Math.floor(seconds / 3600)
+                const m = Math.floor((seconds % 3600) / 60)
+                return m > 0 ? `${h}h ${m}m` : `${h}h`
+            }
+            if (seconds >= 60) {
+                const m = Math.floor(seconds / 60)
+                const s = seconds % 60
+                return s > 0 ? `${m}m ${s}s` : `${m}m`
+            }
+            return `${seconds}s`
+        },
+
+        readableTimestamp(iso) {
+            if (!iso) return ''
+            try {
+                return new Date(iso).toLocaleString()
+            } catch {
+                return iso
+            }
         },
 
         contractSourceLabel(source) {
