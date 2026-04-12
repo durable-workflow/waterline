@@ -176,6 +176,13 @@
                     </div>
                 </div>
 
+                <div class="row mb-2" v-if="hasObjectEntries(flow.search_attributes)">
+                    <div class="col-md-2"><strong>Search Attributes</strong></div>
+                    <div class="col">
+                        <pre class="mb-0">{{ prettyJson(flow.search_attributes) }}</pre>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="declaredSignalTargets().length">
                     <div class="col-md-2"><strong>Signals</strong></div>
                     <div class="col">

@@ -64,6 +64,14 @@
                     })
                 })
 
+                Object.entries(applied.search_attributes || {}).forEach(([key, value]) => {
+                    entries.push({
+                        key: 'search_attribute:' + key,
+                        label: 'Search Attribute',
+                        value: key + '=' + value,
+                    })
+                })
+
                 return entries
             },
 
@@ -292,6 +300,34 @@
                     filters.labels = labels;
                 }
 
+                const searchAttributes = {};
+
+                Object.entries(this.$route.query || {}).forEach(([key, value]) => {
+                    const match = key.match(this.searchAttributeQueryParameterPattern());
+
+                    if (match && typeof value === 'string' && value.length > 0) {
+                        searchAttributes[match[1]] = value;
+                    }
+                });
+
+                ['search_attribute', 'search_attributes'].forEach((key) => {
+                    const value = this.$route.query[key];
+
+                    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+                        return;
+                    }
+
+                    Object.entries(value).forEach(([attrKey, attrValue]) => {
+                        if (this.searchAttributeKeyRegExp().test(attrKey) && typeof attrValue === 'string' && attrValue.length > 0) {
+                            searchAttributes[attrKey] = attrValue;
+                        }
+                    });
+                });
+
+                if (Object.keys(searchAttributes).length > 0) {
+                    filters.search_attributes = searchAttributes;
+                }
+
                 return filters;
             },
 
@@ -400,6 +436,79 @@
                     .replace(/\$$/, '')
 
                 return new RegExp(`^labels?\\[(${keyPattern})\\]$`)
+            },
+
+            searchAttributesDefinition() {
+                const contract = this.visibilityFilterContract()
+
+                return contract && contract.search_attributes
+                    ? contract.search_attributes
+                    : null
+            },
+
+            searchAttributeKeyPattern() {
+                const definition = this.searchAttributesDefinition()
+
+                return definition && definition.key_pattern
+                    ? definition.key_pattern
+                    : '^$'
+            },
+
+            searchAttributeKeyRegExp() {
+                return new RegExp(this.searchAttributeKeyPattern())
+            },
+
+            searchAttributeQueryParameterPattern() {
+                const keyPattern = this.searchAttributeKeyPattern()
+                    .replace(/^\^/, '')
+                    .replace(/\$$/, '')
+
+                return new RegExp(`^search_attributes?\\[(${keyPattern})\\]$`)
+            },
+
+            searchAttributesText(filters) {
+                return Object.entries(filters.search_attributes || {})
+                    .map(([key, value]) => key + '=' + value)
+                    .join('\n')
+            },
+
+            parseSearchAttributeText(value) {
+                const definition = this.searchAttributesDefinition()
+
+                if (!definition) {
+                    return {}
+                }
+
+                const separatorToken = definition.key_value_separator || '='
+                const separator = String(separatorToken)
+                const attributes = {}
+                const lines = String(value || '')
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .filter((line) => line.length > 0)
+
+                for (const line of lines) {
+                    const separatorIndex = line.indexOf(separator)
+
+                    if (separatorIndex === -1) {
+                        throw new Error(`Use key${separator}value for search attribute filters.`)
+                    }
+
+                    const key = line.slice(0, separatorIndex).trim()
+                    const attrValue = line.slice(separatorIndex + separator.length).trim()
+
+                    if (!this.searchAttributeKeyRegExp().test(key)) {
+                        throw new Error(`Search attribute keys must match ${this.searchAttributeKeyPattern()}.`)
+                    }
+
+                    if (!attrValue) {
+                        throw new Error('Search attribute values cannot be empty.')
+                    }
+
+                    attributes[key] = attrValue
+                }
+
+                return attributes
             },
 
             filterFieldLabel(field) {
@@ -637,6 +746,20 @@
                     })
                     .join('')
 
+                const searchAttrDefinition = this.searchAttributesDefinition()
+                const searchAttrPlaceholder = searchAttrDefinition
+                    ? this.escapeHtml(searchAttrDefinition.placeholder || '').replace(/\n/g, '&#10;')
+                    : ''
+                const searchAttrHtml = searchAttrDefinition
+                    ? `
+                        <label class="d-block text-left mb-1 mt-3" for="waterline-filter-search-attributes">${this.escapeHtml(searchAttrDefinition.label || 'Search Attributes')}</label>
+                        <textarea id="waterline-filter-search-attributes" class="swal2-textarea" rows="4" placeholder="${searchAttrPlaceholder}">${this.escapeHtml(this.searchAttributesText(filters))}</textarea>
+                        ${searchAttrDefinition.help
+                            ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(searchAttrDefinition.help)}</small>`
+                            : ''}
+                    `
+                    : ''
+
                 return `
                     <div class="text-left">
                         ${this.filterMetadataNoticeHtml()}
@@ -646,6 +769,7 @@
                         ${labelsDefinition.help
                             ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(labelsDefinition.help)}</small>`
                             : ''}
+                        ${searchAttrHtml}
                     </div>
                 `
             },
@@ -698,9 +822,15 @@
 
                 delete query.label
                 delete query.labels
+                delete query.search_attribute
+                delete query.search_attributes
 
                 Object.keys(query).forEach((key) => {
                     if (this.labelQueryParameterPattern().test(key)) {
+                        delete query[key]
+                    }
+
+                    if (this.searchAttributeQueryParameterPattern().test(key)) {
                         delete query[key]
                     }
                 })
@@ -719,6 +849,14 @@
                     if (field === 'labels') {
                         Object.entries(value || {}).forEach(([labelKey, labelValue]) => {
                             query[`labels[${labelKey}]`] = labelValue
+                        })
+
+                        return
+                    }
+
+                    if (field === 'search_attributes') {
+                        Object.entries(value || {}).forEach(([attrKey, attrValue]) => {
+                            query[`search_attributes[${attrKey}]`] = attrValue
                         })
 
                         return
@@ -771,6 +909,16 @@
 
                             if (Object.keys(labels).length > 0) {
                                 filters.labels = labels
+                            }
+
+                            const searchAttrEl = document.getElementById('waterline-filter-search-attributes')
+
+                            if (searchAttrEl) {
+                                const searchAttributes = this.parseSearchAttributeText(searchAttrEl.value)
+
+                                if (Object.keys(searchAttributes).length > 0) {
+                                    filters.search_attributes = searchAttributes
+                                }
                             }
 
                             return filters
