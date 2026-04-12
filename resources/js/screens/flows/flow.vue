@@ -1965,6 +1965,14 @@ export default {
                 parts.push(`backoff ${policy.backoff_seconds.join(', ')}s`)
             }
 
+            if (policy.start_to_close_timeout) {
+                parts.push(`start-to-close ${policy.start_to_close_timeout}s`)
+            }
+
+            if (policy.schedule_to_start_timeout) {
+                parts.push(`schedule-to-start ${policy.schedule_to_start_timeout}s`)
+            }
+
             return parts.length ? parts.join(' / ') : '-'
         },
 
