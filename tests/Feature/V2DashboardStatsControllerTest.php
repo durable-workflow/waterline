@@ -507,6 +507,8 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.projected_runs_with_timers', 0)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.missing_runs_with_timers', 1)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.stale_projected_runs', 0)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.legacy_schema_runs', 0)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.legacy_schema_rows', 1)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.orphaned', 1)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.needs_rebuild', 2)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.runs', 3)

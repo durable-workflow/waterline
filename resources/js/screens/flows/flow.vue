@@ -1187,7 +1187,7 @@
                 <div>
                     <h5>Timers</h5>
                     <div class="small text-muted" v-if="hasDetailValue(flow.timers_projection_source)">
-                        {{ projectionSourceLabel(flow.timers_projection_source) }}
+                        {{ projectionSourceLabel(flow.timers_projection_source, flow.timers_projection_rebuild_reasons) }}
                     </div>
                 </div>
 
@@ -2710,7 +2710,20 @@ export default {
             return String(kind).replace(/_/g, ' ')
         },
 
-        projectionSourceLabel(source) {
+        projectionSourceLabel(source, rebuildReasons = []) {
+            if (source === 'live_fallback') {
+                return 'Projection diagnostic: rebuild needed'
+            }
+
+            if (typeof source === 'string' && source.endsWith('_rebuilt')) {
+                const base = source.slice(0, -'_rebuilt'.length)
+                const detail = Array.isArray(rebuildReasons) && rebuildReasons.length
+                    ? ' / ' + rebuildReasons.map((reason) => this.projectionRebuildReasonLabel(reason)).join(', ')
+                    : ''
+
+                return 'Projection rebuilt on read: ' + base + detail
+            }
+
             if (source === 'workflow_run_timeline_entries') {
                 return 'Projection: workflow_run_timeline_entries'
             }
@@ -2727,11 +2740,20 @@ export default {
                 return 'Projection: workflow_run_timer_entries'
             }
 
-            if (source === 'live_fallback') {
-                return 'Projection diagnostic: rebuild needed'
-            }
-
             return 'Projection: ' + source
+        },
+
+        projectionRebuildReasonLabel(reason) {
+            switch (reason) {
+                case 'legacy_schema':
+                    return 'legacy schema rows'
+                case 'missing_projection':
+                    return 'missing projection rows'
+                case 'stale_projection':
+                    return 'stale projection payload'
+                default:
+                    return reason
+            }
         },
 
         currentRunSourceLabel(source) {

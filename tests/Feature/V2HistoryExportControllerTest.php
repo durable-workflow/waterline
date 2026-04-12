@@ -389,6 +389,7 @@ class V2HistoryExportControllerTest extends TestCase
         $this->get('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
             ->assertStatus(200)
             ->assertJsonPath('selected_run.timers_projection_source', 'workflow_run_timer_entries_rebuilt')
+            ->assertJsonPath('selected_run.timers_projection_rebuild_reasons.0', 'legacy_schema')
             ->assertJsonPath('timers.0.id', $timer->id)
             ->assertJsonPath('timers.0.status', 'unsupported')
             ->assertJsonPath('timers.0.source_status', 'fired')
