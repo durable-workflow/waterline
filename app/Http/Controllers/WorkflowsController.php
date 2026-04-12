@@ -156,10 +156,12 @@ class WorkflowsController extends Controller
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
+        $reason = $this->commandReason(request());
+
         $flow = $repository->findFlow($id);
         $result = V2WorkflowStub::loadRun($flow->id)
             ->withCommandContext(CommandContext::waterline(request()))
-            ->attemptCancel();
+            ->attemptCancel($reason);
 
         return response()->json(
             CommandResponse::payload($result),
@@ -331,9 +333,11 @@ class WorkflowsController extends Controller
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
+        $reason = $this->commandReason(request());
+
         $result = V2WorkflowStub::load($instanceId)
             ->withCommandContext(CommandContext::waterline(request()))
-            ->attemptCancel();
+            ->attemptCancel($reason);
 
         return response()->json(
             CommandResponse::payload($result),
@@ -345,9 +349,11 @@ class WorkflowsController extends Controller
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
+        $reason = $this->commandReason(request());
+
         $result = V2WorkflowStub::loadSelection($instanceId, $runId)
             ->withCommandContext(CommandContext::waterline(request()))
-            ->attemptCancel();
+            ->attemptCancel($reason);
 
         return response()->json(
             CommandResponse::payload($result),
@@ -402,10 +408,12 @@ class WorkflowsController extends Controller
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
+        $reason = $this->commandReason(request());
+
         $flow = $repository->findFlow($id);
         $result = V2WorkflowStub::loadRun($flow->id)
             ->withCommandContext(CommandContext::waterline(request()))
-            ->attemptTerminate();
+            ->attemptTerminate($reason);
 
         return response()->json(
             CommandResponse::payload($result),
@@ -417,9 +425,11 @@ class WorkflowsController extends Controller
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
+        $reason = $this->commandReason(request());
+
         $result = V2WorkflowStub::load($instanceId)
             ->withCommandContext(CommandContext::waterline(request()))
-            ->attemptTerminate();
+            ->attemptTerminate($reason);
 
         return response()->json(
             CommandResponse::payload($result),
@@ -431,9 +441,11 @@ class WorkflowsController extends Controller
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
+        $reason = $this->commandReason(request());
+
         $result = V2WorkflowStub::loadSelection($instanceId, $runId)
             ->withCommandContext(CommandContext::waterline(request()))
-            ->attemptTerminate();
+            ->attemptTerminate($reason);
 
         return response()->json(
             CommandResponse::payload($result),
@@ -493,6 +505,13 @@ class WorkflowsController extends Controller
         return is_array($arguments)
             ? $arguments
             : [$arguments];
+    }
+
+    private function commandReason(Request $request): ?string
+    {
+        $reason = $request->input('reason');
+
+        return is_string($reason) && trim($reason) !== '' ? trim($reason) : null;
     }
 
     private function archiveReason(Request $request): ?string
