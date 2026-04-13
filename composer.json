@@ -1,7 +1,10 @@
 {
-    "name": "laravel-workflow/waterline",
+    "name": "durable-workflow/waterline",
     "description": "An elegant UI for monitoring Laravel Workflows.",
     "license": "MIT",
+    "replace": {
+        "laravel-workflow/waterline": "self.version"
+    },
     "authors": [
         {
             "name": "Richard McDaniel",
@@ -11,7 +14,7 @@
     "require": {
         "php": "^8.0.2",
         "illuminate/support": "^9.0|^10.0|^11.0|^12.0|^13.0",
-        "laravel-workflow/laravel-workflow": "^1.0"
+        "durable-workflow/workflow": "^1.0 || ^2.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
