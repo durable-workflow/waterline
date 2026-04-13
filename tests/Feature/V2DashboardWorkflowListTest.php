@@ -11,6 +11,7 @@ use Workflow\V2\Enums\RunStatus;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Support\RunListItemView;
 use Workflow\V2\Support\RunSummarySortKey;
 use Workflow\V2\Support\VisibilityFilters;
 
@@ -74,7 +75,8 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $run->id)
             ->assertJsonPath('data.0.business_key', 'configured-list-business')
-            ->assertJsonPath('data.0.config_marker', 'configured-summary');
+            ->assertJsonPath('data.0.workflow_type', 'workflow.test')
+            ->assertJsonMissingPath('data.0.config_marker');
     }
 
     public function testRunningFlowsAreSortedByStableV2SortContract(): void
@@ -742,6 +744,62 @@ class V2DashboardWorkflowListTest extends TestCase
             )
             ->assertJsonPath('filter_definition.indexed_metadata.labels.saved_view_compatible', true)
             ->assertJsonPath('filter_definition.detail_metadata.memo.saved_view_compatible', false);
+    }
+
+    public function testV2ListResponseItemsMatchTypedListItemContract(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $summary = $this->createRunningSummary(
+            'contract-shape-instance',
+            'run-contract-shape',
+            Carbon::parse('2022-01-01 12:05:00'),
+            Carbon::parse('2022-01-01 12:00:00'),
+            businessKey: 'contract-test',
+            visibilityLabels: ['tenant' => 'acme'],
+            waitKind: 'signal',
+            livenessState: 'waiting_for_signal',
+            repairBlockedReason: 'unsupported_history',
+            repairAttention: true,
+            taskProblem: true,
+            declaredEntryMode: 'compatibility',
+            declaredContractSource: 'live_definition',
+            declaredContractBackfillNeeded: true,
+            declaredContractBackfillAvailable: true,
+        );
+
+        $response = $this->get('/waterline/api/flows/running');
+        $response->assertOk()->assertJsonCount(1, 'data');
+
+        $item = $response->json('data.0');
+        $expectedFields = RunListItemView::fields();
+
+        $this->assertSame(
+            $expectedFields,
+            array_keys($item),
+            'List item keys must exactly match RunListItemView::fields()',
+        );
+
+        // Verify typed projections
+        $this->assertSame($summary->id, $item['id']);
+        $this->assertSame($summary->workflow_instance_id, $item['instance_id']);
+        $this->assertSame('signal', $item['wait_kind']);
+        $this->assertSame('waiting_for_signal', $item['liveness_state']);
+        $this->assertSame('unsupported_history', $item['repair_blocked_reason']);
+        $this->assertTrue($item['repair_attention']);
+        $this->assertIsArray($item['repair_blocked']);
+        $this->assertSame('unsupported_history', $item['repair_blocked']['code']);
+        $this->assertTrue($item['task_problem']);
+        $this->assertIsArray($item['task_problem_badge']);
+        $this->assertSame('compatibility', $item['declared_entry_mode']);
+        $this->assertSame('live_definition', $item['declared_contract_source']);
+        $this->assertTrue($item['declared_contract_backfill_needed']);
+        $this->assertTrue($item['declared_contract_backfill_available']);
+        $this->assertSame(['tenant' => 'acme'], $item['visibility_labels']);
+        $this->assertFalse($item['is_terminal']);
+        $this->assertIsString($item['started_at']);
+        $this->assertIsString($item['sort_timestamp']);
+        $this->assertIsString($item['sort_key']);
     }
 
     public function testSavedViewsRemainAvailableWhenEngineSourceIsAuto(): void

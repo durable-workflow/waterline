@@ -2,13 +2,16 @@
 
 namespace Waterline\Http\Controllers;
 
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Request;
 use LogicException;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
+use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Support\CommandResponse;
 use Workflow\V2\Support\QueryResponse;
+use Workflow\V2\Support\RunListItemView;
 use Workflow\V2\Support\UpdateWaitPolicy;
 use Workflow\V2\Support\VisibilityFilters;
 use Workflow\V2\UpdateResult;
@@ -554,6 +557,14 @@ class WorkflowsController extends Controller
 
         $context = V2VisibilityFilterContext::resolve(request(), $bucket);
         $payload = $result->toArray();
+
+        $payload['data'] = array_map(
+            static fn (mixed $item): array => $item instanceof WorkflowRunSummary
+                ? RunListItemView::fromSummary($item)
+                : (is_array($item) ? $item : []),
+            $result instanceof LengthAwarePaginator ? $result->items() : ($payload['data'] ?? []),
+        );
+
         $payload['visibility_filters'] = [
             'version' => VisibilityFilters::VERSION,
             'supported_versions' => VisibilityFilters::supportedVersions(),
