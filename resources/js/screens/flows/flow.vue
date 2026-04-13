@@ -2018,6 +2018,14 @@ export default {
                 parts.push(`schedule-to-start ${policy.schedule_to_start_timeout}s`)
             }
 
+            if (policy.schedule_to_close_timeout) {
+                parts.push(`schedule-to-close ${policy.schedule_to_close_timeout}s`)
+            }
+
+            if (policy.heartbeat_timeout) {
+                parts.push(`heartbeat ${policy.heartbeat_timeout}s`)
+            }
+
             return parts.length ? parts.join(' / ') : '-'
         },
 
