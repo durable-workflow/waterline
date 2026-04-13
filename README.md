@@ -40,7 +40,7 @@ If your workflow IDs are strings (for example UUIDs) and do not sort in a useful
 After upgrading Waterline you must publish the latest assets.
 
 ```bash
-composer require laravel-workflow/waterline
+composer require durable-workflow/waterline
 
 php artisan waterline:publish
 ```
