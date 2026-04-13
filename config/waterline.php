@@ -57,6 +57,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Workflow Namespace
+    |--------------------------------------------------------------------------
+    |
+    | When set, Waterline restricts all v2 workflow visibility and operations
+    | to the specified namespace. This enables namespace-scoped observation
+    | in service-mode deployments where multiple namespaces share one database.
+    | When null, Waterline shows all workflows regardless of namespace.
+    |
+    */
+
+    'namespace' => env('WATERLINE_NAMESPACE'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Saved Workflow Views
     |--------------------------------------------------------------------------
     |

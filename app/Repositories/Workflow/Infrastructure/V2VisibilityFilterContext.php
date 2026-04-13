@@ -35,6 +35,7 @@ final class V2VisibilityFilterContext
             : (($savedView['filter_version_supported'] ?? true) === true);
         $savedFilters = $savedViewApplied && is_array($savedView['filters'] ?? null) ? $savedView['filters'] : [];
         $requestFilters = VisibilityFilters::fromRequest($request);
+        $namespaceFilters = self::namespaceFilters();
 
         return [
             'saved_view' => $savedView,
@@ -42,9 +43,23 @@ final class V2VisibilityFilterContext
             'saved_view_warning' => $savedViewApplied ? null : ($savedView['filter_version_message'] ?? null),
             'saved_filters' => $savedFilters,
             'request_filters' => $requestFilters,
-            'applied_filters' => VisibilityFilters::merge($savedFilters, $requestFilters),
+            'applied_filters' => VisibilityFilters::merge($namespaceFilters, $savedFilters, $requestFilters),
             'definition' => VisibilityFilters::definition(),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function namespaceFilters(): array
+    {
+        $namespace = config('waterline.namespace');
+
+        if (! is_string($namespace) || trim($namespace) === '') {
+            return [];
+        }
+
+        return ['namespace' => trim($namespace)];
     }
 
     /**
