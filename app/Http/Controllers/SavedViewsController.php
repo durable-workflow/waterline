@@ -47,6 +47,7 @@ class SavedViewsController extends Controller
             'filter_version' => VisibilityFilters::VERSION,
             'supported_filter_versions' => VisibilityFilters::supportedVersions(),
             'filter_definition' => VisibilityFilters::definition(),
+            'version_evolution' => VisibilityFilters::versionEvolutionPolicy(),
         ]);
     }
 
