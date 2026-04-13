@@ -1292,6 +1292,7 @@
                         <tr>
                             <th scope="col">Activity</th>
                             <th scope="col">Type</th>
+                            <th scope="col">Category</th>
                             <th scope="col">Trace</th>
                             <th scope="col">Logged At</th>
                         </tr>
@@ -1309,6 +1310,7 @@
                                     </div>
                                 </td>
                                 <td>{{ exception.exception_type || '-' }}</td>
+                                <td>{{ exception.failure_category || '-' }}</td>
                                 <td v-if="exception.code"><button title="View Exception" class="btn btn-outline-primary ml-auto"
                                         data-toggle="collapse" :href="'#collapse' + exception.id" aria-expanded="false"
                                         :aria-controls="'collapse' + exception.id">View</button></td>
@@ -1316,7 +1318,7 @@
                                 <td>{{ timestamp(exception.created_at) }}</td>
                             </tr>
                             <tr :id="'collapse' + exception.id" class="collapse">
-                                <td colspan="4">
+                                <td colspan="5">
                                     <div class="code-bg text-white">
                                         <div v-for="decodedException in [unserialize(exception.exception)]">
                                             <b>{{ decodedException.__constructor }}("{{ decodedException.message }}")</b>
@@ -2885,6 +2887,10 @@ export default {
                         .filter(Boolean)
                         .join(' / ')
                 )
+
+                if (this.hasDetailValue(entry.failure.failure_category)) {
+                    details.push('category / ' + entry.failure.failure_category)
+                }
 
                 if (this.hasDetailValue(entry.failure.exception_type)) {
                     details.push('exception type / ' + entry.failure.exception_type)
