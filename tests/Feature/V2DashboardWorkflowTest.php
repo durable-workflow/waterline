@@ -953,7 +953,7 @@ class V2DashboardWorkflowTest extends TestCase
         ]);
 
         $response = $this->get('/waterline/api/flows/' . $run->id);
-        $exception = unserialize($response->json('exceptions.0.exception'));
+        $exception = $response->json('exceptions.0.exception');
 
         $response
             ->assertStatus(200)
@@ -1545,7 +1545,7 @@ class V2DashboardWorkflowTest extends TestCase
         ]);
 
         $response = $this->get('/waterline/api/flows/' . $run->id);
-        $exception = unserialize($response->json('exceptions.0.exception'));
+        $exception = $response->json('exceptions.0.exception');
 
         $response
             ->assertStatus(200)
@@ -1708,9 +1708,9 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('chartData.1.history_authority', 'typed_history')
             ->assertJsonPath('chartData.1.diagnostic_only', false);
 
-        $this->assertSame('Hello, Taylor!', unserialize($response->json('activities.0.result')));
-        $this->assertSame(['Taylor'], unserialize($response->json('activities.0.arguments')));
-        $this->assertSame('Hello, Taylor!', unserialize($response->json('logs.0.result')));
+        $this->assertSame('Hello, Taylor!', $response->json('activities.0.result'));
+        $this->assertSame(['Taylor'], $response->json('activities.0.arguments'));
+        $this->assertSame('Hello, Taylor!', $response->json('logs.0.result'));
     }
 
     public function testShowKeepsTypedFailureDetailWhenFailureRowIsMissing(): void
@@ -1809,7 +1809,7 @@ class V2DashboardWorkflowTest extends TestCase
         );
 
         $response = $this->get('/waterline/api/flows/' . $run->id);
-        $exception = unserialize($response->json('exceptions.0.exception'));
+        $exception = $response->json('exceptions.0.exception');
 
         $response
             ->assertStatus(200)
@@ -8959,7 +8959,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('run_id', $workflow->runId())
             ->assertJsonPath('target_scope', 'run');
 
-        $this->assertSame(1, unserialize((string) $response->json('result')));
+        $this->assertSame(1, $response->json('result'));
     }
 
     public function testQueryResponseUsesDurableQueryNameWhenCalledWithPhpMethodName(): void
@@ -8983,7 +8983,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('run_id', $workflow->runId())
             ->assertJsonPath('target_scope', 'instance');
 
-        $this->assertSame(1, unserialize((string) $response->json('result')));
+        $this->assertSame(1, $response->json('result'));
     }
 
     public function testQueryReturnsValidationErrorsForInvalidArguments(): void

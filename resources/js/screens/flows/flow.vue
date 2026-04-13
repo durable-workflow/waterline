@@ -1440,13 +1440,8 @@ export default {
                             return '<div style="padding: 1em">' + details.join('<br />') + '</div>'
                         }
                         if (seriesIndex === 1) {
-                            let exception = phpunserialize(this.flow.exceptions[dataPointIndex].exception)
+                            let exception = this.unserialize(this.flow.exceptions[dataPointIndex].exception)
                             if (typeof exception !== 'object') return '';
-                            if (exception.class) {
-                                exception.__constructor = exception.class
-                            } else {
-                                exception.__constructor = this.flow.exceptions[dataPointIndex].exception.split('"')[1]
-                            }
 
                             return '<div style="padding: 1em">' +
                                 '<b>Class</b>: ' + exception.__constructor + '<br />' +
@@ -1611,6 +1606,18 @@ export default {
          * Pretty print serialized flow.
          */
         unserialize(data) {
+            if (data === null || data === undefined) {
+                return data
+            }
+
+            if (typeof data === 'object') {
+                return data
+            }
+
+            if (typeof data !== 'string') {
+                return data
+            }
+
             try {
                 let result = phpunserialize(data)
                 if (result && typeof result === 'object' && !Array.isArray(result)) {
@@ -1622,12 +1629,7 @@ export default {
                 }
                 return result
             } catch (err) {
-                try {
-                    let result = phpunserialize(data)
-                    return result
-                } catch (err) {
-                    return data
-                }
+                return data
             }
         },
 

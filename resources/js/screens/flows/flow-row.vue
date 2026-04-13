@@ -75,6 +75,10 @@
 
         computed: {
             unserialized() {
+                if (this.flow.arguments !== null && typeof this.flow.arguments === 'object') {
+                    return this.flow.arguments;
+                }
+
                 try {
                     return phpunserialize(this.flow.arguments);
                 }catch(err){
