@@ -1310,7 +1310,7 @@
                                     </div>
                                 </td>
                                 <td>{{ exception.exception_type || '-' }}</td>
-                                <td>{{ exception.failure_category || '-' }}</td>
+                                <td>{{ exception.failure_category || '-' }}<span v-if="exception.non_retryable" class="badge badge-warning ml-1">non-retryable</span></td>
                                 <td v-if="exception.code"><button title="View Exception" class="btn btn-outline-primary ml-auto"
                                         data-toggle="collapse" :href="'#collapse' + exception.id" aria-expanded="false"
                                         :aria-controls="'collapse' + exception.id">View</button></td>
@@ -2900,6 +2900,10 @@ export default {
 
                 if (this.hasDetailValue(entry.failure.failure_category)) {
                     details.push('category / ' + entry.failure.failure_category)
+                }
+
+                if (entry.failure.non_retryable) {
+                    details.push('non-retryable')
                 }
 
                 if (this.hasDetailValue(entry.failure.exception_type)) {
