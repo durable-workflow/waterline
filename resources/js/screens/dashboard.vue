@@ -195,6 +195,34 @@
                 ].join(':');
             },
 
+            structuralLimitsSnapshot() {
+                const metrics = this.stats.operator_metrics || {};
+
+                return metrics.structural_limits || null;
+            },
+
+            structuralLimitWarningThreshold() {
+                const snapshot = this.structuralLimitsSnapshot();
+
+                return snapshot ? (snapshot.warning_threshold_percent || 0) : 0;
+            },
+
+            formatLimitKey(key) {
+                return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            },
+
+            formatLimitValue(key, value) {
+                if (key.endsWith('_bytes')) {
+                    if (value >= 1048576) return (value / 1048576).toFixed(1) + ' MiB';
+                    if (value >= 1024) return (value / 1024).toFixed(0) + ' KiB';
+                    return value + ' B';
+                }
+
+                if (key === 'warning_threshold_percent') return value + '%';
+
+                return typeof value === 'number' ? value.toLocaleString() : value;
+            },
+
             operatorDurationMetricLabel(section, key) {
                 const value = this.operatorMetric(section, key);
 
@@ -609,6 +637,26 @@
                         {{ operatorMetricLabel('tasks', 'claim_failed') }} task claims failed across
                         {{ operatorMetricLabel('backlog', 'claim_failed_runs') }} runs. Fix backend capability
                         issues before retrying those workers.
+                    </div>
+                </div>
+
+                <div class="border-top p-4" v-if="structuralLimitsSnapshot()">
+                    <small class="text-uppercase">Structural Limits</small>
+
+                    <div class="mt-2">
+                        <table class="table table-sm table-borderless mb-0">
+                            <tbody>
+                                <tr v-for="(value, key) in structuralLimitsSnapshot()" :key="key">
+                                    <td class="text-muted py-0" style="width: 60%">{{ formatLimitKey(key) }}</td>
+                                    <td class="py-0">{{ formatLimitValue(key, value) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-2 text-muted" v-if="structuralLimitWarningThreshold() > 0">
+                        Soft-limit warnings fire at {{ structuralLimitWarningThreshold() }}% utilization.
+                        Check application logs for <code>[Durable Workflow]</code> approaching-limit entries.
                     </div>
                 </div>
             </div>
