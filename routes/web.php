@@ -52,6 +52,7 @@ Route::prefix('api')->group(function () {
     Route::post('/v2/schedules/{scheduleId}/pause', 'V2SchedulesController@pause')->name('waterline.v2.schedules.pause');
     Route::post('/v2/schedules/{scheduleId}/resume', 'V2SchedulesController@resume')->name('waterline.v2.schedules.resume');
     Route::post('/v2/schedules/{scheduleId}/trigger', 'V2SchedulesController@trigger')->name('waterline.v2.schedules.trigger');
+    Route::post('/v2/schedules/{scheduleId}/backfill', 'V2SchedulesController@backfill')->name('waterline.v2.schedules.backfill');
     Route::delete('/v2/schedules/{scheduleId}', 'V2SchedulesController@destroy')->name('waterline.v2.schedules.destroy');
 
     Route::get('/flows/{id}', 'WorkflowsController@show')->name('waterline.show');

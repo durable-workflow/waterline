@@ -2,6 +2,7 @@
 
 namespace Waterline\Http\Controllers;
 
+use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Workflow\V2\Enums\ScheduleOverlapPolicy;
@@ -93,6 +94,46 @@ class V2SchedulesController extends Controller
             'schedule_id' => $scheduleId,
             'instance_id' => $instanceId,
             'triggered' => $instanceId !== null,
+        ]);
+    }
+
+    public function backfill(Request $request, string $scheduleId): JsonResponse
+    {
+        $schedule = ScheduleManager::findByScheduleId($scheduleId);
+
+        if ($schedule === null) {
+            return response()->json(['error' => 'Schedule not found.'], 404);
+        }
+
+        $from = $request->input('from');
+        $to = $request->input('to');
+
+        if (! is_string($from) || ! is_string($to)) {
+            return response()->json(['error' => 'Both "from" and "to" ISO 8601 timestamps are required.'], 422);
+        }
+
+        try {
+            $fromDate = new DateTimeImmutable($from);
+            $toDate = new DateTimeImmutable($to);
+        } catch (\Exception) {
+            return response()->json(['error' => 'Invalid date format. Use ISO 8601 timestamps.'], 422);
+        }
+
+        $overlapOverride = null;
+        $policyInput = $request->input('overlap_policy');
+        if (is_string($policyInput) && $policyInput !== '') {
+            $overlapOverride = ScheduleOverlapPolicy::tryFrom($policyInput);
+        }
+
+        try {
+            $results = ScheduleManager::backfill($schedule, $fromDate, $toDate, $overlapOverride);
+        } catch (\LogicException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'schedule_id' => $scheduleId,
+            'results' => $results,
         ]);
     }
 
