@@ -17,6 +17,11 @@ class V2SchedulesController extends Controller
         $query = WorkflowSchedule::query()
             ->orderByDesc('created_at');
 
+        $namespace = config('waterline.namespace');
+        if (is_string($namespace) && $namespace !== '') {
+            $query->where('namespace', $namespace);
+        }
+
         $status = $request->query('status');
 
         if (is_string($status) && $status !== '') {
@@ -35,7 +40,7 @@ class V2SchedulesController extends Controller
 
     public function show(string $scheduleId): JsonResponse
     {
-        $schedule = ScheduleManager::findByScheduleId($scheduleId);
+        $schedule = $this->findSchedule($scheduleId);
 
         if ($schedule === null) {
             return response()->json(['error' => 'Schedule not found.'], 404);
@@ -48,7 +53,7 @@ class V2SchedulesController extends Controller
 
     public function pause(string $scheduleId): JsonResponse
     {
-        $schedule = ScheduleManager::findByScheduleId($scheduleId);
+        $schedule = $this->findSchedule($scheduleId);
 
         if ($schedule === null) {
             return response()->json(['error' => 'Schedule not found.'], 404);
@@ -65,7 +70,7 @@ class V2SchedulesController extends Controller
 
     public function resume(string $scheduleId): JsonResponse
     {
-        $schedule = ScheduleManager::findByScheduleId($scheduleId);
+        $schedule = $this->findSchedule($scheduleId);
 
         if ($schedule === null) {
             return response()->json(['error' => 'Schedule not found.'], 404);
@@ -82,7 +87,7 @@ class V2SchedulesController extends Controller
 
     public function trigger(string $scheduleId): JsonResponse
     {
-        $schedule = ScheduleManager::findByScheduleId($scheduleId);
+        $schedule = $this->findSchedule($scheduleId);
 
         if ($schedule === null) {
             return response()->json(['error' => 'Schedule not found.'], 404);
@@ -99,7 +104,7 @@ class V2SchedulesController extends Controller
 
     public function backfill(Request $request, string $scheduleId): JsonResponse
     {
-        $schedule = ScheduleManager::findByScheduleId($scheduleId);
+        $schedule = $this->findSchedule($scheduleId);
 
         if ($schedule === null) {
             return response()->json(['error' => 'Schedule not found.'], 404);
@@ -139,7 +144,7 @@ class V2SchedulesController extends Controller
 
     public function destroy(string $scheduleId): JsonResponse
     {
-        $schedule = ScheduleManager::findByScheduleId($scheduleId);
+        $schedule = $this->findSchedule($scheduleId);
 
         if ($schedule === null) {
             return response()->json(['error' => 'Schedule not found.'], 404);
@@ -148,5 +153,15 @@ class V2SchedulesController extends Controller
         ScheduleManager::delete($schedule);
 
         return response()->json(ScheduleManager::describe($schedule)->toArray());
+    }
+
+    private function findSchedule(string $scheduleId): ?WorkflowSchedule
+    {
+        $namespace = config('waterline.namespace');
+
+        return ScheduleManager::findByScheduleId(
+            $scheduleId,
+            namespace: is_string($namespace) && $namespace !== '' ? $namespace : null,
+        );
     }
 }
