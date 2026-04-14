@@ -47,6 +47,13 @@ Route::prefix('api')->group(function () {
     Route::post('/instances/{instanceId}/cancel', 'WorkflowsController@cancelInstance')->name('waterline.instances.cancel');
     Route::post('/instances/{instanceId}/terminate', 'WorkflowsController@terminateInstance')->name('waterline.instances.terminate');
     Route::post('/instances/{instanceId}/archive', 'WorkflowsController@archiveInstance')->name('waterline.instances.archive');
+    Route::get('/v2/schedules', 'V2SchedulesController@index')->name('waterline.v2.schedules.index');
+    Route::get('/v2/schedules/{scheduleId}', 'V2SchedulesController@show')->name('waterline.v2.schedules.show');
+    Route::post('/v2/schedules/{scheduleId}/pause', 'V2SchedulesController@pause')->name('waterline.v2.schedules.pause');
+    Route::post('/v2/schedules/{scheduleId}/resume', 'V2SchedulesController@resume')->name('waterline.v2.schedules.resume');
+    Route::post('/v2/schedules/{scheduleId}/trigger', 'V2SchedulesController@trigger')->name('waterline.v2.schedules.trigger');
+    Route::delete('/v2/schedules/{scheduleId}', 'V2SchedulesController@destroy')->name('waterline.v2.schedules.destroy');
+
     Route::get('/flows/{id}', 'WorkflowsController@show')->name('waterline.show');
     Route::get('/flows/{id}/history-export', 'WorkflowsController@historyExport')->name('waterline.history-export');
     Route::get('/flows/{id}/updates/{updateId}', 'WorkflowsController@showUpdate')->name('waterline.updates.show');
