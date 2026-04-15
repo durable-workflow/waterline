@@ -179,7 +179,7 @@
                 <div class="row mb-2" v-if="hasObjectEntries(flow.search_attributes)">
                     <div class="col-md-2"><strong>Search Attributes</strong></div>
                     <div class="col">
-                        <pre class="mb-0">{{ prettyJson(flow.search_attributes) }}</pre>
+                        <SearchAttributeRenderer :attributes="flow.search_attributes" />
                     </div>
                 </div>
 
@@ -535,37 +535,15 @@
             </div>
 
             <div class="card-body collapse show" id="collapseHistory">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th scope="col">Seq</th>
-                            <th scope="col">Recorded At</th>
-                            <th scope="col">Kind</th>
-                            <th scope="col">Summary</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="entry in flow.timeline" :key="entry.id">
-                            <td>
-                                #{{ entry.sequence }}
-                                <div class="small text-muted" v-if="hasDetailValue(entry.workflow_sequence)">
-                                    step {{ entry.workflow_sequence }}
-                                </div>
-                            </td>
-                            <td>{{ timestamp(entry.recorded_at) }}</td>
-                            <td>{{ historyKind(entry.kind) }}</td>
-                            <td>
-                                <div>{{ entry.summary }}</div>
-                                <div class="small text-muted" v-if="historySource(entry)">
-                                    {{ historySource(entry) }}
-                                </div>
-                                <div class="small text-muted" v-if="historySnapshot(entry)">
-                                    {{ historySnapshot(entry) }}
-                                </div>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                <div class="timeline-events">
+                    <TimelineEventRenderer
+                        v-for="event in flow.timeline"
+                        :key="event.id"
+                        :event="event"
+                        @drill-activity="navigateToActivity"
+                        @drill-child="navigateToChild"
+                    />
+                </div>
             </div>
         </div>
 
@@ -1375,8 +1353,14 @@ import { highlight, languages } from 'prismjs/components/prism-core'
 import 'prismjs/components/prism-markup-templating'
 import 'prismjs/components/prism-php'
 import 'prismjs/themes/prism-tomorrow.css'
+import TimelineEventRenderer from '../../components/TimelineEventRenderer.vue'
+import SearchAttributeRenderer from '../../components/SearchAttributeRenderer.vue'
 
 export default {
+    components: {
+        TimelineEventRenderer,
+        SearchAttributeRenderer,
+    },
     /**
      * The component's data.
      */
@@ -1601,6 +1585,31 @@ export default {
             return Object.keys(route.params || {}).every((key) => this.$route.params[key] === route.params[key])
         },
 
+        /**
+         * Navigate to activity detail from timeline event.
+         */
+        navigateToActivity(activityExecutionId) {
+            // Find activity in the flow.activities array
+            const activity = (this.flow.activities || []).find(a => a.id === activityExecutionId);
+            if (activity) {
+                // Scroll to activities section if it exists
+                const activitiesCard = document.querySelector('#collapseActivities');
+                if (activitiesCard) {
+                    activitiesCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            }
+        },
+
+        /**
+         * Navigate to child workflow from timeline event.
+         */
+        navigateToChild(childRunId) {
+            // Navigate to the child workflow run detail page
+            const route = this.canonicalRoute(childRunId, null);
+            if (route) {
+                this.$router.push(route);
+            }
+        },
 
         /**
          * Pretty print serialized flow.
