@@ -5,6 +5,7 @@ namespace Waterline\Http\Controllers;
 use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Workflow\V2\CommandContext;
 use Workflow\V2\Enums\ScheduleOverlapPolicy;
 use Workflow\V2\Enums\ScheduleStatus;
 use Workflow\V2\Models\WorkflowSchedule;
@@ -51,7 +52,7 @@ class V2SchedulesController extends Controller
         return response()->json($description->toArray());
     }
 
-    public function pause(string $scheduleId): JsonResponse
+    public function pause(Request $request, string $scheduleId): JsonResponse
     {
         $schedule = $this->findSchedule($scheduleId);
 
@@ -60,7 +61,7 @@ class V2SchedulesController extends Controller
         }
 
         try {
-            ScheduleManager::pause($schedule);
+            ScheduleManager::pause($schedule, context: CommandContext::waterline($request));
         } catch (\LogicException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
@@ -68,7 +69,7 @@ class V2SchedulesController extends Controller
         return response()->json(ScheduleManager::describe($schedule)->toArray());
     }
 
-    public function resume(string $scheduleId): JsonResponse
+    public function resume(Request $request, string $scheduleId): JsonResponse
     {
         $schedule = $this->findSchedule($scheduleId);
 
@@ -77,7 +78,7 @@ class V2SchedulesController extends Controller
         }
 
         try {
-            ScheduleManager::resume($schedule);
+            ScheduleManager::resume($schedule, CommandContext::waterline($request));
         } catch (\LogicException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
@@ -85,7 +86,7 @@ class V2SchedulesController extends Controller
         return response()->json(ScheduleManager::describe($schedule)->toArray());
     }
 
-    public function trigger(string $scheduleId): JsonResponse
+    public function trigger(Request $request, string $scheduleId): JsonResponse
     {
         $schedule = $this->findSchedule($scheduleId);
 
@@ -93,7 +94,10 @@ class V2SchedulesController extends Controller
             return response()->json(['error' => 'Schedule not found.'], 404);
         }
 
-        $instanceId = ScheduleManager::trigger($schedule);
+        $instanceId = ScheduleManager::trigger(
+            $schedule,
+            context: CommandContext::waterline($request),
+        );
 
         return response()->json([
             'schedule_id' => $scheduleId,
@@ -131,7 +135,13 @@ class V2SchedulesController extends Controller
         }
 
         try {
-            $results = ScheduleManager::backfill($schedule, $fromDate, $toDate, $overlapOverride);
+            $results = ScheduleManager::backfill(
+                $schedule,
+                $fromDate,
+                $toDate,
+                $overlapOverride,
+                CommandContext::waterline($request),
+            );
         } catch (\LogicException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
@@ -142,7 +152,7 @@ class V2SchedulesController extends Controller
         ]);
     }
 
-    public function destroy(string $scheduleId): JsonResponse
+    public function destroy(Request $request, string $scheduleId): JsonResponse
     {
         $schedule = $this->findSchedule($scheduleId);
 
@@ -150,7 +160,7 @@ class V2SchedulesController extends Controller
             return response()->json(['error' => 'Schedule not found.'], 404);
         }
 
-        ScheduleManager::delete($schedule);
+        ScheduleManager::delete($schedule, CommandContext::waterline($request));
 
         return response()->json(ScheduleManager::describe($schedule)->toArray());
     }
