@@ -55,6 +55,42 @@ php artisan waterline:publish
 
 ## Development
 
+### Quick Start
+
+Get a working Waterline dashboard in under 5 minutes:
+
+```bash
+# Clone and install
+git clone https://github.com/durable-workflow/waterline.git
+cd waterline
+make install
+
+# Start development environment (asset watch + server)
+make dev
+```
+
+Open http://localhost:18280/waterline
+
+The `make dev` command automatically:
+- Sets up the SQLite database with migrations
+- Builds and watches assets for changes
+- Starts the workbench server
+- Publishes assets to the correct location
+
+### Available Commands
+
+Run `make help` to see all available commands:
+
+- `make dev` - Start development environment (recommended)
+- `make install` - Install dependencies
+- `make test` - Run PHPUnit test suite
+- `make test-sqlite` / `make test-mysql` / `make test-pgsql` / `make test-mssql` - Run tests on specific database
+- `make clean` - Clean build artifacts
+
+### Manual Setup
+
+If you prefer to run commands manually:
+
 1. Install dependencies:
    ```bash
    composer install
@@ -77,15 +113,6 @@ php artisan waterline:publish
    ```bash
    composer run serve
    ```
-6. Access dashboard:
-   - Local: http://localhost:18280/waterline
-7. Create test workflow:
-   ```bash
-   ./vendor/bin/testbench workflow:create-test
-   ```
-8. Run queue worker:
-   ```bash
-   ./vendor/bin/testbench queue:work
-   ```
+6. Access dashboard at http://localhost:18280/waterline
 
 <sub><sup>"Laravel" is a registered trademark of Taylor Otwell. This project is not affiliated, associated, endorsed, or sponsored by Taylor Otwell, nor has it been reviewed, tested, or certified by Taylor Otwell. The use of the trademark "Laravel" is for informational and descriptive purposes only. Waterline is not officially related to the Laravel trademark or Taylor Otwell.</sup></sub>
