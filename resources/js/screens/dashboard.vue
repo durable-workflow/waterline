@@ -129,6 +129,31 @@
                 return this.operatorUpdateWaitMetric(key).toLocaleString();
             },
 
+            fleetMetric(section, period, key = null) {
+                const fleet = this.stats.fleet_overview || {};
+                if (!fleet[section]) return 0;
+
+                if (key) {
+                    return (fleet[section][period] && fleet[section][period][key]) || 0;
+                }
+
+                return fleet[section][period] || 0;
+            },
+
+            formatDuration(ms) {
+                if (!ms) return '-';
+
+                const seconds = Math.floor(ms / 1000);
+                if (seconds < 60) return seconds + 's';
+
+                const minutes = Math.floor(seconds / 60);
+                if (minutes < 60) return minutes + 'm';
+
+                const hours = Math.floor(minutes / 60);
+                const remainingMinutes = minutes % 60;
+                return hours + 'h' + (remainingMinutes > 0 ? ' ' + remainingMinutes + 'm' : '');
+            },
+
             operatorProjectionMetric(group, key = null) {
                 if (key === null) {
                     key = group
@@ -256,6 +281,123 @@
 
 <template>
     <div>
+        <!-- Needs Attention Alerts -->
+        <div class="card mb-4" v-if="stats.needs_attention && stats.needs_attention.total_alerts > 0">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5>
+                    <span class="badge badge-warning mr-2" v-if="stats.needs_attention.has_critical">!</span>
+                    Needs Attention
+                </h5>
+                <span class="badge badge-secondary">{{ stats.needs_attention.total_alerts }} alert(s)</span>
+            </div>
+
+            <div class="card-body">
+                <div v-for="alert in stats.needs_attention.alerts" :key="alert.type"
+                     :class="'alert alert-' + (alert.severity === 'error' ? 'danger' : alert.severity === 'warning' ? 'warning' : 'info') + ' mb-2'">
+                    <strong>{{ alert.message }}</strong>
+                    <div class="small mt-1">{{ alert.action }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fleet Overview Trends -->
+        <div class="card mb-4" v-if="stats.fleet_overview">
+            <div class="card-header">
+                <h5>Fleet Overview</h5>
+            </div>
+
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Current Status</h6>
+                        <table class="table table-sm">
+                            <tbody>
+                                <tr>
+                                    <td>Running</td>
+                                    <td class="text-right">{{ fleetMetric('current', 'running') }}</td>
+                                </tr>
+                                <tr>
+                                    <td>Failed</td>
+                                    <td class="text-right text-danger">{{ fleetMetric('current', 'failed') }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Trends</h6>
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Period</th>
+                                    <th class="text-right">Completed</th>
+                                    <th class="text-right">Failed</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Last Hour</td>
+                                    <td class="text-right text-success">{{ fleetMetric('trends', 'hour', 'completed') }}</td>
+                                    <td class="text-right text-danger">{{ fleetMetric('trends', 'hour', 'failed') }}</td>
+                                </tr>
+                                <tr>
+                                    <td>Last Day</td>
+                                    <td class="text-right text-success">{{ fleetMetric('trends', 'day', 'completed') }}</td>
+                                    <td class="text-right text-danger">{{ fleetMetric('trends', 'day', 'failed') }}</td>
+                                </tr>
+                                <tr>
+                                    <td>Last Week</td>
+                                    <td class="text-right text-success">{{ fleetMetric('trends', 'week', 'completed') }}</td>
+                                    <td class="text-right text-danger">{{ fleetMetric('trends', 'week', 'failed') }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Workflow Type Health -->
+        <div class="card mb-4" v-if="stats.workflow_type_health && stats.workflow_type_health.length > 0">
+            <div class="card-header">
+                <h5>Workflow Type Health</h5>
+                <small class="text-muted">Top workflow types by volume (last 7 days)</small>
+            </div>
+
+            <div class="card-body">
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th>Workflow Type</th>
+                            <th class="text-right">Total Runs</th>
+                            <th class="text-right">Pass Rate</th>
+                            <th class="text-right">Median Duration</th>
+                            <th class="text-right">Errors</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="type in stats.workflow_type_health" :key="type.workflow_type">
+                            <td>
+                                <code class="small">{{ flowBaseName(type.workflow_type) }}</code>
+                            </td>
+                            <td class="text-right">{{ type.total_runs.toLocaleString() }}</td>
+                            <td class="text-right">
+                                <span :class="'badge badge-' + (type.pass_rate >= 95 ? 'success' : type.pass_rate >= 80 ? 'warning' : 'danger')">
+                                    {{ type.pass_rate }}%
+                                </span>
+                            </td>
+                            <td class="text-right text-muted small">
+                                {{ type.median_duration_ms ? formatDuration(type.median_duration_ms) : '-' }}
+                            </td>
+                            <td class="text-right">
+                                <span v-if="type.error_count > 0" class="text-danger">{{ type.error_count }}</span>
+                                <span v-else class="text-muted">-</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Overview</h5>

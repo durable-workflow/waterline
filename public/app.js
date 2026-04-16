@@ -429,6 +429,25 @@ __webpack_require__.r(__webpack_exports__);
     operatorUpdateWaitMetricLabel: function operatorUpdateWaitMetricLabel(key) {
       return this.operatorUpdateWaitMetric(key).toLocaleString();
     },
+    fleetMetric: function fleetMetric(section, period) {
+      var key = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : null;
+      var fleet = this.stats.fleet_overview || {};
+      if (!fleet[section]) return 0;
+      if (key) {
+        return fleet[section][period] && fleet[section][period][key] || 0;
+      }
+      return fleet[section][period] || 0;
+    },
+    formatDuration: function formatDuration(ms) {
+      if (!ms) return '-';
+      var seconds = Math.floor(ms / 1000);
+      if (seconds < 60) return seconds + 's';
+      var minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return minutes + 'm';
+      var hours = Math.floor(minutes / 60);
+      var remainingMinutes = minutes % 60;
+      return hours + 'h' + (remainingMinutes > 0 ? ' ' + remainingMinutes + 'm' : '');
+    },
     operatorProjectionMetric: function operatorProjectionMetric(group) {
       var key = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : null;
       if (key === null) {
@@ -3826,9 +3845,82 @@ __webpack_require__.r(__webpack_exports__);
 var render = function render() {
   var _vm = this,
     _c = _vm._self._c;
-  return _c("div", [_c("div", {
-    staticClass: "card"
+  return _c("div", [_vm.stats.needs_attention && _vm.stats.needs_attention.total_alerts > 0 ? _c("div", {
+    staticClass: "card mb-4"
+  }, [_c("div", {
+    staticClass: "card-header d-flex align-items-center justify-content-between"
+  }, [_c("h5", [_vm.stats.needs_attention.has_critical ? _c("span", {
+    staticClass: "badge badge-warning mr-2"
+  }, [_vm._v("!")]) : _vm._e(), _vm._v("\n                Needs Attention\n            ")]), _vm._v(" "), _c("span", {
+    staticClass: "badge badge-secondary"
+  }, [_vm._v(_vm._s(_vm.stats.needs_attention.total_alerts) + " alert(s)")])]), _vm._v(" "), _c("div", {
+    staticClass: "card-body"
+  }, _vm._l(_vm.stats.needs_attention.alerts, function (alert) {
+    return _c("div", {
+      key: alert.type,
+      "class": "alert alert-" + (alert.severity === "error" ? "danger" : alert.severity === "warning" ? "warning" : "info") + " mb-2"
+    }, [_c("strong", [_vm._v(_vm._s(alert.message))]), _vm._v(" "), _c("div", {
+      staticClass: "small mt-1"
+    }, [_vm._v(_vm._s(alert.action))])]);
+  }), 0)]) : _vm._e(), _vm._v(" "), _vm.stats.fleet_overview ? _c("div", {
+    staticClass: "card mb-4"
   }, [_vm._m(0), _vm._v(" "), _c("div", {
+    staticClass: "card-body"
+  }, [_c("div", {
+    staticClass: "row"
+  }, [_c("div", {
+    staticClass: "col-md-6"
+  }, [_c("h6", [_vm._v("Current Status")]), _vm._v(" "), _c("table", {
+    staticClass: "table table-sm"
+  }, [_c("tbody", [_c("tr", [_c("td", [_vm._v("Running")]), _vm._v(" "), _c("td", {
+    staticClass: "text-right"
+  }, [_vm._v(_vm._s(_vm.fleetMetric("current", "running")))])]), _vm._v(" "), _c("tr", [_c("td", [_vm._v("Failed")]), _vm._v(" "), _c("td", {
+    staticClass: "text-right text-danger"
+  }, [_vm._v(_vm._s(_vm.fleetMetric("current", "failed")))])])])])]), _vm._v(" "), _c("div", {
+    staticClass: "col-md-6"
+  }, [_c("h6", [_vm._v("Trends")]), _vm._v(" "), _c("table", {
+    staticClass: "table table-sm"
+  }, [_vm._m(1), _vm._v(" "), _c("tbody", [_c("tr", [_c("td", [_vm._v("Last Hour")]), _vm._v(" "), _c("td", {
+    staticClass: "text-right text-success"
+  }, [_vm._v(_vm._s(_vm.fleetMetric("trends", "hour", "completed")))]), _vm._v(" "), _c("td", {
+    staticClass: "text-right text-danger"
+  }, [_vm._v(_vm._s(_vm.fleetMetric("trends", "hour", "failed")))])]), _vm._v(" "), _c("tr", [_c("td", [_vm._v("Last Day")]), _vm._v(" "), _c("td", {
+    staticClass: "text-right text-success"
+  }, [_vm._v(_vm._s(_vm.fleetMetric("trends", "day", "completed")))]), _vm._v(" "), _c("td", {
+    staticClass: "text-right text-danger"
+  }, [_vm._v(_vm._s(_vm.fleetMetric("trends", "day", "failed")))])]), _vm._v(" "), _c("tr", [_c("td", [_vm._v("Last Week")]), _vm._v(" "), _c("td", {
+    staticClass: "text-right text-success"
+  }, [_vm._v(_vm._s(_vm.fleetMetric("trends", "week", "completed")))]), _vm._v(" "), _c("td", {
+    staticClass: "text-right text-danger"
+  }, [_vm._v(_vm._s(_vm.fleetMetric("trends", "week", "failed")))])])])])])])])]) : _vm._e(), _vm._v(" "), _vm.stats.workflow_type_health && _vm.stats.workflow_type_health.length > 0 ? _c("div", {
+    staticClass: "card mb-4"
+  }, [_vm._m(2), _vm._v(" "), _c("div", {
+    staticClass: "card-body"
+  }, [_c("table", {
+    staticClass: "table table-sm"
+  }, [_vm._m(3), _vm._v(" "), _c("tbody", _vm._l(_vm.stats.workflow_type_health, function (type) {
+    return _c("tr", {
+      key: type.workflow_type
+    }, [_c("td", [_c("code", {
+      staticClass: "small"
+    }, [_vm._v(_vm._s(_vm.flowBaseName(type.workflow_type)))])]), _vm._v(" "), _c("td", {
+      staticClass: "text-right"
+    }, [_vm._v(_vm._s(type.total_runs.toLocaleString()))]), _vm._v(" "), _c("td", {
+      staticClass: "text-right"
+    }, [_c("span", {
+      "class": "badge badge-" + (type.pass_rate >= 95 ? "success" : type.pass_rate >= 80 ? "warning" : "danger")
+    }, [_vm._v("\n                                " + _vm._s(type.pass_rate) + "%\n                            ")])]), _vm._v(" "), _c("td", {
+      staticClass: "text-right text-muted small"
+    }, [_vm._v("\n                            " + _vm._s(type.median_duration_ms ? _vm.formatDuration(type.median_duration_ms) : "-") + "\n                        ")]), _vm._v(" "), _c("td", {
+      staticClass: "text-right"
+    }, [type.error_count > 0 ? _c("span", {
+      staticClass: "text-danger"
+    }, [_vm._v(_vm._s(type.error_count))]) : _c("span", {
+      staticClass: "text-muted"
+    }, [_vm._v("-")])])]);
+  }), 0)])])]) : _vm._e(), _vm._v(" "), _c("div", {
+    staticClass: "card"
+  }, [_vm._m(4), _vm._v(" "), _c("div", {
     staticClass: "card-bg-secondary"
   }, [_c("div", {
     staticClass: "d-flex"
@@ -4056,7 +4148,7 @@ var render = function render() {
     staticClass: "mt-2 text-muted"
   }, [_vm._v("\n                    " + _vm._s(_vm.operatorMetricLabel("repair", "existing_task_candidates")) + " existing task candidates,\n                    " + _vm._s(_vm.operatorMetricLabel("repair", "missing_task_candidates")) + " missing-task runs,\n                    selects " + _vm._s(_vm.operatorMetricLabel("repair", "selected_existing_task_candidates")) + " task candidates and\n                    " + _vm._s(_vm.operatorMetricLabel("repair", "selected_missing_task_candidates")) + " missing-task runs this pass,\n                    oldest task candidate " + _vm._s(_vm.operatorDurationMetricLabel("repair", "max_task_candidate_age_ms")) + ",\n                    oldest missing run " + _vm._s(_vm.operatorDurationMetricLabel("repair", "max_missing_run_age_ms")) + ".\n                ")]) : _vm._e(), _vm._v(" "), _vm.stats.operator_metrics.repair && _vm.stats.operator_metrics.repair.scan_pressure ? _c("div", {
     staticClass: "mt-1 text-muted"
-  }, [_vm._v("\n                    Repair scan limit reached on this snapshot. Increase scan limit or add workers before backlog age keeps growing.\n                ")]) : _vm._e(), _vm._v(" "), _vm._m(1), _vm._v(" "), _vm.operatorRepairScopes().length ? _c("div", {
+  }, [_vm._v("\n                    Repair scan limit reached on this snapshot. Increase scan limit or add workers before backlog age keeps growing.\n                ")]) : _vm._e(), _vm._v(" "), _vm._m(5), _vm._v(" "), _vm.operatorRepairScopes().length ? _c("div", {
     staticClass: "mt-2 text-muted"
   }, _vm._l(_vm.operatorRepairScopes(), function (scope) {
     return _c("div", {
@@ -4110,6 +4202,40 @@ var render = function render() {
   }, [_vm._v("\n                    Soft-limit warnings fire at " + _vm._s(_vm.structuralLimitWarningThreshold()) + "% utilization.\n                    Check application logs for "), _c("code", [_vm._v("[Durable Workflow]")]), _vm._v(" approaching-limit entries.\n                ")]) : _vm._e()]) : _vm._e()])]) : _vm._e()]);
 };
 var staticRenderFns = [function () {
+  var _vm = this,
+    _c = _vm._self._c;
+  return _c("div", {
+    staticClass: "card-header"
+  }, [_c("h5", [_vm._v("Fleet Overview")])]);
+}, function () {
+  var _vm = this,
+    _c = _vm._self._c;
+  return _c("thead", [_c("tr", [_c("th", [_vm._v("Period")]), _vm._v(" "), _c("th", {
+    staticClass: "text-right"
+  }, [_vm._v("Completed")]), _vm._v(" "), _c("th", {
+    staticClass: "text-right"
+  }, [_vm._v("Failed")])])]);
+}, function () {
+  var _vm = this,
+    _c = _vm._self._c;
+  return _c("div", {
+    staticClass: "card-header"
+  }, [_c("h5", [_vm._v("Workflow Type Health")]), _vm._v(" "), _c("small", {
+    staticClass: "text-muted"
+  }, [_vm._v("Top workflow types by volume (last 7 days)")])]);
+}, function () {
+  var _vm = this,
+    _c = _vm._self._c;
+  return _c("thead", [_c("tr", [_c("th", [_vm._v("Workflow Type")]), _vm._v(" "), _c("th", {
+    staticClass: "text-right"
+  }, [_vm._v("Total Runs")]), _vm._v(" "), _c("th", {
+    staticClass: "text-right"
+  }, [_vm._v("Pass Rate")]), _vm._v(" "), _c("th", {
+    staticClass: "text-right"
+  }, [_vm._v("Median Duration")]), _vm._v(" "), _c("th", {
+    staticClass: "text-right"
+  }, [_vm._v("Errors")])])]);
+}, function () {
   var _vm = this,
     _c = _vm._self._c;
   return _c("div", {
