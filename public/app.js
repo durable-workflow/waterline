@@ -7476,8 +7476,27 @@ new vue__WEBPACK_IMPORTED_MODULE_0__["default"]({
         confirmationProceed: null,
         confirmationCancel: null
       },
-      autoLoadsNewEntries: localStorage.autoLoadsNewEntries === '1'
+      autoLoadsNewEntries: localStorage.autoLoadsNewEntries === '1',
+      theme: localStorage.getItem('waterline-theme') || 'light'
     };
+  },
+  mounted: function mounted() {
+    this.applyTheme();
+  },
+  methods: {
+    toggleTheme: function toggleTheme() {
+      this.theme = this.theme === 'light' ? 'dark' : 'light';
+      localStorage.setItem('waterline-theme', this.theme);
+      this.applyTheme();
+    },
+    applyTheme: function applyTheme() {
+      var link = document.getElementById('app-stylesheet');
+      if (link) {
+        var basePath = window.Waterline.basePath || '';
+        var cssFile = this.theme === 'dark' ? 'app-dark.css' : 'app.css';
+        link.href = "".concat(basePath, "/vendor/waterline/").concat(cssFile);
+      }
+    }
   }
 });
 

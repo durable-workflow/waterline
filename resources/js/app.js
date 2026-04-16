@@ -76,6 +76,29 @@ new Vue({
             },
 
             autoLoadsNewEntries: localStorage.autoLoadsNewEntries === '1',
+
+            theme: localStorage.getItem('waterline-theme') || 'light',
         };
     },
+
+    mounted() {
+        this.applyTheme();
+    },
+
+    methods: {
+        toggleTheme() {
+            this.theme = this.theme === 'light' ? 'dark' : 'light';
+            localStorage.setItem('waterline-theme', this.theme);
+            this.applyTheme();
+        },
+
+        applyTheme() {
+            const link = document.getElementById('app-stylesheet');
+            if (link) {
+                const basePath = window.Waterline.basePath || '';
+                const cssFile = this.theme === 'dark' ? 'app-dark.css' : 'app.css';
+                link.href = `${basePath}/vendor/waterline/${cssFile}`;
+            }
+        }
+    }
 });
