@@ -1,0 +1,148 @@
+# Docker Compose for Waterline Phase 0 Integration Test
+# Spins up durableworkflow/server for end-to-end validation
+#
+# Usage:
+#   docker-compose -f docker-compose.integration.yml up -d
+#   docker-compose -f docker-compose.integration.yml down -v
+
+services:
+  # Database shared between server and waterline
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: durable_workflow
+      MYSQL_USER: workflow
+      MYSQL_PASSWORD: workflow
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "33066:3306"  # Non-standard port to avoid conflicts
+    volumes:
+      - integration_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "63799:6379"  # Non-standard port to avoid conflicts
+    volumes:
+      - integration_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Bootstrap server (migrations)
+  server-bootstrap:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+      args:
+        # Use the workflow v2 branch from the workflow repo
+        WORKFLOW_PACKAGE_SOURCE: https://github.com/durable-workflow/workflow.git
+        WORKFLOW_PACKAGE_REF: v2
+    command: ["server-bootstrap"]
+    environment:
+      APP_NAME: "Durable Workflow Server (Integration)"
+      APP_ENV: local
+      APP_KEY: "base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI="
+      APP_DEBUG: "true"
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: durable_workflow
+      DB_USERNAME: workflow
+      DB_PASSWORD: workflow
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      QUEUE_CONNECTION: redis
+      CACHE_STORE: redis
+      WORKFLOW_SERVER_AUTH_DRIVER: token
+      WORKFLOW_SERVER_AUTH_TOKEN: "integration-test-token-123"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Main server API
+  server:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+      args:
+        WORKFLOW_PACKAGE_SOURCE: https://github.com/durable-workflow/workflow.git
+        WORKFLOW_PACKAGE_REF: v2
+    ports:
+      - "8081:8080"  # Map to 8081 to avoid conflicts with local dev
+    environment:
+      APP_NAME: "Durable Workflow Server (Integration)"
+      APP_ENV: local
+      APP_KEY: "base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI="
+      APP_DEBUG: "true"
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: durable_workflow
+      DB_USERNAME: workflow
+      DB_PASSWORD: workflow
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      QUEUE_CONNECTION: redis
+      CACHE_STORE: redis
+      WORKFLOW_SERVER_AUTH_DRIVER: token
+      WORKFLOW_SERVER_AUTH_TOKEN: "integration-test-token-123"
+    depends_on:
+      server-bootstrap:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Queue worker for async task processing
+  worker:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+      args:
+        WORKFLOW_PACKAGE_SOURCE: https://github.com/durable-workflow/workflow.git
+        WORKFLOW_PACKAGE_REF: v2
+    command: php artisan queue:work --sleep=1 --tries=3 --max-time=3600
+    environment:
+      APP_NAME: "Durable Workflow Server (Integration)"
+      APP_ENV: local
+      APP_KEY: "base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI="
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: durable_workflow
+      DB_USERNAME: workflow
+      DB_PASSWORD: workflow
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      QUEUE_CONNECTION: redis
+      CACHE_STORE: redis
+    depends_on:
+      server-bootstrap:
+        condition: service_completed_successfully
+      server:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  integration_mysql_data:
+  integration_redis_data:
