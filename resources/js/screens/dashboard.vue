@@ -35,6 +35,224 @@
             clearTimeout(this.timeout);
         },
 
+
+        computed: {
+            fleetTrendsChartOptions() {
+                return {
+                    chart: {
+                        type: 'area',
+                        stacked: false,
+                        toolbar: {
+                            show: true,
+                            tools: {
+                                download: true,
+                                zoom: true,
+                                pan: true,
+                            }
+                        },
+                        zoom: {
+                            enabled: true,
+                            type: 'x'
+                        }
+                    },
+                    colors: ['#28a745', '#dc3545'],
+                    dataLabels: {
+                        enabled: false
+                    },
+                    stroke: {
+                        curve: 'straight',  // No smoothing - show real spikes
+                        width: 2
+                    },
+                    fill: {
+                        type: 'gradient',
+                        gradient: {
+                            shadeIntensity: 1,
+                            opacityFrom: 0.7,
+                            opacityTo: 0.3,
+                        }
+                    },
+                    xaxis: {
+                        type: 'datetime',
+                        labels: {
+                            datetimeUTC: false
+                        }
+                    },
+                    yaxis: {
+                        title: {
+                            text: 'Workflow Count'
+                        },
+                        min: 0
+                    },
+                    legend: {
+                        position: 'top',
+                        horizontalAlign: 'left'
+                    },
+                    tooltip: {
+                        x: {
+                            format: 'MMM dd, HH:mm'
+                        },
+                        y: {
+                            formatter: function(value) {
+                                return value + ' workflows';
+                            }
+                        }
+                    }
+                };
+            },
+
+            fleetTrendsChartSeries() {
+                if (!this.stats.fleet_trends_series) {
+                    return [];
+                }
+
+                const series = this.stats.fleet_trends_series;
+                const data = [];
+
+                // Build series with {x: timestamp, y: count} format
+                for (let i = 0; i < series.timestamps.length; i++) {
+                    data.push({
+                        completed: { x: series.timestamps[i], y: series.completed[i] },
+                        failed: { x: series.timestamps[i], y: series.failed[i] }
+                    });
+                }
+
+                return [
+                    {
+                        name: 'Completed',
+                        data: data.map(d => d.completed)
+                    },
+                    {
+                        name: 'Failed',
+                        data: data.map(d => d.failed)
+                    }
+                ];
+            }
+        },
+
+
+            passRateChartOptions() {
+                const types = (this.stats.workflow_type_health || []).slice(0, 5);
+                return {
+                    chart: {
+                        type: 'bar',
+                        toolbar: { show: false }
+                    },
+                    plotOptions: {
+                        bar: {
+                            horizontal: true,
+                            distributed: false,
+                            dataLabels: {
+                                position: 'top'
+                            }
+                        }
+                    },
+                    colors: ['#28a745'],
+                    dataLabels: {
+                        enabled: true,
+                        formatter: function(val) {
+                            return val.toFixed(1) + '%';
+                        },
+                        offsetX: 30,
+                        style: {
+                            fontSize: '12px',
+                            colors: ['#333']
+                        }
+                    },
+                    xaxis: {
+                        categories: types.map(t => this.flowBaseName(t.workflow_type)),
+                        max: 100,
+                        title: {
+                            text: 'Pass Rate (%)'
+                        }
+                    },
+                    yaxis: {
+                        labels: {
+                            style: {
+                                fontSize: '11px'
+                            }
+                        }
+                    },
+                    tooltip: {
+                        y: {
+                            formatter: function(val) {
+                                return val.toFixed(1) + '%';
+                            }
+                        }
+                    }
+                };
+            },
+
+            passRateChartSeries() {
+                const types = (this.stats.workflow_type_health || []).slice(0, 5);
+                return [{
+                    name: 'Pass Rate',
+                    data: types.map(t => t.pass_rate)
+                }];
+            },
+
+            durationChartOptions() {
+                const types = (this.stats.workflow_type_health || []).slice(0, 5);
+                return {
+                    chart: {
+                        type: 'bar',
+                        toolbar: { show: false }
+                    },
+                    plotOptions: {
+                        bar: {
+                            horizontal: true,
+                            distributed: false,
+                            dataLabels: {
+                                position: 'top'
+                            }
+                        }
+                    },
+                    colors: ['#007bff'],
+                    dataLabels: {
+                        enabled: true,
+                        formatter: (val) => {
+                            return this.formatDuration(val);
+                        },
+                        offsetX: 30,
+                        style: {
+                            fontSize: '12px',
+                            colors: ['#333']
+                        }
+                    },
+                    xaxis: {
+                        categories: types.map(t => this.flowBaseName(t.workflow_type)),
+                        labels: {
+                            formatter: (val) => {
+                                return this.formatDuration(val);
+                            }
+                        },
+                        title: {
+                            text: 'Median Duration'
+                        }
+                    },
+                    yaxis: {
+                        labels: {
+                            style: {
+                                fontSize: '11px'
+                            }
+                        }
+                    },
+                    tooltip: {
+                        y: {
+                            formatter: (val) => {
+                                return this.formatDuration(val);
+                            }
+                        }
+                    }
+                };
+            },
+
+            durationChartSeries() {
+                const types = (this.stats.workflow_type_health || []).slice(0, 5);
+                return [{
+                    name: 'Median Duration',
+                    data: types.map(t => t.median_duration_ms || 0)
+                }];
+            },
         methods: {
             /**
              * Load the general stats.
@@ -301,6 +519,23 @@
         </div>
 
         <!-- Fleet Overview Trends -->
+        <!-- Fleet Trends Chart -->
+        <div class="card mb-4" v-if="stats.fleet_trends_series && stats.fleet_trends_series.timestamps.length > 0">
+            <div class="card-header">
+                <h5>Fleet Trends</h5>
+                <small class="text-muted">Last 7 days - hourly resolution</small>
+            </div>
+
+            <div class="card-body">
+                <apexchart
+                    type="area"
+                    height="300"
+                    :options="fleetTrendsChartOptions"
+                    :series="fleetTrendsChartSeries">
+                </apexchart>
+            </div>
+        </div>
+
         <div class="card mb-4" v-if="stats.fleet_overview">
             <div class="card-header">
                 <h5>Fleet Overview</h5>
@@ -371,6 +606,28 @@
                             <th class="text-right">Total Runs</th>
                             <th class="text-right">Pass Rate</th>
                             <th class="text-right">Median Duration</th>
+
+                <!-- Visual Charts for Top Types -->
+                <div class="row mt-4" v-if="stats.workflow_type_health && stats.workflow_type_health.length >= 3">
+                    <div class="col-md-6">
+                        <h6>Pass Rate by Type</h6>
+                        <apexchart
+                            type="bar"
+                            height="250"
+                            :options="passRateChartOptions"
+                            :series="passRateChartSeries">
+                        </apexchart>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Median Duration by Type</h6>
+                        <apexchart
+                            type="bar"
+                            height="250"
+                            :options="durationChartOptions"
+                            :series="durationChartSeries">
+                        </apexchart>
+                    </div>
+                </div>
                             <th class="text-right">Errors</th>
                         </tr>
                     </thead>

@@ -359,26 +359,257 @@ __webpack_require__.r(__webpack_exports__);
   destroyed: function destroyed() {
     clearTimeout(this.timeout);
   },
+  computed: {
+    fleetTrendsChartOptions: function fleetTrendsChartOptions() {
+      return {
+        chart: {
+          type: 'area',
+          stacked: false,
+          toolbar: {
+            show: true,
+            tools: {
+              download: true,
+              zoom: true,
+              pan: true
+            }
+          },
+          zoom: {
+            enabled: true,
+            type: 'x'
+          }
+        },
+        colors: ['#28a745', '#dc3545'],
+        dataLabels: {
+          enabled: false
+        },
+        stroke: {
+          curve: 'straight',
+          // No smoothing - show real spikes
+          width: 2
+        },
+        fill: {
+          type: 'gradient',
+          gradient: {
+            shadeIntensity: 1,
+            opacityFrom: 0.7,
+            opacityTo: 0.3
+          }
+        },
+        xaxis: {
+          type: 'datetime',
+          labels: {
+            datetimeUTC: false
+          }
+        },
+        yaxis: {
+          title: {
+            text: 'Workflow Count'
+          },
+          min: 0
+        },
+        legend: {
+          position: 'top',
+          horizontalAlign: 'left'
+        },
+        tooltip: {
+          x: {
+            format: 'MMM dd, HH:mm'
+          },
+          y: {
+            formatter: function formatter(value) {
+              return value + ' workflows';
+            }
+          }
+        }
+      };
+    },
+    fleetTrendsChartSeries: function fleetTrendsChartSeries() {
+      if (!this.stats.fleet_trends_series) {
+        return [];
+      }
+      var series = this.stats.fleet_trends_series;
+      var data = [];
+
+      // Build series with {x: timestamp, y: count} format
+      for (var i = 0; i < series.timestamps.length; i++) {
+        data.push({
+          completed: {
+            x: series.timestamps[i],
+            y: series.completed[i]
+          },
+          failed: {
+            x: series.timestamps[i],
+            y: series.failed[i]
+          }
+        });
+      }
+      return [{
+        name: 'Completed',
+        data: data.map(function (d) {
+          return d.completed;
+        })
+      }, {
+        name: 'Failed',
+        data: data.map(function (d) {
+          return d.failed;
+        })
+      }];
+    }
+  },
+  passRateChartOptions: function passRateChartOptions() {
+    var _this = this;
+    var types = (this.stats.workflow_type_health || []).slice(0, 5);
+    return {
+      chart: {
+        type: 'bar',
+        toolbar: {
+          show: false
+        }
+      },
+      plotOptions: {
+        bar: {
+          horizontal: true,
+          distributed: false,
+          dataLabels: {
+            position: 'top'
+          }
+        }
+      },
+      colors: ['#28a745'],
+      dataLabels: {
+        enabled: true,
+        formatter: function formatter(val) {
+          return val.toFixed(1) + '%';
+        },
+        offsetX: 30,
+        style: {
+          fontSize: '12px',
+          colors: ['#333']
+        }
+      },
+      xaxis: {
+        categories: types.map(function (t) {
+          return _this.flowBaseName(t.workflow_type);
+        }),
+        max: 100,
+        title: {
+          text: 'Pass Rate (%)'
+        }
+      },
+      yaxis: {
+        labels: {
+          style: {
+            fontSize: '11px'
+          }
+        }
+      },
+      tooltip: {
+        y: {
+          formatter: function formatter(val) {
+            return val.toFixed(1) + '%';
+          }
+        }
+      }
+    };
+  },
+  passRateChartSeries: function passRateChartSeries() {
+    var types = (this.stats.workflow_type_health || []).slice(0, 5);
+    return [{
+      name: 'Pass Rate',
+      data: types.map(function (t) {
+        return t.pass_rate;
+      })
+    }];
+  },
+  durationChartOptions: function durationChartOptions() {
+    var _this2 = this;
+    var types = (this.stats.workflow_type_health || []).slice(0, 5);
+    return {
+      chart: {
+        type: 'bar',
+        toolbar: {
+          show: false
+        }
+      },
+      plotOptions: {
+        bar: {
+          horizontal: true,
+          distributed: false,
+          dataLabels: {
+            position: 'top'
+          }
+        }
+      },
+      colors: ['#007bff'],
+      dataLabels: {
+        enabled: true,
+        formatter: function formatter(val) {
+          return _this2.formatDuration(val);
+        },
+        offsetX: 30,
+        style: {
+          fontSize: '12px',
+          colors: ['#333']
+        }
+      },
+      xaxis: {
+        categories: types.map(function (t) {
+          return _this2.flowBaseName(t.workflow_type);
+        }),
+        labels: {
+          formatter: function formatter(val) {
+            return _this2.formatDuration(val);
+          }
+        },
+        title: {
+          text: 'Median Duration'
+        }
+      },
+      yaxis: {
+        labels: {
+          style: {
+            fontSize: '11px'
+          }
+        }
+      },
+      tooltip: {
+        y: {
+          formatter: function formatter(val) {
+            return _this2.formatDuration(val);
+          }
+        }
+      }
+    };
+  },
+  durationChartSeries: function durationChartSeries() {
+    var types = (this.stats.workflow_type_health || []).slice(0, 5);
+    return [{
+      name: 'Median Duration',
+      data: types.map(function (t) {
+        return t.median_duration_ms || 0;
+      })
+    }];
+  },
   methods: {
     /**
      * Load the general stats.
      */
     loadStats: function loadStats() {
-      var _this = this;
+      var _this3 = this;
       return this.$http.get(Waterline.basePath + '/api/stats').then(function (response) {
-        _this.stats = response.data;
+        _this3.stats = response.data;
       });
     },
     /**
      * Refresh the stats every period of time.
      */
     refreshStatsPeriodically: function refreshStatsPeriodically() {
-      var _this2 = this;
+      var _this4 = this;
       Promise.all([this.loadStats()]).then(function () {
-        _this2.ready = true;
-        _this2.timeout = setTimeout(function () {
-          if (_this2.$root.autoLoadsNewEntries) {
-            _this2.refreshStatsPeriodically();
+        _this4.ready = true;
+        _this4.timeout = setTimeout(function () {
+          if (_this4.$root.autoLoadsNewEntries) {
+            _this4.refreshStatsPeriodically();
           }
         }, 5000);
       });
@@ -3862,9 +4093,20 @@ var render = function render() {
     }, [_c("strong", [_vm._v(_vm._s(alert.message))]), _vm._v(" "), _c("div", {
       staticClass: "small mt-1"
     }, [_vm._v(_vm._s(alert.action))])]);
-  }), 0)]) : _vm._e(), _vm._v(" "), _vm.stats.fleet_overview ? _c("div", {
+  }), 0)]) : _vm._e(), _vm._v(" "), _vm.stats.fleet_trends_series && _vm.stats.fleet_trends_series.timestamps.length > 0 ? _c("div", {
     staticClass: "card mb-4"
   }, [_vm._m(0), _vm._v(" "), _c("div", {
+    staticClass: "card-body"
+  }, [_c("apexchart", {
+    attrs: {
+      type: "area",
+      height: "300",
+      options: _vm.fleetTrendsChartOptions,
+      series: _vm.fleetTrendsChartSeries
+    }
+  })], 1)]) : _vm._e(), _vm._v(" "), _vm.stats.fleet_overview ? _c("div", {
+    staticClass: "card mb-4"
+  }, [_vm._m(1), _vm._v(" "), _c("div", {
     staticClass: "card-body"
   }, [_c("div", {
     staticClass: "row"
@@ -3880,7 +4122,7 @@ var render = function render() {
     staticClass: "col-md-6"
   }, [_c("h6", [_vm._v("Trends")]), _vm._v(" "), _c("table", {
     staticClass: "table table-sm"
-  }, [_vm._m(1), _vm._v(" "), _c("tbody", [_c("tr", [_c("td", [_vm._v("Last Hour")]), _vm._v(" "), _c("td", {
+  }, [_vm._m(2), _vm._v(" "), _c("tbody", [_c("tr", [_c("td", [_vm._v("Last Hour")]), _vm._v(" "), _c("td", {
     staticClass: "text-right text-success"
   }, [_vm._v(_vm._s(_vm.fleetMetric("trends", "hour", "completed")))]), _vm._v(" "), _c("td", {
     staticClass: "text-right text-danger"
@@ -3894,11 +4136,39 @@ var render = function render() {
     staticClass: "text-right text-danger"
   }, [_vm._v(_vm._s(_vm.fleetMetric("trends", "week", "failed")))])])])])])])])]) : _vm._e(), _vm._v(" "), _vm.stats.workflow_type_health && _vm.stats.workflow_type_health.length > 0 ? _c("div", {
     staticClass: "card mb-4"
-  }, [_vm._m(2), _vm._v(" "), _c("div", {
+  }, [_vm._m(3), _vm._v(" "), _c("div", {
     staticClass: "card-body"
   }, [_c("table", {
     staticClass: "table table-sm"
-  }, [_vm._m(3), _vm._v(" "), _c("tbody", _vm._l(_vm.stats.workflow_type_health, function (type) {
+  }, [_c("thead", [_c("tr", [_c("th", [_vm._v("Workflow Type")]), _vm._v(" "), _c("th", {
+    staticClass: "text-right"
+  }, [_vm._v("Total Runs")]), _vm._v(" "), _c("th", {
+    staticClass: "text-right"
+  }, [_vm._v("Pass Rate")]), _vm._v(" "), _c("th", {
+    staticClass: "text-right"
+  }, [_vm._v("Median Duration")]), _vm._v(" "), _vm.stats.workflow_type_health && _vm.stats.workflow_type_health.length >= 3 ? _c("div", {
+    staticClass: "row mt-4"
+  }, [_c("div", {
+    staticClass: "col-md-6"
+  }, [_c("h6", [_vm._v("Pass Rate by Type")]), _vm._v(" "), _c("apexchart", {
+    attrs: {
+      type: "bar",
+      height: "250",
+      options: _vm.passRateChartOptions,
+      series: _vm.passRateChartSeries
+    }
+  })], 1), _vm._v(" "), _c("div", {
+    staticClass: "col-md-6"
+  }, [_c("h6", [_vm._v("Median Duration by Type")]), _vm._v(" "), _c("apexchart", {
+    attrs: {
+      type: "bar",
+      height: "250",
+      options: _vm.durationChartOptions,
+      series: _vm.durationChartSeries
+    }
+  })], 1)]) : _vm._e(), _vm._v(" "), _c("th", {
+    staticClass: "text-right"
+  }, [_vm._v("Errors")])])]), _vm._v(" "), _c("tbody", _vm._l(_vm.stats.workflow_type_health, function (type) {
     return _c("tr", {
       key: type.workflow_type
     }, [_c("td", [_c("code", {
@@ -4206,6 +4476,14 @@ var staticRenderFns = [function () {
     _c = _vm._self._c;
   return _c("div", {
     staticClass: "card-header"
+  }, [_c("h5", [_vm._v("Fleet Trends")]), _vm._v(" "), _c("small", {
+    staticClass: "text-muted"
+  }, [_vm._v("Last 7 days - hourly resolution")])]);
+}, function () {
+  var _vm = this,
+    _c = _vm._self._c;
+  return _c("div", {
+    staticClass: "card-header"
   }, [_c("h5", [_vm._v("Fleet Overview")])]);
 }, function () {
   var _vm = this,
@@ -4223,18 +4501,6 @@ var staticRenderFns = [function () {
   }, [_c("h5", [_vm._v("Workflow Type Health")]), _vm._v(" "), _c("small", {
     staticClass: "text-muted"
   }, [_vm._v("Top workflow types by volume (last 7 days)")])]);
-}, function () {
-  var _vm = this,
-    _c = _vm._self._c;
-  return _c("thead", [_c("tr", [_c("th", [_vm._v("Workflow Type")]), _vm._v(" "), _c("th", {
-    staticClass: "text-right"
-  }, [_vm._v("Total Runs")]), _vm._v(" "), _c("th", {
-    staticClass: "text-right"
-  }, [_vm._v("Pass Rate")]), _vm._v(" "), _c("th", {
-    staticClass: "text-right"
-  }, [_vm._v("Median Duration")]), _vm._v(" "), _c("th", {
-    staticClass: "text-right"
-  }, [_vm._v("Errors")])])]);
 }, function () {
   var _vm = this,
     _c = _vm._self._c;
