@@ -8,7 +8,7 @@ use Workflow\QueryMethod;
 use Workflow\UpdateMethod;
 use Workflow\V2\Attributes\Signal;
 use Workflow\V2\Attributes\Type;
-use function Workflow\V2\awaitSignal;
+use function Workflow\V2\signal;
 use Workflow\V2\Workflow;
 
 #[Type('workflow.operator-command')]
@@ -28,7 +28,7 @@ final class TestOperatorCommandWorkflow extends Workflow
     {
         $this->events[] = 'started';
 
-        $name = awaitSignal('name-provided');
+        $name = signal('name-provided');
 
         $this->events[] = sprintf('signal:%s', $name);
 

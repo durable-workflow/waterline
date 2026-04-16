@@ -8,7 +8,7 @@ use Workflow\QueryMethod;
 use Workflow\UpdateMethod;
 use Workflow\V2\Attributes\Signal;
 use Workflow\V2\Attributes\Type;
-use function Workflow\V2\awaitSignal;
+use function Workflow\V2\signal;
 use Workflow\V2\Workflow;
 
 #[Type('workflow.linearized-operator')]
@@ -34,13 +34,13 @@ final class TestLinearizedOperatorWorkflow extends Workflow
         $this->stage = 'waiting-for-advance';
         $this->events[] = 'started';
 
-        $name = awaitSignal('advance');
+        $name = signal('advance');
 
         $this->name = $name;
         $this->stage = 'waiting-for-finish';
         $this->events[] = sprintf('signal:%s', $name);
 
-        awaitSignal('finish');
+        signal('finish');
 
         $this->stage = 'completed';
         $this->events[] = 'finish';
