@@ -8,6 +8,18 @@ export default [
     },
 
     {
+        path: '/workers',
+        name: 'workers',
+        component: require('./screens/workers').default,
+    },
+
+    {
+        path: '/schedules',
+        name: 'schedules',
+        component: require('./screens/schedules').default,
+    },
+
+    {
         path: '/flows/instances/:instanceId',
         name: 'flow-detail',
         component: require('./screens/flows/flow').default,

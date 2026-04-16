@@ -167,6 +167,323 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
 
 /***/ },
 
+/***/ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/ScheduleView.vue?vue&type=script&lang=js"
+/*!******************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/ScheduleView.vue?vue&type=script&lang=js ***!
+  \******************************************************************************************************************************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return _regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i["return"]) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine2(u), _regeneratorDefine2(u, o, "Generator"), _regeneratorDefine2(u, n, function () { return this; }), _regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
+function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
+function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
+function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ({
+  name: 'ScheduleView',
+  props: {
+    apiEndpoint: {
+      type: String,
+      "default": '/waterline-api/v2/schedules'
+    }
+  },
+  data: function data() {
+    return {
+      loading: true,
+      error: null,
+      schedules: [],
+      pagination: null,
+      statusFilter: '',
+      currentPage: 1,
+      showBackfill: false,
+      backfillScheduleId: null,
+      backfillFrom: '',
+      backfillTo: '',
+      backfillOverlapPolicy: ''
+    };
+  },
+  computed: {
+    visiblePages: function visiblePages() {
+      if (!this.pagination) return [];
+      var total = this.pagination.last_page;
+      var current = this.pagination.current_page;
+      var delta = 2;
+      var range = [];
+      var rangeWithDots = [];
+      for (var i = Math.max(2, current - delta); i <= Math.min(total - 1, current + delta); i++) {
+        range.push(i);
+      }
+      if (current - delta > 2) {
+        rangeWithDots.push(1, '...');
+      } else {
+        rangeWithDots.push(1);
+      }
+      rangeWithDots.push.apply(rangeWithDots, range);
+      if (current + delta < total - 1) {
+        rangeWithDots.push('...', total);
+      } else if (total > 1) {
+        rangeWithDots.push(total);
+      }
+      return rangeWithDots;
+    }
+  },
+  watch: {
+    statusFilter: function statusFilter() {
+      this.currentPage = 1;
+      this.loadData();
+    }
+  },
+  mounted: function mounted() {
+    this.loadData();
+  },
+  methods: {
+    loadData: function loadData() {
+      var _this = this;
+      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
+        var params, response, _e$response, _t;
+        return _regenerator().w(function (_context) {
+          while (1) switch (_context.p = _context.n) {
+            case 0:
+              _this.loading = true;
+              _this.error = null;
+              _context.p = 1;
+              params = {
+                page: _this.currentPage
+              };
+              if (_this.statusFilter) {
+                params.status = _this.statusFilter;
+              }
+              _context.n = 2;
+              return axios.get(_this.apiEndpoint, {
+                params: params
+              });
+            case 2:
+              response = _context.v;
+              _this.schedules = response.data.data || [];
+              _this.pagination = {
+                current_page: response.data.current_page,
+                last_page: response.data.last_page,
+                per_page: response.data.per_page,
+                total: response.data.total
+              };
+              _context.n = 4;
+              break;
+            case 3:
+              _context.p = 3;
+              _t = _context.v;
+              _this.error = ((_e$response = _t.response) === null || _e$response === void 0 || (_e$response = _e$response.data) === null || _e$response === void 0 ? void 0 : _e$response.message) || _t.message || 'Failed to load schedules';
+              console.error('Schedule load error:', _t);
+            case 4:
+              _context.p = 4;
+              _this.loading = false;
+              return _context.f(4);
+            case 5:
+              return _context.a(2);
+          }
+        }, _callee, null, [[1, 3, 4, 5]]);
+      }))();
+    },
+    refresh: function refresh() {
+      this.loadData();
+    },
+    goToPage: function goToPage(page) {
+      if (page < 1 || this.pagination && page > this.pagination.last_page) return;
+      this.currentPage = page;
+      this.loadData();
+    },
+    pauseSchedule: function pauseSchedule(scheduleId) {
+      var _this2 = this;
+      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2() {
+        var _e$response2, _t2;
+        return _regenerator().w(function (_context2) {
+          while (1) switch (_context2.p = _context2.n) {
+            case 0:
+              _context2.p = 0;
+              _context2.n = 1;
+              return axios.post("".concat(_this2.apiEndpoint, "/").concat(scheduleId, "/pause"));
+            case 1:
+              _context2.n = 2;
+              return _this2.loadData();
+            case 2:
+              _context2.n = 4;
+              break;
+            case 3:
+              _context2.p = 3;
+              _t2 = _context2.v;
+              alert("Failed to pause schedule: ".concat(((_e$response2 = _t2.response) === null || _e$response2 === void 0 || (_e$response2 = _e$response2.data) === null || _e$response2 === void 0 ? void 0 : _e$response2.error) || _t2.message));
+            case 4:
+              return _context2.a(2);
+          }
+        }, _callee2, null, [[0, 3]]);
+      }))();
+    },
+    resumeSchedule: function resumeSchedule(scheduleId) {
+      var _this3 = this;
+      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee3() {
+        var _e$response3, _t3;
+        return _regenerator().w(function (_context3) {
+          while (1) switch (_context3.p = _context3.n) {
+            case 0:
+              _context3.p = 0;
+              _context3.n = 1;
+              return axios.post("".concat(_this3.apiEndpoint, "/").concat(scheduleId, "/resume"));
+            case 1:
+              _context3.n = 2;
+              return _this3.loadData();
+            case 2:
+              _context3.n = 4;
+              break;
+            case 3:
+              _context3.p = 3;
+              _t3 = _context3.v;
+              alert("Failed to resume schedule: ".concat(((_e$response3 = _t3.response) === null || _e$response3 === void 0 || (_e$response3 = _e$response3.data) === null || _e$response3 === void 0 ? void 0 : _e$response3.error) || _t3.message));
+            case 4:
+              return _context3.a(2);
+          }
+        }, _callee3, null, [[0, 3]]);
+      }))();
+    },
+    triggerNow: function triggerNow(scheduleId) {
+      var _this4 = this;
+      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee4() {
+        var response, _e$response4, _t4;
+        return _regenerator().w(function (_context4) {
+          while (1) switch (_context4.p = _context4.n) {
+            case 0:
+              if (confirm('Trigger this schedule now?')) {
+                _context4.n = 1;
+                break;
+              }
+              return _context4.a(2);
+            case 1:
+              _context4.p = 1;
+              _context4.n = 2;
+              return axios.post("".concat(_this4.apiEndpoint, "/").concat(scheduleId, "/trigger"));
+            case 2:
+              response = _context4.v;
+              if (response.data.triggered) {
+                alert("Schedule triggered. Instance ID: ".concat(response.data.instance_id));
+              } else {
+                alert('Schedule trigger was skipped (likely due to overlap policy)');
+              }
+              _context4.n = 3;
+              return _this4.loadData();
+            case 3:
+              _context4.n = 5;
+              break;
+            case 4:
+              _context4.p = 4;
+              _t4 = _context4.v;
+              alert("Failed to trigger schedule: ".concat(((_e$response4 = _t4.response) === null || _e$response4 === void 0 || (_e$response4 = _e$response4.data) === null || _e$response4 === void 0 ? void 0 : _e$response4.error) || _t4.message));
+            case 5:
+              return _context4.a(2);
+          }
+        }, _callee4, null, [[1, 4]]);
+      }))();
+    },
+    showBackfillDialog: function showBackfillDialog(schedule) {
+      this.backfillScheduleId = schedule.id;
+      this.backfillFrom = '';
+      this.backfillTo = '';
+      this.backfillOverlapPolicy = '';
+      this.showBackfill = true;
+    },
+    executeBackfill: function executeBackfill() {
+      var _this5 = this;
+      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee5() {
+        var from, to, payload, response, _e$response5, _t5;
+        return _regenerator().w(function (_context5) {
+          while (1) switch (_context5.p = _context5.n) {
+            case 0:
+              if (!(!_this5.backfillFrom || !_this5.backfillTo)) {
+                _context5.n = 1;
+                break;
+              }
+              alert('Please specify both from and to timestamps');
+              return _context5.a(2);
+            case 1:
+              _context5.p = 1;
+              from = new Date(_this5.backfillFrom).toISOString();
+              to = new Date(_this5.backfillTo).toISOString();
+              payload = {
+                from: from,
+                to: to
+              };
+              if (_this5.backfillOverlapPolicy) {
+                payload.overlap_policy = _this5.backfillOverlapPolicy;
+              }
+              _context5.n = 2;
+              return axios.post("".concat(_this5.apiEndpoint, "/").concat(_this5.backfillScheduleId, "/backfill"), payload);
+            case 2:
+              response = _context5.v;
+              alert("Backfill completed. Results: ".concat(JSON.stringify(response.data.results)));
+              _this5.showBackfill = false;
+              _context5.n = 3;
+              return _this5.loadData();
+            case 3:
+              _context5.n = 5;
+              break;
+            case 4:
+              _context5.p = 4;
+              _t5 = _context5.v;
+              alert("Backfill failed: ".concat(((_e$response5 = _t5.response) === null || _e$response5 === void 0 || (_e$response5 = _e$response5.data) === null || _e$response5 === void 0 ? void 0 : _e$response5.error) || _t5.message));
+            case 5:
+              return _context5.a(2);
+          }
+        }, _callee5, null, [[1, 4]]);
+      }))();
+    },
+    statusBadgeClass: function statusBadgeClass(status) {
+      return {
+        'active': 'badge-success',
+        'paused': 'badge-warning',
+        'deleted': 'badge-secondary'
+      }[status] || 'badge-secondary';
+    },
+    nextFireClass: function nextFireClass(timestamp) {
+      if (!timestamp) return '';
+      var fireTime = new Date(timestamp);
+      var now = new Date();
+      var diffMinutes = (fireTime - now) / (1000 * 60);
+      if (diffMinutes < 0) return 'text-danger'; // Overdue
+      if (diffMinutes < 60) return 'text-warning'; // Soon
+      return 'text-success';
+    },
+    resultClass: function resultClass(result) {
+      return {
+        'started': 'text-success',
+        'skipped': 'text-warning',
+        'failed': 'text-danger'
+      }[result] || 'text-muted';
+    },
+    formatTimestamp: function formatTimestamp(timestamp) {
+      if (!timestamp) return '';
+      try {
+        return new Date(timestamp).toLocaleString();
+      } catch (e) {
+        return timestamp;
+      }
+    },
+    formatInterval: function formatInterval(interval) {
+      if (!interval) return '';
+      // Assuming interval is in seconds
+      if (interval < 60) return "".concat(interval, "s");
+      if (interval < 3600) return "".concat(Math.floor(interval / 60), "m");
+      if (interval < 86400) return "".concat(Math.floor(interval / 3600), "h");
+      return "".concat(Math.floor(interval / 86400), "d");
+    },
+    truncateId: function truncateId(id) {
+      if (!id) return '';
+      return id.length > 12 ? "".concat(id.substring(0, 8), "...") : id;
+    }
+  }
+});
+
+/***/ },
+
 /***/ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/SearchAttributeRenderer.vue?vue&type=script&lang=js"
 /*!*****************************************************************************************************************************************************************************************************************!*\
   !*** ./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/SearchAttributeRenderer.vue?vue&type=script&lang=js ***!
@@ -314,6 +631,185 @@ __webpack_require__.r(__webpack_exports__);
         var minutes = Math.floor(seconds % 3600 / 60);
         return "".concat(hours, "h ").concat(minutes, "m");
       }
+    }
+  }
+});
+
+/***/ },
+
+/***/ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/WorkerHealth.vue?vue&type=script&lang=js"
+/*!******************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/WorkerHealth.vue?vue&type=script&lang=js ***!
+  \******************************************************************************************************************************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+function _regenerator() { /*! regenerator-runtime -- Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE */ var e, t, r = "function" == typeof Symbol ? Symbol : {}, n = r.iterator || "@@iterator", o = r.toStringTag || "@@toStringTag"; function i(r, n, o, i) { var c = n && n.prototype instanceof Generator ? n : Generator, u = Object.create(c.prototype); return _regeneratorDefine2(u, "_invoke", function (r, n, o) { var i, c, u, f = 0, p = o || [], y = !1, G = { p: 0, n: 0, v: e, a: d, f: d.bind(e, 4), d: function d(t, r) { return i = t, c = 0, u = e, G.n = r, a; } }; function d(r, n) { for (c = r, u = n, t = 0; !y && f && !o && t < p.length; t++) { var o, i = p[t], d = G.p, l = i[2]; r > 3 ? (o = l === n) && (u = i[(c = i[4]) ? 5 : (c = 3, 3)], i[4] = i[5] = e) : i[0] <= d && ((o = r < 2 && d < i[1]) ? (c = 0, G.v = n, G.n = i[1]) : d < l && (o = r < 3 || i[0] > n || n > l) && (i[4] = r, i[5] = n, G.n = l, c = 0)); } if (o || r > 1) return a; throw y = !0, n; } return function (o, p, l) { if (f > 1) throw TypeError("Generator is already running"); for (y && 1 === p && d(p, l), c = p, u = l; (t = c < 2 ? e : u) || !y;) { i || (c ? c < 3 ? (c > 1 && (G.n = -1), d(c, u)) : G.n = u : G.v = u); try { if (f = 2, i) { if (c || (o = "next"), t = i[o]) { if (!(t = t.call(i, u))) throw TypeError("iterator result is not an object"); if (!t.done) return t; u = t.value, c < 2 && (c = 0); } else 1 === c && (t = i["return"]) && t.call(i), c < 2 && (u = TypeError("The iterator does not provide a '" + o + "' method"), c = 1); i = e; } else if ((t = (y = G.n < 0) ? u : r.call(n, G)) !== a) break; } catch (t) { i = e, c = 1, u = t; } finally { f = 1; } } return { value: t, done: y }; }; }(r, o, i), !0), u; } var a = {}; function Generator() {} function GeneratorFunction() {} function GeneratorFunctionPrototype() {} t = Object.getPrototypeOf; var c = [][n] ? t(t([][n]())) : (_regeneratorDefine2(t = {}, n, function () { return this; }), t), u = GeneratorFunctionPrototype.prototype = Generator.prototype = Object.create(c); function f(e) { return Object.setPrototypeOf ? Object.setPrototypeOf(e, GeneratorFunctionPrototype) : (e.__proto__ = GeneratorFunctionPrototype, _regeneratorDefine2(e, o, "GeneratorFunction")), e.prototype = Object.create(u), e; } return GeneratorFunction.prototype = GeneratorFunctionPrototype, _regeneratorDefine2(u, "constructor", GeneratorFunctionPrototype), _regeneratorDefine2(GeneratorFunctionPrototype, "constructor", GeneratorFunction), GeneratorFunction.displayName = "GeneratorFunction", _regeneratorDefine2(GeneratorFunctionPrototype, o, "GeneratorFunction"), _regeneratorDefine2(u), _regeneratorDefine2(u, o, "Generator"), _regeneratorDefine2(u, n, function () { return this; }), _regeneratorDefine2(u, "toString", function () { return "[object Generator]"; }), (_regenerator = function _regenerator() { return { w: i, m: f }; })(); }
+function _regeneratorDefine2(e, r, n, t) { var i = Object.defineProperty; try { i({}, "", {}); } catch (e) { i = 0; } _regeneratorDefine2 = function _regeneratorDefine(e, r, n, t) { function o(r, n) { _regeneratorDefine2(e, r, function (e) { return this._invoke(r, n, e); }); } r ? i ? i(e, r, { value: n, enumerable: !t, configurable: !t, writable: !t }) : e[r] = n : (o("next", 0), o("throw", 1), o("return", 2)); }, _regeneratorDefine2(e, r, n, t); }
+function asyncGeneratorStep(n, t, e, r, o, a, c) { try { var i = n[a](c), u = i.value; } catch (n) { return void e(n); } i.done ? t(u) : Promise.resolve(u).then(r, o); }
+function _asyncToGenerator(n) { return function () { var t = this, e = arguments; return new Promise(function (r, o) { var a = n.apply(t, e); function _next(n) { asyncGeneratorStep(a, r, o, _next, _throw, "next", n); } function _throw(n) { asyncGeneratorStep(a, r, o, _next, _throw, "throw", n); } _next(void 0); }); }; }
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ({
+  name: 'WorkerHealth',
+  props: {
+    apiEndpoint: {
+      type: String,
+      "default": '/waterline-api/v2/health'
+    },
+    autoRefresh: {
+      type: Boolean,
+      "default": false
+    },
+    refreshInterval: {
+      type: Number,
+      "default": 30000 // 30 seconds
+    }
+  },
+  data: function data() {
+    return {
+      loading: true,
+      error: null,
+      healthData: null,
+      workers: [],
+      refreshTimer: null
+    };
+  },
+  computed: {
+    activeWorkerCount: function activeWorkerCount() {
+      var _this$healthData;
+      return ((_this$healthData = this.healthData) === null || _this$healthData === void 0 || (_this$healthData = _this$healthData.operator_metrics) === null || _this$healthData === void 0 || (_this$healthData = _this$healthData.workers) === null || _this$healthData === void 0 ? void 0 : _this$healthData.active_workers) || 0;
+    },
+    supportedWorkerCount: function supportedWorkerCount() {
+      var _this$healthData2;
+      return ((_this$healthData2 = this.healthData) === null || _this$healthData2 === void 0 || (_this$healthData2 = _this$healthData2.operator_metrics) === null || _this$healthData2 === void 0 || (_this$healthData2 = _this$healthData2.workers) === null || _this$healthData2 === void 0 ? void 0 : _this$healthData2.active_workers_supporting_required) || 0;
+    },
+    totalLeases: function totalLeases() {
+      // This would come from metrics if available
+      return this.workers.reduce(function (sum, w) {
+        return sum + (w.current_leases || 0);
+      }, 0);
+    },
+    healthChecks: function healthChecks() {
+      var _this$healthData3;
+      return ((_this$healthData3 = this.healthData) === null || _this$healthData3 === void 0 ? void 0 : _this$healthData3.checks) || [];
+    }
+  },
+  mounted: function mounted() {
+    this.loadData();
+    if (this.autoRefresh) {
+      this.startAutoRefresh();
+    }
+  },
+  beforeDestroy: function beforeDestroy() {
+    this.stopAutoRefresh();
+  },
+  methods: {
+    loadData: function loadData() {
+      var _this = this;
+      return _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
+        var _response$data$operat, response, _e$response, _t;
+        return _regenerator().w(function (_context) {
+          while (1) switch (_context.p = _context.n) {
+            case 0:
+              _this.loading = true;
+              _this.error = null;
+              _context.p = 1;
+              _context.n = 2;
+              return axios.get(_this.apiEndpoint);
+            case 2:
+              response = _context.v;
+              _this.healthData = response.data;
+
+              // Extract worker data from health response if available
+              // This may need adjustment based on actual API structure
+              _this.workers = ((_response$data$operat = response.data.operator_metrics) === null || _response$data$operat === void 0 || (_response$data$operat = _response$data$operat.workers) === null || _response$data$operat === void 0 ? void 0 : _response$data$operat.registrations) || [];
+              _context.n = 4;
+              break;
+            case 3:
+              _context.p = 3;
+              _t = _context.v;
+              _this.error = ((_e$response = _t.response) === null || _e$response === void 0 || (_e$response = _e$response.data) === null || _e$response === void 0 ? void 0 : _e$response.message) || _t.message || 'Failed to load worker health';
+              console.error('Worker health error:', _t);
+            case 4:
+              _context.p = 4;
+              _this.loading = false;
+              return _context.f(4);
+            case 5:
+              return _context.a(2);
+          }
+        }, _callee, null, [[1, 3, 4, 5]]);
+      }))();
+    },
+    refresh: function refresh() {
+      this.loadData();
+    },
+    startAutoRefresh: function startAutoRefresh() {
+      var _this2 = this;
+      this.refreshTimer = setInterval(function () {
+        _this2.loadData();
+      }, this.refreshInterval);
+    },
+    stopAutoRefresh: function stopAutoRefresh() {
+      if (this.refreshTimer) {
+        clearInterval(this.refreshTimer);
+        this.refreshTimer = null;
+      }
+    },
+    statusColor: function statusColor(status) {
+      return {
+        'ok': 'text-success',
+        'warning': 'text-warning',
+        'error': 'text-danger'
+      }[status] || 'text-secondary';
+    },
+    statusBadgeClass: function statusBadgeClass(worker) {
+      var status = worker.status || 'unknown';
+      return {
+        'active': 'badge-success',
+        'idle': 'badge-info',
+        'draining': 'badge-warning',
+        'offline': 'badge-secondary',
+        'failed': 'badge-danger'
+      }[status] || 'badge-secondary';
+    },
+    checkBadgeClass: function checkBadgeClass(status) {
+      return {
+        'ok': 'badge-success',
+        'warning': 'badge-warning',
+        'error': 'badge-danger'
+      }[status] || 'badge-secondary';
+    },
+    heartbeatClass: function heartbeatClass(worker) {
+      var isStale = this.isHeartbeatStale(worker.last_heartbeat_at);
+      return isStale ? 'text-danger' : 'text-success';
+    },
+    workerRowClass: function workerRowClass(worker) {
+      var isStale = this.isHeartbeatStale(worker.last_heartbeat_at);
+      return isStale ? 'table-danger' : '';
+    },
+    isHeartbeatStale: function isHeartbeatStale(lastHeartbeat) {
+      if (!lastHeartbeat) return true;
+      var lastTime = new Date(lastHeartbeat);
+      var now = new Date();
+      var diffMinutes = (now - lastTime) / (1000 * 60);
+      return diffMinutes > 5; // Consider stale if no heartbeat in 5 minutes
+    },
+    formatHeartbeat: function formatHeartbeat(timestamp) {
+      if (!timestamp) return 'never';
+      var date = new Date(timestamp);
+      var now = new Date();
+      var diffSeconds = Math.floor((now - date) / 1000);
+      if (diffSeconds < 60) return "".concat(diffSeconds, "s ago");
+      if (diffSeconds < 3600) return "".concat(Math.floor(diffSeconds / 60), "m ago");
+      if (diffSeconds < 86400) return "".concat(Math.floor(diffSeconds / 3600), "h ago");
+      return date.toLocaleString();
+    },
+    truncateId: function truncateId(id) {
+      if (!id) return '';
+      return id.length > 12 ? "".concat(id.substring(0, 8), "...").concat(id.substring(id.length - 4)) : id;
     }
   }
 });
@@ -3822,6 +4318,54 @@ function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
 
 /***/ },
 
+/***/ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/screens/schedules.vue?vue&type=script&lang=js"
+/*!************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/screens/schedules.vue?vue&type=script&lang=js ***!
+  \************************************************************************************************************************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _components_ScheduleView_vue__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../components/ScheduleView.vue */ "./resources/js/components/ScheduleView.vue");
+
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ({
+  components: {
+    ScheduleView: _components_ScheduleView_vue__WEBPACK_IMPORTED_MODULE_0__["default"]
+  },
+  mounted: function mounted() {
+    document.title = "Waterline - Schedules";
+  }
+});
+
+/***/ },
+
+/***/ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/screens/workers.vue?vue&type=script&lang=js"
+/*!**********************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/screens/workers.vue?vue&type=script&lang=js ***!
+  \**********************************************************************************************************************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _components_WorkerHealth_vue__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../components/WorkerHealth.vue */ "./resources/js/components/WorkerHealth.vue");
+
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ({
+  components: {
+    WorkerHealth: _components_WorkerHealth_vue__WEBPACK_IMPORTED_MODULE_0__["default"]
+  },
+  mounted: function mounted() {
+    document.title = "Waterline - Workers";
+  }
+});
+
+/***/ },
+
 /***/ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/PayloadInspector.vue?vue&type=template&id=06e33ef4&scoped=true"
 /*!*********************************************************************************************************************************************************************************************************************************************************************************************************!*\
   !*** ./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/PayloadInspector.vue?vue&type=template&id=06e33ef4&scoped=true ***!
@@ -3870,6 +4414,379 @@ var render = function render() {
   }, [_c("small", [_vm._v("(empty)")])])]);
 };
 var staticRenderFns = [];
+render._withStripped = true;
+
+
+/***/ },
+
+/***/ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/ScheduleView.vue?vue&type=template&id=41ff43c7&scoped=true"
+/*!*****************************************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/ScheduleView.vue?vue&type=template&id=41ff43c7&scoped=true ***!
+  \*****************************************************************************************************************************************************************************************************************************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   render: () => (/* binding */ render),
+/* harmony export */   staticRenderFns: () => (/* binding */ staticRenderFns)
+/* harmony export */ });
+var render = function render() {
+  var _vm = this,
+    _c = _vm._self._c;
+  return _c("div", {
+    staticClass: "schedule-view"
+  }, [_c("div", {
+    staticClass: "card"
+  }, [_c("div", {
+    staticClass: "card-header d-flex align-items-center justify-content-between"
+  }, [_c("h5", {
+    staticClass: "mb-0"
+  }, [_vm._v("Workflow Schedules")]), _vm._v(" "), _c("div", [_c("select", {
+    directives: [{
+      name: "model",
+      rawName: "v-model",
+      value: _vm.statusFilter,
+      expression: "statusFilter"
+    }],
+    staticClass: "form-control form-control-sm d-inline-block mr-2",
+    staticStyle: {
+      width: "auto"
+    },
+    on: {
+      change: function change($event) {
+        var $$selectedVal = Array.prototype.filter.call($event.target.options, function (o) {
+          return o.selected;
+        }).map(function (o) {
+          var val = "_value" in o ? o._value : o.value;
+          return val;
+        });
+        _vm.statusFilter = $event.target.multiple ? $$selectedVal : $$selectedVal[0];
+      }
+    }
+  }, [_c("option", {
+    attrs: {
+      value: ""
+    }
+  }, [_vm._v("All Statuses")]), _vm._v(" "), _c("option", {
+    attrs: {
+      value: "active"
+    }
+  }, [_vm._v("Active")]), _vm._v(" "), _c("option", {
+    attrs: {
+      value: "paused"
+    }
+  }, [_vm._v("Paused")]), _vm._v(" "), _c("option", {
+    attrs: {
+      value: "deleted"
+    }
+  }, [_vm._v("Deleted")])]), _vm._v(" "), _c("button", {
+    staticClass: "btn btn-sm btn-outline-secondary",
+    on: {
+      click: _vm.refresh
+    }
+  }, [_c("svg", {
+    staticClass: "icon fill-text-color",
+    staticStyle: {
+      width: "16px",
+      height: "16px"
+    },
+    attrs: {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 20 20"
+    }
+  }, [_c("path", {
+    attrs: {
+      d: "M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"
+    }
+  })]), _vm._v("\n                    Refresh\n                ")])])]), _vm._v(" "), _vm.loading ? _c("div", {
+    staticClass: "card-body text-center py-5"
+  }, [_c("svg", {
+    staticClass: "icon spin fill-text-color",
+    staticStyle: {
+      width: "32px",
+      height: "32px"
+    },
+    attrs: {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 20 20"
+    }
+  }, [_c("path", {
+    attrs: {
+      d: "M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"
+    }
+  })]), _vm._v(" "), _c("p", {
+    staticClass: "mt-2 mb-0 text-muted"
+  }, [_vm._v("Loading schedules...")])]) : _vm.error ? _c("div", {
+    staticClass: "card-body"
+  }, [_c("div", {
+    staticClass: "alert alert-danger mb-0"
+  }, [_c("strong", [_vm._v("Error:")]), _vm._v(" " + _vm._s(_vm.error) + "\n            ")])]) : _c("div", {
+    staticClass: "card-body p-0"
+  }, [_vm.schedules.length > 0 ? _c("div", {
+    staticClass: "table-responsive"
+  }, [_c("table", {
+    staticClass: "table table-hover mb-0"
+  }, [_vm._m(0), _vm._v(" "), _c("tbody", _vm._l(_vm.schedules, function (schedule) {
+    return _c("tr", {
+      key: schedule.id
+    }, [_c("td", [_c("code", {
+      staticClass: "small"
+    }, [_vm._v(_vm._s(_vm.truncateId(schedule.id)))])]), _vm._v(" "), _c("td", [_c("code", {
+      staticClass: "small"
+    }, [_vm._v(_vm._s(schedule.workflow_type || schedule.workflow_class))])]), _vm._v(" "), _c("td", {
+      staticClass: "small"
+    }, [schedule.spec ? _c("div", [schedule.spec.cron ? _c("span", {
+      staticClass: "badge badge-info"
+    }, [_vm._v("\n                                        CRON: " + _vm._s(schedule.spec.cron) + "\n                                    ")]) : schedule.spec.interval ? _c("span", {
+      staticClass: "badge badge-info"
+    }, [_vm._v("\n                                        Every " + _vm._s(_vm.formatInterval(schedule.spec.interval)) + "\n                                    ")]) : _c("span", {
+      staticClass: "text-muted"
+    }, [_vm._v("Custom")])]) : _vm._e()]), _vm._v(" "), _c("td", [_c("span", {
+      staticClass: "badge",
+      "class": _vm.statusBadgeClass(schedule.status)
+    }, [_vm._v("\n                                    " + _vm._s(schedule.status) + "\n                                ")])]), _vm._v(" "), _c("td", {
+      staticClass: "small"
+    }, [schedule.next_fire_at ? _c("span", {
+      "class": _vm.nextFireClass(schedule.next_fire_at)
+    }, [_vm._v("\n                                    " + _vm._s(_vm.formatTimestamp(schedule.next_fire_at)) + "\n                                ")]) : _c("span", {
+      staticClass: "text-muted"
+    }, [_vm._v("-")])]), _vm._v(" "), _c("td", {
+      staticClass: "small"
+    }, [schedule.last_fire_at ? _c("span", [_vm._v("\n                                    " + _vm._s(_vm.formatTimestamp(schedule.last_fire_at)) + "\n                                    "), schedule.last_fire_result ? _c("span", {
+      staticClass: "ml-1",
+      "class": _vm.resultClass(schedule.last_fire_result)
+    }, [_vm._v("\n                                        (" + _vm._s(schedule.last_fire_result) + ")\n                                    ")]) : _vm._e()]) : _c("span", {
+      staticClass: "text-muted"
+    }, [_vm._v("Never")])]), _vm._v(" "), _c("td", [_c("div", {
+      staticClass: "btn-group btn-group-sm"
+    }, [schedule.status === "active" ? _c("button", {
+      staticClass: "btn btn-sm btn-outline-warning",
+      attrs: {
+        title: "Pause"
+      },
+      on: {
+        click: function click($event) {
+          return _vm.pauseSchedule(schedule.id);
+        }
+      }
+    }, [_vm._v("\n                                        ⏸\n                                    ")]) : _vm._e(), _vm._v(" "), schedule.status === "paused" ? _c("button", {
+      staticClass: "btn btn-sm btn-outline-success",
+      attrs: {
+        title: "Resume"
+      },
+      on: {
+        click: function click($event) {
+          return _vm.resumeSchedule(schedule.id);
+        }
+      }
+    }, [_vm._v("\n                                        ▶\n                                    ")]) : _vm._e(), _vm._v(" "), _c("button", {
+      staticClass: "btn btn-sm btn-outline-primary",
+      attrs: {
+        title: "Trigger Now"
+      },
+      on: {
+        click: function click($event) {
+          return _vm.triggerNow(schedule.id);
+        }
+      }
+    }, [_vm._v("\n                                        ⚡\n                                    ")]), _vm._v(" "), _c("button", {
+      staticClass: "btn btn-sm btn-outline-info",
+      attrs: {
+        title: "Backfill"
+      },
+      on: {
+        click: function click($event) {
+          return _vm.showBackfillDialog(schedule);
+        }
+      }
+    }, [_vm._v("\n                                        📅\n                                    ")])])])]);
+  }), 0)])]) : _c("div", {
+    staticClass: "text-center py-5 text-muted"
+  }, [_c("p", {
+    staticClass: "mb-0"
+  }, [_vm._v("No schedules found")])]), _vm._v(" "), _vm.pagination && _vm.pagination.last_page > 1 ? _c("div", {
+    staticClass: "card-footer"
+  }, [_c("nav", [_c("ul", {
+    staticClass: "pagination pagination-sm mb-0"
+  }, [_c("li", {
+    staticClass: "page-item",
+    "class": {
+      disabled: _vm.pagination.current_page === 1
+    }
+  }, [_c("button", {
+    staticClass: "page-link",
+    on: {
+      click: function click($event) {
+        return _vm.goToPage(_vm.pagination.current_page - 1);
+      }
+    }
+  }, [_vm._v("Previous")])]), _vm._v(" "), _vm._l(_vm.visiblePages, function (page) {
+    return _c("li", {
+      key: page,
+      staticClass: "page-item",
+      "class": {
+        active: page === _vm.pagination.current_page
+      }
+    }, [_c("button", {
+      staticClass: "page-link",
+      on: {
+        click: function click($event) {
+          return _vm.goToPage(page);
+        }
+      }
+    }, [_vm._v(_vm._s(page))])]);
+  }), _vm._v(" "), _c("li", {
+    staticClass: "page-item",
+    "class": {
+      disabled: _vm.pagination.current_page === _vm.pagination.last_page
+    }
+  }, [_c("button", {
+    staticClass: "page-link",
+    on: {
+      click: function click($event) {
+        return _vm.goToPage(_vm.pagination.current_page + 1);
+      }
+    }
+  }, [_vm._v("Next")])])], 2)])]) : _vm._e()])]), _vm._v(" "), _vm.showBackfill ? _c("div", {
+    staticClass: "modal d-block",
+    staticStyle: {
+      background: "rgba(0,0,0,0.5)"
+    },
+    on: {
+      click: function click($event) {
+        if ($event.target !== $event.currentTarget) return null;
+        _vm.showBackfill = false;
+      }
+    }
+  }, [_c("div", {
+    staticClass: "modal-dialog"
+  }, [_c("div", {
+    staticClass: "modal-content"
+  }, [_c("div", {
+    staticClass: "modal-header"
+  }, [_c("h5", {
+    staticClass: "modal-title"
+  }, [_vm._v("Backfill Schedule")]), _vm._v(" "), _c("button", {
+    staticClass: "close",
+    attrs: {
+      type: "button"
+    },
+    on: {
+      click: function click($event) {
+        _vm.showBackfill = false;
+      }
+    }
+  }, [_c("span", [_vm._v("×")])])]), _vm._v(" "), _c("div", {
+    staticClass: "modal-body"
+  }, [_c("p", {
+    staticClass: "small text-muted"
+  }, [_vm._v("\n                        Backfill will trigger workflow executions for missed schedule times in the specified range.\n                    ")]), _vm._v(" "), _c("div", {
+    staticClass: "form-group"
+  }, [_c("label", [_vm._v("From (ISO 8601)")]), _vm._v(" "), _c("input", {
+    directives: [{
+      name: "model",
+      rawName: "v-model",
+      value: _vm.backfillFrom,
+      expression: "backfillFrom"
+    }],
+    staticClass: "form-control",
+    attrs: {
+      type: "datetime-local"
+    },
+    domProps: {
+      value: _vm.backfillFrom
+    },
+    on: {
+      input: function input($event) {
+        if ($event.target.composing) return;
+        _vm.backfillFrom = $event.target.value;
+      }
+    }
+  })]), _vm._v(" "), _c("div", {
+    staticClass: "form-group"
+  }, [_c("label", [_vm._v("To (ISO 8601)")]), _vm._v(" "), _c("input", {
+    directives: [{
+      name: "model",
+      rawName: "v-model",
+      value: _vm.backfillTo,
+      expression: "backfillTo"
+    }],
+    staticClass: "form-control",
+    attrs: {
+      type: "datetime-local"
+    },
+    domProps: {
+      value: _vm.backfillTo
+    },
+    on: {
+      input: function input($event) {
+        if ($event.target.composing) return;
+        _vm.backfillTo = $event.target.value;
+      }
+    }
+  })]), _vm._v(" "), _c("div", {
+    staticClass: "form-group"
+  }, [_c("label", [_vm._v("Overlap Policy")]), _vm._v(" "), _c("select", {
+    directives: [{
+      name: "model",
+      rawName: "v-model",
+      value: _vm.backfillOverlapPolicy,
+      expression: "backfillOverlapPolicy"
+    }],
+    staticClass: "form-control",
+    on: {
+      change: function change($event) {
+        var $$selectedVal = Array.prototype.filter.call($event.target.options, function (o) {
+          return o.selected;
+        }).map(function (o) {
+          var val = "_value" in o ? o._value : o.value;
+          return val;
+        });
+        _vm.backfillOverlapPolicy = $event.target.multiple ? $$selectedVal : $$selectedVal[0];
+      }
+    }
+  }, [_c("option", {
+    attrs: {
+      value: ""
+    }
+  }, [_vm._v("Use schedule default")]), _vm._v(" "), _c("option", {
+    attrs: {
+      value: "skip"
+    }
+  }, [_vm._v("Skip")]), _vm._v(" "), _c("option", {
+    attrs: {
+      value: "allow"
+    }
+  }, [_vm._v("Allow")]), _vm._v(" "), _c("option", {
+    attrs: {
+      value: "terminate"
+    }
+  }, [_vm._v("Terminate")]), _vm._v(" "), _c("option", {
+    attrs: {
+      value: "cancel"
+    }
+  }, [_vm._v("Cancel")])])])]), _vm._v(" "), _c("div", {
+    staticClass: "modal-footer"
+  }, [_c("button", {
+    staticClass: "btn btn-secondary",
+    on: {
+      click: function click($event) {
+        _vm.showBackfill = false;
+      }
+    }
+  }, [_vm._v("Cancel")]), _vm._v(" "), _c("button", {
+    staticClass: "btn btn-primary",
+    on: {
+      click: _vm.executeBackfill
+    }
+  }, [_vm._v("Backfill")])])])])]) : _vm._e()]);
+};
+var staticRenderFns = [function () {
+  var _vm = this,
+    _c = _vm._self._c;
+  return _c("thead", [_c("tr", [_c("th", [_vm._v("Schedule ID")]), _vm._v(" "), _c("th", [_vm._v("Workflow Type")]), _vm._v(" "), _c("th", [_vm._v("Spec")]), _vm._v(" "), _c("th", [_vm._v("Status")]), _vm._v(" "), _c("th", [_vm._v("Next Fire")]), _vm._v(" "), _c("th", [_vm._v("Last Result")]), _vm._v(" "), _c("th", [_vm._v("Actions")])])]);
+}];
 render._withStripped = true;
 
 
@@ -4056,6 +4973,178 @@ var render = function render() {
   })], 1) : _vm._e()])])]);
 };
 var staticRenderFns = [];
+render._withStripped = true;
+
+
+/***/ },
+
+/***/ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/WorkerHealth.vue?vue&type=template&id=f5bf5b36&scoped=true"
+/*!*****************************************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/WorkerHealth.vue?vue&type=template&id=f5bf5b36&scoped=true ***!
+  \*****************************************************************************************************************************************************************************************************************************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   render: () => (/* binding */ render),
+/* harmony export */   staticRenderFns: () => (/* binding */ staticRenderFns)
+/* harmony export */ });
+var render = function render() {
+  var _vm = this,
+    _c = _vm._self._c;
+  return _c("div", {
+    staticClass: "worker-health"
+  }, [_c("div", {
+    staticClass: "card"
+  }, [_c("div", {
+    staticClass: "card-header d-flex align-items-center justify-content-between"
+  }, [_c("h5", {
+    staticClass: "mb-0"
+  }, [_vm._v("Worker Fleet Health")]), _vm._v(" "), _c("button", {
+    staticClass: "btn btn-sm btn-outline-secondary",
+    on: {
+      click: _vm.refresh
+    }
+  }, [_c("svg", {
+    staticClass: "icon fill-text-color",
+    staticStyle: {
+      width: "16px",
+      height: "16px"
+    },
+    attrs: {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 20 20"
+    }
+  }, [_c("path", {
+    attrs: {
+      d: "M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"
+    }
+  })]), _vm._v("\n                Refresh\n            ")])]), _vm._v(" "), _vm.loading ? _c("div", {
+    staticClass: "card-body text-center py-5"
+  }, [_c("svg", {
+    staticClass: "icon spin fill-text-color",
+    staticStyle: {
+      width: "32px",
+      height: "32px"
+    },
+    attrs: {
+      xmlns: "http://www.w3.org/2000/svg",
+      viewBox: "0 0 20 20"
+    }
+  }, [_c("path", {
+    attrs: {
+      d: "M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"
+    }
+  })]), _vm._v(" "), _c("p", {
+    staticClass: "mt-2 mb-0 text-muted"
+  }, [_vm._v("Loading worker health...")])]) : _vm.error ? _c("div", {
+    staticClass: "card-body"
+  }, [_c("div", {
+    staticClass: "alert alert-danger mb-0"
+  }, [_c("strong", [_vm._v("Error:")]), _vm._v(" " + _vm._s(_vm.error) + "\n            ")])]) : _c("div", {
+    staticClass: "card-body"
+  }, [_vm.healthData ? _c("div", {
+    staticClass: "mb-4"
+  }, [_c("div", {
+    staticClass: "row"
+  }, [_c("div", {
+    staticClass: "col-md-3"
+  }, [_c("div", {
+    staticClass: "border rounded p-3 text-center"
+  }, [_c("div", {
+    staticClass: "h2 mb-1",
+    "class": _vm.statusColor(_vm.healthData.status)
+  }, [_vm._v("\n                                " + _vm._s(_vm.healthData.status.toUpperCase()) + "\n                            ")]), _vm._v(" "), _c("small", {
+    staticClass: "text-muted"
+  }, [_vm._v("Overall Health")])])]), _vm._v(" "), _c("div", {
+    staticClass: "col-md-3"
+  }, [_c("div", {
+    staticClass: "border rounded p-3 text-center"
+  }, [_c("div", {
+    staticClass: "h2 mb-1"
+  }, [_vm._v(_vm._s(_vm.activeWorkerCount))]), _vm._v(" "), _c("small", {
+    staticClass: "text-muted"
+  }, [_vm._v("Active Workers")])])]), _vm._v(" "), _c("div", {
+    staticClass: "col-md-3"
+  }, [_c("div", {
+    staticClass: "border rounded p-3 text-center"
+  }, [_c("div", {
+    staticClass: "h2 mb-1"
+  }, [_vm._v(_vm._s(_vm.supportedWorkerCount))]), _vm._v(" "), _c("small", {
+    staticClass: "text-muted"
+  }, [_vm._v("Compatible Workers")])])]), _vm._v(" "), _c("div", {
+    staticClass: "col-md-3"
+  }, [_c("div", {
+    staticClass: "border rounded p-3 text-center"
+  }, [_c("div", {
+    staticClass: "h2 mb-1"
+  }, [_vm._v(_vm._s(_vm.totalLeases))]), _vm._v(" "), _c("small", {
+    staticClass: "text-muted"
+  }, [_vm._v("Active Leases")])])])])]) : _vm._e(), _vm._v(" "), _vm.workers.length > 0 ? _c("div", [_c("h6", {
+    staticClass: "mb-3"
+  }, [_vm._v("Registered Workers")]), _vm._v(" "), _c("div", {
+    staticClass: "table-responsive"
+  }, [_c("table", {
+    staticClass: "table table-sm table-hover"
+  }, [_vm._m(0), _vm._v(" "), _c("tbody", _vm._l(_vm.workers, function (worker) {
+    return _c("tr", {
+      key: worker.worker_id,
+      "class": _vm.workerRowClass(worker)
+    }, [_c("td", [_c("code", {
+      staticClass: "small"
+    }, [_vm._v(_vm._s(_vm.truncateId(worker.worker_id)))])]), _vm._v(" "), _c("td", [_c("span", {
+      staticClass: "badge badge-secondary"
+    }, [_vm._v(_vm._s(worker.runtime))])]), _vm._v(" "), _c("td", [_c("span", {
+      staticClass: "text-monospace small"
+    }, [_vm._v(_vm._s(worker.task_queue || "default"))])]), _vm._v(" "), _c("td", [_c("span", {
+      staticClass: "small",
+      "class": _vm.heartbeatClass(worker)
+    }, [_vm._v("\n                                        " + _vm._s(_vm.formatHeartbeat(worker.last_heartbeat_at)) + "\n                                    ")])]), _vm._v(" "), _c("td", [_c("span", {
+      staticClass: "badge",
+      "class": _vm.statusBadgeClass(worker)
+    }, [_vm._v("\n                                        " + _vm._s(worker.status || "unknown") + "\n                                    ")])]), _vm._v(" "), _c("td", {
+      staticClass: "small"
+    }, [worker.supported_workflow_types && worker.supported_workflow_types.length > 0 ? _c("span", [_vm._v("\n                                        " + _vm._s(worker.supported_workflow_types.length) + " types\n                                    ")]) : _c("span", {
+      staticClass: "text-muted"
+    }, [_vm._v("none")])]), _vm._v(" "), _c("td", {
+      staticClass: "small"
+    }, [worker.supported_activity_types && worker.supported_activity_types.length > 0 ? _c("span", [_vm._v("\n                                        " + _vm._s(worker.supported_activity_types.length) + " types\n                                    ")]) : _c("span", {
+      staticClass: "text-muted"
+    }, [_vm._v("none")])]), _vm._v(" "), _c("td", {
+      staticClass: "small"
+    }, [_vm._v("\n                                    WF: " + _vm._s(worker.max_concurrent_workflow_tasks || 0) + " /\n                                    ACT: " + _vm._s(worker.max_concurrent_activity_tasks || 0) + "\n                                ")])]);
+  }), 0)])])]) : _c("div", {
+    staticClass: "text-center py-4 text-muted"
+  }, [_c("p", {
+    staticClass: "mb-0"
+  }, [_vm._v("No workers registered")])]), _vm._v(" "), _vm.healthChecks.length > 0 ? _c("div", {
+    staticClass: "mt-4"
+  }, [_c("h6", {
+    staticClass: "mb-3"
+  }, [_vm._v("Health Checks")]), _vm._v(" "), _c("div", {
+    staticClass: "list-group list-group-flush"
+  }, _vm._l(_vm.healthChecks, function (check) {
+    return _c("div", {
+      key: check.name,
+      staticClass: "list-group-item px-0"
+    }, [_c("div", {
+      staticClass: "d-flex align-items-center"
+    }, [_c("span", {
+      staticClass: "badge mr-2",
+      "class": _vm.checkBadgeClass(check.status)
+    }, [_vm._v("\n                                " + _vm._s(check.status) + "\n                            ")]), _vm._v(" "), _c("div", {
+      staticClass: "flex-grow-1"
+    }, [_c("strong", [_vm._v(_vm._s(check.name))]), _vm._v(" "), _c("p", {
+      staticClass: "mb-0 small text-muted"
+    }, [_vm._v(_vm._s(check.message))])])])]);
+  }), 0)]) : _vm._e()])])]);
+};
+var staticRenderFns = [function () {
+  var _vm = this,
+    _c = _vm._self._c;
+  return _c("thead", [_c("tr", [_c("th", [_vm._v("Worker ID")]), _vm._v(" "), _c("th", [_vm._v("Runtime")]), _vm._v(" "), _c("th", [_vm._v("Task Queue")]), _vm._v(" "), _c("th", [_vm._v("Heartbeat")]), _vm._v(" "), _c("th", [_vm._v("Status")]), _vm._v(" "), _c("th", [_vm._v("Workflows")]), _vm._v(" "), _c("th", [_vm._v("Activities")]), _vm._v(" "), _c("th", [_vm._v("Concurrency")])])]);
+}];
 render._withStripped = true;
 
 
@@ -6266,6 +7355,52 @@ render._withStripped = true;
 
 /***/ },
 
+/***/ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/screens/schedules.vue?vue&type=template&id=3862c9a6"
+/*!***********************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/screens/schedules.vue?vue&type=template&id=3862c9a6 ***!
+  \***********************************************************************************************************************************************************************************************************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   render: () => (/* binding */ render),
+/* harmony export */   staticRenderFns: () => (/* binding */ staticRenderFns)
+/* harmony export */ });
+var render = function render() {
+  var _vm = this,
+    _c = _vm._self._c;
+  return _c("div", [_c("schedule-view")], 1);
+};
+var staticRenderFns = [];
+render._withStripped = true;
+
+
+/***/ },
+
+/***/ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/screens/workers.vue?vue&type=template&id=d02924c2"
+/*!*********************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/screens/workers.vue?vue&type=template&id=d02924c2 ***!
+  \*********************************************************************************************************************************************************************************************************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   render: () => (/* binding */ render),
+/* harmony export */   staticRenderFns: () => (/* binding */ staticRenderFns)
+/* harmony export */ });
+var render = function render() {
+  var _vm = this,
+    _c = _vm._self._c;
+  return _c("div", [_c("worker-health")], 1);
+};
+var staticRenderFns = [];
+render._withStripped = true;
+
+
+/***/ },
+
 /***/ "./resources/js/app.js"
 /*!*****************************!*\
   !*** ./resources/js/app.js ***!
@@ -6456,6 +7591,14 @@ __webpack_require__.r(__webpack_exports__);
   path: '/dashboard',
   name: 'dashboard',
   component: (__webpack_require__(/*! ./screens/dashboard */ "./resources/js/screens/dashboard.vue")["default"])
+}, {
+  path: '/workers',
+  name: 'workers',
+  component: (__webpack_require__(/*! ./screens/workers */ "./resources/js/screens/workers.vue")["default"])
+}, {
+  path: '/schedules',
+  name: 'schedules',
+  component: (__webpack_require__(/*! ./screens/schedules */ "./resources/js/screens/schedules.vue")["default"])
 }, {
   path: '/flows/instances/:instanceId',
   name: 'flow-detail',
@@ -23727,6 +24870,30 @@ ___CSS_LOADER_EXPORT___.push([module.id, "\n.payload-inspector pre[data-v-06e33e
 
 /***/ },
 
+/***/ "./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/ScheduleView.vue?vue&type=style&index=0&id=41ff43c7&scoped=true&lang=css"
+/*!*****************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/ScheduleView.vue?vue&type=style&index=0&id=41ff43c7&scoped=true&lang=css ***!
+  \*****************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_laravel_mix_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../../../node_modules/laravel-mix/node_modules/css-loader/dist/runtime/api.js */ "./node_modules/laravel-mix/node_modules/css-loader/dist/runtime/api.js");
+/* harmony import */ var _node_modules_laravel_mix_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_node_modules_laravel_mix_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_0__);
+// Imports
+
+var ___CSS_LOADER_EXPORT___ = _node_modules_laravel_mix_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_0___default()(function(i){return i[1]});
+// Module
+___CSS_LOADER_EXPORT___.push([module.id, "\n.schedule-view .icon[data-v-41ff43c7] {\n    display: inline-block;\n    vertical-align: middle;\n}\n.schedule-view .icon.spin[data-v-41ff43c7] {\n    animation: spin-41ff43c7 1s linear infinite;\n}\n@keyframes spin-41ff43c7 {\nfrom { transform: rotate(0deg);\n}\nto { transform: rotate(360deg);\n}\n}\n.schedule-view .table td[data-v-41ff43c7] {\n    vertical-align: middle;\n}\n.schedule-view code[data-v-41ff43c7] {\n    font-size: 0.85rem;\n}\n.schedule-view .modal[data-v-41ff43c7] {\n    display: block;\n}\n", ""]);
+// Exports
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (___CSS_LOADER_EXPORT___);
+
+
+/***/ },
+
 /***/ "./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/SearchAttributeRenderer.vue?vue&type=style&index=0&id=2a638e9c&scoped=true&lang=css"
 /*!****************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************!*\
   !*** ./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/SearchAttributeRenderer.vue?vue&type=style&index=0&id=2a638e9c&scoped=true&lang=css ***!
@@ -23769,6 +24936,30 @@ __webpack_require__.r(__webpack_exports__);
 var ___CSS_LOADER_EXPORT___ = _node_modules_laravel_mix_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_0___default()(function(i){return i[1]});
 // Module
 ___CSS_LOADER_EXPORT___.push([module.id, "\n.timeline-event[data-v-6990eb61] {\n    border-left-width: 3px !important;\n    transition: background-color 0.2s;\n}\n.timeline-event[data-v-6990eb61]:hover {\n    background-color: rgba(0, 0, 0, 0.02);\n}\n.event-kind-activity[data-v-6990eb61] {\n    border-left-color: #007bff !important;\n}\n.event-kind-timer[data-v-6990eb61] {\n    border-left-color: #6c757d !important;\n}\n.event-kind-child[data-v-6990eb61] {\n    border-left-color: #17a2b8 !important;\n}\n.event-kind-signal[data-v-6990eb61] {\n    border-left-color: #ffc107 !important;\n}\n.event-kind-update[data-v-6990eb61] {\n    border-left-color: #28a745 !important;\n}\n.event-kind-command[data-v-6990eb61] {\n    border-left-color: #343a40 !important;\n}\n.event-kind-failure[data-v-6990eb61] {\n    border-left-color: #dc3545 !important;\n}\n.event-kind-workflow[data-v-6990eb61] {\n    border-left-color: #6f42c1 !important;\n}\n.event-details[data-v-6990eb61] {\n    color: #6c757d;\n}\n.event-details div[data-v-6990eb61] {\n    margin-bottom: 0.25rem;\n}\n.event-details code[data-v-6990eb61] {\n    font-size: 0.8rem;\n    background-color: #f8f9fa;\n    padding: 0.1rem 0.3rem;\n    border-radius: 0.2rem;\n}\n.event-details a[data-v-6990eb61] {\n    text-decoration: none;\n}\n.event-details a[data-v-6990eb61]:hover {\n    text-decoration: underline;\n}\n", ""]);
+// Exports
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (___CSS_LOADER_EXPORT___);
+
+
+/***/ },
+
+/***/ "./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/WorkerHealth.vue?vue&type=style&index=0&id=f5bf5b36&scoped=true&lang=css"
+/*!*****************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/WorkerHealth.vue?vue&type=style&index=0&id=f5bf5b36&scoped=true&lang=css ***!
+  \*****************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+(module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_laravel_mix_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ../../../node_modules/laravel-mix/node_modules/css-loader/dist/runtime/api.js */ "./node_modules/laravel-mix/node_modules/css-loader/dist/runtime/api.js");
+/* harmony import */ var _node_modules_laravel_mix_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_node_modules_laravel_mix_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_0__);
+// Imports
+
+var ___CSS_LOADER_EXPORT___ = _node_modules_laravel_mix_node_modules_css_loader_dist_runtime_api_js__WEBPACK_IMPORTED_MODULE_0___default()(function(i){return i[1]});
+// Module
+___CSS_LOADER_EXPORT___.push([module.id, "\n.worker-health .icon[data-v-f5bf5b36] {\n    display: inline-block;\n    vertical-align: middle;\n}\n.worker-health .icon.spin[data-v-f5bf5b36] {\n    animation: spin-f5bf5b36 1s linear infinite;\n}\n@keyframes spin-f5bf5b36 {\nfrom { transform: rotate(0deg);\n}\nto { transform: rotate(360deg);\n}\n}\n.worker-health .table td[data-v-f5bf5b36] {\n    vertical-align: middle;\n}\n.worker-health code[data-v-f5bf5b36] {\n    font-size: 0.85rem;\n}\n.worker-health .badge[data-v-f5bf5b36] {\n    font-size: 0.75rem;\n}\n", ""]);
 // Exports
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (___CSS_LOADER_EXPORT___);
 
@@ -35321,6 +36512,36 @@ var update = _node_modules_style_loader_dist_runtime_injectStylesIntoStyleTag_js
 
 /***/ },
 
+/***/ "./node_modules/style-loader/dist/cjs.js!./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/ScheduleView.vue?vue&type=style&index=0&id=41ff43c7&scoped=true&lang=css"
+/*!*********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/style-loader/dist/cjs.js!./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/ScheduleView.vue?vue&type=style&index=0&id=41ff43c7&scoped=true&lang=css ***!
+  \*********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_style_loader_dist_runtime_injectStylesIntoStyleTag_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! !../../../node_modules/style-loader/dist/runtime/injectStylesIntoStyleTag.js */ "./node_modules/style-loader/dist/runtime/injectStylesIntoStyleTag.js");
+/* harmony import */ var _node_modules_style_loader_dist_runtime_injectStylesIntoStyleTag_js__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_node_modules_style_loader_dist_runtime_injectStylesIntoStyleTag_js__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _node_modules_laravel_mix_node_modules_css_loader_dist_cjs_js_clonedRuleSet_10_use_1_node_modules_vue_loader_lib_loaders_stylePostLoader_js_node_modules_postcss_loader_dist_cjs_js_clonedRuleSet_10_use_2_node_modules_vue_loader_lib_index_js_vue_loader_options_ScheduleView_vue_vue_type_style_index_0_id_41ff43c7_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! !!../../../node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!../../../node_modules/vue-loader/lib/loaders/stylePostLoader.js!../../../node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./ScheduleView.vue?vue&type=style&index=0&id=41ff43c7&scoped=true&lang=css */ "./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/ScheduleView.vue?vue&type=style&index=0&id=41ff43c7&scoped=true&lang=css");
+
+            
+
+var options = {};
+
+options.insert = "head";
+options.singleton = false;
+
+var update = _node_modules_style_loader_dist_runtime_injectStylesIntoStyleTag_js__WEBPACK_IMPORTED_MODULE_0___default()(_node_modules_laravel_mix_node_modules_css_loader_dist_cjs_js_clonedRuleSet_10_use_1_node_modules_vue_loader_lib_loaders_stylePostLoader_js_node_modules_postcss_loader_dist_cjs_js_clonedRuleSet_10_use_2_node_modules_vue_loader_lib_index_js_vue_loader_options_ScheduleView_vue_vue_type_style_index_0_id_41ff43c7_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_1__["default"], options);
+
+
+
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (_node_modules_laravel_mix_node_modules_css_loader_dist_cjs_js_clonedRuleSet_10_use_1_node_modules_vue_loader_lib_loaders_stylePostLoader_js_node_modules_postcss_loader_dist_cjs_js_clonedRuleSet_10_use_2_node_modules_vue_loader_lib_index_js_vue_loader_options_ScheduleView_vue_vue_type_style_index_0_id_41ff43c7_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_1__["default"].locals || {});
+
+/***/ },
+
 /***/ "./node_modules/style-loader/dist/cjs.js!./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/SearchAttributeRenderer.vue?vue&type=style&index=0&id=2a638e9c&scoped=true&lang=css"
 /*!********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************!*\
   !*** ./node_modules/style-loader/dist/cjs.js!./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/SearchAttributeRenderer.vue?vue&type=style&index=0&id=2a638e9c&scoped=true&lang=css ***!
@@ -35378,6 +36599,36 @@ var update = _node_modules_style_loader_dist_runtime_injectStylesIntoStyleTag_js
 
 
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (_node_modules_laravel_mix_node_modules_css_loader_dist_cjs_js_clonedRuleSet_10_use_1_node_modules_vue_loader_lib_loaders_stylePostLoader_js_node_modules_postcss_loader_dist_cjs_js_clonedRuleSet_10_use_2_node_modules_vue_loader_lib_index_js_vue_loader_options_TimelineEventRenderer_vue_vue_type_style_index_0_id_6990eb61_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_1__["default"].locals || {});
+
+/***/ },
+
+/***/ "./node_modules/style-loader/dist/cjs.js!./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/WorkerHealth.vue?vue&type=style&index=0&id=f5bf5b36&scoped=true&lang=css"
+/*!*********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************!*\
+  !*** ./node_modules/style-loader/dist/cjs.js!./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/WorkerHealth.vue?vue&type=style&index=0&id=f5bf5b36&scoped=true&lang=css ***!
+  \*********************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_style_loader_dist_runtime_injectStylesIntoStyleTag_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! !../../../node_modules/style-loader/dist/runtime/injectStylesIntoStyleTag.js */ "./node_modules/style-loader/dist/runtime/injectStylesIntoStyleTag.js");
+/* harmony import */ var _node_modules_style_loader_dist_runtime_injectStylesIntoStyleTag_js__WEBPACK_IMPORTED_MODULE_0___default = /*#__PURE__*/__webpack_require__.n(_node_modules_style_loader_dist_runtime_injectStylesIntoStyleTag_js__WEBPACK_IMPORTED_MODULE_0__);
+/* harmony import */ var _node_modules_laravel_mix_node_modules_css_loader_dist_cjs_js_clonedRuleSet_10_use_1_node_modules_vue_loader_lib_loaders_stylePostLoader_js_node_modules_postcss_loader_dist_cjs_js_clonedRuleSet_10_use_2_node_modules_vue_loader_lib_index_js_vue_loader_options_WorkerHealth_vue_vue_type_style_index_0_id_f5bf5b36_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! !!../../../node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!../../../node_modules/vue-loader/lib/loaders/stylePostLoader.js!../../../node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./WorkerHealth.vue?vue&type=style&index=0&id=f5bf5b36&scoped=true&lang=css */ "./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/WorkerHealth.vue?vue&type=style&index=0&id=f5bf5b36&scoped=true&lang=css");
+
+            
+
+var options = {};
+
+options.insert = "head";
+options.singleton = false;
+
+var update = _node_modules_style_loader_dist_runtime_injectStylesIntoStyleTag_js__WEBPACK_IMPORTED_MODULE_0___default()(_node_modules_laravel_mix_node_modules_css_loader_dist_cjs_js_clonedRuleSet_10_use_1_node_modules_vue_loader_lib_loaders_stylePostLoader_js_node_modules_postcss_loader_dist_cjs_js_clonedRuleSet_10_use_2_node_modules_vue_loader_lib_index_js_vue_loader_options_WorkerHealth_vue_vue_type_style_index_0_id_f5bf5b36_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_1__["default"], options);
+
+
+
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (_node_modules_laravel_mix_node_modules_css_loader_dist_cjs_js_clonedRuleSet_10_use_1_node_modules_vue_loader_lib_loaders_stylePostLoader_js_node_modules_postcss_loader_dist_cjs_js_clonedRuleSet_10_use_2_node_modules_vue_loader_lib_index_js_vue_loader_options_WorkerHealth_vue_vue_type_style_index_0_id_f5bf5b36_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_1__["default"].locals || {});
 
 /***/ },
 
@@ -40806,6 +42057,48 @@ component.options.__file = "resources/js/components/PayloadInspector.vue"
 
 /***/ },
 
+/***/ "./resources/js/components/ScheduleView.vue"
+/*!**************************************************!*\
+  !*** ./resources/js/components/ScheduleView.vue ***!
+  \**************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _ScheduleView_vue_vue_type_template_id_41ff43c7_scoped_true__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./ScheduleView.vue?vue&type=template&id=41ff43c7&scoped=true */ "./resources/js/components/ScheduleView.vue?vue&type=template&id=41ff43c7&scoped=true");
+/* harmony import */ var _ScheduleView_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./ScheduleView.vue?vue&type=script&lang=js */ "./resources/js/components/ScheduleView.vue?vue&type=script&lang=js");
+/* harmony import */ var _ScheduleView_vue_vue_type_style_index_0_id_41ff43c7_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./ScheduleView.vue?vue&type=style&index=0&id=41ff43c7&scoped=true&lang=css */ "./resources/js/components/ScheduleView.vue?vue&type=style&index=0&id=41ff43c7&scoped=true&lang=css");
+/* harmony import */ var _node_modules_vue_loader_lib_runtime_componentNormalizer_js__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! !../../../node_modules/vue-loader/lib/runtime/componentNormalizer.js */ "./node_modules/vue-loader/lib/runtime/componentNormalizer.js");
+
+
+
+;
+
+
+/* normalize component */
+
+var component = (0,_node_modules_vue_loader_lib_runtime_componentNormalizer_js__WEBPACK_IMPORTED_MODULE_3__["default"])(
+  _ScheduleView_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_1__["default"],
+  _ScheduleView_vue_vue_type_template_id_41ff43c7_scoped_true__WEBPACK_IMPORTED_MODULE_0__.render,
+  _ScheduleView_vue_vue_type_template_id_41ff43c7_scoped_true__WEBPACK_IMPORTED_MODULE_0__.staticRenderFns,
+  false,
+  null,
+  "41ff43c7",
+  null
+  
+)
+
+/* hot reload */
+if (false) // removed by dead control flow
+{ var api; }
+component.options.__file = "resources/js/components/ScheduleView.vue"
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (component.exports);
+
+/***/ },
+
 /***/ "./resources/js/components/SearchAttributeRenderer.vue"
 /*!*************************************************************!*\
   !*** ./resources/js/components/SearchAttributeRenderer.vue ***!
@@ -40886,6 +42179,48 @@ var component = (0,_node_modules_vue_loader_lib_runtime_componentNormalizer_js__
 if (false) // removed by dead control flow
 { var api; }
 component.options.__file = "resources/js/components/TimelineEventRenderer.vue"
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (component.exports);
+
+/***/ },
+
+/***/ "./resources/js/components/WorkerHealth.vue"
+/*!**************************************************!*\
+  !*** ./resources/js/components/WorkerHealth.vue ***!
+  \**************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _WorkerHealth_vue_vue_type_template_id_f5bf5b36_scoped_true__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./WorkerHealth.vue?vue&type=template&id=f5bf5b36&scoped=true */ "./resources/js/components/WorkerHealth.vue?vue&type=template&id=f5bf5b36&scoped=true");
+/* harmony import */ var _WorkerHealth_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./WorkerHealth.vue?vue&type=script&lang=js */ "./resources/js/components/WorkerHealth.vue?vue&type=script&lang=js");
+/* harmony import */ var _WorkerHealth_vue_vue_type_style_index_0_id_f5bf5b36_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! ./WorkerHealth.vue?vue&type=style&index=0&id=f5bf5b36&scoped=true&lang=css */ "./resources/js/components/WorkerHealth.vue?vue&type=style&index=0&id=f5bf5b36&scoped=true&lang=css");
+/* harmony import */ var _node_modules_vue_loader_lib_runtime_componentNormalizer_js__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(/*! !../../../node_modules/vue-loader/lib/runtime/componentNormalizer.js */ "./node_modules/vue-loader/lib/runtime/componentNormalizer.js");
+
+
+
+;
+
+
+/* normalize component */
+
+var component = (0,_node_modules_vue_loader_lib_runtime_componentNormalizer_js__WEBPACK_IMPORTED_MODULE_3__["default"])(
+  _WorkerHealth_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_1__["default"],
+  _WorkerHealth_vue_vue_type_template_id_f5bf5b36_scoped_true__WEBPACK_IMPORTED_MODULE_0__.render,
+  _WorkerHealth_vue_vue_type_template_id_f5bf5b36_scoped_true__WEBPACK_IMPORTED_MODULE_0__.staticRenderFns,
+  false,
+  null,
+  "f5bf5b36",
+  null
+  
+)
+
+/* hot reload */
+if (false) // removed by dead control flow
+{ var api; }
+component.options.__file = "resources/js/components/WorkerHealth.vue"
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (component.exports);
 
 /***/ },
@@ -41050,6 +42385,86 @@ component.options.__file = "resources/js/screens/flows/index.vue"
 
 /***/ },
 
+/***/ "./resources/js/screens/schedules.vue"
+/*!********************************************!*\
+  !*** ./resources/js/screens/schedules.vue ***!
+  \********************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _schedules_vue_vue_type_template_id_3862c9a6__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./schedules.vue?vue&type=template&id=3862c9a6 */ "./resources/js/screens/schedules.vue?vue&type=template&id=3862c9a6");
+/* harmony import */ var _schedules_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./schedules.vue?vue&type=script&lang=js */ "./resources/js/screens/schedules.vue?vue&type=script&lang=js");
+/* harmony import */ var _node_modules_vue_loader_lib_runtime_componentNormalizer_js__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! !../../../node_modules/vue-loader/lib/runtime/componentNormalizer.js */ "./node_modules/vue-loader/lib/runtime/componentNormalizer.js");
+
+
+
+
+
+/* normalize component */
+;
+var component = (0,_node_modules_vue_loader_lib_runtime_componentNormalizer_js__WEBPACK_IMPORTED_MODULE_2__["default"])(
+  _schedules_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_1__["default"],
+  _schedules_vue_vue_type_template_id_3862c9a6__WEBPACK_IMPORTED_MODULE_0__.render,
+  _schedules_vue_vue_type_template_id_3862c9a6__WEBPACK_IMPORTED_MODULE_0__.staticRenderFns,
+  false,
+  null,
+  null,
+  null
+  
+)
+
+/* hot reload */
+if (false) // removed by dead control flow
+{ var api; }
+component.options.__file = "resources/js/screens/schedules.vue"
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (component.exports);
+
+/***/ },
+
+/***/ "./resources/js/screens/workers.vue"
+/*!******************************************!*\
+  !*** ./resources/js/screens/workers.vue ***!
+  \******************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _workers_vue_vue_type_template_id_d02924c2__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! ./workers.vue?vue&type=template&id=d02924c2 */ "./resources/js/screens/workers.vue?vue&type=template&id=d02924c2");
+/* harmony import */ var _workers_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(/*! ./workers.vue?vue&type=script&lang=js */ "./resources/js/screens/workers.vue?vue&type=script&lang=js");
+/* harmony import */ var _node_modules_vue_loader_lib_runtime_componentNormalizer_js__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(/*! !../../../node_modules/vue-loader/lib/runtime/componentNormalizer.js */ "./node_modules/vue-loader/lib/runtime/componentNormalizer.js");
+
+
+
+
+
+/* normalize component */
+;
+var component = (0,_node_modules_vue_loader_lib_runtime_componentNormalizer_js__WEBPACK_IMPORTED_MODULE_2__["default"])(
+  _workers_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_1__["default"],
+  _workers_vue_vue_type_template_id_d02924c2__WEBPACK_IMPORTED_MODULE_0__.render,
+  _workers_vue_vue_type_template_id_d02924c2__WEBPACK_IMPORTED_MODULE_0__.staticRenderFns,
+  false,
+  null,
+  null,
+  null
+  
+)
+
+/* hot reload */
+if (false) // removed by dead control flow
+{ var api; }
+component.options.__file = "resources/js/screens/workers.vue"
+/* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (component.exports);
+
+/***/ },
+
 /***/ "./resources/js/components/PayloadInspector.vue?vue&type=script&lang=js"
 /*!******************************************************************************!*\
   !*** ./resources/js/components/PayloadInspector.vue?vue&type=script&lang=js ***!
@@ -41063,6 +42478,22 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_index_js_vue_loader_options_PayloadInspector_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./PayloadInspector.vue?vue&type=script&lang=js */ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/PayloadInspector.vue?vue&type=script&lang=js");
  /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (_node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_index_js_vue_loader_options_PayloadInspector_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_0__["default"]); 
+
+/***/ },
+
+/***/ "./resources/js/components/ScheduleView.vue?vue&type=script&lang=js"
+/*!**************************************************************************!*\
+  !*** ./resources/js/components/ScheduleView.vue?vue&type=script&lang=js ***!
+  \**************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_index_js_vue_loader_options_ScheduleView_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./ScheduleView.vue?vue&type=script&lang=js */ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/ScheduleView.vue?vue&type=script&lang=js");
+ /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (_node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_index_js_vue_loader_options_ScheduleView_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_0__["default"]); 
 
 /***/ },
 
@@ -41095,6 +42526,22 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */ });
 /* harmony import */ var _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_index_js_vue_loader_options_TimelineEventRenderer_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./TimelineEventRenderer.vue?vue&type=script&lang=js */ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/TimelineEventRenderer.vue?vue&type=script&lang=js");
  /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (_node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_index_js_vue_loader_options_TimelineEventRenderer_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_0__["default"]); 
+
+/***/ },
+
+/***/ "./resources/js/components/WorkerHealth.vue?vue&type=script&lang=js"
+/*!**************************************************************************!*\
+  !*** ./resources/js/components/WorkerHealth.vue?vue&type=script&lang=js ***!
+  \**************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_index_js_vue_loader_options_WorkerHealth_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./WorkerHealth.vue?vue&type=script&lang=js */ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/WorkerHealth.vue?vue&type=script&lang=js");
+ /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (_node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_index_js_vue_loader_options_WorkerHealth_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_0__["default"]); 
 
 /***/ },
 
@@ -41162,6 +42609,38 @@ __webpack_require__.r(__webpack_exports__);
 
 /***/ },
 
+/***/ "./resources/js/screens/schedules.vue?vue&type=script&lang=js"
+/*!********************************************************************!*\
+  !*** ./resources/js/screens/schedules.vue?vue&type=script&lang=js ***!
+  \********************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_index_js_vue_loader_options_schedules_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./schedules.vue?vue&type=script&lang=js */ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/screens/schedules.vue?vue&type=script&lang=js");
+ /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (_node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_index_js_vue_loader_options_schedules_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_0__["default"]); 
+
+/***/ },
+
+/***/ "./resources/js/screens/workers.vue?vue&type=script&lang=js"
+/*!******************************************************************!*\
+  !*** ./resources/js/screens/workers.vue?vue&type=script&lang=js ***!
+  \******************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   "default": () => (__WEBPACK_DEFAULT_EXPORT__)
+/* harmony export */ });
+/* harmony import */ var _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_index_js_vue_loader_options_workers_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./workers.vue?vue&type=script&lang=js */ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/screens/workers.vue?vue&type=script&lang=js");
+ /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = (_node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_index_js_vue_loader_options_workers_vue_vue_type_script_lang_js__WEBPACK_IMPORTED_MODULE_0__["default"]); 
+
+/***/ },
+
 /***/ "./resources/js/components/PayloadInspector.vue?vue&type=template&id=06e33ef4&scoped=true"
 /*!************************************************************************************************!*\
   !*** ./resources/js/components/PayloadInspector.vue?vue&type=template&id=06e33ef4&scoped=true ***!
@@ -41175,6 +42654,23 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   staticRenderFns: () => (/* reexport safe */ _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_PayloadInspector_vue_vue_type_template_id_06e33ef4_scoped_true__WEBPACK_IMPORTED_MODULE_0__.staticRenderFns)
 /* harmony export */ });
 /* harmony import */ var _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_PayloadInspector_vue_vue_type_template_id_06e33ef4_scoped_true__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!../../../node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./PayloadInspector.vue?vue&type=template&id=06e33ef4&scoped=true */ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/PayloadInspector.vue?vue&type=template&id=06e33ef4&scoped=true");
+
+
+/***/ },
+
+/***/ "./resources/js/components/ScheduleView.vue?vue&type=template&id=41ff43c7&scoped=true"
+/*!********************************************************************************************!*\
+  !*** ./resources/js/components/ScheduleView.vue?vue&type=template&id=41ff43c7&scoped=true ***!
+  \********************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   render: () => (/* reexport safe */ _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_ScheduleView_vue_vue_type_template_id_41ff43c7_scoped_true__WEBPACK_IMPORTED_MODULE_0__.render),
+/* harmony export */   staticRenderFns: () => (/* reexport safe */ _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_ScheduleView_vue_vue_type_template_id_41ff43c7_scoped_true__WEBPACK_IMPORTED_MODULE_0__.staticRenderFns)
+/* harmony export */ });
+/* harmony import */ var _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_ScheduleView_vue_vue_type_template_id_41ff43c7_scoped_true__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!../../../node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./ScheduleView.vue?vue&type=template&id=41ff43c7&scoped=true */ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/ScheduleView.vue?vue&type=template&id=41ff43c7&scoped=true");
 
 
 /***/ },
@@ -41209,6 +42705,23 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony export */   staticRenderFns: () => (/* reexport safe */ _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_TimelineEventRenderer_vue_vue_type_template_id_6990eb61_scoped_true__WEBPACK_IMPORTED_MODULE_0__.staticRenderFns)
 /* harmony export */ });
 /* harmony import */ var _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_TimelineEventRenderer_vue_vue_type_template_id_6990eb61_scoped_true__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!../../../node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./TimelineEventRenderer.vue?vue&type=template&id=6990eb61&scoped=true */ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/TimelineEventRenderer.vue?vue&type=template&id=6990eb61&scoped=true");
+
+
+/***/ },
+
+/***/ "./resources/js/components/WorkerHealth.vue?vue&type=template&id=f5bf5b36&scoped=true"
+/*!********************************************************************************************!*\
+  !*** ./resources/js/components/WorkerHealth.vue?vue&type=template&id=f5bf5b36&scoped=true ***!
+  \********************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   render: () => (/* reexport safe */ _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_WorkerHealth_vue_vue_type_template_id_f5bf5b36_scoped_true__WEBPACK_IMPORTED_MODULE_0__.render),
+/* harmony export */   staticRenderFns: () => (/* reexport safe */ _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_WorkerHealth_vue_vue_type_template_id_f5bf5b36_scoped_true__WEBPACK_IMPORTED_MODULE_0__.staticRenderFns)
+/* harmony export */ });
+/* harmony import */ var _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_WorkerHealth_vue_vue_type_template_id_f5bf5b36_scoped_true__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!../../../node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./WorkerHealth.vue?vue&type=template&id=f5bf5b36&scoped=true */ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/WorkerHealth.vue?vue&type=template&id=f5bf5b36&scoped=true");
 
 
 /***/ },
@@ -41281,6 +42794,40 @@ __webpack_require__.r(__webpack_exports__);
 
 /***/ },
 
+/***/ "./resources/js/screens/schedules.vue?vue&type=template&id=3862c9a6"
+/*!**************************************************************************!*\
+  !*** ./resources/js/screens/schedules.vue?vue&type=template&id=3862c9a6 ***!
+  \**************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   render: () => (/* reexport safe */ _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_schedules_vue_vue_type_template_id_3862c9a6__WEBPACK_IMPORTED_MODULE_0__.render),
+/* harmony export */   staticRenderFns: () => (/* reexport safe */ _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_schedules_vue_vue_type_template_id_3862c9a6__WEBPACK_IMPORTED_MODULE_0__.staticRenderFns)
+/* harmony export */ });
+/* harmony import */ var _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_schedules_vue_vue_type_template_id_3862c9a6__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!../../../node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./schedules.vue?vue&type=template&id=3862c9a6 */ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/screens/schedules.vue?vue&type=template&id=3862c9a6");
+
+
+/***/ },
+
+/***/ "./resources/js/screens/workers.vue?vue&type=template&id=d02924c2"
+/*!************************************************************************!*\
+  !*** ./resources/js/screens/workers.vue?vue&type=template&id=d02924c2 ***!
+  \************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony export */ __webpack_require__.d(__webpack_exports__, {
+/* harmony export */   render: () => (/* reexport safe */ _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_workers_vue_vue_type_template_id_d02924c2__WEBPACK_IMPORTED_MODULE_0__.render),
+/* harmony export */   staticRenderFns: () => (/* reexport safe */ _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_workers_vue_vue_type_template_id_d02924c2__WEBPACK_IMPORTED_MODULE_0__.staticRenderFns)
+/* harmony export */ });
+/* harmony import */ var _node_modules_babel_loader_lib_index_js_clonedRuleSet_5_use_0_node_modules_vue_loader_lib_loaders_templateLoader_js_ruleSet_1_rules_2_node_modules_vue_loader_lib_index_js_vue_loader_options_workers_vue_vue_type_template_id_d02924c2__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!../../../node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./workers.vue?vue&type=template&id=d02924c2 */ "./node_modules/babel-loader/lib/index.js??clonedRuleSet-5.use[0]!./node_modules/vue-loader/lib/loaders/templateLoader.js??ruleSet[1].rules[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/screens/workers.vue?vue&type=template&id=d02924c2");
+
+
+/***/ },
+
 /***/ "./resources/js/components/PayloadInspector.vue?vue&type=style&index=0&id=06e33ef4&scoped=true&lang=css"
 /*!**************************************************************************************************************!*\
   !*** ./resources/js/components/PayloadInspector.vue?vue&type=style&index=0&id=06e33ef4&scoped=true&lang=css ***!
@@ -41290,6 +42837,19 @@ __webpack_require__.r(__webpack_exports__);
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _node_modules_style_loader_dist_cjs_js_node_modules_laravel_mix_node_modules_css_loader_dist_cjs_js_clonedRuleSet_10_use_1_node_modules_vue_loader_lib_loaders_stylePostLoader_js_node_modules_postcss_loader_dist_cjs_js_clonedRuleSet_10_use_2_node_modules_vue_loader_lib_index_js_vue_loader_options_PayloadInspector_vue_vue_type_style_index_0_id_06e33ef4_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/style-loader/dist/cjs.js!../../../node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!../../../node_modules/vue-loader/lib/loaders/stylePostLoader.js!../../../node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./PayloadInspector.vue?vue&type=style&index=0&id=06e33ef4&scoped=true&lang=css */ "./node_modules/style-loader/dist/cjs.js!./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/PayloadInspector.vue?vue&type=style&index=0&id=06e33ef4&scoped=true&lang=css");
+
+
+/***/ },
+
+/***/ "./resources/js/components/ScheduleView.vue?vue&type=style&index=0&id=41ff43c7&scoped=true&lang=css"
+/*!**********************************************************************************************************!*\
+  !*** ./resources/js/components/ScheduleView.vue?vue&type=style&index=0&id=41ff43c7&scoped=true&lang=css ***!
+  \**********************************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony import */ var _node_modules_style_loader_dist_cjs_js_node_modules_laravel_mix_node_modules_css_loader_dist_cjs_js_clonedRuleSet_10_use_1_node_modules_vue_loader_lib_loaders_stylePostLoader_js_node_modules_postcss_loader_dist_cjs_js_clonedRuleSet_10_use_2_node_modules_vue_loader_lib_index_js_vue_loader_options_ScheduleView_vue_vue_type_style_index_0_id_41ff43c7_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/style-loader/dist/cjs.js!../../../node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!../../../node_modules/vue-loader/lib/loaders/stylePostLoader.js!../../../node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./ScheduleView.vue?vue&type=style&index=0&id=41ff43c7&scoped=true&lang=css */ "./node_modules/style-loader/dist/cjs.js!./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/ScheduleView.vue?vue&type=style&index=0&id=41ff43c7&scoped=true&lang=css");
 
 
 /***/ },
@@ -41316,6 +42876,19 @@ __webpack_require__.r(__webpack_exports__);
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _node_modules_style_loader_dist_cjs_js_node_modules_laravel_mix_node_modules_css_loader_dist_cjs_js_clonedRuleSet_10_use_1_node_modules_vue_loader_lib_loaders_stylePostLoader_js_node_modules_postcss_loader_dist_cjs_js_clonedRuleSet_10_use_2_node_modules_vue_loader_lib_index_js_vue_loader_options_TimelineEventRenderer_vue_vue_type_style_index_0_id_6990eb61_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/style-loader/dist/cjs.js!../../../node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!../../../node_modules/vue-loader/lib/loaders/stylePostLoader.js!../../../node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./TimelineEventRenderer.vue?vue&type=style&index=0&id=6990eb61&scoped=true&lang=css */ "./node_modules/style-loader/dist/cjs.js!./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/TimelineEventRenderer.vue?vue&type=style&index=0&id=6990eb61&scoped=true&lang=css");
+
+
+/***/ },
+
+/***/ "./resources/js/components/WorkerHealth.vue?vue&type=style&index=0&id=f5bf5b36&scoped=true&lang=css"
+/*!**********************************************************************************************************!*\
+  !*** ./resources/js/components/WorkerHealth.vue?vue&type=style&index=0&id=f5bf5b36&scoped=true&lang=css ***!
+  \**********************************************************************************************************/
+(__unused_webpack_module, __webpack_exports__, __webpack_require__) {
+
+"use strict";
+__webpack_require__.r(__webpack_exports__);
+/* harmony import */ var _node_modules_style_loader_dist_cjs_js_node_modules_laravel_mix_node_modules_css_loader_dist_cjs_js_clonedRuleSet_10_use_1_node_modules_vue_loader_lib_loaders_stylePostLoader_js_node_modules_postcss_loader_dist_cjs_js_clonedRuleSet_10_use_2_node_modules_vue_loader_lib_index_js_vue_loader_options_WorkerHealth_vue_vue_type_style_index_0_id_f5bf5b36_scoped_true_lang_css__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(/*! -!../../../node_modules/style-loader/dist/cjs.js!../../../node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!../../../node_modules/vue-loader/lib/loaders/stylePostLoader.js!../../../node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!../../../node_modules/vue-loader/lib/index.js??vue-loader-options!./WorkerHealth.vue?vue&type=style&index=0&id=f5bf5b36&scoped=true&lang=css */ "./node_modules/style-loader/dist/cjs.js!./node_modules/laravel-mix/node_modules/css-loader/dist/cjs.js??clonedRuleSet-10.use[1]!./node_modules/vue-loader/lib/loaders/stylePostLoader.js!./node_modules/postcss-loader/dist/cjs.js??clonedRuleSet-10.use[2]!./node_modules/vue-loader/lib/index.js??vue-loader-options!./resources/js/components/WorkerHealth.vue?vue&type=style&index=0&id=f5bf5b36&scoped=true&lang=css");
 
 
 /***/ },
