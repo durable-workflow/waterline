@@ -41,13 +41,15 @@ db-fresh: ## Create fresh SQLite database with migrations
 	@echo "$(GREEN)✓ Database created and migrated$(RESET)"
 
 seed: db-fresh ## Create database and seed with test data
-	@echo "$(CYAN)Seeding test data...$(RESET)"
-	@if ./vendor/bin/testbench workflow:create-test 2>/dev/null; then \
-		echo "$(GREEN)✓ Test data seeded$(RESET)"; \
-	else \
-		echo "$(YELLOW)⚠ workflow:create-test command not available$(RESET)"; \
-		echo "$(YELLOW)  Database is ready but no test data seeded$(RESET)"; \
-	fi
+	@echo "$(CYAN)Seeding workbench with fixture data...$(RESET)"
+	./vendor/bin/testbench db:seed --database=sqlite
+	@echo "$(GREEN)✓ Workbench seeded with workflow data$(RESET)"
+	@echo "$(GREEN)  - Completed workflows$(RESET)"
+	@echo "$(GREEN)  - Running workflows$(RESET)"
+	@echo "$(GREEN)  - Failed workflows$(RESET)"
+	@echo "$(GREEN)  - Workflows with timers and children$(RESET)"
+	@echo "$(GREEN)  - Worker registrations$(RESET)"
+	@echo "$(GREEN)  - Workflow schedules$(RESET)"
 
 serve: ## Start the workbench server (blocking)
 	@echo "$(CYAN)Starting Waterline workbench...$(RESET)"
@@ -66,8 +68,8 @@ dev: ## Start development environment (asset watch + server)
 		exit 1; \
 	fi
 	@if [ ! -f "workbench/database/workbench.sqlite" ]; then \
-		echo "$(CYAN)Setting up database...$(RESET)"; \
-		$(MAKE) db-fresh; \
+		echo "$(CYAN)Setting up database and seed data...$(RESET)"; \
+		$(MAKE) seed; \
 		echo ""; \
 	fi
 	@if [ ! -f "workbench/public/vendor/waterline/app.js" ]; then \
@@ -101,7 +103,7 @@ test-mysql: ## Run tests with MySQL
 
 test-pgsql: ## Run tests with PostgreSQL
 	@echo "$(CYAN)Running tests (PostgreSQL)...$(RESET)"
-	./vendor/bin/phpunit --configuration phpunit-pgsql.xml
+	./vendor/bin/testbench --configuration phpunit-pgsql.xml
 
 test-mssql: ## Run tests with SQL Server
 	@echo "$(CYAN)Running tests (SQL Server)...$(RESET)"
