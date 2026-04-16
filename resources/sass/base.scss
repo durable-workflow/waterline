@@ -1,6 +1,119 @@
 @import 'syntaxhighlight';
 @import 'node_modules/bootstrap/scss/bootstrap';
 
+// ============================================================================
+// WCAG AA Focus Indicators
+// ============================================================================
+// High-contrast focus indicators for keyboard navigation (WCAG 2.4.7)
+// Uses :focus-visible to show focus only for keyboard, not mouse clicks
+
+// Remove default outline for mouse/touch interactions
+:focus:not(:focus-visible) {
+    outline: none;
+}
+
+// High-contrast keyboard focus indicator (3:1 minimum contrast ratio)
+*:focus-visible {
+    outline: 3px solid #0066cc;
+    outline-offset: 2px;
+    transition: outline-offset 0.1s ease;
+}
+
+// Specific focus styles for common interactive elements
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+    outline: 3px solid #0066cc;
+    outline-offset: 2px;
+}
+
+// Router links get thicker outline for better visibility
+.nav-link:focus-visible,
+.router-link-active:focus-visible {
+    outline: 3px solid #0066cc;
+    outline-offset: 4px;
+}
+
+// Buttons get inset outline for contained look
+.btn:focus-visible {
+    outline: 3px solid #0066cc;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 0.2rem rgba(0, 102, 204, 0.25);
+}
+
+// Primary buttons use white outline for contrast
+.btn-primary:focus-visible {
+    outline-color: #ffffff;
+    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.5);
+}
+
+// Form controls get blue outline
+.form-control:focus-visible,
+.custom-select:focus-visible {
+    outline: 3px solid #0066cc;
+    outline-offset: 0;
+    border-color: #0066cc;
+    box-shadow: 0 0 0 0.2rem rgba(0, 102, 204, 0.25);
+}
+
+// Cards and panels that receive focus
+.card:focus-visible {
+    outline: 3px solid #0066cc;
+    outline-offset: 4px;
+}
+
+// Screen reader only class (for accessible labels)
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+// Screen reader only but visible on focus (for skip links)
+.sr-only-focusable:focus,
+.sr-only-focusable:active {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+}
+
+// Skip to content link
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: #0066cc;
+    color: white;
+    padding: 8px 16px;
+    text-decoration: none;
+    z-index: 10000;
+    font-weight: 600;
+    border-radius: 0 0 4px 0;
+}
+
+.skip-link:focus {
+    top: 0;
+    outline: 3px solid #ffffff;
+    outline-offset: -3px;
+}
+
+// ============================================================================
+// End WCAG AA Focus Indicators
+// ============================================================================
+
 body {
     padding-bottom: 20px;
 }

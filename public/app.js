@@ -5166,11 +5166,19 @@ var render = function render() {
   var _vm = this,
     _c = _vm._self._c;
   return _c("div", [_vm.stats.needs_attention && _vm.stats.needs_attention.total_alerts > 0 ? _c("div", {
-    staticClass: "card mb-4"
+    staticClass: "card mb-4",
+    attrs: {
+      role: "alert",
+      "aria-live": "polite",
+      "aria-label": "Needs attention: " + _vm.stats.needs_attention.total_alerts + " alert" + (_vm.stats.needs_attention.total_alerts > 1 ? "s" : "")
+    }
   }, [_c("div", {
     staticClass: "card-header d-flex align-items-center justify-content-between"
   }, [_c("h5", [_vm.stats.needs_attention.has_critical ? _c("span", {
-    staticClass: "badge badge-warning mr-2"
+    staticClass: "badge badge-warning mr-2",
+    attrs: {
+      "aria-hidden": "true"
+    }
   }, [_vm._v("!")]) : _vm._e(), _vm._v("\n                Needs Attention\n            ")]), _vm._v(" "), _c("span", {
     staticClass: "badge badge-secondary"
   }, [_vm._v(_vm._s(_vm.stats.needs_attention.total_alerts) + " alert(s)")])]), _vm._v(" "), _c("div", {
@@ -5178,7 +5186,10 @@ var render = function render() {
   }, _vm._l(_vm.stats.needs_attention.alerts, function (alert) {
     return _c("div", {
       key: alert.type,
-      "class": "alert alert-" + (alert.severity === "error" ? "danger" : alert.severity === "warning" ? "warning" : "info") + " mb-2"
+      "class": "alert alert-" + (alert.severity === "error" ? "danger" : alert.severity === "warning" ? "warning" : "info") + " mb-2",
+      attrs: {
+        role: "alert"
+      }
     }, [_c("strong", [_vm._v(_vm._s(alert.message))]), _vm._v(" "), _c("div", {
       staticClass: "small mt-1"
     }, [_vm._v(_vm._s(alert.action))])]);
@@ -5186,6 +5197,11 @@ var render = function render() {
     staticClass: "card mb-4"
   }, [_vm._m(0), _vm._v(" "), _c("div", {
     staticClass: "card-body"
+  }, [_c("div", {
+    attrs: {
+      role: "img",
+      "aria-label": "Fleet trends area chart showing completed and failed workflows over the last 7 days with hourly resolution. Completed workflows shown in green, failed workflows in red."
+    }
   }, [_c("apexchart", {
     attrs: {
       type: "area",
@@ -5193,7 +5209,7 @@ var render = function render() {
       options: _vm.fleetTrendsChartOptions,
       series: _vm.fleetTrendsChartSeries
     }
-  })], 1)]) : _vm._e(), _vm._v(" "), _vm.stats.fleet_overview ? _c("div", {
+  })], 1)])]) : _vm._e(), _vm._v(" "), _vm.stats.fleet_overview ? _c("div", {
     staticClass: "card mb-4"
   }, [_vm._m(1), _vm._v(" "), _c("div", {
     staticClass: "card-body"
@@ -5239,23 +5255,33 @@ var render = function render() {
     staticClass: "row mt-4"
   }, [_c("div", {
     staticClass: "col-md-6"
-  }, [_c("h6", [_vm._v("Pass Rate by Type")]), _vm._v(" "), _c("apexchart", {
+  }, [_c("h6", [_vm._v("Pass Rate by Type")]), _vm._v(" "), _c("div", {
+    attrs: {
+      role: "img",
+      "aria-label": "Horizontal bar chart showing pass rate percentage for top 5 workflow types. Higher pass rates indicate better workflow reliability."
+    }
+  }, [_c("apexchart", {
     attrs: {
       type: "bar",
       height: "250",
       options: _vm.passRateChartOptions,
       series: _vm.passRateChartSeries
     }
-  })], 1), _vm._v(" "), _c("div", {
+  })], 1)]), _vm._v(" "), _c("div", {
     staticClass: "col-md-6"
-  }, [_c("h6", [_vm._v("Median Duration by Type")]), _vm._v(" "), _c("apexchart", {
+  }, [_c("h6", [_vm._v("Median Duration by Type")]), _vm._v(" "), _c("div", {
+    attrs: {
+      role: "img",
+      "aria-label": "Horizontal bar chart showing median execution duration for top 5 workflow types. Shorter durations indicate faster workflow completion."
+    }
+  }, [_c("apexchart", {
     attrs: {
       type: "bar",
       height: "250",
       options: _vm.durationChartOptions,
       series: _vm.durationChartSeries
     }
-  })], 1)]) : _vm._e(), _vm._v(" "), _c("th", {
+  })], 1)])]) : _vm._e(), _vm._v(" "), _c("th", {
     staticClass: "text-right"
   }, [_vm._v("Errors")])])]), _vm._v(" "), _c("tbody", _vm._l(_vm.stats.workflow_type_health, function (type) {
     return _c("tr", {

@@ -14,6 +14,11 @@
     <link id="app-stylesheet" href="{{ asset(mix($cssFile, 'vendor/waterline')) }}" rel="stylesheet">
 </head>
 <body>
+<!-- Skip to main content link for keyboard navigation (WCAG 2.4.1) -->
+<a href="#main-content" class="skip-link sr-only sr-only-focusable">
+    Skip to main content
+</a>
+
 <div id="waterline" v-cloak>
     <alert :message="alert.message"
            :type="alert.type"
@@ -52,7 +57,7 @@
                 <ul class="nav flex-column">
                     <li class="nav-item">
                         <router-link active-class="active" to="/dashboard" class="nav-link d-flex align-items-center pt-0">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                 <path d="M0 3c0-1.1.9-2 2-2h16a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm2 2v12h16V5H2zm8 3l4 5H6l4-5z"></path>
                             </svg>
                             <span>Dashboard</span>
@@ -60,7 +65,7 @@
                     </li>
                     <li class="nav-item">
                         <router-link active-class="active" to="/workers" class="nav-link d-flex align-items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                 <path d="M7 8a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm0 1c2.15 0 4.2.4 6.1 1.09L12 16h-1.25L10 20H4l-.75-4H2L.9 10.09A17.93 17.93 0 0 1 7 9zm8.31.17c1.32.18 2.59.48 3.8.92L18 16h-1.25L16 20h-3.96l.37-2h1.25l1.65-8.83zM13 0a4 4 0 1 1-1.33 7.76 5.96 5.96 0 0 0 0-7.52C12.1.1 12.53 0 13 0z"></path>
                             </svg>
                             <span>Workers</span>
@@ -68,7 +73,7 @@
                     </li>
                     <li class="nav-item">
                         <router-link active-class="active" to="/schedules" class="nav-link d-flex align-items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                 <path d="M1 4c0-1.1.9-2 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V4zm2 2v12h14V6H3zm2-6h2v2H5V0zm8 0h2v2h-2V0zM5 9h2v2H5V9zm0 4h2v2H5v-2zm4-4h2v2H9V9zm0 4h2v2H9v-2zm4-4h2v2h-2V9zm0 4h2v2h-2v-2z"></path>
                             </svg>
                             <span>Schedules</span>
@@ -76,7 +81,7 @@
                     </li>
                     <li class="nav-item">
                         <router-link active-class="active" to="/running" class="nav-link d-flex align-items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                 <path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32zM7 6h2v8H7V6zm4 0h2v8h-2V6z"/>
                             </svg>
                             <span>Running</span>
@@ -84,7 +89,7 @@
                     </li>
                     <li class="nav-item">
                         <router-link active-class="active" to="/completed" class="nav-link d-flex align-items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                 <path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32zM6.7 9.29L9 11.6l4.3-4.3 1.4 1.42L9 14.4l-3.7-3.7 1.4-1.42z"></path>
                             </svg>
                             <span>Completed</span>
@@ -92,7 +97,7 @@
                     </li>
                     <li class="nav-item">
                         <router-link active-class="active" to="/failed" class="nav-link d-flex align-items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                 <path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm1.41-1.41A8 8 0 1 0 15.66 4.34 8 8 0 0 0 4.34 15.66zm9.9-8.49L11.41 10l2.83 2.83-1.41 1.41L10 11.41l-2.83 2.83-1.41-1.41L8.59 10 5.76 7.17l1.41-1.41L10 8.59l2.83-2.83 1.41 1.41z"></path>
                             </svg>
                             <span>Failed</span>
@@ -100,7 +105,7 @@
                     </li>
                     <li class="nav-item">
                         <router-link active-class="active" to="/cancelled" class="nav-link d-flex align-items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                 <path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm12.73-1.41A8 8 0 1 0 4.34 4.34a8 8 0 0 0 11.32 11.32zM6 10h8v2H6v-2z"></path>
                             </svg>
                             <span>Cancelled</span>
@@ -108,7 +113,7 @@
                     </li>
                     <li class="nav-item">
                         <router-link active-class="active" to="/terminated" class="nav-link d-flex align-items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                                 <path d="M2.93 17.07A10 10 0 1 1 17.07 2.93 10 10 0 0 1 2.93 17.07zm1.41-1.41A8 8 0 1 0 15.66 4.34 8 8 0 0 0 4.34 15.66zM7 7h6v6H7V7z"></path>
                             </svg>
                             <span>Terminated</span>
@@ -117,7 +122,7 @@
                 </ul>
             </div>
 
-            <div class="col-10">
+            <div id="main-content" class="col-10" tabindex="-1">
                 @if (! $assetsAreCurrent)
                     <div class="alert alert-warning">
                         The published Waterline assets are not up-to-date with the installed version. To update, run:<br/><code>php artisan waterline:publish</code>

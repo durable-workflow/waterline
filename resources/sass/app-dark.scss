@@ -66,3 +66,61 @@ $container-max-widths: (
 ) !default;
 
 @import 'base';
+
+// ============================================================================
+// Dark Mode Focus Indicator Overrides
+// ============================================================================
+// Lighter focus indicators for better visibility on dark backgrounds
+
+*:focus-visible {
+    outline-color: #66b3ff;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+    outline-color: #66b3ff;
+}
+
+.nav-link:focus-visible,
+.router-link-active:focus-visible {
+    outline-color: #66b3ff;
+}
+
+.btn:focus-visible {
+    outline-color: #66b3ff;
+    box-shadow: 0 0 0 0.2rem rgba(102, 179, 255, 0.25);
+}
+
+.btn-primary:focus-visible {
+    outline-color: #ffffff;
+    box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.5);
+}
+
+.form-control:focus-visible,
+.custom-select:focus-visible {
+    outline-color: #66b3ff;
+    border-color: #66b3ff;
+    box-shadow: 0 0 0 0.2rem rgba(102, 179, 255, 0.25);
+}
+
+.card:focus-visible {
+    outline-color: #66b3ff;
+}
+
+.skip-link {
+    background: #66b3ff;
+    color: #1c1c1c;
+}
+
+.skip-link:focus {
+    outline-color: #ffffff;
+}
+
+// ============================================================================
+// End Dark Mode Focus Indicator Overrides
+// ============================================================================

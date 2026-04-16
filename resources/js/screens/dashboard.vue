@@ -499,11 +499,15 @@
 
 <template>
     <div>
-        <!-- Needs Attention Alerts -->
-        <div class="card mb-4" v-if="stats.needs_attention && stats.needs_attention.total_alerts > 0">
+        <!-- Needs Attention Alerts (WCAG 4.1.3: Status Messages) -->
+        <div class="card mb-4"
+             v-if="stats.needs_attention && stats.needs_attention.total_alerts > 0"
+             role="alert"
+             aria-live="polite"
+             :aria-label="'Needs attention: ' + stats.needs_attention.total_alerts + ' alert' + (stats.needs_attention.total_alerts > 1 ? 's' : '')">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>
-                    <span class="badge badge-warning mr-2" v-if="stats.needs_attention.has_critical">!</span>
+                    <span class="badge badge-warning mr-2" v-if="stats.needs_attention.has_critical" aria-hidden="true">!</span>
                     Needs Attention
                 </h5>
                 <span class="badge badge-secondary">{{ stats.needs_attention.total_alerts }} alert(s)</span>
@@ -511,7 +515,8 @@
 
             <div class="card-body">
                 <div v-for="alert in stats.needs_attention.alerts" :key="alert.type"
-                     :class="'alert alert-' + (alert.severity === 'error' ? 'danger' : alert.severity === 'warning' ? 'warning' : 'info') + ' mb-2'">
+                     :class="'alert alert-' + (alert.severity === 'error' ? 'danger' : alert.severity === 'warning' ? 'warning' : 'info') + ' mb-2'"
+                     role="alert">
                     <strong>{{ alert.message }}</strong>
                     <div class="small mt-1">{{ alert.action }}</div>
                 </div>
@@ -527,12 +532,15 @@
             </div>
 
             <div class="card-body">
-                <apexchart
-                    type="area"
-                    height="300"
-                    :options="fleetTrendsChartOptions"
-                    :series="fleetTrendsChartSeries">
-                </apexchart>
+                <!-- Chart wrapper for accessibility (WCAG 1.1.1: Non-text Content) -->
+                <div role="img" aria-label="Fleet trends area chart showing completed and failed workflows over the last 7 days with hourly resolution. Completed workflows shown in green, failed workflows in red.">
+                    <apexchart
+                        type="area"
+                        height="300"
+                        :options="fleetTrendsChartOptions"
+                        :series="fleetTrendsChartSeries">
+                    </apexchart>
+                </div>
             </div>
         </div>
 
@@ -611,21 +619,27 @@
                 <div class="row mt-4" v-if="stats.workflow_type_health && stats.workflow_type_health.length >= 3">
                     <div class="col-md-6">
                         <h6>Pass Rate by Type</h6>
-                        <apexchart
-                            type="bar"
-                            height="250"
-                            :options="passRateChartOptions"
-                            :series="passRateChartSeries">
-                        </apexchart>
+                        <!-- Chart wrapper for accessibility (WCAG 1.1.1: Non-text Content) -->
+                        <div role="img" aria-label="Horizontal bar chart showing pass rate percentage for top 5 workflow types. Higher pass rates indicate better workflow reliability.">
+                            <apexchart
+                                type="bar"
+                                height="250"
+                                :options="passRateChartOptions"
+                                :series="passRateChartSeries">
+                            </apexchart>
+                        </div>
                     </div>
                     <div class="col-md-6">
                         <h6>Median Duration by Type</h6>
-                        <apexchart
-                            type="bar"
-                            height="250"
-                            :options="durationChartOptions"
-                            :series="durationChartSeries">
-                        </apexchart>
+                        <!-- Chart wrapper for accessibility (WCAG 1.1.1: Non-text Content) -->
+                        <div role="img" aria-label="Horizontal bar chart showing median execution duration for top 5 workflow types. Shorter durations indicate faster workflow completion.">
+                            <apexchart
+                                type="bar"
+                                height="250"
+                                :options="durationChartOptions"
+                                :series="durationChartSeries">
+                            </apexchart>
+                        </div>
                     </div>
                 </div>
                             <th class="text-right">Errors</th>

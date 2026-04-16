@@ -9275,6 +9275,98 @@ a.text-dark:hover, a.text-dark:focus {
     border-color: #343434;
   }
 }
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 3px solid #0066cc;
+  outline-offset: 2px;
+  transition: outline-offset 0.1s ease;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role=button]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 3px solid #0066cc;
+  outline-offset: 2px;
+}
+
+.nav-link:focus-visible,
+.router-link-active:focus-visible {
+  outline: 3px solid #0066cc;
+  outline-offset: 4px;
+}
+
+.btn:focus-visible {
+  outline: 3px solid #0066cc;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 0.2rem rgba(0, 102, 204, 0.25);
+}
+
+.btn-primary:focus-visible {
+  outline-color: #ffffff;
+  box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.5);
+}
+
+.form-control:focus-visible,
+.custom-select:focus-visible {
+  outline: 3px solid #0066cc;
+  outline-offset: 0;
+  border-color: #0066cc;
+  box-shadow: 0 0 0 0.2rem rgba(0, 102, 204, 0.25);
+}
+
+.card:focus-visible {
+  outline: 3px solid #0066cc;
+  outline-offset: 4px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.sr-only-focusable:focus,
+.sr-only-focusable:active {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: #0066cc;
+  color: white;
+  padding: 8px 16px;
+  text-decoration: none;
+  z-index: 10000;
+  font-weight: 600;
+  border-radius: 0 0 4px 0;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: 3px solid #ffffff;
+  outline-offset: -3px;
+}
+
 body {
   padding-bottom: 20px;
 }
@@ -9478,4 +9570,53 @@ button:hover .fill-primary {
 
 .badge-sm {
   font-size: 0.75rem;
+}
+
+*:focus-visible {
+  outline-color: #66b3ff;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role=button]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline-color: #66b3ff;
+}
+
+.nav-link:focus-visible,
+.router-link-active:focus-visible {
+  outline-color: #66b3ff;
+}
+
+.btn:focus-visible {
+  outline-color: #66b3ff;
+  box-shadow: 0 0 0 0.2rem rgba(102, 179, 255, 0.25);
+}
+
+.btn-primary:focus-visible {
+  outline-color: #ffffff;
+  box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.5);
+}
+
+.form-control:focus-visible,
+.custom-select:focus-visible {
+  outline-color: #66b3ff;
+  border-color: #66b3ff;
+  box-shadow: 0 0 0 0.2rem rgba(102, 179, 255, 0.25);
+}
+
+.card:focus-visible {
+  outline-color: #66b3ff;
+}
+
+.skip-link {
+  background: #66b3ff;
+  color: #1c1c1c;
+}
+
+.skip-link:focus {
+  outline-color: #ffffff;
 }
