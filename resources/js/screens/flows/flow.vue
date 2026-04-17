@@ -1627,6 +1627,14 @@ export default {
                 return data
             }
 
+            // Try JSON first — v2 payloads are Avro (server pre-decodes to JSON)
+            // or JSON-serialized. Only fall back to phpunserialize for v1 data.
+            try {
+                return JSON.parse(data)
+            } catch (jsonErr) {
+                // Not JSON — try legacy PHP unserialization
+            }
+
             try {
                 let result = phpunserialize(data)
                 if (result && typeof result === 'object' && !Array.isArray(result)) {

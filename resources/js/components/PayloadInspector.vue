@@ -157,10 +157,30 @@ export default {
                     this.error = `Failed to decode JSON: ${e.message}`;
                     this.rawValue = blob;
                 }
+            } else if (codec === 'avro') {
+                // Avro blobs are base64-encoded binary — client-side decoding
+                // requires the apache-avro JS library which is not bundled.
+                // The blob may already be a pre-decoded object from the server
+                // (via CommandPayloadPreview::previewWithCodec).
+                if (typeof blob === 'object' && blob !== null) {
+                    this.decoded = blob;
+                    this.updateCollapsedState();
+                } else if (typeof blob === 'string') {
+                    // Try JSON parse — the server may have pre-decoded
+                    try {
+                        this.decoded = JSON.parse(blob);
+                        this.updateCollapsedState();
+                    } catch (e) {
+                        // Raw Avro binary blob — show as-is
+                        this.rawValue = `[Avro payload: ${blob.length} bytes]`;
+                    }
+                } else {
+                    this.rawValue = blob;
+                }
             } else if (codec === 'null') {
                 this.decoded = null;
             } else {
-                this.error = `Unsupported codec: ${codec}`;
+                // Legacy PHP codecs or unknown — show raw
                 this.rawValue = blob;
             }
         },
