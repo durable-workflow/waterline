@@ -23,6 +23,17 @@
         "orchestra/workbench": "^7.29",
         "phpunit/phpunit": "^9.5.10|^12.5.12"
     },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../workflow",
+            "options": {
+                "versions": {
+                    "durable-workflow/workflow": "2.0.99"
+                }
+            }
+        }
+    ],
     "autoload": {
         "psr-4": {
             "Waterline\\": "app/"

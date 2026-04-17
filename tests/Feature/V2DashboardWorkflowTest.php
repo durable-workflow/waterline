@@ -204,6 +204,14 @@ class V2DashboardWorkflowTest extends TestCase
                 ];
             }
 
+            public function listItem(WorkflowRunSummary $summary): array
+            {
+                return [
+                    'id' => $summary->id,
+                    'contract_boundary' => 'list_item',
+                ];
+            }
+
             public function runHistoryExport(
                 WorkflowRun $run,
                 ?\Carbon\CarbonInterface $exportedAt = null,
