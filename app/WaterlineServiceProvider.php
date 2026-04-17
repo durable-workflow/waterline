@@ -4,6 +4,7 @@ namespace Waterline;
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Waterline\Support\WorkflowPackageApiFloor;
 
 class WaterlineServiceProvider extends ServiceProvider
 {
@@ -14,6 +15,12 @@ class WaterlineServiceProvider extends ServiceProvider
      */
     public function boot()
     {
+        // Assert the installed workflow package meets the API floor
+        // Waterline depends on (CommandContext-accepting schedule
+        // mutations, etc.). Older v2 snapshots fail schedule routes with
+        // unknown-named-parameter errors — catch that at boot instead.
+        WorkflowPackageApiFloor::assert();
+
         $this->registerRoutes();
         $this->registerResources();
         $this->defineAssetPublishing();
