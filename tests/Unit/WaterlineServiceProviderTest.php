@@ -63,6 +63,35 @@ class WaterlineServiceProviderTest extends TestCase
 
         $this->assertInstanceOf(UnavailableV2WorkflowRepository::class, $repository);
     }
+
+    public function testBootPassesFloorGuardWhenPinnedToV1EvenIfV2SurfaceIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v1');
+        config()->set('workflows.v2.run_summary_model', MissingWorkflowRunSummary::class);
+
+        (new WaterlineServiceProvider($this->app))->boot();
+
+        $this->expectNotToPerformAssertions();
+    }
+
+    public function testBootPassesFloorGuardWhenAutoFallsBackToV1(): void
+    {
+        config()->set('waterline.engine_source', 'auto');
+        config()->set('workflows.v2.run_summary_model', MissingWorkflowRunSummary::class);
+
+        (new WaterlineServiceProvider($this->app))->boot();
+
+        $this->expectNotToPerformAssertions();
+    }
+
+    public function testBootPassesFloorGuardWhenResolvedToV2OnCurrentWorkflowPackage(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        (new WaterlineServiceProvider($this->app))->boot();
+
+        $this->expectNotToPerformAssertions();
+    }
 }
 
 final class MissingWorkflowRunSummary extends \Workflow\V2\Models\WorkflowRunSummary

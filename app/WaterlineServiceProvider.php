@@ -15,11 +15,10 @@ class WaterlineServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        // Assert the installed workflow package meets the API floor
-        // Waterline depends on (CommandContext-accepting schedule
-        // mutations, etc.). Older v2 snapshots fail schedule routes with
-        // unknown-named-parameter errors — catch that at boot instead.
-        WorkflowPackageApiFloor::assert();
+        // Assert the v2 API floor only when the resolved engine source is
+        // v2. v1 installs and auto-mode installs that fall back to v1 must
+        // continue to boot even when the v2 surface is absent or stale.
+        WorkflowPackageApiFloor::assertIfActive();
 
         $this->registerRoutes();
         $this->registerResources();

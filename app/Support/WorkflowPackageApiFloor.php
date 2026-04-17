@@ -9,19 +9,23 @@ use RuntimeException;
 
 /**
  * Enforces the minimum `durable-workflow/workflow` API surface Waterline
- * relies on at runtime.
+ * relies on when the v2 operator bridge is active.
  *
  * Waterline's composer constraint (`^1.0 || ^2.0`) intentionally covers a
- * wide range. Inside the v2 band, however, specific methods that carry
+ * wide range because Waterline ships with a v1 fallback. The API floor
+ * here only matters when the resolved engine source is v2 — a v1 install
+ * or an `auto`-mode install that falls back to v1 never calls the v2
+ * schedule mutation signatures and must boot cleanly even when the v2
+ * classes are absent.
+ *
+ * Inside the v2 band, however, specific methods that carry
  * `CommandContext` for audit attribution landed only in workflow commit
  * `e59e6f2`. An older v2 install that predates that commit lacks the
  * context-accepting signatures and fails the Waterline schedule
  * pause/resume/trigger/backfill/delete routes with unknown-named-parameter
- * or argument-count errors.
- *
- * Assert the floor at boot so broken pairings surface with a clear
- * diagnostic instead of a 500 the first time an operator clicks "Pause"
- * in the UI.
+ * or argument-count errors. `assertIfActive()` is called at boot so those
+ * broken pairings surface with a clear diagnostic instead of a 500 the
+ * first time an operator clicks "Pause" in the UI.
  *
  * @see https://github.com/zorporation/durable-workflow/issues/355
  */
@@ -31,6 +35,8 @@ final class WorkflowPackageApiFloor
      * Each entry is `[FQCN, method, required_parameter]`. The class and
      * method must exist, the method must be public-static, and the named
      * parameter must be declared on its signature.
+     *
+     * @var list<array{0: class-string, 1: string, 2: string}>
      */
     private const REQUIRED_PARAMETERS = [
         [\Workflow\V2\Support\ScheduleManager::class, 'pause', 'context'],
@@ -44,18 +50,76 @@ final class WorkflowPackageApiFloor
     public const COMMAND_CONTEXT_CLASS = \Workflow\V2\CommandContext::class;
 
     /**
+     * Assert the v2 API floor only when the resolved engine source is v2.
+     *
+     * v1 installs and `auto`-mode installs that fall back to v1 skip the
+     * check entirely so they continue to boot even when the v2 classes
+     * are absent or incomplete.
+     */
+    public static function assertIfActive(): void
+    {
+        if (! WorkflowEngineSourceResolver::usesV2()) {
+            return;
+        }
+
+        self::assert();
+    }
+
+    /**
      * Assert every required API surface is present. Throws with a single
      * aggregated diagnostic when the installed workflow package is too old.
      */
     public static function assert(): void
     {
-        $missing = [];
+        self::assertAgainst();
+    }
 
-        if (! class_exists(self::COMMAND_CONTEXT_CLASS)) {
-            $missing[] = self::COMMAND_CONTEXT_CLASS;
+    /**
+     * Assert against an explicit context class and requirement list. Exposed
+     * so regression tests can verify the throw path without mutating global
+     * class state. `assert()` calls this with the real REQUIRED_PARAMETERS.
+     *
+     * @param list<array{0: string, 1: string, 2: string}>|null $requirements
+     */
+    public static function assertAgainst(
+        ?string $contextClass = null,
+        ?array $requirements = null,
+    ): void {
+        $missing = self::findMissing($contextClass, $requirements);
+
+        if ($missing === []) {
+            return;
         }
 
-        foreach (self::REQUIRED_PARAMETERS as [$class, $method, $parameter]) {
+        throw new RuntimeException(sprintf(
+            "Installed durable-workflow/workflow package is older than the API floor Waterline requires. "
+            ."Missing: %s. Upgrade the workflow package to a v2 snapshot that includes CommandContext "
+            .'and the context-accepting schedule mutation signatures (see repos/workflow commit e59e6f2).',
+            implode(', ', $missing),
+        ));
+    }
+
+    /**
+     * Return the list of missing API-floor entries, or an empty list when
+     * the installed workflow package meets the floor. Exposed so regression
+     * tests can verify the detector fires without catching exceptions.
+     *
+     * @param list<array{0: string, 1: string, 2: string}>|null $requirements
+     * @return list<string>
+     */
+    public static function findMissing(
+        ?string $contextClass = null,
+        ?array $requirements = null,
+    ): array {
+        $contextClass ??= self::COMMAND_CONTEXT_CLASS;
+        $requirements ??= self::REQUIRED_PARAMETERS;
+        $missing = [];
+
+        if (! class_exists($contextClass)) {
+            $missing[] = $contextClass;
+        }
+
+        foreach ($requirements as [$class, $method, $parameter]) {
             $reflectionMethod = self::reflectStaticMethod($class, $method);
 
             if ($reflectionMethod === null) {
@@ -69,16 +133,7 @@ final class WorkflowPackageApiFloor
             }
         }
 
-        if ($missing === []) {
-            return;
-        }
-
-        throw new RuntimeException(sprintf(
-            "Installed durable-workflow/workflow package is older than the API floor Waterline requires. "
-            ."Missing: %s. Upgrade the workflow package to a v2 snapshot that includes CommandContext "
-            .'and the context-accepting schedule mutation signatures (see repos/workflow commit e59e6f2).',
-            implode(', ', $missing),
-        ));
+        return $missing;
     }
 
     private static function reflectStaticMethod(string $class, string $method): ?ReflectionMethod
