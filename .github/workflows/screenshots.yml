@@ -67,6 +67,14 @@ jobs:
           path: sample-app
           ref: ${{ inputs.sample_app_ref || 'main' }}
 
+      - name: Checkout workflow (needed for v2 classes referenced by sample-app)
+        if: ${{ inputs.waterline_override != 'false' }}
+        uses: actions/checkout@v4
+        with:
+          repository: durable-workflow/workflow
+          path: workflow
+          ref: v2
+
       - name: Set up PHP 8.4
         uses: shivammathur/setup-php@v2
         with:
@@ -80,14 +88,21 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Override sample-app waterline dependency
+      - name: Override sample-app waterline + workflow dependencies
         if: ${{ inputs.waterline_override != 'false' }}
         working-directory: sample-app
         run: |
           # Point sample-app at this checkout of Waterline so the screenshots
-          # capture the current branch's UI, not the published release.
+          # capture the current branch's UI, not the published release. The
+          # workflow path repo comes along because sample-app/main contains
+          # both v1 (SimpleWorkflow) and v2 (SimpleWorkflowV2) authoring
+          # classes; package discovery autoloads both and v2 classes only
+          # resolve when workflow v2 is the installed version.
           composer config repositories.waterline-local '{"type":"path","url":"../waterline","options":{"symlink":false}}'
-          composer require --no-update 'durable-workflow/waterline:*@dev'
+          composer config repositories.workflow-local '{"type":"path","url":"../workflow","options":{"symlink":false}}'
+          composer require --no-update \
+            'durable-workflow/waterline:*@dev' \
+            'durable-workflow/workflow:*@dev'
 
       - name: Install sample-app dependencies
         working-directory: sample-app
