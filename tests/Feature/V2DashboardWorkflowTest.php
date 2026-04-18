@@ -5746,12 +5746,12 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('timers.0.fire_at', $deadlineAt->toJSON());
     }
 
-    public function testShowRebuildsLegacyProjectedTimerRowsWithoutRowStatus(): void
+    public function testShowRebuildsNonCurrentProjectedTimerRowsWithoutRowStatus(): void
     {
         config()->set('waterline.engine_source', 'v2');
 
         $instance = WorkflowInstance::create([
-            'id' => 'waterline-timer-projection-legacy',
+            'id' => 'wl-timer-proj-noncurrent',
             'workflow_class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
             'run_count' => 1,
@@ -5764,6 +5764,7 @@ class V2DashboardWorkflowTest extends TestCase
             'workflow_class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
             'status' => 'waiting',
+            'payload_codec' => config('workflows.serializer'),
             'arguments' => Serializer::serialize([]),
             'connection' => 'redis',
             'queue' => 'default',
@@ -5797,7 +5798,7 @@ class V2DashboardWorkflowTest extends TestCase
                 'workflow_run_id' => $run->id,
                 'workflow_instance_id' => $instance->id,
                 'timer_id' => $timer->id,
-                'schema_version' => WorkflowRunTimerEntry::LEGACY_SCHEMA_VERSION,
+                'schema_version' => WorkflowRunTimerEntry::CURRENT_SCHEMA_VERSION - 1,
                 'position' => 0,
                 'sequence' => 1,
                 'status' => 'pending',
@@ -5834,7 +5835,8 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
             ->assertJsonPath('timers_projection_source', 'workflow_run_timer_entries_rebuilt')
-            ->assertJsonPath('timers_projection_rebuild_reasons.0', 'legacy_schema')
+            ->assertJsonPath('timers_projection_rebuild_reasons.0', 'schema_version_mismatch')
+            ->assertJsonPath('timers_projection_rebuild_reasons.1', 'stale_projection')
             ->assertJsonPath('timers.0.id', $timer->id)
             ->assertJsonPath('timers.0.status', 'pending')
             ->assertJsonPath('timers.0.source_status', 'pending')

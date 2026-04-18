@@ -23,6 +23,7 @@ use Workflow\V2\Models\WorkflowRunWait;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\Models\WorkflowTimelineEntry;
+use Workflow\V2\Support\RunSummaryProjector;
 use Workflow\V2\Support\WorkerCompatibilityFleet;
 
 class V2DashboardStatsControllerTest extends TestCase
@@ -220,6 +221,7 @@ class V2DashboardStatsControllerTest extends TestCase
             'workflow_type' => 'workflow.test',
             'status' => 'pending',
             'status_bucket' => 'running',
+            'projection_schema_version' => RunSummaryProjector::SCHEMA_VERSION,
             'started_at' => $run->started_at,
             'liveness_state' => 'repair_needed',
             'history_event_count' => 12,
@@ -259,6 +261,7 @@ class V2DashboardStatsControllerTest extends TestCase
             'workflow_type' => 'workflow.test',
             'status' => 'waiting',
             'status_bucket' => 'running',
+            'projection_schema_version' => RunSummaryProjector::SCHEMA_VERSION,
             'started_at' => $claimFailedRun->started_at,
             'open_wait_id' => 'signal:missing',
             'liveness_state' => 'workflow_task_claim_failed',
@@ -306,6 +309,7 @@ class V2DashboardStatsControllerTest extends TestCase
             'workflow_run_id' => str_pad('01JWLTIMERMISSRUN', 26, '0'),
             'workflow_instance_id' => 'waterline-timer-orphan-instance',
             'timer_id' => 'waterline-orphan-timer',
+            'schema_version' => WorkflowRunTimerEntry::CURRENT_SCHEMA_VERSION - 1,
             'position' => 0,
             'status' => 'pending',
             'source_status' => 'pending',
@@ -507,8 +511,8 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.projected_runs_with_timers', 0)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.missing_runs_with_timers', 1)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.stale_projected_runs', 0)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.legacy_schema_runs', 0)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.legacy_schema_rows', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.schema_version_mismatch_runs', 0)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.schema_version_mismatch_rows', 1)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.orphaned', 1)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.needs_rebuild', 2)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.runs', 3)

@@ -148,10 +148,30 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
           this.error = "Failed to decode JSON: ".concat(e.message);
           this.rawValue = blob;
         }
+      } else if (codec === 'avro') {
+        // Avro blobs are base64-encoded binary — client-side decoding
+        // requires the apache-avro JS library which is not bundled.
+        // The blob may already be a pre-decoded object from the server
+        // (via CommandPayloadPreview::previewWithCodec).
+        if (_typeof(blob) === 'object' && blob !== null) {
+          this.decoded = blob;
+          this.updateCollapsedState();
+        } else if (typeof blob === 'string') {
+          // Try JSON parse — the server may have pre-decoded
+          try {
+            this.decoded = JSON.parse(blob);
+            this.updateCollapsedState();
+          } catch (e) {
+            // Raw Avro binary blob — show as-is
+            this.rawValue = "[Avro payload: ".concat(blob.length, " bytes]");
+          }
+        } else {
+          this.rawValue = blob;
+        }
       } else if (codec === 'null') {
         this.decoded = null;
       } else {
-        this.error = "Unsupported codec: ".concat(codec);
+        // Legacy PHP codecs or unknown — show raw
         this.rawValue = blob;
       }
     },
@@ -1688,6 +1708,14 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
       if (typeof data !== 'string') {
         return data;
       }
+
+      // Try JSON first — v2 payloads are Avro (server pre-decodes to JSON)
+      // or JSON-serialized. Only fall back to phpunserialize for v1 data.
+      try {
+        return JSON.parse(data);
+      } catch (jsonErr) {
+        // Not JSON — try legacy PHP unserialization
+      }
       try {
         var result = phpunserialize__WEBPACK_IMPORTED_MODULE_0___default()(data);
         if (result && _typeof(result) === 'object' && !Array.isArray(result)) {
@@ -2642,8 +2670,8 @@ function _typeof(o) { "@babel/helpers - typeof"; return _typeof = "function" == 
     },
     projectionRebuildReasonLabel: function projectionRebuildReasonLabel(reason) {
       switch (reason) {
-        case 'legacy_schema':
-          return 'legacy schema rows';
+        case 'schema_version_mismatch':
+          return 'schema version mismatch rows';
         case 'missing_projection':
           return 'missing projection rows';
         case 'stale_projection':
@@ -5509,9 +5537,9 @@ var render = function render() {
     staticClass: "mt-1 text-muted"
   }, [_vm._v("\n                    Timeline rows:\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timeline_entries", "rows")) + " rows for\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timeline_entries", "history_events")) + " history events,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timeline_entries", "missing_runs_with_history")) + " runs missing,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timeline_entries", "stale_projected_runs")) + " stale,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timeline_entries", "missing_history_events")) + " missing history events,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timeline_entries", "orphaned")) + " orphaned.\n                ")]), _vm._v(" "), _c("div", {
     staticClass: "mt-1 text-muted"
-  }, [_vm._v("\n                    Timer rows:\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "rows")) + " rows across\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "projected_runs")) + " projected runs,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "missing_runs_with_timers")) + " timer runs missing,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "stale_projected_runs")) + " stale,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "orphaned")) + " orphaned.\n                ")]), _vm._v(" "), _vm.operatorProjectionMetric("run_timer_entries", "legacy_schema_rows") ? _c("div", {
+  }, [_vm._v("\n                    Timer rows:\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "rows")) + " rows across\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "projected_runs")) + " projected runs,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "missing_runs_with_timers")) + " timer runs missing,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "stale_projected_runs")) + " stale,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "orphaned")) + " orphaned.\n                ")]), _vm._v(" "), _vm.operatorProjectionMetric("run_timer_entries", "schema_version_mismatch_rows") ? _c("div", {
     staticClass: "mt-1 text-muted"
-  }, [_vm._v("\n                    Legacy timer projection schema:\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "legacy_schema_runs")) + " runs and\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "legacy_schema_rows")) + " rows still use\n                    "), _c("code", [_vm._v("schema_version = 0")]), _vm._v(". Opening selected-run detail or running\n                    "), _c("code", [_vm._v("workflow:v2:rebuild-projections --needs-rebuild")]), _vm._v(" rewrites them onto the current timer row contract.\n                ")]) : _vm._e(), _vm._v(" "), _c("div", {
+  }, [_vm._v("\n                    Timer projection schema mismatch:\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "schema_version_mismatch_runs")) + " runs and\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_timer_entries", "schema_version_mismatch_rows")) + " rows do not match\n                    the current schema version. Opening selected-run detail or running\n                    "), _c("code", [_vm._v("workflow:v2:rebuild-projections --needs-rebuild")]), _vm._v(" rewrites them onto the current timer row contract.\n                ")]) : _vm._e(), _vm._v(" "), _c("div", {
     staticClass: "mt-1 text-muted"
   }, [_vm._v("\n                    Lineage rows:\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_lineage_entries", "rows")) + " rows across\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_lineage_entries", "projected_runs")) + " projected runs,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_lineage_entries", "missing_runs_with_lineage")) + " lineage runs missing,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_lineage_entries", "stale_projected_runs")) + " stale,\n                    " + _vm._s(_vm.operatorProjectionMetricLabel("run_lineage_entries", "orphaned")) + " orphaned.\n                ")]), _vm._v(" "), _vm.operatorProjectionNeedsRebuild() ? _c("div", {
     staticClass: "mt-1 text-muted"

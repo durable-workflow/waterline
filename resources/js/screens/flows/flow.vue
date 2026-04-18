@@ -2830,8 +2830,8 @@ export default {
 
         projectionRebuildReasonLabel(reason) {
             switch (reason) {
-                case 'legacy_schema':
-                    return 'legacy schema rows'
+                case 'schema_version_mismatch':
+                    return 'schema version mismatch rows'
                 case 'missing_projection':
                     return 'missing projection rows'
                 case 'stale_projection':

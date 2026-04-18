@@ -353,7 +353,7 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('timers.0.fired_at', null);
     }
 
-    public function testHistoryExportRebuildsLegacyProjectedTimerRowsWithoutRowStatus(): void
+    public function testHistoryExportRebuildsNonCurrentProjectedTimerRowsWithoutRowStatus(): void
     {
         config()->set('waterline.engine_source', 'v2');
 
@@ -382,14 +382,15 @@ class V2HistoryExportControllerTest extends TestCase
         unset($payload['row_status']);
 
         $entry->forceFill([
-            'schema_version' => WorkflowRunTimerEntry::LEGACY_SCHEMA_VERSION,
+            'schema_version' => WorkflowRunTimerEntry::CURRENT_SCHEMA_VERSION - 1,
             'payload' => $payload,
         ])->save();
 
         $this->get('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
             ->assertStatus(200)
             ->assertJsonPath('selected_run.timers_projection_source', 'workflow_run_timer_entries_rebuilt')
-            ->assertJsonPath('selected_run.timers_projection_rebuild_reasons.0', 'legacy_schema')
+            ->assertJsonPath('selected_run.timers_projection_rebuild_reasons.0', 'schema_version_mismatch')
+            ->assertJsonPath('selected_run.timers_projection_rebuild_reasons.1', 'stale_projection')
             ->assertJsonPath('timers.0.id', $timer->id)
             ->assertJsonPath('timers.0.status', 'unsupported')
             ->assertJsonPath('timers.0.source_status', 'fired')

@@ -927,11 +927,11 @@
                         {{ operatorProjectionMetricLabel('run_timer_entries', 'stale_projected_runs') }} stale,
                         {{ operatorProjectionMetricLabel('run_timer_entries', 'orphaned') }} orphaned.
                     </div>
-                    <div class="mt-1 text-muted" v-if="operatorProjectionMetric('run_timer_entries', 'legacy_schema_rows')">
-                        Legacy timer projection schema:
-                        {{ operatorProjectionMetricLabel('run_timer_entries', 'legacy_schema_runs') }} runs and
-                        {{ operatorProjectionMetricLabel('run_timer_entries', 'legacy_schema_rows') }} rows still use
-                        <code>schema_version = 0</code>. Opening selected-run detail or running
+                    <div class="mt-1 text-muted" v-if="operatorProjectionMetric('run_timer_entries', 'schema_version_mismatch_rows')">
+                        Timer projection schema mismatch:
+                        {{ operatorProjectionMetricLabel('run_timer_entries', 'schema_version_mismatch_runs') }} runs and
+                        {{ operatorProjectionMetricLabel('run_timer_entries', 'schema_version_mismatch_rows') }} rows do not match
+                        the current schema version. Opening selected-run detail or running
                         <code>workflow:v2:rebuild-projections --needs-rebuild</code> rewrites them onto the current timer row contract.
                     </div>
 
