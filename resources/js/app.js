@@ -95,9 +95,8 @@ new Vue({
         applyTheme() {
             const link = document.getElementById('app-stylesheet');
             if (link) {
-                const basePath = window.Waterline.basePath || '';
                 const cssFile = this.theme === 'dark' ? 'app-dark.css' : 'app.css';
-                link.href = `${basePath}/vendor/waterline/${cssFile}`;
+                link.href = `/vendor/waterline/${cssFile}`;
             }
         }
     }
