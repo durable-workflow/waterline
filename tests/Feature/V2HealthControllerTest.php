@@ -28,6 +28,8 @@ class V2HealthControllerTest extends TestCase
             ->assertJsonPath('checks.1.name', 'backend_capabilities')
             ->assertJsonPath('checks.1.status', 'ok')
             ->assertJsonPath('engine_source.resolved', 'v2')
+            ->assertJsonPath('readiness_contract.version', 1)
+            ->assertJsonPath('readiness_contract.effective_states.health.state', 'delegates_to_v2_health_check')
             ->assertJsonPath('operator_metrics.backend.supported', true);
     }
 

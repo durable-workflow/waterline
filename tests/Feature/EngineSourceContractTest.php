@@ -16,7 +16,13 @@ final class EngineSourceContractTest extends TestCase
             ->assertJsonPath('engine_source.configured', 'auto')
             ->assertJsonPath('engine_source.resolved', 'v2')
             ->assertJsonPath('engine_source.status', 'v2_auto')
-            ->assertJsonPath('engine_source.uses_v2', true);
+            ->assertJsonPath('engine_source.uses_v2', true)
+            ->assertJsonPath('engine_source.readiness_contract.version', 1)
+            ->assertJsonPath(
+                'engine_source.readiness_contract.effective_states.boot_install.state',
+                'v2_operator_surface_available'
+            )
+            ->assertJsonPath('engine_source.readiness_contract.effective_states.stats.state', 'v2_operator_metrics');
     }
 
     public function testStatsEndpointReturnsUnavailableWhenV2IsPinnedButOperatorSurfaceIsMissing(): void
@@ -30,7 +36,8 @@ final class EngineSourceContractTest extends TestCase
             ->assertJsonPath('engine_source.resolved', 'v2')
             ->assertJsonPath('engine_source.status', 'v2_pinned_unavailable')
             ->assertJsonPath('engine_source.uses_v2', false)
-            ->assertJsonPath('engine_source.issues.0.reason', 'missing_table');
+            ->assertJsonPath('engine_source.issues.0.reason', 'missing_table')
+            ->assertJsonPath('engine_source.readiness_contract.effective_states.stats.state', 'unavailable_503');
     }
 
     public function testV2HealthEndpointReturnsEngineSourceErrorWhenAutoFallsBackToV1(): void
@@ -43,7 +50,8 @@ final class EngineSourceContractTest extends TestCase
             ->assertJsonPath('checks.0.name', 'engine_source')
             ->assertJsonPath('checks.0.status', 'error')
             ->assertJsonPath('engine_source.status', 'auto_fallback_to_v1')
-            ->assertJsonPath('engine_source.resolved', 'v1');
+            ->assertJsonPath('engine_source.resolved', 'v1')
+            ->assertJsonPath('readiness_contract.effective_states.health.http_status_when_requested', 503);
     }
 
     public function testSavedViewsReturnUnavailableWhenV2IsPinnedButOperatorSurfaceIsMissing(): void

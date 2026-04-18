@@ -31,6 +31,7 @@ class V2HealthController extends Controller
                     ],
                 ],
                 'engine_source' => $engineSource,
+                'readiness_contract' => $engineSource['readiness_contract'] ?? null,
             ], 503);
         }
 
@@ -48,6 +49,7 @@ class V2HealthController extends Controller
             ],
         ]);
         $snapshot['engine_source'] = $engineSource;
+        $snapshot['readiness_contract'] = $engineSource['readiness_contract'] ?? null;
 
         return response()->json($snapshot, HealthCheck::httpStatus($snapshot));
     }
