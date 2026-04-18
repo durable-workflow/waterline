@@ -1,0 +1,218 @@
+name: Screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      sample_app_ref:
+        description: 'sample-app branch/SHA to use'
+        required: false
+        default: 'main'
+      waterline_override:
+        description: 'Override sample-app composer to use this checkout of Waterline'
+        required: false
+        type: boolean
+        default: true
+  schedule:
+    # Weekly on Mondays at 06:00 UTC
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: screenshots
+  cancel-in-progress: false
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_USER: laravel
+          MYSQL_PASSWORD: password
+          MYSQL_DATABASE: sample
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -ppassword"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=3s
+          --health-timeout=3s
+          --health-retries=10
+
+    steps:
+      - name: Checkout waterline
+        uses: actions/checkout@v4
+        with:
+          path: waterline
+
+      - name: Checkout sample-app
+        uses: actions/checkout@v4
+        with:
+          repository: durable-workflow/sample-app
+          path: sample-app
+          ref: ${{ inputs.sample_app_ref || 'main' }}
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, redis, bcmath
+          coverage: none
+          tools: composer:v2
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Override sample-app waterline dependency
+        if: ${{ inputs.waterline_override != 'false' }}
+        working-directory: sample-app
+        run: |
+          # Point sample-app at this checkout of Waterline so the screenshots
+          # capture the current branch's UI, not the published release.
+          composer config repositories.waterline-local '{"type":"path","url":"../waterline","options":{"symlink":false}}'
+          composer require --no-update 'durable-workflow/waterline:*@dev'
+
+      - name: Install sample-app dependencies
+        working-directory: sample-app
+        env:
+          COMPOSER_MEMORY_LIMIT: '-1'
+        run: composer update --no-progress --no-interaction --prefer-dist
+
+      - name: Configure sample-app environment
+        working-directory: sample-app
+        run: |
+          cat > .env << 'ENVEOF'
+          APP_NAME=Laravel
+          APP_ENV=local
+          APP_DEBUG=true
+          APP_URL=http://localhost:8000
+          LOG_CHANNEL=stack
+          LOG_LEVEL=debug
+          DB_CONNECTION=mysql
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+          DB_DATABASE=sample
+          DB_USERNAME=laravel
+          DB_PASSWORD=password
+          SHARED_DB_HOST=127.0.0.1
+          SHARED_DB_PORT=3306
+          SHARED_DB_DATABASE=sample
+          SHARED_DB_USERNAME=laravel
+          SHARED_DB_PASSWORD=password
+          REDIS_HOST=127.0.0.1
+          REDIS_PORT=6379
+          QUEUE_CONNECTION=redis
+          CACHE_STORE=redis
+          SESSION_DRIVER=redis
+          ENVEOF
+          php artisan key:generate --force
+
+      - name: Migrate + seed demo user
+        working-directory: sample-app
+        run: |
+          php artisan migrate --force
+          php artisan db:seed --force
+
+      - name: Publish Waterline assets
+        working-directory: sample-app
+        run: php artisan vendor:publish --tag=waterline-assets --force
+
+      - name: Start web server
+        working-directory: sample-app
+        run: |
+          php artisan serve --host=127.0.0.1 --port=8000 > ../web.log 2>&1 &
+          echo $! > ../web.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/up > /dev/null; then
+              echo "Web server up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Web server failed to respond"
+          cat ../web.log
+          exit 1
+
+      - name: Start queue worker
+        working-directory: sample-app
+        run: |
+          php artisan queue:work redis --tries=3 --timeout=60 > ../worker.log 2>&1 &
+          echo $! > ../worker.pid
+          sleep 2
+
+      - name: Seed workflow data
+        working-directory: sample-app
+        run: |
+          # Kick off several workflows so dashboard and list views have
+          # meaningful rows with real activity history.
+          for i in 1 2 3 4 5 6; do
+            php artisan app:workflow > /dev/null 2>&1 &
+          done
+          # Give the worker time to drain the queue and record history.
+          sleep 25
+
+      - name: Install Playwright
+        working-directory: sample-app
+        run: |
+          npm install --no-save playwright
+          npx playwright install chromium --with-deps
+
+      - name: Capture screenshots
+        working-directory: sample-app
+        env:
+          APP_URL: http://127.0.0.1:8000
+        run: |
+          mkdir -p screenshots
+          node docker/screenshots.js "$APP_URL" ./screenshots
+          ls -la screenshots
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: waterline-screenshots
+          path: sample-app/screenshots/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        working-directory: sample-app
+        run: |
+          mkdir -p ../diagnostics
+          cp ../web.log ../diagnostics/ 2>/dev/null || true
+          cp ../worker.log ../diagnostics/ 2>/dev/null || true
+          cp storage/logs/laravel.log ../diagnostics/ 2>/dev/null || true
+          php artisan about > ../diagnostics/about.txt 2>&1 || true
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-diagnostics
+          path: diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Stop background processes
+        if: always()
+        run: |
+          [ -f web.pid ] && kill "$(cat web.pid)" 2>/dev/null || true
+          [ -f worker.pid ] && kill "$(cat worker.pid)" 2>/dev/null || true
