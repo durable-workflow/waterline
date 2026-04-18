@@ -231,7 +231,9 @@ jobs:
       - name: Browser-level CSS diagnostic
         working-directory: sample-app
         run: |
-          cat > /tmp/browser-diag.mjs <<'NODEEOF'
+          # Script must live inside sample-app so `import 'playwright'`
+          # resolves against sample-app/node_modules.
+          cat > browser-diag.mjs <<'NODEEOF'
           import { chromium } from 'playwright';
           const browser = await chromium.launch({ args: ['--no-sandbox'] });
           const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
@@ -281,7 +283,7 @@ jobs:
           console.log('DIAG Page state:', JSON.stringify(sheetSummary, null, 2));
           await browser.close();
           NODEEOF
-          node /tmp/browser-diag.mjs
+          node browser-diag.mjs
 
       - name: Capture screenshots
         working-directory: sample-app
