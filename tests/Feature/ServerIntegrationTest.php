@@ -3,39 +3,43 @@
 namespace Waterline\Tests\Feature;
 
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Waterline\Tests\TestCase;
 
 /**
- * Phase 0 Integration Test: Waterline ↔ Server Container
+ * Phase 0 Integration Test: Waterline <-> Server Container
  *
- * This test validates that Waterline can successfully query and render
- * workflow data from a running durableworkflow/server container.
+ * This test validates that Waterline can query and render workflow data from a
+ * running durableworkflow/server container using the current v2 HTTP and table
+ * contracts.
  *
  * Prerequisites:
- *   docker-compose -f docker-compose.integration.yml up -d
- *   docker-compose -f docker-compose.integration.yml ps  # verify healthy
+ *   git -C ../workflow fetch origin v2
+ *   WORKFLOW_PACKAGE_COMMIT="$(git -C ../workflow rev-parse origin/v2)" \
+ *     docker compose -f docker-compose.integration.yml up -d --build
+ *   docker compose -f docker-compose.integration.yml ps  # verify healthy
  *
  * Run test:
  *   vendor/bin/phpunit tests/Feature/ServerIntegrationTest.php
  *
  * Cleanup:
- *   docker-compose -f docker-compose.integration.yml down -v
+ *   docker compose -f docker-compose.integration.yml down -v
  */
 class ServerIntegrationTest extends TestCase
 {
-    private const SERVER_URL = 'http://localhost:8081';
+    private const DEFAULT_SERVER_URL = 'http://127.0.0.1:8081';
     private const AUTH_TOKEN = 'integration-test-token-123';
+    private const NAMESPACE = 'default';
+
+    private static ?bool $serverHealthy = null;
 
     protected function setUp(): void
     {
-        // Skip database migrations - we'll use the server's database
-        $this->afterApplicationCreated(function () {
-            // Override database config to point to integration container
+        $this->afterApplicationCreated(function (): void {
             config([
+                'database.default' => 'mysql',
                 'database.connections.mysql' => [
                     'driver' => 'mysql',
-                    'host' => env('INTEGRATION_DB_HOST', 'localhost'),
+                    'host' => env('INTEGRATION_DB_HOST', '127.0.0.1'),
                     'port' => env('INTEGRATION_DB_PORT', '33066'),
                     'database' => env('INTEGRATION_DB_DATABASE', 'durable_workflow'),
                     'username' => env('INTEGRATION_DB_USERNAME', 'workflow'),
@@ -46,9 +50,10 @@ class ServerIntegrationTest extends TestCase
                     'strict' => true,
                     'engine' => null,
                 ],
+                'waterline.engine_source' => 'v2',
+                'waterline.namespace' => self::NAMESPACE,
             ]);
 
-            // Force reconnect with new config
             DB::purge('mysql');
             DB::reconnect('mysql');
         });
@@ -56,226 +61,306 @@ class ServerIntegrationTest extends TestCase
         parent::setUp();
 
         $this->ensureServerIsHealthy();
+        $this->ensureDefaultNamespaceExists();
     }
 
     protected function defineDatabaseMigrations()
     {
-        // Intentionally empty - server container handles migrations
+        // Intentionally empty: the server container owns the schema.
     }
 
-    /**
-     * Test that server container is healthy and responding
-     */
+    public function test_it_can_query_workflow_runs_from_server_database(): void
+    {
+        $workflowId = 'integration-query-runs-'.uniqid();
+        $start = $this->startWorkflow('integration.remote.query-runs', $workflowId, ['test' => 'data']);
+        $runId = $start['run_id'];
+
+        $workflowRun = DB::table('workflow_runs')
+            ->where('id', $runId)
+            ->first();
+
+        $this->assertNotNull($workflowRun, 'Waterline could not query workflow run from database.');
+        $this->assertSame(self::NAMESPACE, $workflowRun->namespace);
+        $this->assertSame($workflowId, $workflowRun->workflow_instance_id);
+        $this->assertSame('integration.remote.query-runs', $workflowRun->workflow_type);
+        $this->assertSame('integration-test', $workflowRun->queue);
+        $this->assertContains($workflowRun->status, ['pending', 'waiting', 'running']);
+    }
+
+    public function test_it_can_query_workflow_history_from_server_database(): void
+    {
+        $workflowId = 'integration-history-'.uniqid();
+        $start = $this->startWorkflow('integration.remote.history', $workflowId, ['history' => 'test']);
+        $runId = $start['run_id'];
+
+        $historyEvents = DB::table('workflow_history_events')
+            ->where('workflow_run_id', $runId)
+            ->orderBy('sequence')
+            ->get();
+
+        $this->assertGreaterThan(0, $historyEvents->count(), 'Waterline could not query history events.');
+
+        $eventTypes = $historyEvents->pluck('event_type')->all();
+
+        $this->assertContains('StartAccepted', $eventTypes);
+        $this->assertContains('WorkflowStarted', $eventTypes);
+
+        $firstPayload = $this->decodeJsonColumn($historyEvents->first()->payload ?? null);
+        $this->assertIsArray($firstPayload, 'History event payload should be JSON-decodable.');
+    }
+
+    public function test_it_can_render_workflow_run_detail_from_server_database(): void
+    {
+        $workflowId = 'integration-render-'.uniqid();
+        $start = $this->startWorkflow('integration.remote.render', $workflowId, ['render' => 'test']);
+        $runId = $start['run_id'];
+
+        $response = $this->getJson("/waterline/api/instances/{$workflowId}/runs/{$runId}");
+
+        $response->assertOk()
+            ->assertJsonPath('id', $runId)
+            ->assertJsonPath('instance_id', $workflowId)
+            ->assertJsonPath('selected_run_id', $runId)
+            ->assertJsonPath('run_id', $runId)
+            ->assertJsonPath('workflow_type', 'integration.remote.render')
+            ->assertJsonPath('queue', 'integration-test');
+    }
+
+    public function test_it_can_list_workflow_runs_from_server_database(): void
+    {
+        $workflowType = 'integration.remote.list';
+        $workflowIds = [];
+
+        for ($i = 0; $i < 3; $i++) {
+            $workflowId = 'integration-list-'.$i.'-'.uniqid();
+            $workflowIds[] = $workflowId;
+
+            $this->startWorkflow($workflowType, $workflowId, ['index' => $i]);
+        }
+
+        $response = $this->getJson('/waterline/api/flows/running?workflow_type='.$workflowType);
+
+        $response->assertOk();
+
+        $listedWorkflowIds = collect($response->json('data'))->pluck('instance_id')->all();
+
+        foreach ($workflowIds as $workflowId) {
+            $this->assertContains($workflowId, $listedWorkflowIds);
+        }
+    }
+
+    public function test_it_can_query_workflow_tasks_from_server_database(): void
+    {
+        $workflowId = 'integration-tasks-'.uniqid();
+        $start = $this->startWorkflow('integration.remote.tasks', $workflowId, ['tasks' => 'test']);
+        $runId = $start['run_id'];
+
+        $taskCount = DB::table('workflow_tasks')
+            ->where('workflow_run_id', $runId)
+            ->count();
+
+        $this->assertGreaterThan(0, $taskCount);
+
+        $columns = DB::select('SHOW COLUMNS FROM workflow_tasks');
+        $columnNames = array_column($columns, 'Field');
+
+        $this->assertContains('id', $columnNames);
+        $this->assertContains('workflow_run_id', $columnNames);
+        $this->assertContains('namespace', $columnNames);
+        $this->assertContains('task_type', $columnNames);
+        $this->assertContains('status', $columnNames);
+        $this->assertContains('payload', $columnNames);
+        $this->assertContains('queue', $columnNames);
+        $this->assertContains('available_at', $columnNames);
+    }
+
     private function ensureServerIsHealthy(): void
     {
+        if (self::$serverHealthy === true) {
+            return;
+        }
+
+        if (self::$serverHealthy === false) {
+            $this->markTestSkipped($this->serverUnavailableMessage());
+        }
+
         $maxRetries = 30;
-        $retryInterval = 1; // seconds
 
         for ($i = 0; $i < $maxRetries; $i++) {
             try {
-                $response = Http::timeout(5)->get(self::SERVER_URL . '/api/health');
+                $response = $this->serverRequest('GET', '/api/health');
 
-                if ($response->successful()) {
+                if ($this->isSuccessful($response['status'])) {
+                    self::$serverHealthy = true;
+
                     return;
                 }
-            } catch (\Exception $e) {
-                // Connection failed, retry
+            } catch (\Throwable) {
+                // Connection failed; retry until the integration stack is ready.
             }
 
-            if ($i === $maxRetries - 1) {
-                $this->markTestSkipped(
-                    'Server container is not healthy. Ensure docker-compose.integration.yml is running: ' .
-                    'docker-compose -f docker-compose.integration.yml up -d'
-                );
-            }
-
-            sleep($retryInterval);
+            sleep(1);
         }
+
+        self::$serverHealthy = false;
+
+        $this->markTestSkipped($this->serverUnavailableMessage());
     }
 
-    /**
-     * @test
-     * Phase 0: Waterline can query workflow runs from server container database
-     */
-    public function it_can_query_workflow_runs_from_server_database(): void
+    private function ensureDefaultNamespaceExists(): void
     {
-        // Create a workflow run via server API
-        $workflowId = 'integration-test-' . uniqid();
+        $show = $this->serverRequest('GET', '/api/namespaces/'.self::NAMESPACE, $this->controlPlaneHeaders());
 
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . self::AUTH_TOKEN,
-        ])->post(self::SERVER_URL . '/api/v2/namespaces/default/workflows/start', [
-            'workflow_type' => 'TestWorkflow',
-            'workflow_id' => $workflowId,
-            'task_queue' => 'integration-test',
-            'input' => ['test' => 'data'],
-        ]);
+        if ($this->isSuccessful($show['status'])) {
+            return;
+        }
 
-        $this->assertTrue(
-            $response->successful(),
-            'Failed to create workflow via server API: ' . $response->body()
+        $create = $this->serverRequest(
+            'POST',
+            '/api/namespaces',
+            $this->controlPlaneHeaders(),
+            [
+                'name' => self::NAMESPACE,
+                'description' => 'Default integration namespace',
+                'retention_days' => 30,
+            ],
         );
 
-        $runId = $response->json('run_id');
-        $this->assertNotEmpty($runId, 'Server did not return run_id');
-
-        // Wait a moment for data to be written
-        sleep(1);
-
-        // Query workflow run directly from database (what Waterline does)
-        $workflowRun = DB::connection('mysql')
-            ->table('workflow_runs')
-            ->where('run_id', $runId)
-            ->first();
-
-        $this->assertNotNull($workflowRun, 'Waterline could not query workflow run from database');
-        $this->assertEquals('default', $workflowRun->namespace);
-        $this->assertEquals($workflowId, $workflowRun->workflow_id);
-        $this->assertEquals('TestWorkflow', $workflowRun->workflow_type);
+        $this->assertTrue(
+            $this->isSuccessful($create['status']) || $create['status'] === 409,
+            'Unable to ensure default namespace exists: '.$create['body'],
+        );
     }
 
     /**
-     * @test
-     * Phase 0: Waterline can query workflow history from server container database
+     * @return array<string, mixed>
      */
-    public function it_can_query_workflow_history_from_server_database(): void
+    private function startWorkflow(string $workflowType, string $workflowId, array $input): array
     {
-        // Create a workflow run via server API
-        $workflowId = 'integration-history-test-' . uniqid();
-
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . self::AUTH_TOKEN,
-        ])->post(self::SERVER_URL . '/api/v2/namespaces/default/workflows/start', [
-            'workflow_type' => 'TestHistoryWorkflow',
-            'workflow_id' => $workflowId,
-            'task_queue' => 'integration-test',
-            'input' => ['history' => 'test'],
-        ]);
-
-        $this->assertTrue($response->successful(), 'Failed to create workflow: ' . $response->body());
-        $runId = $response->json('run_id');
-
-        // Wait for workflow to be created
-        sleep(1);
-
-        // Query workflow history (what Waterline timeline does)
-        $historyEvents = DB::connection('mysql')
-            ->table('workflow_history_events')
-            ->where('run_id', $runId)
-            ->orderBy('event_id', 'asc')
-            ->get();
-
-        $this->assertGreaterThan(0, $historyEvents->count(), 'Waterline could not query history events');
-
-        // Should have at least WorkflowExecutionStarted event
-        $startEvent = $historyEvents->first();
-        $this->assertEquals('WorkflowExecutionStarted', $startEvent->event_type);
-
-        // Verify event attributes are accessible (what TimelineEventRenderer needs)
-        $this->assertNotNull($startEvent->attributes);
-        $attributes = json_decode($startEvent->attributes, true);
-        $this->assertIsArray($attributes, 'Event attributes should be JSON');
-    }
-
-    /**
-     * @test
-     * Phase 0: Waterline can render workflow run detail view
-     */
-    public function it_can_render_workflow_run_detail_view(): void
-    {
-        // Create a workflow run via server API
-        $workflowId = 'integration-render-test-' . uniqid();
-
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . self::AUTH_TOKEN,
-        ])->post(self::SERVER_URL . '/api/v2/namespaces/default/workflows/start', [
-            'workflow_type' => 'TestRenderWorkflow',
-            'workflow_id' => $workflowId,
-            'task_queue' => 'integration-test',
-            'input' => ['render' => 'test'],
-        ]);
-
-        $this->assertTrue($response->successful());
-        $runId = $response->json('run_id');
-        sleep(1);
-
-        // Use Waterline's controller to fetch run detail
-        $this->withoutExceptionHandling();
-
-        $response = $this->get("/waterline/v2/flow/{$runId}");
-
-        // Should successfully render (200 OK)
-        $response->assertStatus(200);
-
-        // Should have workflow run data in the view
-        $response->assertSee($workflowId);
-        $response->assertSee('TestRenderWorkflow');
-        $response->assertSee($runId);
-    }
-
-    /**
-     * @test
-     * Phase 0: Waterline can list workflow runs
-     */
-    public function it_can_list_workflow_runs(): void
-    {
-        // Create multiple workflow runs via server API
-        $workflowIds = [];
-        for ($i = 0; $i < 3; $i++) {
-            $workflowId = 'integration-list-test-' . $i . '-' . uniqid();
-            $workflowIds[] = $workflowId;
-
-            Http::withHeaders([
-                'Authorization' => 'Bearer ' . self::AUTH_TOKEN,
-            ])->post(self::SERVER_URL . '/api/v2/namespaces/default/workflows/start', [
-                'workflow_type' => 'TestListWorkflow',
+        $response = $this->serverRequest(
+            'POST',
+            '/api/workflows',
+            $this->controlPlaneHeaders(),
+            [
+                'workflow_type' => $workflowType,
                 'workflow_id' => $workflowId,
                 'task_queue' => 'integration-test',
-                'input' => ['index' => $i],
-            ]);
-        }
+                'input' => $input,
+            ],
+        );
 
-        sleep(2); // Wait for all workflows to be created
+        $this->assertTrue(
+            $response['status'] === 201,
+            'Failed to create workflow via server API: '.$response['body'],
+        );
 
-        // Use Waterline's controller to list runs
-        $response = $this->get('/waterline/v2');
+        $payload = $response['json'];
 
-        $response->assertStatus(200);
+        $this->assertIsArray($payload);
+        $this->assertSame($workflowId, $payload['workflow_id'] ?? null);
+        $this->assertIsString($payload['run_id'] ?? null);
 
-        // Should see at least some of our created workflows
-        foreach ($workflowIds as $workflowId) {
-            $response->assertSee($workflowId);
-        }
+        return $payload;
     }
 
     /**
-     * @test
-     * Phase 0: Waterline can query workflow tasks (activities)
+     * @param  array<string, string>  $headers
+     * @param  array<string, mixed>|null  $body
+     * @return array{status: int, body: string, json: mixed}
      */
-    public function it_can_query_workflow_tasks_from_server_database(): void
+    private function serverRequest(string $method, string $path, array $headers = [], ?array $body = null): array
     {
-        // For this test, we just verify the tables exist and are queryable
-        // A real workflow with activities would require a worker to be running
+        $headerLines = [];
 
-        // Verify workflow_tasks table exists and is queryable
-        $taskCount = DB::connection('mysql')
-            ->table('workflow_tasks')
-            ->count();
+        foreach ($headers as $name => $value) {
+            $headerLines[] = $name.': '.$value;
+        }
 
-        $this->assertIsInt($taskCount);
+        $options = [
+            'method' => $method,
+            'header' => implode("\r\n", $headerLines),
+            'ignore_errors' => true,
+            'timeout' => 5,
+        ];
 
-        // Verify we can query task structure (what Waterline activities view needs)
-        $columns = DB::connection('mysql')
-            ->select("SHOW COLUMNS FROM workflow_tasks");
+        if ($body !== null) {
+            $encoded = json_encode($body, JSON_THROW_ON_ERROR);
+            $options['content'] = $encoded;
+            $options['header'] = trim($options['header']."\r\nContent-Type: application/json\r\nContent-Length: ".strlen($encoded));
+        }
 
-        $columnNames = array_column($columns, 'Field');
+        $responseBody = @file_get_contents(
+            $this->serverUrl().$path,
+            false,
+            stream_context_create(['http' => $options]),
+        );
+        $responseHeaders = $http_response_header ?? [];
 
-        // Verify essential columns exist for Waterline to render activities
-        $this->assertContains('id', $columnNames);
-        $this->assertContains('run_id', $columnNames);
-        $this->assertContains('activity_id', $columnNames);
-        $this->assertContains('state', $columnNames);
-        $this->assertContains('input', $columnNames);
-        $this->assertContains('result', $columnNames);
+        if ($responseBody === false && $responseHeaders === []) {
+            throw new \RuntimeException('No response from server.');
+        }
+
+        $responseBody = is_string($responseBody) ? $responseBody : '';
+
+        return [
+            'status' => $this->statusFromHeaders($responseHeaders),
+            'body' => $responseBody,
+            'json' => $responseBody === '' ? null : json_decode($responseBody, true),
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function controlPlaneHeaders(): array
+    {
+        return [
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer '.self::AUTH_TOKEN,
+            'X-Durable-Workflow-Control-Plane-Version' => '2',
+            'X-Namespace' => self::NAMESPACE,
+        ];
+    }
+
+    private function decodeJsonColumn(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        return json_decode($value, true);
+    }
+
+    /**
+     * @param  array<int, string>  $headers
+     */
+    private function statusFromHeaders(array $headers): int
+    {
+        foreach ($headers as $header) {
+            if (preg_match('/^HTTP\/\S+\s+(\d{3})\b/', $header, $matches) === 1) {
+                return (int) $matches[1];
+            }
+        }
+
+        return 0;
+    }
+
+    private function isSuccessful(int $status): bool
+    {
+        return $status >= 200 && $status < 300;
+    }
+
+    private function serverUrl(): string
+    {
+        return rtrim((string) env('INTEGRATION_SERVER_URL', self::DEFAULT_SERVER_URL), '/');
+    }
+
+    private function serverUnavailableMessage(): string
+    {
+        return 'Server container is not healthy. See INTEGRATION_TEST_README.md for the pinned docker compose startup command.';
     }
 }

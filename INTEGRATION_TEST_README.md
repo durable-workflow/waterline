@@ -49,13 +49,15 @@ This is the **foundational baseline test** for Waterline → Server integration.
 
 ```bash
 cd /path/to/waterline
-docker-compose -f docker-compose.integration.yml up -d
+git -C ../workflow fetch origin v2
+WORKFLOW_PACKAGE_COMMIT="$(git -C ../workflow rev-parse origin/v2)" \
+  docker compose -f docker-compose.integration.yml up -d --build
 ```
 
 Wait for services to become healthy (~30-60 seconds):
 
 ```bash
-docker-compose -f docker-compose.integration.yml ps
+docker compose -f docker-compose.integration.yml ps
 ```
 
 All services should show "healthy" or "Up" status.
@@ -75,7 +77,7 @@ vendor/bin/phpunit --filter it_can_query_workflow_runs_from_server_database
 ### 3. Cleanup
 
 ```bash
-docker-compose -f docker-compose.integration.yml down -v
+docker compose -f docker-compose.integration.yml down -v
 ```
 
 The `-v` flag removes volumes (cleans up test data).
@@ -88,11 +90,12 @@ Override defaults via `.env` or export:
 
 ```bash
 # Database connection (defaults work with docker-compose.integration.yml)
-INTEGRATION_DB_HOST=localhost
+INTEGRATION_DB_HOST=127.0.0.1
 INTEGRATION_DB_PORT=33066
 INTEGRATION_DB_DATABASE=durable_workflow
 INTEGRATION_DB_USERNAME=workflow
 INTEGRATION_DB_PASSWORD=workflow
+INTEGRATION_SERVER_URL=http://127.0.0.1:8081
 ```
 
 ### Docker Compose
@@ -107,10 +110,10 @@ INTEGRATION_DB_PASSWORD=workflow
 
 `ServerIntegrationTest.php` validates:
 
-1. **Query Workflow Runs** - Waterline can SELECT from `workflow_runs` table
-2. **Query Workflow History** - Waterline can SELECT from `workflow_history_events` table
-3. **Render Run Detail View** - Waterline controller can render `/waterline/v2/flow/{runId}`
-4. **List Workflow Runs** - Waterline can list multiple runs via `/waterline/v2`
+1. **Query Workflow Runs** - Waterline can SELECT from the v2 `workflow_runs` table keyed by `id`
+2. **Query Workflow History** - Waterline can SELECT from `workflow_history_events` by `workflow_run_id`
+3. **Render Run Detail View** - Waterline API can render `/waterline/api/instances/{workflowId}/runs/{runId}`
+4. **List Workflow Runs** - Waterline can list multiple runs via `/waterline/api/flows/running?workflow_type=...`
 5. **Query Workflow Tasks** - Waterline can access `workflow_tasks` table schema
 
 ## Troubleshooting
@@ -121,17 +124,19 @@ If test is skipped with "Server container is not healthy":
 
 ```bash
 # Check container status
-docker-compose -f docker-compose.integration.yml ps
+docker compose -f docker-compose.integration.yml ps
 
 # View server logs
-docker-compose -f docker-compose.integration.yml logs server
+docker compose -f docker-compose.integration.yml logs server
 
 # View bootstrap logs (migrations)
-docker-compose -f docker-compose.integration.yml logs server-bootstrap
+docker compose -f docker-compose.integration.yml logs server-bootstrap
 
 # Restart stack
-docker-compose -f docker-compose.integration.yml down -v
-docker-compose -f docker-compose.integration.yml up -d
+docker compose -f docker-compose.integration.yml down -v
+git -C ../workflow fetch origin v2
+WORKFLOW_PACKAGE_COMMIT="$(git -C ../workflow rev-parse origin/v2)" \
+  docker compose -f docker-compose.integration.yml up -d --build
 ```
 
 ### Connection Refused
@@ -140,7 +145,7 @@ If test fails with "Connection refused" on port 33066:
 
 1. Verify MySQL container is healthy:
    ```bash
-   docker-compose -f docker-compose.integration.yml ps mysql
+   docker compose -f docker-compose.integration.yml ps mysql
    ```
 
 2. Test connection directly:
@@ -162,9 +167,9 @@ If server image build fails:
 cd ../server
 docker build -t durableworkflow-server .
 
-# Or use docker-compose build
+# Or use Docker Compose
 cd ../waterline
-docker-compose -f docker-compose.integration.yml build server
+docker compose -f docker-compose.integration.yml build server
 ```
 
 ### Test Times Out
@@ -177,7 +182,7 @@ If test hangs during `ensureServerIsHealthy()`:
 
 ## Phase 0 Exit Criteria
 
-To mark Phase 0 complete and merge to master, this integration test must:
+To mark Phase 0 complete, this integration test must:
 
 - ✅ Start durableworkflow/server container successfully
 - ✅ Create workflow data via server API
@@ -204,8 +209,10 @@ jobs:
 
       - name: Start integration stack
         run: |
-          docker-compose -f docker-compose.integration.yml up -d
-          docker-compose -f docker-compose.integration.yml ps
+          git -C ../workflow fetch origin v2
+          WORKFLOW_PACKAGE_COMMIT="$(git -C ../workflow rev-parse origin/v2)" \
+            docker compose -f docker-compose.integration.yml up -d --build
+          docker compose -f docker-compose.integration.yml ps
 
       - name: Wait for server health
         run: |
@@ -225,11 +232,11 @@ jobs:
 
       - name: Show logs on failure
         if: failure()
-        run: docker-compose -f docker-compose.integration.yml logs
+        run: docker compose -f docker-compose.integration.yml logs
 
       - name: Cleanup
         if: always()
-        run: docker-compose -f docker-compose.integration.yml down -v
+        run: docker compose -f docker-compose.integration.yml down -v
 ```
 
 ## Related Issues

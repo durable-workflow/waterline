@@ -2,8 +2,10 @@
 # Spins up durableworkflow/server for end-to-end validation
 #
 # Usage:
-#   docker-compose -f docker-compose.integration.yml up -d
-#   docker-compose -f docker-compose.integration.yml down -v
+#   git -C ../workflow fetch origin v2
+#   WORKFLOW_PACKAGE_COMMIT="$(git -C ../workflow rev-parse origin/v2)" \
+#     docker compose -f docker-compose.integration.yml up -d --build
+#   docker compose -f docker-compose.integration.yml down -v
 
 services:
   # Database shared between server and waterline
@@ -45,6 +47,7 @@ services:
         # Use the workflow v2 branch from the workflow repo
         WORKFLOW_PACKAGE_SOURCE: https://github.com/durable-workflow/workflow.git
         WORKFLOW_PACKAGE_REF: v2
+        WORKFLOW_PACKAGE_COMMIT: ${WORKFLOW_PACKAGE_COMMIT:-}
     command: ["server-bootstrap"]
     environment:
       APP_NAME: "Durable Workflow Server (Integration)"
@@ -77,6 +80,7 @@ services:
       args:
         WORKFLOW_PACKAGE_SOURCE: https://github.com/durable-workflow/workflow.git
         WORKFLOW_PACKAGE_REF: v2
+        WORKFLOW_PACKAGE_COMMIT: ${WORKFLOW_PACKAGE_COMMIT:-}
     ports:
       - "8081:8080"  # Map to 8081 to avoid conflicts with local dev
     environment:
@@ -118,6 +122,7 @@ services:
       args:
         WORKFLOW_PACKAGE_SOURCE: https://github.com/durable-workflow/workflow.git
         WORKFLOW_PACKAGE_REF: v2
+        WORKFLOW_PACKAGE_COMMIT: ${WORKFLOW_PACKAGE_COMMIT:-}
     command: php artisan queue:work --sleep=1 --tries=3 --max-time=3600
     environment:
       APP_NAME: "Durable Workflow Server (Integration)"
