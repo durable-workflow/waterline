@@ -122,9 +122,13 @@ jobs:
       - name: Configure sample-app environment
         working-directory: sample-app
         run: |
-          cat > .env << 'ENVEOF'
+          # Generate APP_KEY inline so the .env is valid from the first
+          # request; artisan key:generate has been unreliable here.
+          APP_KEY_VALUE="base64:$(openssl rand -base64 32)"
+          cat > .env << ENVEOF
           APP_NAME=Laravel
           APP_ENV=local
+          APP_KEY=${APP_KEY_VALUE}
           APP_DEBUG=true
           APP_URL=http://localhost:8000
           LOG_CHANNEL=stack
@@ -146,7 +150,7 @@ jobs:
           CACHE_STORE=redis
           SESSION_DRIVER=redis
           ENVEOF
-          php artisan key:generate --force
+          php artisan config:clear
 
       - name: Migrate + seed demo user
         working-directory: sample-app
