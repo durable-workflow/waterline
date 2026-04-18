@@ -187,8 +187,12 @@ jobs:
           # Verify static assets serve — giant unstyled SVGs are the failure
           # mode when Waterline CSS does not resolve, so fail loudly here
           # instead of silently producing useless screenshots.
+          echo "--- curl -I on waterline CSS ---"
+          curl -sI http://127.0.0.1:8000/vendor/waterline/app-dark.css
+          echo "--- curl -sS first bytes of CSS ---"
+          curl -sS http://127.0.0.1:8000/vendor/waterline/app-dark.css | head -c 200
+          echo ""
           CSS_STATUS=$(curl -sI -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/vendor/waterline/app-dark.css)
-          echo "Waterline CSS served: HTTP ${CSS_STATUS}"
           if [ "$CSS_STATUS" != "200" ]; then
             echo "::error::Waterline CSS not reachable at /vendor/waterline/app-dark.css (HTTP ${CSS_STATUS})"
             exit 1
