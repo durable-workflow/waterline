@@ -228,6 +228,61 @@ jobs:
           npm install --no-save playwright
           npx playwright install chromium --with-deps
 
+      - name: Browser-level CSS diagnostic
+        working-directory: sample-app
+        run: |
+          cat > /tmp/browser-diag.mjs <<'NODEEOF'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({ args: ['--no-sandbox'] });
+          const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+          const page = await context.newPage();
+          const failedRequests = [];
+          page.on('requestfailed', req => {
+            failedRequests.push(`${req.method()} ${req.url()} -> ${req.failure()?.errorText}`);
+          });
+          const consoleMessages = [];
+          page.on('console', msg => {
+            if (['error', 'warning'].includes(msg.type())) {
+              consoleMessages.push(`${msg.type().toUpperCase()}: ${msg.text().substring(0, 300)}`);
+            }
+          });
+          page.on('pageerror', err => {
+            consoleMessages.push(`PAGEERROR: ${err.message.substring(0, 300)}`);
+          });
+          const responses = [];
+          page.on('response', r => {
+            if (r.url().includes('/vendor/waterline/') || r.url().includes('app.css') || r.url().includes('app-dark.css')) {
+              responses.push(`${r.status()} ${r.url()}`);
+            }
+          });
+          await page.goto('http://127.0.0.1:8000/waterline', { waitUntil: 'networkidle', timeout: 20000 });
+          await page.waitForTimeout(3000);
+          const sheetSummary = await page.evaluate(() => {
+            const sheets = Array.from(document.styleSheets).map(s => {
+              let rules = 0;
+              try { rules = s.cssRules ? s.cssRules.length : 0; } catch { rules = -1; }
+              return { href: s.href, rules };
+            });
+            const linkHrefs = Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => l.href);
+            const bodyClasses = document.body.className;
+            const waterlineDiv = document.getElementById('waterline');
+            return {
+              stylesheets: sheets,
+              linkHrefs,
+              bodyClasses,
+              hasWaterlineDiv: !!waterlineDiv,
+              waterlineInnerHtmlLen: waterlineDiv ? waterlineDiv.innerHTML.length : 0,
+              documentTitle: document.title,
+            };
+          });
+          console.log('DIAG Responses for waterline assets:', JSON.stringify(responses, null, 2));
+          console.log('DIAG Failed requests:', JSON.stringify(failedRequests, null, 2));
+          console.log('DIAG Console messages:', JSON.stringify(consoleMessages, null, 2));
+          console.log('DIAG Page state:', JSON.stringify(sheetSummary, null, 2));
+          await browser.close();
+          NODEEOF
+          node /tmp/browser-diag.mjs
+
       - name: Capture screenshots
         working-directory: sample-app
         env:
