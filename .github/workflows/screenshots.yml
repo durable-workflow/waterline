@@ -160,7 +160,12 @@ jobs:
 
       - name: Publish Waterline assets
         working-directory: sample-app
-        run: php artisan vendor:publish --tag=waterline-assets --force
+        run: |
+          php artisan vendor:publish --tag=waterline-assets --force
+          echo "--- public/vendor/waterline/ contents ---"
+          ls -la public/vendor/waterline/ || echo "MISSING: publish did not produce public/vendor/waterline/"
+          test -f public/vendor/waterline/app-dark.css || { echo "::error::waterline CSS was not published"; exit 1; }
+          test -f public/vendor/waterline/mix-manifest.json || { echo "::error::waterline mix-manifest.json was not published"; exit 1; }
 
       - name: Start web server
         working-directory: sample-app
@@ -170,13 +175,24 @@ jobs:
           for i in $(seq 1 30); do
             if curl -sf http://127.0.0.1:8000/up > /dev/null; then
               echo "Web server up"
-              exit 0
+              break
             fi
             sleep 1
           done
-          echo "::error::Web server failed to respond"
-          cat ../web.log
-          exit 1
+          if ! curl -sf http://127.0.0.1:8000/up > /dev/null; then
+            echo "::error::Web server failed to respond"
+            cat ../web.log
+            exit 1
+          fi
+          # Verify static assets serve — giant unstyled SVGs are the failure
+          # mode when Waterline CSS does not resolve, so fail loudly here
+          # instead of silently producing useless screenshots.
+          CSS_STATUS=$(curl -sI -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/vendor/waterline/app-dark.css)
+          echo "Waterline CSS served: HTTP ${CSS_STATUS}"
+          if [ "$CSS_STATUS" != "200" ]; then
+            echo "::error::Waterline CSS not reachable at /vendor/waterline/app-dark.css (HTTP ${CSS_STATUS})"
+            exit 1
+          fi
 
       - name: Start queue worker
         working-directory: sample-app
