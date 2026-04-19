@@ -1,5 +1,11 @@
 name: Screenshots
 
+# Disabled while sample-app upgrades to Laravel 13 + Durable Workflow 2.0-alpha.
+# The composer override path that backed this workflow assumed sample-app was on
+# Laravel 12 + DW 1.x with composer.json accepting workflow ^1.0 || ^2.0. Once
+# sample-app stabilizes on the v2 baseline this workflow needs reworking
+# (override targets, ref defaults, and possibly which branch of sample-app to
+# screenshot — main or Laravel-12).
 on:
   workflow_dispatch:
     inputs:
@@ -20,9 +26,9 @@ on:
         required: false
         type: boolean
         default: true
-  schedule:
-    # Weekly on Mondays at 06:00 UTC
-    - cron: '0 6 * * 1'
+  # Scheduled trigger removed during sample-app L13/DW2 upgrade window.
+  # schedule:
+  #   - cron: '0 6 * * 1'
 
 permissions:
   contents: read
