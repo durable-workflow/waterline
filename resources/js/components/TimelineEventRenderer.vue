@@ -88,6 +88,22 @@
                     </div>
                 </div>
 
+                <!-- Command Events -->
+                <div v-else-if="isCommandEvent" class="event-details small">
+                    <div v-if="commandSourceLabel">
+                        <span class="text-muted">Actor:</span>
+                        <span class="ml-1">{{ commandSourceLabel }}</span>
+                    </div>
+                    <div v-if="commandStatusLabel">
+                        <span class="text-muted">Command:</span>
+                        <span class="ml-1">{{ commandStatusLabel }}</span>
+                    </div>
+                    <div v-if="commandRequestLabel">
+                        <span class="text-muted">Request:</span>
+                        <code class="ml-1">{{ commandRequestLabel }}</code>
+                    </div>
+                </div>
+
                 <!-- Version Marker Events -->
                 <div v-else-if="isVersionEvent" class="event-details small">
                     <div v-if="event.version_change_id">
@@ -206,8 +222,49 @@ export default {
             return this.event.kind === 'update';
         },
 
+        isCommandEvent() {
+            return this.event.kind === 'command';
+        },
+
         isVersionEvent() {
             return this.event.kind === 'version';
+        },
+
+        commandSourceLabel() {
+            const command = this.event.command || {};
+            const caller = this.firstPresent(command.caller_label, this.event.caller_label, command.source);
+            const authStatus = this.firstPresent(command.auth_status, this.event.auth_status);
+            const authMethod = this.firstPresent(command.auth_method, this.event.auth_method);
+            const auth = [authStatus, authMethod ? `via ${authMethod}` : null]
+                .filter(Boolean)
+                .join(' ');
+
+            return [caller, auth].filter(Boolean).join(' / ');
+        },
+
+        commandStatusLabel() {
+            const command = this.event.command || {};
+            const parts = [
+                this.firstPresent(command.type, this.event.command_type),
+                this.firstPresent(command.sequence, this.event.command_sequence) !== null
+                    ? `#${this.firstPresent(command.sequence, this.event.command_sequence)}`
+                    : null,
+                this.firstPresent(command.status, this.event.command_status),
+                this.firstPresent(command.outcome, this.event.command_outcome),
+                this.firstPresent(command.target_name, this.event.signal_name, this.event.update_name)
+            ].filter((value) => value !== null && value !== undefined && value !== '');
+
+            return parts.join(' / ');
+        },
+
+        commandRequestLabel() {
+            const command = this.event.command || {};
+            const route = this.firstPresent(command.request_route_name, this.event.request_route_name);
+            const method = this.firstPresent(command.request_method, this.event.request_method);
+            const path = this.firstPresent(command.request_path, this.event.request_path);
+            const request = [method, path].filter(Boolean).join(' ');
+
+            return [route, request].filter(Boolean).join(' / ');
         },
 
         hasFailure() {
@@ -239,6 +296,16 @@ export default {
                 const minutes = Math.floor((seconds % 3600) / 60);
                 return `${hours}h ${minutes}m`;
             }
+        },
+
+        firstPresent(...values) {
+            for (const value of values) {
+                if (value !== null && value !== undefined && value !== '') {
+                    return value;
+                }
+            }
+
+            return null;
         }
     }
 };
