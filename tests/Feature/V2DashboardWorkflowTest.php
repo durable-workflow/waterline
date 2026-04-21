@@ -266,6 +266,161 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('operator_metrics.contract_boundary', 'dashboard_summary');
     }
 
+    public function testShowIncludesRunDiagnosticsForCommonOperatorProblems(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.run_diagnostics.condition_wait_sla_seconds', 300);
+        config()->set('workflows.v2.history_budget.continue_as_new_event_threshold', 10);
+        config()->set('workflows.v2.history_budget.continue_as_new_size_bytes_threshold', 1000);
+
+        $instance = WorkflowInstance::create([
+            'id' => 'waterline-run-diagnostics',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.diagnostics',
+            'run_count' => 1,
+            'reserved_at' => now()->subMinutes(10),
+            'started_at' => now()->subMinutes(10),
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTRUNDIAGNOSTICS001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.diagnostics',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'diagnostics',
+            'started_at' => now()->subMinutes(10),
+            'last_progress_at' => now()->subMinutes(10),
+        ]);
+
+        $instance->update([
+            'current_run_id' => $run->id,
+        ]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.diagnostics',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'diagnostics',
+            'started_at' => now()->subMinutes(10),
+            'wait_kind' => 'condition',
+            'wait_reason' => 'payment-cleared',
+            'wait_started_at' => now()->subMinutes(10),
+            'exception_count' => 3,
+            'history_event_count' => 10,
+            'history_size_bytes' => 900,
+            'continue_as_new_recommended' => true,
+            'task_problem' => true,
+            'liveness_state' => 'workflow_task_failed',
+            'liveness_reason' => 'Workflow task has failed repeatedly.',
+            'created_at' => now()->subMinutes(10),
+            'updated_at' => now()->subMinutes(5),
+        ]);
+
+        $activityId = (string) Str::ulid();
+
+        ActivityExecution::create([
+            'id' => $activityId,
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ChargeCardActivity',
+            'activity_type' => 'payments.charge-card',
+            'status' => 'failed',
+            'arguments' => Serializer::serialize(['order-123']),
+            'retry_policy' => [
+                'snapshot_version' => 1,
+                'max_attempts' => null,
+                'backoff_seconds' => [1, 5, 30],
+                'start_to_close_timeout' => 30,
+                'heartbeat_timeout' => 30,
+            ],
+            'attempt_count' => 3,
+            'started_at' => now()->subMinutes(9),
+            'closed_at' => now()->subMinutes(7),
+        ]);
+
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $failureId = (string) Str::ulid();
+
+            WorkflowFailure::create([
+                'id' => $failureId,
+                'workflow_run_id' => $run->id,
+                'source_kind' => 'activity_execution',
+                'source_id' => $activityId,
+                'propagation_kind' => 'activity',
+                'handled' => false,
+                'exception_class' => \RuntimeException::class,
+                'message' => 'payment provider throttled',
+                'file' => __FILE__,
+                'line' => 42,
+                'trace_preview' => 'trace',
+                'created_at' => now()->subMinutes(9)->addSeconds($attempt),
+                'updated_at' => now()->subMinutes(9)->addSeconds($attempt),
+            ]);
+
+            WorkflowHistoryEvent::record($run, HistoryEventType::ActivityFailed, [
+                'activity_execution_id' => $activityId,
+                'activity_class' => 'ChargeCardActivity',
+                'activity_type' => 'payments.charge-card',
+                'sequence' => 1,
+                'failure_id' => $failureId,
+                'exception_class' => \RuntimeException::class,
+                'message' => 'payment provider throttled',
+                'exception' => [
+                    'class' => \RuntimeException::class,
+                    'message' => 'payment provider throttled',
+                ],
+            ]);
+        }
+
+        WorkflowTask::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'task_type' => 'workflow',
+            'status' => 'failed',
+            'payload' => [],
+            'connection' => 'redis',
+            'queue' => 'diagnostics',
+            'attempt_count' => 4,
+            'last_error' => 'Workflow task replay failed.',
+            'created_at' => now()->subMinutes(8),
+            'updated_at' => now()->subMinutes(7),
+        ]);
+
+        $response = $this->get('/waterline/api/flows/' . $run->id);
+        $diagnostics = collect($response->json('run_diagnostics'));
+        $codes = $diagnostics->pluck('code')->all();
+
+        $response->assertOk();
+
+        $this->assertContains('activity_repeated_failure', $codes);
+        $this->assertContains('activity_heartbeat_timeout_not_effective', $codes);
+        $this->assertContains('activity_unbounded_retry_policy', $codes);
+        $this->assertContains('workflow_task_repeated_failure', $codes);
+        $this->assertContains('history_budget_near_limit', $codes);
+        $this->assertContains('condition_wait_stuck', $codes);
+
+        $this->assertSame('critical', $diagnostics->firstWhere('code', 'history_budget_near_limit')['severity']);
+        $this->assertSame('/docs/2.0/features/timeouts', $diagnostics->firstWhere(
+            'code',
+            'activity_heartbeat_timeout_not_effective',
+        )['docs_url']);
+        $this->assertContains(
+            'SLA / 300s',
+            $diagnostics->firstWhere('code', 'condition_wait_stuck')['evidence_summary'],
+        );
+    }
+
     public function testShowExposesDeclaredEntryMethodContractForCanonicalAndCompatibilityRuns(): void
     {
         config()->set('waterline.engine_source', 'v2');

@@ -501,6 +501,47 @@
             </div>
         </div>
 
+        <div :class="diagnosticsBannerClass()" v-if="ready && diagnosticRows().length" role="alert">
+            <div class="d-flex align-items-center justify-content-between">
+                <div>
+                    <strong>Issues detected</strong>
+                    <span class="small ml-2">{{ diagnosticsSummary() }}</span>
+                </div>
+
+                <a data-toggle="collapse" href="#collapseRunDiagnostics" role="button">
+                    Collapse
+                </a>
+            </div>
+
+            <div class="collapse show mt-3" id="collapseRunDiagnostics">
+                <div
+                    v-for="(diagnostic, index) in diagnosticRows()"
+                    :key="diagnostic.code + '-' + index"
+                    class="mb-3"
+                >
+                    <div class="d-flex align-items-center">
+                        <span :class="diagnosticSeverityBadgeClass(diagnostic)" class="mr-2">
+                            {{ diagnosticSeverityLabel(diagnostic.severity) }}
+                        </span>
+                        <strong>{{ diagnostic.title }}</strong>
+                    </div>
+                    <div class="mt-1">{{ diagnostic.summary }}</div>
+                    <div class="small mt-1" v-if="diagnosticEvidenceRows(diagnostic).length">
+                        {{ diagnosticEvidenceRows(diagnostic).join(' | ') }}
+                    </div>
+                    <a
+                        v-if="hasDetailValue(diagnostic.docs_url)"
+                        class="small"
+                        :href="diagnostic.docs_url"
+                        target="_blank"
+                        rel="noopener"
+                    >
+                        Docs
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <div class="card mt-4" v-if="ready && flow.chartData && flow.chartData.length">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <div>
@@ -1660,6 +1701,77 @@ export default {
             return encoded === undefined
                 ? 'null'
                 : encoded
+        },
+
+        diagnosticRows() {
+            return Array.isArray(this.flow.run_diagnostics)
+                ? this.flow.run_diagnostics
+                : []
+        },
+
+        diagnosticsBannerClass() {
+            const rows = this.diagnosticRows()
+
+            if (rows.some((diagnostic) => diagnostic.severity === 'critical')) {
+                return 'alert alert-danger mt-4'
+            }
+
+            if (rows.some((diagnostic) => diagnostic.severity === 'warning')) {
+                return 'alert alert-warning mt-4'
+            }
+
+            return 'alert alert-info mt-4'
+        },
+
+        diagnosticsSummary() {
+            const rows = this.diagnosticRows()
+            const critical = rows.filter((diagnostic) => diagnostic.severity === 'critical').length
+            const warning = rows.filter((diagnostic) => diagnostic.severity === 'warning').length
+            const info = rows.length - critical - warning
+            const parts = []
+
+            if (critical) {
+                parts.push(`${critical} critical`)
+            }
+
+            if (warning) {
+                parts.push(`${warning} warning`)
+            }
+
+            if (info) {
+                parts.push(`${info} info`)
+            }
+
+            return parts.join(' / ')
+        },
+
+        diagnosticSeverityLabel(severity) {
+            switch (severity) {
+                case 'critical':
+                    return 'Critical'
+                case 'warning':
+                    return 'Warning'
+                case 'info':
+                    return 'Info'
+                default:
+                    return severity || 'Info'
+            }
+        },
+
+        diagnosticSeverityBadgeClass(diagnostic) {
+            const severity = diagnostic && diagnostic.severity ? diagnostic.severity : 'info'
+
+            return {
+                critical: 'badge badge-danger',
+                warning: 'badge badge-warning',
+                info: 'badge badge-info',
+            }[severity] || 'badge badge-info'
+        },
+
+        diagnosticEvidenceRows(diagnostic) {
+            return Array.isArray(diagnostic && diagnostic.evidence_summary)
+                ? diagnostic.evidence_summary.filter((line) => this.hasDetailValue(line))
+                : []
         },
 
         historyBudgetSummary(flow) {

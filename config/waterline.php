@@ -88,6 +88,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Run Diagnostics
+    |--------------------------------------------------------------------------
+    |
+    | The v2 run detail screen derives a compact operator diagnostic banner from
+    | the selected run's failure rows, task rows, wait projections, and history
+    | budget. The thresholds below keep those rules tunable without changing the
+    | workflow package's operator-observability payload contract.
+    |
+    */
+
+    'run_diagnostics' => [
+        'activity_failure_repeat_threshold' => env('WATERLINE_RUN_DIAGNOSTICS_ACTIVITY_FAILURE_REPEAT_THRESHOLD', 3),
+        'workflow_task_failure_attempt_threshold' => env('WATERLINE_RUN_DIAGNOSTICS_WORKFLOW_TASK_FAILURE_ATTEMPT_THRESHOLD', 3),
+        'history_budget_warning_ratio' => env('WATERLINE_RUN_DIAGNOSTICS_HISTORY_BUDGET_WARNING_RATIO', 0.8),
+        'condition_wait_sla_seconds' => env('WATERLINE_RUN_DIAGNOSTICS_CONDITION_WAIT_SLA_SECONDS', 300),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Workflow Sort Column
     |--------------------------------------------------------------------------
     |
