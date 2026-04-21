@@ -67,7 +67,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function dashboardStats(): array
     {
-        return app(OperatorObservabilityRepository::class)->dashboardSummary();
+        return app(OperatorObservabilityRepository::class)->dashboardSummary(namespace: $this->namespace());
     }
 
     public function flowsPastHour(): int
@@ -133,7 +133,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function operatorMetrics()
     {
-        return app(OperatorObservabilityRepository::class)->metrics();
+        return app(OperatorObservabilityRepository::class)->metrics(namespace: $this->namespace());
     }
 
     protected function orderedRunsQuery(?string $bucket = null)

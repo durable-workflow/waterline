@@ -225,7 +225,7 @@ class V2DashboardWorkflowTest extends TestCase
                 ];
             }
 
-            public function dashboardSummary(?\Carbon\CarbonInterface $now = null): array
+            public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
             {
                 return [
                     'flows' => 12,
@@ -243,7 +243,7 @@ class V2DashboardWorkflowTest extends TestCase
                 ];
             }
 
-            public function metrics(?\Carbon\CarbonInterface $now = null): array
+            public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
             {
                 return [
                     'contract_boundary' => 'metrics',

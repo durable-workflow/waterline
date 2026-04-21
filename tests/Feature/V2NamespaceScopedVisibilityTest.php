@@ -6,6 +6,7 @@ use Illuminate\Support\Str;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Enums\HistoryEventType;
+use Workflow\V2\Models\WorkflowFailure;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
@@ -71,6 +72,71 @@ class V2NamespaceScopedVisibilityTest extends TestCase
 
         $this->get('/waterline/api/instances/'.$shippingRun->workflow_instance_id.'/runs/'.$shippingRun->id.'/history-export')
             ->assertNotFound();
+    }
+
+    public function testDashboardStatsAndOperatorMetricsAreScopedToConfiguredNamespace(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+
+        $billingRun = $this->createCompletedRun('waterline-dashboard-billing-instance', 'billing');
+        $shippingRun = $this->createCompletedRun('waterline-dashboard-shipping-instance', 'shipping');
+
+        WorkflowRunSummary::whereKey($billingRun->id)->update([
+            'duration_ms' => 60000,
+            'exception_count' => 1,
+        ]);
+        WorkflowRunSummary::whereKey($shippingRun->id)->update([
+            'status' => 'failed',
+            'status_bucket' => 'failed',
+            'closed_reason' => 'failed',
+            'duration_ms' => 600000,
+            'exception_count' => 9,
+            'updated_at' => now(),
+        ]);
+
+        WorkflowFailure::create([
+            'id' => 'waterline-dashboard-billing-failure',
+            'workflow_run_id' => $billingRun->id,
+            'source_kind' => 'activity_execution',
+            'source_id' => 'activity-1',
+            'propagation_kind' => 'activity',
+            'handled' => false,
+            'exception_class' => \RuntimeException::class,
+            'message' => 'billing boom',
+            'file' => __FILE__,
+            'line' => 42,
+            'trace_preview' => 'trace',
+            'created_at' => now(),
+        ]);
+        WorkflowFailure::create([
+            'id' => 'waterline-dashboard-shipping-failure',
+            'workflow_run_id' => $shippingRun->id,
+            'source_kind' => 'activity_execution',
+            'source_id' => 'activity-2',
+            'propagation_kind' => 'activity',
+            'handled' => false,
+            'exception_class' => \RuntimeException::class,
+            'message' => 'shipping boom',
+            'file' => __FILE__,
+            'line' => 43,
+            'trace_preview' => 'trace',
+            'created_at' => now(),
+        ]);
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('flows', 1)
+            ->assertJsonPath('flows_past_hour', 1)
+            ->assertJsonPath('exceptions_past_hour', 1)
+            ->assertJsonPath('failed_flows_past_week', 0)
+            ->assertJsonPath('max_duration_workflow.id', $billingRun->id)
+            ->assertJsonPath('max_exceptions_workflow.id', $billingRun->id)
+            ->assertJsonPath('operator_metrics.runs.total', 1)
+            ->assertJsonPath('operator_metrics.runs.completed', 1)
+            ->assertJsonPath('operator_metrics.runs.failed', 0)
+            ->assertJsonPath('operator_metrics.projections.run_summaries.runs', 1)
+            ->assertJsonPath('operator_metrics.projections.run_summaries.summaries', 1);
     }
 
     private function createCompletedRun(string $instanceId, string $namespace): WorkflowRun
