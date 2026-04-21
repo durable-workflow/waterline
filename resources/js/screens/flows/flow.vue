@@ -230,17 +230,14 @@
                         <div>
                             <code>{{ flow.declared_entry_method }}()</code>
                             <span v-if="flow.declared_entry_mode === 'compatibility'" class="small text-muted">
-                                compatibility-only
+                                review required
                             </span>
                         </div>
                         <div class="small text-muted" v-if="hasDetailValue(flow.declared_entry_declaring_class)">
                             Declared on {{ flow.declared_entry_declaring_class }}
                         </div>
-                        <div class="small text-muted" v-if="flow.declared_entry_mode === 'canonical'">
-                            This run uses the canonical v2 entry contract.
-                        </div>
                         <div class="small text-muted" v-else-if="flow.declared_entry_mode === 'compatibility'">
-                            This run still depends on the legacy <code>execute()</code> compatibility path. New v2 workflows and activities should use <code>handle()</code>.
+                            This run was recorded with older entry-contract metadata. Review command targets before relying on signals, updates, or queries for this run.
                         </div>
                     </div>
                 </div>
@@ -275,7 +272,7 @@
                             class="small text-muted"
                             v-else-if="flow.declared_contract_backfill_needed === true"
                         >
-                            This run still needs command-contract normalization, but the current build can no longer resolve the workflow definition needed to finish it. The remaining target list is compatibility-only until a compatible build persists the missing durable snapshot. Named query arguments and named JSON-object signal or update payloads reject when the missing durable contract is required, and query or update execution still stays blocked when the workflow definition itself is unavailable.
+                            This run still needs command-contract normalization, but the current build can no longer resolve the workflow definition needed to finish it. The remaining target list is diagnostic metadata until a compatible build persists the missing durable snapshot. Named query arguments and named JSON-object signal or update payloads reject when the missing durable contract is required, and query or update execution still stays blocked when the workflow definition itself is unavailable.
                         </div>
                         <div class="small text-muted" v-else-if="flow.declared_contract_source === 'live_definition'">
                             This response fell back to the current PHP definition before durable command-contract normalization completed.

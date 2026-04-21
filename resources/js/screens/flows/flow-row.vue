@@ -34,7 +34,7 @@
                     class="badge badge-info ml-1"
                     :title="compatibilityEntryBadgeTitle(flow)"
                 >
-                    Compat Entry
+                    Entry Review
                 </span>
                 <span
                     v-if="showContractBackfillBadge(flow)"
@@ -200,7 +200,7 @@
             },
 
             compatibilityEntryBadgeTitle() {
-                return 'This run still depends on the legacy execute() compatibility entry path.'
+                return 'This run was recorded with older entry-contract metadata and should be reviewed before relying on command targets.'
             },
 
             showContractBackfillBadge(flow) {

@@ -399,7 +399,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.definition.fields.task_problem.label', 'Task Problem')
             ->assertJsonPath('visibility_filters.definition.fields.task_problem.type', 'boolean')
             ->assertJsonPath('visibility_filters.definition.fields.task_problem.input', 'boolean_select')
-            ->assertJsonPath('visibility_filters.definition.fields.declared_entry_mode.label', 'Entry Mode')
+            ->assertJsonPath('visibility_filters.definition.fields.declared_entry_mode.label', 'Entry Contract')
             ->assertJsonPath('visibility_filters.definition.fields.declared_entry_mode.input', 'select')
             ->assertJsonPath(
                 'visibility_filters.definition.fields.declared_contract_source.label',
