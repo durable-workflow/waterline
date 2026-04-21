@@ -195,12 +195,13 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->app->instance(OperatorObservabilityRepository::class, new class implements OperatorObservabilityRepository
         {
-            public function runDetail(WorkflowRun $run): array
+            public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
             {
                 return [
                     'id' => $run->id,
                     'run_id' => $run->id,
                     'contract_boundary' => 'detail',
+                    'timeline_limit' => $timelineLimit,
                 ];
             }
 
@@ -253,6 +254,7 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertOk()
             ->assertJsonPath('contract_boundary', 'detail')
+            ->assertJsonPath('timeline_limit', 200)
             ->assertJsonPath('run_id', $run->id);
 
         $this->get('/waterline/api/flows/' . $run->id . '/history-export')
@@ -310,6 +312,7 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/flows/'.$run->id)
             ->assertOk()
+            ->assertJsonPath('timeline_projection_source', 'workflow_run_timeline_entries_window')
             ->assertJsonCount(200, 'timeline')
             ->assertJsonPath('timeline_total_count', 205)
             ->assertJsonPath('timeline_returned_count', 200)
@@ -321,6 +324,7 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/flows/'.$run->id.'?history_limit=1000')
             ->assertOk()
+            ->assertJsonPath('timeline_projection_source', 'workflow_run_timeline_entries_window')
             ->assertJsonCount(205, 'timeline')
             ->assertJsonPath('timeline_returned_count', 205)
             ->assertJsonPath('timeline_truncated', false)

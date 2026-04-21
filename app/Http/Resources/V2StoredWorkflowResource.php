@@ -20,7 +20,10 @@ class V2StoredWorkflowResource extends JsonResource
 
     public function toArray($request)
     {
-        $detail = app(OperatorObservabilityRepository::class)->runDetail($this->resource);
+        $detail = app(OperatorObservabilityRepository::class)->runDetail(
+            $this->resource,
+            $this->timelineLimit($request),
+        );
         $detail = $this->withTimelineWindow($detail, $request);
         $detail['run_diagnostics'] = app(RunDiagnostics::class)->forRun($this->resource, $detail);
 
@@ -37,10 +40,10 @@ class V2StoredWorkflowResource extends JsonResource
         $timeline = is_array($detail['timeline'] ?? null)
             ? array_values($detail['timeline'])
             : [];
-        $total = count($timeline);
         $limit = $this->timelineLimit($request);
+        $total = $this->timelineTotal($detail, count($timeline));
 
-        if ($limit !== null && $total > $limit) {
+        if ($limit !== null && count($timeline) > $limit) {
             $timeline = array_slice($timeline, -$limit);
         }
 
@@ -73,6 +76,16 @@ class V2StoredWorkflowResource extends JsonResource
         }
 
         return min(self::MAX_TIMELINE_WINDOW, max(self::MIN_TIMELINE_WINDOW, $limit));
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     */
+    private function timelineTotal(array $detail, int $fallback): int
+    {
+        $total = $detail['timeline_total_count'] ?? null;
+
+        return is_numeric($total) ? max(0, (int) $total) : $fallback;
     }
 
     /**
