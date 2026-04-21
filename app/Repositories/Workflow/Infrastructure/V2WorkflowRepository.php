@@ -57,12 +57,12 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function findFlow(string $id)
     {
-        return SelectedRunLocator::forIdOrFail($id, $this->detailRelations());
+        return SelectedRunLocator::forIdOrFail($id, $this->detailRelations(), $this->namespace());
     }
 
     public function findFlowSelection(string $instanceId, ?string $runId = null)
     {
-        return SelectedRunLocator::forInstanceIdOrFail($instanceId, $runId, $this->detailRelations());
+        return SelectedRunLocator::forInstanceIdOrFail($instanceId, $runId, $this->detailRelations(), $this->namespace());
     }
 
     public function dashboardStats(): array
@@ -179,5 +179,12 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
             'childLinks.childRun.historyEvents',
             'instance.runs.summary',
         ];
+    }
+
+    private function namespace(): ?string
+    {
+        $namespace = config('waterline.namespace');
+
+        return is_string($namespace) && trim($namespace) !== '' ? trim($namespace) : null;
     }
 }
