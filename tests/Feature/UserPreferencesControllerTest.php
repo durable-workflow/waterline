@@ -78,6 +78,34 @@ class UserPreferencesControllerTest extends TestCase
         ]);
     }
 
+    public function testRunDetailTabPreferenceUsesUrlOverrideWithoutMutatingStoredPreference(): void
+    {
+        config()->set('waterline.preferences.scope', 'ops');
+
+        UserPreference::create([
+            'scope' => 'ops',
+            'subject_key' => 'scope:ops',
+            'surface' => 'run-detail',
+            'preferences' => [
+                'tab' => 'timeline',
+            ],
+        ]);
+
+        $this->getJson('/waterline/api/preferences/run-detail?tab=events')
+            ->assertOk()
+            ->assertJsonPath('surface', 'run-detail')
+            ->assertJsonPath('preferences.tab', 'timeline')
+            ->assertJsonPath('effective_preferences.tab', 'events')
+            ->assertJsonPath('overrides.tab', 'events');
+
+        $this->assertDatabaseHas('waterline_user_preferences', [
+            'scope' => 'ops',
+            'subject_key' => 'scope:ops',
+            'surface' => 'run-detail',
+            'preferences->tab' => 'timeline',
+        ]);
+    }
+
     public function testPreferencesAreScopedByAuthenticatedUserWhenAvailable(): void
     {
         config()->set('waterline.preferences.scope', 'ops');

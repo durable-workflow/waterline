@@ -571,6 +571,25 @@
                 </div>
 
                 <div class="d-flex align-items-center">
+                    <div class="btn-group btn-group-sm mr-2" role="group" aria-label="History view">
+                        <button
+                            type="button"
+                            class="btn"
+                            :class="runDetailTab() === 'timeline' ? 'btn-secondary' : 'btn-outline-secondary'"
+                            :disabled="savingRunDetailPreferences"
+                            @click="setRunDetailTab('timeline')">
+                            Timeline
+                        </button>
+                        <button
+                            type="button"
+                            class="btn"
+                            :class="runDetailTab() === 'events' ? 'btn-secondary' : 'btn-outline-secondary'"
+                            :disabled="savingRunDetailPreferences"
+                            @click="setRunDetailTab('events')">
+                            Event List
+                        </button>
+                    </div>
+
                     <button
                         v-if="timelineHasOlder()"
                         class="btn btn-outline-secondary btn-sm mr-2"
@@ -607,6 +626,7 @@
                 </div>
 
                 <div
+                    v-if="runDetailTab() === 'timeline'"
                     class="timeline-events timeline-events-virtual"
                     :style="{ height: historyViewportHeight + 'px' }"
                     @scroll="onHistoryScroll"
@@ -620,6 +640,28 @@
                         @drill-child="navigateToChild"
                     />
                     <div :style="virtualTimelineSpacerStyle('bottom')"></div>
+                </div>
+                <div v-else class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead>
+                            <tr>
+                                <th>Seq</th>
+                                <th>Type</th>
+                                <th>Summary</th>
+                                <th>Recorded</th>
+                                <th>Source</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="event in timelineRows()" :key="event.id || event.sequence">
+                                <td>{{ event.sequence || '-' }}</td>
+                                <td>{{ event.type || event.event_type || '-' }}</td>
+                                <td>{{ event.summary || '-' }}</td>
+                                <td>{{ historyEventTimestamp(event) }}</td>
+                                <td>{{ historyEventSource(event) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -1452,6 +1494,11 @@ export default {
             historyRowHeight: 92,
             historyViewportHeight: 620,
             historyVirtualWindowSize: 80,
+            runDetailPreferences: {},
+            effectiveRunDetailPreferences: {
+                tab: 'timeline',
+            },
+            savingRunDetailPreferences: false,
             code: 'console.log("Hello World")',
             series: [
                 {
@@ -1551,18 +1598,24 @@ export default {
     mounted() {
         moment.relativeTimeThreshold('ss', 1);
 
-        this.loadRouteFlow();
+        this.handleRouteChange();
 
         document.title = "Waterline - Flow Detail";
     },
 
     watch: {
         '$route.fullPath'() {
-            this.loadRouteFlow()
+            this.handleRouteChange()
         }
     },
 
     methods: {
+        async handleRouteChange() {
+            await this.loadRunDetailPreferences()
+
+            return this.loadRouteFlow()
+        },
+
         loadRouteFlow() {
             this.historyLimit = this.historyPageSize
 
@@ -1630,6 +1683,81 @@ export default {
 
                     this.ready = true;
                 });
+        },
+
+        loadRunDetailPreferences() {
+            return this.$http.get(Waterline.basePath + '/api/preferences/run-detail?' + this.runDetailPreferenceQueryString())
+                .then(response => {
+                    this.applyRunDetailPreferencePayload(response.data || {})
+                })
+                .catch(() => {
+                    this.runDetailPreferences = {}
+                    this.effectiveRunDetailPreferences = {
+                        tab: 'timeline',
+                    }
+                })
+        },
+
+        applyRunDetailPreferencePayload(payload) {
+            this.runDetailPreferences = payload.preferences || {}
+            this.effectiveRunDetailPreferences = {
+                tab: 'timeline',
+                ...(payload.effective_preferences || {}),
+            }
+        },
+
+        runDetailPreferenceQueryString() {
+            const params = new URLSearchParams()
+            const query = this.$route.query || {}
+
+            if (query.tab !== undefined) {
+                params.set('tab', query.tab)
+            }
+
+            return params.toString()
+        },
+
+        runDetailTab() {
+            return this.effectiveRunDetailPreferences.tab === 'events'
+                ? 'events'
+                : 'timeline'
+        },
+
+        setRunDetailTab(tab) {
+            const normalized = tab === 'events' ? 'events' : 'timeline'
+
+            if (this.$route.query && this.$route.query.tab !== undefined && this.$route.query.tab !== normalized) {
+                return this.$router.replace({
+                    name: this.$route.name,
+                    params: this.$route.params,
+                    query: {
+                        ...this.$route.query,
+                        tab: normalized,
+                    },
+                })
+            }
+
+            return this.persistRunDetailPreferences({
+                tab: normalized,
+            })
+        },
+
+        async persistRunDetailPreferences(preferences) {
+            const payload = {
+                ...this.runDetailPreferences,
+                ...preferences,
+            }
+
+            this.savingRunDetailPreferences = true
+
+            try {
+                const response = await this.$http.put(Waterline.basePath + '/api/preferences/run-detail', {
+                    preferences: payload,
+                })
+                this.applyRunDetailPreferencePayload(response.data || {})
+            } finally {
+                this.savingRunDetailPreferences = false
+            }
         },
 
         withHistoryLimit(path) {
@@ -2151,6 +2279,22 @@ export default {
 
         timelineRows() {
             return this.flow.timeline || []
+        },
+
+        historyEventTimestamp(event) {
+            const timestamp = event.recorded_at || event.created_at || event.timestamp || null
+
+            return this.hasDetailValue(timestamp) && typeof timestamp === 'string'
+                ? this.timestamp(timestamp)
+                : '-'
+        },
+
+        historyEventSource(event) {
+            return [
+                event.entry_kind || event.kind || null,
+                event.source_kind || null,
+                event.source_id || null,
+            ].filter((value) => this.hasDetailValue(value)).join(' / ') || '-'
         },
 
         timelineTotalCount() {
