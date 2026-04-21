@@ -439,6 +439,9 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.definition.fields.instance_id.label', 'Instance ID')
             ->assertJsonPath('visibility_filters.definition.fields.instance_id.type', 'string')
             ->assertJsonPath('visibility_filters.definition.fields.instance_id.input', 'text')
+            ->assertJsonPath('visibility_filters.definition.fields.instance_id_contains.operator', 'contains')
+            ->assertJsonPath('visibility_filters.definition.fields.instance_id_contains.contains_field', 'instance_id')
+            ->assertJsonPath('visibility_filters.definition.fields.workflow_type_contains.operator', 'contains')
             ->assertJsonPath('visibility_filters.definition.fields.business_key.help', 'Exact-match indexed operator metadata copied onto the run summary and saved-view contract.')
             ->assertJsonPath('visibility_filters.definition.fields.status_bucket.input', 'select')
             ->assertJsonPath('visibility_filters.definition.fields.is_current_run.type', 'boolean')
@@ -543,12 +546,12 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.saved_view.filter_version_status', 'unsupported')
             ->assertJsonPath(
                 'visibility_filters.saved_view.filter_version_message',
-                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2, 3.',
+                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2, 3, 4, 5, 6.',
             )
             ->assertJsonPath('visibility_filters.saved_view_applied', false)
             ->assertJsonPath(
                 'visibility_filters.saved_view_warning',
-                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2, 3.',
+                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2, 3, 4, 5, 6.',
             )
             ->assertJsonPath('visibility_filters.applied.instance_id', $timer->workflow_instance_id)
             ->assertJsonMissingPath('visibility_filters.applied.wait_kind');
@@ -691,6 +694,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('filter_version', VisibilityFilters::VERSION)
             ->assertJsonPath('filter_definition.fields.instance_id.label', 'Instance ID')
             ->assertJsonPath('filter_definition.fields.instance_id.type', 'string')
+            ->assertJsonPath('filter_definition.fields.instance_id_contains.operator', 'contains')
             ->assertJsonPath('filter_definition.fields.repair_blocked_reason.label', 'Repair Blocked Reason')
             ->assertJsonPath('filter_definition.fields.repair_blocked_reason.input', 'select')
             ->assertJsonPath('filter_definition.fields.repair_attention.label', 'Repair Attention')
@@ -745,7 +749,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('filter_version_status', 'unsupported')
             ->assertJsonPath(
                 'filter_version_message',
-                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2, 3.',
+                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2, 3, 4, 5, 6.',
             )
             ->assertJsonPath('current_filter_version', VisibilityFilters::VERSION)
             ->assertJsonPath('supported_filter_versions', VisibilityFilters::supportedVersions());
@@ -789,7 +793,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('filter_definition.fields.archived.input', 'boolean_select')
             ->assertJsonPath(
                 'filter_definition.labels.help',
-                'One exact-match label per line in key=value format. Labels are indexed operator metadata and saved-view compatible.',
+                'One exact-match label per line in key=value format. Labels are indexed operator metadata set at start and saved-view compatible.',
             )
             ->assertJsonPath('filter_definition.indexed_metadata.labels.saved_view_compatible', true)
             ->assertJsonPath('filter_definition.detail_metadata.memo.saved_view_compatible', false);

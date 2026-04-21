@@ -2639,7 +2639,7 @@ export default {
             return JSON.parse(value)
         },
 
-        async promptForSignalCommand() {
+        async promptForSignalCommand(submit = false) {
             const signals = this.signalTargets()
 
             if (!signals.length) {
@@ -2677,7 +2677,9 @@ export default {
                         textarea.value = this.defaultSignalArguments(select.value)
                     })
                 },
-                preConfirm: () => {
+                showLoaderOnConfirm: submit,
+                allowOutsideClick: () => !Swal.isLoading(),
+                preConfirm: async () => {
                     const target = document.getElementById('waterline-signal-target').value
                     const rawArguments = document.getElementById('waterline-signal-arguments').value
 
@@ -2688,12 +2690,22 @@ export default {
                     }
 
                     try {
-                        return {
+                        const interactiveCommand = {
                             targetName: target,
                             arguments: this.parseCommandArguments(rawArguments),
                         }
+
+                        if (!submit) {
+                            return interactiveCommand
+                        }
+
+                        const response = await this.submitInteractiveCommand('signal', interactiveCommand)
+
+                        return {interactiveCommand, response}
                     } catch (error) {
-                        Swal.showValidationMessage('Arguments must be valid JSON.')
+                        Swal.showValidationMessage((error && (error.response || error.request))
+                            ? this.commandFailureMessage(error, 'signal')
+                            : 'Arguments must be valid JSON.')
 
                         return false
                     }
@@ -2703,7 +2715,7 @@ export default {
             return result.isConfirmed ? result.value : null
         },
 
-        async promptForQueryCommand() {
+        async promptForQueryCommand(submit = false) {
             const queries = this.queryTargets()
 
             if (!queries.length) {
@@ -2741,7 +2753,9 @@ export default {
                         textarea.value = this.defaultQueryArguments(select.value)
                     })
                 },
-                preConfirm: () => {
+                showLoaderOnConfirm: submit,
+                allowOutsideClick: () => !Swal.isLoading(),
+                preConfirm: async () => {
                     const target = document.getElementById('waterline-query-target').value
                     const rawArguments = document.getElementById('waterline-query-arguments').value
 
@@ -2752,12 +2766,22 @@ export default {
                     }
 
                     try {
-                        return {
+                        const interactiveCommand = {
                             targetName: target,
                             arguments: this.parseCommandArguments(rawArguments),
                         }
+
+                        if (!submit) {
+                            return interactiveCommand
+                        }
+
+                        const response = await this.submitInteractiveCommand('query', interactiveCommand)
+
+                        return {interactiveCommand, response}
                     } catch (error) {
-                        Swal.showValidationMessage('Arguments must be valid JSON.')
+                        Swal.showValidationMessage((error && (error.response || error.request))
+                            ? this.commandFailureMessage(error, 'query')
+                            : 'Arguments must be valid JSON.')
 
                         return false
                     }
@@ -2767,7 +2791,7 @@ export default {
             return result.isConfirmed ? result.value : null
         },
 
-        async promptForUpdateCommand() {
+        async promptForUpdateCommand(submit = false) {
             const updates = this.updateTargets()
 
             if (!updates.length) {
@@ -2812,7 +2836,9 @@ export default {
                         textarea.value = this.defaultUpdateArguments(select.value)
                     })
                 },
-                preConfirm: () => {
+                showLoaderOnConfirm: submit,
+                allowOutsideClick: () => !Swal.isLoading(),
+                preConfirm: async () => {
                     const target = document.getElementById('waterline-update-target').value
                     const rawArguments = document.getElementById('waterline-update-arguments').value
                     const waitFor = document.getElementById('waterline-update-wait-for').value
@@ -2825,14 +2851,24 @@ export default {
                     }
 
                     try {
-                        return {
+                        const interactiveCommand = {
                             targetName: target,
                             arguments: this.parseCommandArguments(rawArguments),
                             waitFor,
                             waitTimeoutSeconds,
                         }
+
+                        if (!submit) {
+                            return interactiveCommand
+                        }
+
+                        const response = await this.submitInteractiveCommand('update', interactiveCommand)
+
+                        return {interactiveCommand, response}
                     } catch (error) {
-                        Swal.showValidationMessage('Arguments must be valid JSON.')
+                        Swal.showValidationMessage((error && (error.response || error.request))
+                            ? this.commandFailureMessage(error, 'update')
+                            : 'Arguments must be valid JSON.')
 
                         return false
                     }
@@ -3638,15 +3674,27 @@ export default {
 
         async issueCommand(commandType) {
             if (commandType === 'query') {
-                return this.issueInteractiveCommand(commandType, await this.promptForQueryCommand())
+                const result = await this.promptForQueryCommand(true)
+
+                return result
+                    ? this.handleCommandSuccess(commandType, result.interactiveCommand, result.response)
+                    : null
             }
 
             if (commandType === 'signal') {
-                return this.issueInteractiveCommand(commandType, await this.promptForSignalCommand())
+                const result = await this.promptForSignalCommand(true)
+
+                return result
+                    ? this.handleCommandSuccess(commandType, result.interactiveCommand, result.response)
+                    : null
             }
 
             if (commandType === 'update') {
-                return this.issueInteractiveCommand(commandType, await this.promptForUpdateCommand())
+                const result = await this.promptForUpdateCommand(true)
+
+                return result
+                    ? this.handleCommandSuccess(commandType, result.interactiveCommand, result.response)
+                    : null
             }
 
             const copy = {
@@ -3679,13 +3727,26 @@ export default {
                 showCancelButton: true,
                 confirmButtonText: copy.confirmButtonText,
                 background: '#1c1c1c',
+                showLoaderOnConfirm: true,
+                allowOutsideClick: () => !Swal.isLoading(),
+                preConfirm: async () => {
+                    try {
+                        return {
+                            response: await this.submitInteractiveCommand(commandType, null),
+                        }
+                    } catch (error) {
+                        Swal.showValidationMessage(this.commandFailureMessage(error, commandType))
+
+                        return false
+                    }
+                },
             })
 
             if (! confirmed.isConfirmed) {
                 return
             }
 
-            return this.issueInteractiveCommand(commandType, null)
+            return this.handleCommandSuccess(commandType, null, confirmed.value.response)
         },
 
         async issueInteractiveCommand(commandType, interactiveCommand = null) {
@@ -3694,75 +3755,88 @@ export default {
             }
 
             try {
-                const response = await this.$http.post(
-                    this.commandEndpoint(commandType, interactiveCommand ? interactiveCommand.targetName : null),
-                    interactiveCommand ? this.commandRequestBody(interactiveCommand) : {},
-                )
+                const response = await this.submitInteractiveCommand(commandType, interactiveCommand)
 
-                if (commandType === 'query') {
-                    const queryName = response.data && response.data.query_name
-                        ? response.data.query_name
-                        : interactiveCommand.targetName
-
-                    this.showResult(response.data.result, 'Query Result: ' + queryName)
-
-                    return
-                }
-
-                await this.loadRouteFlow()
-
-                const successText = {
-                    signal: 'Waterline recorded the signal command durably.',
-                    update: response.data.wait_timed_out === true
-                        ? 'Waterline accepted the update command, waited for worker-applied completion, and returned the still-open lifecycle when that wait budget expired.'
-                        : (response.data.update_status === 'accepted'
-                            ? 'Waterline accepted the update command and queued a workflow task to apply it.'
-                            : 'Waterline recorded the update command durably and the workflow worker applied it.'),
-                    repair: response.data.outcome === 'repair_dispatched'
-                        ? 'Waterline recreated the durable task and re-dispatched it.'
-                        : 'Waterline recorded the repair command, and no new task was needed.',
-                    cancel: 'Waterline recorded the command durably.',
-                    terminate: 'Waterline recorded the command durably.',
-                    archive: response.data.outcome === 'archive_not_needed'
-                        ? 'Waterline recorded the archive command; the run was already archived.'
-                        : 'Waterline archived the selected run durably.',
-                }[commandType] || 'Waterline recorded the command durably.'
-
-                Swal.fire({
-                    title: 'Command accepted',
-                    text: successText,
-                    icon: 'success',
-                    confirmButtonText: 'Okay',
-                    background: '#1c1c1c',
-                })
+                return this.handleCommandSuccess(commandType, interactiveCommand, response)
             } catch (error) {
-                const validationMessages = error.response && error.response.data
-                    ? this.commandValidationMessages(error.response.data)
-                    : []
-                const message = validationMessages.length
-                    ? validationMessages.join(' ')
-                    : (error.response
-                        && error.response.data
-                        && error.response.data.blocked_reason
-                        ? this.commandRejectionMessage(error.response.data.blocked_reason, commandType)
-                        : error.response
-                        && error.response.data
-                        && error.response.data.rejection_reason
-                        ? this.commandRejectionMessage(error.response.data.rejection_reason, commandType)
-                        : error.response
-                        && error.response.data
-                        && error.response.data.message
-                        ? error.response.data.message
-                        : 'Command was rejected.')
-
                 Swal.fire({
                     title: commandType === 'query' ? 'Query failed' : 'Command rejected',
-                    text: message,
+                    text: this.commandFailureMessage(error, commandType),
                     icon: 'error',
                     confirmButtonText: 'Okay',
                     background: '#1c1c1c',
                 })
             }
+        },
+
+        submitInteractiveCommand(commandType, interactiveCommand = null) {
+            return this.$http.post(
+                this.commandEndpoint(commandType, interactiveCommand ? interactiveCommand.targetName : null),
+                interactiveCommand ? this.commandRequestBody(interactiveCommand) : {},
+            )
+        },
+
+        async handleCommandSuccess(commandType, interactiveCommand, response) {
+            if (commandType === 'query') {
+                const queryName = response.data && response.data.query_name
+                    ? response.data.query_name
+                    : interactiveCommand.targetName
+
+                this.showResult(response.data.result, 'Query Result: ' + queryName)
+
+                return
+            }
+
+            await this.loadRouteFlow()
+
+            Swal.fire({
+                title: 'Command accepted',
+                text: this.commandSuccessMessage(commandType, response),
+                icon: 'success',
+                confirmButtonText: 'Okay',
+                background: '#1c1c1c',
+            })
+        },
+
+        commandSuccessMessage(commandType, response) {
+            return {
+                signal: 'Waterline recorded the signal command durably.',
+                update: response.data.wait_timed_out === true
+                    ? 'Waterline accepted the update command, waited for worker-applied completion, and returned the still-open lifecycle when that wait budget expired.'
+                    : (response.data.update_status === 'accepted'
+                        ? 'Waterline accepted the update command and queued a workflow task to apply it.'
+                        : 'Waterline recorded the update command durably and the workflow worker applied it.'),
+                repair: response.data.outcome === 'repair_dispatched'
+                    ? 'Waterline recreated the durable task and re-dispatched it.'
+                    : 'Waterline recorded the repair command, and no new task was needed.',
+                cancel: 'Waterline recorded the command durably.',
+                terminate: 'Waterline recorded the command durably.',
+                archive: response.data.outcome === 'archive_not_needed'
+                    ? 'Waterline recorded the archive command; the run was already archived.'
+                    : 'Waterline archived the selected run durably.',
+            }[commandType] || 'Waterline recorded the command durably.'
+        },
+
+        commandFailureMessage(error, commandType) {
+            const validationMessages = error.response && error.response.data
+                ? this.commandValidationMessages(error.response.data)
+                : []
+
+            return validationMessages.length
+                ? validationMessages.join(' ')
+                : (error.response
+                    && error.response.data
+                    && error.response.data.blocked_reason
+                    ? this.commandRejectionMessage(error.response.data.blocked_reason, commandType)
+                    : error.response
+                    && error.response.data
+                    && error.response.data.rejection_reason
+                    ? this.commandRejectionMessage(error.response.data.rejection_reason, commandType)
+                    : error.response
+                    && error.response.data
+                    && error.response.data.message
+                    ? error.response.data.message
+                    : 'Command was rejected.')
         },
 
         commandEndpoint(commandType, targetName = null) {
