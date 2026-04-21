@@ -982,6 +982,9 @@
                             <td>{{ command.status }}</td>
                             <td>
                                 <div>{{ commandSource(command) }}</div>
+                                <small v-if="commandPrincipalDetail(command)" class="text-muted d-block">
+                                    {{ commandPrincipalDetail(command) }}
+                                </small>
                                 <small v-if="command.status === 'rejected' && hasDetailValue(command.rejection_reason)" class="text-muted d-block">
                                     {{ command.rejection_reason }}
                                 </small>
@@ -3428,7 +3431,25 @@ export default {
         },
 
         commandSource(command) {
-            return command.caller_label || command.source || '-'
+            return command.principal_label || command.principal_id || command.caller_label || command.source || '-'
+        },
+
+        commandPrincipalDetail(command) {
+            if (!command || (!this.hasDetailValue(command.principal_id) && !this.hasDetailValue(command.principal_type))) {
+                return ''
+            }
+
+            const parts = []
+
+            if (this.hasDetailValue(command.principal_type)) {
+                parts.push(command.principal_type)
+            }
+
+            if (this.hasDetailValue(command.principal_id)) {
+                parts.push(command.principal_id)
+            }
+
+            return parts.join(' / ')
         },
 
         linkedIntakeRows() {
@@ -3542,6 +3563,14 @@ export default {
             if (intake && intake.mode) {
                 const intakeLabel = intake.mode.replace(/_/g, ' ')
                 details.push(intake.group_id ? intakeLabel + ' / ' + intake.group_id : intakeLabel)
+            }
+
+            if (this.hasDetailValue(command.caller_label) && command.caller_label !== this.commandSource(command)) {
+                details.push('caller ' + command.caller_label)
+            }
+
+            if (this.hasDetailValue(command.principal_id) && this.hasDetailValue(command.principal_label)) {
+                details.push('principal ' + command.principal_id)
             }
 
             if (command.auth_status && command.auth_method) {

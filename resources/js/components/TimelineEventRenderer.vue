@@ -94,6 +94,10 @@
                         <span class="text-muted">Actor:</span>
                         <span class="ml-1">{{ commandSourceLabel }}</span>
                     </div>
+                    <div v-if="commandPrincipalLabel">
+                        <span class="text-muted">Principal:</span>
+                        <span class="ml-1">{{ commandPrincipalLabel }}</span>
+                    </div>
                     <div v-if="commandStatusLabel">
                         <span class="text-muted">Command:</span>
                         <span class="ml-1">{{ commandStatusLabel }}</span>
@@ -240,6 +244,16 @@ export default {
                 .join(' ');
 
             return [caller, auth].filter(Boolean).join(' / ');
+        },
+
+        commandPrincipalLabel() {
+            const command = this.event.command || {};
+            const label = this.firstPresent(command.principal_label, this.event.principal_label);
+            const id = this.firstPresent(command.principal_id, this.event.principal_id);
+            const type = this.firstPresent(command.principal_type, this.event.principal_type);
+            const identity = [type, id].filter(Boolean).join(' / ');
+
+            return [label, identity && identity !== label ? identity : null].filter(Boolean).join(' / ');
         },
 
         commandStatusLabel() {

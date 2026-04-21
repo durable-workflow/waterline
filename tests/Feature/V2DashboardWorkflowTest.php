@@ -46,6 +46,7 @@ use Workflow\V2\Support\WorkflowDefinition;
 use Workflow\V2\Support\WorkflowInstanceId;
 use Workflow\V2\TaskWatchdog;
 use Workflow\V2\WorkflowStub;
+use Waterline\Waterline;
 
 class V2DashboardWorkflowTest extends TestCase
 {
@@ -10303,6 +10304,11 @@ class V2DashboardWorkflowTest extends TestCase
     public function testArchiveTargetsCurrentClosedInstanceRouteAndReturnsAcceptedResponse(): void
     {
         config()->set('waterline.engine_source', 'v2');
+        Waterline::identifyPrincipalUsing(static fn () => [
+            'type' => 'user',
+            'id' => 'waterline-user:42',
+            'label' => 'Taylor Operator',
+        ]);
 
         $instance = WorkflowInstance::create([
             'id' => 'order-archive-current',
@@ -10374,10 +10380,19 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('read_only_reason', 'Run is archived.')
             ->assertJsonPath('commands.0.type', 'archive')
             ->assertJsonPath('commands.0.caller_label', 'Waterline UI')
+            ->assertJsonPath('commands.0.principal_type', 'user')
+            ->assertJsonPath('commands.0.principal_id', 'waterline-user:42')
+            ->assertJsonPath('commands.0.principal_label', 'Taylor Operator')
+            ->assertJsonPath('commands.0.context.principal.type', 'user')
+            ->assertJsonPath('commands.0.context.principal.id', 'waterline-user:42')
+            ->assertJsonPath('commands.0.context.principal.label', 'Taylor Operator')
             ->assertJsonPath('commands.0.auth_status', 'authorized')
             ->assertJsonPath('commands.0.auth_method', 'waterline')
             ->assertJsonPath('timeline.0.type', 'ArchiveRequested')
             ->assertJsonPath('timeline.0.command.caller_label', 'Waterline UI')
+            ->assertJsonPath('timeline.0.command.principal_type', 'user')
+            ->assertJsonPath('timeline.0.command.principal_id', 'waterline-user:42')
+            ->assertJsonPath('timeline.0.command.principal_label', 'Taylor Operator')
             ->assertJsonPath('timeline.0.command.auth_status', 'authorized')
             ->assertJsonPath('timeline.0.command.auth_method', 'waterline')
             ->assertJsonPath('timeline.0.command.request_route_name', 'waterline.instances.archive')
@@ -10385,6 +10400,9 @@ class V2DashboardWorkflowTest extends TestCase
 
         $command = WorkflowCommand::query()->findOrFail($commandId);
 
+        $this->assertSame('user', $command->principalType());
+        $this->assertSame('waterline-user:42', $command->principalId());
+        $this->assertSame('Taylor Operator', $command->principalLabel());
         $this->assertSame('/waterline/api/instances/'.$instance->id.'/archive', $command->requestPath());
         $this->assertSame('waterline.instances.archive', $command->requestRouteName());
     }

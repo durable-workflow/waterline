@@ -10,6 +10,7 @@ use Workflow\V2\Enums\ScheduleOverlapPolicy;
 use Workflow\V2\Enums\ScheduleStatus;
 use Workflow\V2\Models\WorkflowSchedule;
 use Workflow\V2\Support\ScheduleManager;
+use Waterline\Waterline;
 
 class V2SchedulesController extends Controller
 {
@@ -61,7 +62,7 @@ class V2SchedulesController extends Controller
         }
 
         try {
-            ScheduleManager::pause($schedule, context: CommandContext::waterline($request));
+            ScheduleManager::pause($schedule, context: $this->commandContext($request));
         } catch (\LogicException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
@@ -78,7 +79,7 @@ class V2SchedulesController extends Controller
         }
 
         try {
-            ScheduleManager::resume($schedule, CommandContext::waterline($request));
+            ScheduleManager::resume($schedule, $this->commandContext($request));
         } catch (\LogicException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
@@ -96,7 +97,7 @@ class V2SchedulesController extends Controller
 
         $instanceId = ScheduleManager::trigger(
             $schedule,
-            context: CommandContext::waterline($request),
+            context: $this->commandContext($request),
         );
 
         return response()->json([
@@ -140,7 +141,7 @@ class V2SchedulesController extends Controller
                 $fromDate,
                 $toDate,
                 $overlapOverride,
-                CommandContext::waterline($request),
+                $this->commandContext($request),
             );
         } catch (\LogicException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
@@ -160,7 +161,7 @@ class V2SchedulesController extends Controller
             return response()->json(['error' => 'Schedule not found.'], 404);
         }
 
-        ScheduleManager::delete($schedule, CommandContext::waterline($request));
+        ScheduleManager::delete($schedule, $this->commandContext($request));
 
         return response()->json(ScheduleManager::describe($schedule)->toArray());
     }
@@ -173,5 +174,15 @@ class V2SchedulesController extends Controller
             $scheduleId,
             namespace: is_string($namespace) && $namespace !== '' ? $namespace : null,
         );
+    }
+
+    private function commandContext(Request $request): CommandContext
+    {
+        $context = CommandContext::waterline($request);
+        $principal = Waterline::principalFor($request);
+
+        return $principal === null
+            ? $context
+            : $context->withPrincipal($principal['type'], $principal['id'], $principal['label'] ?? null);
     }
 }

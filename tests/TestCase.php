@@ -24,6 +24,8 @@ abstract class TestCase extends BaseTestCase
         Waterline::auth(function () {
             return true;
         });
+
+        Waterline::$principalUsing = null;
     }
 
     protected function getEnvironmentSetUp($app)
