@@ -955,6 +955,37 @@
                 `
             },
 
+            containsFieldPairs() {
+                const pairs = {}
+
+                this.visibilityFieldEntries().forEach(([field, definition]) => {
+                    if (definition.operator === 'contains' && definition.contains_field) {
+                        pairs[definition.contains_field] = field
+                    }
+                })
+
+                return pairs
+            },
+
+            isContainsOperatorField(definition) {
+                return definition
+                    && definition.operator === 'contains'
+                    && !!definition.contains_field
+            },
+
+            visibleFilterEditorEntries() {
+                return this.visibilityFieldEntries()
+                    .filter(([, definition]) => !this.isContainsOperatorField(definition))
+            },
+
+            operatorFieldLabel(definition, fallback) {
+                const label = definition && definition.label
+                    ? definition.label
+                    : fallback
+
+                return this.escapeHtml(label)
+            },
+
             filterEditorHtml(filters) {
                 const labelsDefinition = this.visibilityLabelsDefinition()
 
@@ -962,14 +993,14 @@
                     return '<div class="text-left">Visibility filters are unavailable.</div>'
                 }
 
-                const textInput = (id, label, value, help = '') => `
-                    <label class="d-block text-left mb-1" for="${id}">${label}</label>
-                    <input id="${id}" class="swal2-input" value="${this.escapeHtml(value)}">
+                const textInput = (id, label, value, help = '', labelClass = 'd-block text-left mb-1') => `
+                    <label class="${labelClass}" for="${id}">${label}</label>
+                    <input id="${id}" class="swal2-input mt-1" value="${this.escapeHtml(value)}">
                     ${help}
                 `
-                const selectInput = (id, label, value, options, help = '') => `
-                    <label class="d-block text-left mb-1" for="${id}">${label}</label>
-                    <select id="${id}" class="swal2-input">
+                const selectInput = (id, label, value, options, help = '', labelClass = 'd-block text-left mb-1') => `
+                    <label class="${labelClass}" for="${id}">${label}</label>
+                    <select id="${id}" class="swal2-input mt-1">
                         <option value="" ${value === '' ? 'selected' : ''}>Any</option>
                         ${options.map((option) => `
                             <option value="${this.escapeHtml(this.optionValueString(option.value))}" ${value === this.optionValueString(option.value) ? 'selected' : ''}>${this.escapeHtml(option.label)}</option>
@@ -977,22 +1008,43 @@
                     </select>
                     ${help}
                 `
+                const fieldInput = (field, definition, labelClass = 'd-block text-left mb-1', labelOverride = null) => {
+                    const id = this.fieldInputId(field)
+                    const label = labelOverride === null
+                        ? this.operatorFieldLabel(definition, field)
+                        : this.escapeHtml(labelOverride)
+                    const value = this.filterValue(field, filters)
+                    const help = definition.help
+                        ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(definition.help)}</small>`
+                        : ''
+
+                    if (definition.input === 'boolean_select' || definition.input === 'select') {
+                        return selectInput(id, label, value, this.fieldOptions(field, value), help, labelClass)
+                    }
+
+                    return textInput(id, label, value, help, labelClass)
+                }
                 const labelPlaceholder = this.escapeHtml(labelsDefinition.placeholder || '')
                     .replace(/\n/g, '&#10;')
-                const fieldsHtml = this.visibilityFieldEntries()
+                const containsPairs = this.containsFieldPairs()
+                const fieldsHtml = this.visibleFilterEditorEntries()
                     .map(([field, definition]) => {
-                        const id = this.fieldInputId(field)
-                        const label = this.escapeHtml(definition.label || field)
-                        const value = this.filterValue(field, filters)
-                        const help = definition.help
-                            ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(definition.help)}</small>`
-                            : ''
+                        const containsField = containsPairs[field]
+                        const containsDefinition = containsField
+                            ? this.visibilityFieldDefinition(containsField)
+                            : null
 
-                        if (definition.input === 'boolean_select' || definition.input === 'select') {
-                            return selectInput(id, label, value, this.fieldOptions(field, value), help)
+                        if (!containsField || !containsDefinition) {
+                            return fieldInput(field, definition)
                         }
 
-                        return textInput(id, label, value, help)
+                        return `
+                            <div class="text-left mt-3 mb-2">
+                                <div class="font-weight-bold mb-2">${this.escapeHtml(definition.label || field)}</div>
+                                ${fieldInput(field, definition, 'd-block text-left mb-1 small text-uppercase text-muted', 'Exact match')}
+                                ${fieldInput(containsField, containsDefinition, 'd-block text-left mb-1 mt-3 small text-uppercase text-muted', 'Contains')}
+                            </div>
+                        `
                     })
                     .join('')
 
