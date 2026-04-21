@@ -43,6 +43,19 @@ If your workflow IDs are strings (for example UUIDs) and do not sort in a useful
 'workflow_sort_column' => 'created_at',
 ```
 
+### Operator Preferences
+
+Waterline persists small operator view preferences through
+`GET /waterline/api/preferences/{surface}` and
+`PUT /waterline/api/preferences/{surface}`. Supported surfaces are
+`workflow-list`, `run-detail`, `schedules-list`, and `workers-list`; supported
+keys are `tab`, `sort_direction`, `row_density`, `saved_view_id`, and
+`columns`. Preferences are scoped to the authenticated Laravel user when one is
+available, otherwise to `WATERLINE_PREFERENCES_SCOPE` for local installs.
+
+URL query parameters still win for shared links. For example,
+`?tab=timeline&sort=asc&density=dense&columns=workflow_id,status` returns those
+values in `effective_preferences` without mutating the stored preferences.
 
 ## Upgrading Waterline
 
