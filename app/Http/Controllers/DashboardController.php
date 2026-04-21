@@ -6,14 +6,41 @@ use Illuminate\Support\Facades\App;
 
 class DashboardController extends Controller
 {
-    public function index() {
+    public function index()
+    {
         return view('waterline::layout', [
             'assetsAreCurrent' => true,
             'cssFile' => true ? 'app-dark.css' : 'app.css',
             'waterlineScriptVariables' => [
                 'path' => config('waterline.path', 'waterline'),
             ],
+            'environmentBanner' => $this->environmentBanner(),
             'isDownForMaintenance' => App::isDownForMaintenance(),
-        ]);       
+        ]);
+    }
+
+    private function environmentBanner(): ?array
+    {
+        $name = trim((string) config('waterline.env_name', ''));
+
+        if ($name === '') {
+            return null;
+        }
+
+        return [
+            'name' => $name,
+            'color' => $this->safeCssColor((string) config('waterline.env_color', '#6c757d')),
+        ];
+    }
+
+    private function safeCssColor(string $color): string
+    {
+        $color = trim($color);
+
+        if (preg_match('/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/', $color) === 1) {
+            return $color;
+        }
+
+        return '#6c757d';
     }
 }

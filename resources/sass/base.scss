@@ -118,6 +118,39 @@ body {
     padding-bottom: 20px;
 }
 
+.environment-strip {
+    --waterline-env-color: #6c757d;
+    background: var(--waterline-env-color);
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.25;
+    text-transform: uppercase;
+}
+
+.environment-strip__inner {
+    align-items: center;
+    display: flex;
+    margin: 0 auto;
+    min-height: 0.625rem;
+    padding: 0.25rem 0;
+    width: 1140px;
+}
+
+.environment-strip__swatch {
+    background: #ffffff;
+    border-radius: 999px;
+    display: inline-block;
+    height: 0.45rem;
+    margin-right: 0.5rem;
+    opacity: 0.9;
+    width: 0.45rem;
+}
+
+.environment-strip__label {
+    letter-spacing: 0;
+}
+
 .container {
     width: 1140px;
 }

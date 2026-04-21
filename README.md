@@ -28,6 +28,15 @@ This will allow only the single admin user to access the Waterline UI.
 
 ## Configuration
 
+Waterline can display a thin environment strip above the dashboard so production and non-production tabs are visibly distinct before an operator acts:
+
+```dotenv
+WATERLINE_ENV_NAME=production
+WATERLINE_ENV_COLOR=#dc3545
+```
+
+`WATERLINE_ENV_COLOR` accepts hex colors. Invalid values fall back to a neutral gray.
+
 If your workflow IDs are strings (for example UUIDs) and do not sort in a useful order, publish the config and set `workflow_sort_column` to a timestamp column such as `created_at`:
 
 ```php
