@@ -120,6 +120,55 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('data.0.run_id', $newest->id);
     }
 
+    public function testRunningFlowsCanUseAscendingV2SortDirection(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.workflow_sort_column', 'created_at');
+
+        $newestStartedAt = Carbon::parse('2022-01-01 12:05:00');
+        $newestCreatedAt = Carbon::parse('2022-01-01 11:00:00');
+        $oldestStartedAt = Carbon::parse('2022-01-01 12:01:00');
+        $oldestCreatedAt = Carbon::parse('2022-01-01 13:00:00');
+
+        $newest = WorkflowRunSummary::create([
+            'id' => 'run-ascending-newest',
+            'workflow_instance_id' => 'ascending-newest',
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'started_at' => $newestStartedAt,
+            'sort_timestamp' => $newestStartedAt,
+            'sort_key' => RunSummarySortKey::key($newestStartedAt, $newestCreatedAt, $newestCreatedAt, 'run-ascending-newest'),
+            'created_at' => $newestCreatedAt,
+            'updated_at' => $newestCreatedAt,
+        ]);
+        $oldest = WorkflowRunSummary::create([
+            'id' => 'run-ascending-oldest',
+            'workflow_instance_id' => 'ascending-oldest',
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'started_at' => $oldestStartedAt,
+            'sort_timestamp' => $oldestStartedAt,
+            'sort_key' => RunSummarySortKey::key($oldestStartedAt, $oldestCreatedAt, $oldestCreatedAt, 'run-ascending-oldest'),
+            'created_at' => $oldestCreatedAt,
+            'updated_at' => $oldestCreatedAt,
+        ]);
+
+        $this->get('/waterline/api/flows/running?sort_direction=asc')
+            ->assertStatus(200)
+            ->assertJsonPath('data.0.id', $oldest->id)
+            ->assertJsonPath('data.1.id', $newest->id);
+    }
+
     public function testRunningFlowsBreakSortTimestampTiesByRunIdNotCreatedAt(): void
     {
         config()->set('waterline.engine_source', 'v2');

@@ -19,6 +19,9 @@
                 selectedSavedView: null,
                 visibilityFilters: null,
                 filterDefinition: null,
+                operatorPreferences: {},
+                effectiveOperatorPreferences: {},
+                savingOperatorPreferences: false,
             };
         },
 
@@ -78,6 +81,22 @@
             hasActiveFilters() {
                 return this.appliedFilterEntries.length > 0 || !!this.selectedSavedView
             },
+
+            workflowListColumns() {
+                const columns = this.effectiveOperatorPreferences.columns
+
+                return this.normalizeWorkflowListColumns(Array.isArray(columns) ? columns : null)
+            },
+
+            workflowListTableClass() {
+                const classes = ['table', 'table-hover', 'mb-0']
+
+                if (this.workflowListDensity() === 'dense') {
+                    classes.push('table-sm')
+                }
+
+                return classes.join(' ')
+            },
         },
 
         /**
@@ -112,6 +131,7 @@
                 this.page = 1;
 
                 await this.loadSavedViews();
+                await this.loadOperatorPreferences();
 
                 if (await this.normalizeRouteViewQuery()) {
                     return;
@@ -182,6 +202,97 @@
                     });
             },
 
+            loadOperatorPreferences() {
+                return this.$http.get(Waterline.basePath + '/api/preferences/workflow-list?' + this.operatorPreferenceQueryString())
+                    .then(response => {
+                        this.applyOperatorPreferencePayload(response.data || {})
+                        this.applyPreferredSavedView()
+                    })
+                    .catch(() => {
+                        this.operatorPreferences = {}
+                        this.effectiveOperatorPreferences = {
+                            sort_direction: 'desc',
+                            row_density: 'dense',
+                            columns: this.defaultWorkflowListColumns(),
+                        }
+                    })
+            },
+
+            applyOperatorPreferencePayload(payload) {
+                this.operatorPreferences = payload.preferences || {}
+                this.effectiveOperatorPreferences = {
+                    sort_direction: 'desc',
+                    row_density: 'dense',
+                    columns: this.defaultWorkflowListColumns(),
+                    ...(payload.effective_preferences || {}),
+                }
+                this.effectiveOperatorPreferences.columns = this.normalizeWorkflowListColumns(
+                    this.effectiveOperatorPreferences.columns
+                )
+            },
+
+            applyPreferredSavedView() {
+                if (this.routeSavedViewOverride() !== null) {
+                    return
+                }
+
+                const preferenceView = this.effectiveOperatorPreferences.saved_view_id || null
+
+                if (!preferenceView) {
+                    this.selectedSavedView = null
+                    return
+                }
+
+                this.selectedSavedView = this.savedViews.find((view) => view.id === preferenceView)
+                    ? preferenceView
+                    : null
+            },
+
+            routeSavedViewOverride() {
+                return typeof this.$route.query.view === 'string' && this.$route.query.view.length > 0
+                    ? this.$route.query.view
+                    : null
+            },
+
+            operatorPreferenceQueryString() {
+                const params = new URLSearchParams()
+                const query = this.$route.query || {}
+
+                if (query.sort !== undefined) {
+                    params.set('sort', query.sort)
+                }
+
+                if (query.sort_direction !== undefined) {
+                    params.set('sort_direction', query.sort_direction)
+                }
+
+                if (query.density !== undefined) {
+                    params.set('density', query.density)
+                }
+
+                if (query.row_density !== undefined) {
+                    params.set('row_density', query.row_density)
+                }
+
+                if (query.view !== undefined) {
+                    params.set('view', query.view)
+                }
+
+                if (query.saved_view !== undefined) {
+                    params.set('saved_view', query.saved_view)
+                }
+
+                if (query.saved_view_id !== undefined) {
+                    params.set('saved_view_id', query.saved_view_id)
+                }
+
+                if (query.columns !== undefined) {
+                    params.set('columns', Array.isArray(query.columns) ? query.columns.join(',') : query.columns)
+                }
+
+                return params.toString()
+            },
+
             normalizeRouteViewValue() {
                 return this.selectedSavedView || null
             },
@@ -242,6 +353,10 @@
                     params.set(key, value);
                 });
 
+                if (!params.has('sort') && !params.has('sort_direction')) {
+                    params.set('sort_direction', this.workflowListSortDirection())
+                }
+
                 return params.toString();
             },
 
@@ -260,6 +375,141 @@
                     params: this.$route.params,
                     query,
                 });
+
+                this.persistWorkflowListPreferences({
+                    saved_view_id: selectedView,
+                });
+            },
+
+            workflowListSortDirection() {
+                return this.effectiveOperatorPreferences.sort_direction === 'asc'
+                    ? 'asc'
+                    : 'desc'
+            },
+
+            workflowListDensity() {
+                return this.effectiveOperatorPreferences.row_density === 'comfortable'
+                    ? 'comfortable'
+                    : 'dense'
+            },
+
+            defaultWorkflowListColumns() {
+                return ['flow', 'started_at', 'closed_at', 'duration']
+            },
+
+            workflowListColumnOptions() {
+                const options = [
+                    {key: 'flow', label: 'Flow'},
+                    {key: 'started_at', label: 'Started At'},
+                ]
+
+                if (this.isTerminalCollection()) {
+                    options.push({key: 'closed_at', label: this.closedAtLabel()})
+                    options.push({key: 'duration', label: 'Duration'})
+                }
+
+                return options
+            },
+
+            normalizeWorkflowListColumns(columns) {
+                const allowed = this.workflowListColumnOptions().map((column) => column.key)
+                const requested = Array.isArray(columns) ? columns : this.defaultWorkflowListColumns()
+                const normalized = requested.filter((column) => allowed.includes(column))
+
+                if (!normalized.includes('flow')) {
+                    normalized.unshift('flow')
+                }
+
+                return normalized.length > 0
+                    ? normalized
+                    : this.defaultWorkflowListColumns().filter((column) => allowed.includes(column))
+            },
+
+            columnEnabled(column) {
+                return this.workflowListColumns.includes(column)
+            },
+
+            async persistWorkflowListPreferences(preferences, options = {}) {
+                const payload = {
+                    ...this.operatorPreferences,
+                    ...preferences,
+                }
+
+                if (payload.columns) {
+                    payload.columns = this.normalizeWorkflowListColumns(payload.columns)
+                }
+
+                this.savingOperatorPreferences = true
+
+                try {
+                    const response = await this.$http.put(Waterline.basePath + '/api/preferences/workflow-list', {
+                        preferences: payload,
+                    })
+                    this.applyOperatorPreferencePayload(response.data || {})
+
+                    if (options.reload === true) {
+                        await this.loadFlows(1)
+                    }
+                } finally {
+                    this.savingOperatorPreferences = false
+                }
+            },
+
+            async editViewOptions() {
+                const columns = this.workflowListColumns
+                const columnHtml = this.workflowListColumnOptions().map((column) => `
+                    <label class="d-flex align-items-center justify-content-start mb-2" for="waterline-column-${this.escapeHtml(column.key)}">
+                        <input id="waterline-column-${this.escapeHtml(column.key)}"
+                               type="checkbox"
+                               class="mr-2 waterline-column-option"
+                               value="${this.escapeHtml(column.key)}"
+                               ${columns.includes(column.key) ? 'checked' : ''}
+                               ${column.key === 'flow' ? 'disabled' : ''}>
+                        <span>${this.escapeHtml(column.label)}</span>
+                    </label>
+                `).join('')
+
+                const result = await Swal.fire({
+                    title: 'View Options',
+                    html: `
+                        <div class="text-left">
+                            <label class="d-block mb-1">Density</label>
+                            <select id="waterline-list-density" class="swal2-input">
+                                <option value="dense" ${this.workflowListDensity() === 'dense' ? 'selected' : ''}>Dense</option>
+                                <option value="comfortable" ${this.workflowListDensity() === 'comfortable' ? 'selected' : ''}>Comfortable</option>
+                            </select>
+                            <label class="d-block mb-1 mt-3">Sort</label>
+                            <select id="waterline-list-sort-direction" class="swal2-input">
+                                <option value="desc" ${this.workflowListSortDirection() === 'desc' ? 'selected' : ''}>Newest first</option>
+                                <option value="asc" ${this.workflowListSortDirection() === 'asc' ? 'selected' : ''}>Oldest first</option>
+                            </select>
+                            <div class="mt-3">
+                                <label class="d-block mb-2">Columns</label>
+                                ${columnHtml}
+                            </div>
+                        </div>
+                    `,
+                    showCancelButton: true,
+                    confirmButtonText: 'Save Options',
+                    background: '#1c1c1c',
+                    preConfirm: () => {
+                        const selectedColumns = Array.from(document.querySelectorAll('.waterline-column-option'))
+                            .filter((input) => input.checked || input.value === 'flow')
+                            .map((input) => input.value)
+
+                        return {
+                            row_density: document.getElementById('waterline-list-density').value,
+                            sort_direction: document.getElementById('waterline-list-sort-direction').value,
+                            columns: selectedColumns,
+                        }
+                    },
+                })
+
+                if (!result.isConfirmed) {
+                    return
+                }
+
+                await this.persistWorkflowListPreferences(result.value, {reload: true})
             },
 
             currentFilterPayload() {
@@ -1247,9 +1497,15 @@
                     </button>
 
                     <button v-if="selectedCustomView"
-                            class="btn btn-outline-secondary btn-sm mb-2"
+                            class="btn btn-outline-secondary btn-sm mr-2 mb-2"
                             @click="manageCurrentView">
                         Manage View
+                    </button>
+
+                    <button class="btn btn-outline-secondary btn-sm mb-2"
+                            :disabled="savingOperatorPreferences"
+                            @click="editViewOptions">
+                        View Options
                     </button>
                 </div>
             </div>
@@ -1291,14 +1547,16 @@
                 <span>There aren't any flows.</span>
             </div>
 
-            <table v-if="ready && flows.length > 0" class="table table-hover table-sm mb-0">
+            <table v-if="ready && flows.length > 0" :class="workflowListTableClass">
                 <thead>
                 <tr>
-                    <th>Flow</th>
-                    <th v-if="$route.params.type=='running'" class="text-right">Started At</th>
-                    <th v-if="isTerminalCollection()">Started At</th>
-                    <th v-if="isTerminalCollection()">{{ closedAtLabel() }}</th>
-                    <th v-if="isTerminalCollection()" class="text-right">Duration</th>
+                    <th v-if="columnEnabled('flow')">Flow</th>
+                    <th v-if="columnEnabled('started_at')"
+                        :class="$route.params.type=='running' ? 'text-right' : ''">
+                        Started At
+                    </th>
+                    <th v-if="isTerminalCollection() && columnEnabled('closed_at')">{{ closedAtLabel() }}</th>
+                    <th v-if="isTerminalCollection() && columnEnabled('duration')" class="text-right">Duration</th>
                 </tr>
                 </thead>
 
@@ -1312,7 +1570,7 @@
                         </td>
                     </tr>
 
-                    <tr v-for="flow in flows" :key="flow.id" :flow="flow" is="flow-row">
+                    <tr v-for="flow in flows" :key="flow.id" :flow="flow" :columns="workflowListColumns" is="flow-row">
                     </tr>
                 </tbody>
             </table>
