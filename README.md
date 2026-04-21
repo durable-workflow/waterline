@@ -45,13 +45,17 @@ composer require laravel-workflow/waterline
 php artisan waterline:publish
 ```
 
-## Dashboard View
+## Screenshots
 
-![waterline_dashboard](https://github.com/user-attachments/assets/5688a234-4c02-4d5e-84d4-5f40b5fa27c5)
+The v2 branch keeps repo-owned screenshots in `docs/screenshots/`. They are refreshed by the Screenshots workflow and mirrored into the workflow artifact for visual review.
 
-### Workflow View
+### Dashboard
 
-![workflow](https://github.com/user-attachments/assets/da685466-7747-4c2f-ae10-300041381d51)
+![Waterline dashboard](docs/screenshots/dashboard.png)
+
+### Workflow Detail
+
+![Waterline workflow detail](docs/screenshots/workflow-detail.png)
 
 ## Development
 

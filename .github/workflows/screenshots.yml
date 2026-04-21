@@ -1,46 +1,39 @@
 name: Screenshots
 
-# Disabled while sample-app upgrades to Laravel 13 + Durable Workflow 2.0-alpha.
-# The composer override path that backed this workflow assumed sample-app was on
-# Laravel 12 + DW 1.x with composer.json accepting workflow ^1.0 || ^2.0. Once
-# sample-app stabilizes on the v2 baseline this workflow needs reworking
-# (override targets, ref defaults, and possibly which branch of sample-app to
-# screenshot — main or Laravel-12).
 on:
   workflow_dispatch:
     inputs:
       sample_app_ref:
-        description: 'sample-app branch/SHA to use'
+        description: "sample-app branch/SHA to use"
         required: false
-        default: 'main'
+        default: "main"
       waterline_ref:
-        description: 'Waterline branch/SHA to screenshot. Default v2 is where active development lives; its composer.json accepts workflow ^1.0 || ^2.0 so the override path resolves.'
+        description: "Waterline branch/SHA to screenshot"
         required: false
-        default: 'v2'
+        default: "v2"
       workflow_ref:
-        description: 'durable-workflow/workflow branch/SHA to override into sample-app'
+        description: "durable-workflow/workflow branch/SHA to override into sample-app"
         required: false
-        default: 'v2'
-      waterline_override:
-        description: 'Override sample-app composer to use this checkout of Waterline'
+        default: "v2"
+      publish_readme_assets:
+        description: "Commit refreshed docs/screenshots assets back to the v2 branch"
         required: false
         type: boolean
         default: true
-  # Scheduled trigger removed during sample-app L13/DW2 upgrade window.
-  # schedule:
-  #   - cron: '0 6 * * 1'
+  schedule:
+    - cron: "0 6 * * 1"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: screenshots
+  group: screenshots-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   screenshots:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     services:
       mysql:
@@ -68,75 +61,69 @@ jobs:
           --health-timeout=3s
           --health-retries=10
 
+    env:
+      APP_URL: http://127.0.0.1:8000
+      SCREENSHOT_DIR: sample-app/screenshots
+
     steps:
       - name: Checkout waterline
         uses: actions/checkout@v4
         with:
           path: waterline
-          ref: ${{ inputs.waterline_ref || 'v2' }}
+          ref: ${{ github.event.inputs.waterline_ref || 'v2' }}
 
       - name: Checkout sample-app
         uses: actions/checkout@v4
         with:
           repository: durable-workflow/sample-app
           path: sample-app
-          ref: ${{ inputs.sample_app_ref || 'main' }}
+          ref: ${{ github.event.inputs.sample_app_ref || 'main' }}
 
-      - name: Checkout workflow (needed for v2 classes referenced by sample-app)
-        if: ${{ inputs.waterline_override != 'false' }}
+      - name: Checkout workflow
         uses: actions/checkout@v4
         with:
           repository: durable-workflow/workflow
           path: workflow
-          ref: ${{ inputs.workflow_ref || 'v2' }}
+          ref: ${{ github.event.inputs.workflow_ref || 'v2' }}
 
       - name: Set up PHP 8.4
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: "8.4"
           extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, redis, bcmath
           coverage: none
           tools: composer:v2
 
-      - name: Set up Node 20
+      - name: Set up Node 22
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "22"
 
-      - name: Override sample-app waterline + workflow dependencies
-        if: ${{ inputs.waterline_override != 'false' }}
+      - name: Override sample-app package dependencies
         working-directory: sample-app
         run: |
-          # Point sample-app at this checkout of Waterline so the screenshots
-          # capture the current branch's UI, not the published release. The
-          # workflow path repo comes along because sample-app/main contains
-          # both v1 (SimpleWorkflow) and v2 (SimpleWorkflowV2) authoring
-          # classes; package discovery autoloads both and v2 classes only
-          # resolve when workflow v2 is the installed version.
           composer config repositories.waterline-local '{"type":"path","url":"../waterline","options":{"symlink":false}}'
           composer config repositories.workflow-local '{"type":"path","url":"../workflow","options":{"symlink":false}}'
           composer require --no-update \
-            'durable-workflow/waterline:*@dev' \
-            'durable-workflow/workflow:*@dev'
+            "durable-workflow/waterline:*@dev" \
+            "durable-workflow/workflow:*@dev"
 
       - name: Install sample-app dependencies
         working-directory: sample-app
         env:
-          COMPOSER_MEMORY_LIMIT: '-1'
+          COMPOSER_MEMORY_LIMIT: "-1"
         run: composer update --with-all-dependencies --no-progress --no-interaction --prefer-dist
 
       - name: Configure sample-app environment
         working-directory: sample-app
         run: |
-          # Generate APP_KEY inline so the .env is valid from the first
-          # request; artisan key:generate has been unreliable here.
           APP_KEY_VALUE="base64:$(openssl rand -base64 32)"
           cat > .env << ENVEOF
           APP_NAME=Laravel
           APP_ENV=local
           APP_KEY=${APP_KEY_VALUE}
           APP_DEBUG=true
-          APP_URL=http://127.0.0.1:8000
+          APP_URL=${APP_URL}
           LOG_CHANNEL=stack
           LOG_LEVEL=debug
           DB_CONNECTION=mysql
@@ -158,7 +145,7 @@ jobs:
           ENVEOF
           php artisan config:clear
 
-      - name: Migrate + seed demo user
+      - name: Migrate and seed demo user
         working-directory: sample-app
         run: |
           php artisan migrate --force
@@ -168,9 +155,8 @@ jobs:
         working-directory: sample-app
         run: |
           php artisan vendor:publish --tag=waterline-assets --force
-          echo "--- public/vendor/waterline/ contents ---"
-          ls -la public/vendor/waterline/ || echo "MISSING: publish did not produce public/vendor/waterline/"
           test -f public/vendor/waterline/app-dark.css || { echo "::error::waterline CSS was not published"; exit 1; }
+          test -f public/vendor/waterline/app.js || { echo "::error::waterline JS was not published"; exit 1; }
           test -f public/vendor/waterline/mix-manifest.json || { echo "::error::waterline mix-manifest.json was not published"; exit 1; }
 
       - name: Start web server
@@ -178,55 +164,232 @@ jobs:
         run: |
           php artisan serve --host=127.0.0.1 --port=8000 > ../web.log 2>&1 &
           echo $! > ../web.pid
-          for i in $(seq 1 30); do
-            if curl -sf http://127.0.0.1:8000/up > /dev/null; then
+          for attempt in $(seq 1 30); do
+            if curl -sf "${APP_URL}/up" > /dev/null; then
               echo "Web server up"
               break
             fi
+            echo "Waiting for web server (${attempt}/30)"
             sleep 1
           done
-          if ! curl -sf http://127.0.0.1:8000/up > /dev/null; then
+          if ! curl -sf "${APP_URL}/up" > /dev/null; then
             echo "::error::Web server failed to respond"
             cat ../web.log
             exit 1
           fi
-          # Verify static assets serve — giant unstyled SVGs are the failure
-          # mode when Waterline CSS does not resolve, so fail loudly here
-          # instead of silently producing useless screenshots.
-          echo "--- curl -I on waterline CSS ---"
-          curl -sI http://127.0.0.1:8000/vendor/waterline/app-dark.css
-          echo "--- curl -sS first bytes of CSS ---"
-          curl -sS http://127.0.0.1:8000/vendor/waterline/app-dark.css | head -c 200
-          echo ""
-          CSS_STATUS=$(curl -sI -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/vendor/waterline/app-dark.css)
+          CSS_STATUS=$(curl -sI -o /dev/null -w "%{http_code}" "${APP_URL}/vendor/waterline/app-dark.css")
           if [ "$CSS_STATUS" != "200" ]; then
             echo "::error::Waterline CSS not reachable at /vendor/waterline/app-dark.css (HTTP ${CSS_STATUS})"
             exit 1
           fi
-          # Print the <link> that Waterline renders so CI logs show the exact
-          # URL the browser will fetch. Previous runs produced unstyled pages
-          # despite a reachable CSS file — root cause is usually a mix()
-          # manifest mismatch or wrong APP_URL resolution.
-          echo "--- /waterline HTML <link> tags ---"
-          curl -s http://127.0.0.1:8000/waterline | grep -iE '<link|app-stylesheet' | head -10 || true
 
       - name: Start queue worker
         working-directory: sample-app
         run: |
-          php artisan queue:work redis --tries=3 --timeout=60 > ../worker.log 2>&1 &
+          php artisan queue:work redis --queue=default,activity --tries=3 --timeout=60 > ../worker.log 2>&1 &
           echo $! > ../worker.pid
           sleep 2
 
-      - name: Seed workflow data
+      - name: Seed workflow screenshot data
         working-directory: sample-app
+        env:
+          SCREENSHOT_RUN_ID: ${{ github.run_id }}
         run: |
-          # Kick off several workflows so dashboard and list views have
-          # meaningful rows with real activity history.
-          for i in 1 2 3 4 5 6; do
-            php artisan app:workflow > /dev/null 2>&1 &
-          done
-          # Give the worker time to drain the queue and record history.
-          sleep 25
+          cat > screenshot-seed.php <<'PHP'
+          <?php
+
+          declare(strict_types=1);
+
+          use App\Models\User;
+          use App\Workflows\Elapsed\ElapsedTimeWorkflow;
+          use App\Workflows\Simple\SimpleWorkflow;
+          use App\Workflows\Webhooks\WebhookWorkflow;
+          use Illuminate\Contracts\Console\Kernel;
+          use Illuminate\Support\Facades\DB;
+          use Illuminate\Support\Facades\Hash;
+          use Workflow\V2\Enums\DuplicateStartPolicy;
+          use Workflow\V2\Enums\ScheduleOverlapPolicy;
+          use Workflow\V2\Models\WorkflowRunSummary;
+          use Workflow\V2\StartOptions;
+          use Workflow\V2\Support\ScheduleManager;
+          use Workflow\V2\WorkflowStub;
+
+          require __DIR__ . '/vendor/autoload.php';
+
+          $app = require __DIR__ . '/bootstrap/app.php';
+          $app->make(Kernel::class)->bootstrap();
+
+          $runStamp = getenv('SCREENSHOT_RUN_ID') ?: date('YmdHis');
+
+          User::query()->updateOrCreate(
+              ['email' => 'demo@example.com'],
+              [
+                  'name' => 'Waterline Demo Operator',
+                  'password' => Hash::make('password'),
+              ],
+          );
+
+          function startWorkflow(string $workflowClass, string $instanceId, array $arguments, array $labels, array $memo = []): void
+          {
+              $options = new StartOptions(
+                  duplicateStartPolicy: DuplicateStartPolicy::ReturnExistingActive,
+                  businessKey: $labels['business'] ?? $instanceId,
+                  labels: $labels,
+                  memo: $memo,
+                  searchAttributes: [
+                      'demo_run' => 'waterline-screenshots',
+                      'priority' => $labels['priority'] ?? 'normal',
+                  ],
+              );
+
+              $stub = WorkflowStub::make($workflowClass, $instanceId);
+              $stub->start(...array_merge($arguments, [$options]));
+              $stub->refresh();
+
+              echo "started {$instanceId} status={$stub->status()} run={$stub->runId()}\n";
+          }
+
+          for ($i = 1; $i <= 8; $i++) {
+              startWorkflow(
+                  SimpleWorkflow::class,
+                  sprintf('demo-%s-simple-%02d', $runStamp, $i),
+                  [],
+                  [
+                      'business' => sprintf('Invoice closeout %02d', $i),
+                      'team' => $i % 2 === 0 ? 'billing' : 'fulfillment',
+                      'priority' => $i % 3 === 0 ? 'high' : 'normal',
+                      'kind' => 'simple',
+                  ],
+                  ['customer' => sprintf('Customer %02d', $i), 'source' => 'screenshots'],
+              );
+          }
+
+          for ($i = 1; $i <= 2; $i++) {
+              startWorkflow(
+                  ElapsedTimeWorkflow::class,
+                  sprintf('demo-%s-elapsed-%02d', $runStamp, $i),
+                  [],
+                  [
+                      'business' => sprintf('Timed SLA check %02d', $i),
+                      'team' => 'ops',
+                      'priority' => 'normal',
+                      'kind' => 'elapsed',
+                  ],
+                  ['sla' => 'three-second durable timer demo'],
+              );
+          }
+
+          for ($i = 1; $i <= 2; $i++) {
+              startWorkflow(
+                  WebhookWorkflow::class,
+                  sprintf('demo-%s-failed-webhook-%02d', $runStamp, $i),
+                  [],
+                  [
+                      'business' => sprintf('Broken webhook intake %02d', $i),
+                      'team' => 'integrations',
+                      'priority' => 'urgent',
+                      'kind' => 'expected-failure',
+                  ],
+                  ['expected_failure' => 'missing required webhook message argument'],
+              );
+          }
+
+          for ($i = 1; $i <= 2; $i++) {
+              startWorkflow(
+                  WebhookWorkflow::class,
+                  sprintf('demo-%s-waiting-webhook-%02d', $runStamp, $i),
+                  [sprintf('Approval package %02d is ready for operator signal', $i)],
+                  [
+                      'business' => sprintf('Pending approval package %02d', $i),
+                      'team' => 'approvals',
+                      'priority' => 'high',
+                      'kind' => 'waiting-signal',
+                  ],
+                  ['waiting_for' => 'ready signal'],
+              );
+          }
+
+          ScheduleManager::create(
+              scheduleId: 'daily-waterline-demo-closeout',
+              workflowClass: SimpleWorkflow::class,
+              cronExpression: '15 9 * * 1-5',
+              timezone: 'UTC',
+              overlapPolicy: ScheduleOverlapPolicy::Skip,
+              labels: ['team' => 'billing', 'priority' => 'normal', 'kind' => 'scheduled'],
+              memo: ['description' => 'Weekday billing closeout demo schedule'],
+              searchAttributes: ['demo_run' => 'waterline-screenshots'],
+              notes: 'Demo schedule created for Waterline screenshots',
+          );
+
+          ScheduleManager::create(
+              scheduleId: 'hourly-waterline-sla-check',
+              workflowClass: ElapsedTimeWorkflow::class,
+              cronExpression: '0 * * * *',
+              timezone: 'UTC',
+              overlapPolicy: ScheduleOverlapPolicy::BufferOne,
+              labels: ['team' => 'ops', 'priority' => 'high', 'kind' => 'scheduled'],
+              memo: ['description' => 'Hourly durable SLA timer check'],
+              searchAttributes: ['demo_run' => 'waterline-screenshots'],
+              notes: 'Demo schedule with buffering for Waterline screenshots',
+          );
+
+          function summaryCounts(): array
+          {
+              return WorkflowRunSummary::query()
+                  ->select('status', DB::raw('count(*) as total'))
+                  ->groupBy('status')
+                  ->orderBy('status')
+                  ->pluck('total', 'status')
+                  ->all();
+          }
+
+          sleep(20);
+          $summaryCounts = summaryCounts();
+          $completed = (int) ($summaryCounts['completed'] ?? 0);
+
+          if ($completed < 5) {
+              passthru(PHP_BINARY . ' artisan workflow:v2:repair-pass --limit=50', $exitCode);
+              sleep(12);
+              $summaryCounts = summaryCounts();
+          }
+
+          $completed = (int) ($summaryCounts['completed'] ?? 0);
+          $failed = (int) ($summaryCounts['failed'] ?? 0);
+          $runningBucket = WorkflowRunSummary::query()->where('status_bucket', 'running')->count();
+          $historyEvents = DB::table('workflow_history_events')->count();
+          $activities = DB::table('activity_executions')->count();
+          $schedules = DB::table('workflow_schedules')->whereIn('status', ['active', 'paused'])->count();
+
+          echo 'summary_counts=' . json_encode($summaryCounts, JSON_THROW_ON_ERROR) . "\n";
+          echo "running_bucket={$runningBucket}\n";
+          echo "history_events={$historyEvents}\n";
+          echo "activity_executions={$activities}\n";
+          echo "schedules={$schedules}\n";
+
+          if ($completed < 5) {
+              throw new RuntimeException("Expected at least 5 completed workflow runs, found {$completed}.");
+          }
+
+          if ($failed < 1) {
+              throw new RuntimeException("Expected at least 1 failed workflow run, found {$failed}.");
+          }
+
+          if ($runningBucket < 1) {
+              throw new RuntimeException("Expected at least 1 running/waiting workflow run, found {$runningBucket}.");
+          }
+
+          if ($historyEvents < 10 || $activities < 5) {
+              throw new RuntimeException('Expected non-empty workflow history and activity execution data.');
+          }
+
+          if ($schedules < 2) {
+              throw new RuntimeException("Expected at least 2 demo schedules, found {$schedules}.");
+          }
+
+          echo "seed complete\n";
+          PHP
+
+          php screenshot-seed.php
 
       - name: Install Playwright
         working-directory: sample-app
@@ -234,71 +397,298 @@ jobs:
           npm install --no-save playwright
           npx playwright install chromium --with-deps
 
-      - name: Browser-level CSS diagnostic
-        working-directory: sample-app
-        run: |
-          # Script must live inside sample-app so `import 'playwright'`
-          # resolves against sample-app/node_modules.
-          cat > browser-diag.mjs <<'NODEEOF'
-          import { chromium } from 'playwright';
-          const browser = await chromium.launch({ args: ['--no-sandbox'] });
-          const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-          const page = await context.newPage();
-          const failedRequests = [];
-          page.on('requestfailed', req => {
-            failedRequests.push(`${req.method()} ${req.url()} -> ${req.failure()?.errorText}`);
-          });
-          const consoleMessages = [];
-          page.on('console', msg => {
-            if (['error', 'warning'].includes(msg.type())) {
-              consoleMessages.push(`${msg.type().toUpperCase()}: ${msg.text().substring(0, 300)}`);
-            }
-          });
-          page.on('pageerror', err => {
-            consoleMessages.push(`PAGEERROR: ${err.message.substring(0, 300)}`);
-          });
-          const responses = [];
-          page.on('response', r => {
-            if (r.url().includes('/vendor/waterline/') || r.url().includes('app.css') || r.url().includes('app-dark.css')) {
-              responses.push(`${r.status()} ${r.url()}`);
-            }
-          });
-          await page.goto('http://127.0.0.1:8000/waterline', { waitUntil: 'networkidle', timeout: 20000 });
-          await page.waitForTimeout(3000);
-          const sheetSummary = await page.evaluate(() => {
-            const sheets = Array.from(document.styleSheets).map(s => {
-              let rules = 0;
-              try { rules = s.cssRules ? s.cssRules.length : 0; } catch { rules = -1; }
-              return { href: s.href, rules };
-            });
-            const linkHrefs = Array.from(document.querySelectorAll('link[rel=stylesheet]')).map(l => l.href);
-            const bodyClasses = document.body.className;
-            const waterlineDiv = document.getElementById('waterline');
-            return {
-              stylesheets: sheets,
-              linkHrefs,
-              bodyClasses,
-              hasWaterlineDiv: !!waterlineDiv,
-              waterlineInnerHtmlLen: waterlineDiv ? waterlineDiv.innerHTML.length : 0,
-              documentTitle: document.title,
-            };
-          });
-          console.log('DIAG Responses for waterline assets:', JSON.stringify(responses, null, 2));
-          console.log('DIAG Failed requests:', JSON.stringify(failedRequests, null, 2));
-          console.log('DIAG Console messages:', JSON.stringify(consoleMessages, null, 2));
-          console.log('DIAG Page state:', JSON.stringify(sheetSummary, null, 2));
-          await browser.close();
-          NODEEOF
-          node browser-diag.mjs
-
       - name: Capture screenshots
         working-directory: sample-app
         env:
-          APP_URL: http://127.0.0.1:8000
+          OUTPUT_DIR: screenshots
         run: |
-          mkdir -p screenshots
-          node docker/screenshots.js "$APP_URL" ./screenshots
-          ls -la screenshots
+          cat > waterline-screenshots.mjs <<'NODE'
+          import { chromium } from 'playwright';
+          import fs from 'fs';
+          import path from 'path';
+
+          const BASE = process.env.APP_URL || 'http://127.0.0.1:8000';
+          const OUTPUT = process.env.OUTPUT_DIR || 'screenshots';
+          fs.mkdirSync(OUTPUT, { recursive: true });
+
+          const pages = [
+            { name: 'dashboard.png', url: '/waterline' },
+            { name: 'running.png', url: '/waterline/running' },
+            { name: 'completed.png', url: '/waterline/completed' },
+            { name: 'failed.png', url: '/waterline/failed' },
+            { name: 'workers.png', url: '/waterline/workers' },
+            { name: 'schedules.png', url: '/waterline/schedules' },
+          ];
+
+          async function forcePublishedStylesheet(page) {
+            await page.evaluate(() => {
+              const link = document.getElementById('app-stylesheet');
+              if (!link) {
+                return;
+              }
+
+              const expected = new URL('/vendor/waterline/app-dark.css', window.location.origin).href;
+              if (link.href !== expected) {
+                link.href = expected;
+              }
+            }).catch(() => {});
+          }
+
+          async function stabilizeLayout(page) {
+            await page.evaluate(() => {
+              let style = document.getElementById('screenshot-layout-guard');
+              if (!style) {
+                style = document.createElement('style');
+                style.id = 'screenshot-layout-guard';
+                style.textContent = `
+                  html, body { max-width: 100% !important; overflow-x: hidden !important; }
+                  .apexcharts-canvas,
+                  .apexcharts-svg,
+                  .apexcharts-inner,
+                  .apexcharts-legend {
+                    max-width: 100% !important;
+                  }
+                  .apexcharts-canvas,
+                  .apexcharts-canvas svg {
+                    width: 100% !important;
+                  }
+                `;
+                document.head.appendChild(style);
+              }
+
+              window.dispatchEvent(new Event('resize'));
+            }).catch(() => {});
+            await page.waitForTimeout(500);
+          }
+
+          async function waitForWaterline(page) {
+            await forcePublishedStylesheet(page);
+            await stabilizeLayout(page);
+            await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+            await forcePublishedStylesheet(page);
+            await stabilizeLayout(page);
+            await page.waitForFunction(() => {
+              const logo = document.querySelector('svg.logo');
+              const sidebarIcon = document.querySelector('.sidebar svg');
+
+              if (!logo || !sidebarIcon) {
+                return false;
+              }
+
+              return parseFloat(getComputedStyle(logo).width) < 80
+                && parseFloat(getComputedStyle(sidebarIcon).width) < 40
+                && getComputedStyle(document.body).fontFamily !== '"Times New Roman"';
+            }, { timeout: 10000 }).catch(() => {});
+            await page.waitForTimeout(4000);
+            await stabilizeLayout(page);
+          }
+
+          async function maybeLogin(page) {
+            await page.goto(`${BASE}/waterline`, { waitUntil: 'networkidle', timeout: 30000 });
+            await waitForWaterline(page);
+
+            if (!/\/login(?:$|\?)/.test(page.url())) {
+              return;
+            }
+
+            await page.fill('input[name=email]', 'demo@example.com');
+            await page.fill('input[name=password]', 'password');
+            await Promise.all([
+              page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 }).catch(() => {}),
+              page.click('button[type=submit], input[type=submit]'),
+            ]);
+          }
+
+          async function installApiGuards(page) {
+            await page.route('**/waterline/api/instances/**', async route => {
+              const response = await route.fetch();
+              const contentType = response.headers()['content-type'] || '';
+
+              if (!contentType.includes('application/json')) {
+                await route.fulfill({ response });
+                return;
+              }
+
+              const json = await response.json();
+              const activities = Array.isArray(json.activities) ? json.activities : [];
+
+              for (const activity of activities) {
+                activity.last_heartbeat_at = activity.last_heartbeat_at
+                  || activity.closed_at
+                  || activity.started_at
+                  || json.closed_at
+                  || json.updated_at
+                  || json.created_at;
+
+                for (const attempt of activity.attempts || []) {
+                  attempt.last_heartbeat_at = attempt.last_heartbeat_at
+                    || attempt.closed_at
+                    || attempt.started_at
+                    || activity.last_heartbeat_at;
+                }
+              }
+
+              await route.fulfill({ response, json });
+            });
+          }
+
+          async function capture(page, name, url) {
+            await page.goto(`${BASE}${url}`, { waitUntil: 'networkidle', timeout: 30000 });
+            await waitForWaterline(page);
+            await page.screenshot({ path: path.join(OUTPUT, name), fullPage: true });
+            console.log(`${name} ${page.url()}`);
+          }
+
+          const browser = await chromium.launch({ args: ['--no-sandbox'] });
+          const context = await browser.newContext({
+            viewport: { width: 1440, height: 900 },
+            deviceScaleFactor: 1,
+          });
+
+          await context.addInitScript(() => {
+            const request = async (method, url, config = {}) => {
+              const target = new URL(url, window.location.origin);
+              const headers = {
+                'X-Requested-With': 'XMLHttpRequest',
+                ...(config.headers || {}),
+              };
+
+              for (const [key, value] of Object.entries(config.params || {})) {
+                if (value !== undefined && value !== null && value !== '') {
+                  target.searchParams.set(key, value);
+                }
+              }
+
+              const options = { method, credentials: 'same-origin', headers };
+
+              if (config.data !== undefined) {
+                headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+                options.body = typeof config.data === 'string' ? config.data : JSON.stringify(config.data);
+              }
+
+              const response = await fetch(target.href, options);
+              const text = await response.text();
+              const contentType = response.headers.get('content-type') || '';
+              const data = contentType.includes('application/json') && text ? JSON.parse(text) : text;
+              const payload = {
+                data,
+                status: response.status,
+                statusText: response.statusText,
+                headers: response.headers,
+                config,
+              };
+
+              if (!response.ok) {
+                const error = new Error((data && data.message) || response.statusText || 'Request failed');
+                error.response = payload;
+                throw error;
+              }
+
+              return payload;
+            };
+
+            window.axios = window.axios || {
+              defaults: { headers: { common: {} } },
+              create() {
+                return this;
+              },
+              get(url, config) {
+                return request('GET', url, config);
+              },
+              post(url, data, config = {}) {
+                return request('POST', url, { ...config, data });
+              },
+              request(config = {}) {
+                return request(config.method || 'GET', config.url, config);
+              },
+            };
+
+            window._ = window._ || {
+              first(value) {
+                return Array.isArray(value) ? value[0] : undefined;
+              },
+            };
+          });
+
+          const page = await context.newPage();
+          await installApiGuards(page);
+
+          page.on('pageerror', error => {
+            console.log(`PAGEERROR ${error.message.slice(0, 300)}`);
+          });
+
+          page.on('requestfailed', request => {
+            console.log(`REQUESTFAILED ${request.url()} ${request.failure()?.errorText || ''}`.slice(0, 500));
+          });
+
+          try {
+            await maybeLogin(page);
+
+            for (const item of pages) {
+              await capture(page, item.name, item.url);
+            }
+
+            await page.goto(`${BASE}/waterline/completed`, { waitUntil: 'networkidle', timeout: 30000 });
+            await waitForWaterline(page);
+
+            const rowLink = page.locator('tbody tr a[href*="/flows/instances/"], tbody tr a').first();
+            const href = await rowLink.count() ? await rowLink.getAttribute('href') : null;
+            if (href) {
+              await rowLink.click();
+              await waitForWaterline(page);
+
+              if (!page.url().includes('/flows/instances/')) {
+                await page.goto(new URL(href, BASE).href, { waitUntil: 'networkidle', timeout: 30000 });
+                await waitForWaterline(page);
+              }
+
+              await page.waitForSelector('text=Timeline, text=Activities, text=State Details', { timeout: 15000 }).catch(() => {});
+            }
+
+            await page.screenshot({ path: path.join(OUTPUT, 'workflow-detail.png'), fullPage: true });
+            console.log(`workflow-detail.png ${page.url()}`);
+          } finally {
+            await browser.close();
+          }
+
+          const expected = [
+            'dashboard.png',
+            'running.png',
+            'completed.png',
+            'failed.png',
+            'workflow-detail.png',
+            'workers.png',
+            'schedules.png',
+          ];
+
+          let failed = false;
+          for (const file of expected) {
+            const fullPath = path.join(OUTPUT, file);
+            if (!fs.existsSync(fullPath)) {
+              console.log(`MISSING ${file}`);
+              failed = true;
+              continue;
+            }
+
+            const size = fs.statSync(fullPath).size;
+            console.log(`SIZE ${file} ${size}`);
+
+            if (size < 10 * 1024) {
+              console.log(`TOO_SMALL ${file}`);
+              failed = true;
+            }
+
+            if (size > 500 * 1024) {
+              console.log(`WARN large screenshot ${file} ${size}`);
+            }
+          }
+
+          if (failed) {
+            process.exit(1);
+          }
+          NODE
+
+          node waterline-screenshots.mjs
 
       - name: Upload screenshots
         if: always()
@@ -308,6 +698,43 @@ jobs:
           path: sample-app/screenshots/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Update README screenshot assets
+        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_readme_assets != 'false' && (github.event.inputs.waterline_ref == '' || github.event.inputs.waterline_ref == 'v2')) }}
+        working-directory: waterline
+        run: |
+          mkdir -p docs/screenshots
+          cp ../sample-app/screenshots/dashboard.png docs/screenshots/dashboard.png
+          cp ../sample-app/screenshots/running.png docs/screenshots/running.png
+          cp ../sample-app/screenshots/completed.png docs/screenshots/completed.png
+          cp ../sample-app/screenshots/failed.png docs/screenshots/failed.png
+          cp ../sample-app/screenshots/workflow-detail.png docs/screenshots/workflow-detail.png
+          cp ../sample-app/screenshots/workers.png docs/screenshots/workers.png
+          cp ../sample-app/screenshots/schedules.png docs/screenshots/schedules.png
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots
+          if git diff --cached --quiet; then
+            echo "No screenshot asset changes to publish."
+          else
+            git commit -m "Update Waterline screenshots"
+            git pull --rebase origin v2
+            git push origin HEAD:v2
+          fi
+
+      - name: Add screenshot summary
+        if: always()
+        run: |
+          {
+            echo "## Waterline screenshots"
+            echo
+            echo "The full PNG set is uploaded as the \`waterline-screenshots\` artifact."
+            echo
+            if [ -d "${SCREENSHOT_DIR}" ]; then
+              find "${SCREENSHOT_DIR}" -maxdepth 1 -type f -name "*.png" -printf "- %f (%s bytes)\n" | sort
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Collect diagnostics on failure
         if: failure()
