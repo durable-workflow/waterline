@@ -21,6 +21,8 @@ Route::prefix('api')->group(function () {
     Route::get('/saved-views/{view}', 'SavedViewsController@show')->name('waterline.saved-views.show');
     Route::put('/saved-views/{view}', 'SavedViewsController@update')->name('waterline.saved-views.update');
     Route::delete('/saved-views/{view}', 'SavedViewsController@destroy')->name('waterline.saved-views.destroy');
+    Route::get('/preferences/{surface}', 'UserPreferencesController@show')->name('waterline.preferences.show');
+    Route::put('/preferences/{surface}', 'UserPreferencesController@update')->name('waterline.preferences.update');
 
     Route::get('/flows/completed', 'WorkflowsController@completed')->name('waterline.completed');
     Route::get('/flows/failed', 'WorkflowsController@failed')->name('waterline.failed');

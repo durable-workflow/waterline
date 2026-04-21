@@ -102,6 +102,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Operator Preferences
+    |--------------------------------------------------------------------------
+    |
+    | Waterline persists small operator view preferences server-side so the
+    | workflow list, run detail, schedules, and workers views can follow an
+    | authenticated operator across workstations. URL parameters remain the
+    | final override when a link needs deterministic shared state.
+    |
+    */
+
+    'preferences' => [
+        'scope' => env('WATERLINE_PREFERENCES_SCOPE', env('WATERLINE_SAVED_VIEW_SCOPE', 'default')),
+        'model' => \Waterline\Models\UserPreference::class,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Run Diagnostics
     |--------------------------------------------------------------------------
     |
