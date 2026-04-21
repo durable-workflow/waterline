@@ -565,22 +565,61 @@
                     <div class="small text-muted" v-if="hasDetailValue(flow.timeline_projection_source)">
                         {{ projectionSourceLabel(flow.timeline_projection_source) }}
                     </div>
+                    <div class="small text-muted">
+                        {{ timelineWindowSummary() }}
+                    </div>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseHistory" role="button">
-                    Collapse
-                </a>
+                <div class="d-flex align-items-center">
+                    <button
+                        v-if="timelineHasOlder()"
+                        class="btn btn-outline-secondary btn-sm mr-2"
+                        @click="loadOlderHistory">
+                        Load older
+                    </button>
+
+                    <a v-if="historyExportEndpoint()"
+                        class="btn btn-outline-secondary btn-sm mr-2"
+                        :href="historyExportEndpoint()"
+                        target="_blank"
+                        rel="noopener">
+                        Export all
+                    </a>
+
+                    <a data-toggle="collapse" href="#collapseHistory" role="button">
+                        Collapse
+                    </a>
+                </div>
             </div>
 
             <div class="card-body collapse show" id="collapseHistory">
-                <div class="timeline-events">
+                <div class="alert alert-warning" v-if="pinnedTimelineItems().length">
+                    <div class="font-weight-bold mb-2">Pinned Attention</div>
+                    <div
+                        v-for="item in pinnedTimelineItems()"
+                        :key="item.key"
+                        class="small mb-1"
+                    >
+                        <span class="badge badge-warning mr-2">{{ item.kind }}</span>
+                        <strong>{{ item.label }}</strong>
+                        <span class="ml-1">{{ item.summary }}</span>
+                    </div>
+                </div>
+
+                <div
+                    class="timeline-events timeline-events-virtual"
+                    :style="{ height: historyViewportHeight + 'px' }"
+                    @scroll="onHistoryScroll"
+                >
+                    <div :style="virtualTimelineSpacerStyle('top')"></div>
                     <TimelineEventRenderer
-                        v-for="event in flow.timeline"
+                        v-for="event in virtualTimelineEvents()"
                         :key="event.id"
                         :event="event"
                         @drill-activity="navigateToActivity"
                         @drill-child="navigateToChild"
                     />
+                    <div :style="virtualTimelineSpacerStyle('bottom')"></div>
                 </div>
             </div>
         </div>
@@ -1407,6 +1446,12 @@ export default {
             ready: false,
             flow: {},
             exception: null,
+            historyPageSize: 200,
+            historyLimit: 200,
+            historyVirtualStart: 0,
+            historyRowHeight: 92,
+            historyViewportHeight: 620,
+            historyVirtualWindowSize: 80,
             code: 'console.log("Hello World")',
             series: [
                 {
@@ -1519,6 +1564,8 @@ export default {
 
     methods: {
         loadRouteFlow() {
+            this.historyLimit = this.historyPageSize
+
             if (this.isCanonicalRoute()) {
                 return this.loadCanonicalFlow(this.$route.params.instanceId, this.$route.params.runId || null)
             }
@@ -1551,9 +1598,10 @@ export default {
         fetchFlow(path) {
             this.ready = false;
 
-            return this.$http.get(path)
+            return this.$http.get(this.withHistoryLimit(path))
                 .then(response => {
                     this.flow = response.data;
+                    this.resetHistoryVirtualWindow();
                     this.series[0].data = response.data.chartData;
                     this.series[1].data = this.flow.exceptions.map((exception) => {
                         this.$nextTick(() => {
@@ -1582,6 +1630,47 @@ export default {
 
                     this.ready = true;
                 });
+        },
+
+        withHistoryLimit(path) {
+            const separator = path.includes('?') ? '&' : '?'
+
+            return path + separator + 'history_limit=' + encodeURIComponent(this.historyLimit)
+        },
+
+        currentFlowEndpoint() {
+            if (this.flow && this.flow.instance_id) {
+                const selectedRunId = this.flow.selected_run_id || this.flow.run_id || this.flow.id
+
+                if (selectedRunId) {
+                    return Waterline.basePath + '/api/instances/' + this.flow.instance_id + '/runs/' + selectedRunId
+                }
+
+                return Waterline.basePath + '/api/instances/' + this.flow.instance_id
+            }
+
+            const runId = this.flow && (this.flow.run_id || this.flow.id)
+
+            return runId
+                ? Waterline.basePath + '/api/flows/' + runId
+                : null
+        },
+
+        loadOlderHistory() {
+            const endpoint = this.currentFlowEndpoint()
+
+            if (!endpoint) {
+                return null
+            }
+
+            const total = this.timelineTotalCount()
+            this.historyLimit = Math.min(total, this.historyLimit + this.historyPageSize)
+
+            return this.fetchFlow(endpoint)
+        },
+
+        resetHistoryVirtualWindow() {
+            this.historyVirtualStart = 0
         },
 
         replaceWithCanonicalRoute(flow) {
@@ -2058,6 +2147,111 @@ export default {
             return this.flow.activities && this.flow.activities.length
                 ? this.flow.activities
                 : (this.flow.logs || [])
+        },
+
+        timelineRows() {
+            return this.flow.timeline || []
+        },
+
+        timelineTotalCount() {
+            if (this.hasDetailValue(this.flow.timeline_total_count)) {
+                return Number(this.flow.timeline_total_count)
+            }
+
+            return this.timelineRows().length
+        },
+
+        timelineReturnedCount() {
+            if (this.hasDetailValue(this.flow.timeline_returned_count)) {
+                return Number(this.flow.timeline_returned_count)
+            }
+
+            return this.timelineRows().length
+        },
+
+        timelineHasOlder() {
+            return this.flow.timeline_truncated === true
+        },
+
+        timelineWindowSummary() {
+            const returned = this.timelineReturnedCount().toLocaleString()
+            const total = this.timelineTotalCount().toLocaleString()
+            const direction = this.flow.timeline_window_direction === 'latest'
+                ? 'latest'
+                : 'selected'
+            const range = this.hasDetailValue(this.flow.timeline_window_start_sequence)
+                && this.hasDetailValue(this.flow.timeline_window_end_sequence)
+                ? ' / #' + this.flow.timeline_window_start_sequence + '-' + this.flow.timeline_window_end_sequence
+                : ''
+
+            return 'Showing ' + returned + ' of ' + total + ' ' + direction + ' events' + range
+        },
+
+        onHistoryScroll(event) {
+            const scrollTop = event && event.target ? event.target.scrollTop : 0
+            const start = Math.floor(scrollTop / this.historyRowHeight) - 8
+            this.historyVirtualStart = Math.max(0, start)
+        },
+
+        virtualTimelineEvents() {
+            const rows = this.timelineRows()
+            const end = Math.min(rows.length, this.historyVirtualStart + this.historyVirtualWindowSize)
+
+            return rows.slice(this.historyVirtualStart, end)
+        },
+
+        virtualTimelineSpacerStyle(position) {
+            const rows = this.timelineRows()
+            const rendered = this.virtualTimelineEvents().length
+            const topRows = position === 'top'
+                ? this.historyVirtualStart
+                : Math.max(0, rows.length - this.historyVirtualStart - rendered)
+
+            return {
+                height: (topRows * this.historyRowHeight) + 'px'
+            }
+        },
+
+        pinnedTimelineItems() {
+            const items = []
+
+            this.waitRows()
+                .filter((wait) => wait.status === 'open')
+                .slice(0, 8)
+                .forEach((wait) => {
+                    items.push({
+                        key: 'wait-' + wait.id,
+                        kind: 'wait',
+                        label: wait.kind || 'wait',
+                        summary: wait.summary || wait.id,
+                    })
+                })
+
+            this.activityRows()
+                .filter((activity) => ['retrying', 'scheduled', 'running'].includes(activity.status))
+                .slice(0, 8)
+                .forEach((activity) => {
+                    items.push({
+                        key: 'activity-' + activity.id,
+                        kind: 'activity',
+                        label: activity.status || 'open',
+                        summary: activity.type || activity.class || activity.id,
+                    })
+                })
+
+            this.taskRows()
+                .filter((task) => task.replay_blocked === true || task.repair_available === true || task.transport_state === 'stuck')
+                .slice(0, 8)
+                .forEach((task) => {
+                    items.push({
+                        key: 'task-' + task.id,
+                        kind: 'task',
+                        label: task.status || task.type || 'task',
+                        summary: task.summary || task.id,
+                    })
+                })
+
+            return items.slice(0, 12)
         },
 
         chartHasDiagnosticRows() {
@@ -3620,3 +3814,10 @@ export default {
     }
 }
 </script>
+
+<style scoped>
+.timeline-events-virtual {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+</style>
