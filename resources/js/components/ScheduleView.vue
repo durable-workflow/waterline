@@ -10,6 +10,9 @@
                         <option value="paused">Paused</option>
                         <option value="deleted">Deleted</option>
                     </select>
+                    <button class="btn btn-sm btn-outline-secondary mr-2" @click="editViewOptions" :disabled="savingOperatorPreferences">
+                        View Options
+                    </button>
                     <button class="btn btn-sm btn-outline-secondary" @click="refresh">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon fill-text-color" style="width: 16px; height: 16px;">
                             <path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"></path>
@@ -34,27 +37,27 @@
 
             <div v-else class="card-body p-0">
                 <div v-if="schedules.length > 0" class="table-responsive">
-                    <table class="table table-hover mb-0">
+                    <table :class="schedulesTableClass">
                         <thead>
                             <tr>
-                                <th>Schedule ID</th>
-                                <th>Workflow Type</th>
-                                <th>Spec</th>
-                                <th>Status</th>
-                                <th>Next Fire</th>
-                                <th>Last Result</th>
-                                <th>Actions</th>
+                                <th v-if="columnEnabled('schedule_id')">Schedule ID</th>
+                                <th v-if="columnEnabled('workflow_type')">Workflow Type</th>
+                                <th v-if="columnEnabled('spec')">Spec</th>
+                                <th v-if="columnEnabled('status')">Status</th>
+                                <th v-if="columnEnabled('next_fire')">Next Fire</th>
+                                <th v-if="columnEnabled('last_result')">Last Result</th>
+                                <th v-if="columnEnabled('actions')">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr v-for="schedule in schedules" :key="schedule.id">
-                                <td>
+                                <td v-if="columnEnabled('schedule_id')">
                                     <code class="small">{{ truncateId(schedule.id) }}</code>
                                 </td>
-                                <td>
+                                <td v-if="columnEnabled('workflow_type')">
                                     <code class="small">{{ schedule.workflow_type || schedule.workflow_class }}</code>
                                 </td>
-                                <td class="small">
+                                <td v-if="columnEnabled('spec')" class="small">
                                     <div v-if="schedule.spec">
                                         <span v-if="schedule.spec.cron" class="badge badge-info">
                                             CRON: {{ schedule.spec.cron }}
@@ -65,18 +68,18 @@
                                         <span v-else class="text-muted">Custom</span>
                                     </div>
                                 </td>
-                                <td>
+                                <td v-if="columnEnabled('status')">
                                     <span class="badge" :class="statusBadgeClass(schedule.status)">
                                         {{ schedule.status }}
                                     </span>
                                 </td>
-                                <td class="small">
+                                <td v-if="columnEnabled('next_fire')" class="small">
                                     <span v-if="schedule.next_fire_at" :class="nextFireClass(schedule.next_fire_at)">
                                         {{ formatTimestamp(schedule.next_fire_at) }}
                                     </span>
                                     <span v-else class="text-muted">-</span>
                                 </td>
-                                <td class="small">
+                                <td v-if="columnEnabled('last_result')" class="small">
                                     <span v-if="schedule.last_fire_at">
                                         {{ formatTimestamp(schedule.last_fire_at) }}
                                         <span v-if="schedule.last_fire_result" class="ml-1" :class="resultClass(schedule.last_fire_result)">
@@ -85,7 +88,7 @@
                                     </span>
                                     <span v-else class="text-muted">Never</span>
                                 </td>
-                                <td>
+                                <td v-if="columnEnabled('actions')">
                                     <div class="btn-group btn-group-sm">
                                         <button
                                             v-if="schedule.status === 'active'"
@@ -192,6 +195,7 @@
 
 <script>
 import axios from 'axios';
+import Swal from 'sweetalert2';
 
 export default {
     name: 'ScheduleView',
@@ -199,7 +203,7 @@ export default {
     props: {
         apiEndpoint: {
             type: String,
-            default: '/waterline-api/v2/schedules'
+            default: null
         }
     },
 
@@ -215,7 +219,10 @@ export default {
             backfillScheduleId: null,
             backfillFrom: '',
             backfillTo: '',
-            backfillOverlapPolicy: ''
+            backfillOverlapPolicy: '',
+            operatorPreferences: {},
+            effectiveOperatorPreferences: {},
+            savingOperatorPreferences: false
         };
     },
 
@@ -247,6 +254,16 @@ export default {
             }
 
             return rangeWithDots;
+        },
+
+        schedulesTableClass() {
+            const classes = ['table', 'table-hover', 'mb-0'];
+
+            if (this.schedulesListDensity() === 'dense') {
+                classes.push('table-sm');
+            }
+
+            return classes.join(' ');
         }
     },
 
@@ -258,7 +275,7 @@ export default {
     },
 
     mounted() {
-        this.loadData();
+        this.loadOperatorPreferences().finally(() => this.loadData());
     },
 
     methods: {
@@ -274,7 +291,7 @@ export default {
                     params.status = this.statusFilter;
                 }
 
-                const response = await axios.get(this.apiEndpoint, { params });
+                const response = await axios.get(this.resolvedApiEndpoint(), { params });
                 this.schedules = response.data.data || [];
                 this.pagination = {
                     current_page: response.data.current_page,
@@ -294,6 +311,173 @@ export default {
             this.loadData();
         },
 
+        resolvedApiEndpoint() {
+            if (this.apiEndpoint) {
+                return this.apiEndpoint;
+            }
+
+            return this.waterlineBasePath() + '/api/v2/schedules';
+        },
+
+        preferenceEndpoint() {
+            return this.waterlineBasePath() + '/api/preferences/schedules-list';
+        },
+
+        waterlineBasePath() {
+            return typeof Waterline !== 'undefined' && Waterline.basePath
+                ? Waterline.basePath
+                : '';
+        },
+
+        async loadOperatorPreferences() {
+            try {
+                const response = await axios.get(this.preferenceEndpoint() + '?' + this.operatorPreferenceQueryString());
+                this.applyOperatorPreferencePayload(response.data || {});
+            } catch (e) {
+                this.operatorPreferences = {};
+                this.effectiveOperatorPreferences = {
+                    row_density: 'comfortable',
+                    columns: this.defaultSchedulesListColumns(),
+                };
+            }
+        },
+
+        applyOperatorPreferencePayload(payload) {
+            this.operatorPreferences = payload.preferences || {};
+            this.effectiveOperatorPreferences = {
+                row_density: 'comfortable',
+                columns: this.defaultSchedulesListColumns(),
+                ...(payload.effective_preferences || {}),
+            };
+            this.effectiveOperatorPreferences.columns = this.normalizeSchedulesListColumns(
+                this.effectiveOperatorPreferences.columns
+            );
+        },
+
+        operatorPreferenceQueryString() {
+            const params = new URLSearchParams();
+            const query = new URLSearchParams(window.location.search || '');
+
+            ['density', 'row_density', 'columns'].forEach((key) => {
+                if (query.has(key)) {
+                    params.set(key, query.get(key));
+                }
+            });
+
+            return params.toString();
+        },
+
+        schedulesListDensity() {
+            return this.effectiveOperatorPreferences.row_density === 'dense'
+                ? 'dense'
+                : 'comfortable';
+        },
+
+        schedulesListColumnOptions() {
+            return [
+                {key: 'schedule_id', label: 'Schedule ID'},
+                {key: 'workflow_type', label: 'Workflow Type'},
+                {key: 'spec', label: 'Spec'},
+                {key: 'status', label: 'Status'},
+                {key: 'next_fire', label: 'Next Fire'},
+                {key: 'last_result', label: 'Last Result'},
+                {key: 'actions', label: 'Actions'},
+            ];
+        },
+
+        defaultSchedulesListColumns() {
+            return this.schedulesListColumnOptions().map((column) => column.key);
+        },
+
+        normalizeSchedulesListColumns(columns) {
+            const allowed = this.schedulesListColumnOptions().map((column) => column.key);
+            const requested = Array.isArray(columns) ? columns : this.defaultSchedulesListColumns();
+            const normalized = requested.filter((column) => allowed.includes(column));
+
+            if (!normalized.includes('schedule_id')) {
+                normalized.unshift('schedule_id');
+            }
+
+            return normalized.length > 0 ? normalized : this.defaultSchedulesListColumns();
+        },
+
+        columnEnabled(column) {
+            return this.normalizeSchedulesListColumns(this.effectiveOperatorPreferences.columns).includes(column);
+        },
+
+        async persistSchedulesListPreferences(preferences) {
+            const payload = {
+                ...this.operatorPreferences,
+                ...preferences,
+            };
+
+            if (payload.columns) {
+                payload.columns = this.normalizeSchedulesListColumns(payload.columns);
+            }
+
+            this.savingOperatorPreferences = true;
+
+            try {
+                const response = await axios.put(this.preferenceEndpoint(), {
+                    preferences: payload,
+                });
+                this.applyOperatorPreferencePayload(response.data || {});
+            } finally {
+                this.savingOperatorPreferences = false;
+            }
+        },
+
+        async editViewOptions() {
+            const columns = this.normalizeSchedulesListColumns(this.effectiveOperatorPreferences.columns);
+            const columnHtml = this.schedulesListColumnOptions().map((column) => `
+                <label class="d-flex align-items-center justify-content-start mb-2" for="waterline-schedule-column-${this.escapeHtml(column.key)}">
+                    <input id="waterline-schedule-column-${this.escapeHtml(column.key)}"
+                           type="checkbox"
+                           class="mr-2 waterline-schedule-column-option"
+                           value="${this.escapeHtml(column.key)}"
+                           ${columns.includes(column.key) ? 'checked' : ''}
+                           ${column.key === 'schedule_id' ? 'disabled' : ''}>
+                    <span>${this.escapeHtml(column.label)}</span>
+                </label>
+            `).join('');
+
+            const result = await Swal.fire({
+                title: 'View Options',
+                html: `
+                    <div class="text-left">
+                        <label class="d-block mb-1">Density</label>
+                        <select id="waterline-schedules-density" class="swal2-input">
+                            <option value="comfortable" ${this.schedulesListDensity() === 'comfortable' ? 'selected' : ''}>Comfortable</option>
+                            <option value="dense" ${this.schedulesListDensity() === 'dense' ? 'selected' : ''}>Dense</option>
+                        </select>
+                        <div class="mt-3">
+                            <label class="d-block mb-2">Columns</label>
+                            ${columnHtml}
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Save Options',
+                background: '#1c1c1c',
+                preConfirm: () => {
+                    const selectedColumns = Array.from(document.querySelectorAll('.waterline-schedule-column-option'))
+                        .filter((input) => input.checked || input.value === 'schedule_id')
+                        .map((input) => input.value);
+
+                    return {
+                        row_density: document.getElementById('waterline-schedules-density').value,
+                        columns: selectedColumns,
+                    };
+                },
+            });
+
+            if (!result.isConfirmed) {
+                return;
+            }
+
+            await this.persistSchedulesListPreferences(result.value);
+        },
+
         goToPage(page) {
             if (page < 1 || (this.pagination && page > this.pagination.last_page)) return;
             this.currentPage = page;
@@ -302,7 +486,7 @@ export default {
 
         async pauseSchedule(scheduleId) {
             try {
-                await axios.post(`${this.apiEndpoint}/${scheduleId}/pause`);
+                await axios.post(`${this.resolvedApiEndpoint()}/${scheduleId}/pause`);
                 await this.loadData();
             } catch (e) {
                 alert(`Failed to pause schedule: ${e.response?.data?.error || e.message}`);
@@ -311,7 +495,7 @@ export default {
 
         async resumeSchedule(scheduleId) {
             try {
-                await axios.post(`${this.apiEndpoint}/${scheduleId}/resume`);
+                await axios.post(`${this.resolvedApiEndpoint()}/${scheduleId}/resume`);
                 await this.loadData();
             } catch (e) {
                 alert(`Failed to resume schedule: ${e.response?.data?.error || e.message}`);
@@ -322,7 +506,7 @@ export default {
             if (!confirm('Trigger this schedule now?')) return;
 
             try {
-                const response = await axios.post(`${this.apiEndpoint}/${scheduleId}/trigger`);
+                const response = await axios.post(`${this.resolvedApiEndpoint()}/${scheduleId}/trigger`);
                 if (response.data.triggered) {
                     alert(`Schedule triggered. Instance ID: ${response.data.instance_id}`);
                 } else {
@@ -358,7 +542,7 @@ export default {
                 }
 
                 const response = await axios.post(
-                    `${this.apiEndpoint}/${this.backfillScheduleId}/backfill`,
+                    `${this.resolvedApiEndpoint()}/${this.backfillScheduleId}/backfill`,
                     payload
                 );
 
@@ -418,6 +602,14 @@ export default {
         truncateId(id) {
             if (!id) return '';
             return id.length > 12 ? `${id.substring(0, 8)}...` : id;
+        },
+
+        escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
         }
     }
 };

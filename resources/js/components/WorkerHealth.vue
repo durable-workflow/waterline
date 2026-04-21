@@ -3,12 +3,17 @@
         <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 class="mb-0">Worker Fleet Health</h5>
-                <button class="btn btn-sm btn-outline-secondary" @click="refresh">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon fill-text-color" style="width: 16px; height: 16px;">
-                        <path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"></path>
-                    </svg>
-                    Refresh
-                </button>
+                <div>
+                    <button class="btn btn-sm btn-outline-secondary mr-2" @click="editViewOptions" :disabled="savingOperatorPreferences">
+                        View Options
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" @click="refresh">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon fill-text-color" style="width: 16px; height: 16px;">
+                            <path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"></path>
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
             </div>
 
             <div v-if="loading" class="card-body text-center py-5">
@@ -61,53 +66,53 @@
                 <div v-if="workers.length > 0">
                     <h6 class="mb-3">Registered Workers</h6>
                     <div class="table-responsive">
-                        <table class="table table-sm table-hover">
+                        <table :class="workersTableClass">
                             <thead>
                                 <tr>
-                                    <th>Worker ID</th>
-                                    <th>Runtime</th>
-                                    <th>Task Queue</th>
-                                    <th>Heartbeat</th>
-                                    <th>Status</th>
-                                    <th>Workflows</th>
-                                    <th>Activities</th>
-                                    <th>Concurrency</th>
+                                    <th v-if="columnEnabled('worker_id')">Worker ID</th>
+                                    <th v-if="columnEnabled('runtime')">Runtime</th>
+                                    <th v-if="columnEnabled('task_queue')">Task Queue</th>
+                                    <th v-if="columnEnabled('heartbeat')">Heartbeat</th>
+                                    <th v-if="columnEnabled('status')">Status</th>
+                                    <th v-if="columnEnabled('workflows')">Workflows</th>
+                                    <th v-if="columnEnabled('activities')">Activities</th>
+                                    <th v-if="columnEnabled('concurrency')">Concurrency</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr v-for="worker in workers" :key="worker.worker_id" :class="workerRowClass(worker)">
-                                    <td>
+                                    <td v-if="columnEnabled('worker_id')">
                                         <code class="small">{{ truncateId(worker.worker_id) }}</code>
                                     </td>
-                                    <td>
+                                    <td v-if="columnEnabled('runtime')">
                                         <span class="badge badge-secondary">{{ worker.runtime }}</span>
                                     </td>
-                                    <td>
+                                    <td v-if="columnEnabled('task_queue')">
                                         <span class="text-monospace small">{{ worker.task_queue || 'default' }}</span>
                                     </td>
-                                    <td>
+                                    <td v-if="columnEnabled('heartbeat')">
                                         <span :class="heartbeatClass(worker)" class="small">
                                             {{ formatHeartbeat(worker.last_heartbeat_at) }}
                                         </span>
                                     </td>
-                                    <td>
+                                    <td v-if="columnEnabled('status')">
                                         <span class="badge" :class="statusBadgeClass(worker)">
                                             {{ worker.status || 'unknown' }}
                                         </span>
                                     </td>
-                                    <td class="small">
+                                    <td v-if="columnEnabled('workflows')" class="small">
                                         <span v-if="worker.supported_workflow_types && worker.supported_workflow_types.length > 0">
                                             {{ worker.supported_workflow_types.length }} types
                                         </span>
                                         <span v-else class="text-muted">none</span>
                                     </td>
-                                    <td class="small">
+                                    <td v-if="columnEnabled('activities')" class="small">
                                         <span v-if="worker.supported_activity_types && worker.supported_activity_types.length > 0">
                                             {{ worker.supported_activity_types.length }} types
                                         </span>
                                         <span v-else class="text-muted">none</span>
                                     </td>
-                                    <td class="small">
+                                    <td v-if="columnEnabled('concurrency')" class="small">
                                         WF: {{ worker.max_concurrent_workflow_tasks || 0 }} /
                                         ACT: {{ worker.max_concurrent_activity_tasks || 0 }}
                                     </td>
@@ -150,6 +155,7 @@
 
 <script>
 import axios from 'axios';
+import Swal from 'sweetalert2';
 
 export default {
     name: 'WorkerHealth',
@@ -157,7 +163,7 @@ export default {
     props: {
         apiEndpoint: {
             type: String,
-            default: '/waterline-api/v2/health'
+            default: null
         },
         autoRefresh: {
             type: Boolean,
@@ -175,6 +181,9 @@ export default {
             error: null,
             healthData: null,
             workers: [],
+            operatorPreferences: {},
+            effectiveOperatorPreferences: {},
+            savingOperatorPreferences: false,
             refreshTimer: null
         };
     },
@@ -197,11 +206,21 @@ export default {
 
         healthChecks() {
             return this.healthData?.checks || [];
+        },
+
+        workersTableClass() {
+            const classes = ['table', 'table-hover'];
+
+            if (this.workersListDensity() === 'dense') {
+                classes.push('table-sm');
+            }
+
+            return classes.join(' ');
         }
     },
 
     mounted() {
-        this.loadData();
+        this.loadOperatorPreferences().finally(() => this.loadData());
         if (this.autoRefresh) {
             this.startAutoRefresh();
         }
@@ -217,7 +236,7 @@ export default {
             this.error = null;
 
             try {
-                const response = await axios.get(this.apiEndpoint);
+                const response = await axios.get(this.resolvedApiEndpoint());
                 this.healthData = response.data;
 
                 // Extract worker data from health response if available
@@ -233,6 +252,182 @@ export default {
 
         refresh() {
             this.loadData();
+        },
+
+        resolvedApiEndpoint() {
+            if (this.apiEndpoint) {
+                return this.apiEndpoint;
+            }
+
+            return this.waterlineBasePath() + '/api/v2/health';
+        },
+
+        preferenceEndpoint() {
+            return this.waterlineBasePath() + '/api/preferences/workers-list';
+        },
+
+        waterlineBasePath() {
+            return typeof Waterline !== 'undefined' && Waterline.basePath
+                ? Waterline.basePath
+                : '';
+        },
+
+        async loadOperatorPreferences() {
+            try {
+                const response = await axios.get(this.preferenceEndpoint() + '?' + this.operatorPreferenceQueryString());
+                this.applyOperatorPreferencePayload(response.data || {});
+            } catch (e) {
+                this.operatorPreferences = {};
+                this.effectiveOperatorPreferences = {
+                    row_density: 'dense',
+                    columns: this.defaultWorkersListColumns(),
+                };
+            }
+        },
+
+        applyOperatorPreferencePayload(payload) {
+            this.operatorPreferences = payload.preferences || {};
+            this.effectiveOperatorPreferences = {
+                row_density: 'dense',
+                columns: this.defaultWorkersListColumns(),
+                ...(payload.effective_preferences || {}),
+            };
+            this.effectiveOperatorPreferences.columns = this.normalizeWorkersListColumns(
+                this.effectiveOperatorPreferences.columns
+            );
+        },
+
+        operatorPreferenceQueryString() {
+            const params = new URLSearchParams();
+            const query = new URLSearchParams(window.location.search || '');
+
+            ['density', 'row_density', 'columns'].forEach((key) => {
+                if (query.has(key)) {
+                    params.set(key, query.get(key));
+                }
+            });
+
+            return params.toString();
+        },
+
+        workersListDensity() {
+            return this.effectiveOperatorPreferences.row_density === 'comfortable'
+                ? 'comfortable'
+                : 'dense';
+        },
+
+        workersListColumnOptions() {
+            return [
+                {key: 'worker_id', label: 'Worker ID'},
+                {key: 'runtime', label: 'Runtime'},
+                {key: 'task_queue', label: 'Task Queue'},
+                {key: 'heartbeat', label: 'Heartbeat'},
+                {key: 'status', label: 'Status'},
+                {key: 'workflows', label: 'Workflows'},
+                {key: 'activities', label: 'Activities'},
+                {key: 'concurrency', label: 'Concurrency'},
+            ];
+        },
+
+        defaultWorkersListColumns() {
+            return this.workersListColumnOptions().map((column) => column.key);
+        },
+
+        normalizeWorkersListColumns(columns) {
+            const allowed = this.workersListColumnOptions().map((column) => column.key);
+            const requested = Array.isArray(columns) ? columns : this.defaultWorkersListColumns();
+            const normalized = requested.filter((column) => allowed.includes(column));
+
+            if (!normalized.includes('worker_id')) {
+                normalized.unshift('worker_id');
+            }
+
+            return normalized.length > 0 ? normalized : this.defaultWorkersListColumns();
+        },
+
+        columnEnabled(column) {
+            return this.normalizeWorkersListColumns(this.effectiveOperatorPreferences.columns).includes(column);
+        },
+
+        async persistWorkersListPreferences(preferences) {
+            const payload = {
+                ...this.operatorPreferences,
+                ...preferences,
+            };
+
+            if (payload.columns) {
+                payload.columns = this.normalizeWorkersListColumns(payload.columns);
+            }
+
+            this.savingOperatorPreferences = true;
+
+            try {
+                const response = await axios.put(this.preferenceEndpoint(), {
+                    preferences: payload,
+                });
+                this.applyOperatorPreferencePayload(response.data || {});
+            } finally {
+                this.savingOperatorPreferences = false;
+            }
+        },
+
+        async editViewOptions() {
+            const columns = this.normalizeWorkersListColumns(this.effectiveOperatorPreferences.columns);
+            const columnHtml = this.workersListColumnOptions().map((column) => `
+                <label class="d-flex align-items-center justify-content-start mb-2" for="waterline-worker-column-${this.escapeHtml(column.key)}">
+                    <input id="waterline-worker-column-${this.escapeHtml(column.key)}"
+                           type="checkbox"
+                           class="mr-2 waterline-worker-column-option"
+                           value="${this.escapeHtml(column.key)}"
+                           ${columns.includes(column.key) ? 'checked' : ''}
+                           ${column.key === 'worker_id' ? 'disabled' : ''}>
+                    <span>${this.escapeHtml(column.label)}</span>
+                </label>
+            `).join('');
+
+            const result = await Swal.fire({
+                title: 'View Options',
+                html: `
+                    <div class="text-left">
+                        <label class="d-block mb-1">Density</label>
+                        <select id="waterline-workers-density" class="swal2-input">
+                            <option value="dense" ${this.workersListDensity() === 'dense' ? 'selected' : ''}>Dense</option>
+                            <option value="comfortable" ${this.workersListDensity() === 'comfortable' ? 'selected' : ''}>Comfortable</option>
+                        </select>
+                        <div class="mt-3">
+                            <label class="d-block mb-2">Columns</label>
+                            ${columnHtml}
+                        </div>
+                    </div>
+                `,
+                showCancelButton: true,
+                confirmButtonText: 'Save Options',
+                background: '#1c1c1c',
+                preConfirm: () => {
+                    const selectedColumns = Array.from(document.querySelectorAll('.waterline-worker-column-option'))
+                        .filter((input) => input.checked || input.value === 'worker_id')
+                        .map((input) => input.value);
+
+                    return {
+                        row_density: document.getElementById('waterline-workers-density').value,
+                        columns: selectedColumns,
+                    };
+                },
+            });
+
+            if (!result.isConfirmed) {
+                return;
+            }
+
+            await this.persistWorkersListPreferences(result.value);
+        },
+
+        escapeHtml(value) {
+            return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
         },
 
         startAutoRefresh() {

@@ -124,6 +124,32 @@ class UserPreferencesControllerTest extends TestCase
         ]);
     }
 
+    public function testSchedulesAndWorkersListPreferencesUseTheSameServerSideContract(): void
+    {
+        config()->set('waterline.preferences.scope', 'ops');
+
+        foreach (['schedules-list', 'workers-list'] as $surface) {
+            $this->putJson('/waterline/api/preferences/'.$surface, [
+                'preferences' => [
+                    'row_density' => 'comfortable',
+                    'columns' => ['id', 'status', 'status'],
+                ],
+            ])
+                ->assertOk()
+                ->assertJsonPath('surface', $surface)
+                ->assertJsonPath('preferences.row_density', 'comfortable')
+                ->assertJsonPath('preferences.columns', ['id', 'status'])
+                ->assertJsonPath('effective_preferences.columns', ['id', 'status']);
+
+            $this->getJson('/waterline/api/preferences/'.$surface.'?density=dense&columns=status,id')
+                ->assertOk()
+                ->assertJsonPath('preferences.row_density', 'comfortable')
+                ->assertJsonPath('preferences.columns', ['id', 'status'])
+                ->assertJsonPath('effective_preferences.row_density', 'dense')
+                ->assertJsonPath('effective_preferences.columns', ['status', 'id']);
+        }
+    }
+
     public function testUnknownPreferenceSurfaceReturnsNotFound(): void
     {
         $this->getJson('/waterline/api/preferences/billing-dashboard')
