@@ -10373,7 +10373,14 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('archive_blocked_reason', 'run_archived')
             ->assertJsonPath('read_only_reason', 'Run is archived.')
             ->assertJsonPath('commands.0.type', 'archive')
+            ->assertJsonPath('commands.0.caller_label', 'Waterline UI')
+            ->assertJsonPath('commands.0.auth_status', 'authorized')
+            ->assertJsonPath('commands.0.auth_method', 'waterline')
             ->assertJsonPath('timeline.0.type', 'ArchiveRequested')
+            ->assertJsonPath('timeline.0.command.caller_label', 'Waterline UI')
+            ->assertJsonPath('timeline.0.command.auth_status', 'authorized')
+            ->assertJsonPath('timeline.0.command.auth_method', 'waterline')
+            ->assertJsonPath('timeline.0.command.request_route_name', 'waterline.instances.archive')
             ->assertJsonPath('timeline.1.type', 'WorkflowArchived');
 
         $command = WorkflowCommand::query()->findOrFail($commandId);
