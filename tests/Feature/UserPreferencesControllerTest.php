@@ -57,7 +57,7 @@ class UserPreferencesControllerTest extends TestCase
             ],
         ]);
 
-        $this->getJson('/waterline/api/preferences/workflow-list?tab=timeline&sort=asc&density=dense&saved_view=system:running&columns=workflow_id,task_queue')
+        $this->getJson('/waterline/api/preferences/workflow-list?tab=timeline&sort=asc&density=dense&view=system:running&columns=workflow_id,task_queue')
             ->assertOk()
             ->assertJsonPath('preferences.tab', 'events')
             ->assertJsonPath('preferences.sort_direction', 'desc')

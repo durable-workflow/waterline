@@ -138,7 +138,16 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     protected function orderedRunsQuery(?string $bucket = null)
     {
-        return RunSummarySortKey::applyDescending($this->filteredRunsQuery($bucket));
+        $query = $this->filteredRunsQuery($bucket);
+
+        if ($this->sortDirection() === 'asc') {
+            return $query
+                ->orderByRaw('case when sort_timestamp is null then 1 else 0 end asc')
+                ->orderBy('sort_timestamp')
+                ->orderBy('id');
+        }
+
+        return RunSummarySortKey::applyDescending($query);
     }
 
     protected function statusFlows(string $status)
@@ -186,5 +195,13 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         $namespace = config('waterline.namespace');
 
         return is_string($namespace) && trim($namespace) !== '' ? trim($namespace) : null;
+    }
+
+    private function sortDirection(): string
+    {
+        $direction = request()->query('sort_direction', request()->query('sort'));
+        $direction = is_string($direction) ? strtolower(trim($direction)) : '';
+
+        return $direction === 'asc' ? 'asc' : 'desc';
     }
 }

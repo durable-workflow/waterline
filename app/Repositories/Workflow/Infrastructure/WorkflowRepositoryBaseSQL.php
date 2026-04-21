@@ -137,7 +137,12 @@ abstract class WorkflowRepositoryBaseSQL implements WorkflowRepositoryInterface
 
     protected function orderedFlowsQuery(): Builder
     {
+        $direction = request()->query('sort_direction', request()->query('sort'));
+        $direction = is_string($direction) && strtolower(trim($direction)) === 'asc'
+            ? 'asc'
+            : 'desc';
+
         return $this->workflowModel::query()
-            ->orderByDesc(config('waterline.workflow_sort_column', 'id'));
+            ->orderBy(config('waterline.workflow_sort_column', 'id'), $direction);
     }
 }

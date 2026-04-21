@@ -1,6 +1,6 @@
 <template>
     <tr>
-        <td>
+        <td v-if="columnEnabled('flow')">
             <router-link :title="flow.class" :to="detailRoute(flow)">
                 {{ flowBaseName(flow.class) }}
             </router-link>
@@ -47,15 +47,15 @@
             </small>
         </td>
 
-        <td class="table-fit">
+        <td v-if="columnEnabled('started_at')" class="table-fit">
             {{ timestamp(flow.started_at || flow.created_at) }}
         </td>
 
-        <td v-if="isTerminalCollection()" class="table-fit">
+        <td v-if="isTerminalCollection() && columnEnabled('closed_at')" class="table-fit">
             {{ timestamp(flow.closed_at || flow.updated_at) }}
         </td>
 
-        <td v-if="isTerminalCollection()" class="table-fit">
+        <td v-if="isTerminalCollection() && columnEnabled('duration')" class="table-fit">
             <span>{{ duration(flow.started_at || flow.created_at, flow.closed_at || flow.updated_at) }}</span>
         </td>
     </tr>
@@ -70,6 +70,13 @@
             flow: {
                 type: Object,
                 required: true
+            },
+
+            columns: {
+                type: Array,
+                default() {
+                    return ['flow', 'started_at', 'closed_at', 'duration']
+                }
             }
         },
 
@@ -108,6 +115,10 @@
 
             isTerminalCollection() {
                 return ['completed', 'failed', 'cancelled', 'terminated'].includes(this.$route.params.type)
+            },
+
+            columnEnabled(column) {
+                return this.columns.includes(column)
             },
 
             showStatusBadge(flow) {

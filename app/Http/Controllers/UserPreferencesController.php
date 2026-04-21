@@ -119,6 +119,7 @@ class UserPreferencesController extends Controller
             'sort_direction' => 'sort_direction',
             'density' => 'row_density',
             'row_density' => 'row_density',
+            'view' => 'saved_view_id',
             'saved_view' => 'saved_view_id',
             'saved_view_id' => 'saved_view_id',
             'columns' => 'columns',
