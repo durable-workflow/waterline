@@ -19,6 +19,15 @@
     Skip to main content
 </a>
 
+@if ($environmentBanner)
+    <div class="environment-strip" style="--waterline-env-color: {{ $environmentBanner['color'] }};">
+        <div class="environment-strip__inner">
+            <span class="environment-strip__swatch" aria-hidden="true"></span>
+            <span class="environment-strip__label">{{ $environmentBanner['name'] }}</span>
+        </div>
+    </div>
+@endif
+
 <div id="waterline" v-cloak>
     <alert :message="alert.message"
            :type="alert.type"

@@ -71,6 +71,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Environment Banner
+    |--------------------------------------------------------------------------
+    |
+    | Waterline can show a thin environment strip above the dashboard chrome so
+    | operators can distinguish local, staging, and production tabs before
+    | issuing manual commands. Use a hex color such as "#dc3545".
+    |
+    */
+
+    'env_name' => env('WATERLINE_ENV_NAME'),
+    'env_color' => env('WATERLINE_ENV_COLOR', '#6c757d'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Saved Workflow Views
     |--------------------------------------------------------------------------
     |
