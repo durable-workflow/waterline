@@ -266,6 +266,69 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('operator_metrics.contract_boundary', 'dashboard_summary');
     }
 
+    public function testV2DetailCapsInitialHistoryWindowAndAllowsOlderChunks(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'waterline-large-history-window',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.large-history',
+            'run_count' => 1,
+            'reserved_at' => now()->subMinute(),
+            'started_at' => now()->subMinute(),
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTLARGEHISTORY000001',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.large-history',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinute(),
+            'last_progress_at' => now()->subSeconds(10),
+        ]);
+
+        $instance->update([
+            'current_run_id' => $run->id,
+        ]);
+
+        for ($i = 1; $i <= 205; $i++) {
+            WorkflowHistoryEvent::record($run, HistoryEventType::SideEffectRecorded, [
+                'workflow_sequence' => $i,
+                'side_effect_id' => 'side-effect-'.$i,
+            ]);
+        }
+
+        RunSummaryProjector::project(
+            $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
+        );
+
+        $this->get('/waterline/api/flows/'.$run->id)
+            ->assertOk()
+            ->assertJsonCount(200, 'timeline')
+            ->assertJsonPath('timeline_total_count', 205)
+            ->assertJsonPath('timeline_returned_count', 200)
+            ->assertJsonPath('timeline_window_limit', 200)
+            ->assertJsonPath('timeline_truncated', true)
+            ->assertJsonPath('timeline_older_count', 5)
+            ->assertJsonPath('timeline.0.sequence', 6)
+            ->assertJsonPath('timeline.199.sequence', 205);
+
+        $this->get('/waterline/api/flows/'.$run->id.'?history_limit=1000')
+            ->assertOk()
+            ->assertJsonCount(205, 'timeline')
+            ->assertJsonPath('timeline_returned_count', 205)
+            ->assertJsonPath('timeline_truncated', false)
+            ->assertJsonPath('timeline_older_count', 0)
+            ->assertJsonPath('timeline.0.sequence', 1)
+            ->assertJsonPath('timeline.204.sequence', 205);
+    }
+
     public function testShowIncludesRunDiagnosticsForCommonOperatorProblems(): void
     {
         config()->set('waterline.engine_source', 'v2');
