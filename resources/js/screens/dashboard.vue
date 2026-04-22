@@ -776,7 +776,7 @@
 
         <div class="card mt-4" v-if="stats.operator_metrics">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>v2 Operator Metrics</h5>
+                <h5>Operator Metrics</h5>
                 <small class="text-muted" v-if="stats.operator_metrics.generated_at">
                     {{ stats.operator_metrics.generated_at }}
                 </small>
