@@ -570,12 +570,12 @@
                 </div>
 
                 <a data-toggle="collapse" href="#collapseTimeline" role="button"
-                   aria-expanded="true" aria-controls="collapseTimeline">
-                    Collapse
+                   aria-expanded="false" aria-controls="collapseTimeline">
+                    Expand
                 </a>
             </div>
 
-            <div class="card-body code-bg text-white collapse show" id="collapseTimeline">
+            <div class="card-body code-bg text-white collapse" id="collapseTimeline">
                 <apexchart type="rangeBar" height="350" :options="chartOptions" :series="series"></apexchart>
             </div>
         </div>
@@ -628,13 +628,13 @@
                     </a>
 
                     <a data-toggle="collapse" href="#collapseHistory" role="button"
-                       aria-expanded="true" aria-controls="collapseHistory">
-                        Collapse
+                       aria-expanded="false" aria-controls="collapseHistory">
+                        Expand
                     </a>
                 </div>
             </div>
 
-            <div class="card-body collapse show" id="collapseHistory">
+            <div class="card-body collapse" id="collapseHistory">
                 <div class="alert alert-warning" v-if="pinnedTimelineItems().length">
                     <div class="font-weight-bold mb-2">Pinned Attention</div>
                     <div
@@ -910,12 +910,12 @@
                 <h5>Linked Intakes</h5>
 
                 <a data-toggle="collapse" href="#collapseLinkedIntakes" role="button"
-                   aria-expanded="true" aria-controls="collapseLinkedIntakes">
-                    Collapse
+                   aria-expanded="false" aria-controls="collapseLinkedIntakes">
+                    Expand
                 </a>
             </div>
 
-            <div class="card-body collapse show" id="collapseLinkedIntakes">
+            <div class="card-body collapse" id="collapseLinkedIntakes">
                 <table class="table">
                     <thead>
                         <tr>
@@ -982,12 +982,12 @@
                 <h5>Commands</h5>
 
                 <a data-toggle="collapse" href="#collapseCommands" role="button"
-                   aria-expanded="true" aria-controls="collapseCommands">
-                    Collapse
+                   aria-expanded="false" aria-controls="collapseCommands">
+                    Expand
                 </a>
             </div>
 
-            <div class="card-body collapse show" id="collapseCommands">
+            <div class="card-body collapse" id="collapseCommands">
                 <table class="table">
                     <thead>
                         <tr>
@@ -1072,12 +1072,12 @@
                 <h5>Signals</h5>
 
                 <a data-toggle="collapse" href="#collapseSignals" role="button"
-                   aria-expanded="true" aria-controls="collapseSignals">
-                    Collapse
+                   aria-expanded="false" aria-controls="collapseSignals">
+                    Expand
                 </a>
             </div>
 
-            <div class="card-body collapse show" id="collapseSignals">
+            <div class="card-body collapse" id="collapseSignals">
                 <table class="table">
                     <thead>
                         <tr>
@@ -1162,12 +1162,12 @@
                 <h5>Updates</h5>
 
                 <a data-toggle="collapse" href="#collapseUpdates" role="button"
-                   aria-expanded="true" aria-controls="collapseUpdates">
-                    Collapse
+                   aria-expanded="false" aria-controls="collapseUpdates">
+                    Expand
                 </a>
             </div>
 
-            <div class="card-body collapse show" id="collapseUpdates">
+            <div class="card-body collapse" id="collapseUpdates">
                 <table class="table">
                     <thead>
                         <tr>
@@ -1363,12 +1363,12 @@
                 </div>
 
                 <a data-toggle="collapse" href="#collapseTimers" role="button"
-                   aria-expanded="true" aria-controls="collapseTimers">
-                    Collapse
+                   aria-expanded="false" aria-controls="collapseTimers">
+                    Expand
                 </a>
             </div>
 
-            <div class="card-body code-bg text-white collapse show" id="collapseTimers">
+            <div class="card-body code-bg text-white collapse" id="collapseTimers">
                 <table class="table">
                     <thead>
                         <tr>
