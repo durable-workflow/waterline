@@ -10,6 +10,7 @@ use Workflow\V2\CommandContext;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Support\CommandResponse;
+use Workflow\V2\Support\HistoryBudget;
 use Workflow\V2\Support\QueryResponse;
 use Workflow\V2\Support\RunListItemView;
 use Workflow\V2\Support\UpdateWaitPolicy;
@@ -589,8 +590,8 @@ class WorkflowsController extends Controller
         $payload = $result->toArray();
 
         $payload['data'] = array_map(
-            static fn (mixed $item): array => $item instanceof WorkflowRunSummary
-                ? RunListItemView::fromSummary($item)
+            fn (mixed $item): array => $item instanceof WorkflowRunSummary
+                ? $this->listItemView($item)
                 : (is_array($item) ? $item : []),
             $result instanceof LengthAwarePaginator ? $result->items() : ($payload['data'] ?? []),
         );
@@ -607,6 +608,90 @@ class WorkflowsController extends Controller
         ];
 
         return response()->json($payload);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function listItemView(WorkflowRunSummary $summary): array
+    {
+        $item = RunListItemView::fromSummary($summary);
+        $item['history_budget_indicator'] = $this->historyBudgetIndicator($item);
+
+        return $item;
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @return array<string, mixed>
+     */
+    private function historyBudgetIndicator(array $item): array
+    {
+        $eventCount = $this->intValue($item['history_event_count'] ?? null);
+        $sizeBytes = $this->intValue($item['history_size_bytes'] ?? null);
+        $eventThreshold = HistoryBudget::eventThreshold();
+        $sizeThreshold = HistoryBudget::sizeBytesThreshold();
+        $recommended = ($item['continue_as_new_recommended'] ?? false) === true;
+
+        $eventRatio = $eventCount !== null && $eventThreshold > 0
+            ? $eventCount / $eventThreshold
+            : null;
+        $sizeRatio = $sizeBytes !== null && $sizeThreshold > 0
+            ? $sizeBytes / $sizeThreshold
+            : null;
+        $ratio = max($eventRatio ?? 0.0, $sizeRatio ?? 0.0);
+        $nearLimit = $ratio >= $this->historyBudgetWarningRatio();
+
+        $status = $recommended
+            ? 'recommended'
+            : ($nearLimit ? 'near_limit' : 'ok');
+
+        return [
+            'status' => $status,
+            'label' => match ($status) {
+                'recommended' => 'Continue as new',
+                'near_limit' => 'History near limit',
+                default => 'History OK',
+            },
+            'description' => match ($status) {
+                'recommended' => 'This run has crossed a configured history budget.',
+                'near_limit' => 'This run is approaching a configured history budget.',
+                default => 'This run is below the configured history budget warning threshold.',
+            },
+            'tone' => match ($status) {
+                'recommended' => 'warning',
+                'near_limit' => 'info',
+                default => 'secondary',
+            },
+            'badge_visible' => $recommended || $nearLimit,
+            'ratio' => round($ratio, 4),
+            'event_ratio' => $eventRatio === null ? null : round($eventRatio, 4),
+            'size_ratio' => $sizeRatio === null ? null : round($sizeRatio, 4),
+            'history_event_threshold' => $eventThreshold,
+            'history_size_bytes_threshold' => $sizeThreshold,
+        ];
+    }
+
+    private function historyBudgetWarningRatio(): float
+    {
+        $configured = config('waterline.run_diagnostics.history_budget_warning_ratio', 0.8);
+
+        return is_numeric($configured)
+            ? max(0.0, min(1.0, (float) $configured))
+            : 0.8;
+    }
+
+    private function intValue(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        return null;
     }
 
     private function commandResponse($result)

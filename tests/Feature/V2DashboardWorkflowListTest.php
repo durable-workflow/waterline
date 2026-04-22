@@ -872,6 +872,9 @@ class V2DashboardWorkflowListTest extends TestCase
     public function testV2ListResponseItemsMatchTypedListItemContract(): void
     {
         config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.run_diagnostics.history_budget_warning_ratio', 0.8);
+        config()->set('workflows.v2.history_budget.continue_as_new_event_threshold', 10);
+        config()->set('workflows.v2.history_budget.continue_as_new_size_bytes_threshold', 1000);
 
         $summary = $this->createRunningSummary(
             'contract-shape-instance',
@@ -889,6 +892,8 @@ class V2DashboardWorkflowListTest extends TestCase
             declaredContractSource: 'live_definition',
             declaredContractBackfillNeeded: true,
             declaredContractBackfillAvailable: true,
+            historyEventCount: 8,
+            historySizeBytes: 500,
         );
 
         $response = $this->get('/waterline/api/flows/running');
@@ -896,6 +901,7 @@ class V2DashboardWorkflowListTest extends TestCase
 
         $item = $response->json('data.0');
         $expectedFields = RunListItemView::fields();
+        $expectedFields[] = 'history_budget_indicator';
 
         $this->assertSame(
             $expectedFields,
@@ -918,6 +924,15 @@ class V2DashboardWorkflowListTest extends TestCase
         $this->assertSame('live_definition', $item['declared_contract_source']);
         $this->assertTrue($item['declared_contract_backfill_needed']);
         $this->assertTrue($item['declared_contract_backfill_available']);
+        $this->assertSame(8, $item['history_event_count']);
+        $this->assertSame('near_limit', $item['history_budget_indicator']['status']);
+        $this->assertSame('History near limit', $item['history_budget_indicator']['label']);
+        $this->assertSame('info', $item['history_budget_indicator']['tone']);
+        $this->assertTrue($item['history_budget_indicator']['badge_visible']);
+        $this->assertSame(0.8, $item['history_budget_indicator']['event_ratio']);
+        $this->assertSame(0.5, $item['history_budget_indicator']['size_ratio']);
+        $this->assertSame(10, $item['history_budget_indicator']['history_event_threshold']);
+        $this->assertSame(1000, $item['history_budget_indicator']['history_size_bytes_threshold']);
         $this->assertSame(['tenant' => 'acme'], $item['visibility_labels']);
         $this->assertFalse($item['is_terminal']);
         $this->assertIsString($item['started_at']);
@@ -954,6 +969,8 @@ class V2DashboardWorkflowListTest extends TestCase
         bool $declaredContractBackfillNeeded = false,
         bool $declaredContractBackfillAvailable = false,
         bool $taskProblem = false,
+        int $historyEventCount = 0,
+        int $historySizeBytes = 0,
     ): WorkflowRunSummary {
         $instance = WorkflowInstance::create([
             'id' => $instanceId,
@@ -999,6 +1016,8 @@ class V2DashboardWorkflowListTest extends TestCase
             'repair_blocked_reason' => $repairBlockedReason,
             'repair_attention' => $repairAttention,
             'task_problem' => $taskProblem,
+            'history_event_count' => $historyEventCount,
+            'history_size_bytes' => $historySizeBytes,
             'continue_as_new_recommended' => $continueAsNewRecommended,
             'declared_entry_mode' => $declaredEntryMode,
             'declared_contract_source' => $declaredContractSource,

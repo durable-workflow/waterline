@@ -44,6 +44,14 @@
                 >
                     {{ contractBackfillBadgeLabel(flow) }}
                 </span>
+                <span
+                    v-if="showHistoryBudgetBadge(flow)"
+                    :class="historyBudgetBadgeClass(flow)"
+                    class="badge ml-1"
+                    :title="historyBudgetBadgeTitle(flow)"
+                >
+                    {{ historyBudgetBadgeLabel(flow) }}
+                </span>
             </small>
         </td>
 
@@ -236,6 +244,40 @@
                 return flow && flow.declared_contract_backfill_available === true
                     ? 'badge-warning'
                     : 'badge-dark'
+            },
+
+            showHistoryBudgetBadge(flow) {
+                const indicator = this.historyBudgetIndicator(flow)
+
+                return indicator ? indicator.badge_visible === true : false
+            },
+
+            historyBudgetBadgeLabel(flow) {
+                const indicator = this.historyBudgetIndicator(flow)
+
+                return indicator && indicator.label
+                    ? indicator.label
+                    : 'History Budget'
+            },
+
+            historyBudgetBadgeTitle(flow) {
+                const indicator = this.historyBudgetIndicator(flow)
+
+                return indicator && indicator.description
+                    ? indicator.description
+                    : 'This run is approaching a configured history budget.'
+            },
+
+            historyBudgetBadgeClass(flow) {
+                const indicator = this.historyBudgetIndicator(flow)
+
+                return this.badgeClassForTone(indicator && indicator.tone ? indicator.tone : 'secondary')
+            },
+
+            historyBudgetIndicator(flow) {
+                return flow && flow.history_budget_indicator
+                    ? flow.history_budget_indicator
+                    : null
             },
 
             badgeClassForTone(tone) {
