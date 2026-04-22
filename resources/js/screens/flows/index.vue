@@ -9,7 +9,6 @@
         data() {
             return {
                 ready: false,
-                loadingError: null,
                 loadingNewEntries: false,
                 hasNewEntries: false,
                 page: 1,
@@ -147,7 +146,6 @@
             loadFlows(page = 1, refreshing = false) {
                 if (!refreshing) {
                     this.ready = false;
-                    this.loadingError = null;
                 }
 
                 return this.$http.get(Waterline.basePath + '/api/flows/' + this.$route.params.type + '?' + this.apiQueryString(page))
@@ -170,14 +168,12 @@
                         }
 
                         this.ready = true;
-                        this.loadingError = null;
                     })
-                    .catch((error) => {
+                    .catch(() => {
                         if (!refreshing) {
                             this.flows = [];
                             this.totalPages = 1;
                             this.visibilityFilters = null;
-                            this.loadingError = this.flowListLoadErrorMessage(error);
                         }
 
                         this.ready = true;
@@ -1411,43 +1407,6 @@
                 this.hasNewEntries = false;
             },
 
-            retryLoadFlows() {
-                this.loadFlows(this.page || 1, false);
-            },
-
-            flowListLoadErrorMessage(error) {
-                if (error && error.code === 'ECONNABORTED') {
-                    return 'The flow list request timed out.';
-                }
-
-                if (error && error.response && error.response.status) {
-                    const status = error.response.status;
-                    const message = error.response.data && error.response.data.message
-                        ? error.response.data.message
-                        : 'Waterline could not load this flow list.';
-
-                    return `HTTP ${status}: ${message}`;
-                }
-
-                if (error && error.request) {
-                    return 'Waterline could not reach the flow list API.';
-                }
-
-                return error && error.message
-                    ? error.message
-                    : 'Waterline could not load this flow list.';
-            },
-
-            flowListLoadingLabel() {
-                return 'Loading ' + this.flowCollectionLabel().toLowerCase() + ' flows';
-            },
-
-            flowListEmptyTitle() {
-                return this.hasActiveFilters
-                    ? 'No matching ' + this.flowCollectionLabel().toLowerCase() + ' flows'
-                    : 'No ' + this.flowCollectionLabel().toLowerCase() + ' flows';
-            },
-
 
             /**
              * Refresh the flows every period of time.
@@ -1636,41 +1595,22 @@
             </div>
 
             <div v-if="!ready"
-                 class="d-flex align-items-center justify-content-center card-bg-secondary p-5 bottom-radius"
-                 role="status"
-                 aria-live="polite"
-                 :aria-label="flowListLoadingLabel()">
-                <svg xmlns="http://www.w3.org/2000/svg"
-                     viewBox="0 0 20 20"
-                     class="icon spin mr-2 fill-text-color"
-                     aria-hidden="true">
+                 class="d-flex align-items-center justify-content-center card-bg-secondary p-5 bottom-radius">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin mr-2 fill-text-color">
                     <path
                         d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
                 </svg>
 
-                <span>{{ flowListLoadingLabel() }}</span>
+                <span>Loading...</span>
             </div>
 
-            <div v-if="ready && loadingError"
-                 class="d-flex flex-column align-items-center justify-content-center card-bg-secondary p-5 bottom-radius text-center"
-                 role="alert"
-                 aria-live="assertive">
-                <strong>Flow list unavailable</strong>
-                <span class="text-muted mt-2">{{ loadingError }}</span>
-                <button class="btn btn-outline-secondary btn-sm mt-3" @click="retryLoadFlows">
-                    Retry
-                </button>
+
+            <div v-if="ready && flows.length == 0"
+                 class="d-flex flex-column align-items-center justify-content-center card-bg-secondary p-5 bottom-radius">
+                <span>There aren't any flows.</span>
             </div>
 
-            <div v-if="ready && !loadingError && flows.length == 0"
-                 class="d-flex flex-column align-items-center justify-content-center card-bg-secondary p-5 bottom-radius text-center"
-                 role="status"
-                 aria-live="polite">
-                <strong>{{ flowListEmptyTitle() }}</strong>
-                <span v-if="hasActiveFilters" class="text-muted mt-2">Clear the active view or filters to widen the list.</span>
-            </div>
-
-            <table v-if="ready && !loadingError && flows.length > 0" :class="workflowListTableClass">
+            <table v-if="ready && flows.length > 0" :class="workflowListTableClass">
                 <thead>
                 <tr>
                     <th v-if="columnEnabled('flow')">Flow</th>
