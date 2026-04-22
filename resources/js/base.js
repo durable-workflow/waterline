@@ -26,6 +26,7 @@ export default {
          * Extract the flow base name.
          */
         flowBaseName(name) {
+            if (typeof name !== 'string' || name.length === 0) return name;
             if (!name.includes('\\')) return name;
 
             var parts = name.split('\\');

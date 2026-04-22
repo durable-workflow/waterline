@@ -1624,10 +1624,11 @@ export default {
     },
 
     methods: {
-        async handleRouteChange() {
-            await this.loadRunDetailPreferences()
+        handleRouteChange() {
+            const preferences = this.loadRunDetailPreferences()
+            const flow = this.loadRouteFlow()
 
-            return this.loadRouteFlow()
+            return Promise.all([preferences, flow])
         },
 
         loadRouteFlow() {
@@ -1673,8 +1674,9 @@ export default {
                 .then(response => {
                     this.flow = response.data;
                     this.resetHistoryVirtualWindow();
-                    this.series[0].data = response.data.chartData;
-                    this.series[1].data = this.flow.exceptions.map((exception) => {
+                    this.series[0].data = Array.isArray(response.data.chartData) ? response.data.chartData : [];
+                    const exceptions = Array.isArray(this.flow.exceptions) ? this.flow.exceptions : [];
+                    this.series[1].data = exceptions.map((exception) => {
                         this.$nextTick(() => {
                             this.$nextTick(() => {
                                 let lineNumbers = [...document.querySelectorAll('#prism' + exception.id + ' .prism-editor__line-number')]
@@ -1744,7 +1746,9 @@ export default {
         },
 
         loadRunDetailPreferences() {
-            return this.$http.get(Waterline.basePath + '/api/preferences/run-detail?' + this.runDetailPreferenceQueryString())
+            const url = Waterline.basePath + '/api/preferences/run-detail?' + this.runDetailPreferenceQueryString()
+
+            return this.$http.get(url, { timeout: 10000 })
                 .then(response => {
                     this.applyRunDetailPreferencePayload(response.data || {})
                 })
