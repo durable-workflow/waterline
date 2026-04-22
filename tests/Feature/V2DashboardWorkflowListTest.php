@@ -883,6 +883,12 @@ class V2DashboardWorkflowListTest extends TestCase
         $item = $response->json('data.0');
         $expectedFields = RunListItemView::fields();
         $expectedFields[] = 'history_budget_indicator';
+        $expectedFields[] = 'compatibility_supported';
+        $expectedFields[] = 'compatibility_reason';
+        $expectedFields[] = 'compatibility_supported_in_fleet';
+        $expectedFields[] = 'compatibility_fleet_reason';
+        $expectedFields[] = 'compatibility_namespace';
+        $expectedFields[] = 'compatibility_semantics';
         $expectedFields[] = 'actionability';
 
         $this->assertSame(
@@ -904,6 +910,11 @@ class V2DashboardWorkflowListTest extends TestCase
         $this->assertIsArray($item['task_problem_badge']);
         $this->assertSame('compatibility', $item['declared_entry_mode']);
         $this->assertSame('live_definition', $item['declared_contract_source']);
+        $this->assertSame('no_required_marker', $item['compatibility_semantics']['state']);
+        $this->assertNull($item['compatibility_semantics']['required_marker']);
+        $this->assertTrue($item['compatibility_semantics']['claimable_by_this_build']);
+        $this->assertTrue($item['compatibility_semantics']['supported_in_active_fleet']);
+        $this->assertSame('No compatibility marker is required for this row.', $item['compatibility_semantics']['operator_summary']);
         $this->assertSame(8, $item['history_event_count']);
         $this->assertSame('near_limit', $item['history_budget_indicator']['status']);
         $this->assertSame('History near limit', $item['history_budget_indicator']['label']);

@@ -22,6 +22,7 @@ use Waterline\Http\Resources\V2StoredWorkflowResource;
 use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityContract;
+use Waterline\Support\CompatibilitySemantics;
 use Waterline\Waterline;
 
 class WorkflowsController extends Controller
@@ -625,6 +626,7 @@ class WorkflowsController extends Controller
     {
         $item = RunListItemView::fromSummary($summary);
         $item['history_budget_indicator'] = $this->historyBudgetIndicator($item);
+        $item = CompatibilitySemantics::annotateListItem($item);
         $item['actionability'] = ActionabilityContract::annotateRun($item)['actionability'];
 
         return $item;

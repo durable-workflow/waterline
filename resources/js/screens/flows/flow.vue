@@ -331,11 +331,14 @@
                         <div class="small text-muted" v-if="hasDetailValue(flow.compatibility_namespace)">
                             Namespace: {{ flow.compatibility_namespace }}
                         </div>
+                        <div class="small text-muted" v-if="hasDetailValue(flow.compatibility_semantics && flow.compatibility_semantics.operator_summary)">
+                            {{ flow.compatibility_semantics.operator_summary }}
+                        </div>
                         <div class="small text-muted" v-if="flow.compatibility_supported === false && hasDetailValue(flow.compatibility_reason)">
-                            This build: {{ flow.compatibility_reason }}
+                            Claimable by this build: {{ flow.compatibility_reason }}
                         </div>
                         <div class="small text-muted" v-if="hasDetailValue(flow.compatibility_supported_in_fleet)">
-                            Fleet: {{ compatibilityFleetSummary(flow.compatibility_supported_in_fleet) }}
+                            Supported in active fleet: {{ compatibilityFleetSummary(flow.compatibility_supported_in_fleet) }}
                         </div>
                         <div class="small text-muted" v-if="flow.compatibility_supported_in_fleet === false && hasDetailValue(flow.compatibility_fleet_reason)">
                             {{ flow.compatibility_fleet_reason }}
@@ -828,11 +831,14 @@
                             <td>{{ task.queue || '-' }}</td>
                             <td>
                                 <div>{{ task.compatibility || '-' }}</div>
+                                <div class="small text-muted" v-if="hasDetailValue(task.compatibility_semantics && task.compatibility_semantics.operator_summary)">
+                                    {{ task.compatibility_semantics.operator_summary }}
+                                </div>
                                 <div class="small text-muted" v-if="task.compatibility_supported === false && hasDetailValue(task.compatibility_reason)">
-                                    This build: {{ task.compatibility_reason }}
+                                    Claimable by this build: {{ task.compatibility_reason }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(task.compatibility_supported_in_fleet)">
-                                    Fleet: {{ compatibilityFleetSummary(task.compatibility_supported_in_fleet) }}
+                                    Supported in active fleet: {{ compatibilityFleetSummary(task.compatibility_supported_in_fleet) }}
                                 </div>
                                 <div class="small text-muted" v-if="task.compatibility_supported_in_fleet === false && hasDetailValue(task.compatibility_fleet_reason)">
                                     {{ task.compatibility_fleet_reason }}
@@ -2255,7 +2261,7 @@ export default {
 
         compatibilityFleetSummary(supported) {
             if (supported === true) {
-                return 'supported by an active worker heartbeat'
+                return 'yes'
             }
 
             if (supported === false) {

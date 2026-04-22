@@ -37,6 +37,14 @@
                     Entry Review
                 </span>
                 <span
+                    v-if="showCompatibilitySemanticsBadge(flow)"
+                    :class="compatibilitySemanticsBadgeClass(flow)"
+                    class="badge ml-1"
+                    :title="compatibilitySemanticsBadgeTitle(flow)"
+                >
+                    {{ compatibilitySemanticsBadgeLabel(flow) }}
+                </span>
+                <span
                     v-if="showContractBackfillBadge(flow)"
                     :class="contractBackfillBadgeClass(flow)"
                     class="badge ml-1"
@@ -218,6 +226,46 @@
 
             compatibilityEntryBadgeTitle() {
                 return 'This run was recorded with older entry-contract metadata and should be reviewed before relying on command targets.'
+            },
+
+            showCompatibilitySemanticsBadge(flow) {
+                const semantics = this.compatibilitySemantics(flow)
+
+                return semantics
+                    && semantics.required_marker
+                    && semantics.state !== 'claimable_by_this_build'
+            },
+
+            compatibilitySemanticsBadgeLabel(flow) {
+                const semantics = this.compatibilitySemantics(flow)
+
+                if (semantics && semantics.state === 'supported_elsewhere_in_active_fleet') {
+                    return 'Fleet Claimable'
+                }
+
+                return 'Compatibility Wait'
+            },
+
+            compatibilitySemanticsBadgeTitle(flow) {
+                const semantics = this.compatibilitySemantics(flow)
+
+                return semantics && semantics.operator_summary
+                    ? semantics.operator_summary
+                    : 'Compatibility claimability is not available for this build.'
+            },
+
+            compatibilitySemanticsBadgeClass(flow) {
+                const semantics = this.compatibilitySemantics(flow)
+
+                return semantics && semantics.state === 'supported_elsewhere_in_active_fleet'
+                    ? 'badge-warning'
+                    : 'badge-dark'
+            },
+
+            compatibilitySemantics(flow) {
+                return flow && flow.compatibility_semantics
+                    ? flow.compatibility_semantics
+                    : null
             },
 
             showContractBackfillBadge(flow) {
