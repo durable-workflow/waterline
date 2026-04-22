@@ -3127,6 +3127,12 @@ export default {
         },
 
         canAction(name, fallback = false) {
+            const action = this.actionabilityAction(name)
+
+            if (action && this.hasDetailValue(action.allowed)) {
+                return action.allowed === true
+            }
+
             const key = 'can_' + name
 
             if (this.hasDetailValue(this.flow[key])) {
@@ -3137,11 +3143,24 @@ export default {
         },
 
         actionBlockedReason(name) {
+            const action = this.actionabilityAction(name)
+
+            if (action && this.hasDetailValue(action.reason)) {
+                return action.reason
+            }
+
             const key = name + '_blocked_reason'
 
             return this.hasDetailValue(this.flow[key])
                 ? this.flow[key]
                 : null
+        },
+
+        actionabilityAction(name) {
+            const actionability = this.flow && this.flow.actionability ? this.flow.actionability : null
+            const actions = actionability && actionability.actions ? actionability.actions : null
+
+            return actions && actions[name] ? actions[name] : null
         },
 
         actionReasonLabel(reason) {
@@ -3160,6 +3179,8 @@ export default {
                     return 'The selected run is already closed.'
                 case 'repair_not_needed':
                     return 'The selected run already has a durable resume path.'
+                case 'repair_state_unknown':
+                    return 'Waterline has not classified this run as repairable yet.'
                 case 'unsupported_history':
                     return 'The selected run only has older diagnostic history and no durable resume path for repair.'
                 case 'run_not_closed':
@@ -3176,14 +3197,17 @@ export default {
         },
 
         actionStateRows() {
-            const hasExplicitContract = ['signal', 'update', 'repair', 'cancel', 'terminate', 'archive']
-                .some((name) => this.hasDetailValue(this.flow['can_' + name]) || this.hasDetailValue(this.flow[name + '_blocked_reason']))
+            const hasExplicitContract = ['query', 'signal', 'update', 'repair', 'cancel', 'terminate', 'archive']
+                .some((name) => this.actionabilityAction(name)
+                    || this.hasDetailValue(this.flow['can_' + name])
+                    || this.hasDetailValue(this.flow[name + '_blocked_reason']))
 
             if (!hasExplicitContract) {
                 return []
             }
 
             return [
+                { name: 'query', label: 'Query' },
                 { name: 'signal', label: 'Signal' },
                 { name: 'update', label: 'Update' },
                 { name: 'repair', label: 'Repair' },

@@ -38,6 +38,7 @@ class ActionabilityContract
                 'unsupported_terminal_without_history_is_never_repairable',
                 'closed_or_non_current_runs_require_an_explicit_blocked_reason',
                 'badges_and_exports_must_preserve_actionability_state',
+                'detail_action_affordances_must_derive_from_actionability_actions',
             ],
         ];
     }
@@ -140,7 +141,54 @@ class ActionabilityContract
             'closed_reason' => $closedReason,
             'task_problem' => ($payload['task_problem'] ?? false) === true,
             'diagnostic_only_evidence' => self::hasDiagnosticOnlyEvidence($payload),
+            'actions' => self::runActions($payload, $repairState, $blockedReason),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, array{allowed: bool, reason: ?string, derived_from: string}>
+     */
+    private static function runActions(array $payload, string $repairState, ?string $blockedReason): array
+    {
+        $actions = [];
+
+        foreach (['query', 'signal', 'update', 'cancel', 'terminate', 'archive'] as $action) {
+            $allowedKey = 'can_'.$action;
+            $reasonKey = $action.'_blocked_reason';
+
+            if (! array_key_exists($allowedKey, $payload) && ! array_key_exists($reasonKey, $payload)) {
+                continue;
+            }
+
+            $allowed = ($payload[$allowedKey] ?? false) === true;
+            $actions[$action] = [
+                'allowed' => $allowed,
+                'reason' => $allowed ? null : self::stringValue($payload[$reasonKey] ?? null),
+                'derived_from' => 'command_contract',
+            ];
+        }
+
+        if (array_key_exists('can_repair', $payload) || array_key_exists('repair_blocked_reason', $payload)) {
+            $allowed = $repairState === 'repairable';
+            $actions['repair'] = [
+                'allowed' => $allowed,
+                'reason' => $allowed ? null : self::repairBlockedReason($repairState, $blockedReason),
+                'derived_from' => 'repair_state',
+            ];
+        }
+
+        return $actions;
+    }
+
+    private static function repairBlockedReason(string $repairState, ?string $blockedReason): ?string
+    {
+        return match ($repairState) {
+            'blocked' => $blockedReason,
+            'not_needed' => 'repair_not_needed',
+            'unknown' => 'repair_state_unknown',
+            default => null,
+        };
     }
 
     /**

@@ -906,6 +906,10 @@ class V2DashboardWorkflowListTest extends TestCase
         $this->assertTrue($item['repair_attention']);
         $this->assertIsArray($item['repair_blocked']);
         $this->assertSame('unsupported_history', $item['repair_blocked']['code']);
+        $this->assertSame('blocked', $item['actionability']['repair_state']);
+        $this->assertFalse($item['actionability']['actions']['repair']['allowed']);
+        $this->assertSame('unsupported_history', $item['actionability']['actions']['repair']['reason']);
+        $this->assertSame('repair_state', $item['actionability']['actions']['repair']['derived_from']);
         $this->assertTrue($item['task_problem']);
         $this->assertIsArray($item['task_problem_badge']);
         $this->assertSame('compatibility', $item['declared_entry_mode']);
