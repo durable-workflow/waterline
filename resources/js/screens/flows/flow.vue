@@ -56,15 +56,19 @@
                         Archive
                     </button>
 
-                    <a data-toggle="collapse" href="#collapseDetails" role="button">
+                    <a data-toggle="collapse" href="#collapseDetails" role="button"
+                       aria-expanded="true" aria-controls="collapseDetails">
                         Collapse
                     </a>
                 </div>
             </div>
 
             <div v-if="!ready && !loadingError"
-                class="d-flex align-items-center justify-content-center card-bg-secondary p-5 bottom-radius">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin mr-2 fill-text-color">
+                class="d-flex align-items-center justify-content-center card-bg-secondary p-5 bottom-radius"
+                role="status"
+                aria-live="polite"
+                aria-busy="true">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin mr-2 fill-text-color" aria-hidden="true">
                     <path
                         d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z">
                     </path>
@@ -74,7 +78,9 @@
             </div>
 
             <div v-if="!ready && loadingError"
-                class="d-flex flex-column align-items-center justify-content-center text-center card-bg-secondary p-5 bottom-radius">
+                class="d-flex flex-column align-items-center justify-content-center text-center card-bg-secondary p-5 bottom-radius"
+                role="alert"
+                aria-live="assertive">
                 <strong>Flow preview unavailable</strong>
                 <span class="text-muted mt-2">{{ loadingError }}</span>
                 <button class="btn btn-outline-primary btn-sm mt-3" @click="retryFlowLoad">
@@ -486,7 +492,8 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Arguments</h5>
 
-                <a data-toggle="collapse" href="#collapseArguments" role="button">
+                <a data-toggle="collapse" href="#collapseArguments" role="button"
+                   aria-expanded="true" aria-controls="collapseArguments">
                     Collapse
                 </a>
             </div>
@@ -500,7 +507,8 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Output</h5>
 
-                <a data-toggle="collapse" href="#collapseOutput" role="button">
+                <a data-toggle="collapse" href="#collapseOutput" role="button"
+                   aria-expanded="true" aria-controls="collapseOutput">
                     Collapse
                 </a>
             </div>
@@ -517,7 +525,8 @@
                     <span class="small ml-2">{{ diagnosticsSummary() }}</span>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseRunDiagnostics" role="button">
+                <a data-toggle="collapse" href="#collapseRunDiagnostics" role="button"
+                   aria-expanded="true" aria-controls="collapseRunDiagnostics">
                     Collapse
                 </a>
             </div>
@@ -560,7 +569,8 @@
                     </div>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseTimeline" role="button">
+                <a data-toggle="collapse" href="#collapseTimeline" role="button"
+                   aria-expanded="true" aria-controls="collapseTimeline">
                     Collapse
                 </a>
             </div>
@@ -617,7 +627,8 @@
                         Export all
                     </a>
 
-                    <a data-toggle="collapse" href="#collapseHistory" role="button">
+                    <a data-toggle="collapse" href="#collapseHistory" role="button"
+                       aria-expanded="true" aria-controls="collapseHistory">
                         Collapse
                     </a>
                 </div>
@@ -690,7 +701,8 @@
                     </div>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseWaits" role="button">
+                <a data-toggle="collapse" href="#collapseWaits" role="button"
+                   aria-expanded="true" aria-controls="collapseWaits">
                     Collapse
                 </a>
             </div>
@@ -779,7 +791,8 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Tasks</h5>
 
-                <a data-toggle="collapse" href="#collapseTasks" role="button">
+                <a data-toggle="collapse" href="#collapseTasks" role="button"
+                   aria-expanded="true" aria-controls="collapseTasks">
                     Collapse
                 </a>
             </div>
@@ -896,7 +909,8 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Linked Intakes</h5>
 
-                <a data-toggle="collapse" href="#collapseLinkedIntakes" role="button">
+                <a data-toggle="collapse" href="#collapseLinkedIntakes" role="button"
+                   aria-expanded="true" aria-controls="collapseLinkedIntakes">
                     Collapse
                 </a>
             </div>
@@ -967,7 +981,8 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Commands</h5>
 
-                <a data-toggle="collapse" href="#collapseCommands" role="button">
+                <a data-toggle="collapse" href="#collapseCommands" role="button"
+                   aria-expanded="true" aria-controls="collapseCommands">
                     Collapse
                 </a>
             </div>
@@ -1056,7 +1071,8 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Signals</h5>
 
-                <a data-toggle="collapse" href="#collapseSignals" role="button">
+                <a data-toggle="collapse" href="#collapseSignals" role="button"
+                   aria-expanded="true" aria-controls="collapseSignals">
                     Collapse
                 </a>
             </div>
@@ -1145,7 +1161,8 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Updates</h5>
 
-                <a data-toggle="collapse" href="#collapseUpdates" role="button">
+                <a data-toggle="collapse" href="#collapseUpdates" role="button"
+                   aria-expanded="true" aria-controls="collapseUpdates">
                     Collapse
                 </a>
             </div>
@@ -1245,7 +1262,8 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Activities</h5>
 
-                <a data-toggle="collapse" href="#collapseActivities" role="button">
+                <a data-toggle="collapse" href="#collapseActivities" role="button"
+                   aria-expanded="true" aria-controls="collapseActivities">
                     Collapse
                 </a>
             </div>
@@ -1344,7 +1362,8 @@
                     </div>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseTimers" role="button">
+                <a data-toggle="collapse" href="#collapseTimers" role="button"
+                   aria-expanded="true" aria-controls="collapseTimers">
                     Collapse
                 </a>
             </div>
@@ -1409,7 +1428,8 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Exceptions</h5>
 
-                <a data-toggle="collapse" href="#collapseExceptions" role="button">
+                <a data-toggle="collapse" href="#collapseExceptions" role="button"
+                   aria-expanded="true" aria-controls="collapseExceptions">
                     Collapse
                 </a>
             </div>
