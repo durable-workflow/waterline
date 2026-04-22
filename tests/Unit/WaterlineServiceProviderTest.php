@@ -2,11 +2,15 @@
 
 namespace Waterline\Tests\Unit;
 
-use Waterline\Tests\TestCase;
+use Illuminate\Support\Facades\DB;
 use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
+use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryMySQL;
+use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryPostgreSQL;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLite;
+use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLServer;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
+use Waterline\Tests\TestCase;
 use Waterline\WaterlineServiceProvider;
 
 class WaterlineServiceProviderTest extends TestCase
@@ -23,7 +27,7 @@ class WaterlineServiceProviderTest extends TestCase
 
         $this->assertSame('legacy-waterline', config('waterline.path'));
         $this->assertSame(['web'], config('waterline.middleware'));
-        $this->assertSame('auto', config('waterline.engine_source'));
+        $this->assertSame('v1', config('waterline.engine_source'));
     }
 
     public function testAutoEngineSourceUsesV2RepositoryWhenWorkflowOperatorSurfaceIsAvailable(): void
@@ -42,7 +46,7 @@ class WaterlineServiceProviderTest extends TestCase
 
         $repository = $this->app->make(WorkflowRepositoryInterface::class);
 
-        $this->assertInstanceOf(WorkflowRepositorySQLite::class, $repository);
+        $this->assertInstanceOf($this->expectedLegacyRepositoryClass(), $repository);
     }
 
     public function testExplicitV1EngineSourceStaysOnLegacyRepository(): void
@@ -51,7 +55,7 @@ class WaterlineServiceProviderTest extends TestCase
 
         $repository = $this->app->make(WorkflowRepositoryInterface::class);
 
-        $this->assertInstanceOf(WorkflowRepositorySQLite::class, $repository);
+        $this->assertInstanceOf($this->expectedLegacyRepositoryClass(), $repository);
     }
 
     public function testExplicitV2EngineSourceBindsUnavailableRepositoryWhenOperatorSurfaceIsMissing(): void
@@ -91,6 +95,16 @@ class WaterlineServiceProviderTest extends TestCase
         (new WaterlineServiceProvider($this->app))->boot();
 
         $this->expectNotToPerformAssertions();
+    }
+
+    private function expectedLegacyRepositoryClass(): string
+    {
+        return match (DB::connection()->getDriverName()) {
+            'pgsql' => WorkflowRepositoryPostgreSQL::class,
+            'sqlite' => WorkflowRepositorySQLite::class,
+            'sqlsrv' => WorkflowRepositorySQLServer::class,
+            default => WorkflowRepositoryMySQL::class,
+        };
     }
 }
 

@@ -11,6 +11,8 @@ final class EngineSourceContractTest extends TestCase
 {
     public function testStatsEndpointIncludesEngineSourceDiagnostics(): void
     {
+        config()->set('waterline.engine_source', 'auto');
+
         $this->get('/waterline/api/stats')
             ->assertOk()
             ->assertJsonPath('engine_source.configured', 'auto')

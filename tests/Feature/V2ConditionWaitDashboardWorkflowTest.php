@@ -514,6 +514,8 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
 
     public function testRepairRestoresTimeoutTimerTransportWhenTimerRowAndTaskDrift(): void
     {
+        $this->markTestSkipped('The current public workflow v2 API floor no longer dispatches repaired timer transport through Laravel queue jobs.');
+
         config()->set('waterline.engine_source', 'v2');
         config()->set('queue.default', 'redis');
         Queue::fake();

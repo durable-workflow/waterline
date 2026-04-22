@@ -71,8 +71,10 @@ final class V2ConfiguredCoreModelsDashboardWorkflowTest extends TestCase
             $table->string('business_key', 191)->nullable();
             $table->json('visibility_labels')->nullable();
             $table->json('memo')->nullable();
+            $table->unsignedInteger('execution_timeout_seconds')->nullable();
             $table->string('current_run_id', 26)->nullable()->index();
             $table->unsignedInteger('run_count')->default(0);
+            $table->unsignedInteger('last_message_sequence')->default(0);
             $table->timestamp('reserved_at', 6)->nullable();
             $table->timestamp('started_at', 6)->nullable();
             $table->timestamps(6);
@@ -90,6 +92,7 @@ final class V2ConfiguredCoreModelsDashboardWorkflowTest extends TestCase
             $table->string('business_key', 191)->nullable();
             $table->json('visibility_labels')->nullable();
             $table->json('memo')->nullable();
+            $table->json('search_attributes')->nullable();
             $table->string('status');
             $table->string('closed_reason')->nullable();
             $table->string('compatibility')->nullable();
@@ -98,6 +101,10 @@ final class V2ConfiguredCoreModelsDashboardWorkflowTest extends TestCase
             $table->longText('output')->nullable();
             $table->string('connection')->nullable();
             $table->string('queue')->nullable();
+            $table->unsignedInteger('message_cursor_position')->default(0);
+            $table->unsignedInteger('run_timeout_seconds')->nullable();
+            $table->timestamp('execution_deadline_at', 6)->nullable();
+            $table->timestamp('run_deadline_at', 6)->nullable();
             $table->unsignedInteger('last_history_sequence')->default(0);
             $table->unsignedInteger('last_command_sequence')->default(0);
             $table->timestamp('started_at', 6)->nullable();
@@ -117,6 +124,7 @@ final class V2ConfiguredCoreModelsDashboardWorkflowTest extends TestCase
         Schema::create('configured_waterline_workflow_tasks', static function (Blueprint $table): void {
             $table->string('id', 26)->primary();
             $table->string('workflow_run_id', 26)->index();
+            $table->string('namespace')->nullable()->index();
             $table->string('task_type');
             $table->string('status');
             $table->json('payload')->nullable();

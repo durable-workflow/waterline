@@ -86,6 +86,8 @@ class V2HistoryExportControllerTest extends TestCase
 
     public function testHistoryExportBackfillsLoadableLegacyCommandContracts(): void
     {
+        $this->markTestSkipped('The current public workflow v2 API floor no longer performs Waterline-side command contract backfill during export.');
+
         config()->set('waterline.engine_source', 'v2');
 
         $instance = WorkflowInstance::create([

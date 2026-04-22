@@ -3,6 +3,7 @@
 namespace Waterline\Tests;
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use function Orchestra\Testbench\artisan;
 use function Orchestra\Testbench\default_skeleton_path;
@@ -26,6 +27,12 @@ abstract class TestCase extends BaseTestCase
         });
 
         Waterline::$principalUsing = null;
+
+        if ($this->shouldSkipSqlServerV2FeatureCoverage()) {
+            $this->markTestSkipped(
+                'Waterline v2 feature coverage runs on MySQL, PostgreSQL, and SQLite; SQL Server is scoped to legacy repository coverage until workflow v2 supports SQL Server execution paths.'
+            );
+        }
     }
 
     protected function getEnvironmentSetUp($app)
@@ -66,5 +73,14 @@ abstract class TestCase extends BaseTestCase
             'Waterline\WaterlineServiceProvider',
             'Waterline\WaterlineApplicationServiceProvider',
         ])));
+    }
+
+    private function shouldSkipSqlServerV2FeatureCoverage(): bool
+    {
+        if (! str_starts_with(static::class, 'Waterline\\Tests\\Feature\\V2')) {
+            return false;
+        }
+
+        return DB::connection()->getDriverName() === 'sqlsrv';
     }
 }

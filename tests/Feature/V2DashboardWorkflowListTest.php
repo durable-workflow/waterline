@@ -118,7 +118,7 @@ class V2DashboardWorkflowListTest extends TestCase
                 'data.0.sort_key',
                 RunSummarySortKey::key($newest->started_at, $newest->created_at, $newest->updated_at, $newest->id),
             )
-            ->assertJsonPath('data.0.sort_timestamp', $newest->sort_timestamp?->jsonSerialize())
+            ->assertJsonPath('data.0.sort_timestamp', $newest->sort_timestamp?->format('Y-m-d\TH:i:sP'))
             ->assertJsonPath('data.0.instance_id', $newest->workflow_instance_id)
             ->assertJsonPath('data.0.selected_run_id', $newest->id)
             ->assertJsonPath('data.0.run_id', $newest->id);
@@ -399,15 +399,13 @@ class V2DashboardWorkflowListTest extends TestCase
                 'continue_as_new_recommended' => true,
                 'declared_entry_mode' => 'compatibility',
                 'declared_contract_source' => 'live_definition',
-                'declared_contract_backfill_needed' => true,
-                'declared_contract_backfill_available' => true,
                 'archived' => false,
                 'is_terminal' => false,
             ],
             'shared' => true,
         ])->assertCreated()->json('id');
 
-        $this->get('/waterline/api/flows/running?view='.$savedViewId.'&instance_id='.$matching->workflow_instance_id.'&run_id='.$matching->id.'&is_current_run=true&liveness_state=waiting_for_signal&repair_attention=true&task_problem=true&declared_entry_mode=compatibility&declared_contract_source=live_definition&declared_contract_backfill_needed=true&declared_contract_backfill_available=true')
+        $this->get('/waterline/api/flows/running?view='.$savedViewId.'&instance_id='.$matching->workflow_instance_id.'&run_id='.$matching->id.'&is_current_run=true&liveness_state=waiting_for_signal&repair_attention=true&task_problem=true&declared_entry_mode=compatibility&declared_contract_source=live_definition')
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $matching->id)
@@ -423,8 +421,6 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('data.0.repair_blocked.badge_visible', true)
             ->assertJsonPath('data.0.declared_entry_mode', 'compatibility')
             ->assertJsonPath('data.0.declared_contract_source', 'live_definition')
-            ->assertJsonPath('data.0.declared_contract_backfill_needed', true)
-            ->assertJsonPath('data.0.declared_contract_backfill_available', true)
             ->assertJsonPath('visibility_filters.version', VisibilityFilters::VERSION)
             ->assertJsonPath('visibility_filters.bucket', 'running')
             ->assertJsonPath('visibility_filters.saved_view.id', $savedViewId)
@@ -438,8 +434,6 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.applied.continue_as_new_recommended', true)
             ->assertJsonPath('visibility_filters.applied.declared_entry_mode', 'compatibility')
             ->assertJsonPath('visibility_filters.applied.declared_contract_source', 'live_definition')
-            ->assertJsonPath('visibility_filters.applied.declared_contract_backfill_needed', true)
-            ->assertJsonPath('visibility_filters.applied.declared_contract_backfill_available', true)
             ->assertJsonPath('visibility_filters.applied.instance_id', $matching->workflow_instance_id)
             ->assertJsonPath('visibility_filters.applied.run_id', $matching->id)
             ->assertJsonPath('visibility_filters.applied.archived', false)
@@ -466,22 +460,6 @@ class V2DashboardWorkflowListTest extends TestCase
                 'Command Contract Source',
             )
             ->assertJsonPath('visibility_filters.definition.fields.declared_contract_source.input', 'select')
-            ->assertJsonPath(
-                'visibility_filters.definition.fields.declared_contract_backfill_needed.type',
-                'boolean',
-            )
-            ->assertJsonPath(
-                'visibility_filters.definition.fields.declared_contract_backfill_needed.input',
-                'boolean_select',
-            )
-            ->assertJsonPath(
-                'visibility_filters.definition.fields.declared_contract_backfill_available.type',
-                'boolean',
-            )
-            ->assertJsonPath(
-                'visibility_filters.definition.fields.declared_contract_backfill_available.input',
-                'boolean_select',
-            )
             ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.label', 'Repair Blocked Reason')
             ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.type', 'string')
             ->assertJsonPath('visibility_filters.definition.fields.repair_blocked_reason.input', 'select')
@@ -501,7 +479,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.definition.labels.operator', 'exact')
             ->assertJsonPath(
                 'visibility_filters.definition.labels.help',
-                'One exact-match label per line in key=value format. Labels are indexed operator metadata and saved-view compatible.',
+                'One exact-match label per line in key=value format. Labels are indexed operator metadata set at start and saved-view compatible.',
             )
             ->assertJsonPath('visibility_filters.definition.indexed_metadata.business_key.filter_field', 'business_key')
             ->assertJsonPath('visibility_filters.definition.indexed_metadata.business_key.saved_view_compatible', true)
@@ -905,6 +883,7 @@ class V2DashboardWorkflowListTest extends TestCase
         $item = $response->json('data.0');
         $expectedFields = RunListItemView::fields();
         $expectedFields[] = 'history_budget_indicator';
+        $expectedFields[] = 'actionability';
 
         $this->assertSame(
             $expectedFields,
@@ -925,8 +904,6 @@ class V2DashboardWorkflowListTest extends TestCase
         $this->assertIsArray($item['task_problem_badge']);
         $this->assertSame('compatibility', $item['declared_entry_mode']);
         $this->assertSame('live_definition', $item['declared_contract_source']);
-        $this->assertTrue($item['declared_contract_backfill_needed']);
-        $this->assertTrue($item['declared_contract_backfill_available']);
         $this->assertSame(8, $item['history_event_count']);
         $this->assertSame('near_limit', $item['history_budget_indicator']['status']);
         $this->assertSame('History near limit', $item['history_budget_indicator']['label']);
@@ -1024,8 +1001,6 @@ class V2DashboardWorkflowListTest extends TestCase
             'continue_as_new_recommended' => $continueAsNewRecommended,
             'declared_entry_mode' => $declaredEntryMode,
             'declared_contract_source' => $declaredContractSource,
-            'declared_contract_backfill_needed' => $declaredContractBackfillNeeded,
-            'declared_contract_backfill_available' => $declaredContractBackfillAvailable,
             'archived_at' => $archivedAt,
             'started_at' => $startedAt,
             'sort_timestamp' => $startedAt,
@@ -1104,8 +1079,6 @@ class V2DashboardWorkflowListTest extends TestCase
             $table->string('business_key')->nullable();
             $table->string('declared_entry_mode')->nullable();
             $table->string('declared_contract_source')->nullable();
-            $table->boolean('declared_contract_backfill_needed')->default(false);
-            $table->boolean('declared_contract_backfill_available')->default(false);
             $table->boolean('repair_attention')->default(false);
             $table->string('status');
             $table->string('status_bucket')->nullable();
