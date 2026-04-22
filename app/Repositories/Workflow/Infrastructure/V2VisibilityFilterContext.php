@@ -17,7 +17,7 @@ final class V2VisibilityFilterContext
     {
         $savedViewId = $request->query('view');
         $savedViewId = is_string($savedViewId) && $savedViewId !== '' ? $savedViewId : null;
-        $savedView = self::savedView($savedViewId);
+        $savedView = self::savedView($savedViewId, $request);
 
         if ($savedViewId !== null) {
             abort_if($savedView === null, 404, 'Waterline saved view not found.');
@@ -65,7 +65,7 @@ final class V2VisibilityFilterContext
     /**
      * @return array<string, mixed>|null
      */
-    private static function savedView(?string $id): ?array
+    private static function savedView(?string $id, Request $request): ?array
     {
         if ($id === null) {
             return null;
@@ -87,8 +87,8 @@ final class V2VisibilityFilterContext
             : SavedWorkflowView::class;
 
         /** @var SavedWorkflowView|null $view */
-        $view = $model::currentScopeQuery()->find($id);
+        $view = $model::visibleTo($request)->find($id);
 
-        return $view?->toWaterlinePayload();
+        return $view?->toWaterlinePayload($request);
     }
 }

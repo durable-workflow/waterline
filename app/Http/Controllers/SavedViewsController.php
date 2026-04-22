@@ -26,17 +26,18 @@ class SavedViewsController extends Controller
                 'filter_version' => VisibilityFilters::VERSION,
                 'supported_filter_versions' => VisibilityFilters::supportedVersions(),
                 'filter_definition' => VisibilityFilters::definition(),
+                'saved_view_policy' => $this->savedViewPolicy(),
             ]);
         }
 
         $bucket = $this->bucket($request->query('bucket'), required: false);
         $model = $this->model();
 
-        $saved = $model::currentScopeQuery()
+        $saved = $model::visibleTo($request)
             ->when($bucket !== null, static fn ($query) => $query->where('bucket', $bucket))
             ->orderBy('name')
             ->get()
-            ->map(static fn (SavedWorkflowView $view): array => $view->toWaterlinePayload())
+            ->map(static fn (SavedWorkflowView $view): array => $view->toWaterlinePayload($request))
             ->all();
 
         return response()->json([
@@ -47,8 +48,7 @@ class SavedViewsController extends Controller
             'filter_version' => VisibilityFilters::VERSION,
             'supported_filter_versions' => VisibilityFilters::supportedVersions(),
             'filter_definition' => VisibilityFilters::definition(),
-            'version_evolution' => VisibilityFilters::versionEvolutionPolicy(),
-            'mixed_fleet_policy' => VisibilityFilters::mixedFleetPolicy(),
+            'saved_view_policy' => $this->savedViewPolicy(),
         ]);
     }
 
@@ -70,6 +70,7 @@ class SavedViewsController extends Controller
         );
 
         /** @var SavedWorkflowView $view */
+        $owner = $model::ownerIdentity($request);
         $view = $model::query()->create([
             'name' => $payload['name'],
             'scope' => $model::configuredScope(),
@@ -77,17 +78,19 @@ class SavedViewsController extends Controller
             'filters' => $payload['filters'],
             'filter_version' => VisibilityFilters::VERSION,
             'shared' => $payload['shared'],
+            'owner_type' => $owner['type'],
+            'owner_id' => $owner['id'],
         ]);
 
-        return response()->json($view->toWaterlinePayload(), 201);
+        return response()->json($view->toWaterlinePayload($request), 201);
     }
 
-    public function show(string $view)
+    public function show(string $view, Request $request)
     {
         EngineSourceReadiness::throwIfPinnedV2Unavailable();
         abort_unless($this->available(), 404);
 
-        return response()->json($this->findViewPayload($view));
+        return response()->json($this->findViewPayload($view, $request));
     }
 
     public function update(string $view, Request $request)
@@ -96,7 +99,7 @@ class SavedViewsController extends Controller
         abort_unless($this->available(), 404);
 
         /** @var SavedWorkflowView $savedView */
-        $savedView = $this->findCustomView($view);
+        $savedView = $this->findMutableCustomView($view, $request);
         $payload = $this->payload($request);
 
         $model = $this->model();
@@ -119,15 +122,15 @@ class SavedViewsController extends Controller
             'shared' => $payload['shared'],
         ]);
 
-        return response()->json($savedView->fresh()->toWaterlinePayload());
+        return response()->json($savedView->fresh()->toWaterlinePayload($request));
     }
 
-    public function destroy(string $view)
+    public function destroy(string $view, Request $request)
     {
         EngineSourceReadiness::throwIfPinnedV2Unavailable();
         abort_unless($this->available(), 404);
 
-        $this->findCustomView($view)->delete();
+        $this->findMutableCustomView($view, $request)->delete();
 
         return response()->noContent();
     }
@@ -184,7 +187,7 @@ class SavedViewsController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function findViewPayload(string $id): array
+    private function findViewPayload(string $id, Request $request): array
     {
         $system = SavedWorkflowView::systemView($id);
 
@@ -192,14 +195,21 @@ class SavedViewsController extends Controller
             return $system;
         }
 
-        return $this->findCustomView($id)->toWaterlinePayload();
+        return $this->findVisibleCustomView($id, $request)->toWaterlinePayload($request);
     }
 
-    private function findCustomView(string $id): SavedWorkflowView
+    private function findVisibleCustomView(string $id, Request $request): SavedWorkflowView
     {
         $model = $this->model();
 
-        return $model::currentScopeQuery()->findOrFail($id);
+        return $model::visibleTo($request)->findOrFail($id);
+    }
+
+    private function findMutableCustomView(string $id, Request $request): SavedWorkflowView
+    {
+        $model = $this->model();
+
+        return $model::mutableBy($request)->findOrFail($id);
     }
 
     /**
@@ -211,5 +221,21 @@ class SavedViewsController extends Controller
 
         return ($engineSource['uses_v2'] ?? false) === true
             && config('waterline.saved_views.enabled', true);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function savedViewPolicy(): array
+    {
+        return [
+            'visibility' => [
+                'private' => 'Readable only by the owner within the configured Waterline saved-view scope.',
+                'shared' => 'Readable by any Waterline operator within the configured saved-view scope.',
+            ],
+            'mutation' => 'Only the saved-view owner can update or delete a custom view, including shared views.',
+            'name_uniqueness' => 'Custom saved-view names are unique per configured scope and bucket.',
+            'reserved_id_prefix' => 'system:',
+        ];
     }
 }

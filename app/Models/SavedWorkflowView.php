@@ -6,6 +6,7 @@ namespace Waterline\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Workflow\V2\Support\VisibilityFilters;
 
@@ -41,6 +42,9 @@ class SavedWorkflowView extends Model
             }
 
             $view->scope ??= static::configuredScope();
+            $owner = static::ownerIdentity();
+            $view->owner_type ??= $owner['type'];
+            $view->owner_id ??= $owner['id'];
             $view->filter_version ??= VisibilityFilters::VERSION;
             $view->filters = VisibilityFilters::normalize($view->filters ?? []);
         });
@@ -58,12 +62,73 @@ class SavedWorkflowView extends Model
         return static::query()->where('scope', static::configuredScope());
     }
 
+    /**
+     * @return Builder<self>
+     */
+    public static function visibleTo(Request $request): Builder
+    {
+        $owner = static::ownerIdentity($request);
+
+        return static::currentScopeQuery()
+            ->where(static function (Builder $query) use ($owner): void {
+                $query->where('shared', true)
+                    ->orWhere(static function (Builder $query) use ($owner): void {
+                        $query->where('owner_type', $owner['type'])
+                            ->where('owner_id', $owner['id']);
+                    });
+            });
+    }
+
+    /**
+     * @return Builder<self>
+     */
+    public static function mutableBy(Request $request): Builder
+    {
+        $owner = static::ownerIdentity($request);
+
+        return static::currentScopeQuery()
+            ->where('owner_type', $owner['type'])
+            ->where('owner_id', $owner['id']);
+    }
+
     public static function configuredScope(): string
     {
         $scope = config('waterline.saved_views.scope', 'default');
         $scope = is_string($scope) ? trim($scope) : 'default';
 
         return $scope === '' ? 'default' : $scope;
+    }
+
+    /**
+     * @return array{type: string, id: string}
+     */
+    public static function ownerIdentity(?Request $request = null): array
+    {
+        $user = $request?->user();
+
+        if (is_object($user) && method_exists($user, 'getAuthIdentifier')) {
+            $identifier = $user->getAuthIdentifier();
+
+            if (is_scalar($identifier) && trim((string) $identifier) !== '') {
+                return [
+                    'type' => Str::limit(get_class($user), 120, ''),
+                    'id' => Str::limit(trim((string) $identifier), 120, ''),
+                ];
+            }
+        }
+
+        return [
+            'type' => 'scope',
+            'id' => Str::limit(static::configuredScope(), 120, ''),
+        ];
+    }
+
+    public function isOwnedBy(Request $request): bool
+    {
+        $owner = static::ownerIdentity($request);
+
+        return $this->owner_type === $owner['type']
+            && $this->owner_id === $owner['id'];
     }
 
     /**
@@ -95,9 +160,10 @@ class SavedWorkflowView extends Model
     /**
      * @return array<string, mixed>
      */
-    public function toWaterlinePayload(): array
+    public function toWaterlinePayload(?Request $request = null): array
     {
         $versionMetadata = VisibilityFilters::versionMetadata($this->getRawOriginal('filter_version') ?? $this->filter_version);
+        $ownedByCurrentOperator = $request === null ? null : $this->isOwnedBy($request);
 
         return [
             'id' => $this->id,
@@ -105,15 +171,17 @@ class SavedWorkflowView extends Model
             'bucket' => $this->bucket,
             'scope' => $this->scope,
             'shared' => (bool) $this->shared,
+            'owner_type' => $this->owner_type,
+            'owner_id' => $this->owner_id,
+            'owned_by_current_operator' => $ownedByCurrentOperator,
+            'mutable_by_current_operator' => $ownedByCurrentOperator,
             'system' => false,
             'filters' => VisibilityFilters::normalize($this->filters ?? []),
             'filter_version' => $versionMetadata['version'],
             'filter_version_supported' => $versionMetadata['supported'],
-            'filter_version_deprecated' => $versionMetadata['deprecated'],
             'filter_version_status' => $versionMetadata['status'],
             'filter_version_message' => $versionMetadata['message'],
             'current_filter_version' => $versionMetadata['current_version'],
-            'minimum_supported_filter_version' => $versionMetadata['minimum_supported_version'],
             'supported_filter_versions' => $versionMetadata['supported_versions'],
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
@@ -181,15 +249,17 @@ class SavedWorkflowView extends Model
             'bucket' => $view['bucket'],
             'scope' => 'system',
             'shared' => true,
+            'owner_type' => 'system',
+            'owner_id' => 'waterline',
+            'owned_by_current_operator' => false,
+            'mutable_by_current_operator' => false,
             'system' => true,
             'filters' => $view['filters'],
             'filter_version' => VisibilityFilters::VERSION,
             'filter_version_supported' => $versionMetadata['supported'],
-            'filter_version_deprecated' => $versionMetadata['deprecated'],
             'filter_version_status' => $versionMetadata['status'],
             'filter_version_message' => $versionMetadata['message'],
             'current_filter_version' => $versionMetadata['current_version'],
-            'minimum_supported_filter_version' => $versionMetadata['minimum_supported_version'],
             'supported_filter_versions' => $versionMetadata['supported_versions'],
             'created_at' => null,
             'updated_at' => null,

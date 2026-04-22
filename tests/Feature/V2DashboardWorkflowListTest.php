@@ -2,6 +2,7 @@
 
 namespace Waterline\Tests\Feature;
 
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -303,6 +304,10 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('bucket', 'running')
             ->assertJsonPath('scope', 'ops')
             ->assertJsonPath('shared', true)
+            ->assertJsonPath('owner_type', 'scope')
+            ->assertJsonPath('owner_id', 'ops')
+            ->assertJsonPath('owned_by_current_operator', true)
+            ->assertJsonPath('mutable_by_current_operator', true)
             ->assertJsonPath('system', false)
             ->assertJsonPath('filters.workflow_type', 'workflow.test')
             ->assertJsonPath('filters.labels.tenant', 'acme')
@@ -546,12 +551,12 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.saved_view.filter_version_status', 'unsupported')
             ->assertJsonPath(
                 'visibility_filters.saved_view.filter_version_message',
-                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2, 3, 4, 5, 6.',
+                'This saved view uses visibility filter version 99, but this Waterline build supports version 6.',
             )
             ->assertJsonPath('visibility_filters.saved_view_applied', false)
             ->assertJsonPath(
                 'visibility_filters.saved_view_warning',
-                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2, 3, 4, 5, 6.',
+                'This saved view uses visibility filter version 99, but this Waterline build supports version 6.',
             )
             ->assertJsonPath('visibility_filters.applied.instance_id', $timer->workflow_instance_id)
             ->assertJsonMissingPath('visibility_filters.applied.wait_kind');
@@ -692,6 +697,7 @@ class V2DashboardWorkflowListTest extends TestCase
         $this->get('/waterline/api/saved-views?bucket=running')
             ->assertOk()
             ->assertJsonPath('filter_version', VisibilityFilters::VERSION)
+            ->assertJsonPath('saved_view_policy.mutation', 'Only the saved-view owner can update or delete a custom view, including shared views.')
             ->assertJsonPath('filter_definition.fields.instance_id.label', 'Instance ID')
             ->assertJsonPath('filter_definition.fields.instance_id.type', 'string')
             ->assertJsonPath('filter_definition.fields.instance_id_contains.operator', 'contains')
@@ -749,7 +755,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('filter_version_status', 'unsupported')
             ->assertJsonPath(
                 'filter_version_message',
-                'This saved view uses visibility filter version 99, but this Waterline build supports version 1, 2, 3, 4, 5, 6.',
+                'This saved view uses visibility filter version 99, but this Waterline build supports version 6.',
             )
             ->assertJsonPath('current_filter_version', VisibilityFilters::VERSION)
             ->assertJsonPath('supported_filter_versions', VisibilityFilters::supportedVersions());
@@ -776,6 +782,70 @@ class V2DashboardWorkflowListTest extends TestCase
             'filter_version' => VisibilityFilters::VERSION,
             'name' => 'Current signal waits',
         ]);
+    }
+
+    public function testSavedViewsAreReadableWhenSharedButMutableOnlyByOwner(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.saved_views.scope', 'ops');
+
+        $owner = new SavedViewTestUser('owner');
+        $other = new SavedViewTestUser('other');
+
+        $this->actingAs($owner);
+
+        $private = $this->postJson('/waterline/api/saved-views', [
+            'name' => 'Owner private waits',
+            'bucket' => 'running',
+            'filters' => [
+                'wait_kind' => 'signal',
+            ],
+            'shared' => false,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('owner_type', SavedViewTestUser::class)
+            ->assertJsonPath('owner_id', 'owner')
+            ->assertJsonPath('owned_by_current_operator', true)
+            ->json('id');
+
+        $shared = $this->postJson('/waterline/api/saved-views', [
+            'name' => 'Owner shared waits',
+            'bucket' => 'running',
+            'filters' => [
+                'wait_kind' => 'timer',
+            ],
+            'shared' => true,
+        ])->assertCreated()->json('id');
+
+        $this->actingAs($other);
+
+        $this->get('/waterline/api/saved-views/'.$private)
+            ->assertNotFound();
+
+        $this->get('/waterline/api/saved-views?bucket=running')
+            ->assertOk()
+            ->assertJsonMissing(['id' => $private])
+            ->assertJsonFragment([
+                'id' => $shared,
+                'owned_by_current_operator' => false,
+                'mutable_by_current_operator' => false,
+            ]);
+
+        $this->get('/waterline/api/saved-views/'.$shared)
+            ->assertOk()
+            ->assertJsonPath('id', $shared)
+            ->assertJsonPath('owned_by_current_operator', false)
+            ->assertJsonPath('mutable_by_current_operator', false);
+
+        $this->putJson('/waterline/api/saved-views/'.$shared, [
+            'name' => 'Other update',
+            'bucket' => 'running',
+            'filters' => [],
+            'shared' => true,
+        ])->assertNotFound();
+
+        $this->delete('/waterline/api/saved-views/'.$shared)
+            ->assertNotFound();
     }
 
     public function testSavedViewsIndexStillEchoesFilterDefinitionWhenDisabled(): void
@@ -1029,4 +1099,45 @@ class V2DashboardWorkflowListTest extends TestCase
 final class ConfiguredWaterlineListRunSummary extends WorkflowRunSummary
 {
     protected $table = 'waterline_configured_list_run_summaries';
+}
+
+final class SavedViewTestUser implements Authenticatable
+{
+    public function __construct(private readonly string $id)
+    {
+    }
+
+    public function getAuthIdentifierName(): string
+    {
+        return 'id';
+    }
+
+    public function getAuthIdentifier(): string
+    {
+        return $this->id;
+    }
+
+    public function getAuthPassword()
+    {
+        return null;
+    }
+
+    public function getAuthPasswordName(): string
+    {
+        return 'password';
+    }
+
+    public function getRememberToken()
+    {
+        return null;
+    }
+
+    public function setRememberToken($value): void
+    {
+    }
+
+    public function getRememberTokenName(): string
+    {
+        return 'remember_token';
+    }
 }

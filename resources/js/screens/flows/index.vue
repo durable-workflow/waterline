@@ -1499,6 +1499,11 @@
                 return null
             },
 
+            canManageSelectedCustomView() {
+                return !!this.selectedCustomView
+                    && this.selectedCustomView.mutable_by_current_operator !== false
+            },
+
             isTerminalCollection() {
                 return ['completed', 'failed', 'cancelled', 'terminated'].includes(this.$route.params.type);
             },
@@ -1548,7 +1553,7 @@
                         Save View
                     </button>
 
-                    <button v-if="selectedCustomView"
+                    <button v-if="canManageSelectedCustomView()"
                             class="btn btn-outline-secondary btn-sm mr-2 mb-2"
                             @click="manageCurrentView">
                         Manage View
