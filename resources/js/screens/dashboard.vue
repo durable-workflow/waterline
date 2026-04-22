@@ -12,6 +12,7 @@
             return {
                 stats: {},
                 ready: false,
+                loadingError: null,
             };
         },
 
@@ -261,6 +262,12 @@
                 return this.$http.get(Waterline.basePath + '/api/stats')
                     .then(response => {
                         this.stats = response.data;
+                        this.loadingError = null;
+                    })
+                    .catch(error => {
+                        this.loadingError = this.dashboardLoadErrorMessage(error);
+
+                        throw error;
                     });
             },
 
@@ -272,13 +279,51 @@
                     this.loadStats(),
                 ]).then(() => {
                     this.ready = true;
-
-                    this.timeout = setTimeout(() => {
-                        if (this.$root.autoLoadsNewEntries) {
-                            this.refreshStatsPeriodically();
-                        }
-                    }, 5000);
+                    this.scheduleNextStatsRefresh();
+                }).catch(() => {
+                    this.ready = true;
+                    this.scheduleNextStatsRefresh();
                 });
+            },
+
+            scheduleNextStatsRefresh() {
+                this.timeout = setTimeout(() => {
+                    if (this.$root.autoLoadsNewEntries) {
+                        this.refreshStatsPeriodically();
+                    }
+                }, 5000);
+            },
+
+            retryStatsLoad() {
+                this.ready = false;
+                this.loadingError = null;
+
+                this.refreshStatsPeriodically();
+            },
+
+            dashboardLoadErrorMessage(error) {
+                if (error && error.code === 'ECONNABORTED') {
+                    return 'The dashboard request timed out.';
+                }
+
+                if (error && error.response && error.response.status) {
+                    const status = error.response.status;
+                    const message = error.response.data && error.response.data.message;
+
+                    return message
+                        ? 'The dashboard returned HTTP ' + status + ': ' + message
+                        : 'The dashboard returned HTTP ' + status + '.';
+                }
+
+                if (error && error.request) {
+                    return 'Waterline could not reach the dashboard API.';
+                }
+
+                if (error && error.message) {
+                    return error.message;
+                }
+
+                return 'Waterline could not load dashboard metrics.';
             },
 
             duration(start, end) {
@@ -490,6 +535,36 @@
 
 <template>
     <div>
+        <div v-if="!ready" class="card">
+            <div class="card-body text-center py-5" role="status" aria-live="polite" aria-busy="true">
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color" style="width: 32px; height: 32px;">
+                    <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
+                </svg>
+                <p class="mt-2 mb-0 text-muted">Loading dashboard metrics...</p>
+            </div>
+        </div>
+
+        <div v-else-if="loadingError && Object.keys(stats).length === 0" class="card">
+            <div class="card-body">
+                <div class="alert alert-danger mb-3" role="alert" aria-live="assertive">
+                    <strong>Dashboard metrics unavailable.</strong>
+                    <div class="mt-1">{{ loadingError }}</div>
+                </div>
+                <button type="button" class="btn btn-outline-primary" @click="retryStatsLoad">
+                    Retry
+                </button>
+            </div>
+        </div>
+
+        <template v-else>
+        <div v-if="loadingError" class="alert alert-warning" role="status" aria-live="polite">
+            <strong>Dashboard refresh failed.</strong>
+            <span>{{ loadingError }}</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary ml-2" @click="retryStatsLoad">
+                Retry
+            </button>
+        </div>
+
         <!-- Needs Attention Alerts (WCAG 4.1.3: Status Messages) -->
         <div class="card mb-4"
              v-if="stats.needs_attention && stats.needs_attention.total_alerts > 0"
@@ -1095,5 +1170,6 @@
             </div>
         </div>
 
+        </template>
     </div>
 </template>
