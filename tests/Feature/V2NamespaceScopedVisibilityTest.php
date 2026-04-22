@@ -96,7 +96,7 @@ class V2NamespaceScopedVisibilityTest extends TestCase
         ]);
 
         WorkflowFailure::create([
-            'id' => 'waterline-dashboard-billing-failure',
+            'id' => 'waterline-dashboard0303405',
             'workflow_run_id' => $billingRun->id,
             'source_kind' => 'activity_execution',
             'source_id' => 'activity-1',
@@ -110,7 +110,7 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             'created_at' => now(),
         ]);
         WorkflowFailure::create([
-            'id' => 'waterline-dashboard-shipping-failure',
+            'id' => 'waterline-dashboardE95E90A',
             'workflow_run_id' => $shippingRun->id,
             'source_kind' => 'activity_execution',
             'source_id' => 'activity-2',

@@ -180,8 +180,8 @@ class V2DashboardWorkflowListTest extends TestCase
 
         $sortTimestamp = Carbon::parse('2022-01-01 12:05:00');
 
-        $olderRunId = '01JTESTSORTKEY00000000000001';
-        $newerRunId = '01JTESTSORTKEY00000000000002';
+        $olderRunId = '01JTESTSORTKEY000000000001';
+        $newerRunId = '01JTESTSORTKEY000000000002';
 
         $older = $this->createRunningSummary(
             'order-older-tie',

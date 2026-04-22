@@ -480,7 +480,7 @@ class V2HistoryExportControllerTest extends TestCase
         ]);
 
         $childInstance = WorkflowInstance::create([
-            'id' => 'history-export-waterline-child',
+            'id' => 'history-export-wateDC3B031',
             'workflow_class' => 'ChildWorkflowClass',
             'workflow_type' => 'workflow.export.child',
             'run_count' => 1,

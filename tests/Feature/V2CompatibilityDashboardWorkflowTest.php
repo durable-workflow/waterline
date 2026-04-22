@@ -120,7 +120,7 @@ class V2CompatibilityDashboardWorkflowTest extends TestCase
         $instance->update(['current_run_id' => $run->id]);
 
         WorkflowTask::create([
-            'id' => '01JTESTFLOWTASKNULLTASK0001',
+            'id' => '01JTESTFLOWTASKNULL2D3CDF3',
             'workflow_run_id' => $run->id,
             'task_type' => 'workflow',
             'status' => 'ready',
@@ -163,7 +163,7 @@ class V2CompatibilityDashboardWorkflowTest extends TestCase
         ]);
 
         $run = WorkflowRun::create([
-            'id' => '01JTESTFLOWRUNFLEETCOMPAT01',
+            'id' => '01JTESTFLOWRUNFLEET007245B',
             'workflow_instance_id' => $instance->id,
             'run_number' => 1,
             'workflow_class' => 'WorkflowClass',
@@ -180,7 +180,7 @@ class V2CompatibilityDashboardWorkflowTest extends TestCase
         $instance->update(['current_run_id' => $run->id]);
 
         WorkflowTask::create([
-            'id' => '01JTESTFLOWTASKFLEETCOMPAT1',
+            'id' => '01JTESTFLOWTASKFLEE547B6F0',
             'workflow_run_id' => $run->id,
             'task_type' => 'workflow',
             'status' => 'ready',

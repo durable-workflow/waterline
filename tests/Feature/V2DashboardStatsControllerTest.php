@@ -33,7 +33,7 @@ class V2DashboardStatsControllerTest extends TestCase
         config()->set('waterline.engine_source', 'v2');
 
         $instance = WorkflowInstance::create([
-            'id' => '01JTESTFLOWINSTANCE00000000',
+            'id' => '01JTESTFLOWINSTANCE2FACBC3',
             'workflow_class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
             'run_count' => 1,
@@ -74,7 +74,7 @@ class V2DashboardStatsControllerTest extends TestCase
         ]);
 
         WorkflowFailure::create([
-            'id' => '01JTESTFAILURE0000000000000',
+            'id' => '01JTESTFAILURE00000ED9632A',
             'workflow_run_id' => $run->id,
             'source_kind' => 'activity_execution',
             'source_id' => 'activity-1',
@@ -105,7 +105,7 @@ class V2DashboardStatsControllerTest extends TestCase
         config()->set('waterline.engine_source', 'v2');
 
         $instance = WorkflowInstance::create([
-            'id' => '01JTESTFLOWINSTANCEFAILED000',
+            'id' => '01JTESTFLOWINSTANCED6BD865',
             'workflow_class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
             'run_count' => 1,
