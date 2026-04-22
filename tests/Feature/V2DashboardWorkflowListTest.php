@@ -606,7 +606,7 @@ class V2DashboardWorkflowListTest extends TestCase
 
         $flagged = $this->createRunningSummary(
             'repair-blocked-instance',
-            'run-repair-blocked-instance',
+            'run-repair-blocked',
             Carbon::parse('2022-01-01 12:05:00'),
             Carbon::parse('2022-01-01 12:05:00'),
             repairBlockedReason: 'unsupported_history',
@@ -614,7 +614,7 @@ class V2DashboardWorkflowListTest extends TestCase
         );
         $this->createRunningSummary(
             'repair-not-needed-instance',
-            'run-repair-not-needed-instance',
+            'run-repair-not-needed',
             Carbon::parse('2022-01-01 12:06:00'),
             Carbon::parse('2022-01-01 12:06:00'),
             repairBlockedReason: 'repair_not_needed',
@@ -1070,7 +1070,7 @@ class V2DashboardWorkflowListTest extends TestCase
     {
         Schema::create('waterline_configured_list_run_summaries', static function (Blueprint $table): void {
             $table->string('id', 26)->primary();
-            $table->string('workflow_instance_id', 191)->index();
+            $table->string('workflow_instance_id', 191)->index('wl_cfg_list_run_summary_instance_idx');
             $table->unsignedInteger('run_number');
             $table->boolean('is_current_run')->default(false);
             $table->string('engine_source')->nullable();

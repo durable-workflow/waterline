@@ -85,7 +85,7 @@ final class V2ConfiguredCoreModelsDashboardWorkflowTest extends TestCase
     {
         Schema::create('configured_waterline_workflow_runs', static function (Blueprint $table): void {
             $table->string('id', 26)->primary();
-            $table->string('workflow_instance_id', 191)->index();
+            $table->string('workflow_instance_id', 191)->index('cfg_waterline_runs_instance_idx');
             $table->unsignedInteger('run_number');
             $table->string('workflow_class');
             $table->string('workflow_type');
@@ -115,7 +115,7 @@ final class V2ConfiguredCoreModelsDashboardWorkflowTest extends TestCase
             $table->timestamp('last_progress_at', 6)->nullable();
             $table->timestamps(6);
 
-            $table->unique(['workflow_instance_id', 'run_number']);
+            $table->unique(['workflow_instance_id', 'run_number'], 'cfg_waterline_runs_instance_run_unique');
         });
     }
 

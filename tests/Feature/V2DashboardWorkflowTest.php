@@ -10659,7 +10659,7 @@ class V2DashboardWorkflowTest extends TestCase
     {
         Schema::create('waterline_configured_detail_run_summaries', static function (Blueprint $table): void {
             $table->string('id', 26)->primary();
-            $table->string('workflow_instance_id', 191)->index();
+            $table->string('workflow_instance_id', 191)->index('wl_cfg_detail_run_summary_instance_idx');
             $table->unsignedInteger('run_number');
             $table->boolean('is_current_run')->default(false);
             $table->string('engine_source')->nullable();
