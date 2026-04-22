@@ -2253,6 +2253,12 @@ export default {
         },
 
         taskProblemBadge(flow) {
+            const badge = this.actionabilityBadge(flow, 'task_problem')
+
+            if (badge || this.hasActionabilityPayload(flow)) {
+                return badge
+            }
+
             return flow && flow.task_problem_badge
                 ? flow.task_problem_badge
                 : null
@@ -2270,6 +2276,17 @@ export default {
                 success: 'badge badge-success',
                 warning: 'badge badge-warning',
             }[(badge && badge.tone) || 'secondary'] || 'badge badge-secondary'
+        },
+
+        actionabilityBadge(flow, name) {
+            const actionability = flow && flow.actionability ? flow.actionability : null
+            const badges = actionability && actionability.badges ? actionability.badges : null
+
+            return badges && badges[name] ? badges[name] : null
+        },
+
+        hasActionabilityPayload(flow) {
+            return !!(flow && flow.actionability && typeof flow.actionability === 'object')
         },
 
         compatibilityFleetSummary(supported) {

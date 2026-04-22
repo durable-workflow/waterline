@@ -246,7 +246,7 @@
             repairBlocked(flow) {
                 const badge = this.actionabilityBadge(flow, 'repair')
 
-                if (badge) {
+                if (badge || this.hasActionabilityPayload(flow)) {
                     return badge
                 }
 
@@ -286,7 +286,7 @@
             taskProblem(flow) {
                 const badge = this.actionabilityBadge(flow, 'task_problem')
 
-                if (badge) {
+                if (badge || this.hasActionabilityPayload(flow)) {
                     return badge
                 }
 
@@ -300,6 +300,10 @@
                 const badges = actionability && actionability.badges ? actionability.badges : null
 
                 return badges && badges[name] ? badges[name] : null
+            },
+
+            hasActionabilityPayload(flow) {
+                return !!(flow && flow.actionability && typeof flow.actionability === 'object')
             },
 
             showCompatibilityEntryBadge(flow) {
