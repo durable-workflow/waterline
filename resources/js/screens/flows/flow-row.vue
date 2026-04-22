@@ -244,6 +244,12 @@
             },
 
             repairBlocked(flow) {
+                const badge = this.actionabilityBadge(flow, 'repair')
+
+                if (badge) {
+                    return badge
+                }
+
                 return flow && flow.repair_blocked
                     ? flow.repair_blocked
                     : null
@@ -278,9 +284,22 @@
             },
 
             taskProblem(flow) {
+                const badge = this.actionabilityBadge(flow, 'task_problem')
+
+                if (badge) {
+                    return badge
+                }
+
                 return flow && flow.task_problem_badge
                     ? flow.task_problem_badge
                     : null
+            },
+
+            actionabilityBadge(flow, name) {
+                const actionability = flow && flow.actionability ? flow.actionability : null
+                const badges = actionability && actionability.badges ? actionability.badges : null
+
+                return badges && badges[name] ? badges[name] : null
             },
 
             showCompatibilityEntryBadge(flow) {

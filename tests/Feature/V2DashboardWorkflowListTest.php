@@ -951,8 +951,17 @@ class V2DashboardWorkflowListTest extends TestCase
         $this->assertFalse($item['actionability']['actions']['repair']['allowed']);
         $this->assertSame('unsupported_history', $item['actionability']['actions']['repair']['reason']);
         $this->assertSame('repair_state', $item['actionability']['actions']['repair']['derived_from']);
+        $this->assertSame('unsupported_history', $item['actionability']['badges']['repair']['code']);
+        $this->assertSame('Replay Blocked', $item['actionability']['badges']['repair']['label']);
+        $this->assertSame('dark', $item['actionability']['badges']['repair']['tone']);
+        $this->assertTrue($item['actionability']['badges']['repair']['badge_visible']);
+        $this->assertSame('repair_state', $item['actionability']['badges']['repair']['derived_from']);
         $this->assertTrue($item['task_problem']);
         $this->assertIsArray($item['task_problem_badge']);
+        $this->assertSame('task_problem', $item['actionability']['badges']['task_problem']['code']);
+        $this->assertSame('Task Problem', $item['actionability']['badges']['task_problem']['label']);
+        $this->assertTrue($item['actionability']['badges']['task_problem']['badge_visible']);
+        $this->assertSame('waterline.actionability', $item['actionability']['badges']['task_problem']['derived_from']);
         $this->assertSame('compatibility', $item['declared_entry_mode']);
         $this->assertSame('live_definition', $item['declared_contract_source']);
         $this->assertSame('no_required_marker', $item['compatibility_semantics']['state']);

@@ -132,6 +132,8 @@ class ActionabilityContract
             default => 'not_needed',
         };
 
+        $taskProblem = ($payload['task_problem'] ?? false) === true;
+
         return [
             'schema' => self::SCHEMA,
             'version' => self::VERSION,
@@ -140,9 +142,13 @@ class ActionabilityContract
             'blocked_reason' => $blockedReason,
             'status_bucket' => $statusBucket,
             'closed_reason' => $closedReason,
-            'task_problem' => ($payload['task_problem'] ?? false) === true,
+            'task_problem' => $taskProblem,
             'diagnostic_only_evidence' => self::hasDiagnosticOnlyEvidence($payload),
             'actions' => self::runActions($payload, $repairState, $blockedReason),
+            'badges' => [
+                'repair' => self::repairBadge($repairState, $blockedReason),
+                'task_problem' => self::taskProblemBadge($taskProblem),
+            ],
         ];
     }
 
@@ -190,6 +196,63 @@ class ActionabilityContract
             'unknown' => 'repair_state_unknown',
             default => null,
         };
+    }
+
+    /**
+     * @return array{code: ?string, label: string, description: string, tone: string, badge_visible: bool, derived_from: string}
+     */
+    private static function repairBadge(string $repairState, ?string $blockedReason): array
+    {
+        $reason = self::repairBlockedReason($repairState, $blockedReason);
+
+        return [
+            'code' => $reason,
+            'label' => match ($reason) {
+                'unsupported_history' => 'Replay Blocked',
+                'selected_run_not_current' => 'Run Not Current',
+                'run_closed' => 'Run Closed',
+                'waiting_for_compatible_worker' => 'Compatibility Wait',
+                'repair_not_needed' => 'Repair Not Needed',
+                'repair_state_unknown' => 'Repair Unknown',
+                default => $repairState === 'repairable' ? 'Repairable' : 'Repair Blocked',
+            },
+            'description' => match ($reason) {
+                'unsupported_history' => 'Repair is blocked because only unsupported diagnostic history remains.',
+                'selected_run_not_current' => 'Repair is blocked because the selected run is not the current active run.',
+                'run_closed' => 'Repair is blocked because the run is already closed.',
+                'waiting_for_compatible_worker' => 'Repair is waiting for an active compatible worker.',
+                'repair_not_needed' => 'Repair is not needed for this run.',
+                'repair_state_unknown' => 'Waterline has not classified this run as repairable yet.',
+                default => $repairState === 'repairable'
+                    ? 'This run has an actionable durable repair source.'
+                    : 'Repair is currently blocked.',
+            },
+            'tone' => match ($reason) {
+                'unsupported_history', 'selected_run_not_current', 'run_closed' => 'dark',
+                'waiting_for_compatible_worker', 'repair_state_unknown' => 'warning',
+                'repair_not_needed' => 'secondary',
+                default => $repairState === 'repairable' ? 'success' : 'secondary',
+            },
+            'badge_visible' => $repairState === 'blocked',
+            'derived_from' => 'repair_state',
+        ];
+    }
+
+    /**
+     * @return array{code: ?string, label: string, description: string, tone: string, badge_visible: bool, derived_from: string}
+     */
+    private static function taskProblemBadge(bool $taskProblem): array
+    {
+        return [
+            'code' => $taskProblem ? 'task_problem' : null,
+            'label' => $taskProblem ? 'Task Problem' : 'No Task Problem',
+            'description' => $taskProblem
+                ? 'This run recorded workflow-task problems.'
+                : 'This run has not recorded workflow-task problems.',
+            'tone' => $taskProblem ? 'warning' : 'secondary',
+            'badge_visible' => $taskProblem,
+            'derived_from' => self::SCHEMA,
+        ];
     }
 
     /**
