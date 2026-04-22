@@ -1662,12 +1662,22 @@
                 </button>
             </div>
 
-            <div v-if="ready && !loadingError && flows.length == 0"
+            <div v-if="ready && !loadingError && flows.length == 0 && hasActiveFilters"
                  class="d-flex flex-column align-items-center justify-content-center card-bg-secondary p-5 bottom-radius text-center"
                  role="status"
                  aria-live="polite">
-                <strong>{{ flowListEmptyTitle() }}</strong>
-                <span v-if="hasActiveFilters" class="text-muted mt-2">Clear the active view or filters to widen the list.</span>
+                <strong>No flows match the current filters.</strong>
+                <span class="text-muted mt-2">Adjust the filters above or clear them to see more flows.</span>
+                <button class="btn btn-outline-primary btn-sm mt-3" @click="clearFilters">
+                    Clear filters
+                </button>
+            </div>
+
+            <div v-if="ready && !loadingError && flows.length == 0 && !hasActiveFilters"
+                 class="d-flex flex-column align-items-center justify-content-center card-bg-secondary p-5 bottom-radius text-center"
+                 role="status"
+                 aria-live="polite">
+                <span>There aren't any flows.</span>
             </div>
 
             <table v-if="ready && !loadingError && flows.length > 0" :class="workflowListTableClass">
