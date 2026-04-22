@@ -394,7 +394,7 @@
             },
 
             defaultWorkflowListColumns() {
-                return ['flow', 'started_at', 'closed_at', 'duration', 'actions']
+                return ['flow', 'started_at', 'closed_at', 'duration']
             },
 
             workflowListColumnOptions() {
@@ -408,8 +408,6 @@
                     options.push({key: 'duration', label: 'Duration'})
                 }
 
-                options.push({key: 'actions', label: 'Actions'})
-
                 return options
             },
 
@@ -420,10 +418,6 @@
 
                 if (!normalized.includes('flow')) {
                     normalized.unshift('flow')
-                }
-
-                if (!normalized.includes('actions')) {
-                    normalized.push('actions')
                 }
 
                 return normalized.length > 0
@@ -470,7 +464,7 @@
                                class="mr-2 waterline-column-option"
                                value="${this.escapeHtml(column.key)}"
                                ${columns.includes(column.key) ? 'checked' : ''}
-                               ${['flow', 'actions'].includes(column.key) ? 'disabled' : ''}>
+                               ${column.key === 'flow' ? 'disabled' : ''}>
                         <span>${this.escapeHtml(column.label)}</span>
                     </label>
                 `).join('')
@@ -1620,7 +1614,6 @@
                     </th>
                     <th v-if="isTerminalCollection() && columnEnabled('closed_at')">{{ closedAtLabel() }}</th>
                     <th v-if="isTerminalCollection() && columnEnabled('duration')" class="text-right">Duration</th>
-                    <th v-if="columnEnabled('actions')" class="text-right">Actions</th>
                 </tr>
                 </thead>
 

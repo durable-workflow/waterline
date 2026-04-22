@@ -74,24 +74,6 @@
         <td v-if="isTerminalCollection() && columnEnabled('duration')" class="table-fit">
             <span>{{ duration(flow.started_at || flow.created_at, flow.closed_at || flow.updated_at) }}</span>
         </td>
-
-        <td v-if="columnEnabled('actions')" class="table-fit text-right">
-            <router-link
-                class="btn btn-outline-secondary btn-sm"
-                :title="detailActionTitle(flow)"
-                :to="detailRoute(flow)"
-            >
-                {{ detailActionLabel(flow) }}
-            </router-link>
-
-            <div
-                v-if="showDetailActionUnavailableState(flow)"
-                class="small text-muted mt-1"
-                :title="detailActionTitle(flow)"
-            >
-                {{ detailActionUnavailableLabel(flow) }}
-            </div>
-        </td>
     </tr>
 </template>
 
@@ -143,51 +125,6 @@
                         runId,
                     },
                 }
-            },
-
-            detailAction(flow) {
-                return flow && flow.detail_action
-                    ? flow.detail_action
-                    : null
-            },
-
-            detailActionLabel(flow) {
-                const action = this.detailAction(flow)
-
-                return action && action.label
-                    ? action.label
-                    : 'Run Detail'
-            },
-
-            detailActionTitle(flow) {
-                const action = this.detailAction(flow)
-
-                return action && action.description
-                    ? action.description
-                    : 'Open the selected run detail.'
-            },
-
-            showDetailActionUnavailableState(flow) {
-                const action = this.detailAction(flow)
-
-                return action
-                    ? action.history_available === false
-                    : !this.hasTypedHistory(flow)
-            },
-
-            detailActionUnavailableLabel(flow) {
-                const action = this.detailAction(flow)
-
-                return action && action.unavailable_label
-                    ? action.unavailable_label
-                    : 'No typed history'
-            },
-
-            hasTypedHistory(flow) {
-                return flow
-                    && flow.history_event_count !== null
-                    && flow.history_event_count !== undefined
-                    && Number(flow.history_event_count) > 0
             },
 
             isTerminalCollection() {

@@ -628,29 +628,8 @@ class WorkflowsController extends Controller
         $item['history_budget_indicator'] = $this->historyBudgetIndicator($item);
         $item = CompatibilitySemantics::annotateListItem($item);
         $item['actionability'] = ActionabilityContract::annotateRun($item)['actionability'];
-        $item['detail_action'] = $this->detailAction($item);
 
         return $item;
-    }
-
-    /**
-     * @param array<string, mixed> $item
-     * @return array<string, mixed>
-     */
-    private function detailAction(array $item): array
-    {
-        $historyEventCount = $this->intValue($item['history_event_count'] ?? null);
-        $hasTypedHistory = $historyEventCount !== null && $historyEventCount > 0;
-
-        return [
-            'label' => 'Run Detail',
-            'available' => true,
-            'history_available' => $hasTypedHistory,
-            'unavailable_label' => $hasTypedHistory ? null : 'No typed history',
-            'description' => $hasTypedHistory
-                ? 'Open the selected run detail, including history, tasks, commands, activities, metadata, and timeline data.'
-                : 'Open the selected run detail. This row has no typed history events, so history-specific diagnostics may be unavailable.',
-        ];
     }
 
     /**

@@ -219,11 +219,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $failed->id)
             ->assertJsonPath('data.0.status', 'failed')
-            ->assertJsonPath('data.0.is_terminal', true)
-            ->assertJsonPath('data.0.detail_action.label', 'Run Detail')
-            ->assertJsonPath('data.0.detail_action.available', true)
-            ->assertJsonPath('data.0.detail_action.history_available', false)
-            ->assertJsonPath('data.0.detail_action.unavailable_label', 'No typed history');
+            ->assertJsonPath('data.0.is_terminal', true);
 
         $this->get('/waterline/api/flows/cancelled')
             ->assertStatus(200)
