@@ -2,7 +2,7 @@
     <div>
         <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5 v-if="!ready">Flow Preview</h5>
+                <h5 v-if="!ready">Run Detail</h5>
                 <h5 v-if="ready">{{ flow.class }}</h5>
 
                 <div class="d-flex align-items-center">
@@ -81,7 +81,7 @@
                 class="d-flex flex-column align-items-center justify-content-center text-center card-bg-secondary p-5 bottom-radius"
                 role="alert"
                 aria-live="assertive">
-                <strong>Flow preview unavailable</strong>
+                <strong>Run detail unavailable</strong>
                 <span class="text-muted mt-2">{{ loadingError }}</span>
                 <button class="btn btn-outline-primary btn-sm mt-3" @click="retryFlowLoad">
                     Retry
