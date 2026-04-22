@@ -51,8 +51,20 @@
             "@php vendor/bin/testbench serve --ansi"
         ],
         "build": "@php vendor/bin/testbench workbench:build --ansi",
-        "test": "composer test-mssql && composer test-mysql && composer test-pgsql && composer test-sqlite",
-        "test-all": "composer test-mssql && composer test-mysql && composer test-pgsql && composer test-sqlite",
+        "test": [
+            "Composer\\Config::disableProcessTimeout",
+            "@test-mssql",
+            "@test-mysql",
+            "@test-pgsql",
+            "@test-sqlite"
+        ],
+        "test-all": [
+            "Composer\\Config::disableProcessTimeout",
+            "@test-mssql",
+            "@test-mysql",
+            "@test-pgsql",
+            "@test-sqlite"
+        ],
         "test-mssql": "vendor/bin/phpunit --testdox --configuration=phpunit-mssql.xml",
         "test-mysql": "vendor/bin/phpunit --testdox --configuration=phpunit-mysql.xml",
         "test-pgsql": "vendor/bin/phpunit --testdox --configuration=phpunit-pgsql.xml",
