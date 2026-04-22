@@ -69,7 +69,9 @@ export default {
          * Convert to timestamp.
          */
         timestamp(timestamp) {
-            return timestamp.replace('T', ' ').replace('Z', '');
+            return typeof timestamp === 'string' && timestamp.length > 0
+                ? timestamp.replace('T', ' ').replace('Z', '')
+                : '-';
         },
     },
 };

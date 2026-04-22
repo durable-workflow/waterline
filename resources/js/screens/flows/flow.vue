@@ -62,7 +62,7 @@
                 </div>
             </div>
 
-            <div v-if="!ready"
+            <div v-if="!ready && !loadingError"
                 class="d-flex align-items-center justify-content-center card-bg-secondary p-5 bottom-radius">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin mr-2 fill-text-color">
                     <path
@@ -71,6 +71,15 @@
                 </svg>
 
                 <span>Loading...</span>
+            </div>
+
+            <div v-if="!ready && loadingError"
+                class="d-flex flex-column align-items-center justify-content-center text-center card-bg-secondary p-5 bottom-radius">
+                <strong>Flow preview unavailable</strong>
+                <span class="text-muted mt-2">{{ loadingError }}</span>
+                <button class="btn btn-outline-primary btn-sm mt-3" @click="retryFlowLoad">
+                    Retry
+                </button>
             </div>
 
             <div class="card-body card-bg-secondary collapse show" id="collapseDetails" v-if="ready">
@@ -1489,6 +1498,8 @@ export default {
     data() {
         return {
             ready: false,
+            loadingError: null,
+            lastFlowPath: null,
             flow: {},
             exception: null,
             historyPageSize: 200,
@@ -1643,8 +1654,10 @@ export default {
 
         loadLegacyFlow(id) {
             return this.fetchFlow(Waterline.basePath + '/api/flows/' + id)
-                .then(() => {
-                    this.replaceWithCanonicalRoute(this.flow)
+                .then((loaded) => {
+                    if (loaded) {
+                        this.replaceWithCanonicalRoute(this.flow)
+                    }
                 })
         },
 
@@ -1653,8 +1666,10 @@ export default {
          */
         fetchFlow(path) {
             this.ready = false;
+            this.loadingError = null;
+            this.lastFlowPath = path;
 
-            return this.$http.get(this.withHistoryLimit(path))
+            return this.$http.get(this.withHistoryLimit(path), { timeout: 15000 })
                 .then(response => {
                     this.flow = response.data;
                     this.resetHistoryVirtualWindow();
@@ -1685,7 +1700,47 @@ export default {
                     });
 
                     this.ready = true;
+
+                    return true;
+                })
+                .catch(error => {
+                    this.loadingError = this.flowLoadErrorMessage(error);
+
+                    return false;
                 });
+        },
+
+        retryFlowLoad() {
+            if (!this.lastFlowPath) {
+                return this.loadRouteFlow()
+            }
+
+            return this.fetchFlow(this.lastFlowPath)
+        },
+
+        flowLoadErrorMessage(error) {
+            if (error && error.code === 'ECONNABORTED') {
+                return 'The request timed out before Waterline could load this run.'
+            }
+
+            if (error && error.response && error.response.status) {
+                const status = error.response.status
+                const message = error.response.data && error.response.data.message
+
+                return message
+                    ? `Request failed with HTTP ${status}: ${message}`
+                    : `Request failed with HTTP ${status}.`
+            }
+
+            if (error && error.request) {
+                return 'Waterline could not reach the run detail endpoint.'
+            }
+
+            if (error && error.message) {
+                return error.message
+            }
+
+            return 'Waterline could not load this run detail.'
         },
 
         loadRunDetailPreferences() {
