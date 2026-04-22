@@ -423,3 +423,30 @@ button:hover {
 .badge-sm {
     font-size: 0.75rem;
 }
+
+.run-summary-status-chip {
+    font-size: 0.95rem;
+    letter-spacing: 0.02em;
+}
+
+.run-summary-tile {
+    background: $card-bg-secondary;
+    border: 1px solid $border-color;
+    min-height: 4.25rem;
+}
+
+a.run-summary-tile:hover,
+a.run-summary-tile:focus {
+    border-color: $primary;
+    text-decoration: none;
+}
+
+.run-summary-tile-static {
+    opacity: 0.85;
+}
+
+.run-detail-group-heading {
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid $border-color;
+    padding-bottom: 0.25rem;
+}

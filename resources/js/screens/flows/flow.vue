@@ -1,30 +1,32 @@
 <template>
     <div>
-        <div class="card">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <h5 v-if="!ready">Flow Preview</h5>
-                <h5 v-if="ready">{{ flow.class }}</h5>
+        <div class="card" v-if="ready" aria-labelledby="runSummaryHeading">
+            <div class="card-header d-flex align-items-center justify-content-between flex-wrap">
+                <div class="d-flex align-items-center mr-3">
+                    <h5 id="runSummaryHeading" class="mb-0 mr-2">Run Summary</h5>
+                    <small class="text-muted">{{ flow.class }}</small>
+                </div>
 
-                <div class="d-flex align-items-center">
-                    <button v-if="ready && canIssueQuery()"
+                <div class="d-flex align-items-center flex-wrap">
+                    <button v-if="canIssueQuery()"
                         class="btn btn-outline-secondary btn-sm mr-2"
                         @click="issueCommand('query')">
                         Query
                     </button>
 
-                    <button v-if="ready && canIssueSignal()"
+                    <button v-if="canIssueSignal()"
                         class="btn btn-outline-primary btn-sm mr-2"
                         @click="issueCommand('signal')">
                         Signal
                     </button>
 
-                    <button v-if="ready && canIssueUpdate()"
+                    <button v-if="canIssueUpdate()"
                         class="btn btn-outline-success btn-sm mr-2"
                         @click="issueCommand('update')">
                         Update
                     </button>
 
-                    <a v-if="ready && historyExportEndpoint()"
+                    <a v-if="historyExportEndpoint()"
                         class="btn btn-outline-secondary btn-sm mr-2"
                         :href="historyExportEndpoint()"
                         target="_blank"
@@ -32,35 +34,113 @@
                         Export History
                     </a>
 
-                    <button v-if="ready && canAction('repair')"
+                    <button v-if="canAction('repair')"
                         class="btn btn-outline-info btn-sm mr-2"
                         @click="issueCommand('repair')">
                         Repair
                     </button>
 
-                    <button v-if="ready && canAction('cancel', flow.can_issue_terminal_commands)"
+                    <button v-if="canAction('cancel', flow.can_issue_terminal_commands)"
                         class="btn btn-outline-warning btn-sm mr-2"
                         @click="issueCommand('cancel')">
                         Cancel
                     </button>
 
-                    <button v-if="ready && canAction('terminate', flow.can_issue_terminal_commands)"
-                        class="btn btn-outline-danger btn-sm mr-3"
+                    <button v-if="canAction('terminate', flow.can_issue_terminal_commands)"
+                        class="btn btn-outline-danger btn-sm mr-2"
                         @click="issueCommand('terminate')">
                         Terminate
                     </button>
 
-                    <button v-if="ready && canAction('archive')"
-                        class="btn btn-outline-secondary btn-sm mr-3"
+                    <button v-if="canAction('archive')"
+                        class="btn btn-outline-secondary btn-sm"
                         @click="issueCommand('archive')">
                         Archive
                     </button>
-
-                    <a data-toggle="collapse" href="#collapseDetails" role="button"
-                       aria-expanded="true" aria-controls="collapseDetails">
-                        Collapse
-                    </a>
                 </div>
+            </div>
+
+            <div class="card-body card-bg-secondary">
+                <div class="d-flex align-items-center flex-wrap mb-3">
+                    <span :class="runStatusChipClass()" class="badge py-2 px-3 mr-2 mb-1 run-summary-status-chip">
+                        {{ runStatusChipLabel() }}
+                    </span>
+                    <span v-if="taskProblemBadge(flow)"
+                          :class="taskProblemBadgeClass(flow)"
+                          class="badge mr-2 mb-1"
+                          :title="taskProblemBadge(flow).description || null">
+                        {{ taskProblemBadge(flow).label }}
+                    </span>
+                    <span v-if="hasDetailValue(flow.wait_reason)"
+                          class="badge badge-info mr-2 mb-1"
+                          :title="flow.wait_kind ? 'Wait kind: ' + flow.wait_kind : null">
+                        Waiting: {{ flow.wait_reason }}
+                    </span>
+                    <span v-if="hasDetailValue(flow.archived_at)" class="badge badge-secondary mr-2 mb-1">
+                        Archived
+                    </span>
+                </div>
+
+                <div class="row mb-3" role="group" aria-label="Run timing">
+                    <div class="col-sm-4 mb-2">
+                        <div class="small text-muted">Started</div>
+                        <div>{{ timestamp(flow.created_at) }}</div>
+                    </div>
+                    <div class="col-sm-4 mb-2">
+                        <div class="small text-muted">{{ isClosed(flow) ? 'Closed' : 'State' }}</div>
+                        <div v-if="isClosed(flow)">{{ timestamp(flow.closed_at || flow.updated_at) }}</div>
+                        <div v-else>Still running</div>
+                    </div>
+                    <div class="col-sm-4 mb-2">
+                        <div class="small text-muted">Duration</div>
+                        <div>{{ runDurationLabel() }}</div>
+                    </div>
+                </div>
+
+                <div class="row" role="group" aria-label="Run activity counts">
+                    <div
+                        v-for="tile in runSummaryTiles()"
+                        :key="tile.key"
+                        class="col-6 col-md-4 col-lg mb-2"
+                    >
+                        <a
+                            v-if="tile.target"
+                            :href="tile.target"
+                            class="d-block p-2 text-reset text-decoration-none rounded run-summary-tile"
+                            @click="scrollToSection($event, tile.target)"
+                        >
+                            <div class="small text-muted">{{ tile.label }}</div>
+                            <div class="h5 mb-0">{{ tile.value }}</div>
+                            <div class="small text-muted" v-if="tile.sublabel">{{ tile.sublabel }}</div>
+                        </a>
+                        <div
+                            v-else
+                            class="d-block p-2 rounded run-summary-tile run-summary-tile-static"
+                        >
+                            <div class="small text-muted">{{ tile.label }}</div>
+                            <div class="h5 mb-0">{{ tile.value }}</div>
+                            <div class="small text-muted" v-if="tile.sublabel">{{ tile.sublabel }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="small text-muted mt-2" v-if="diagnosticRows().length">
+                    {{ diagnosticRows().length }} run {{ diagnosticRows().length === 1 ? 'diagnostic' : 'diagnostics' }}
+                    ({{ diagnosticsSummary() }}) — see
+                    <a href="#collapseRunDiagnostics" @click="scrollToSection($event, '#collapseRunDiagnostics')">Issues detected</a>.
+                </div>
+            </div>
+        </div>
+
+        <div :class="ready ? 'card mt-4' : 'card'" :aria-labelledby="ready ? 'runDetailsHeading' : null">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <h5 v-if="!ready" class="mb-0">Run Detail</h5>
+                <h5 v-else id="runDetailsHeading" class="mb-0">Run Details</h5>
+
+                <a v-if="ready" data-toggle="collapse" href="#collapseDetails" role="button"
+                   aria-expanded="true" aria-controls="collapseDetails">
+                    Collapse
+                </a>
             </div>
 
             <div v-if="!ready && !loadingError"
@@ -81,7 +161,7 @@
                 class="d-flex flex-column align-items-center justify-content-center text-center card-bg-secondary p-5 bottom-radius"
                 role="alert"
                 aria-live="assertive">
-                <strong>Flow preview unavailable</strong>
+                <strong>Run detail unavailable</strong>
                 <span class="text-muted mt-2">{{ loadingError }}</span>
                 <button class="btn btn-outline-primary btn-sm mt-3" @click="retryFlowLoad">
                     Retry
@@ -89,6 +169,7 @@
             </div>
 
             <div class="card-body card-bg-secondary collapse show" id="collapseDetails" v-if="ready">
+                <h6 class="text-uppercase small font-weight-bold text-muted mt-0 mb-2 run-detail-group-heading">Identity</h6>
                 <div class="row mb-2">
                     <div class="col-md-2"><strong>ID</strong></div>
                     <div class="col">{{ flow.id }}</div>
@@ -104,6 +185,7 @@
                     <div class="col">{{ flow.run_id }}</div>
                 </div>
 
+                <h6 class="text-uppercase small font-weight-bold text-muted mt-4 mb-2 run-detail-group-heading">State &amp; Timing</h6>
                 <div class="row mb-2">
                     <div class="col-md-2"><strong>Status</strong></div>
                     <div class="col">
@@ -162,6 +244,7 @@
                     <div class="col" v-else>-</div>
                 </div>
 
+                <h6 class="text-uppercase small font-weight-bold text-muted mt-4 mb-2 run-detail-group-heading">Routing &amp; Context</h6>
                 <div class="row mb-2" v-if="hasDetailValue(flow.connection)">
                     <div class="col-md-2"><strong>Connection</strong></div>
                     <div class="col">{{ flow.connection }}</div>
@@ -216,6 +299,7 @@
                     </div>
                 </div>
 
+                <h6 class="text-uppercase small font-weight-bold text-muted mt-4 mb-2 run-detail-group-heading">Workflow Contract</h6>
                 <div class="row mb-2" v-if="declaredSignalTargets().length">
                     <div class="col-md-2"><strong>Signals</strong></div>
                     <div class="col">
@@ -360,6 +444,7 @@
                     </div>
                 </div>
 
+                <h6 class="text-uppercase small font-weight-bold text-muted mt-4 mb-2 run-detail-group-heading">Runs &amp; Lineage</h6>
                 <div class="row mb-2" v-if="!flow.is_current_run && flow.current_run_id">
                     <div class="col-md-2"><strong>Current Run</strong></div>
                     <div class="col">
@@ -397,6 +482,7 @@
                     </div>
                 </div>
 
+                <h6 class="text-uppercase small font-weight-bold text-muted mt-4 mb-2 run-detail-group-heading">Runtime Progress</h6>
                 <div class="row mb-2" v-if="hasDetailValue(flow.wait_reason)">
                     <div class="col-md-2"><strong>Wait</strong></div>
                     <div class="col">
@@ -2147,6 +2233,130 @@ export default {
 
         isClosed(flow) {
             return ['completed', 'continued', 'failed', 'cancelled', 'terminated'].includes(flow.status)
+        },
+
+        runStatusChipLabel() {
+            const status = this.hasDetailValue(this.flow.status) ? String(this.flow.status) : 'unknown'
+            const label = status.charAt(0).toUpperCase() + status.slice(1)
+
+            if (this.hasDetailValue(this.flow.status_bucket) && this.flow.status_bucket !== status) {
+                return label + ' / ' + this.flow.status_bucket
+            }
+
+            return label
+        },
+
+        runStatusChipClass() {
+            const bucket = this.hasDetailValue(this.flow.status_bucket) ? this.flow.status_bucket : null
+            const status = this.hasDetailValue(this.flow.status) ? this.flow.status : null
+            const key = bucket || status
+
+            const map = {
+                completed: 'badge-success',
+                continued: 'badge-info',
+                running: 'badge-primary',
+                pending: 'badge-secondary',
+                waiting: 'badge-info',
+                failed: 'badge-danger',
+                cancelled: 'badge-warning',
+                terminated: 'badge-dark',
+                repair: 'badge-warning',
+            }
+
+            return 'badge ' + (map[key] || 'badge-secondary')
+        },
+
+        runDurationLabel() {
+            if (!this.hasDetailValue(this.flow.created_at)) {
+                return '-'
+            }
+
+            if (this.isClosed(this.flow)) {
+                return this.duration(this.flow.created_at, this.flow.closed_at || this.flow.updated_at)
+            }
+
+            const startMs = new Date(this.flow.created_at).getTime()
+
+            if (Number.isNaN(startMs)) {
+                return '-'
+            }
+
+            return this.formatDuration(Math.max(0, Date.now() - startMs)) + ' (so far)'
+        },
+
+        runSummaryTiles() {
+            const tasks = Array.isArray(this.flow.tasks) ? this.flow.tasks.length : 0
+            const activities = Array.isArray(this.flow.activities) ? this.flow.activities.length : 0
+            const waitsAll = Array.isArray(this.flow.waits) ? this.flow.waits : []
+            const openWaits = this.hasDetailValue(this.flow.open_wait_count)
+                ? Number(this.flow.open_wait_count)
+                : waitsAll.filter((wait) => wait.status === 'open').length
+            const exceptions = Array.isArray(this.flow.exceptions) ? this.flow.exceptions.length : 0
+            const historyEvents = this.hasDetailValue(this.flow.history_event_count)
+                ? Number(this.flow.history_event_count)
+                : (Array.isArray(this.flow.timeline) ? this.flow.timeline.length : 0)
+
+            return [
+                {
+                    key: 'tasks',
+                    label: 'Tasks',
+                    value: tasks.toLocaleString(),
+                    target: tasks > 0 ? '#collapseTasks' : null,
+                },
+                {
+                    key: 'activities',
+                    label: 'Activities',
+                    value: activities.toLocaleString(),
+                    target: activities > 0 ? '#collapseActivities' : null,
+                },
+                {
+                    key: 'waits',
+                    label: 'Waits',
+                    value: waitsAll.length.toLocaleString(),
+                    sublabel: openWaits > 0
+                        ? openWaits.toLocaleString() + ' open'
+                        : (waitsAll.length > 0 ? 'all closed' : null),
+                    target: waitsAll.length > 0 ? '#collapseWaits' : null,
+                },
+                {
+                    key: 'exceptions',
+                    label: 'Exceptions',
+                    value: exceptions.toLocaleString(),
+                    target: exceptions > 0 ? '#collapseExceptions' : null,
+                },
+                {
+                    key: 'history',
+                    label: 'History Events',
+                    value: historyEvents.toLocaleString(),
+                    target: historyEvents > 0 ? '#collapseHistory' : null,
+                },
+            ]
+        },
+
+        scrollToSection(event, selector) {
+            if (event && event.preventDefault) {
+                event.preventDefault()
+            }
+
+            if (!selector) {
+                return
+            }
+
+            const element = document.querySelector(selector)
+
+            if (!element) {
+                return
+            }
+
+            if (typeof window !== 'undefined' && window.jQuery) {
+                const jq = window.jQuery(element)
+
+                if (jq.hasClass('collapse') && !jq.hasClass('show')) {
+                    jq.collapse('show')
+                }
+            }
+
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' })
         },
 
         hasDetailValue(value) {
