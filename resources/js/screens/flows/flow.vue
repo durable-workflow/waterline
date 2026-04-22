@@ -784,98 +784,111 @@
                 </a>
             </div>
 
-            <div class="card-body collapse show" id="collapseTasks">
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th scope="col">Type</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Transport</th>
-                            <th scope="col">Target</th>
-                            <th scope="col">Queue</th>
-                            <th scope="col">Compatibility</th>
-                            <th scope="col">Summary</th>
-                            <th scope="col">Ready / Leased</th>
-                            <th scope="col">Attempts</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="task in taskRows()" :key="task.id">
-                            <td>{{ task.type }}</td>
-                            <td>{{ task.status }}</td>
-                            <td>
-                                <div>{{ taskTransportState(task) }}</div>
-                                <div class="small text-muted" v-if="hasDetailValue(task.last_dispatch_attempt_at)">
-                                    {{ timestamp(task.last_dispatch_attempt_at) }}
-                                </div>
-                                <div class="small text-muted" v-if="hasDetailValue(task.last_claim_failed_at)">
-                                    Claim failed {{ timestamp(task.last_claim_failed_at) }}
-                                </div>
-                                <div class="small text-muted" v-if="hasDetailValue(task.repair_available_at)">
-                                    Repair after {{ timestamp(task.repair_available_at) }}
-                                </div>
-                            </td>
-                            <td>
-                                <div>{{ taskTarget(task) }}</div>
-                                <div class="small text-muted" v-if="hasDetailValue(task.expected_task_id)">
-                                    expected task / {{ task.expected_task_id }}
-                                </div>
-                                <div
-                                    v-for="detail in taskChildIdentityRows(task)"
-                                    :key="task.id + '-child-' + detail"
-                                    class="small text-muted"
-                                >
-                                    {{ detail }}
-                                </div>
-                            </td>
-                            <td>{{ task.queue || '-' }}</td>
-                            <td>
-                                <div>{{ task.compatibility || '-' }}</div>
-                                <div class="small text-muted" v-if="hasDetailValue(task.compatibility_semantics && task.compatibility_semantics.operator_summary)">
-                                    {{ task.compatibility_semantics.operator_summary }}
-                                </div>
-                                <div class="small text-muted" v-if="task.compatibility_supported === false && hasDetailValue(task.compatibility_reason)">
-                                    Claimable by this build: {{ task.compatibility_reason }}
-                                </div>
-                                <div class="small text-muted" v-if="hasDetailValue(task.compatibility_supported_in_fleet)">
-                                    Supported in active fleet: {{ compatibilityFleetSummary(task.compatibility_supported_in_fleet) }}
-                                </div>
-                                <div class="small text-muted" v-if="task.compatibility_supported_in_fleet === false && hasDetailValue(task.compatibility_fleet_reason)">
-                                    {{ task.compatibility_fleet_reason }}
-                                </div>
-                            </td>
-                            <td>
-                                <div>{{ task.summary }}</div>
-                                <div class="small text-muted" v-if="hasDetailValue(task.last_dispatch_error)">
-                                    {{ task.last_dispatch_error }}
-                                </div>
-                                <div class="small text-muted" v-if="hasDetailValue(task.last_claim_error)">
-                                    {{ task.last_claim_error }}
-                                </div>
-                                <div class="small text-muted" v-if="hasDetailValue(task.last_error)">
-                                    {{ task.last_error }}
-                                </div>
-                                <div class="small text-danger" v-if="task.replay_blocked === true">
-                                    Replay blocked<span v-if="hasDetailValue(task.replay_blocked_reason)"> / {{ task.replay_blocked_reason }}</span>
-                                </div>
-                                <div class="small text-muted" v-if="hasDetailValue(task.replay_blocked_expected_history_shape)">
-                                    expected step / {{ task.replay_blocked_expected_history_shape }}
-                                </div>
-                                <div class="small text-muted" v-if="replayBlockedRecordedEvents(task).length">
-                                    recorded events / {{ replayBlockedRecordedEvents(task).join(', ') }}
-                                </div>
-                                <div class="small text-muted" v-if="hasDetailValue(task.replay_blocked_recorded_condition_definition_fingerprint)">
-                                    recorded predicate / {{ task.replay_blocked_recorded_condition_definition_fingerprint }}
-                                </div>
-                                <div class="small text-muted" v-if="hasDetailValue(task.replay_blocked_current_condition_definition_fingerprint)">
-                                    current predicate / {{ task.replay_blocked_current_condition_definition_fingerprint }}
-                                </div>
-                            </td>
-                            <td>{{ taskAvailability(task) }}</td>
-                            <td>{{ task.attempt_count }}<span v-if="task.repair_count"> / repair {{ task.repair_count }}</span></td>
-                        </tr>
-                    </tbody>
-                </table>
+            <div class="card-body collapse show p-0" id="collapseTasks">
+                <div class="detail-table-scroll">
+                    <table class="table detail-table detail-tasks-table mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col" class="task-col-type">Type</th>
+                                <th scope="col" class="task-col-status">Status</th>
+                                <th scope="col" class="task-col-transport">Transport</th>
+                                <th scope="col" class="task-col-target">Target</th>
+                                <th scope="col" class="task-col-queue">Queue</th>
+                                <th scope="col" class="task-col-compatibility">Compatibility</th>
+                                <th scope="col" class="task-col-summary">Summary</th>
+                                <th scope="col" class="task-col-availability">Ready / Leased</th>
+                                <th scope="col" class="task-col-attempts">Attempts</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="task in taskRows()" :key="task.id">
+                                <td class="task-col-type">
+                                    <div class="detail-cell-main" :title="task.type">{{ task.type }}</div>
+                                </td>
+                                <td class="task-col-status">
+                                    <span class="detail-nowrap" :title="task.status">{{ task.status }}</span>
+                                </td>
+                                <td class="task-col-transport">
+                                    <div class="detail-cell-main" :title="taskTransportState(task)">{{ taskTransportState(task) }}</div>
+                                    <div class="small text-muted detail-nowrap" v-if="hasDetailValue(task.last_dispatch_attempt_at)">
+                                        {{ timestamp(task.last_dispatch_attempt_at) }}
+                                    </div>
+                                    <div class="small text-muted detail-nowrap" v-if="hasDetailValue(task.last_claim_failed_at)">
+                                        Claim failed {{ timestamp(task.last_claim_failed_at) }}
+                                    </div>
+                                    <div class="small text-muted detail-nowrap" v-if="hasDetailValue(task.repair_available_at)">
+                                        Repair after {{ timestamp(task.repair_available_at) }}
+                                    </div>
+                                </td>
+                                <td class="task-col-target">
+                                    <div class="detail-cell-main" :title="taskTarget(task)">{{ taskTarget(task) }}</div>
+                                    <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.expected_task_id)" :title="task.expected_task_id">
+                                        expected task / {{ task.expected_task_id }}
+                                    </div>
+                                    <div
+                                        v-for="detail in taskChildIdentityRows(task)"
+                                        :key="task.id + '-child-' + detail"
+                                        class="small text-muted detail-cell-muted"
+                                        :title="detail"
+                                    >
+                                        {{ detail }}
+                                    </div>
+                                </td>
+                                <td class="task-col-queue">
+                                    <div class="detail-cell-main" :title="task.queue || '-'">{{ task.queue || '-' }}</div>
+                                </td>
+                                <td class="task-col-compatibility">
+                                    <div class="detail-cell-main" :title="task.compatibility || '-'">{{ task.compatibility || '-' }}</div>
+                                    <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.compatibility_semantics && task.compatibility_semantics.operator_summary)" :title="task.compatibility_semantics.operator_summary">
+                                        {{ task.compatibility_semantics.operator_summary }}
+                                    </div>
+                                    <div class="small text-muted detail-cell-muted" v-if="task.compatibility_supported === false && hasDetailValue(task.compatibility_reason)" :title="task.compatibility_reason">
+                                        Claimable by this build: {{ task.compatibility_reason }}
+                                    </div>
+                                    <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.compatibility_supported_in_fleet)">
+                                        Supported in active fleet: {{ compatibilityFleetSummary(task.compatibility_supported_in_fleet) }}
+                                    </div>
+                                    <div class="small text-muted detail-cell-muted" v-if="task.compatibility_supported_in_fleet === false && hasDetailValue(task.compatibility_fleet_reason)" :title="task.compatibility_fleet_reason">
+                                        {{ task.compatibility_fleet_reason }}
+                                    </div>
+                                </td>
+                                <td class="task-col-summary">
+                                    <div class="detail-cell-main" :title="task.summary">{{ task.summary }}</div>
+                                    <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.last_dispatch_error)" :title="task.last_dispatch_error">
+                                        {{ task.last_dispatch_error }}
+                                    </div>
+                                    <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.last_claim_error)" :title="task.last_claim_error">
+                                        {{ task.last_claim_error }}
+                                    </div>
+                                    <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.last_error)" :title="task.last_error">
+                                        {{ task.last_error }}
+                                    </div>
+                                    <div class="small text-danger detail-cell-muted" v-if="task.replay_blocked === true">
+                                        Replay blocked<span v-if="hasDetailValue(task.replay_blocked_reason)"> / {{ task.replay_blocked_reason }}</span>
+                                    </div>
+                                    <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.replay_blocked_expected_history_shape)" :title="task.replay_blocked_expected_history_shape">
+                                        expected step / {{ task.replay_blocked_expected_history_shape }}
+                                    </div>
+                                    <div class="small text-muted detail-cell-muted" v-if="replayBlockedRecordedEvents(task).length" :title="replayBlockedRecordedEvents(task).join(', ')">
+                                        recorded events / {{ replayBlockedRecordedEvents(task).join(', ') }}
+                                    </div>
+                                    <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.replay_blocked_recorded_condition_definition_fingerprint)" :title="task.replay_blocked_recorded_condition_definition_fingerprint">
+                                        recorded predicate / {{ task.replay_blocked_recorded_condition_definition_fingerprint }}
+                                    </div>
+                                    <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.replay_blocked_current_condition_definition_fingerprint)" :title="task.replay_blocked_current_condition_definition_fingerprint">
+                                        current predicate / {{ task.replay_blocked_current_condition_definition_fingerprint }}
+                                    </div>
+                                </td>
+                                <td class="task-col-availability">
+                                    <span class="detail-nowrap" :title="taskAvailability(task)">{{ taskAvailability(task) }}</span>
+                                </td>
+                                <td class="task-col-attempts">
+                                    <span class="detail-nowrap">{{ task.attempt_count }}<span v-if="task.repair_count"> / repair {{ task.repair_count }}</span></span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
@@ -4131,5 +4144,71 @@ export default {
 .timeline-events-virtual {
     overflow-y: auto;
     overscroll-behavior: contain;
+}
+
+.detail-table-scroll {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+}
+
+.detail-table {
+    table-layout: fixed;
+}
+
+.detail-table th,
+.detail-table td {
+    vertical-align: top !important;
+}
+
+.detail-tasks-table {
+    min-width: 1620px;
+}
+
+.detail-tasks-table .task-col-type {
+    width: 120px;
+}
+
+.detail-tasks-table .task-col-status {
+    width: 120px;
+}
+
+.detail-tasks-table .task-col-transport {
+    width: 185px;
+}
+
+.detail-tasks-table .task-col-target {
+    width: 245px;
+}
+
+.detail-tasks-table .task-col-queue {
+    width: 145px;
+}
+
+.detail-tasks-table .task-col-compatibility {
+    width: 220px;
+}
+
+.detail-tasks-table .task-col-summary {
+    width: 315px;
+}
+
+.detail-tasks-table .task-col-availability {
+    width: 150px;
+}
+
+.detail-tasks-table .task-col-attempts {
+    width: 120px;
+}
+
+.detail-cell-main,
+.detail-nowrap {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.detail-cell-muted {
+    overflow-wrap: anywhere;
 }
 </style>
