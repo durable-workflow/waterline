@@ -26,8 +26,6 @@ use RuntimeException;
  * or argument-count errors. `assertIfActive()` is called at boot so those
  * broken pairings surface with a clear diagnostic instead of a 500 the
  * first time an operator clicks "Pause" in the UI.
- *
- * @see https://github.com/zorporation/durable-workflow/issues/355
  */
 final class WorkflowPackageApiFloor
 {
