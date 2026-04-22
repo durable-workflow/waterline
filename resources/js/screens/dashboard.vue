@@ -533,12 +533,13 @@
         <div class="card mb-4" v-if="stats.fleet_overview">
             <div class="card-header">
                 <h5>Fleet Overview</h5>
+                <small class="text-muted">Current shows live runs by status; Trends show terminal runs closed in each period.</small>
             </div>
 
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <h6>Current Status</h6>
+                        <h6>Current Status <small class="text-muted font-weight-normal">(live, non-terminal scope)</small></h6>
                         <table class="table table-sm">
                             <tbody>
                                 <tr>
@@ -546,14 +547,14 @@
                                     <td class="text-right">{{ fleetMetric('current', 'running') }}</td>
                                 </tr>
                                 <tr>
-                                    <td>Failed</td>
+                                    <td>Failed <small class="text-muted">(cumulative)</small></td>
                                     <td class="text-right text-danger">{{ fleetMetric('current', 'failed') }}</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                     <div class="col-md-6">
-                        <h6>Trends</h6>
+                        <h6>Trends <small class="text-muted font-weight-normal">(terminal runs per period)</small></h6>
                         <table class="table table-sm">
                             <thead>
                                 <tr>
@@ -589,7 +590,10 @@
         <div class="card mb-4" v-if="stats.workflow_type_health && stats.workflow_type_health.length > 0">
             <div class="card-header">
                 <h5>Workflow Type Health</h5>
-                <small class="text-muted">Top workflow types by volume (last 7 days)</small>
+                <small class="text-muted">
+                    Top workflow types by volume (last 7 days).
+                    Total Runs includes running; Pass Rate, Median Duration, and Errors cover terminal runs only.
+                </small>
             </div>
 
             <div class="card-body">
@@ -657,28 +661,35 @@
 
         <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Overview</h5>
+                <h5>
+                    Overview
+                    <small class="text-muted font-weight-normal ml-2">All runs (including running)</small>
+                </h5>
             </div>
 
             <div class="card-bg-secondary">
                 <div class="d-flex">
                     <div class="w-25 border-right border-bottom">
                         <div class="p-4">
-                            <small class="text-uppercase">Flows Per Minute</small>
+                            <small class="text-uppercase">Starts Per Minute</small>
 
                             <h4 class="mt-4 mb-0">
                                 {{ stats.flows_per_minute ? stats.flows_per_minute.toLocaleString() : 0 }}
                             </h4>
+
+                            <small class="mt-1 text-muted d-block">Derived from flows started past hour</small>
                         </div>
                     </div>
 
                     <div class="w-25 border-right border-bottom">
                         <div class="p-4">
-                            <small class="text-uppercase">Flows Past Hour</small>
+                            <small class="text-uppercase">Flows Started Past Hour</small>
 
                             <h4 class="mt-4 mb-0">
                                 {{ stats.flows_past_hour ? stats.flows_past_hour.toLocaleString() : 0 }}
                             </h4>
+
+                            <small class="mt-1 text-muted d-block">All runs started in last hour</small>
                         </div>
                     </div>
 
@@ -689,16 +700,20 @@
                             <h4 class="mt-4 mb-0">
                                 {{ stats.exceptions_past_hour ? stats.exceptions_past_hour.toLocaleString() : 0 }}
                             </h4>
+
+                            <small class="mt-1 text-muted d-block">Recorded failures in last hour</small>
                         </div>
                     </div>
 
                     <div class="w-25 border-bottom">
                         <div class="p-4">
-                            <small class="text-uppercase">Failed Flows Past Week</small>
+                            <small class="text-uppercase">Failed Runs Past Week</small>
 
                             <h4 class="mt-4 mb-0">
                                 {{ stats.failed_flows_past_week ? stats.failed_flows_past_week.toLocaleString() : 0 }}
                             </h4>
+
+                            <small class="mt-1 text-muted d-block">Terminal failed runs in last 7 days</small>
                         </div>
                     </div>
                 </div>
@@ -711,6 +726,8 @@
                             <h4 class="mt-4">
                                 {{ stats.flows ? stats.flows.toLocaleString() : 0 }}
                             </h4>
+
+                            <small class="mt-1 text-muted d-block">All runs, all statuses</small>
                         </div>
                     </div>
 
