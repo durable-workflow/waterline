@@ -126,9 +126,7 @@
                         data: data.map(d => d.failed)
                     }
                 ];
-            }
-        },
-
+            },
 
             passRateChartOptions() {
                 const types = (this.stats.workflow_type_health || []).slice(0, 5);
@@ -253,6 +251,8 @@
                     data: types.map(t => t.median_duration_ms || 0)
                 }];
             },
+        },
+
         methods: {
             /**
              * Load the general stats.
@@ -600,6 +600,30 @@
                             <th class="text-right">Total Runs</th>
                             <th class="text-right">Pass Rate</th>
                             <th class="text-right">Median Duration</th>
+                            <th class="text-right">Errors</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="type in stats.workflow_type_health" :key="type.workflow_type">
+                            <td>
+                                <code class="small">{{ flowBaseName(type.workflow_type) }}</code>
+                            </td>
+                            <td class="text-right">{{ type.total_runs.toLocaleString() }}</td>
+                            <td class="text-right">
+                                <span :class="'badge badge-' + (type.pass_rate >= 95 ? 'success' : type.pass_rate >= 80 ? 'warning' : 'danger')">
+                                    {{ type.pass_rate }}%
+                                </span>
+                            </td>
+                            <td class="text-right text-muted small">
+                                {{ type.median_duration_ms ? formatDuration(type.median_duration_ms) : '-' }}
+                            </td>
+                            <td class="text-right">
+                                <span v-if="type.error_count > 0" class="text-danger">{{ type.error_count }}</span>
+                                <span v-else class="text-muted">-</span>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
 
                 <!-- Visual Charts for Top Types -->
                 <div class="row mt-4" v-if="stats.workflow_type_health && stats.workflow_type_health.length >= 3">
@@ -628,30 +652,6 @@
                         </div>
                     </div>
                 </div>
-                            <th class="text-right">Errors</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="type in stats.workflow_type_health" :key="type.workflow_type">
-                            <td>
-                                <code class="small">{{ flowBaseName(type.workflow_type) }}</code>
-                            </td>
-                            <td class="text-right">{{ type.total_runs.toLocaleString() }}</td>
-                            <td class="text-right">
-                                <span :class="'badge badge-' + (type.pass_rate >= 95 ? 'success' : type.pass_rate >= 80 ? 'warning' : 'danger')">
-                                    {{ type.pass_rate }}%
-                                </span>
-                            </td>
-                            <td class="text-right text-muted small">
-                                {{ type.median_duration_ms ? formatDuration(type.median_duration_ms) : '-' }}
-                            </td>
-                            <td class="text-right">
-                                <span v-if="type.error_count > 0" class="text-danger">{{ type.error_count }}</span>
-                                <span v-else class="text-muted">-</span>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
             </div>
         </div>
 
