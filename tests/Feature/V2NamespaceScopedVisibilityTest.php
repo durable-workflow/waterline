@@ -3,6 +3,7 @@
 namespace Waterline\Tests\Feature;
 
 use Illuminate\Support\Str;
+use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Enums\HistoryEventType;
@@ -14,6 +15,27 @@ use Workflow\V2\Models\WorkflowRunSummary;
 
 class V2NamespaceScopedVisibilityTest extends TestCase
 {
+    public function testListRoutesAreScopedToConfiguredNamespace(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+
+        $billingRun = $this->createCompletedRun('waterline-list-billing-run', 'billing');
+        $shippingRun = $this->createCompletedRun('waterline-list-shipping-run', 'shipping');
+
+        $response = $this->get('/waterline/api/flows/completed')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $billingRun->id)
+            ->assertJsonPath('data.0.namespace', 'billing')
+            ->assertJsonPath('visibility_filters.applied.namespace', 'billing');
+
+        $this->assertFalse(
+            collect($response->json('data'))->contains('id', $shippingRun->id),
+            'Runs from another namespace must not appear in list route payloads.',
+        );
+    }
+
     public function testDirectRunDetailAndExportRoutesAreScopedToConfiguredNamespace(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -137,6 +159,67 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             ->assertJsonPath('operator_metrics.runs.failed', 0)
             ->assertJsonPath('operator_metrics.projections.run_summaries.runs', 1)
             ->assertJsonPath('operator_metrics.projections.run_summaries.summaries', 1);
+    }
+
+    public function testRepositoryMetricHelpersAreScopedToConfiguredNamespace(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+
+        $billingRun = $this->createCompletedRun('waterline-metrics-billing-instance', 'billing');
+        $shippingRun = $this->createCompletedRun('waterline-metrics-shipping-instance', 'shipping');
+
+        WorkflowRunSummary::whereKey($billingRun->id)->update([
+            'duration_ms' => 60000,
+            'exception_count' => 1,
+            'updated_at' => now(),
+        ]);
+        WorkflowRunSummary::whereKey($shippingRun->id)->update([
+            'status' => 'failed',
+            'status_bucket' => 'failed',
+            'closed_reason' => 'failed',
+            'duration_ms' => 600000,
+            'exception_count' => 9,
+            'updated_at' => now(),
+        ]);
+
+        WorkflowFailure::create([
+            'id' => 'waterline-metrics88F94A4',
+            'workflow_run_id' => $billingRun->id,
+            'source_kind' => 'activity_execution',
+            'source_id' => 'activity-1',
+            'propagation_kind' => 'activity',
+            'handled' => false,
+            'exception_class' => \RuntimeException::class,
+            'message' => 'billing boom',
+            'file' => __FILE__,
+            'line' => 42,
+            'trace_preview' => 'trace',
+            'created_at' => now(),
+        ]);
+        WorkflowFailure::create([
+            'id' => 'waterline-metrics6A82121',
+            'workflow_run_id' => $shippingRun->id,
+            'source_kind' => 'activity_execution',
+            'source_id' => 'activity-2',
+            'propagation_kind' => 'activity',
+            'handled' => false,
+            'exception_class' => \RuntimeException::class,
+            'message' => 'shipping boom',
+            'file' => __FILE__,
+            'line' => 43,
+            'trace_preview' => 'trace',
+            'created_at' => now(),
+        ]);
+
+        $repository = app(V2WorkflowRepository::class);
+
+        $this->assertSame(1, $repository->totalFlows());
+        $this->assertSame(1, $repository->flowsPastHour());
+        $this->assertSame(1, $repository->exceptionsPastHour());
+        $this->assertSame(0, $repository->failedFlowsPastWeek());
+        $this->assertSame($billingRun->id, $repository->maxDurationWorkflow()?->id);
+        $this->assertSame($billingRun->id, $repository->maxExceptionsWorkflow()?->id);
     }
 
     private function createCompletedRun(string $instanceId, string $namespace): WorkflowRun

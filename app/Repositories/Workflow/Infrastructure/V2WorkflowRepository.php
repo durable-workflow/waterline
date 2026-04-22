@@ -74,7 +74,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     {
         $cutoff = now()->subHour();
 
-        return $this->runSummaryModel::where(static function ($query) use ($cutoff): void {
+        return $this->runSummaryQuery()->where(static function ($query) use ($cutoff): void {
             $query->where('sort_timestamp', '>=', $cutoff)
                 ->orWhere(static function ($fallback) use ($cutoff): void {
                     $fallback->whereNull('sort_timestamp')
@@ -85,19 +85,23 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function exceptionsPastHour(): int
     {
-        return $this->failureModel::where('created_at', '>=', now()->subHour())->count();
+        return $this->failureQuery()
+            ->where('created_at', '>=', now()->subHour())
+            ->count();
     }
 
     public function failedFlowsPastWeek(): int
     {
-        return $this->runSummaryModel::where('status', 'failed')
+        return $this->runSummaryQuery()
+            ->where('status', 'failed')
             ->where('updated_at', '>=', now()->subDays(7))
             ->count();
     }
 
     public function maxWaitTimeWorkflow()
     {
-        return $this->runSummaryModel::where('status_bucket', 'running')
+        return $this->runSummaryQuery()
+            ->where('status_bucket', 'running')
             ->whereNotNull('wait_started_at')
             ->orderBy('wait_started_at')
             ->orderBy('sort_timestamp')
@@ -108,7 +112,8 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function maxDurationWorkflow()
     {
-        return $this->runSummaryModel::whereNotNull('duration_ms')
+        return $this->runSummaryQuery()
+            ->whereNotNull('duration_ms')
             ->orderByDesc('duration_ms')
             ->orderByDesc('sort_timestamp')
             ->orderByDesc('created_at')
@@ -118,7 +123,8 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function maxExceptionsWorkflow()
     {
-        return $this->runSummaryModel::where('exception_count', '>', 0)
+        return $this->runSummaryQuery()
+            ->where('exception_count', '>', 0)
             ->orderByDesc('exception_count')
             ->orderByDesc('sort_timestamp')
             ->orderByDesc('created_at')
@@ -128,7 +134,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function totalFlows(): int
     {
-        return $this->runSummaryModel::count();
+        return $this->runSummaryQuery()->count();
     }
 
     public function operatorMetrics()
@@ -195,6 +201,31 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         $namespace = config('waterline.namespace');
 
         return is_string($namespace) && trim($namespace) !== '' ? trim($namespace) : null;
+    }
+
+    private function runSummaryQuery()
+    {
+        $query = $this->runSummaryModel::query();
+        $namespace = $this->namespace();
+
+        return $namespace === null
+            ? $query
+            : $query->where('namespace', $namespace);
+    }
+
+    private function failureQuery()
+    {
+        $query = $this->failureModel::query();
+        $namespace = $this->namespace();
+
+        return $namespace === null
+            ? $query
+            : $query->whereIn(
+                'workflow_run_id',
+                $this->runModel::query()
+                    ->select('id')
+                    ->where('namespace', $namespace),
+            );
     }
 
     private function sortDirection(): string
