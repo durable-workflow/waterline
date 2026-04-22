@@ -14,7 +14,7 @@
     "require": {
         "php": "^8.0.2",
         "illuminate/support": "^9.0|^10.0|^11.0|^12.0|^13.0",
-        "durable-workflow/workflow": "^1.0 || ^2.0"
+        "durable-workflow/workflow": "^2.0@dev"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
@@ -23,17 +23,9 @@
         "orchestra/workbench": "^7.29",
         "phpunit/phpunit": "^9.5.10|^12.5.12"
     },
-    "repositories": [
-        {
-            "type": "path",
-            "url": "../workflow",
-            "options": {
-                "versions": {
-                    "durable-workflow/workflow": "2.0.99"
-                }
-            }
-        }
-    ],
+    "conflict": {
+        "durable-workflow/workflow": "<2.0.0-alpha.8"
+    },
     "autoload": {
         "psr-4": {
             "Waterline\\": "app/"
