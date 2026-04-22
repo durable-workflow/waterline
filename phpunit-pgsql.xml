@@ -29,8 +29,6 @@
         <env name="CACHE_DRIVER" value="array"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
-        <env name="WATERLINE_ENGINE_SOURCE" value="v1"/>
-        <env name="DW_V2_TASK_DISPATCH_MODE" value="poll"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
     </php>

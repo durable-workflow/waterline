@@ -156,7 +156,6 @@ class V2DashboardStatsControllerTest extends TestCase
         config()->set('workflows.v2.compatibility.current', 'build-a');
         config()->set('workflows.v2.compatibility.supported', ['build-a']);
         config()->set('workflows.v2.compatibility.namespace', 'waterline-metrics-test');
-        config()->set('workflows.v2.task_dispatch_mode', 'queue');
         config()->set('workflows.v2.history_budget.continue_as_new_event_threshold', 10);
         config()->set('workflows.v2.history_budget.continue_as_new_size_bytes_threshold', 10000);
         config()->set('workflows.v2.update_wait.completion_timeout_seconds', 9);

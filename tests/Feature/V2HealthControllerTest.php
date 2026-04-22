@@ -12,18 +12,12 @@ use Workflow\V2\Models\WorkflowRunSummary;
 
 class V2HealthControllerTest extends TestCase
 {
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        config()->set('waterline.engine_source', 'v2');
-    }
-
     public function testHealthEndpointReturnsV2HealthSnapshot(): void
     {
         config()->set('queue.default', 'redis');
         config()->set('queue.connections.redis.driver', 'redis');
-        config()->set('cache.default', 'file');
+        config()->set('cache.default', 'array');
+        config()->set('cache.stores.array.driver', 'array');
 
         $this->get('/waterline/api/v2/health')
             ->assertStatus(200)
@@ -43,7 +37,6 @@ class V2HealthControllerTest extends TestCase
     {
         config()->set('queue.default', 'sync');
         config()->set('queue.connections.sync.driver', 'sync');
-        config()->set('workflows.v2.task_dispatch_mode', 'queue');
 
         $this->get('/waterline/api/v2/health')
             ->assertStatus(503)
@@ -59,7 +52,8 @@ class V2HealthControllerTest extends TestCase
     {
         config()->set('queue.default', 'redis');
         config()->set('queue.connections.redis.driver', 'redis');
-        config()->set('cache.default', 'file');
+        config()->set('cache.default', 'array');
+        config()->set('cache.stores.array.driver', 'array');
 
         $instance = WorkflowInstance::create([
             'id' => 'waterline-health-repair',
@@ -115,7 +109,8 @@ class V2HealthControllerTest extends TestCase
     {
         config()->set('queue.default', 'redis');
         config()->set('queue.connections.redis.driver', 'redis');
-        config()->set('cache.default', 'file');
+        config()->set('cache.default', 'array');
+        config()->set('cache.stores.array.driver', 'array');
 
         $availableInstance = WorkflowInstance::create([
             'id' => 'waterline-health-contract-available',
