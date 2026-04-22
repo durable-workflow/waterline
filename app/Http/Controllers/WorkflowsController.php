@@ -21,6 +21,7 @@ use Waterline\Http\Resources\StoredWorkflowResource;
 use Waterline\Http\Resources\V2StoredWorkflowResource;
 use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
+use Waterline\Support\ActionabilityContract;
 use Waterline\Waterline;
 
 class WorkflowsController extends Controller
@@ -78,7 +79,9 @@ class WorkflowsController extends Controller
 
         $flow = $repository->findFlow($id);
 
-        return response()->json($observability->runHistoryExport($flow));
+        return response()->json(ActionabilityContract::annotateExport(
+            $observability->runHistoryExport($flow),
+        ));
     }
 
     public function historyExportInstance(
@@ -90,7 +93,9 @@ class WorkflowsController extends Controller
 
         $flow = $repository->findFlowSelection($instanceId);
 
-        return response()->json($observability->runHistoryExport($flow));
+        return response()->json(ActionabilityContract::annotateExport(
+            $observability->runHistoryExport($flow),
+        ));
     }
 
     public function historyExportSelection(
@@ -103,7 +108,9 @@ class WorkflowsController extends Controller
 
         $flow = $repository->findFlowSelection($instanceId, $runId);
 
-        return response()->json($observability->runHistoryExport($flow));
+        return response()->json(ActionabilityContract::annotateExport(
+            $observability->runHistoryExport($flow),
+        ));
     }
 
     public function query(
@@ -605,6 +612,7 @@ class WorkflowsController extends Controller
             'saved_view' => $context['saved_view'],
             'saved_view_applied' => $context['saved_view_applied'],
             'saved_view_warning' => $context['saved_view_warning'],
+            'actionability_contract' => ActionabilityContract::definition(),
         ];
 
         return response()->json($payload);
@@ -617,6 +625,7 @@ class WorkflowsController extends Controller
     {
         $item = RunListItemView::fromSummary($summary);
         $item['history_budget_indicator'] = $this->historyBudgetIndicator($item);
+        $item['actionability'] = ActionabilityContract::annotateRun($item)['actionability'];
 
         return $item;
     }

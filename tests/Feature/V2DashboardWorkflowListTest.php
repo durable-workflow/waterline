@@ -77,6 +77,9 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('data.0.id', $run->id)
             ->assertJsonPath('data.0.business_key', 'configured-list-business')
             ->assertJsonPath('data.0.workflow_type', 'workflow.test')
+            ->assertJsonPath('data.0.actionability.schema', 'waterline.actionability')
+            ->assertJsonPath('data.0.actionability.repair_state', 'unknown')
+            ->assertJsonPath('visibility_filters.actionability_contract.version', 1)
             ->assertJsonMissingPath('data.0.config_marker');
     }
 

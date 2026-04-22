@@ -5,6 +5,7 @@ namespace Waterline\Http\Resources;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowRun;
+use Waterline\Support\ActionabilityContract;
 use Waterline\Support\RunDiagnostics;
 
 /**
@@ -27,7 +28,7 @@ class V2StoredWorkflowResource extends JsonResource
         $detail = $this->withTimelineWindow($detail, $request);
         $detail['run_diagnostics'] = app(RunDiagnostics::class)->forRun($this->resource, $detail);
 
-        return $detail;
+        return ActionabilityContract::annotateRun($detail);
     }
 
     /**
