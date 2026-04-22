@@ -282,7 +282,7 @@
             },
 
             duration(start, end) {
-                return moment(end).from(moment(start), true)
+                return this.durationBetween(start, end)
             },
 
             routeName(flow) {
@@ -356,20 +356,6 @@
                 }
 
                 return fleet[section][period] || 0;
-            },
-
-            formatDuration(ms) {
-                if (!ms) return '-';
-
-                const seconds = Math.floor(ms / 1000);
-                if (seconds < 60) return seconds + 's';
-
-                const minutes = Math.floor(seconds / 60);
-                if (minutes < 60) return minutes + 'm';
-
-                const hours = Math.floor(minutes / 60);
-                const remainingMinutes = minutes % 60;
-                return hours + 'h' + (remainingMinutes > 0 ? ' ' + remainingMinutes + 'm' : '');
             },
 
             operatorProjectionMetric(group, key = null) {

@@ -71,7 +71,6 @@
 
 <script type="text/ecmascript-6">
     import phpunserialize from 'phpunserialize'
-    import moment from 'moment-timezone';
 
     export default {
         props: {
@@ -104,8 +103,7 @@
 
         methods: {
             duration(start, end) {
-                moment.relativeTimeThreshold('ss', 1)
-                return moment(end).from(moment(start), true)
+                return this.durationBetween(start, end)
             },
 
             detailRoute(flow) {

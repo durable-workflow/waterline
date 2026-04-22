@@ -74,5 +74,57 @@ export default {
                 ? timestamp.replace('T', ' ').replace('Z', '')
                 : '-';
         },
+
+        /**
+         * Format a millisecond duration with consistent precision so short
+         * runs keep seconds resolution: sub-second shows `<1s`, seconds show
+         * `Ns`, minutes show `Nm SSs` (or `Nm` when seconds are zero), hours
+         * and days fall through to `Nh MMm` / `Nd HHh` respectively.
+         */
+        formatDuration(ms) {
+            if (!ms || Number.isNaN(ms)) return '-';
+
+            const total = Math.max(0, Math.floor(Number(ms)));
+            if (total === 0) return '-';
+            if (total < 1000) return '<1s';
+
+            const totalSeconds = Math.floor(total / 1000);
+            if (totalSeconds < 60) return totalSeconds + 's';
+
+            const minutes = Math.floor(totalSeconds / 60);
+            const remainingSeconds = totalSeconds % 60;
+            if (minutes < 60) {
+                return remainingSeconds > 0
+                    ? minutes + 'm ' + String(remainingSeconds).padStart(2, '0') + 's'
+                    : minutes + 'm';
+            }
+
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            if (hours < 24) {
+                return remainingMinutes > 0
+                    ? hours + 'h ' + String(remainingMinutes).padStart(2, '0') + 'm'
+                    : hours + 'h';
+            }
+
+            const days = Math.floor(hours / 24);
+            const remainingHours = hours % 24;
+            return remainingHours > 0
+                ? days + 'd ' + String(remainingHours).padStart(2, '0') + 'h'
+                : days + 'd';
+        },
+
+        /**
+         * Format the duration between two timestamps using `formatDuration`.
+         */
+        durationBetween(start, end) {
+            if (!start || !end) return '-';
+
+            const startMs = new Date(start).getTime();
+            const endMs = new Date(end).getTime();
+            if (Number.isNaN(startMs) || Number.isNaN(endMs)) return '-';
+
+            return this.formatDuration(Math.max(0, endMs - startMs));
+        },
     },
 };

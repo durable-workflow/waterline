@@ -2093,7 +2093,7 @@ export default {
         },
 
         duration(start, end) {
-            return moment(end).from(moment(start), true)
+            return this.durationBetween(start, end)
         },
 
         isClosed(flow) {
