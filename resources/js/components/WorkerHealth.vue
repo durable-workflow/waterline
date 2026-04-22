@@ -7,8 +7,8 @@
                     <button class="btn btn-sm btn-outline-secondary mr-2" @click="editViewOptions" :disabled="savingOperatorPreferences">
                         View Options
                     </button>
-                    <button class="btn btn-sm btn-outline-secondary" @click="refresh">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon fill-text-color" style="width: 16px; height: 16px;">
+                    <button class="btn btn-sm btn-outline-secondary" @click="refresh" :disabled="loading">
+                        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon fill-text-color" style="width: 16px; height: 16px;">
                             <path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"></path>
                         </svg>
                         Refresh
@@ -16,15 +16,15 @@
                 </div>
             </div>
 
-            <div v-if="loading" class="card-body text-center py-5">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color" style="width: 32px; height: 32px;">
+            <div v-if="loading" class="card-body text-center py-5" role="status" aria-live="polite" aria-busy="true">
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color" style="width: 32px; height: 32px;">
                     <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
                 </svg>
                 <p class="mt-2 mb-0 text-muted">Loading worker health...</p>
             </div>
 
             <div v-else-if="error" class="card-body">
-                <div class="alert alert-danger mb-0">
+                <div class="alert alert-danger mb-0" role="alert">
                     <strong>Error:</strong> {{ error }}
                 </div>
             </div>

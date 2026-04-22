@@ -3,8 +3,14 @@
         <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 class="mb-0">Workflow Schedules</h5>
-                <div>
-                    <select v-model="statusFilter" class="form-control form-control-sm d-inline-block mr-2" style="width: auto;">
+                <div class="d-flex align-items-center flex-wrap">
+                    <label for="waterline-schedule-status-filter" class="sr-only">Filter schedules by status</label>
+                    <select
+                        id="waterline-schedule-status-filter"
+                        v-model="statusFilter"
+                        class="form-control form-control-sm d-inline-block mr-2"
+                        style="width: auto;"
+                        aria-label="Filter schedules by status">
                         <option value="">All Statuses</option>
                         <option value="active">Active</option>
                         <option value="paused">Paused</option>
@@ -13,8 +19,8 @@
                     <button class="btn btn-sm btn-outline-secondary mr-2" @click="editViewOptions" :disabled="savingOperatorPreferences">
                         View Options
                     </button>
-                    <button class="btn btn-sm btn-outline-secondary" @click="refresh">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon fill-text-color" style="width: 16px; height: 16px;">
+                    <button class="btn btn-sm btn-outline-secondary" @click="refresh" :disabled="loading">
+                        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon fill-text-color" style="width: 16px; height: 16px;">
                             <path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"></path>
                         </svg>
                         Refresh
@@ -22,15 +28,15 @@
                 </div>
             </div>
 
-            <div v-if="loading" class="card-body text-center py-5">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color" style="width: 32px; height: 32px;">
+            <div v-if="loading" class="card-body text-center py-5" role="status" aria-live="polite" aria-busy="true">
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color" style="width: 32px; height: 32px;">
                     <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
                 </svg>
                 <p class="mt-2 mb-0 text-muted">Loading schedules...</p>
             </div>
 
             <div v-else-if="error" class="card-body">
-                <div class="alert alert-danger mb-0">
+                <div class="alert alert-danger mb-0" role="alert">
                     <strong>Error:</strong> {{ error }}
                 </div>
             </div>
@@ -94,6 +100,7 @@
                                             v-if="schedule.status === 'active'"
                                             class="btn btn-sm btn-outline-warning"
                                             @click="pauseSchedule(schedule.id)"
+                                            :aria-label="'Pause schedule ' + schedule.id"
                                             title="Pause">
                                             ⏸
                                         </button>
@@ -101,18 +108,21 @@
                                             v-if="schedule.status === 'paused'"
                                             class="btn btn-sm btn-outline-success"
                                             @click="resumeSchedule(schedule.id)"
+                                            :aria-label="'Resume schedule ' + schedule.id"
                                             title="Resume">
                                             ▶
                                         </button>
                                         <button
                                             class="btn btn-sm btn-outline-primary"
                                             @click="triggerNow(schedule.id)"
+                                            :aria-label="'Trigger schedule ' + schedule.id + ' now'"
                                             title="Trigger Now">
                                             ⚡
                                         </button>
                                         <button
                                             class="btn btn-sm btn-outline-info"
                                             @click="showBackfillDialog(schedule)"
+                                            :aria-label="'Backfill schedule ' + schedule.id"
                                             title="Backfill">
                                             📅
                                         </button>
@@ -129,20 +139,27 @@
 
                 <!-- Pagination -->
                 <div v-if="pagination && pagination.last_page > 1" class="card-footer">
-                    <nav>
+                    <nav aria-label="Schedule pages">
                         <ul class="pagination pagination-sm mb-0">
                             <li class="page-item" :class="{ disabled: pagination.current_page === 1 }">
-                                <button class="page-link" @click="goToPage(pagination.current_page - 1)">Previous</button>
+                                <button class="page-link" @click="goToPage(pagination.current_page - 1)" :disabled="pagination.current_page === 1">Previous</button>
                             </li>
                             <li
                                 v-for="page in visiblePages"
                                 :key="page"
                                 class="page-item"
-                                :class="{ active: page === pagination.current_page }">
-                                <button class="page-link" @click="goToPage(page)">{{ page }}</button>
+                                :class="{ active: page === pagination.current_page, disabled: page === '...' }">
+                                <span v-if="page === '...'" class="page-link" aria-hidden="true">...</span>
+                                <button
+                                    v-else
+                                    class="page-link"
+                                    @click="goToPage(page)"
+                                    :aria-current="page === pagination.current_page ? 'page' : null">
+                                    {{ page }}
+                                </button>
                             </li>
                             <li class="page-item" :class="{ disabled: pagination.current_page === pagination.last_page }">
-                                <button class="page-link" @click="goToPage(pagination.current_page + 1)">Next</button>
+                                <button class="page-link" @click="goToPage(pagination.current_page + 1)" :disabled="pagination.current_page === pagination.last_page">Next</button>
                             </li>
                         </ul>
                     </nav>
@@ -151,30 +168,44 @@
         </div>
 
         <!-- Backfill Dialog (simple version - could use a modal library) -->
-        <div v-if="showBackfill" class="modal d-block" style="background: rgba(0,0,0,0.5);" @click.self="showBackfill = false">
+        <div
+            v-if="showBackfill"
+            class="modal d-block"
+            style="background: rgba(0,0,0,0.5);"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="waterline-backfill-title"
+            aria-describedby="waterline-backfill-description"
+            @click.self="closeBackfillDialog"
+            @keydown.esc="closeBackfillDialog">
             <div class="modal-dialog">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h5 class="modal-title">Backfill Schedule</h5>
-                        <button type="button" class="close" @click="showBackfill = false">
-                            <span>&times;</span>
+                        <h5 id="waterline-backfill-title" class="modal-title">Backfill Schedule</h5>
+                        <button
+                            ref="backfillCloseButton"
+                            type="button"
+                            class="close"
+                            aria-label="Close backfill dialog"
+                            @click="closeBackfillDialog">
+                            <span aria-hidden="true">&times;</span>
                         </button>
                     </div>
                     <div class="modal-body">
-                        <p class="small text-muted">
+                        <p id="waterline-backfill-description" class="small text-muted">
                             Backfill will trigger workflow executions for missed schedule times in the specified range.
                         </p>
                         <div class="form-group">
-                            <label>From (ISO 8601)</label>
-                            <input v-model="backfillFrom" type="datetime-local" class="form-control" />
+                            <label for="waterline-backfill-from">From (ISO 8601)</label>
+                            <input id="waterline-backfill-from" v-model="backfillFrom" type="datetime-local" class="form-control" />
                         </div>
                         <div class="form-group">
-                            <label>To (ISO 8601)</label>
-                            <input v-model="backfillTo" type="datetime-local" class="form-control" />
+                            <label for="waterline-backfill-to">To (ISO 8601)</label>
+                            <input id="waterline-backfill-to" v-model="backfillTo" type="datetime-local" class="form-control" />
                         </div>
                         <div class="form-group">
-                            <label>Overlap Policy</label>
-                            <select v-model="backfillOverlapPolicy" class="form-control">
+                            <label for="waterline-backfill-overlap-policy">Overlap Policy</label>
+                            <select id="waterline-backfill-overlap-policy" v-model="backfillOverlapPolicy" class="form-control">
                                 <option value="">Use schedule default</option>
                                 <option value="skip">Skip</option>
                                 <option value="allow">Allow</option>
@@ -184,7 +215,7 @@
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button class="btn btn-secondary" @click="showBackfill = false">Cancel</button>
+                        <button class="btn btn-secondary" @click="closeBackfillDialog">Cancel</button>
                         <button class="btn btn-primary" @click="executeBackfill">Backfill</button>
                     </div>
                 </div>
@@ -271,6 +302,18 @@ export default {
         statusFilter() {
             this.currentPage = 1;
             this.loadData();
+        },
+
+        showBackfill(isOpen) {
+            if (!isOpen) {
+                return;
+            }
+
+            this.$nextTick(() => {
+                if (this.$refs.backfillCloseButton) {
+                    this.$refs.backfillCloseButton.focus();
+                }
+            });
         }
     },
 
@@ -526,6 +569,10 @@ export default {
             this.showBackfill = true;
         },
 
+        closeBackfillDialog() {
+            this.showBackfill = false;
+        },
+
         async executeBackfill() {
             if (!this.backfillFrom || !this.backfillTo) {
                 alert('Please specify both from and to timestamps');
@@ -547,7 +594,7 @@ export default {
                 );
 
                 alert(`Backfill completed. Results: ${JSON.stringify(response.data.results)}`);
-                this.showBackfill = false;
+                this.closeBackfillDialog();
                 await this.loadData();
             } catch (e) {
                 alert(`Backfill failed: ${e.response?.data?.error || e.message}`);
