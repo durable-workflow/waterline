@@ -6,7 +6,7 @@ namespace Waterline\Repositories\Workflow\Infrastructure;
 
 use Illuminate\Http\Request;
 use Waterline\Models\SavedWorkflowView;
-use Workflow\V2\Support\VisibilityFilters;
+use Waterline\Support\ActionabilityVisibilityFilters;
 
 final class V2VisibilityFilterContext
 {
@@ -34,7 +34,7 @@ final class V2VisibilityFilterContext
             ? null
             : (($savedView['filter_version_supported'] ?? true) === true);
         $savedFilters = $savedViewApplied && is_array($savedView['filters'] ?? null) ? $savedView['filters'] : [];
-        $requestFilters = VisibilityFilters::fromRequest($request);
+        $requestFilters = ActionabilityVisibilityFilters::fromRequest($request);
         $namespaceFilters = self::namespaceFilters();
 
         return [
@@ -43,8 +43,8 @@ final class V2VisibilityFilterContext
             'saved_view_warning' => $savedViewApplied ? null : ($savedView['filter_version_message'] ?? null),
             'saved_filters' => $savedFilters,
             'request_filters' => $requestFilters,
-            'applied_filters' => VisibilityFilters::merge($namespaceFilters, $savedFilters, $requestFilters),
-            'definition' => VisibilityFilters::definition(),
+            'applied_filters' => ActionabilityVisibilityFilters::merge($namespaceFilters, $savedFilters, $requestFilters),
+            'definition' => ActionabilityVisibilityFilters::definition(),
         ];
     }
 

@@ -6,9 +6,9 @@ namespace Waterline\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Waterline\Models\SavedWorkflowView;
+use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\EngineSourceReadiness;
 use Waterline\Support\WorkflowEngineSourceResolver;
-use Workflow\V2\Support\VisibilityFilters;
 
 class SavedViewsController extends Controller
 {
@@ -23,9 +23,9 @@ class SavedViewsController extends Controller
         if (! $this->available($engineSource)) {
             return response()->json([
                 'data' => [],
-                'filter_version' => VisibilityFilters::VERSION,
-                'supported_filter_versions' => VisibilityFilters::supportedVersions(),
-                'filter_definition' => VisibilityFilters::definition(),
+                'filter_version' => ActionabilityVisibilityFilters::VERSION,
+                'supported_filter_versions' => ActionabilityVisibilityFilters::supportedVersions(),
+                'filter_definition' => ActionabilityVisibilityFilters::definition(),
                 'saved_view_policy' => $this->savedViewPolicy(),
             ]);
         }
@@ -45,9 +45,9 @@ class SavedViewsController extends Controller
                 ...SavedWorkflowView::systemViews($bucket),
                 ...$saved,
             ],
-            'filter_version' => VisibilityFilters::VERSION,
-            'supported_filter_versions' => VisibilityFilters::supportedVersions(),
-            'filter_definition' => VisibilityFilters::definition(),
+            'filter_version' => ActionabilityVisibilityFilters::VERSION,
+            'supported_filter_versions' => ActionabilityVisibilityFilters::supportedVersions(),
+            'filter_definition' => ActionabilityVisibilityFilters::definition(),
             'saved_view_policy' => $this->savedViewPolicy(),
         ]);
     }
@@ -76,7 +76,7 @@ class SavedViewsController extends Controller
             'scope' => $model::configuredScope(),
             'bucket' => $payload['bucket'],
             'filters' => $payload['filters'],
-            'filter_version' => VisibilityFilters::VERSION,
+            'filter_version' => ActionabilityVisibilityFilters::VERSION,
             'shared' => $payload['shared'],
             'owner_type' => $owner['type'],
             'owner_id' => $owner['id'],
@@ -118,7 +118,7 @@ class SavedViewsController extends Controller
             'name' => $payload['name'],
             'bucket' => $payload['bucket'],
             'filters' => $payload['filters'],
-            'filter_version' => VisibilityFilters::VERSION,
+            'filter_version' => ActionabilityVisibilityFilters::VERSION,
             'shared' => $payload['shared'],
         ]);
 
@@ -166,7 +166,7 @@ class SavedViewsController extends Controller
         return [
             'name' => $name,
             'bucket' => $this->bucket($validated['bucket'], required: true),
-            'filters' => VisibilityFilters::normalize($validated['filters'] ?? []),
+            'filters' => ActionabilityVisibilityFilters::normalize($validated['filters'] ?? []),
             'shared' => (bool) ($validated['shared'] ?? false),
         ];
     }

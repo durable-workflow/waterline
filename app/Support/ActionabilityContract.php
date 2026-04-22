@@ -126,6 +126,7 @@ class ActionabilityContract
 
         $repairState = match (true) {
             $canRepair => 'repairable',
+            $blockedReason === 'repair_not_needed' => 'not_needed',
             $blockedReason !== null => 'blocked',
             $statusBucket === 'running' => 'unknown',
             default => 'not_needed',

@@ -5,7 +5,7 @@ namespace Waterline\Repositories\Workflow\Infrastructure;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Support\RunSummarySortKey;
 use Workflow\V2\Support\SelectedRunLocator;
-use Workflow\V2\Support\VisibilityFilters;
+use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 
 class V2WorkflowRepository implements WorkflowRepositoryInterface
@@ -162,7 +162,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         $query = $this->runSummaryModel::query();
         $context = V2VisibilityFilterContext::resolve(request(), $bucket);
 
-        VisibilityFilters::apply(
+        ActionabilityVisibilityFilters::apply(
             $query,
             $context['applied_filters'],
         );

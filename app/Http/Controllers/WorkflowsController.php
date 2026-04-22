@@ -14,7 +14,6 @@ use Workflow\V2\Support\HistoryBudget;
 use Workflow\V2\Support\QueryResponse;
 use Workflow\V2\Support\RunListItemView;
 use Workflow\V2\Support\UpdateWaitPolicy;
-use Workflow\V2\Support\VisibilityFilters;
 use Workflow\V2\UpdateResult;
 use Workflow\V2\WorkflowStub as V2WorkflowStub;
 use Waterline\Http\Resources\StoredWorkflowResource;
@@ -22,6 +21,7 @@ use Waterline\Http\Resources\V2StoredWorkflowResource;
 use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityContract;
+use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\CompatibilitySemantics;
 use Waterline\Waterline;
 
@@ -605,8 +605,8 @@ class WorkflowsController extends Controller
         );
 
         $payload['visibility_filters'] = [
-            'version' => VisibilityFilters::VERSION,
-            'supported_versions' => VisibilityFilters::supportedVersions(),
+            'version' => ActionabilityVisibilityFilters::VERSION,
+            'supported_versions' => ActionabilityVisibilityFilters::supportedVersions(),
             'bucket' => $bucket,
             'definition' => $context['definition'],
             'applied' => $context['applied_filters'],

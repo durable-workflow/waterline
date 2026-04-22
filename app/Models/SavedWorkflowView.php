@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
-use Workflow\V2\Support\VisibilityFilters;
+use Waterline\Support\ActionabilityVisibilityFilters;
 
 class SavedWorkflowView extends Model
 {
@@ -45,12 +45,12 @@ class SavedWorkflowView extends Model
             $owner = static::ownerIdentity();
             $view->owner_type ??= $owner['type'];
             $view->owner_id ??= $owner['id'];
-            $view->filter_version ??= VisibilityFilters::VERSION;
-            $view->filters = VisibilityFilters::normalize($view->filters ?? []);
+            $view->filter_version ??= ActionabilityVisibilityFilters::VERSION;
+            $view->filters = ActionabilityVisibilityFilters::normalize($view->filters ?? []);
         });
 
         static::saving(static function (self $view): void {
-            $view->filters = VisibilityFilters::normalize($view->filters ?? []);
+            $view->filters = ActionabilityVisibilityFilters::normalize($view->filters ?? []);
         });
     }
 
@@ -162,7 +162,7 @@ class SavedWorkflowView extends Model
      */
     public function toWaterlinePayload(?Request $request = null): array
     {
-        $versionMetadata = VisibilityFilters::versionMetadata($this->getRawOriginal('filter_version') ?? $this->filter_version);
+        $versionMetadata = ActionabilityVisibilityFilters::versionMetadata($this->getRawOriginal('filter_version') ?? $this->filter_version);
         $ownedByCurrentOperator = $request === null ? null : $this->isOwnedBy($request);
 
         return [
@@ -176,7 +176,7 @@ class SavedWorkflowView extends Model
             'owned_by_current_operator' => $ownedByCurrentOperator,
             'mutable_by_current_operator' => $ownedByCurrentOperator,
             'system' => false,
-            'filters' => VisibilityFilters::normalize($this->filters ?? []),
+            'filters' => ActionabilityVisibilityFilters::normalize($this->filters ?? []),
             'filter_version' => $versionMetadata['version'],
             'filter_version_supported' => $versionMetadata['supported'],
             'filter_version_status' => $versionMetadata['status'],
@@ -223,7 +223,7 @@ class SavedWorkflowView extends Model
             'name' => 'Repair Blocked',
             'bucket' => 'running',
             'filters' => [
-                'repair_attention' => true,
+                'repair_state' => 'blocked',
             ],
         ];
 
@@ -241,7 +241,7 @@ class SavedWorkflowView extends Model
      */
     private static function systemViewPayload(array $view): array
     {
-        $versionMetadata = VisibilityFilters::versionMetadata(VisibilityFilters::VERSION);
+        $versionMetadata = ActionabilityVisibilityFilters::versionMetadata(ActionabilityVisibilityFilters::VERSION);
 
         return [
             'id' => $view['id'],
@@ -255,7 +255,7 @@ class SavedWorkflowView extends Model
             'mutable_by_current_operator' => false,
             'system' => true,
             'filters' => $view['filters'],
-            'filter_version' => VisibilityFilters::VERSION,
+            'filter_version' => ActionabilityVisibilityFilters::VERSION,
             'filter_version_supported' => $versionMetadata['supported'],
             'filter_version_status' => $versionMetadata['status'],
             'filter_version_message' => $versionMetadata['message'],
