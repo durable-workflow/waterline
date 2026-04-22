@@ -654,6 +654,13 @@ class V2DashboardWorkflowListTest extends TestCase
             Carbon::parse('2022-01-01 12:05:00'),
             Carbon::parse('2022-01-01 12:05:00'),
         );
+        $repairable = $this->createRunningSummary(
+            'repairable-repair-instance',
+            'run-repairable-repair',
+            Carbon::parse('2022-01-01 12:07:00'),
+            Carbon::parse('2022-01-01 12:07:00'),
+            repairAttention: true,
+        );
         $this->createRunningSummary(
             'blocked-repair-instance',
             'run-blocked-repair',
@@ -669,6 +676,13 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('data.0.id', $unknown->id)
             ->assertJsonPath('data.0.actionability.repair_state', 'unknown')
             ->assertJsonPath('visibility_filters.applied.repair_state', 'unknown');
+
+        $this->get('/waterline/api/flows/running?repair_state=repairable')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $repairable->id)
+            ->assertJsonPath('data.0.actionability.repair_state', 'repairable')
+            ->assertJsonPath('visibility_filters.applied.repair_state', 'repairable');
     }
 
     public function testV2SavedViewsCanBeUpdatedAndDeleted(): void

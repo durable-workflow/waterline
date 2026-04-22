@@ -119,10 +119,15 @@ class ActionabilityContract
      */
     private static function runActionability(array $payload): array
     {
-        $canRepair = ($payload['can_repair'] ?? null) === true;
         $blockedReason = self::stringValue($payload['repair_blocked_reason'] ?? null);
         $statusBucket = self::stringValue($payload['status_bucket'] ?? null);
         $closedReason = self::stringValue($payload['closed_reason'] ?? null);
+        $canRepair = ($payload['can_repair'] ?? null) === true
+            || (
+                ($payload['repair_attention'] ?? null) === true
+                && $blockedReason === null
+                && $statusBucket === 'running'
+            );
 
         $repairState = match (true) {
             $canRepair => 'repairable',

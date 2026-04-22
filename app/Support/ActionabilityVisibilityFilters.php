@@ -176,6 +176,7 @@ final class ActionabilityVisibilityFilters
                 }),
             'unknown' => $query
                 ->where('status_bucket', 'running')
+                ->where('repair_attention', false)
                 ->whereNull('repair_blocked_reason'),
             default => $query,
         };
