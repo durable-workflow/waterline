@@ -314,6 +314,11 @@
                 return flow.exceptions_count ?? flow.exception_count ?? 0;
             },
 
+            hasTerminalRuns(type) {
+                const b = type && type.status_breakdown ? type.status_breakdown : {};
+                return (b.completed || 0) + (b.failed || 0) + (b.cancelled || 0) + (b.terminated || 0) > 0;
+            },
+
             operatorMetric(section, key) {
                 const metrics = this.stats.operator_metrics || {};
                 const group = metrics[section] || {};
@@ -614,16 +619,25 @@
                             </td>
                             <td class="text-right">{{ type.total_runs.toLocaleString() }}</td>
                             <td class="text-right">
-                                <span :class="'badge badge-' + (type.pass_rate >= 95 ? 'success' : type.pass_rate >= 80 ? 'warning' : 'danger')">
+                                <span v-if="hasTerminalRuns(type)"
+                                      :class="'badge badge-' + (type.pass_rate >= 95 ? 'success' : type.pass_rate >= 80 ? 'warning' : 'danger')">
                                     {{ type.pass_rate }}%
+                                </span>
+                                <span v-else class="text-muted small" title="No terminal runs yet this week">
+                                    &mdash;
                                 </span>
                             </td>
                             <td class="text-right text-muted small">
-                                {{ type.median_duration_ms ? formatDuration(type.median_duration_ms) : '-' }}
+                                <template v-if="type.median_duration_ms">
+                                    {{ formatDuration(type.median_duration_ms) }}
+                                </template>
+                                <span v-else title="No completed runs yet this week">
+                                    &mdash;
+                                </span>
                             </td>
                             <td class="text-right">
-                                <span v-if="type.error_count > 0" class="text-danger">{{ type.error_count }}</span>
-                                <span v-else class="text-muted">-</span>
+                                <span v-if="type.error_count > 0" class="text-danger">{{ type.error_count.toLocaleString() }}</span>
+                                <span v-else class="text-muted" title="No failed, cancelled, or terminated runs">0</span>
                             </td>
                         </tr>
                     </tbody>
@@ -736,12 +750,13 @@
                             <small class="text-uppercase">Max Wait Time</small>
 
                             <h4 class="mt-4 mb-0">
-                                {{ stats.max_wait_time_workflow ? waitAge(stats.max_wait_time_workflow) : '-' }}
+                                {{ stats.max_wait_time_workflow ? waitAge(stats.max_wait_time_workflow) : '—' }}
                             </h4>
 
                             <small class="mt-1" v-if="stats.max_wait_time_workflow">
                                 (<router-link :title="stats.max_wait_time_workflow.class" :to="{ name: routeName(stats.max_wait_time_workflow), params: { flowId: stats.max_wait_time_workflow.id }}">{{ flowBaseName(stats.max_wait_time_workflow.class) }}</router-link>)
                             </small>
+                            <small v-else class="mt-1 text-muted d-block">No running waits</small>
                         </div>
                     </div>
 
@@ -750,18 +765,19 @@
                             <small class="text-uppercase">Max Duration</small>
 
                             <h4 class="mt-4 mb-0">
-                                {{ stats.max_duration_workflow ? flowDuration(stats.max_duration_workflow) : '-' }}
+                                {{ stats.max_duration_workflow ? flowDuration(stats.max_duration_workflow) : '—' }}
                             </h4>
 
                             <small class="mt-1" v-if="stats.max_duration_workflow">
                                 (<router-link :title="stats.max_duration_workflow.class" :to="{ name: routeName(stats.max_duration_workflow), params: { flowId: stats.max_duration_workflow.id }}">{{ flowBaseName(stats.max_duration_workflow.class) }}</router-link>)
                             </small>
+                            <small v-else class="mt-1 text-muted d-block">No completed runs yet</small>
                         </div>
                     </div>
 
                     <div class="w-25">
                         <div class="p-4 mb-0">
-                            <small class="text-uppercase">Max Exceptions</small>
+                            <small class="text-uppercase">Most Exceptions On One Run</small>
 
                             <h4 class="mt-4 mb-0">
                                 {{ stats.max_exceptions_workflow ? exceptionCount(stats.max_exceptions_workflow).toLocaleString() : 0 }}
@@ -770,6 +786,7 @@
                             <small class="mt-1" v-if="stats.max_exceptions_workflow">
                                 (<router-link :title="stats.max_exceptions_workflow.class" :to="{ name: routeName(stats.max_exceptions_workflow), params: { flowId: stats.max_exceptions_workflow.id }}">{{ flowBaseName(stats.max_exceptions_workflow.class) }}</router-link>)
                             </small>
+                            <small v-else class="mt-1 text-muted d-block">No runs with exceptions</small>
                         </div>
                     </div>
                 </div>
