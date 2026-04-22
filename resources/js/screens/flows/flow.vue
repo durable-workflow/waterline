@@ -2,7 +2,7 @@
     <div>
         <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5 v-if="!ready">Run Detail</h5>
+                <h5 v-if="!ready">Flow Preview</h5>
                 <h5 v-if="ready">{{ flow.class }}</h5>
 
                 <div class="d-flex align-items-center">
@@ -81,7 +81,7 @@
                 class="d-flex flex-column align-items-center justify-content-center text-center card-bg-secondary p-5 bottom-radius"
                 role="alert"
                 aria-live="assertive">
-                <strong>Run detail unavailable</strong>
+                <strong>Flow preview unavailable</strong>
                 <span class="text-muted mt-2">{{ loadingError }}</span>
                 <button class="btn btn-outline-primary btn-sm mt-3" @click="retryFlowLoad">
                     Retry
@@ -499,7 +499,10 @@
             </div>
 
             <div class="card-body code-bg text-white collapse show" id="collapseArguments">
-                <vue-json-pretty :data="unserialize(flow.arguments)"></vue-json-pretty>
+                <vue-json-pretty v-if="hasPayload(flow.arguments)" :data="unserialize(flow.arguments)"></vue-json-pretty>
+                <div v-else class="text-muted small">
+                    This run was started without arguments.
+                </div>
             </div>
         </div>
 
@@ -514,7 +517,10 @@
             </div>
 
             <div class="card-body code-bg text-white collapse show" id="collapseOutput">
-                <vue-json-pretty :data="unserialize(flow.output)"></vue-json-pretty>
+                <vue-json-pretty v-if="hasPayload(flow.output)" :data="unserialize(flow.output)"></vue-json-pretty>
+                <div v-else class="text-muted small">
+                    This run completed without returning a value.
+                </div>
             </div>
         </div>
 
@@ -648,8 +654,12 @@
                     </div>
                 </div>
 
+                <div v-if="!timelineRows().length" class="text-muted small">
+                    No history events have been recorded for this run yet.
+                </div>
+
                 <div
-                    v-if="runDetailTab() === 'timeline'"
+                    v-else-if="runDetailTab() === 'timeline'"
                     class="timeline-events timeline-events-virtual"
                     :style="{ height: historyViewportHeight + 'px' }"
                     @scroll="onHistoryScroll"
@@ -2141,6 +2151,32 @@ export default {
 
         hasDetailValue(value) {
             return value !== null && value !== undefined && value !== ''
+        },
+
+        hasPayload(raw) {
+            if (raw === null || raw === undefined || raw === '') {
+                return false
+            }
+
+            const decoded = this.unserialize(raw)
+
+            if (decoded === null || decoded === undefined) {
+                return false
+            }
+
+            if (typeof decoded === 'string') {
+                return decoded !== ''
+            }
+
+            if (Array.isArray(decoded)) {
+                return decoded.length > 0
+            }
+
+            if (typeof decoded === 'object') {
+                return Object.keys(decoded).length > 0
+            }
+
+            return true
         },
 
         hasObjectEntries(value) {
