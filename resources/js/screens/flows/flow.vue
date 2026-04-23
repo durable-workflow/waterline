@@ -1,5 +1,6 @@
 <template>
     <div>
+        <error-boundary label="Run Summary">
         <div class="card" v-if="ready" aria-labelledby="runSummaryHeading">
             <div class="card-header d-flex align-items-center justify-content-between flex-wrap">
                 <div class="d-flex align-items-center mr-3">
@@ -131,7 +132,9 @@
                 </div>
             </div>
         </div>
+        </error-boundary>
 
+        <error-boundary label="Run Details">
         <div :class="ready ? 'card mt-4' : 'card'" :aria-labelledby="ready ? 'runDetailsHeading' : null">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 v-if="!ready" class="mb-0">Run Detail</h5>
@@ -1615,6 +1618,7 @@
                 </table>
             </div>
         </div>
+        </error-boundary>
     </div>
 </template>
 

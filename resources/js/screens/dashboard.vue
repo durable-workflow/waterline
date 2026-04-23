@@ -566,6 +566,7 @@
         </div>
 
         <!-- Needs Attention Alerts (WCAG 4.1.3: Status Messages) -->
+        <error-boundary label="Needs Attention">
         <div class="card mb-4"
              v-if="stats.needs_attention && stats.needs_attention.total_alerts > 0"
              role="alert"
@@ -588,9 +589,11 @@
                 </div>
             </div>
         </div>
+        </error-boundary>
 
         <!-- Fleet Overview Trends -->
         <!-- Fleet Trends Chart -->
+        <error-boundary label="Fleet Trends">
         <div class="card mb-4" v-if="stats.fleet_trends_series && stats.fleet_trends_series.timestamps.length > 0">
             <div class="card-header">
                 <h5>Fleet Trends</h5>
@@ -609,7 +612,9 @@
                 </div>
             </div>
         </div>
+        </error-boundary>
 
+        <error-boundary label="Fleet Overview">
         <div class="card mb-4" v-if="stats.fleet_overview">
             <div class="card-header">
                 <h5>Fleet Overview</h5>
@@ -665,8 +670,10 @@
                 </div>
             </div>
         </div>
+        </error-boundary>
 
         <!-- Workflow Type Health -->
+        <error-boundary label="Workflow Type Health">
         <div class="card mb-4" v-if="stats.workflow_type_health && stats.workflow_type_health.length > 0">
             <div class="card-header">
                 <h5>Workflow Type Health</h5>
@@ -747,7 +754,9 @@
                 </div>
             </div>
         </div>
+        </error-boundary>
 
+        <error-boundary label="Overview">
         <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>
@@ -868,7 +877,9 @@
 
             </div>
         </div>
+        </error-boundary>
 
+        <error-boundary label="Operator Metrics">
         <div class="card mt-4" v-if="stats.operator_metrics">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Operator Metrics</h5>
@@ -1169,6 +1180,7 @@
                 </div>
             </div>
         </div>
+        </error-boundary>
 
         </template>
     </div>

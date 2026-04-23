@@ -6,6 +6,7 @@ import VueRouter from 'vue-router';
 import VueJsonPretty from 'vue-json-pretty';
 import VueApexCharts from 'vue-apexcharts';
 import { PrismEditor } from 'vue-prism-editor';
+import ErrorBoundary from './components/ErrorBoundary.vue';
 
 import 'vue-prism-editor/dist/prismeditor.min.css';
 
@@ -49,6 +50,12 @@ Vue.use(VueApexCharts)
 Vue.component('apexchart', VueApexCharts)
 Vue.component('vue-json-pretty', VueJsonPretty);
 Vue.component('PrismEditor', PrismEditor);
+Vue.component('error-boundary', ErrorBoundary);
+
+Vue.config.errorHandler = function (err, vm, info) {
+    // eslint-disable-next-line no-console
+    console.error('[Vue:errorHandler]', err, info);
+};
 
 Vue.mixin(Base);
 
