@@ -68,6 +68,36 @@ class WaterlineServiceProviderTest extends TestCase
         $this->assertInstanceOf(UnavailableV2WorkflowRepository::class, $repository);
     }
 
+    public function testPackageRegisterBindsDefaultRepositoryWithoutApplicationProvider(): void
+    {
+        // Simulates a fresh composer install: the package service provider
+        // is loaded via auto-discovery, but the host app has not published
+        // and registered WaterlineApplicationServiceProvider yet. The
+        // Waterline /api/stats and /api/flows/* routes must still resolve.
+        $this->app->offsetUnset(WorkflowRepositoryInterface::class);
+
+        (new WaterlineServiceProvider($this->app))->register();
+
+        $repository = $this->app->make(WorkflowRepositoryInterface::class);
+
+        $this->assertInstanceOf(WorkflowRepositoryInterface::class, $repository);
+    }
+
+    public function testPackageRegisterLeavesHostAppBindingInPlace(): void
+    {
+        // When the host app (or a published WaterlineApplicationServiceProvider
+        // subclass) has already bound WorkflowRepositoryInterface, the
+        // package default must not overwrite it.
+        $custom = $this->createMock(WorkflowRepositoryInterface::class);
+
+        $this->app->offsetUnset(WorkflowRepositoryInterface::class);
+        $this->app->bind(WorkflowRepositoryInterface::class, static fn () => $custom);
+
+        (new WaterlineServiceProvider($this->app))->register();
+
+        $this->assertSame($custom, $this->app->make(WorkflowRepositoryInterface::class));
+    }
+
     public function testBootPassesFloorGuardWhenPinnedToV1EvenIfV2SurfaceIsMissing(): void
     {
         config()->set('waterline.engine_source', 'v1');
