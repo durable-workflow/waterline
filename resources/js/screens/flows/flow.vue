@@ -561,6 +561,13 @@
                             <span v-if="entry.status">
                                 - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
                             </span>
+                            <span
+                                v-if="parentClosePolicyBadge(entry)"
+                                :class="parentClosePolicyBadge(entry).class"
+                                :title="parentClosePolicyBadge(entry).title"
+                            >
+                                {{ parentClosePolicyBadge(entry).label }}
+                            </span>
                         <div
                                 v-for="detail in lineageIdentityRows(entry)"
                                 :key="entry.key + '-' + detail"
@@ -4210,8 +4217,13 @@ export default {
                 status: link.status,
                 status_bucket: link.status_bucket,
                 child_call_id: link.child_call_id || null,
+                link_type: link.link_type || null,
                 history_authority: link.history_authority || null,
                 diagnostic_only: link.diagnostic_only === true,
+                parent_close_policy: link.parent_close_policy || null,
+                parent_close_policy_outcome: link.parent_close_policy_outcome || null,
+                parent_close_policy_reason: link.parent_close_policy_reason || null,
+                parent_close_policy_error: link.parent_close_policy_error || null,
             }))
 
             return [...parents, ...continued]
@@ -4228,6 +4240,73 @@ export default {
             }
 
             return direction === 'parent' ? 'Parent' : 'Child'
+        },
+
+        parentClosePolicyBadge(entry) {
+            if (!entry || entry.link_type === 'continue_as_new') {
+                return null
+            }
+
+            const outcome = entry.parent_close_policy_outcome || null
+            const policy = entry.parent_close_policy || null
+
+            if (!policy && !outcome) {
+                return null
+            }
+
+            const policyLabel = this.parentClosePolicyLabel(policy)
+
+            if (outcome === 'applied') {
+                const action = policy === 'terminate' ? 'terminated' : 'cancelled'
+
+                return {
+                    class: 'badge badge-warning ml-1',
+                    label: 'Closed by parent (' + action + ')',
+                    title: entry.parent_close_policy_reason
+                        || ('Parent-close policy ' + policyLabel + ' was applied to this child.'),
+                }
+            }
+
+            if (outcome === 'failed') {
+                return {
+                    class: 'badge badge-danger ml-1',
+                    label: 'Parent-close policy failed (' + policyLabel + ')',
+                    title: entry.parent_close_policy_error
+                        || entry.parent_close_policy_reason
+                        || 'Parent attempted to apply close policy but the command was rejected.',
+                }
+            }
+
+            // Policy snapshotted on the link but the parent has not (yet) fired
+            // a close-policy event for this child — show the operator the
+            // standing policy so they can distinguish "open under abandon"
+            // from "will be cancelled/terminated when parent closes".
+            if (policy === 'abandon') {
+                return {
+                    class: 'badge badge-secondary ml-1',
+                    label: 'Abandoned by parent on close',
+                    title: 'Parent-close policy is abandon; this child will keep running independently when the parent closes.',
+                }
+            }
+
+            return {
+                class: 'badge badge-info ml-1',
+                label: 'Parent-close policy: ' + policyLabel,
+                title: 'When the parent closes, this child will be ' + (policy === 'terminate' ? 'terminated' : 'cancelled') + '.',
+            }
+        },
+
+        parentClosePolicyLabel(policy) {
+            switch (policy) {
+                case 'request_cancel':
+                    return 'cancel'
+                case 'terminate':
+                    return 'terminate'
+                case 'abandon':
+                    return 'abandon'
+                default:
+                    return policy || 'unknown'
+            }
         },
 
         async issueCommand(commandType) {
