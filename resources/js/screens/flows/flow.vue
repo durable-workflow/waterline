@@ -1,157 +1,91 @@
 <template>
-    <div>
-        <error-boundary label="Run Summary">
-        <div class="card" v-if="ready" aria-labelledby="runSummaryHeading">
-            <div class="card-header d-flex align-items-center justify-content-between flex-wrap">
-                <div class="d-flex align-items-center mr-3">
-                    <h5 id="runSummaryHeading" class="mb-0 mr-2">Run Summary</h5>
-                    <small class="text-muted">{{ flow.class }}</small>
+    <div class="wl-flow-detail">
+        <div class="card wl-flow-detail__summary-card">
+            <div class="card-header d-flex align-items-start justify-content-between flex-wrap wl-flow-detail__summary-header">
+                <div class="wl-flow-detail__headline">
+                    <div class="wl-flow-detail__eyebrow">{{ ready && hasDetailValue(flow.instance_id) ? 'Workflow instance' : 'Workflow run' }}</div>
+                    <h1 class="wl-flow-detail__title" v-if="!ready">Flow Preview</h1>
+                    <h1 class="wl-flow-detail__title" v-if="ready">{{ flow.class }}</h1>
+
+                    <div v-if="ready" class="wl-flow-detail__headline-meta">
+                        <span class="wl-flow-detail__status" :class="detailStatusClass(flow.status)">
+                            {{ flow.status }}
+                            <template v-if="hasDetailValue(flow.status_bucket)">
+                                <span class="wl-flow-detail__status-slash">/</span>
+                                {{ flow.status_bucket }}
+                            </template>
+                        </span>
+
+                        <span class="wl-flow-detail__headline-pill mono" v-if="hasDetailValue(flow.instance_id)">
+                            instance {{ flow.instance_id }}
+                        </span>
+
+                        <span class="wl-flow-detail__headline-pill mono" v-if="hasDetailValue(flow.run_id)">
+                            run {{ flow.run_id }}
+                        </span>
+                    </div>
                 </div>
 
-                <div class="d-flex align-items-center flex-wrap">
-                    <button v-if="canIssueQuery()"
-                        class="btn btn-outline-secondary btn-sm mr-2"
+                <div class="d-flex align-items-center flex-wrap justify-content-end wl-flow-detail__header-actions">
+                    <button v-if="ready && canIssueQuery()"
+                        class="btn btn-outline-secondary btn-sm mr-2 wl-flow-detail__action-btn"
                         @click="issueCommand('query')">
                         Query
                     </button>
 
-                    <button v-if="canIssueSignal()"
-                        class="btn btn-outline-primary btn-sm mr-2"
+                    <button v-if="ready && canIssueSignal()"
+                        class="btn btn-outline-primary btn-sm mr-2 wl-flow-detail__action-btn"
                         @click="issueCommand('signal')">
                         Signal
                     </button>
 
-                    <button v-if="canIssueUpdate()"
-                        class="btn btn-outline-success btn-sm mr-2"
+                    <button v-if="ready && canIssueUpdate()"
+                        class="btn btn-outline-success btn-sm mr-2 wl-flow-detail__action-btn"
                         @click="issueCommand('update')">
                         Update
                     </button>
 
-                    <a v-if="historyExportEndpoint()"
-                        class="btn btn-outline-secondary btn-sm mr-2"
+                    <a v-if="ready && historyExportEndpoint()"
+                        class="btn btn-outline-secondary btn-sm mr-2 wl-flow-detail__action-btn"
                         :href="historyExportEndpoint()"
                         target="_blank"
                         rel="noopener">
                         Export History
                     </a>
 
-                    <button v-if="canAction('repair')"
-                        class="btn btn-outline-info btn-sm mr-2"
+                    <button v-if="ready && canAction('repair')"
+                        class="btn btn-outline-info btn-sm mr-2 wl-flow-detail__action-btn"
                         @click="issueCommand('repair')">
                         Repair
                     </button>
 
-                    <button v-if="canAction('cancel', flow.can_issue_terminal_commands)"
-                        class="btn btn-outline-warning btn-sm mr-2"
+                    <button v-if="ready && canAction('cancel', flow.can_issue_terminal_commands)"
+                        class="btn btn-outline-warning btn-sm mr-2 wl-flow-detail__action-btn"
                         @click="issueCommand('cancel')">
                         Cancel
                     </button>
 
-                    <button v-if="canAction('terminate', flow.can_issue_terminal_commands)"
-                        class="btn btn-outline-danger btn-sm mr-2"
+                    <button v-if="ready && canAction('terminate', flow.can_issue_terminal_commands)"
+                        class="btn btn-outline-danger btn-sm mr-3 wl-flow-detail__action-btn"
                         @click="issueCommand('terminate')">
                         Terminate
                     </button>
 
-                    <button v-if="canAction('archive')"
-                        class="btn btn-outline-secondary btn-sm"
+                    <button v-if="ready && canAction('archive')"
+                        class="btn btn-outline-secondary btn-sm mr-3 wl-flow-detail__action-btn"
                         @click="issueCommand('archive')">
                         Archive
                     </button>
+
+                    <a class="wl-flow-detail__collapse-link" data-toggle="collapse" href="#collapseDetails" role="button">
+                        Collapse
+                    </a>
                 </div>
-            </div>
-
-            <div class="card-body card-bg-secondary">
-                <div class="d-flex align-items-center flex-wrap mb-3">
-                    <span :class="runStatusChipClass()" class="badge py-2 px-3 mr-2 mb-1 run-summary-status-chip">
-                        {{ runStatusChipLabel() }}
-                    </span>
-                    <span v-if="taskProblemBadge(flow)"
-                          :class="taskProblemBadgeClass(flow)"
-                          class="badge mr-2 mb-1"
-                          :title="taskProblemBadge(flow).description || null">
-                        {{ taskProblemBadge(flow).label }}
-                    </span>
-                    <span v-if="hasDetailValue(flow.wait_reason)"
-                          class="badge badge-info mr-2 mb-1"
-                          :title="flow.wait_kind ? 'Wait kind: ' + flow.wait_kind : null">
-                        Waiting: {{ flow.wait_reason }}
-                    </span>
-                    <span v-if="hasDetailValue(flow.archived_at)" class="badge badge-secondary mr-2 mb-1">
-                        Archived
-                    </span>
-                </div>
-
-                <div class="row mb-3" role="group" aria-label="Run timing">
-                    <div class="col-sm-4 mb-2">
-                        <div class="small text-muted">Started</div>
-                        <div>{{ timestamp(flow.created_at) }}</div>
-                    </div>
-                    <div class="col-sm-4 mb-2">
-                        <div class="small text-muted">{{ isClosed(flow) ? 'Closed' : 'State' }}</div>
-                        <div v-if="isClosed(flow)">{{ timestamp(flow.closed_at || flow.updated_at) }}</div>
-                        <div v-else>Still running</div>
-                    </div>
-                    <div class="col-sm-4 mb-2">
-                        <div class="small text-muted">Duration</div>
-                        <div>{{ runDurationLabel() }}</div>
-                    </div>
-                </div>
-
-                <div class="row" role="group" aria-label="Run activity counts">
-                    <div
-                        v-for="tile in runSummaryTiles()"
-                        :key="tile.key"
-                        class="col-6 col-md-4 col-lg mb-2"
-                    >
-                        <a
-                            v-if="tile.target"
-                            :href="tile.target"
-                            class="d-block p-2 text-reset text-decoration-none rounded run-summary-tile"
-                            @click="scrollToSection($event, tile.target)"
-                        >
-                            <div class="small text-muted">{{ tile.label }}</div>
-                            <div class="h5 mb-0">{{ tile.value }}</div>
-                            <div class="small text-muted" v-if="tile.sublabel">{{ tile.sublabel }}</div>
-                        </a>
-                        <div
-                            v-else
-                            class="d-block p-2 rounded run-summary-tile run-summary-tile-static"
-                        >
-                            <div class="small text-muted">{{ tile.label }}</div>
-                            <div class="h5 mb-0">{{ tile.value }}</div>
-                            <div class="small text-muted" v-if="tile.sublabel">{{ tile.sublabel }}</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="small text-muted mt-2" v-if="diagnosticRows().length">
-                    {{ diagnosticRows().length }} run {{ diagnosticRows().length === 1 ? 'diagnostic' : 'diagnostics' }}
-                    ({{ diagnosticsSummary() }}) — see
-                    <a href="#collapseRunDiagnostics" @click="scrollToSection($event, '#collapseRunDiagnostics')">Issues detected</a>.
-                </div>
-            </div>
-        </div>
-        </error-boundary>
-
-        <error-boundary label="Run Details">
-        <div :class="ready ? 'card mt-4' : 'card'" :aria-labelledby="ready ? 'runDetailsHeading' : null">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <h5 v-if="!ready" class="mb-0">Run Detail</h5>
-                <h5 v-else id="runDetailsHeading" class="mb-0">Run Details</h5>
-
-                <a v-if="ready" data-toggle="collapse" href="#collapseDetails" role="button"
-                   aria-expanded="true" aria-controls="collapseDetails">
-                    Collapse
-                </a>
             </div>
 
             <div v-if="!ready && !loadingError"
-                class="d-flex align-items-center justify-content-center card-bg-secondary p-5 bottom-radius"
-                role="status"
-                aria-live="polite"
-                aria-busy="true">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin mr-2 fill-text-color" aria-hidden="true">
+                class="d-flex align-items-center justify-content-center card-bg-secondary p-5 bottom-radius">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin mr-2 fill-text-color">
                     <path
                         d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z">
                     </path>
@@ -161,18 +95,15 @@
             </div>
 
             <div v-if="!ready && loadingError"
-                class="d-flex flex-column align-items-center justify-content-center text-center card-bg-secondary p-5 bottom-radius"
-                role="alert"
-                aria-live="assertive">
-                <strong>Run detail unavailable</strong>
+                class="d-flex flex-column align-items-center justify-content-center text-center card-bg-secondary p-5 bottom-radius">
+                <strong>Flow preview unavailable</strong>
                 <span class="text-muted mt-2">{{ loadingError }}</span>
                 <button class="btn btn-outline-primary btn-sm mt-3" @click="retryFlowLoad">
                     Retry
                 </button>
             </div>
 
-            <div class="card-body card-bg-secondary collapse show" id="collapseDetails" v-if="ready">
-                <h6 class="text-uppercase small font-weight-bold text-muted mt-0 mb-2 run-detail-group-heading">Identity</h6>
+            <div class="card-body card-bg-secondary collapse show wl-flow-detail__summary-body" id="collapseDetails" v-if="ready">
                 <div class="row mb-2">
                     <div class="col-md-2"><strong>ID</strong></div>
                     <div class="col">{{ flow.id }}</div>
@@ -188,7 +119,6 @@
                     <div class="col">{{ flow.run_id }}</div>
                 </div>
 
-                <h6 class="text-uppercase small font-weight-bold text-muted mt-4 mb-2 run-detail-group-heading">State &amp; Timing</h6>
                 <div class="row mb-2">
                     <div class="col-md-2"><strong>Status</strong></div>
                     <div class="col">
@@ -247,7 +177,6 @@
                     <div class="col" v-else>-</div>
                 </div>
 
-                <h6 class="text-uppercase small font-weight-bold text-muted mt-4 mb-2 run-detail-group-heading">Routing &amp; Context</h6>
                 <div class="row mb-2" v-if="hasDetailValue(flow.connection)">
                     <div class="col-md-2"><strong>Connection</strong></div>
                     <div class="col">{{ flow.connection }}</div>
@@ -302,7 +231,6 @@
                     </div>
                 </div>
 
-                <h6 class="text-uppercase small font-weight-bold text-muted mt-4 mb-2 run-detail-group-heading">Workflow Contract</h6>
                 <div class="row mb-2" v-if="declaredSignalTargets().length">
                     <div class="col-md-2"><strong>Signals</strong></div>
                     <div class="col">
@@ -447,7 +375,6 @@
                     </div>
                 </div>
 
-                <h6 class="text-uppercase small font-weight-bold text-muted mt-4 mb-2 run-detail-group-heading">Runs &amp; Lineage</h6>
                 <div class="row mb-2" v-if="!flow.is_current_run && flow.current_run_id">
                     <div class="col-md-2"><strong>Current Run</strong></div>
                     <div class="col">
@@ -485,7 +412,6 @@
                     </div>
                 </div>
 
-                <h6 class="text-uppercase small font-weight-bold text-muted mt-4 mb-2 run-detail-group-heading">Runtime Progress</h6>
                 <div class="row mb-2" v-if="hasDetailValue(flow.wait_reason)">
                     <div class="col-md-2"><strong>Wait</strong></div>
                     <div class="col">
@@ -564,13 +490,6 @@
                             <span v-if="entry.status">
                                 - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
                             </span>
-                            <span
-                                v-if="parentClosePolicyBadge(entry)"
-                                :class="parentClosePolicyBadge(entry).class"
-                                :title="parentClosePolicyBadge(entry).title"
-                            >
-                                {{ parentClosePolicyBadge(entry).label }}
-                            </span>
                         <div
                                 v-for="detail in lineageIdentityRows(entry)"
                                 :key="entry.key + '-' + detail"
@@ -588,17 +507,13 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Arguments</h5>
 
-                <a data-toggle="collapse" href="#collapseArguments" role="button"
-                   aria-expanded="true" aria-controls="collapseArguments">
+                <a data-toggle="collapse" href="#collapseArguments" role="button">
                     Collapse
                 </a>
             </div>
 
             <div class="card-body code-bg text-white collapse show" id="collapseArguments">
-                <vue-json-pretty v-if="hasPayload(flow.arguments)" :data="unserialize(flow.arguments)"></vue-json-pretty>
-                <div v-else class="text-muted small">
-                    This run was started without arguments.
-                </div>
+                <vue-json-pretty :data="unserialize(flow.arguments)"></vue-json-pretty>
             </div>
         </div>
 
@@ -606,17 +521,13 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Output</h5>
 
-                <a data-toggle="collapse" href="#collapseOutput" role="button"
-                   aria-expanded="true" aria-controls="collapseOutput">
+                <a data-toggle="collapse" href="#collapseOutput" role="button">
                     Collapse
                 </a>
             </div>
 
             <div class="card-body code-bg text-white collapse show" id="collapseOutput">
-                <vue-json-pretty v-if="hasPayload(flow.output)" :data="unserialize(flow.output)"></vue-json-pretty>
-                <div v-else class="text-muted small">
-                    This run completed without returning a value.
-                </div>
+                <vue-json-pretty :data="unserialize(flow.output)"></vue-json-pretty>
             </div>
         </div>
 
@@ -627,8 +538,7 @@
                     <span class="small ml-2">{{ diagnosticsSummary() }}</span>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseRunDiagnostics" role="button"
-                   aria-expanded="true" aria-controls="collapseRunDiagnostics">
+                <a data-toggle="collapse" href="#collapseRunDiagnostics" role="button">
                     Collapse
                 </a>
             </div>
@@ -671,13 +581,12 @@
                     </div>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseTimeline" role="button"
-                   aria-expanded="false" aria-controls="collapseTimeline">
-                    Expand
+                <a data-toggle="collapse" href="#collapseTimeline" role="button">
+                    Collapse
                 </a>
             </div>
 
-            <div class="card-body code-bg text-white collapse" id="collapseTimeline">
+            <div class="card-body code-bg text-white collapse show" id="collapseTimeline">
                 <apexchart type="rangeBar" height="350" :options="chartOptions" :series="series"></apexchart>
             </div>
         </div>
@@ -729,14 +638,13 @@
                         Export all
                     </a>
 
-                    <a data-toggle="collapse" href="#collapseHistory" role="button"
-                       aria-expanded="false" aria-controls="collapseHistory">
-                        Expand
+                    <a data-toggle="collapse" href="#collapseHistory" role="button">
+                        Collapse
                     </a>
                 </div>
             </div>
 
-            <div class="card-body collapse" id="collapseHistory">
+            <div class="card-body collapse show" id="collapseHistory">
                 <div class="alert alert-warning" v-if="pinnedTimelineItems().length">
                     <div class="font-weight-bold mb-2">Pinned Attention</div>
                     <div
@@ -750,12 +658,8 @@
                     </div>
                 </div>
 
-                <div v-if="!timelineRows().length" class="text-muted small">
-                    No history events have been recorded for this run yet.
-                </div>
-
                 <div
-                    v-else-if="runDetailTab() === 'timeline'"
+                    v-if="runDetailTab() === 'timeline'"
                     class="timeline-events timeline-events-virtual"
                     :style="{ height: historyViewportHeight + 'px' }"
                     @scroll="onHistoryScroll"
@@ -807,8 +711,7 @@
                     </div>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseWaits" role="button"
-                   aria-expanded="true" aria-controls="collapseWaits">
+                <a data-toggle="collapse" href="#collapseWaits" role="button">
                     Collapse
                 </a>
             </div>
@@ -897,8 +800,7 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Tasks</h5>
 
-                <a data-toggle="collapse" href="#collapseTasks" role="button"
-                   aria-expanded="true" aria-controls="collapseTasks">
+                <a data-toggle="collapse" href="#collapseTasks" role="button">
                     Collapse
                 </a>
             </div>
@@ -1015,13 +917,12 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Linked Intakes</h5>
 
-                <a data-toggle="collapse" href="#collapseLinkedIntakes" role="button"
-                   aria-expanded="false" aria-controls="collapseLinkedIntakes">
-                    Expand
+                <a data-toggle="collapse" href="#collapseLinkedIntakes" role="button">
+                    Collapse
                 </a>
             </div>
 
-            <div class="card-body collapse" id="collapseLinkedIntakes">
+            <div class="card-body collapse show" id="collapseLinkedIntakes">
                 <table class="table">
                     <thead>
                         <tr>
@@ -1087,13 +988,12 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Commands</h5>
 
-                <a data-toggle="collapse" href="#collapseCommands" role="button"
-                   aria-expanded="false" aria-controls="collapseCommands">
-                    Expand
+                <a data-toggle="collapse" href="#collapseCommands" role="button">
+                    Collapse
                 </a>
             </div>
 
-            <div class="card-body collapse" id="collapseCommands">
+            <div class="card-body collapse show" id="collapseCommands">
                 <table class="table">
                     <thead>
                         <tr>
@@ -1177,13 +1077,12 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Signals</h5>
 
-                <a data-toggle="collapse" href="#collapseSignals" role="button"
-                   aria-expanded="false" aria-controls="collapseSignals">
-                    Expand
+                <a data-toggle="collapse" href="#collapseSignals" role="button">
+                    Collapse
                 </a>
             </div>
 
-            <div class="card-body collapse" id="collapseSignals">
+            <div class="card-body collapse show" id="collapseSignals">
                 <table class="table">
                     <thead>
                         <tr>
@@ -1267,13 +1166,12 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Updates</h5>
 
-                <a data-toggle="collapse" href="#collapseUpdates" role="button"
-                   aria-expanded="false" aria-controls="collapseUpdates">
-                    Expand
+                <a data-toggle="collapse" href="#collapseUpdates" role="button">
+                    Collapse
                 </a>
             </div>
 
-            <div class="card-body collapse" id="collapseUpdates">
+            <div class="card-body collapse show" id="collapseUpdates">
                 <table class="table">
                     <thead>
                         <tr>
@@ -1368,8 +1266,7 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Activities</h5>
 
-                <a data-toggle="collapse" href="#collapseActivities" role="button"
-                   aria-expanded="true" aria-controls="collapseActivities">
+                <a data-toggle="collapse" href="#collapseActivities" role="button">
                     Collapse
                 </a>
             </div>
@@ -1468,13 +1365,12 @@
                     </div>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseTimers" role="button"
-                   aria-expanded="false" aria-controls="collapseTimers">
-                    Expand
+                <a data-toggle="collapse" href="#collapseTimers" role="button">
+                    Collapse
                 </a>
             </div>
 
-            <div class="card-body code-bg text-white collapse" id="collapseTimers">
+            <div class="card-body code-bg text-white collapse show" id="collapseTimers">
                 <table class="table">
                     <thead>
                         <tr>
@@ -1534,8 +1430,7 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Exceptions</h5>
 
-                <a data-toggle="collapse" href="#collapseExceptions" role="button"
-                   aria-expanded="true" aria-controls="collapseExceptions">
+                <a data-toggle="collapse" href="#collapseExceptions" role="button">
                     Collapse
                 </a>
             </div>
@@ -1618,7 +1513,6 @@
                 </table>
             </div>
         </div>
-        </error-boundary>
     </div>
 </template>
 
@@ -2246,158 +2140,8 @@ export default {
             return ['completed', 'continued', 'failed', 'cancelled', 'terminated'].includes(flow.status)
         },
 
-        runStatusChipLabel() {
-            const status = this.hasDetailValue(this.flow.status) ? String(this.flow.status) : 'unknown'
-            const label = status.charAt(0).toUpperCase() + status.slice(1)
-
-            if (this.hasDetailValue(this.flow.status_bucket) && this.flow.status_bucket !== status) {
-                return label + ' / ' + this.flow.status_bucket
-            }
-
-            return label
-        },
-
-        runStatusChipClass() {
-            const bucket = this.hasDetailValue(this.flow.status_bucket) ? this.flow.status_bucket : null
-            const status = this.hasDetailValue(this.flow.status) ? this.flow.status : null
-            const key = bucket || status
-
-            const map = {
-                completed: 'badge-success',
-                continued: 'badge-info',
-                running: 'badge-primary',
-                pending: 'badge-secondary',
-                waiting: 'badge-info',
-                failed: 'badge-danger',
-                cancelled: 'badge-warning',
-                terminated: 'badge-dark',
-                repair: 'badge-warning',
-            }
-
-            return 'badge ' + (map[key] || 'badge-secondary')
-        },
-
-        runDurationLabel() {
-            if (!this.hasDetailValue(this.flow.created_at)) {
-                return '-'
-            }
-
-            if (this.isClosed(this.flow)) {
-                return this.duration(this.flow.created_at, this.flow.closed_at || this.flow.updated_at)
-            }
-
-            const startMs = new Date(this.flow.created_at).getTime()
-
-            if (Number.isNaN(startMs)) {
-                return '-'
-            }
-
-            return this.formatDuration(Math.max(0, Date.now() - startMs)) + ' (so far)'
-        },
-
-        runSummaryTiles() {
-            const tasks = Array.isArray(this.flow.tasks) ? this.flow.tasks.length : 0
-            const activities = Array.isArray(this.flow.activities) ? this.flow.activities.length : 0
-            const waitsAll = Array.isArray(this.flow.waits) ? this.flow.waits : []
-            const openWaits = this.hasDetailValue(this.flow.open_wait_count)
-                ? Number(this.flow.open_wait_count)
-                : waitsAll.filter((wait) => wait.status === 'open').length
-            const exceptions = Array.isArray(this.flow.exceptions) ? this.flow.exceptions.length : 0
-            const historyEvents = this.hasDetailValue(this.flow.history_event_count)
-                ? Number(this.flow.history_event_count)
-                : (Array.isArray(this.flow.timeline) ? this.flow.timeline.length : 0)
-
-            return [
-                {
-                    key: 'tasks',
-                    label: 'Tasks',
-                    value: tasks.toLocaleString(),
-                    target: tasks > 0 ? '#collapseTasks' : null,
-                },
-                {
-                    key: 'activities',
-                    label: 'Activities',
-                    value: activities.toLocaleString(),
-                    target: activities > 0 ? '#collapseActivities' : null,
-                },
-                {
-                    key: 'waits',
-                    label: 'Waits',
-                    value: waitsAll.length.toLocaleString(),
-                    sublabel: openWaits > 0
-                        ? openWaits.toLocaleString() + ' open'
-                        : (waitsAll.length > 0 ? 'all closed' : null),
-                    target: waitsAll.length > 0 ? '#collapseWaits' : null,
-                },
-                {
-                    key: 'exceptions',
-                    label: 'Exceptions',
-                    value: exceptions.toLocaleString(),
-                    target: exceptions > 0 ? '#collapseExceptions' : null,
-                },
-                {
-                    key: 'history',
-                    label: 'History Events',
-                    value: historyEvents.toLocaleString(),
-                    target: historyEvents > 0 ? '#collapseHistory' : null,
-                },
-            ]
-        },
-
-        scrollToSection(event, selector) {
-            if (event && event.preventDefault) {
-                event.preventDefault()
-            }
-
-            if (!selector) {
-                return
-            }
-
-            const element = document.querySelector(selector)
-
-            if (!element) {
-                return
-            }
-
-            if (typeof window !== 'undefined' && window.jQuery) {
-                const jq = window.jQuery(element)
-
-                if (jq.hasClass('collapse') && !jq.hasClass('show')) {
-                    jq.collapse('show')
-                }
-            }
-
-            element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-        },
-
         hasDetailValue(value) {
             return value !== null && value !== undefined && value !== ''
-        },
-
-        hasPayload(raw) {
-            if (raw === null || raw === undefined || raw === '') {
-                return false
-            }
-
-            const decoded = this.unserialize(raw)
-
-            if (decoded === null || decoded === undefined) {
-                return false
-            }
-
-            if (typeof decoded === 'string') {
-                return decoded !== ''
-            }
-
-            if (Array.isArray(decoded)) {
-                return decoded.length > 0
-            }
-
-            if (typeof decoded === 'object') {
-                return Object.keys(decoded).length > 0
-            }
-
-            return true
         },
 
         hasObjectEntries(value) {
@@ -2530,12 +2274,6 @@ export default {
         },
 
         taskProblemBadge(flow) {
-            const badge = this.actionabilityBadge(flow, 'task_problem')
-
-            if (badge || this.hasActionabilityPayload(flow)) {
-                return badge
-            }
-
             return flow && flow.task_problem_badge
                 ? flow.task_problem_badge
                 : null
@@ -2555,15 +2293,22 @@ export default {
             }[(badge && badge.tone) || 'secondary'] || 'badge badge-secondary'
         },
 
-        actionabilityBadge(flow, name) {
-            const actionability = flow && flow.actionability ? flow.actionability : null
-            const badges = actionability && actionability.badges ? actionability.badges : null
-
-            return badges && badges[name] ? badges[name] : null
-        },
-
-        hasActionabilityPayload(flow) {
-            return !!(flow && flow.actionability && typeof flow.actionability === 'object')
+        detailStatusClass(status) {
+            switch (status) {
+                case 'completed':
+                case 'continued':
+                    return 'is-success'
+                case 'failed':
+                case 'terminated':
+                    return 'is-danger'
+                case 'cancelled':
+                    return 'is-muted'
+                case 'pending':
+                case 'waiting':
+                    return 'is-warning'
+                default:
+                    return 'is-active'
+            }
         },
 
         compatibilityFleetSummary(supported) {
@@ -4221,13 +3966,8 @@ export default {
                 status: link.status,
                 status_bucket: link.status_bucket,
                 child_call_id: link.child_call_id || null,
-                link_type: link.link_type || null,
                 history_authority: link.history_authority || null,
                 diagnostic_only: link.diagnostic_only === true,
-                parent_close_policy: link.parent_close_policy || null,
-                parent_close_policy_outcome: link.parent_close_policy_outcome || null,
-                parent_close_policy_reason: link.parent_close_policy_reason || null,
-                parent_close_policy_error: link.parent_close_policy_error || null,
             }))
 
             return [...parents, ...continued]
@@ -4244,73 +3984,6 @@ export default {
             }
 
             return direction === 'parent' ? 'Parent' : 'Child'
-        },
-
-        parentClosePolicyBadge(entry) {
-            if (!entry || entry.link_type === 'continue_as_new') {
-                return null
-            }
-
-            const outcome = entry.parent_close_policy_outcome || null
-            const policy = entry.parent_close_policy || null
-
-            if (!policy && !outcome) {
-                return null
-            }
-
-            const policyLabel = this.parentClosePolicyLabel(policy)
-
-            if (outcome === 'applied') {
-                const action = policy === 'terminate' ? 'terminated' : 'cancelled'
-
-                return {
-                    class: 'badge badge-warning ml-1',
-                    label: 'Closed by parent (' + action + ')',
-                    title: entry.parent_close_policy_reason
-                        || ('Parent-close policy ' + policyLabel + ' was applied to this child.'),
-                }
-            }
-
-            if (outcome === 'failed') {
-                return {
-                    class: 'badge badge-danger ml-1',
-                    label: 'Parent-close policy failed (' + policyLabel + ')',
-                    title: entry.parent_close_policy_error
-                        || entry.parent_close_policy_reason
-                        || 'Parent attempted to apply close policy but the command was rejected.',
-                }
-            }
-
-            // Policy snapshotted on the link but the parent has not (yet) fired
-            // a close-policy event for this child — show the operator the
-            // standing policy so they can distinguish "open under abandon"
-            // from "will be cancelled/terminated when parent closes".
-            if (policy === 'abandon') {
-                return {
-                    class: 'badge badge-secondary ml-1',
-                    label: 'Abandoned by parent on close',
-                    title: 'Parent-close policy is abandon; this child will keep running independently when the parent closes.',
-                }
-            }
-
-            return {
-                class: 'badge badge-info ml-1',
-                label: 'Parent-close policy: ' + policyLabel,
-                title: 'When the parent closes, this child will be ' + (policy === 'terminate' ? 'terminated' : 'cancelled') + '.',
-            }
-        },
-
-        parentClosePolicyLabel(policy) {
-            switch (policy) {
-                case 'request_cancel':
-                    return 'cancel'
-                case 'terminate':
-                    return 'terminate'
-                case 'abandon':
-                    return 'abandon'
-                default:
-                    return policy || 'unknown'
-            }
         },
 
         async issueCommand(commandType) {
@@ -4531,14 +4204,205 @@ export default {
 </script>
 
 <style scoped>
-.timeline-events-virtual {
-    overflow-y: auto;
-    overscroll-behavior: contain;
+.wl-flow-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
 }
 
+.wl-flow-detail__summary-header {
+    gap: 1rem;
+}
+
+.wl-flow-detail__headline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.wl-flow-detail__eyebrow {
+    color: var(--wl-text-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.wl-flow-detail__title {
+    margin: 0;
+    font-size: 1.7rem;
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    overflow-wrap: anywhere;
+    color: var(--wl-text);
+}
+
+.wl-flow-detail__headline-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.wl-flow-detail__status,
+.wl-flow-detail__headline-pill,
+.wl-flow-detail__collapse-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.45rem 0.7rem;
+    border-radius: 999px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.wl-flow-detail__status {
+    background: color-mix(in srgb, var(--wl-accent) 14%, transparent);
+    color: var(--wl-accent);
+}
+
+.wl-flow-detail__status.is-success {
+    background: color-mix(in srgb, var(--wl-success) 16%, transparent);
+    color: var(--wl-success);
+}
+
+.wl-flow-detail__status.is-danger {
+    background: color-mix(in srgb, var(--wl-danger) 18%, transparent);
+    color: var(--wl-danger);
+}
+
+.wl-flow-detail__status.is-warning {
+    background: color-mix(in srgb, var(--wl-warning) 16%, transparent);
+    color: var(--wl-warning);
+}
+
+.wl-flow-detail__status.is-muted {
+    background: color-mix(in srgb, var(--wl-text) 8%, transparent);
+    color: var(--wl-text-muted);
+}
+
+.wl-flow-detail__headline-pill,
+.wl-flow-detail__collapse-link {
+    background: color-mix(in srgb, var(--wl-text) 5%, transparent);
+    color: var(--wl-text-muted);
+    max-width: 100%;
+}
+
+.wl-flow-detail__collapse-link:hover {
+    text-decoration: none;
+    color: var(--wl-accent);
+}
+
+.wl-flow-detail__status-slash {
+    opacity: 0.55;
+}
+
+.wl-flow-detail__header-actions {
+    gap: 0.6rem;
+}
+
+.wl-flow-detail__action-btn {
+    margin-right: 0 !important;
+}
+
+.wl-flow-detail__summary-body > .row {
+    display: grid;
+    grid-template-columns: 12rem minmax(0, 1fr);
+    gap: 1rem;
+    margin: 0;
+    padding: 0.85rem 0;
+    border-top: 1px solid color-mix(in srgb, var(--wl-text) 6%, transparent);
+}
+
+.wl-flow-detail__summary-body > .row:first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+
+.wl-flow-detail__summary-body > .row:last-child {
+    padding-bottom: 0;
+}
+
+.wl-flow-detail__summary-body .col-md-2,
+.wl-flow-detail__summary-body .col {
+    padding: 0;
+    max-width: none;
+    flex: none;
+}
+
+.wl-flow-detail__summary-body .col-md-2 {
+    color: var(--wl-text-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.wl-flow-detail__summary-body .col {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.wl-flow-detail__summary-body pre {
+    margin: 0;
+    padding: 0.85rem 1rem;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--wl-text) 4%, var(--wl-surface));
+    color: inherit;
+}
+
+.wl-flow-detail :deep(.vue-json-pretty) {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.86rem;
+}
+
+.wl-flow-detail .card-header {
+    gap: 1rem;
+}
+
+.wl-flow-detail .card-header h5 {
+    margin-bottom: 0.15rem;
+}
+
+.wl-flow-detail .card-header a[data-toggle="collapse"] {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.7rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--wl-text) 5%, transparent);
+    color: var(--wl-text-muted);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.wl-flow-detail .card-header a[data-toggle="collapse"]:hover {
+    color: var(--wl-accent);
+    text-decoration: none;
+}
+
+.wl-flow-detail .card-body {
+    padding: 1.15rem 1.25rem;
+}
+
+.wl-flow-detail .alert {
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--wl-text) 8%, transparent);
+}
+
+.wl-flow-detail .table-responsive,
+.timeline-events-virtual,
 .detail-table-scroll {
     overflow-x: auto;
     overscroll-behavior-x: contain;
+}
+
+.timeline-events-virtual {
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .detail-table {
@@ -4600,5 +4464,17 @@ export default {
 
 .detail-cell-muted {
     overflow-wrap: anywhere;
+}
+
+@media (max-width: 768px) {
+    .wl-flow-detail__summary-body > .row {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.5rem;
+    }
+
+    .wl-flow-detail__header-actions {
+        width: 100%;
+        justify-content: flex-start !important;
+    }
 }
 </style>

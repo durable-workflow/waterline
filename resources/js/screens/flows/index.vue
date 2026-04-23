@@ -9,7 +9,6 @@
         data() {
             return {
                 ready: false,
-                loadingError: null,
                 loadingNewEntries: false,
                 hasNewEntries: false,
                 page: 1,
@@ -98,6 +97,50 @@
 
                 return classes.join(' ')
             },
+
+            activeFilterCount() {
+                return this.appliedFilterEntries.length
+            },
+
+            flowCollectionDescription() {
+                return {
+                    running: 'Track live execution pressure, fresh arrivals, and claimability without leaving the operator queue.',
+                    completed: 'Review recent completions, confirm expected outcomes, and jump straight into the runs that matter.',
+                    failed: 'Surface failed runs, repair blockers, and compatibility warnings before they become recurring incidents.',
+                    cancelled: 'Audit cancelled work, confirm intent, and reopen the flows that still need operator follow-through.',
+                    terminated: 'Inspect force-stopped runs and verify downstream recovery finished the way the fleet expects.',
+                }[this.$route.params.type] || 'Review workflow executions and open the runs that need attention.'
+            },
+
+            flowPageSummary() {
+                return this.ready
+                    ? `Page ${this.page} of ${Math.max(this.totalPages, 1)}`
+                    : 'Waiting for results'
+            },
+
+            hasFilterContext() {
+                return this.ready && (
+                    !!this.selectedSavedView
+                    || this.appliedFilterEntries.length > 0
+                    || !!this.selectedSavedViewWarning()
+                )
+            },
+
+            selectedViewDisplay() {
+                if (this.visibilityFilters && this.visibilityFilters.saved_view && this.visibilityFilters.saved_view.name) {
+                    return this.visibilityFilters.saved_view.name
+                }
+
+                if (!this.selectedSavedView) {
+                    return 'Default'
+                }
+
+                const selected = this.savedViews.find((view) => view.id === this.selectedSavedView)
+
+                return selected && selected.name
+                    ? selected.name
+                    : 'Saved view'
+            },
         },
 
         /**
@@ -147,7 +190,6 @@
             loadFlows(page = 1, refreshing = false) {
                 if (!refreshing) {
                     this.ready = false;
-                    this.loadingError = null;
                 }
 
                 return this.$http.get(Waterline.basePath + '/api/flows/' + this.$route.params.type + '?' + this.apiQueryString(page))
@@ -170,14 +212,12 @@
                         }
 
                         this.ready = true;
-                        this.loadingError = null;
                     })
-                    .catch((error) => {
+                    .catch(() => {
                         if (!refreshing) {
                             this.flows = [];
                             this.totalPages = 1;
                             this.visibilityFilters = null;
-                            this.loadingError = this.flowListLoadErrorMessage(error);
                         }
 
                         this.ready = true;
@@ -439,6 +479,10 @@
                 return this.workflowListColumns.includes(column)
             },
 
+            swalBackground() {
+                return this.$root && this.$root.theme === 'light' ? '#ffffff' : '#1c1c1c'
+            },
+
             async persistWorkflowListPreferences(preferences, options = {}) {
                 const payload = {
                     ...this.operatorPreferences,
@@ -501,7 +545,7 @@
                     `,
                     showCancelButton: true,
                     confirmButtonText: 'Save Options',
-                    background: '#1c1c1c',
+                    background: this.swalBackground(),
                     preConfirm: () => {
                         const selectedColumns = Array.from(document.querySelectorAll('.waterline-column-option'))
                             .filter((input) => input.checked || input.value === 'flow')
@@ -1199,7 +1243,7 @@
                     html: this.filterEditorHtml(current),
                     showCancelButton: true,
                     confirmButtonText: 'Apply Filters',
-                    background: '#1c1c1c',
+                    background: this.swalBackground(),
                     preConfirm: () => {
                         try {
                             const filters = {}
@@ -1273,7 +1317,7 @@
                     showDenyButton: true,
                     confirmButtonText: 'Update View',
                     denyButtonText: 'Delete View',
-                    background: '#1c1c1c',
+                    background: this.swalBackground(),
                     preConfirm: () => {
                         const name = document.getElementById('waterline-view-name').value.trim()
 
@@ -1296,7 +1340,7 @@
                         icon: 'warning',
                         showCancelButton: true,
                         confirmButtonText: 'Delete View',
-                        background: '#1c1c1c',
+                        background: this.swalBackground(),
                     })
 
                     if (!confirmDelete.isConfirmed) {
@@ -1318,7 +1362,7 @@
                             text: message,
                             icon: 'error',
                             confirmButtonText: 'Okay',
-                            background: '#1c1c1c',
+                            background: this.swalBackground(),
                         })
                     }
 
@@ -1349,7 +1393,7 @@
                         text: message,
                         icon: 'error',
                         confirmButtonText: 'Okay',
-                        background: '#1c1c1c',
+                        background: this.swalBackground(),
                     })
                 }
             },
@@ -1362,7 +1406,7 @@
                     inputPlaceholder: this.flowCollectionLabel() + ' view',
                     showCancelButton: true,
                     confirmButtonText: 'Save view',
-                    background: '#1c1c1c',
+                    background: this.swalBackground(),
                     inputValidator: (value) => {
                         if (!value || !value.trim()) {
                             return 'Enter a view name.';
@@ -1398,7 +1442,7 @@
                         text: message,
                         icon: 'error',
                         confirmButtonText: 'Okay',
-                        background: '#1c1c1c',
+                        background: this.swalBackground(),
                     });
                 }
             },
@@ -1409,43 +1453,6 @@
                 this.loadFlows(1, false);
 
                 this.hasNewEntries = false;
-            },
-
-            retryLoadFlows() {
-                this.loadFlows(this.page || 1, false);
-            },
-
-            flowListLoadErrorMessage(error) {
-                if (error && error.code === 'ECONNABORTED') {
-                    return 'The flow list request timed out.';
-                }
-
-                if (error && error.response && error.response.status) {
-                    const status = error.response.status;
-                    const message = error.response.data && error.response.data.message
-                        ? error.response.data.message
-                        : 'Waterline could not load this flow list.';
-
-                    return `HTTP ${status}: ${message}`;
-                }
-
-                if (error && error.request) {
-                    return 'Waterline could not reach the flow list API.';
-                }
-
-                return error && error.message
-                    ? error.message
-                    : 'Waterline could not load this flow list.';
-            },
-
-            flowListLoadingLabel() {
-                return 'Loading ' + this.flowCollectionLabel().toLowerCase() + ' flows';
-            },
-
-            flowListEmptyTitle() {
-                return this.hasActiveFilters
-                    ? 'No matching ' + this.flowCollectionLabel().toLowerCase() + ' flows'
-                    : 'No ' + this.flowCollectionLabel().toLowerCase() + ' flows';
             },
 
 
@@ -1565,155 +1572,468 @@
 </script>
 
 <template>
-    <div>
-        <div class="card">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>{{ flowCollectionLabel() }} Flows</h5>
+    <div class="flow-index">
+        <section class="flow-index__hero">
+            <div>
+                <p class="flow-index__eyebrow">Workflow Operations</p>
+                <h1 class="flow-index__title">{{ flowCollectionLabel() }} Flows</h1>
+                <p class="flow-index__subtitle">{{ flowCollectionDescription }}</p>
+            </div>
 
-                <div class="d-flex align-items-center flex-wrap justify-content-end">
+            <div class="flow-index__summary-grid">
+                <article class="flow-index__metric">
+                    <span class="flow-index__metric-label">Visible On Page</span>
+                    <strong class="flow-index__metric-value">{{ ready ? flows.length : '...' }}</strong>
+                    <p class="flow-index__metric-copy">
+                        {{ hasNewEntries ? 'Fresh runs are waiting at the top of the queue.' : 'Current registry slice loaded for review.' }}
+                    </p>
+                </article>
+
+                <article class="flow-index__metric">
+                    <span class="flow-index__metric-label">Queue Window</span>
+                    <strong class="flow-index__metric-value">{{ flowPageSummary }}</strong>
+                    <p class="flow-index__metric-copy">
+                        {{ workflowListSortDirection() === 'desc' ? 'Newest runs first for fast triage.' : 'Oldest runs first for chronological review.' }}
+                    </p>
+                </article>
+
+                <article class="flow-index__metric">
+                    <span class="flow-index__metric-label">Applied Filters</span>
+                    <strong class="flow-index__metric-value">{{ activeFilterCount }}</strong>
+                    <p class="flow-index__metric-copy">
+                        {{ hasActiveFilters ? 'This collection is narrowed by a saved view or manual filters.' : 'The default collection is currently in view.' }}
+                    </p>
+                </article>
+
+                <article class="flow-index__metric">
+                    <span class="flow-index__metric-label">Presentation</span>
+                    <strong class="flow-index__metric-value">{{ selectedViewDisplay }}</strong>
+                    <p class="flow-index__metric-copy">
+                        {{ workflowListDensity() === 'dense' ? 'Dense rows keep more history visible at once.' : 'Comfortable spacing favors deeper inspection.' }}
+                    </p>
+                </article>
+            </div>
+        </section>
+
+        <section class="flow-index__panel card">
+            <div class="card-body flow-index__controls">
+                <div class="flow-index__controls-copy">
+                    <p class="flow-index__section-kicker">Views And Filters</p>
+                    <h2 class="flow-index__section-title">Shape the operator queue</h2>
+                    <p class="flow-index__section-copy">
+                        Saved views, visibility filters, and display options stay wired to Waterline's existing preference contract.
+                    </p>
+                </div>
+
+                <div class="flow-index__toolbar">
                     <select v-if="savedViews.length"
                             v-model="selectedSavedView"
                             @change="selectSavedView"
-                            class="custom-select custom-select-sm mr-2 mb-2"
-                            style="width: 14rem;">
+                            class="custom-select custom-select-sm flow-index__view-select">
                         <option :value="null">Default View</option>
                         <option v-for="view in savedViews" :key="view.id" :value="view.id">
                             {{ savedViewOptionLabel(view) }}
                         </option>
                     </select>
 
-                    <button v-if="hasVisibilityFilterContract()"
-                            class="btn btn-outline-secondary btn-sm mr-2 mb-2"
-                            @click="editFilters">
-                        Filters
-                    </button>
+                    <div class="flow-index__toolbar-actions">
+                        <button v-if="hasVisibilityFilterContract()"
+                                class="btn btn-outline-secondary btn-sm"
+                                @click="editFilters">
+                            Filters
+                        </button>
 
-                    <button v-if="hasVisibilityFilterContract() && hasActiveFilters"
-                            class="btn btn-outline-secondary btn-sm mr-2 mb-2"
-                            @click="clearFilters">
-                        Clear
-                    </button>
+                        <button v-if="hasVisibilityFilterContract() && hasActiveFilters"
+                                class="btn btn-outline-secondary btn-sm"
+                                @click="clearFilters">
+                            Clear
+                        </button>
 
-                    <button v-if="savedViewsEnabled && hasVisibilityFilterContract()"
-                            class="btn btn-outline-secondary btn-sm mr-2 mb-2"
-                            @click="saveCurrentView">
-                        Save View
-                    </button>
+                        <button v-if="savedViewsEnabled && hasVisibilityFilterContract()"
+                                class="btn btn-outline-secondary btn-sm"
+                                @click="saveCurrentView">
+                            Save View
+                        </button>
 
-                    <button v-if="canManageSelectedCustomView()"
-                            class="btn btn-outline-secondary btn-sm mr-2 mb-2"
-                            @click="manageCurrentView">
-                        Manage View
-                    </button>
+                        <button v-if="canManageSelectedCustomView()"
+                                class="btn btn-outline-secondary btn-sm"
+                                @click="manageCurrentView">
+                            Manage View
+                        </button>
 
-                    <button class="btn btn-outline-secondary btn-sm mb-2"
-                            :disabled="savingOperatorPreferences"
-                            @click="editViewOptions">
-                        View Options
-                    </button>
+                        <button class="btn btn-outline-secondary btn-sm"
+                                :disabled="savingOperatorPreferences"
+                                @click="editViewOptions">
+                            View Options
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div v-if="ready && (selectedSavedView || appliedFilterEntries.length)"
-                 class="border-bottom px-3 py-2 card-bg-secondary">
-                <div class="d-flex flex-wrap align-items-center">
-                    <span v-if="visibilityFilters && visibilityFilters.saved_view"
-                          class="badge badge-primary mr-2 mb-1">
-                        View: {{ visibilityFilters.saved_view.name }}
-                    </span>
+            <div v-if="hasFilterContext" class="flow-index__chips">
+                <span v-if="visibilityFilters && visibilityFilters.saved_view" class="badge badge-primary">
+                    View: {{ visibilityFilters.saved_view.name }}
+                </span>
 
-                    <span v-if="selectedSavedViewWarning()"
-                          class="badge badge-dark mr-2 mb-1">
-                        {{ selectedSavedViewWarning() }}
-                    </span>
+                <span v-if="selectedSavedViewWarning()" class="badge badge-dark">
+                    {{ selectedSavedViewWarning() }}
+                </span>
 
-                    <span v-for="entry in appliedFilterEntries"
-                          :key="entry.key"
-                          class="badge badge-secondary mr-2 mb-1">
-                        {{ entry.label }}: {{ entry.value }}
+                <span v-for="entry in appliedFilterEntries" :key="entry.key" class="badge badge-secondary">
+                    {{ entry.label }}: {{ entry.value }}
+                </span>
+            </div>
+        </section>
+
+        <section class="flow-index__panel card">
+            <div class="card-body flow-index__registry-head">
+                <div>
+                    <p class="flow-index__section-kicker">Registry</p>
+                    <h2 class="flow-index__section-title">{{ flowCollectionLabel() }} flow registry</h2>
+                    <p class="flow-index__section-copy">
+                        {{ ready ? `Showing ${flows.length} ${flows.length === 1 ? 'flow' : 'flows'} on the current page.` : 'Loading the current workflow collection.' }}
+                    </p>
+                </div>
+
+                <div class="flow-index__registry-meta">
+                    <span class="flow-index__pill">{{ flowPageSummary }}</span>
+                    <span class="flow-index__pill is-muted">
+                        {{ workflowListSortDirection() === 'desc' ? 'Newest first' : 'Oldest first' }}
                     </span>
                 </div>
             </div>
 
-            <div v-if="!ready"
-                 class="d-flex align-items-center justify-content-center card-bg-secondary p-5 bottom-radius"
-                 role="status"
-                 aria-live="polite"
-                 :aria-label="flowListLoadingLabel()">
-                <svg xmlns="http://www.w3.org/2000/svg"
-                     viewBox="0 0 20 20"
-                     class="icon spin mr-2 fill-text-color"
-                     aria-hidden="true">
-                    <path
-                        d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
+            <div v-if="!ready" class="flow-index__state">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin flow-index__state-icon fill-text-color">
+                    <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
                 </svg>
-
-                <span>{{ flowListLoadingLabel() }}</span>
+                <p class="flow-index__state-copy">Loading the registry, current filters, and saved views.</p>
             </div>
 
-            <div v-if="ready && loadingError"
-                 class="d-flex flex-column align-items-center justify-content-center card-bg-secondary p-5 bottom-radius text-center"
-                 role="alert"
-                 aria-live="assertive">
-                <strong>Flow list unavailable</strong>
-                <span class="text-muted mt-2">{{ loadingError }}</span>
-                <button class="btn btn-outline-secondary btn-sm mt-3" @click="retryLoadFlows">
-                    Retry
-                </button>
+            <div v-else-if="flows.length === 0" class="flow-index__state flow-index__state--empty">
+                <strong>{{ hasActiveFilters ? 'No flows match the current view.' : 'No flows in this collection yet.' }}</strong>
+                <p class="flow-index__state-copy">
+                    {{ hasActiveFilters ? 'Clear filters or switch views to widen the queue.' : 'Waterline will populate this registry when runs enter this collection.' }}
+                </p>
             </div>
 
-            <div v-if="ready && !loadingError && flows.length == 0 && hasActiveFilters"
-                 class="d-flex flex-column align-items-center justify-content-center card-bg-secondary p-5 bottom-radius text-center"
-                 role="status"
-                 aria-live="polite">
-                <strong>No flows match the current filters.</strong>
-                <span class="text-muted mt-2">Adjust the filters above or clear them to see more flows.</span>
-                <button class="btn btn-outline-primary btn-sm mt-3" @click="clearFilters">
-                    Clear filters
-                </button>
-            </div>
-
-            <div v-if="ready && !loadingError && flows.length == 0 && !hasActiveFilters"
-                 class="d-flex flex-column align-items-center justify-content-center card-bg-secondary p-5 bottom-radius text-center"
-                 role="status"
-                 aria-live="polite">
-                <span>There aren't any flows.</span>
-            </div>
-
-            <table v-if="ready && !loadingError && flows.length > 0" :class="workflowListTableClass">
-                <thead>
-                <tr>
-                    <th v-if="columnEnabled('flow')">Flow</th>
-                    <th v-if="columnEnabled('started_at')"
-                        :class="$route.params.type=='running' ? 'text-right' : ''">
-                        Started At
-                    </th>
-                    <th v-if="isTerminalCollection() && columnEnabled('closed_at')">{{ closedAtLabel() }}</th>
-                    <th v-if="isTerminalCollection() && columnEnabled('duration')" class="text-right">Duration</th>
-                    <th v-if="columnEnabled('actions')" class="text-right">Actions</th>
-                </tr>
-                </thead>
-
-                <tbody>
-                    <tr v-if="hasNewEntries" key="newEntries" class="dontanimate">
-                        <td colspan="100" class="text-center card-bg-secondary py-1">
-                            <small><a href="#" v-on:click.prevent="loadNewEntries" v-if="!loadingNewEntries">Load New
-                                Entries</a></small>
-
-                            <small v-if="loadingNewEntries">Loading...</small>
-                        </td>
+            <div v-else class="flow-index__table-wrap">
+                <table :class="[workflowListTableClass, 'flow-index__table']">
+                    <thead>
+                    <tr>
+                        <th v-if="columnEnabled('flow')">Flow</th>
+                        <th v-if="columnEnabled('started_at')"
+                            :class="$route.params.type=='running' ? 'text-right' : ''">
+                            Started At
+                        </th>
+                        <th v-if="isTerminalCollection() && columnEnabled('closed_at')">{{ closedAtLabel() }}</th>
+                        <th v-if="isTerminalCollection() && columnEnabled('duration')" class="text-right">Duration</th>
+                        <th v-if="columnEnabled('actions')" class="text-right">Actions</th>
                     </tr>
+                    </thead>
 
-                    <tr v-for="flow in flows" :key="flow.id" :flow="flow" :columns="workflowListColumns" is="flow-row">
-                    </tr>
-                </tbody>
-            </table>
+                    <tbody>
+                        <tr v-if="hasNewEntries" key="newEntries" class="dontanimate flow-index__new-entries">
+                            <td colspan="100">
+                                <div class="flow-index__new-entries-inner">
+                                    <span>New runs are waiting.</span>
+                                    <small v-if="!loadingNewEntries">
+                                        <a href="#" v-on:click.prevent="loadNewEntries">Load new entries</a>
+                                    </small>
+                                    <small v-else>Loading...</small>
+                                </div>
+                            </td>
+                        </tr>
 
-            <div v-if="ready && flows.length" class="p-3 d-flex justify-content-between border-top">
-                <button @click="previous" class="btn btn-secondary btn-md" :disabled="page==1">Previous</button>
-                <button @click="next" class="btn btn-secondary btn-md" :disabled="page>=totalPages">Next</button>
+                        <tr v-for="flow in flows" :key="flow.id" :flow="flow" :columns="workflowListColumns" is="flow-row">
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-        </div>
 
+            <div v-if="ready && flows.length" class="flow-index__pagination">
+                <p class="flow-index__pagination-copy">
+                    Showing {{ flows.length }} {{ flows.length === 1 ? 'flow' : 'flows' }} on {{ flowPageSummary.toLowerCase() }}.
+                </p>
+
+                <div class="flow-index__pagination-actions">
+                    <button @click="previous" class="btn btn-secondary btn-md" :disabled="page==1">Previous</button>
+                    <button @click="next" class="btn btn-secondary btn-md" :disabled="page>=totalPages">Next</button>
+                </div>
+            </div>
+        </section>
     </div>
 </template>
+
+<style scoped>
+.flow-index {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.flow-index__hero {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.flow-index__eyebrow,
+.flow-index__section-kicker {
+    margin: 0 0 0.45rem;
+    color: var(--wl-text-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.flow-index__title {
+    margin: 0;
+    color: var(--wl-text);
+    font-size: 2.1rem;
+    font-weight: 600;
+    letter-spacing: -0.04em;
+}
+
+.flow-index__subtitle,
+.flow-index__section-copy,
+.flow-index__metric-copy,
+.flow-index__state-copy,
+.flow-index__pagination-copy {
+    margin: 0.5rem 0 0;
+    color: var(--wl-text-muted);
+}
+
+.flow-index__summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.flow-index__metric {
+    padding: 1.1rem 1.2rem;
+    border: 1px solid color-mix(in srgb, var(--wl-text) 8%, transparent);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--wl-text) 4%, var(--wl-surface));
+}
+
+.flow-index__metric-label {
+    color: var(--wl-text-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.flow-index__metric-value {
+    display: block;
+    margin-top: 0.7rem;
+    color: var(--wl-text);
+    font-size: 1.9rem;
+    font-weight: 600;
+    letter-spacing: -0.04em;
+}
+
+.flow-index__panel {
+    overflow: hidden;
+}
+
+.flow-index__controls,
+.flow-index__registry-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+}
+
+.flow-index__controls-copy {
+    max-width: 38rem;
+}
+
+.flow-index__section-title {
+    margin: 0;
+    color: var(--wl-text);
+    font-size: 1.3rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+}
+
+.flow-index__toolbar,
+.flow-index__toolbar-actions,
+.flow-index__registry-meta,
+.flow-index__pagination-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.flow-index__toolbar {
+    justify-content: flex-end;
+}
+
+.flow-index__toolbar-actions {
+    justify-content: flex-end;
+}
+
+.flow-index__view-select {
+    min-width: 16rem;
+    max-width: 100%;
+}
+
+.flow-index__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    padding: 0 1.25rem 1.25rem;
+}
+
+.flow-index__chips .badge {
+    padding: 0.45rem 0.7rem;
+    border-radius: 999px;
+}
+
+.flow-index__pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.45rem 0.75rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--wl-accent) 12%, transparent);
+    color: var(--wl-accent);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.flow-index__pill.is-muted {
+    background: color-mix(in srgb, var(--wl-text) 5%, transparent);
+    color: var(--wl-text-muted);
+}
+
+.flow-index__state {
+    min-height: 18rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+    border-top: 1px solid var(--wl-border);
+}
+
+.flow-index__state--empty strong {
+    color: var(--wl-text);
+}
+
+.flow-index__state-icon {
+    width: 2rem;
+    height: 2rem;
+}
+
+.flow-index__table-wrap {
+    overflow-x: auto;
+    border-top: 1px solid var(--wl-border);
+}
+
+.flow-index__table {
+    margin-bottom: 0 !important;
+}
+
+.flow-index__table thead th {
+    border-top: none;
+    border-bottom: 1px solid var(--wl-border);
+    background: var(--wl-surface);
+    color: var(--wl-text-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.flow-index__table tbody tr:hover {
+    background: color-mix(in srgb, var(--wl-text) 3%, transparent);
+}
+
+.flow-index__new-entries td {
+    padding: 0;
+    background: color-mix(in srgb, var(--wl-accent) 10%, transparent);
+    border-bottom: 1px solid var(--wl-border);
+}
+
+.flow-index__new-entries-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.65rem;
+    padding: 0.55rem 0.75rem;
+    color: var(--wl-text-muted);
+    font-size: 0.82rem;
+}
+
+.flow-index__new-entries a {
+    color: var(--wl-accent);
+}
+
+.flow-index__pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem 1.25rem;
+    border-top: 1px solid var(--wl-border);
+}
+
+.flow-index .icon {
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.flow-index .icon.spin {
+    animation: flow-index-spin 1s linear infinite;
+}
+
+@keyframes flow-index-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1200px) {
+    .flow-index__summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .flow-index__summary-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .flow-index__toolbar,
+    .flow-index__toolbar-actions,
+    .flow-index__registry-meta,
+    .flow-index__pagination,
+    .flow-index__pagination-actions {
+        width: 100%;
+    }
+
+    .flow-index__toolbar,
+    .flow-index__toolbar-actions,
+    .flow-index__registry-meta {
+        justify-content: flex-start;
+    }
+
+    .flow-index__view-select {
+        width: 100%;
+    }
+
+    .flow-index__pagination {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+</style>

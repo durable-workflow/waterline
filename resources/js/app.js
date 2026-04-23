@@ -84,7 +84,7 @@ new Vue({
 
             autoLoadsNewEntries: localStorage.autoLoadsNewEntries === '1',
 
-            theme: localStorage.getItem('waterline-theme') || 'light',
+            theme: localStorage.getItem('waterline-theme') || 'dark',
         };
     },
 

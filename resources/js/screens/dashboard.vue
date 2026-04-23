@@ -1,1187 +1,1341 @@
-<script type="text/ecmascript-6">
-    import moment from 'moment';
+<template>
+    <div class="wl-dashboard-view">
+        <div v-if="!ready && !loadingError" class="wl-screen-state card card-bg-secondary">
+            <div class="d-flex align-items-center justify-content-center">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin mr-2 fill-text-color">
+                    <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
+                </svg>
+                <span>Loading dashboard…</span>
+            </div>
+        </div>
 
-    export default {
-        components: {},
+        <div v-else-if="loadingError" class="wl-screen-state card card-bg-secondary wl-screen-state--error">
+            <strong>Dashboard unavailable</strong>
+            <span class="text-muted mt-2">{{ loadingError }}</span>
+            <button class="btn btn-outline-primary btn-sm mt-3" @click="refreshNow">Retry</button>
+        </div>
 
+        <div v-else class="wl-dashboard-stack">
+            <section class="wl-screen-hero">
+                <div>
+                    <p class="wl-screen-eyebrow">Workflow operations</p>
+                    <h1 class="wl-screen-title">Dashboard</h1>
+                    <p class="wl-screen-subtitle">
+                        Fleet health, queue pressure, and repair posture for {{ engineSourceLabel() }} workflows.
+                    </p>
+                </div>
 
-        /**
-         * The component's data.
-         */
-        data() {
-            return {
-                stats: {},
-                ready: false,
-                loadingError: null,
+                <div class="wl-screen-hero__actions">
+                    <span v-if="operatorMetrics && operatorMetrics.generated_at" class="wl-chip">
+                        {{ operatorMetrics.generated_at }}
+                    </span>
+
+                    <button class="btn btn-outline-secondary btn-sm" @click="refreshNow">
+                        Refresh
+                    </button>
+                </div>
+            </section>
+
+            <section v-if="needsAttention.total_alerts > 0" class="card wl-dashboard-alerts">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <div>
+                        <h5>Needs attention</h5>
+                        <small class="text-muted">
+                            {{ needsAttention.total_alerts }} active alert<span v-if="needsAttention.total_alerts !== 1">s</span>
+                        </small>
+                    </div>
+
+                    <span class="wl-chip wl-chip--warning" v-if="needsAttention.has_critical">Critical</span>
+                </div>
+
+                <div class="card-body card-bg-secondary wl-dashboard-alerts__body">
+                    <article
+                        v-for="alert in needsAttention.alerts"
+                        :key="alert.type"
+                        class="wl-dashboard-alert"
+                        :class="`is-${alert.severity || 'info'}`">
+                        <div class="wl-dashboard-alert__title">{{ alert.message }}</div>
+                        <div class="wl-dashboard-alert__action">{{ alert.action }}</div>
+                    </article>
+                </div>
+            </section>
+
+            <section class="wl-dashboard-summary-grid">
+                <article v-for="tile in summaryTiles" :key="tile.label" class="card wl-summary-card">
+                    <div class="card-body card-bg-secondary">
+                        <div class="wl-summary-card__label">{{ tile.label }}</div>
+                        <div class="wl-summary-card__value">{{ tile.value }}</div>
+                        <div class="wl-summary-card__meta">{{ tile.meta }}</div>
+                    </div>
+                </article>
+            </section>
+
+            <section class="wl-dashboard-grid">
+                <article class="card wl-dashboard-card wl-dashboard-card--wide">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <div>
+                            <h5>Fleet trends</h5>
+                            <small class="text-muted">Last 7 days, hourly resolution</small>
+                        </div>
+
+                        <span class="wl-chip">Completed vs. failed</span>
+                    </div>
+
+                    <div class="card-body card-bg-secondary">
+                        <div v-if="fleetTrendsChartSeries.length" role="img" aria-label="Fleet trends chart showing completed and failed workflow volume over time.">
+                            <apexchart
+                                type="area"
+                                height="320"
+                                :options="fleetTrendsChartOptions"
+                                :series="fleetTrendsChartSeries">
+                            </apexchart>
+                        </div>
+                        <div v-else class="wl-empty-state">No trend data available yet.</div>
+                    </div>
+                </article>
+
+                <article class="card wl-dashboard-card">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <div>
+                            <h5>Fleet overview</h5>
+                            <small class="text-muted">Current posture and recent volume</small>
+                        </div>
+
+                        <span class="wl-chip" :class="operatorBackend().supported ? 'wl-chip--success' : 'wl-chip--warning'">
+                            {{ operatorBackendStatusLabel() }}
+                        </span>
+                    </div>
+
+                    <div class="card-body card-bg-secondary wl-dashboard-split">
+                        <div>
+                            <div class="wl-panel-subtitle">Current status</div>
+                            <table class="table table-sm mb-0">
+                                <tbody>
+                                    <tr>
+                                        <td>Running</td>
+                                        <td class="text-right">{{ fleetMetric('current', 'running').toLocaleString() }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Failed</td>
+                                        <td class="text-right text-danger">{{ fleetMetric('current', 'failed').toLocaleString() }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div>
+                            <div class="wl-panel-subtitle">Recent trends</div>
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Period</th>
+                                        <th class="text-right">Completed</th>
+                                        <th class="text-right">Failed</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Last hour</td>
+                                        <td class="text-right text-success">{{ fleetMetric('trends', 'hour', 'completed').toLocaleString() }}</td>
+                                        <td class="text-right text-danger">{{ fleetMetric('trends', 'hour', 'failed').toLocaleString() }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Last day</td>
+                                        <td class="text-right text-success">{{ fleetMetric('trends', 'day', 'completed').toLocaleString() }}</td>
+                                        <td class="text-right text-danger">{{ fleetMetric('trends', 'day', 'failed').toLocaleString() }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Last week</td>
+                                        <td class="text-right text-success">{{ fleetMetric('trends', 'week', 'completed').toLocaleString() }}</td>
+                                        <td class="text-right text-danger">{{ fleetMetric('trends', 'week', 'failed').toLocaleString() }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="wl-operator-backend">
+                            <div class="wl-panel-subtitle">Backend capability</div>
+                            <div class="wl-operator-backend__summary">
+                                Database {{ operatorBackendComponentLabel('database') }}
+                            </div>
+                            <div class="wl-operator-backend__summary">
+                                Cache {{ operatorBackendComponentLabel('cache') }}
+                            </div>
+                            <div v-if="operatorBackendIssues().length" class="wl-operator-backend__issues">
+                                <div v-for="(issue, index) in operatorBackendIssues()" :key="index">
+                                    {{ issue.summary || issue.code || issue.component || 'Capability issue' }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="card wl-dashboard-card wl-dashboard-card--wide">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <div>
+                            <h5>Workflow type health</h5>
+                            <small class="text-muted">Top workflow types by volume</small>
+                        </div>
+
+                        <span class="wl-chip">{{ topWorkflowTypes.length }} tracked types</span>
+                    </div>
+
+                    <div class="card-body card-bg-secondary">
+                        <div v-if="topWorkflowTypes.length" class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Workflow type</th>
+                                        <th class="text-right">Runs</th>
+                                        <th class="text-right">Pass rate</th>
+                                        <th class="text-right">Median duration</th>
+                                        <th class="text-right">Errors</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="type in topWorkflowTypes" :key="type.workflow_type">
+                                        <td>
+                                            <code>{{ workflowLabel(type.workflow_type) }}</code>
+                                        </td>
+                                        <td class="text-right">{{ Number(type.total_runs || 0).toLocaleString() }}</td>
+                                        <td class="text-right">
+                                            <span class="badge" :class="workflowBadgeClass(type)">
+                                                {{ Number(type.pass_rate || 0).toFixed(1) }}%
+                                            </span>
+                                        </td>
+                                        <td class="text-right">
+                                            {{ type.median_duration_ms ? formatDuration(type.median_duration_ms) : '-' }}
+                                        </td>
+                                        <td class="text-right">
+                                            <span v-if="Number(type.error_count || 0) > 0" class="text-danger">
+                                                {{ Number(type.error_count).toLocaleString() }}
+                                            </span>
+                                            <span v-else class="text-muted">-</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div v-else class="wl-empty-state">No workflow type health data available yet.</div>
+                    </div>
+                </article>
+
+                <article class="card wl-dashboard-card">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <div>
+                            <h5>Type breakdown</h5>
+                            <small class="text-muted">Pass rate and latency for the busiest workflows</small>
+                        </div>
+                    </div>
+
+                    <div class="card-body card-bg-secondary">
+                        <div v-if="topWorkflowTypes.length" class="wl-dashboard-chart-stack">
+                            <div>
+                                <div class="wl-panel-subtitle">Pass rate</div>
+                                <apexchart
+                                    type="bar"
+                                    height="220"
+                                    :options="passRateChartOptions"
+                                    :series="passRateChartSeries">
+                                </apexchart>
+                            </div>
+
+                            <div>
+                                <div class="wl-panel-subtitle">Median duration</div>
+                                <apexchart
+                                    type="bar"
+                                    height="220"
+                                    :options="durationChartOptions"
+                                    :series="durationChartSeries">
+                                </apexchart>
+                            </div>
+                        </div>
+                        <div v-else class="wl-empty-state">No workflow health charts available yet.</div>
+                    </div>
+                </article>
+
+                <article class="card wl-dashboard-card">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <div>
+                            <h5>Overview</h5>
+                            <small class="text-muted">Throughput, outliers, and exception hotspots</small>
+                        </div>
+                    </div>
+
+                    <div class="card-body card-bg-secondary">
+                        <div class="wl-overview-grid">
+                            <div v-for="tile in overviewTiles" :key="tile.label" class="wl-overview-tile">
+                                <div class="wl-overview-tile__label">{{ tile.label }}</div>
+                                <div class="wl-overview-tile__value">{{ tile.value }}</div>
+                                <div class="wl-overview-tile__meta">
+                                    <router-link v-if="tile.route && tile.linkLabel" :to="tile.route">
+                                        {{ tile.linkLabel }}
+                                    </router-link>
+                                    <span v-else>{{ tile.meta }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="card wl-dashboard-card wl-dashboard-card--wide" v-if="operatorMetrics">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <div>
+                            <h5>Operator metrics</h5>
+                            <small class="text-muted">Backlog, projection health, and recovery posture</small>
+                        </div>
+
+                        <span class="wl-chip" v-if="operatorMetrics.generated_at">{{ operatorMetrics.generated_at }}</span>
+                    </div>
+
+                    <div class="card-body card-bg-secondary wl-operator-grid">
+                        <div class="wl-operator-metrics-grid">
+                            <div class="wl-operator-metric">
+                                <div class="wl-operator-metric__label">Runnable tasks</div>
+                                <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'runnable_tasks') }}</div>
+                            </div>
+                            <div class="wl-operator-metric">
+                                <div class="wl-operator-metric__label">Repair needed runs</div>
+                                <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'repair_needed_runs') }}</div>
+                            </div>
+                            <div class="wl-operator-metric">
+                                <div class="wl-operator-metric__label">Compatibility blocked</div>
+                                <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'compatibility_blocked_runs') }}</div>
+                            </div>
+                            <div class="wl-operator-metric">
+                                <div class="wl-operator-metric__label">Active workers</div>
+                                <div class="wl-operator-metric__value">{{ operatorMetricLabel('workers', 'active_workers') }}</div>
+                                <div class="wl-operator-metric__meta">{{ operatorMetricLabel('workers', 'active_worker_scopes') }} queue scopes</div>
+                            </div>
+                            <div class="wl-operator-metric">
+                                <div class="wl-operator-metric__label">Pending starts</div>
+                                <div class="wl-operator-metric__value">{{ operatorMetricLabel('starts', 'pending_runs') }}</div>
+                            </div>
+                            <div class="wl-operator-metric">
+                                <div class="wl-operator-metric__label">Start commands</div>
+                                <div class="wl-operator-metric__value">{{ operatorMetricLabel('starts', 'pending_commands') }}</div>
+                            </div>
+                            <div class="wl-operator-metric">
+                                <div class="wl-operator-metric__label">Due start tasks</div>
+                                <div class="wl-operator-metric__value">{{ operatorMetricLabel('starts', 'ready_tasks') }}</div>
+                            </div>
+                            <div class="wl-operator-metric">
+                                <div class="wl-operator-metric__label">Max start latency</div>
+                                <div class="wl-operator-metric__value">{{ operatorDurationMetricLabel('starts', 'max_pending_ms') }}</div>
+                            </div>
+                        </div>
+
+                        <section class="wl-operator-section">
+                            <div class="wl-panel-subtitle">Activity attempts</div>
+                            <p>
+                                {{ operatorMetricLabel('activities', 'retrying') }} retrying,
+                                {{ operatorMetricLabel('activities', 'running') }} running,
+                                {{ operatorMetricLabel('activities', 'failed_attempts') }} failed attempts,
+                                max {{ operatorMetricLabel('activities', 'max_attempt_count') }} attempts.
+                            </p>
+                        </section>
+
+                        <section class="wl-operator-section">
+                            <div class="wl-panel-subtitle">Projection health</div>
+                            <p>
+                                Run summaries: {{ operatorProjectionMetricLabel('summaries') }} summaries for
+                                {{ operatorProjectionMetricLabel('runs') }} runs,
+                                {{ operatorProjectionMetricLabel('missing') }} missing,
+                                {{ operatorProjectionMetricLabel('orphaned') }} orphaned,
+                                {{ operatorProjectionMetricLabel('stale') }} stale.
+                            </p>
+                            <p>
+                                Wait rows: {{ operatorProjectionMetricLabel('run_waits', 'rows') }} rows across
+                                {{ operatorProjectionMetricLabel('run_waits', 'projected_runs') }} runs,
+                                {{ operatorProjectionMetricLabel('run_waits', 'runs_with_waits') }} canonical waits,
+                                {{ operatorProjectionMetricLabel('run_waits', 'missing_runs_with_waits') }} missing,
+                                {{ operatorProjectionMetricLabel('run_waits', 'stale_projected_runs') }} stale,
+                                {{ operatorProjectionMetricLabel('run_waits', 'orphaned') }} orphaned.
+                            </p>
+                            <p>
+                                Timeline rows: {{ operatorProjectionMetricLabel('run_timeline_entries', 'rows') }} rows for
+                                {{ operatorProjectionMetricLabel('run_timeline_entries', 'history_events') }} history events,
+                                {{ operatorProjectionMetricLabel('run_timeline_entries', 'missing_runs_with_history') }} missing,
+                                {{ operatorProjectionMetricLabel('run_timeline_entries', 'stale_projected_runs') }} stale,
+                                {{ operatorProjectionMetricLabel('run_timeline_entries', 'orphaned') }} orphaned.
+                            </p>
+                            <p>
+                                Timer rows: {{ operatorProjectionMetricLabel('run_timer_entries', 'rows') }} rows across
+                                {{ operatorProjectionMetricLabel('run_timer_entries', 'projected_runs') }} projected runs,
+                                {{ operatorProjectionMetricLabel('run_timer_entries', 'missing_runs_with_timers') }} missing,
+                                {{ operatorProjectionMetricLabel('run_timer_entries', 'stale_projected_runs') }} stale,
+                                {{ operatorProjectionMetricLabel('run_timer_entries', 'orphaned') }} orphaned.
+                            </p>
+                        </section>
+
+                        <section class="wl-operator-section">
+                            <div class="wl-panel-subtitle">Repair policy</div>
+                            <p>
+                                Redispatch after {{ operatorPolicyMetricLabel('redispatch_after_seconds') }} seconds,
+                                throttle worker sweeps for {{ operatorPolicyMetricLabel('throttle_seconds') }} seconds,
+                                scan {{ operatorPolicyMetricLabel('scan_rows_per_pass') }} rows per pass.
+                            </p>
+                            <div v-if="operatorRepairScopes().length" class="wl-inline-list">
+                                <span v-for="scope in operatorRepairScopes()" :key="operatorRepairScopeLabel(scope)">
+                                    {{ operatorRepairScopeLabel(scope) }}
+                                </span>
+                            </div>
+                        </section>
+
+                        <section class="wl-operator-section">
+                            <div class="wl-panel-subtitle">Update wait policy</div>
+                            <p>
+                                Wait up to {{ operatorUpdateWaitMetricLabel('completion_timeout_ms') }} ms for completion responses,
+                                polling every {{ operatorUpdateWaitMetricLabel('poll_interval_ms') }} ms before returning an accepted lifecycle.
+                            </p>
+                        </section>
+
+                        <section class="wl-operator-section">
+                            <div class="wl-panel-subtitle">Structural limits</div>
+                            <div v-if="structuralLimitRows().length" class="wl-structural-limits">
+                                <div v-for="entry in structuralLimitRows()" :key="entry.key" class="wl-structural-limits__row">
+                                    <span>{{ entry.label }}</span>
+                                    <span>{{ entry.value }}</span>
+                                </div>
+                            </div>
+                            <p v-else>No structural limit snapshot available.</p>
+                        </section>
+                    </div>
+                </article>
+            </section>
+        </div>
+    </div>
+</template>
+
+<script>
+import moment from 'moment';
+
+export default {
+    data() {
+        return {
+            stats: {},
+            ready: false,
+            loadingError: null,
+            timeout: null,
+        };
+    },
+
+    computed: {
+        needsAttention() {
+            return this.stats.needs_attention || {
+                total_alerts: 0,
+                has_critical: false,
+                alerts: [],
             };
         },
 
-
-        /**
-         * Prepare the component.
-         */
-        mounted() {
-            moment.relativeTimeThreshold('ss', 1);
-
-            document.title = "Waterline - Dashboard";
-
-            this.refreshStatsPeriodically();
+        workflowTypes() {
+            return Array.isArray(this.stats.workflow_type_health)
+                ? this.stats.workflow_type_health
+                : [];
         },
 
-
-        /**
-         * Clean after the component is destroyed.
-         */
-        destroyed() {
-            clearTimeout(this.timeout);
+        topWorkflowTypes() {
+            return this.workflowTypes.slice(0, 6);
         },
 
-
-        computed: {
-            fleetTrendsChartOptions() {
-                return {
-                    chart: {
-                        type: 'area',
-                        stacked: false,
-                        toolbar: {
-                            show: true,
-                            tools: {
-                                download: true,
-                                zoom: true,
-                                pan: true,
-                            }
-                        },
-                        zoom: {
-                            enabled: true,
-                            type: 'x'
-                        }
-                    },
-                    colors: ['#28a745', '#dc3545'],
-                    dataLabels: {
-                        enabled: false
-                    },
-                    stroke: {
-                        curve: 'straight',  // No smoothing - show real spikes
-                        width: 2
-                    },
-                    fill: {
-                        type: 'gradient',
-                        gradient: {
-                            shadeIntensity: 1,
-                            opacityFrom: 0.7,
-                            opacityTo: 0.3,
-                        }
-                    },
-                    xaxis: {
-                        type: 'datetime',
-                        labels: {
-                            datetimeUTC: false
-                        }
-                    },
-                    yaxis: {
-                        title: {
-                            text: 'Workflow Count'
-                        },
-                        min: 0
-                    },
-                    legend: {
-                        position: 'top',
-                        horizontalAlign: 'left'
-                    },
-                    tooltip: {
-                        x: {
-                            format: 'MMM dd, HH:mm'
-                        },
-                        y: {
-                            formatter: function(value) {
-                                return value + ' workflows';
-                            }
-                        }
-                    }
-                };
-            },
-
-            fleetTrendsChartSeries() {
-                if (!this.stats.fleet_trends_series) {
-                    return [];
-                }
-
-                const series = this.stats.fleet_trends_series;
-                const data = [];
-
-                // Build series with {x: timestamp, y: count} format
-                for (let i = 0; i < series.timestamps.length; i++) {
-                    data.push({
-                        completed: { x: series.timestamps[i], y: series.completed[i] },
-                        failed: { x: series.timestamps[i], y: series.failed[i] }
-                    });
-                }
-
-                return [
-                    {
-                        name: 'Completed',
-                        data: data.map(d => d.completed)
-                    },
-                    {
-                        name: 'Failed',
-                        data: data.map(d => d.failed)
-                    }
-                ];
-            },
-
-            passRateChartOptions() {
-                const types = (this.stats.workflow_type_health || []).slice(0, 5);
-                return {
-                    chart: {
-                        type: 'bar',
-                        toolbar: { show: false }
-                    },
-                    plotOptions: {
-                        bar: {
-                            horizontal: true,
-                            distributed: false,
-                            dataLabels: {
-                                position: 'top'
-                            }
-                        }
-                    },
-                    colors: ['#28a745'],
-                    dataLabels: {
-                        enabled: true,
-                        formatter: function(val) {
-                            return val.toFixed(1) + '%';
-                        },
-                        offsetX: 30,
-                        style: {
-                            fontSize: '12px',
-                            colors: ['#333']
-                        }
-                    },
-                    xaxis: {
-                        categories: types.map(t => this.flowBaseName(t.workflow_type)),
-                        max: 100,
-                        title: {
-                            text: 'Pass Rate (%)'
-                        }
-                    },
-                    yaxis: {
-                        labels: {
-                            style: {
-                                fontSize: '11px'
-                            }
-                        }
-                    },
-                    tooltip: {
-                        y: {
-                            formatter: function(val) {
-                                return val.toFixed(1) + '%';
-                            }
-                        }
-                    }
-                };
-            },
-
-            passRateChartSeries() {
-                const types = (this.stats.workflow_type_health || []).slice(0, 5);
-                return [{
-                    name: 'Pass Rate',
-                    data: types.map(t => t.pass_rate)
-                }];
-            },
-
-            durationChartOptions() {
-                const types = (this.stats.workflow_type_health || []).slice(0, 5);
-                return {
-                    chart: {
-                        type: 'bar',
-                        toolbar: { show: false }
-                    },
-                    plotOptions: {
-                        bar: {
-                            horizontal: true,
-                            distributed: false,
-                            dataLabels: {
-                                position: 'top'
-                            }
-                        }
-                    },
-                    colors: ['#007bff'],
-                    dataLabels: {
-                        enabled: true,
-                        formatter: (val) => {
-                            return this.formatDuration(val);
-                        },
-                        offsetX: 30,
-                        style: {
-                            fontSize: '12px',
-                            colors: ['#333']
-                        }
-                    },
-                    xaxis: {
-                        categories: types.map(t => this.flowBaseName(t.workflow_type)),
-                        labels: {
-                            formatter: (val) => {
-                                return this.formatDuration(val);
-                            }
-                        },
-                        title: {
-                            text: 'Median Duration'
-                        }
-                    },
-                    yaxis: {
-                        labels: {
-                            style: {
-                                fontSize: '11px'
-                            }
-                        }
-                    },
-                    tooltip: {
-                        y: {
-                            formatter: (val) => {
-                                return this.formatDuration(val);
-                            }
-                        }
-                    }
-                };
-            },
-
-            durationChartSeries() {
-                const types = (this.stats.workflow_type_health || []).slice(0, 5);
-                return [{
-                    name: 'Median Duration',
-                    data: types.map(t => t.median_duration_ms || 0)
-                }];
-            },
+        operatorMetrics() {
+            return this.stats.operator_metrics || null;
         },
 
-        methods: {
-            /**
-             * Load the general stats.
-             */
-            loadStats() {
-                return this.$http.get(Waterline.basePath + '/api/stats')
-                    .then(response => {
-                        this.stats = response.data;
-                        this.loadingError = null;
-                    })
-                    .catch(error => {
-                        this.loadingError = this.dashboardLoadErrorMessage(error);
+        chartThemeMode() {
+            return this.$root && this.$root.theme === 'light' ? 'light' : 'dark';
+        },
 
-                        throw error;
-                    });
-            },
+        summaryTiles() {
+            return [
+                {
+                    label: 'Running now',
+                    value: this.fleetMetric('current', 'running').toLocaleString(),
+                    meta: `${this.fleetMetric('current', 'failed').toLocaleString()} failed in the active fleet`,
+                },
+                {
+                    label: 'Completed last day',
+                    value: this.fleetMetric('trends', 'day', 'completed').toLocaleString(),
+                    meta: `${this.fleetMetric('trends', 'hour', 'completed').toLocaleString()} completed in the last hour`,
+                },
+                {
+                    label: 'Flows per minute',
+                    value: this.formatRate(this.stats.flows_per_minute),
+                    meta: `${Number(this.stats.flows_past_hour || 0).toLocaleString()} flows in the last hour`,
+                },
+                {
+                    label: 'Active workers',
+                    value: this.operatorMetricLabel('workers', 'active_workers'),
+                    meta: `${this.operatorMetricLabel('workers', 'active_worker_scopes')} queue scopes`,
+                },
+            ];
+        },
 
-            /**
-             * Refresh the stats every period of time.
-             */
-            refreshStatsPeriodically() {
-                Promise.all([
-                    this.loadStats(),
-                ]).then(() => {
-                    this.ready = true;
-                    this.scheduleNextStatsRefresh();
-                }).catch(() => {
-                    this.ready = true;
-                    this.scheduleNextStatsRefresh();
+        overviewTiles() {
+            return [
+                {
+                    label: 'Flows past hour',
+                    value: Number(this.stats.flows_past_hour || 0).toLocaleString(),
+                    meta: 'Recent run volume',
+                },
+                {
+                    label: 'Exceptions past hour',
+                    value: Number(this.stats.exceptions_past_hour || 0).toLocaleString(),
+                    meta: 'Recent failure pressure',
+                },
+                {
+                    label: 'Failed flows past week',
+                    value: Number(this.stats.failed_flows_past_week || 0).toLocaleString(),
+                    meta: 'Longer trend window',
+                },
+                {
+                    label: 'Total flows',
+                    value: Number(this.stats.flows || 0).toLocaleString(),
+                    meta: 'All recorded workflow runs',
+                },
+                {
+                    label: 'Max wait time',
+                    value: this.stats.max_wait_time_workflow ? this.waitAge(this.stats.max_wait_time_workflow) : '-',
+                    meta: this.stats.max_wait_time_workflow ? 'Most delayed open run' : 'No waiting runs',
+                    route: this.stats.max_wait_time_workflow ? { name: this.routeName(this.stats.max_wait_time_workflow), params: { flowId: this.stats.max_wait_time_workflow.id } } : null,
+                    linkLabel: this.stats.max_wait_time_workflow ? this.workflowLabel(this.stats.max_wait_time_workflow.class) : null,
+                },
+                {
+                    label: 'Max duration',
+                    value: this.stats.max_duration_workflow ? this.flowDuration(this.stats.max_duration_workflow) : '-',
+                    meta: this.stats.max_duration_workflow ? 'Longest completed run' : 'No completed runs',
+                    route: this.stats.max_duration_workflow ? { name: this.routeName(this.stats.max_duration_workflow), params: { flowId: this.stats.max_duration_workflow.id } } : null,
+                    linkLabel: this.stats.max_duration_workflow ? this.workflowLabel(this.stats.max_duration_workflow.class) : null,
+                },
+                {
+                    label: 'Max exceptions',
+                    value: this.stats.max_exceptions_workflow ? this.exceptionCount(this.stats.max_exceptions_workflow).toLocaleString() : '0',
+                    meta: this.stats.max_exceptions_workflow ? 'Run with the most exception rows' : 'No exception-heavy runs',
+                    route: this.stats.max_exceptions_workflow ? { name: this.routeName(this.stats.max_exceptions_workflow), params: { flowId: this.stats.max_exceptions_workflow.id } } : null,
+                    linkLabel: this.stats.max_exceptions_workflow ? this.workflowLabel(this.stats.max_exceptions_workflow.class) : null,
+                },
+                {
+                    label: 'Projection rebuilds needed',
+                    value: this.operatorProjectionNeedsRebuild().toLocaleString(),
+                    meta: 'Outstanding projection normalization work',
+                },
+            ];
+        },
+
+        fleetTrendsChartOptions() {
+            return {
+                chart: {
+                    type: 'area',
+                    stacked: false,
+                    toolbar: {
+                        show: false,
+                    },
+                    zoom: {
+                        enabled: false,
+                    },
+                    animations: {
+                        easing: 'easeinout',
+                    },
+                },
+                theme: {
+                    mode: this.chartThemeMode,
+                },
+                colors: ['#28c76f', '#ff6b6b'],
+                dataLabels: {
+                    enabled: false,
+                },
+                stroke: {
+                    curve: 'smooth',
+                    width: 2.4,
+                },
+                fill: {
+                    type: 'gradient',
+                    gradient: {
+                        shadeIntensity: 0.5,
+                        opacityFrom: 0.35,
+                        opacityTo: 0.05,
+                    },
+                },
+                xaxis: {
+                    type: 'datetime',
+                    labels: {
+                        datetimeUTC: false,
+                    },
+                },
+                yaxis: {
+                    min: 0,
+                    labels: {
+                        formatter: (value) => Math.round(value).toString(),
+                    },
+                },
+                legend: {
+                    position: 'top',
+                    horizontalAlign: 'left',
+                },
+                tooltip: {
+                    x: {
+                        format: 'MMM dd, HH:mm',
+                    },
+                    y: {
+                        formatter(value) {
+                            return `${Math.round(value)} workflows`;
+                        },
+                    },
+                },
+                grid: {
+                    borderColor: this.chartThemeMode === 'dark' ? '#303030' : '#d8dee6',
+                },
+            };
+        },
+
+        fleetTrendsChartSeries() {
+            const series = this.stats.fleet_trends_series;
+
+            if (!series || !Array.isArray(series.timestamps) || series.timestamps.length === 0) {
+                return [];
+            }
+
+            return [
+                {
+                    name: 'Completed',
+                    data: series.timestamps.map((timestamp, index) => ({
+                        x: timestamp,
+                        y: Number((series.completed || [])[index] || 0),
+                    })),
+                },
+                {
+                    name: 'Failed',
+                    data: series.timestamps.map((timestamp, index) => ({
+                        x: timestamp,
+                        y: Number((series.failed || [])[index] || 0),
+                    })),
+                },
+            ];
+        },
+
+        passRateChartOptions() {
+            return {
+                chart: {
+                    type: 'bar',
+                    toolbar: { show: false },
+                },
+                theme: {
+                    mode: this.chartThemeMode,
+                },
+                plotOptions: {
+                    bar: {
+                        horizontal: true,
+                        borderRadius: 6,
+                        barHeight: '48%',
+                    },
+                },
+                colors: ['#28c76f'],
+                dataLabels: {
+                    enabled: true,
+                    formatter(value) {
+                        return `${Number(value).toFixed(1)}%`;
+                    },
+                },
+                xaxis: {
+                    categories: this.topWorkflowTypes.map((type) => this.workflowLabel(type.workflow_type)),
+                    max: 100,
+                },
+                yaxis: {
+                    labels: {
+                        maxWidth: 160,
+                    },
+                },
+                grid: {
+                    borderColor: this.chartThemeMode === 'dark' ? '#303030' : '#d8dee6',
+                },
+            };
+        },
+
+        passRateChartSeries() {
+            return [{
+                name: 'Pass rate',
+                data: this.topWorkflowTypes.map((type) => Number(type.pass_rate || 0)),
+            }];
+        },
+
+        durationChartOptions() {
+            return {
+                chart: {
+                    type: 'bar',
+                    toolbar: { show: false },
+                },
+                theme: {
+                    mode: this.chartThemeMode,
+                },
+                plotOptions: {
+                    bar: {
+                        horizontal: true,
+                        borderRadius: 6,
+                        barHeight: '48%',
+                    },
+                },
+                colors: ['#7c6cf6'],
+                dataLabels: {
+                    enabled: true,
+                    formatter: (value) => this.formatDuration(value),
+                },
+                xaxis: {
+                    categories: this.topWorkflowTypes.map((type) => this.workflowLabel(type.workflow_type)),
+                    labels: {
+                        formatter: (value) => this.formatDuration(value),
+                    },
+                },
+                yaxis: {
+                    labels: {
+                        maxWidth: 160,
+                    },
+                },
+                grid: {
+                    borderColor: this.chartThemeMode === 'dark' ? '#303030' : '#d8dee6',
+                },
+            };
+        },
+
+        durationChartSeries() {
+            return [{
+                name: 'Median duration',
+                data: this.topWorkflowTypes.map((type) => Number(type.median_duration_ms || 0)),
+            }];
+        },
+    },
+
+    mounted() {
+        moment.relativeTimeThreshold('ss', 1);
+
+        document.title = 'Waterline - Dashboard';
+
+        this.refreshStatsPeriodically();
+    },
+
+    beforeDestroy() {
+        clearTimeout(this.timeout);
+    },
+
+    methods: {
+        loadStats() {
+            return this.$http.get(Waterline.basePath + '/api/stats')
+                .then((response) => {
+                    this.stats = response.data || {};
+                    this.loadingError = null;
                 });
-            },
+        },
 
-            scheduleNextStatsRefresh() {
-                this.timeout = setTimeout(() => {
+        refreshStatsPeriodically() {
+            clearTimeout(this.timeout);
+
+            return this.loadStats()
+                .then(() => {
+                    this.ready = true;
+
                     if (this.$root.autoLoadsNewEntries) {
-                        this.refreshStatsPeriodically();
+                        this.timeout = setTimeout(() => {
+                            this.refreshStatsPeriodically();
+                        }, 5000);
                     }
-                }, 5000);
-            },
+                })
+                .catch((error) => {
+                    this.ready = false;
+                    this.loadingError = this.dashboardErrorMessage(error);
+                });
+        },
 
-            retryStatsLoad() {
-                this.ready = false;
-                this.loadingError = null;
+        refreshNow() {
+            this.ready = false;
 
-                this.refreshStatsPeriodically();
-            },
+            return this.refreshStatsPeriodically();
+        },
 
-            dashboardLoadErrorMessage(error) {
-                if (error && error.code === 'ECONNABORTED') {
-                    return 'The dashboard request timed out.';
-                }
+        dashboardErrorMessage(error) {
+            if (error && error.code === 'ECONNABORTED') {
+                return 'The request timed out before Waterline could load dashboard metrics.';
+            }
 
-                if (error && error.response && error.response.status) {
-                    const status = error.response.status;
-                    const message = error.response.data && error.response.data.message;
+            if (error && error.response && error.response.status) {
+                const status = error.response.status;
+                const message = error.response.data && error.response.data.message;
 
-                    return message
-                        ? 'The dashboard returned HTTP ' + status + ': ' + message
-                        : 'The dashboard returned HTTP ' + status + '.';
-                }
+                return message
+                    ? `Request failed with HTTP ${status}: ${message}`
+                    : `Request failed with HTTP ${status}.`;
+            }
 
-                if (error && error.request) {
-                    return 'Waterline could not reach the dashboard API.';
-                }
+            if (error && error.request) {
+                return 'Waterline could not reach the dashboard endpoint.';
+            }
 
-                if (error && error.message) {
-                    return error.message;
-                }
+            if (error && error.message) {
+                return error.message;
+            }
 
-                return 'Waterline could not load dashboard metrics.';
-            },
+            return 'Waterline could not load dashboard metrics.';
+        },
 
-            duration(start, end) {
-                return this.durationBetween(start, end)
-            },
+        formatRate(value) {
+            const numeric = Number(value || 0);
 
-            routeName(flow) {
-                const type = ['failed', 'cancelled', 'terminated', 'completed'].includes(flow.status)
-                    ? flow.status
-                    : (flow.status_bucket || 'running');
+            if (!Number.isFinite(numeric)) {
+                return '0';
+            }
 
-                return type + '-flows-preview';
-            },
+            if (numeric >= 10) {
+                return numeric.toFixed(0);
+            }
 
-            waitAge(flow) {
-                return flow.wait_started_at
-                    ? this.duration(flow.wait_started_at, new Date())
-                    : '-';
-            },
+            if (numeric >= 1) {
+                return numeric.toFixed(1);
+            }
 
-            flowDuration(flow) {
-                const start = flow.started_at || flow.created_at;
-                const end = flow.closed_at || flow.updated_at;
+            return numeric.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+        },
 
-                if (! start || ! end) {
-                    return '-';
-                }
+        workflowLabel(type) {
+            return this.flowBaseName(type || 'UnknownWorkflow');
+        },
 
-                return this.duration(start, end);
-            },
+        workflowBadgeClass(type) {
+            const passRate = Number(type && type.pass_rate ? type.pass_rate : 0);
 
-            exceptionCount(flow) {
-                return flow.exceptions_count ?? flow.exception_count ?? 0;
-            },
+            if (passRate >= 95) {
+                return 'badge-success';
+            }
 
-            hasTerminalRuns(type) {
-                const b = type && type.status_breakdown ? type.status_breakdown : {};
-                return (b.completed || 0) + (b.failed || 0) + (b.cancelled || 0) + (b.terminated || 0) > 0;
-            },
+            if (passRate >= 80) {
+                return 'badge-warning';
+            }
 
-            operatorMetric(section, key) {
-                const metrics = this.stats.operator_metrics || {};
-                const group = metrics[section] || {};
+            return 'badge-danger';
+        },
 
-                return group[key] || 0;
-            },
+        routeName(flow) {
+            const type = ['failed', 'cancelled', 'terminated', 'completed'].includes(flow.status)
+                ? flow.status
+                : (flow.status_bucket || 'running');
 
-            operatorMetricLabel(section, key) {
-                return this.operatorMetric(section, key).toLocaleString();
-            },
+            return type + '-flows-preview';
+        },
 
-            operatorPolicyMetric(key) {
-                const metrics = this.stats.operator_metrics || {};
-                const policy = metrics.repair_policy || {};
+        waitAge(flow) {
+            return flow && flow.wait_started_at
+                ? this.durationBetween(flow.wait_started_at, new Date())
+                : '-';
+        },
 
-                return policy[key] || 0;
-            },
+        flowDuration(flow) {
+            const start = flow.started_at || flow.created_at;
+            const end = flow.closed_at || flow.updated_at;
 
-            operatorPolicyMetricLabel(key) {
-                return this.operatorPolicyMetric(key).toLocaleString();
-            },
+            if (!start || !end) {
+                return '-';
+            }
 
-            operatorUpdateWaitMetric(key) {
-                const metrics = this.stats.operator_metrics || {};
-                const policy = metrics.update_wait || {};
+            return this.durationBetween(start, end);
+        },
 
-                return policy[key] || 0;
-            },
+        exceptionCount(flow) {
+            return flow && (flow.exceptions_count ?? flow.exception_count ?? 0);
+        },
 
-            operatorUpdateWaitMetricLabel(key) {
-                return this.operatorUpdateWaitMetric(key).toLocaleString();
-            },
+        fleetMetric(section, period, key = null) {
+            const fleet = this.stats.fleet_overview || {};
 
-            fleetMetric(section, period, key = null) {
-                const fleet = this.stats.fleet_overview || {};
-                if (!fleet[section]) return 0;
+            if (!fleet[section]) {
+                return 0;
+            }
 
-                if (key) {
-                    return (fleet[section][period] && fleet[section][period][key]) || 0;
-                }
+            if (key) {
+                return (fleet[section][period] && fleet[section][period][key]) || 0;
+            }
 
-                return fleet[section][period] || 0;
-            },
+            return fleet[section][period] || 0;
+        },
 
-            operatorProjectionMetric(group, key = null) {
-                if (key === null) {
-                    key = group
-                    group = 'run_summaries'
-                }
+        operatorMetric(section, key) {
+            const metrics = this.operatorMetrics || {};
+            const group = metrics[section] || {};
 
-                const metrics = this.stats.operator_metrics || {};
-                const projections = metrics.projections || {};
-                const projection = projections[group] || {};
+            return group[key] || 0;
+        },
 
-                return projection[key] || 0;
-            },
+        operatorMetricLabel(section, key) {
+            return this.operatorMetric(section, key).toLocaleString();
+        },
 
-            operatorProjectionMetricLabel(group, key = null) {
-                return this.operatorProjectionMetric(group, key).toLocaleString();
-            },
+        operatorDurationMetricLabel(section, key) {
+            const value = this.operatorMetric(section, key);
 
-            operatorProjectionNeedsRebuild() {
-                return this.operatorProjectionMetric('run_summaries', 'needs_rebuild')
-                    + this.operatorProjectionMetric('run_waits', 'needs_rebuild')
-                    + this.operatorProjectionMetric('run_timeline_entries', 'needs_rebuild')
-                    + this.operatorProjectionMetric('run_timer_entries', 'needs_rebuild')
-                    + this.operatorProjectionMetric('run_lineage_entries', 'needs_rebuild');
-            },
+            return value > 0 ? moment.duration(value).humanize() : '-';
+        },
 
-            operatorBackend() {
-                const metrics = this.stats.operator_metrics || {};
+        operatorPolicyMetric(key) {
+            const policy = (this.operatorMetrics && this.operatorMetrics.repair_policy) || {};
 
-                return metrics.backend || {};
-            },
+            return policy[key] || 0;
+        },
 
-            operatorBackendStatusLabel() {
-                return this.operatorBackend().supported ? 'Supported' : 'Needs attention';
-            },
+        operatorPolicyMetricLabel(key) {
+            return this.operatorPolicyMetric(key).toLocaleString();
+        },
 
-            operatorBackendComponentLabel(component) {
-                const backend = this.operatorBackend();
-                const detail = backend[component] || {};
+        operatorUpdateWaitMetric(key) {
+            const policy = (this.operatorMetrics && this.operatorMetrics.update_wait) || {};
 
-                if (component === 'cache') {
-                    return [
-                        detail.store || 'unknown',
-                        detail.driver || 'unknown',
-                    ].join('/');
-                }
+            return policy[key] || 0;
+        },
 
-                return [
-                    detail.connection || 'unknown',
-                    detail.driver || 'unknown',
-                ].join('/');
-            },
+        operatorUpdateWaitMetricLabel(key) {
+            return this.operatorUpdateWaitMetric(key).toLocaleString();
+        },
 
-            operatorBackendIssues() {
-                const issues = this.operatorBackend().issues;
+        operatorProjectionMetric(group, key = null) {
+            let normalizedGroup = group;
+            let normalizedKey = key;
 
-                return Array.isArray(issues) ? issues : [];
-            },
+            if (normalizedKey === null) {
+                normalizedKey = normalizedGroup;
+                normalizedGroup = 'run_summaries';
+            }
 
-            operatorBackendIssueKey(issue, index) {
-                return [
-                    issue && issue.component ? issue.component : 'backend',
-                    issue && issue.code ? issue.code : 'capability_issue',
-                    index,
-                ].join(':');
-            },
+            const projections = (this.operatorMetrics && this.operatorMetrics.projections) || {};
+            const projection = projections[normalizedGroup] || {};
 
-            structuralLimitsSnapshot() {
-                const metrics = this.stats.operator_metrics || {};
+            return projection[normalizedKey] || 0;
+        },
 
-                return metrics.structural_limits || null;
-            },
+        operatorProjectionMetricLabel(group, key = null) {
+            return this.operatorProjectionMetric(group, key).toLocaleString();
+        },
 
-            structuralLimitWarningThreshold() {
-                const snapshot = this.structuralLimitsSnapshot();
+        operatorProjectionNeedsRebuild() {
+            return this.operatorProjectionMetric('run_summaries', 'needs_rebuild')
+                + this.operatorProjectionMetric('run_waits', 'needs_rebuild')
+                + this.operatorProjectionMetric('run_timeline_entries', 'needs_rebuild')
+                + this.operatorProjectionMetric('run_timer_entries', 'needs_rebuild')
+                + this.operatorProjectionMetric('run_lineage_entries', 'needs_rebuild');
+        },
 
-                return snapshot ? (snapshot.warning_threshold_percent || 0) : 0;
-            },
+        operatorBackend() {
+            return (this.operatorMetrics && this.operatorMetrics.backend) || {};
+        },
 
-            formatLimitKey(key) {
-                return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-            },
+        operatorBackendStatusLabel() {
+            return this.operatorBackend().supported ? 'Supported' : 'Needs attention';
+        },
 
-            formatLimitValue(key, value) {
-                if (key.endsWith('_bytes')) {
-                    if (value >= 1048576) return (value / 1048576).toFixed(1) + ' MiB';
-                    if (value >= 1024) return (value / 1024).toFixed(0) + ' KiB';
-                    return value + ' B';
-                }
+        operatorBackendComponentLabel(component) {
+            const backend = this.operatorBackend();
+            const detail = backend[component] || {};
 
-                if (key === 'warning_threshold_percent') return value + '%';
+            if (component === 'cache') {
+                return [detail.store || 'unknown', detail.driver || 'unknown'].join('/');
+            }
 
-                return typeof value === 'number' ? value.toLocaleString() : value;
-            },
+            return [detail.connection || 'unknown', detail.driver || 'unknown'].join('/');
+        },
 
-            operatorDurationMetricLabel(section, key) {
-                const value = this.operatorMetric(section, key);
+        operatorBackendIssues() {
+            const issues = this.operatorBackend().issues;
 
-                return value > 0 ? moment.duration(value).humanize() : '-';
-            },
+            return Array.isArray(issues) ? issues : [];
+        },
 
-            operatorRepairScopes() {
-                const metrics = this.stats.operator_metrics || {};
-                const repair = metrics.repair || {};
-                const scopes = Array.isArray(repair.scopes) ? repair.scopes : [];
+        structuralLimitsSnapshot() {
+            return this.operatorMetrics && this.operatorMetrics.structural_limits
+                ? this.operatorMetrics.structural_limits
+                : null;
+        },
 
-                return scopes.slice(0, 3);
-            },
+        structuralLimitRows() {
+            const snapshot = this.structuralLimitsSnapshot();
 
-            operatorRepairScopeLabel(scope) {
-                return [
-                    scope.connection || 'default',
-                    scope.queue || 'default',
-                    scope.compatibility || 'any',
-                ].join(' / ');
-            },
+            if (!snapshot) {
+                return [];
+            }
 
-            operatorRepairScopeDuration(scope, key) {
-                const value = scope[key] || 0;
+            return Object.entries(snapshot)
+                .filter(([key]) => key !== 'warning_threshold_percent')
+                .map(([key, value]) => ({
+                    key,
+                    label: this.formatLimitKey(key),
+                    value: this.formatLimitValue(key, value),
+                }));
+        },
 
-                return value > 0 ? moment.duration(value).humanize() : '-';
-            },
-        }
-    }
+        formatLimitKey(key) {
+            return key
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, (character) => character.toUpperCase());
+        },
+
+        formatLimitValue(key, value) {
+            if (key.endsWith('_bytes')) {
+                if (value >= 1048576) return `${(value / 1048576).toFixed(1)} MiB`;
+                if (value >= 1024) return `${(value / 1024).toFixed(0)} KiB`;
+                return `${value} B`;
+            }
+
+            if (key === 'warning_threshold_percent') {
+                return `${value}%`;
+            }
+
+            return typeof value === 'number' ? value.toLocaleString() : value;
+        },
+
+        operatorRepairScopes() {
+            const repair = (this.operatorMetrics && this.operatorMetrics.repair) || {};
+            const scopes = Array.isArray(repair.scopes) ? repair.scopes : [];
+
+            return scopes.slice(0, 3);
+        },
+
+        operatorRepairScopeLabel(scope) {
+            return [
+                scope.connection || 'default',
+                scope.queue || 'default',
+                scope.compatibility || 'any',
+            ].join(' / ');
+        },
+
+        engineSourceLabel() {
+            const source = this.stats.engine_source;
+
+            if (!source) {
+                return 'active';
+            }
+
+            if (typeof source === 'string') {
+                return source.toUpperCase();
+            }
+
+            if (source.pinned === 'v2' || source.source === 'v2') {
+                return 'V2';
+            }
+
+            if (source.pinned === 'v1' || source.source === 'v1') {
+                return 'V1';
+            }
+
+            return 'active';
+        },
+    },
+};
 </script>
 
-<template>
-    <div>
-        <div v-if="!ready" class="card">
-            <div class="card-body text-center py-5" role="status" aria-live="polite" aria-busy="true">
-                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color" style="width: 32px; height: 32px;">
-                    <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
-                </svg>
-                <p class="mt-2 mb-0 text-muted">Loading dashboard metrics...</p>
-            </div>
-        </div>
-
-        <div v-else-if="loadingError && Object.keys(stats).length === 0" class="card">
-            <div class="card-body">
-                <div class="alert alert-danger mb-3" role="alert" aria-live="assertive">
-                    <strong>Dashboard metrics unavailable.</strong>
-                    <div class="mt-1">{{ loadingError }}</div>
-                </div>
-                <button type="button" class="btn btn-outline-primary" @click="retryStatsLoad">
-                    Retry
-                </button>
-            </div>
-        </div>
-
-        <template v-else>
-        <div v-if="loadingError" class="alert alert-warning" role="status" aria-live="polite">
-            <strong>Dashboard refresh failed.</strong>
-            <span>{{ loadingError }}</span>
-            <button type="button" class="btn btn-sm btn-outline-secondary ml-2" @click="retryStatsLoad">
-                Retry
-            </button>
-        </div>
-
-        <!-- Needs Attention Alerts (WCAG 4.1.3: Status Messages) -->
-        <error-boundary label="Needs Attention">
-        <div class="card mb-4"
-             v-if="stats.needs_attention && stats.needs_attention.total_alerts > 0"
-             role="alert"
-             aria-live="polite"
-             :aria-label="'Needs attention: ' + stats.needs_attention.total_alerts + ' alert' + (stats.needs_attention.total_alerts > 1 ? 's' : '')">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>
-                    <span class="badge badge-warning mr-2" v-if="stats.needs_attention.has_critical" aria-hidden="true">!</span>
-                    Needs Attention
-                </h5>
-                <span class="badge badge-secondary">{{ stats.needs_attention.total_alerts }} alert(s)</span>
-            </div>
-
-            <div class="card-body">
-                <div v-for="alert in stats.needs_attention.alerts" :key="alert.type"
-                     :class="'alert alert-' + (alert.severity === 'error' ? 'danger' : alert.severity === 'warning' ? 'warning' : 'info') + ' mb-2'"
-                     role="alert">
-                    <strong>{{ alert.message }}</strong>
-                    <div class="small mt-1">{{ alert.action }}</div>
-                </div>
-            </div>
-        </div>
-        </error-boundary>
-
-        <!-- Fleet Overview Trends -->
-        <!-- Fleet Trends Chart -->
-        <error-boundary label="Fleet Trends">
-        <div class="card mb-4" v-if="stats.fleet_trends_series && stats.fleet_trends_series.timestamps.length > 0">
-            <div class="card-header">
-                <h5>Fleet Trends</h5>
-                <small class="text-muted">Last 7 days - hourly resolution</small>
-            </div>
-
-            <div class="card-body">
-                <!-- Chart wrapper for accessibility (WCAG 1.1.1: Non-text Content) -->
-                <div role="img" aria-label="Fleet trends area chart showing completed and failed workflows over the last 7 days with hourly resolution. Completed workflows shown in green, failed workflows in red.">
-                    <apexchart
-                        type="area"
-                        height="300"
-                        :options="fleetTrendsChartOptions"
-                        :series="fleetTrendsChartSeries">
-                    </apexchart>
-                </div>
-            </div>
-        </div>
-        </error-boundary>
-
-        <error-boundary label="Fleet Overview">
-        <div class="card mb-4" v-if="stats.fleet_overview">
-            <div class="card-header">
-                <h5>Fleet Overview</h5>
-                <small class="text-muted">Current shows live runs by status; Trends show terminal runs closed in each period.</small>
-            </div>
-
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6>Current Status <small class="text-muted font-weight-normal">(live, non-terminal scope)</small></h6>
-                        <table class="table table-sm">
-                            <tbody>
-                                <tr>
-                                    <td>Running</td>
-                                    <td class="text-right">{{ fleetMetric('current', 'running') }}</td>
-                                </tr>
-                                <tr>
-                                    <td>Failed <small class="text-muted">(cumulative)</small></td>
-                                    <td class="text-right text-danger">{{ fleetMetric('current', 'failed') }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="col-md-6">
-                        <h6>Trends <small class="text-muted font-weight-normal">(terminal runs per period)</small></h6>
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th>Period</th>
-                                    <th class="text-right">Completed</th>
-                                    <th class="text-right">Failed</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>Last Hour</td>
-                                    <td class="text-right text-success">{{ fleetMetric('trends', 'hour', 'completed') }}</td>
-                                    <td class="text-right text-danger">{{ fleetMetric('trends', 'hour', 'failed') }}</td>
-                                </tr>
-                                <tr>
-                                    <td>Last Day</td>
-                                    <td class="text-right text-success">{{ fleetMetric('trends', 'day', 'completed') }}</td>
-                                    <td class="text-right text-danger">{{ fleetMetric('trends', 'day', 'failed') }}</td>
-                                </tr>
-                                <tr>
-                                    <td>Last Week</td>
-                                    <td class="text-right text-success">{{ fleetMetric('trends', 'week', 'completed') }}</td>
-                                    <td class="text-right text-danger">{{ fleetMetric('trends', 'week', 'failed') }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-        </error-boundary>
-
-        <!-- Workflow Type Health -->
-        <error-boundary label="Workflow Type Health">
-        <div class="card mb-4" v-if="stats.workflow_type_health && stats.workflow_type_health.length > 0">
-            <div class="card-header">
-                <h5>Workflow Type Health</h5>
-                <small class="text-muted">
-                    Top workflow types by volume (last 7 days).
-                    Total Runs includes running; Pass Rate, Median Duration, and Errors cover terminal runs only.
-                </small>
-            </div>
-
-            <div class="card-body">
-                <table class="table table-sm">
-                    <thead>
-                        <tr>
-                            <th>Workflow Type</th>
-                            <th class="text-right">Total Runs</th>
-                            <th class="text-right">Pass Rate</th>
-                            <th class="text-right">Median Duration</th>
-                            <th class="text-right">Errors</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="type in stats.workflow_type_health" :key="type.workflow_type">
-                            <td>
-                                <code class="small">{{ flowBaseName(type.workflow_type) }}</code>
-                            </td>
-                            <td class="text-right">{{ type.total_runs.toLocaleString() }}</td>
-                            <td class="text-right">
-                                <span v-if="hasTerminalRuns(type)"
-                                      :class="'badge badge-' + (type.pass_rate >= 95 ? 'success' : type.pass_rate >= 80 ? 'warning' : 'danger')">
-                                    {{ type.pass_rate }}%
-                                </span>
-                                <span v-else class="text-muted small" title="No terminal runs yet this week">
-                                    &mdash;
-                                </span>
-                            </td>
-                            <td class="text-right text-muted small">
-                                <template v-if="type.median_duration_ms">
-                                    {{ formatDuration(type.median_duration_ms) }}
-                                </template>
-                                <span v-else title="No completed runs yet this week">
-                                    &mdash;
-                                </span>
-                            </td>
-                            <td class="text-right">
-                                <span v-if="type.error_count > 0" class="text-danger">{{ type.error_count.toLocaleString() }}</span>
-                                <span v-else class="text-muted" title="No failed, cancelled, or terminated runs">0</span>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-
-                <!-- Visual Charts for Top Types -->
-                <div class="row mt-4" v-if="stats.workflow_type_health && stats.workflow_type_health.length >= 3">
-                    <div class="col-md-6">
-                        <h6>Pass Rate by Type</h6>
-                        <!-- Chart wrapper for accessibility (WCAG 1.1.1: Non-text Content) -->
-                        <div role="img" aria-label="Horizontal bar chart showing pass rate percentage for top 5 workflow types. Higher pass rates indicate better workflow reliability.">
-                            <apexchart
-                                type="bar"
-                                height="250"
-                                :options="passRateChartOptions"
-                                :series="passRateChartSeries">
-                            </apexchart>
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <h6>Median Duration by Type</h6>
-                        <!-- Chart wrapper for accessibility (WCAG 1.1.1: Non-text Content) -->
-                        <div role="img" aria-label="Horizontal bar chart showing median execution duration for top 5 workflow types. Shorter durations indicate faster workflow completion.">
-                            <apexchart
-                                type="bar"
-                                height="250"
-                                :options="durationChartOptions"
-                                :series="durationChartSeries">
-                            </apexchart>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        </error-boundary>
-
-        <error-boundary label="Overview">
-        <div class="card">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>
-                    Overview
-                    <small class="text-muted font-weight-normal ml-2">All runs (including running)</small>
-                </h5>
-            </div>
-
-            <div class="card-bg-secondary">
-                <div class="d-flex">
-                    <div class="w-25 border-right border-bottom">
-                        <div class="p-4">
-                            <small class="text-uppercase">Starts Per Minute</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ stats.flows_per_minute ? stats.flows_per_minute.toLocaleString() : 0 }}
-                            </h4>
-
-                            <small class="mt-1 text-muted d-block">Derived from flows started past hour</small>
-                        </div>
-                    </div>
-
-                    <div class="w-25 border-right border-bottom">
-                        <div class="p-4">
-                            <small class="text-uppercase">Flows Started Past Hour</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ stats.flows_past_hour ? stats.flows_past_hour.toLocaleString() : 0 }}
-                            </h4>
-
-                            <small class="mt-1 text-muted d-block">All runs started in last hour</small>
-                        </div>
-                    </div>
-
-                    <div class="w-25 border-right border-bottom">
-                        <div class="p-4">
-                            <small class="text-uppercase">Exceptions Past Hour</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ stats.exceptions_past_hour ? stats.exceptions_past_hour.toLocaleString() : 0 }}
-                            </h4>
-
-                            <small class="mt-1 text-muted d-block">Recorded failures in last hour</small>
-                        </div>
-                    </div>
-
-                    <div class="w-25 border-bottom">
-                        <div class="p-4">
-                            <small class="text-uppercase">Failed Runs Past Week</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ stats.failed_flows_past_week ? stats.failed_flows_past_week.toLocaleString() : 0 }}
-                            </h4>
-
-                            <small class="mt-1 text-muted d-block">Terminal failed runs in last 7 days</small>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="d-flex">
-                    <div class="w-25 border-right">
-                        <div class="p-4 mb-0">
-                            <small class="text-uppercase">Total Flows</small>
-
-                            <h4 class="mt-4">
-                                {{ stats.flows ? stats.flows.toLocaleString() : 0 }}
-                            </h4>
-
-                            <small class="mt-1 text-muted d-block">All runs, all statuses</small>
-                        </div>
-                    </div>
-
-                    <div class="w-25 border-right">
-                        <div class="p-4 mb-0">
-                            <small class="text-uppercase">Max Wait Time</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ stats.max_wait_time_workflow ? waitAge(stats.max_wait_time_workflow) : '—' }}
-                            </h4>
-
-                            <small class="mt-1" v-if="stats.max_wait_time_workflow">
-                                (<router-link :title="stats.max_wait_time_workflow.class" :to="{ name: routeName(stats.max_wait_time_workflow), params: { flowId: stats.max_wait_time_workflow.id }}">{{ flowBaseName(stats.max_wait_time_workflow.class) }}</router-link>)
-                            </small>
-                            <small v-else class="mt-1 text-muted d-block">No running waits</small>
-                        </div>
-                    </div>
-
-                    <div class="w-25 border-right">
-                        <div class="p-4 mb-0">
-                            <small class="text-uppercase">Max Duration</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ stats.max_duration_workflow ? flowDuration(stats.max_duration_workflow) : '—' }}
-                            </h4>
-
-                            <small class="mt-1" v-if="stats.max_duration_workflow">
-                                (<router-link :title="stats.max_duration_workflow.class" :to="{ name: routeName(stats.max_duration_workflow), params: { flowId: stats.max_duration_workflow.id }}">{{ flowBaseName(stats.max_duration_workflow.class) }}</router-link>)
-                            </small>
-                            <small v-else class="mt-1 text-muted d-block">No completed runs yet</small>
-                        </div>
-                    </div>
-
-                    <div class="w-25">
-                        <div class="p-4 mb-0">
-                            <small class="text-uppercase">Most Exceptions On One Run</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ stats.max_exceptions_workflow ? exceptionCount(stats.max_exceptions_workflow).toLocaleString() : 0 }}
-                            </h4>
-
-                            <small class="mt-1" v-if="stats.max_exceptions_workflow">
-                                (<router-link :title="stats.max_exceptions_workflow.class" :to="{ name: routeName(stats.max_exceptions_workflow), params: { flowId: stats.max_exceptions_workflow.id }}">{{ flowBaseName(stats.max_exceptions_workflow.class) }}</router-link>)
-                            </small>
-                            <small v-else class="mt-1 text-muted d-block">No runs with exceptions</small>
-                        </div>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-        </error-boundary>
-
-        <error-boundary label="Operator Metrics">
-        <div class="card mt-4" v-if="stats.operator_metrics">
-            <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Operator Metrics</h5>
-                <small class="text-muted" v-if="stats.operator_metrics.generated_at">
-                    {{ stats.operator_metrics.generated_at }}
-                </small>
-            </div>
-
-            <div class="card-bg-secondary">
-                <div class="d-flex">
-                    <div class="w-25 border-right">
-                        <div class="p-4">
-                            <small class="text-uppercase">Runnable Tasks</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ operatorMetricLabel('backlog', 'runnable_tasks') }}
-                            </h4>
-                        </div>
-                    </div>
-
-                    <div class="w-25 border-right">
-                        <div class="p-4">
-                            <small class="text-uppercase">Repair Needed Runs</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ operatorMetricLabel('backlog', 'repair_needed_runs') }}
-                            </h4>
-                        </div>
-                    </div>
-
-                    <div class="w-25 border-right">
-                        <div class="p-4">
-                            <small class="text-uppercase">Compatibility Blocked</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ operatorMetricLabel('backlog', 'compatibility_blocked_runs') }}
-                            </h4>
-                        </div>
-                    </div>
-
-                    <div class="w-25">
-                        <div class="p-4">
-                            <small class="text-uppercase">Active Workers</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ operatorMetricLabel('workers', 'active_workers') }}
-                            </h4>
-
-                            <small class="mt-1 text-muted">
-                                {{ operatorMetricLabel('workers', 'active_worker_scopes') }} queue scopes
-                            </small>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="d-flex border-top">
-                    <div class="w-25 border-right">
-                        <div class="p-4">
-                            <small class="text-uppercase">Pending Starts</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ operatorMetricLabel('starts', 'pending_runs') }}
-                            </h4>
-                        </div>
-                    </div>
-
-                    <div class="w-25 border-right">
-                        <div class="p-4">
-                            <small class="text-uppercase">Start Commands</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ operatorMetricLabel('starts', 'pending_commands') }}
-                            </h4>
-                        </div>
-                    </div>
-
-                    <div class="w-25 border-right">
-                        <div class="p-4">
-                            <small class="text-uppercase">Due Start Tasks</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ operatorMetricLabel('starts', 'ready_tasks') }}
-                            </h4>
-                        </div>
-                    </div>
-
-                    <div class="w-25">
-                        <div class="p-4">
-                            <small class="text-uppercase">Max Start Latency</small>
-
-                            <h4 class="mt-4 mb-0">
-                                {{ operatorDurationMetricLabel('starts', 'max_pending_ms') }}
-                            </h4>
-
-                            <small class="mt-1 text-muted" v-if="stats.operator_metrics.starts && stats.operator_metrics.starts.oldest_pending_start_at">
-                                {{ stats.operator_metrics.starts.oldest_pending_start_at }}
-                            </small>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="border-top p-4">
-                    <small class="text-uppercase">Activity Attempts</small>
-
-                    <div class="mt-2 text-muted">
-                        {{ operatorMetricLabel('activities', 'retrying') }} retrying,
-                        {{ operatorMetricLabel('activities', 'running') }} running,
-                        {{ operatorMetricLabel('activities', 'failed_attempts') }} failed attempts,
-                        max {{ operatorMetricLabel('activities', 'max_attempt_count') }} attempts.
-                    </div>
-                </div>
-
-                <div class="border-top p-4">
-                    <small class="text-uppercase">Projection Health</small>
-
-                    <div class="mt-2 text-muted">
-                        Run summaries:
-                        {{ operatorProjectionMetricLabel('summaries') }} summaries for
-                        {{ operatorProjectionMetricLabel('runs') }} runs,
-                        {{ operatorProjectionMetricLabel('missing') }} missing,
-                        {{ operatorProjectionMetricLabel('orphaned') }} orphaned,
-                        {{ operatorProjectionMetricLabel('stale') }} stale.
-                    </div>
-
-                    <div class="mt-1 text-muted">
-                        Wait rows:
-                        {{ operatorProjectionMetricLabel('run_waits', 'rows') }} rows across
-                        {{ operatorProjectionMetricLabel('run_waits', 'projected_runs') }} runs,
-                        {{ operatorProjectionMetricLabel('run_waits', 'runs_with_waits') }} canonical waits,
-                        {{ operatorProjectionMetricLabel('run_waits', 'missing_runs_with_waits') }} runs missing,
-                        {{ operatorProjectionMetricLabel('run_waits', 'stale_projected_runs') }} stale,
-                        {{ operatorProjectionMetricLabel('run_waits', 'missing_current_open_waits') }} missing current open waits,
-                        {{ operatorProjectionMetricLabel('run_waits', 'orphaned') }} orphaned.
-                    </div>
-
-                    <div class="mt-1 text-muted">
-                        Timeline rows:
-                        {{ operatorProjectionMetricLabel('run_timeline_entries', 'rows') }} rows for
-                        {{ operatorProjectionMetricLabel('run_timeline_entries', 'history_events') }} history events,
-                        {{ operatorProjectionMetricLabel('run_timeline_entries', 'missing_runs_with_history') }} runs missing,
-                        {{ operatorProjectionMetricLabel('run_timeline_entries', 'stale_projected_runs') }} stale,
-                        {{ operatorProjectionMetricLabel('run_timeline_entries', 'missing_history_events') }} missing history events,
-                        {{ operatorProjectionMetricLabel('run_timeline_entries', 'orphaned') }} orphaned.
-                    </div>
-
-                    <div class="mt-1 text-muted">
-                        Timer rows:
-                        {{ operatorProjectionMetricLabel('run_timer_entries', 'rows') }} rows across
-                        {{ operatorProjectionMetricLabel('run_timer_entries', 'projected_runs') }} projected runs,
-                        {{ operatorProjectionMetricLabel('run_timer_entries', 'missing_runs_with_timers') }} timer runs missing,
-                        {{ operatorProjectionMetricLabel('run_timer_entries', 'stale_projected_runs') }} stale,
-                        {{ operatorProjectionMetricLabel('run_timer_entries', 'orphaned') }} orphaned.
-                    </div>
-                    <div class="mt-1 text-muted" v-if="operatorProjectionMetric('run_timer_entries', 'schema_version_mismatch_rows')">
-                        Timer projection schema mismatch:
-                        {{ operatorProjectionMetricLabel('run_timer_entries', 'schema_version_mismatch_runs') }} runs and
-                        {{ operatorProjectionMetricLabel('run_timer_entries', 'schema_version_mismatch_rows') }} rows do not match
-                        the current schema version. Opening selected-run detail or running
-                        <code>workflow:v2:rebuild-projections --needs-rebuild</code> rewrites them onto the current timer row contract.
-                    </div>
-
-                    <div class="mt-1 text-muted">
-                        Lineage rows:
-                        {{ operatorProjectionMetricLabel('run_lineage_entries', 'rows') }} rows across
-                        {{ operatorProjectionMetricLabel('run_lineage_entries', 'projected_runs') }} projected runs,
-                        {{ operatorProjectionMetricLabel('run_lineage_entries', 'missing_runs_with_lineage') }} lineage runs missing,
-                        {{ operatorProjectionMetricLabel('run_lineage_entries', 'stale_projected_runs') }} stale,
-                        {{ operatorProjectionMetricLabel('run_lineage_entries', 'orphaned') }} orphaned.
-                    </div>
-
-                    <div class="mt-1 text-muted" v-if="operatorProjectionNeedsRebuild()">
-                        Run <code>php artisan workflow:v2:rebuild-projections --needs-rebuild --prune-stale</code>
-                        to refresh the Waterline projection bridge.
-                    </div>
-                </div>
-
-                <div class="border-top p-4">
-                    <small class="text-uppercase">Command Contract Normalization</small>
-
-                    <div class="mt-2 text-muted">
-                        {{ operatorMetricLabel('command_contracts', 'backfill_needed_runs') }} runs still need backfill,
-                        {{ operatorMetricLabel('command_contracts', 'backfill_available_runs') }} normalizable on this build,
-                        {{ operatorMetricLabel('command_contracts', 'backfill_unavailable_runs') }} unavailable.
-                    </div>
-
-                    <div class="mt-1 text-muted" v-if="operatorMetric('command_contracts', 'backfill_needed_runs')">
-                        Background worker-loop repair passes now backfill loadable preview-era command contracts in
-                        throttled batches. Run <code>php artisan workflow:v2:repair-pass</code> to force the next
-                        batch immediately, use
-                        <code>php artisan workflow:v2:rebuild-projections --needs-rebuild --prune-stale</code>
-                        to sweep untouched loadable preview-era command contracts alongside projection drift, or use
-                        <code>php artisan workflow:v2:backfill-command-contracts --dry-run</code> and then rerun it
-                        without <code>--dry-run</code> for a targeted contract-only pass while a compatible build is
-                        still available. Opening selected-run detail or exporting selected-run history now normalizes
-                        loadable runs one at a time.
-                    </div>
-                </div>
-
-                <div class="border-top p-4">
-                    <small class="text-uppercase">Repair Policy</small>
-
-                    <div class="mt-2 text-muted">
-                        Redispatch after {{ operatorPolicyMetricLabel('redispatch_after_seconds') }}s,
-                        throttle worker sweeps for {{ operatorPolicyMetricLabel('loop_throttle_seconds') }}s,
-                        scan {{ operatorPolicyMetricLabel('scan_limit') }} rows per pass using {{ operatorPolicyMetric('scan_strategy') || 'global scan' }}.
-                    </div>
-
-                    <div class="mt-2 text-muted" v-if="stats.operator_metrics.repair">
-                        {{ operatorMetricLabel('repair', 'existing_task_candidates') }} existing task candidates,
-                        {{ operatorMetricLabel('repair', 'missing_task_candidates') }} missing-task runs,
-                        selects {{ operatorMetricLabel('repair', 'selected_existing_task_candidates') }} task candidates and
-                        {{ operatorMetricLabel('repair', 'selected_missing_task_candidates') }} missing-task runs this pass,
-                        oldest task candidate {{ operatorDurationMetricLabel('repair', 'max_task_candidate_age_ms') }},
-                        oldest missing run {{ operatorDurationMetricLabel('repair', 'max_missing_run_age_ms') }}.
-                    </div>
-
-                    <div class="mt-1 text-muted" v-if="stats.operator_metrics.repair && stats.operator_metrics.repair.scan_pressure">
-                        Repair scan limit reached on this snapshot. Increase scan limit or add workers before backlog age keeps growing.
-                    </div>
-
-                    <div class="mt-1 text-muted">
-                        Use <code>php artisan workflow:v2:repair-pass --run-id=...</code> for one or more selected runs
-                        or <code>--instance-id=...</code> to sweep one workflow instance with the same repair policy.
-                    </div>
-
-                    <div class="mt-2 text-muted" v-if="operatorRepairScopes().length">
-                        <div v-for="scope in operatorRepairScopes()" :key="scope.scope_key">
-                            <code>{{ operatorRepairScopeLabel(scope) }}</code>:
-                            {{ scope.total_candidates.toLocaleString() }} candidates
-                            ({{ scope.existing_task_candidates.toLocaleString() }} tasks,
-                            {{ scope.missing_task_candidates.toLocaleString() }} missing runs),
-                            selects {{ (scope.selected_total_candidates || 0).toLocaleString() }}
-                            ({{ (scope.selected_existing_task_candidates || 0).toLocaleString() }} tasks,
-                            {{ (scope.selected_missing_task_candidates || 0).toLocaleString() }} missing runs),
-                            oldest {{ operatorRepairScopeDuration(scope, 'max_task_candidate_age_ms') }},
-                            missing {{ operatorRepairScopeDuration(scope, 'max_missing_run_age_ms') }}.
-                            <span v-if="scope.scan_limited_by_global_policy">Scan limited.</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="border-top p-4">
-                    <small class="text-uppercase">Update Wait Policy</small>
-
-                    <div class="mt-2 text-muted">
-                        Wait up to {{ operatorUpdateWaitMetricLabel('completion_timeout_seconds') }}s for completion responses,
-                        polling every {{ operatorUpdateWaitMetricLabel('poll_interval_milliseconds') }}ms before returning an accepted lifecycle.
-                    </div>
-                </div>
-
-                <div class="border-top p-4">
-                    <small class="text-uppercase">Backend Capability</small>
-
-                    <div class="mt-2">
-                        <span :class="operatorBackend().supported ? 'badge badge-success' : 'badge badge-warning'">
-                            {{ operatorBackendStatusLabel() }}
-                        </span>
-
-                        <span class="ml-2 text-muted">
-                            Database {{ operatorBackendComponentLabel('database') }},
-                            queue {{ operatorBackendComponentLabel('queue') }},
-                            cache {{ operatorBackendComponentLabel('cache') }}.
-                        </span>
-                    </div>
-
-                    <div class="mt-2 text-muted" v-if="operatorBackendIssues().length">
-                        <div v-for="(issue, index) in operatorBackendIssues()" :key="operatorBackendIssueKey(issue, index)">
-                            <strong>{{ issue.code || 'capability_issue' }}</strong>:
-                            {{ issue.message || 'Capability issue detected.' }}
-                        </div>
-                    </div>
-
-                    <div class="mt-2 text-muted" v-if="operatorMetric('tasks', 'claim_failed') || operatorMetric('backlog', 'claim_failed_runs')">
-                        {{ operatorMetricLabel('tasks', 'claim_failed') }} task claims failed across
-                        {{ operatorMetricLabel('backlog', 'claim_failed_runs') }} runs. Fix backend capability
-                        issues before retrying those workers.
-                    </div>
-                </div>
-
-                <div class="border-top p-4" v-if="structuralLimitsSnapshot()">
-                    <small class="text-uppercase">Structural Limits</small>
-
-                    <div class="mt-2">
-                        <table class="table table-sm table-borderless mb-0">
-                            <tbody>
-                                <tr v-for="(value, key) in structuralLimitsSnapshot()" :key="key">
-                                    <td class="text-muted py-0" style="width: 60%">{{ formatLimitKey(key) }}</td>
-                                    <td class="py-0">{{ formatLimitValue(key, value) }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div class="mt-2 text-muted" v-if="structuralLimitWarningThreshold() > 0">
-                        Soft-limit warnings fire at {{ structuralLimitWarningThreshold() }}% utilization.
-                        Check application logs for <code>[Durable Workflow]</code> approaching-limit entries.
-                    </div>
-                </div>
-            </div>
-        </div>
-        </error-boundary>
-
-        </template>
-    </div>
-</template>
+<style scoped>
+.wl-dashboard-view {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.wl-screen-state {
+    min-height: 18rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+}
+
+.wl-screen-state--error {
+    flex-direction: column;
+}
+
+.wl-dashboard-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.wl-screen-hero {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.wl-screen-eyebrow {
+    margin: 0 0 0.45rem;
+    color: var(--wl-text-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.wl-screen-title {
+    margin: 0;
+    font-size: 2.2rem;
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    color: var(--wl-text);
+}
+
+.wl-screen-subtitle {
+    margin: 0.5rem 0 0;
+    max-width: 42rem;
+    color: var(--wl-text-muted);
+}
+
+.wl-screen-hero__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.wl-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.45rem 0.75rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--wl-accent) 14%, transparent);
+    color: var(--wl-accent);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.wl-chip--warning {
+    background: color-mix(in srgb, var(--wl-warning) 16%, transparent);
+    color: var(--wl-warning);
+}
+
+.wl-chip--success {
+    background: color-mix(in srgb, var(--wl-success) 16%, transparent);
+    color: var(--wl-success);
+}
+
+.wl-dashboard-alerts__body {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.wl-dashboard-alert {
+    border: 1px solid transparent;
+    border-radius: 14px;
+    padding: 1rem 1.1rem;
+}
+
+.wl-dashboard-alert.is-error {
+    background: color-mix(in srgb, var(--wl-danger) 14%, transparent);
+    border-color: color-mix(in srgb, var(--wl-danger) 22%, transparent);
+}
+
+.wl-dashboard-alert.is-warning {
+    background: color-mix(in srgb, var(--wl-warning) 12%, transparent);
+    border-color: color-mix(in srgb, var(--wl-warning) 24%, transparent);
+}
+
+.wl-dashboard-alert.is-info {
+    background: color-mix(in srgb, var(--wl-accent) 10%, transparent);
+    border-color: color-mix(in srgb, var(--wl-accent) 20%, transparent);
+}
+
+.wl-dashboard-alert__title {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+.wl-dashboard-alert__action {
+    margin-top: 0.35rem;
+    color: var(--wl-text-muted);
+    font-size: 0.92rem;
+}
+
+.wl-dashboard-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.wl-summary-card__label,
+.wl-panel-subtitle,
+.wl-overview-tile__label,
+.wl-operator-metric__label {
+    color: var(--wl-text-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.wl-summary-card__value,
+.wl-operator-metric__value {
+    margin-top: 0.65rem;
+    font-size: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.04em;
+    color: var(--wl-text);
+}
+
+.wl-summary-card__meta,
+.wl-operator-metric__meta,
+.wl-overview-tile__meta {
+    margin-top: 0.55rem;
+    color: var(--wl-text-muted);
+    font-size: 0.92rem;
+}
+
+.wl-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.wl-dashboard-card {
+    grid-column: span 4;
+}
+
+.wl-dashboard-card--wide {
+    grid-column: span 8;
+}
+
+.wl-dashboard-split {
+    display: grid;
+    gap: 1rem;
+}
+
+.wl-operator-backend {
+    padding-top: 0.2rem;
+}
+
+.wl-operator-backend__summary,
+.wl-operator-section p {
+    margin: 0.45rem 0 0;
+    color: var(--wl-text-muted);
+    line-height: 1.6;
+}
+
+.wl-operator-backend__issues {
+    display: grid;
+    gap: 0.35rem;
+    margin-top: 0.65rem;
+    color: var(--wl-warning);
+    font-size: 0.92rem;
+}
+
+.wl-dashboard-chart-stack {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.wl-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.wl-overview-tile {
+    padding: 1rem;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--wl-text) 4%, var(--wl-surface));
+    border: 1px solid color-mix(in srgb, var(--wl-text) 8%, transparent);
+}
+
+.wl-overview-tile__value {
+    margin-top: 0.65rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    color: var(--wl-text);
+}
+
+.wl-overview-tile__meta a {
+    color: var(--wl-accent);
+}
+
+.wl-operator-grid {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.wl-operator-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.wl-operator-metric {
+    padding: 1rem;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--wl-text) 4%, var(--wl-surface));
+    border: 1px solid color-mix(in srgb, var(--wl-text) 8%, transparent);
+}
+
+.wl-operator-section {
+    padding-top: 0.25rem;
+    border-top: 1px solid color-mix(in srgb, var(--wl-text) 6%, transparent);
+}
+
+.wl-inline-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.wl-inline-list span {
+    padding: 0.35rem 0.6rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--wl-text) 4%, var(--wl-surface));
+    color: var(--wl-text-muted);
+    font-size: 0.86rem;
+}
+
+.wl-structural-limits {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: 0.75rem;
+}
+
+.wl-structural-limits__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--wl-text) 6%, transparent);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.86rem;
+    color: var(--wl-text);
+}
+
+.wl-empty-state {
+    padding: 1rem 0;
+    color: var(--wl-text-muted);
+}
+
+@media (max-width: 1200px) {
+    .wl-dashboard-summary-grid,
+    .wl-operator-metrics-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .wl-dashboard-card,
+    .wl-dashboard-card--wide {
+        grid-column: span 12;
+    }
+}
+
+@media (max-width: 768px) {
+    .wl-screen-hero {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .wl-dashboard-summary-grid,
+    .wl-overview-grid,
+    .wl-operator-metrics-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+</style>
