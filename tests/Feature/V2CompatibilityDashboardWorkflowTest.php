@@ -66,7 +66,9 @@ class V2CompatibilityDashboardWorkflowTest extends TestCase
             $run->fresh(['instance', 'tasks', 'activityExecutions', 'timers', 'failures', 'historyEvents'])
         );
 
-        $this->get('/waterline/api/flows/' . $run->id)
+        $response = $this->get('/waterline/api/flows/' . $run->id);
+
+        $response
             ->assertStatus(200)
             ->assertJsonPath('compatibility', 'build-a')
             ->assertJsonPath('compatibility_supported', false)
@@ -95,6 +97,27 @@ class V2CompatibilityDashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.compatibility_reason', 'Requires compatibility [build-a]; this worker supports [build-b].')
             ->assertJsonPath('tasks.0.compatibility_fleet_reason', 'No active worker heartbeat for connection [redis] queue [default] advertises compatibility [build-a].')
             ->assertJsonPath('tasks.0.summary', 'Workflow task is waiting for a compatible worker.');
+
+        $diagnostics = collect($response->json('run_diagnostics'));
+        $noCompatible = $diagnostics->firstWhere('code', 'no_compatible_worker_for_task');
+
+        $this->assertNotNull($noCompatible, 'Run diagnostics must include no_compatible_worker_for_task when a pending task has compatibility_supported_in_fleet=false.');
+        $this->assertSame('warning', $noCompatible['severity']);
+        $this->assertSame('No compatible worker is registered yet', $noCompatible['title']);
+        $this->assertSame(
+            'No active worker heartbeat for connection [redis] queue [default] advertises compatibility [build-a].',
+            $noCompatible['summary'],
+            'Summary must surface the canonical compatibility_fleet_reason verbatim per the contract.'
+        );
+        $this->assertSame('/docs/2.0/polyglot/worker-build-id-rollout', $noCompatible['docs_url']);
+        $this->assertSame('build-a', $noCompatible['evidence']['compatibility']);
+        $this->assertSame('redis', $noCompatible['evidence']['connection']);
+        $this->assertSame('default', $noCompatible['evidence']['queue']);
+        $this->assertSame(1, $noCompatible['evidence']['task_count']);
+        $this->assertContains('01JTESTFLOWTASKCOMPAT00001', $noCompatible['evidence']['task_ids']);
+        $this->assertContains('marker / build-a', $noCompatible['evidence_summary']);
+        $this->assertContains('tasks / 1', $noCompatible['evidence_summary']);
+        $this->assertStringContainsString('operational state', $noCompatible['guidance']);
     }
 
     public function testShowFallsBackToRunCompatibilityForLegacyNullTaskMarker(): void

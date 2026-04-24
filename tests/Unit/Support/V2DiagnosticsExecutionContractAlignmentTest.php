@@ -39,6 +39,7 @@ final class V2DiagnosticsExecutionContractAlignmentTest extends TestCase
             'workflow_task_repeated_failure',
             'history_budget_near_limit',
             'condition_wait_stuck',
+            'no_compatible_worker_for_task',
         ];
 
         foreach ($expected as $code) {
@@ -145,6 +146,26 @@ final class V2DiagnosticsExecutionContractAlignmentTest extends TestCase
         $this->assertStringContainsString('durable', $guidance);
         $this->assertStringContainsString('signal', $guidance);
         $this->assertStringContainsString('update', $guidance);
+    }
+
+    /**
+     * The "no compatible worker" diagnostic is the operator-visible surface
+     * for the absence-of-compatible-worker state frozen in the v2
+     * worker-compatibility contract at
+     * workflow@docs/architecture/worker-compatibility.md. The contract names
+     * the absence as "explicit operational state, not an error", requires
+     * Waterline to describe it as "no compatible worker is registered yet",
+     * and requires the canonical mismatch reason to be surfaced verbatim so
+     * CLI, Waterline, and cloud speak one language about mixed fleets.
+     */
+    public function testNoCompatibleWorkerGuidanceCitesExplicitOperationalState(): void
+    {
+        $guidance = RunDiagnostics::GUIDANCE['no_compatible_worker_for_task'];
+
+        $this->assertStringContainsString('operational state', $guidance);
+        $this->assertStringContainsString('not an error', $guidance);
+        $this->assertStringContainsString('heartbeat', $guidance);
+        $this->assertStringContainsString('compatibility', $guidance);
     }
 
     /**

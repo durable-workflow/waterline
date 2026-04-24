@@ -54,6 +54,12 @@ class RunDiagnostics
             'Condition waits block the run on a durable resume source. Until a '
             . 'signal, update, timer, or cancel fires on the named target, the '
             . 'wait stays open — there is no automatic abandonment.',
+        'no_compatible_worker_for_task' =>
+            'The absence of a compatible worker is an explicit operational '
+            . 'state, not an error. Routing requires an active worker '
+            . 'heartbeat that advertises the task\'s compatibility marker; '
+            . 'until one is registered, the task sits ready and no other '
+            . 'build will claim it on its behalf.',
     ];
 
     /**
@@ -79,6 +85,7 @@ class RunDiagnostics
         $diagnostics = array_merge($diagnostics, $this->workflowTaskFailures($detail));
         $diagnostics = array_merge($diagnostics, $this->historyBudgetWarnings($detail));
         $diagnostics = array_merge($diagnostics, $this->stuckConditionWaits($detail, $now));
+        $diagnostics = array_merge($diagnostics, $this->noCompatibleWorkerForTasks($detail));
 
         return $this->sortDiagnostics($diagnostics);
     }
@@ -391,6 +398,104 @@ class RunDiagnostics
                     'age / ' . $ageSeconds . 's',
                     'SLA / ' . $slaSeconds . 's',
                 ],
+            );
+        }
+
+        return $diagnostics;
+    }
+
+    /**
+     * Emits a diagnostic when open workflow tasks require a compatibility
+     * marker that no active worker heartbeat currently advertises for the
+     * task's (connection, queue) scope. This is the explicit "no compatible
+     * worker is registered yet" operational state frozen in the v2
+     * worker-compatibility contract at workflow@docs/architecture/worker-compatibility.md;
+     * the contract requires the canonical mismatch reason to be surfaced
+     * verbatim, so the diagnostic summary echoes {@see compatibility_fleet_reason}
+     * rather than inventing its own language.
+     *
+     * @param array<string, mixed> $detail
+     * @return list<array<string, mixed>>
+     */
+    private function noCompatibleWorkerForTasks(array $detail): array
+    {
+        $groups = [];
+
+        foreach ($this->taskRows($detail) as $task) {
+            if ($this->stringValue($task['type'] ?? null) !== 'workflow') {
+                continue;
+            }
+
+            if (($task['is_open'] ?? null) !== true) {
+                continue;
+            }
+
+            $compatibility = $this->stringValue($task['compatibility'] ?? null);
+
+            if ($compatibility === null) {
+                continue;
+            }
+
+            if (($task['compatibility_supported_in_fleet'] ?? null) !== false) {
+                continue;
+            }
+
+            $fleetReason = $this->stringValue($task['compatibility_fleet_reason'] ?? null)
+                ?? sprintf('No active worker heartbeat advertises compatibility [%s].', $compatibility);
+            $connection = $this->stringValue($task['connection'] ?? null);
+            $queue = $this->stringValue($task['queue'] ?? null);
+
+            $groupKey = $compatibility . "\n" . ($connection ?? '') . "\n" . ($queue ?? '');
+
+            if (! isset($groups[$groupKey])) {
+                $groups[$groupKey] = [
+                    'compatibility' => $compatibility,
+                    'connection' => $connection,
+                    'queue' => $queue,
+                    'fleet_reason' => $fleetReason,
+                    'task_ids' => [],
+                ];
+            }
+
+            $taskId = $this->stringValue($task['id'] ?? null);
+
+            if ($taskId !== null) {
+                $groups[$groupKey]['task_ids'][] = $taskId;
+            }
+        }
+
+        $diagnostics = [];
+
+        foreach ($groups as $group) {
+            $taskCount = max(1, count($group['task_ids']));
+            $evidenceSummary = [
+                'marker / ' . $group['compatibility'],
+                sprintf('tasks / %d', $taskCount),
+            ];
+
+            if ($group['queue'] !== null) {
+                $evidenceSummary[] = 'queue / ' . $group['queue'];
+            }
+
+            if ($group['connection'] !== null) {
+                $evidenceSummary[] = 'connection / ' . $group['connection'];
+            }
+
+            $diagnostics[] = $this->diagnostic(
+                'no_compatible_worker_for_task',
+                'warning',
+                'No compatible worker is registered yet',
+                $group['fleet_reason'],
+                '/docs/2.0/polyglot/worker-build-id-rollout',
+                [
+                    'compatibility' => $group['compatibility'],
+                    'connection' => $group['connection'],
+                    'queue' => $group['queue'],
+                    'task_count' => $taskCount,
+                    'task_ids' => $group['task_ids'],
+                    'fleet_reason' => $group['fleet_reason'],
+                ],
+                $evidenceSummary,
             );
         }
 
