@@ -742,14 +742,8 @@ class V2DashboardStatsControllerTest extends TestCase
         $tasks = $response->json('operator_metrics.tasks');
 
         $this->assertIsArray($tasks);
-
-        if (! array_key_exists('max_lease_expired_age_ms', $tasks)
-            || ! array_key_exists('oldest_lease_expired_at', $tasks)) {
-            $this->markTestSkipped(
-                'Vendored workflow package predates the stuck-lease age rollout-safety contract '
-                . '(operator_metrics.tasks.oldest_lease_expired_at / max_lease_expired_age_ms).',
-            );
-        }
+        $this->assertArrayHasKey('oldest_lease_expired_at', $tasks);
+        $this->assertArrayHasKey('max_lease_expired_age_ms', $tasks);
 
         $this->assertTrue(
             $tasks['oldest_lease_expired_at'] === null
@@ -772,14 +766,8 @@ class V2DashboardStatsControllerTest extends TestCase
         $tasks = $response->json('operator_metrics.tasks');
 
         $this->assertIsArray($tasks);
-
-        if (! array_key_exists('max_ready_due_age_ms', $tasks)
-            || ! array_key_exists('oldest_ready_due_at', $tasks)) {
-            $this->markTestSkipped(
-                'Vendored workflow package predates the ready-due age rollout-safety contract '
-                . '(operator_metrics.tasks.oldest_ready_due_at / max_ready_due_age_ms).',
-            );
-        }
+        $this->assertArrayHasKey('oldest_ready_due_at', $tasks);
+        $this->assertArrayHasKey('max_ready_due_age_ms', $tasks);
 
         $this->assertTrue(
             $tasks['oldest_ready_due_at'] === null
