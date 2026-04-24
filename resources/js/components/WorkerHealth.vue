@@ -185,35 +185,57 @@
                 </article>
 
                 <article class="card worker-health__panel">
-                    <div class="card-header d-flex align-items-center justify-content-between">
-                        <div>
-                            <h5 class="mb-0">Health checks</h5>
-                            <small class="text-muted">Operator readiness and compatibility signals.</small>
-                        </div>
-
-                        <span class="worker-health__pill worker-health__pill--muted">
-                            {{ healthChecks.length.toLocaleString() }} checks
-                        </span>
+                    <div class="card-header">
+                        <h5 class="mb-0">Health checks</h5>
+                        <small class="text-muted">
+                            Correctness answers <em>is work being discovered?</em>; acceleration answers <em>is the acceleration layer propagating?</em>.
+                        </small>
                     </div>
 
-                    <div class="card-body card-bg-secondary">
-                        <div v-if="healthChecks.length > 0" class="worker-health__checks">
-                            <article v-for="check in healthChecks" :key="check.name" class="worker-health__check">
-                                <div class="worker-health__check-head">
-                                    <span class="worker-health__pill" :class="statusToneClass(check.status)">
-                                        {{ check.status }}
-                                    </span>
-                                    <strong>{{ check.name }}</strong>
+                    <div class="card-body card-bg-secondary worker-health__categories-body">
+                        <section
+                            v-for="category in categorizedChecks"
+                            :key="category.key"
+                            class="worker-health__category"
+                        >
+                            <header class="worker-health__category-header">
+                                <div>
+                                    <span class="worker-health__category-eyebrow">{{ category.eyebrow }}</span>
+                                    <h6 class="worker-health__category-title">{{ category.title }}</h6>
+                                    <p class="worker-health__category-subtitle">{{ category.subtitle }}</p>
                                 </div>
 
-                                <p class="worker-health__check-copy">{{ check.message }}</p>
-                            </article>
-                        </div>
+                                <span
+                                    class="worker-health__pill"
+                                    :class="statusToneClass(category.rollupStatus)"
+                                    :title="category.rollupTitle"
+                                >
+                                    {{ category.rollupStatus.toUpperCase() }}
+                                </span>
+                            </header>
 
-                        <div v-else class="worker-health__empty-state worker-health__empty-state--compact">
-                            <strong>No health checks reported</strong>
-                            <p class="mb-0 text-muted">The health endpoint returned no explicit checks.</p>
-                        </div>
+                            <div v-if="category.checks.length > 0" class="worker-health__checks">
+                                <article
+                                    v-for="check in category.checks"
+                                    :key="check.name"
+                                    class="worker-health__check"
+                                >
+                                    <div class="worker-health__check-head">
+                                        <span class="worker-health__pill" :class="statusToneClass(check.status)">
+                                            {{ check.status }}
+                                        </span>
+                                        <strong>{{ check.name }}</strong>
+                                    </div>
+
+                                    <p class="worker-health__check-copy">{{ check.message }}</p>
+                                </article>
+                            </div>
+
+                            <div v-else class="worker-health__empty-state worker-health__empty-state--compact">
+                                <strong>No {{ category.title.toLowerCase() }} checks reported</strong>
+                                <p class="mb-0 text-muted">The health endpoint did not return any checks for this category.</p>
+                            </div>
+                        </section>
                     </div>
                 </article>
             </section>
@@ -275,6 +297,46 @@ export default {
 
         healthChecks() {
             return this.healthData?.checks || [];
+        },
+
+        categorizedChecks() {
+            const definitions = [
+                {
+                    key: 'correctness',
+                    eyebrow: 'Durable substrate',
+                    title: 'Correctness',
+                    subtitle: 'Answers "is work being discovered?" from durable dispatch state.',
+                    rollupTitle: 'Rollup of correctness-category checks.',
+                },
+                {
+                    key: 'acceleration',
+                    eyebrow: 'Optional layer',
+                    title: 'Acceleration',
+                    subtitle: 'Answers "is the acceleration layer propagating?". Degraded acceleration never masks correctness.',
+                    rollupTitle: 'Rollup of acceleration-category checks.',
+                },
+            ];
+
+            const grouped = {correctness: [], acceleration: []};
+
+            this.healthChecks.forEach((check) => {
+                if (!check || typeof check !== 'object') return;
+
+                if (check.name === 'engine_source') {
+                    return;
+                }
+
+                const category = this.categoryForCheck(check);
+                grouped[category].push(check);
+            });
+
+            const rollups = this.healthData?.categories || {};
+
+            return definitions.map((definition) => ({
+                ...definition,
+                checks: grouped[definition.key],
+                rollupStatus: this.rollupForCategory(definition.key, grouped[definition.key], rollups),
+            }));
         },
 
         workersTableClass() {
@@ -508,6 +570,44 @@ export default {
                 clearInterval(this.refreshTimer);
                 this.refreshTimer = null;
             }
+        },
+
+        categoryForCheck(check) {
+            const declared = typeof check.category === 'string' ? check.category.toLowerCase() : null;
+
+            if (declared === 'correctness' || declared === 'acceleration') {
+                return declared;
+            }
+
+            // Backwards-compatibility: if an older workflow package version
+            // omits the category field, infer a safe default so the UI still
+            // renders. Only the wake-acceleration check is known to belong to
+            // the acceleration category; every other check is durable
+            // correctness-substrate.
+            if (check.name === 'long_poll_wake_acceleration') {
+                return 'acceleration';
+            }
+
+            return 'correctness';
+        },
+
+        rollupForCategory(key, checks, rollups) {
+            const declared = rollups && rollups[key] && rollups[key].status;
+
+            if (declared === 'ok' || declared === 'warning' || declared === 'error') {
+                return declared;
+            }
+
+            if (!Array.isArray(checks) || checks.length === 0) {
+                return 'ok';
+            }
+
+            const statuses = checks.map((check) => check.status);
+
+            if (statuses.includes('error')) return 'error';
+            if (statuses.includes('warning')) return 'warning';
+
+            return 'ok';
         },
 
         statusColor(status) {
@@ -750,6 +850,55 @@ export default {
 
 .worker-health__panel--wide .card-body {
     min-height: 22rem;
+}
+
+.worker-health__categories-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+}
+
+.worker-health__category {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-bottom: 1.1rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--wl-text) 8%, transparent);
+}
+
+.worker-health__category:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+}
+
+.worker-health__category-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.worker-health__category-eyebrow {
+    display: block;
+    color: var(--wl-text-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.worker-health__category-title {
+    margin: 0.25rem 0 0;
+    color: var(--wl-text);
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.worker-health__category-subtitle {
+    margin: 0.3rem 0 0;
+    color: var(--wl-text-muted);
+    font-size: 0.88rem;
+    line-height: 1.4;
 }
 
 .worker-health__checks {

@@ -39,6 +39,53 @@ class V2HealthControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.backend.supported', true);
     }
 
+    public function testHealthEndpointCategorizesEveryCheckAndExposesWakeAcceleration(): void
+    {
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('cache.default', 'file');
+
+        $response = $this->get('/waterline/api/v2/health')
+            ->assertStatus(200);
+
+        $payload = $response->json();
+
+        $this->assertIsArray($payload);
+        $this->assertArrayHasKey('checks', $payload);
+        $this->assertArrayHasKey('categories', $payload);
+        $this->assertArrayHasKey('correctness', $payload['categories']);
+        $this->assertArrayHasKey('acceleration', $payload['categories']);
+
+        $workflowChecks = array_values(array_filter(
+            $payload['checks'],
+            static fn (array $check): bool => ($check['name'] ?? null) !== 'engine_source',
+        ));
+
+        $wakeChecks = array_values(array_filter(
+            $workflowChecks,
+            static fn (array $check): bool => ($check['name'] ?? null) === 'long_poll_wake_acceleration',
+        ));
+
+        $this->assertCount(1, $wakeChecks, 'Waterline health must surface the long_poll_wake_acceleration check so operators can read acceleration-layer health.');
+        $this->assertSame('acceleration', $wakeChecks[0]['category']);
+
+        foreach ($workflowChecks as $check) {
+            $this->assertArrayHasKey('category', $check, sprintf(
+                'Waterline health check %s must carry a category field.',
+                $check['name'] ?? 'unknown',
+            ));
+            $this->assertContains(
+                $check['category'],
+                ['correctness', 'acceleration'],
+                sprintf(
+                    'Waterline health check %s has invalid category %s.',
+                    $check['name'] ?? 'unknown',
+                    (string) ($check['category'] ?? ''),
+                ),
+            );
+        }
+    }
+
     public function testHealthEndpointReturnsUnavailableForBlockingBackendIssues(): void
     {
         config()->set('queue.default', 'sync');
