@@ -709,4 +709,52 @@ class V2DashboardStatsControllerTest extends TestCase
             'operator_metrics.schedules.max_overdue_ms must be null or integer milliseconds',
         );
     }
+
+    public function testIndexExposesCompatibilityBlockedAgeWhenWorkflowAlphaSupportsIt(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $backlog = $response->json('operator_metrics.backlog');
+
+        $this->assertIsArray($backlog);
+
+        if (! array_key_exists('max_compatibility_blocked_age_ms', $backlog)) {
+            // Older workflow alpha releases predate the compatibility-blocked
+            // age metric contract frozen in docs/architecture/rollout-safety.md.
+            // The dashboard gracefully hides the age meta line when those
+            // keys are absent. Skip until an alpha that emits the age pair
+            // is vendored into Waterline; the assertions below will pin
+            // automatically at that point.
+            $this->markTestSkipped(
+                'Resolved workflow package does not yet expose '
+                    . 'operator_metrics.backlog.max_compatibility_blocked_age_ms; '
+                    . 'test is a no-op until a workflow alpha that emits the '
+                    . 'compatibility-blocked age contract is vendored.'
+            );
+        }
+
+        foreach (
+            ['oldest_compatibility_blocked_started_at', 'max_compatibility_blocked_age_ms']
+            as $key
+        ) {
+            $this->assertArrayHasKey(
+                $key,
+                $backlog,
+                sprintf('operator_metrics.backlog.%s must be present in the dashboard payload', $key),
+            );
+        }
+
+        $this->assertTrue(
+            $backlog['oldest_compatibility_blocked_started_at'] === null
+                || is_string($backlog['oldest_compatibility_blocked_started_at']),
+            'operator_metrics.backlog.oldest_compatibility_blocked_started_at must be null or ISO-8601 string',
+        );
+        $this->assertTrue(
+            $backlog['max_compatibility_blocked_age_ms'] === null
+                || is_int($backlog['max_compatibility_blocked_age_ms']),
+            'operator_metrics.backlog.max_compatibility_blocked_age_ms must be null or integer milliseconds',
+        );
+    }
 }

@@ -317,6 +317,12 @@
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Compatibility blocked</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'compatibility_blocked_runs') }}</div>
+                                <div v-if="operatorCompatibilityBlockedAgeAvailable()" class="wl-operator-metric__meta">
+                                    oldest {{ operatorDurationMetricLabel('backlog', 'max_compatibility_blocked_age_ms') }} behind
+                                    <template v-if="operatorCompatibilityBlockedOldestStartedAt()">
+                                        (since {{ operatorCompatibilityBlockedOldestStartedAt() }})
+                                    </template>
+                                </div>
                             </div>
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Active workers</div>
@@ -1090,6 +1096,24 @@ export default {
             const repair = (this.operatorMetrics && this.operatorMetrics.repair) || {};
 
             return repair.oldest_missing_run_started_at || null;
+        },
+
+        operatorCompatibilityBlockedAgeAvailable() {
+            const backlog = (this.operatorMetrics && this.operatorMetrics.backlog) || {};
+
+            if (backlog.max_compatibility_blocked_age_ms === undefined
+                || backlog.max_compatibility_blocked_age_ms === null) {
+                return false;
+            }
+
+            return Number(backlog.compatibility_blocked_runs || 0) > 0
+                || Number(backlog.max_compatibility_blocked_age_ms || 0) > 0;
+        },
+
+        operatorCompatibilityBlockedOldestStartedAt() {
+            const backlog = (this.operatorMetrics && this.operatorMetrics.backlog) || {};
+
+            return backlog.oldest_compatibility_blocked_started_at || null;
         },
 
         operatorSchedulesAvailable() {
