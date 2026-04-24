@@ -790,14 +790,8 @@ class V2DashboardStatsControllerTest extends TestCase
         $tasks = $response->json('operator_metrics.tasks');
 
         $this->assertIsArray($tasks);
-
-        if (! array_key_exists('max_dispatch_overdue_age_ms', $tasks)
-            || ! array_key_exists('oldest_dispatch_overdue_since', $tasks)) {
-            $this->markTestSkipped(
-                'Vendored workflow package predates the dispatch-overdue age rollout-safety contract '
-                . '(operator_metrics.tasks.oldest_dispatch_overdue_since / max_dispatch_overdue_age_ms).',
-            );
-        }
+        $this->assertArrayHasKey('oldest_dispatch_overdue_since', $tasks);
+        $this->assertArrayHasKey('max_dispatch_overdue_age_ms', $tasks);
 
         $this->assertTrue(
             $tasks['oldest_dispatch_overdue_since'] === null
@@ -820,15 +814,9 @@ class V2DashboardStatsControllerTest extends TestCase
         $runs = $response->json('operator_metrics.runs');
 
         $this->assertIsArray($runs);
-
-        if (! array_key_exists('waiting', $runs)
-            || ! array_key_exists('oldest_wait_started_at', $runs)
-            || ! array_key_exists('max_wait_age_ms', $runs)) {
-            $this->markTestSkipped(
-                'Vendored workflow package predates the run-wait-age rollout-safety contract '
-                . '(operator_metrics.runs.waiting / oldest_wait_started_at / max_wait_age_ms).',
-            );
-        }
+        $this->assertArrayHasKey('waiting', $runs);
+        $this->assertArrayHasKey('oldest_wait_started_at', $runs);
+        $this->assertArrayHasKey('max_wait_age_ms', $runs);
 
         $this->assertIsInt($runs['waiting']);
         $this->assertTrue(
