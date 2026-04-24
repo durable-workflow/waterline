@@ -412,6 +412,28 @@
                         </section>
 
                         <section class="wl-operator-section">
+                            <div class="wl-panel-subtitle">Scheduler-role health</div>
+                            <p v-if="!operatorSchedulesAvailable()" class="text-muted">
+                                No scheduler-role metrics exposed by the current workflow engine.
+                            </p>
+                            <template v-else>
+                                <p>
+                                    {{ operatorMetricLabel('schedules', 'active') }} active schedules,
+                                    {{ operatorMetricLabel('schedules', 'paused') }} paused,
+                                    {{ operatorMetricLabel('schedules', 'missed') }} overdue this tick,
+                                    oldest {{ operatorDurationMetricLabel('schedules', 'max_overdue_ms') }} behind.
+                                </p>
+                                <p v-if="operatorScheduleOldestOverdueAt()">
+                                    Oldest overdue fire due at {{ operatorScheduleOldestOverdueAt() }}.
+                                </p>
+                                <p>
+                                    {{ operatorMetricLabel('schedules', 'fires_total') }} fires recorded against active schedules,
+                                    {{ operatorMetricLabel('schedules', 'failures_total') }} failures.
+                                </p>
+                            </template>
+                        </section>
+
+                        <section class="wl-operator-section">
                             <div class="wl-panel-subtitle">Worker compatibility fleet</div>
                             <p v-if="!operatorWorkerFleet().length" class="text-muted">
                                 No active worker compatibility heartbeats in this namespace.
@@ -1068,6 +1090,18 @@ export default {
             const repair = (this.operatorMetrics && this.operatorMetrics.repair) || {};
 
             return repair.oldest_missing_run_started_at || null;
+        },
+
+        operatorSchedulesAvailable() {
+            const schedules = this.operatorMetrics && this.operatorMetrics.schedules;
+
+            return schedules !== undefined && schedules !== null;
+        },
+
+        operatorScheduleOldestOverdueAt() {
+            const schedules = (this.operatorMetrics && this.operatorMetrics.schedules) || {};
+
+            return schedules.oldest_overdue_at || null;
         },
 
         operatorWorkerFleet() {
