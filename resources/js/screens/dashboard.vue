@@ -297,6 +297,12 @@
                                     {{ operatorMetricLabel('backlog', 'delayed_tasks') }} delayed,
                                     {{ operatorMetricLabel('backlog', 'leased_tasks') }} leased
                                 </div>
+                                <div v-if="operatorReadyDueAgeAvailable()" class="wl-operator-metric__meta">
+                                    oldest ready {{ operatorDurationMetricLabel('tasks', 'max_ready_due_age_ms') }} waiting
+                                    <template v-if="operatorReadyDueOldestAt()">
+                                        (since {{ operatorReadyDueOldestAt() }})
+                                    </template>
+                                </div>
                             </div>
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Unhealthy tasks</div>
@@ -1138,6 +1144,24 @@ export default {
             const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
 
             return tasks.oldest_lease_expired_at || null;
+        },
+
+        operatorReadyDueAgeAvailable() {
+            const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
+
+            if (tasks.max_ready_due_age_ms === undefined
+                || tasks.max_ready_due_age_ms === null) {
+                return false;
+            }
+
+            return Number(tasks.ready_due || 0) > 0
+                || Number(tasks.max_ready_due_age_ms || 0) > 0;
+        },
+
+        operatorReadyDueOldestAt() {
+            const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
+
+            return tasks.oldest_ready_due_at || null;
         },
 
         operatorSchedulesAvailable() {

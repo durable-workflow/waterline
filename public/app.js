@@ -2096,6 +2096,17 @@ function _arrayWithHoles(r) { if (Array.isArray(r)) return r; }
       var tasks = this.operatorMetrics && this.operatorMetrics.tasks || {};
       return tasks.oldest_lease_expired_at || null;
     },
+    operatorReadyDueAgeAvailable: function operatorReadyDueAgeAvailable() {
+      var tasks = this.operatorMetrics && this.operatorMetrics.tasks || {};
+      if (tasks.max_ready_due_age_ms === undefined || tasks.max_ready_due_age_ms === null) {
+        return false;
+      }
+      return Number(tasks.ready_due || 0) > 0 || Number(tasks.max_ready_due_age_ms || 0) > 0;
+    },
+    operatorReadyDueOldestAt: function operatorReadyDueOldestAt() {
+      var tasks = this.operatorMetrics && this.operatorMetrics.tasks || {};
+      return tasks.oldest_ready_due_at || null;
+    },
     operatorSchedulesAvailable: function operatorSchedulesAvailable() {
       var schedules = this.operatorMetrics && this.operatorMetrics.schedules;
       return schedules !== undefined && schedules !== null;
@@ -7466,7 +7477,9 @@ var render = function render() {
     staticClass: "wl-operator-metric__value"
   }, [_vm._v(_vm._s(_vm.operatorMetricLabel("backlog", "runnable_tasks")))]), _vm._v(" "), _c("div", {
     staticClass: "wl-operator-metric__meta"
-  }, [_vm._v("\n                                " + _vm._s(_vm.operatorMetricLabel("backlog", "delayed_tasks")) + " delayed,\n                                " + _vm._s(_vm.operatorMetricLabel("backlog", "leased_tasks")) + " leased\n                            ")])]), _vm._v(" "), _c("div", {
+  }, [_vm._v("\n                                " + _vm._s(_vm.operatorMetricLabel("backlog", "delayed_tasks")) + " delayed,\n                                " + _vm._s(_vm.operatorMetricLabel("backlog", "leased_tasks")) + " leased\n                            ")]), _vm._v(" "), _vm.operatorReadyDueAgeAvailable() ? _c("div", {
+    staticClass: "wl-operator-metric__meta"
+  }, [_vm._v("\n                                oldest ready " + _vm._s(_vm.operatorDurationMetricLabel("tasks", "max_ready_due_age_ms")) + " waiting\n                                "), _vm.operatorReadyDueOldestAt() ? [_vm._v("\n                                    (since " + _vm._s(_vm.operatorReadyDueOldestAt()) + ")\n                                ")] : _vm._e()], 2) : _vm._e()]), _vm._v(" "), _c("div", {
     staticClass: "wl-operator-metric"
   }, [_c("div", {
     staticClass: "wl-operator-metric__label"

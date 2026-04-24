@@ -762,4 +762,34 @@ class V2DashboardStatsControllerTest extends TestCase
             'operator_metrics.tasks.max_lease_expired_age_ms must be null or integer milliseconds',
         );
     }
+
+    public function testIndexExposesReadyDueAge(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $tasks = $response->json('operator_metrics.tasks');
+
+        $this->assertIsArray($tasks);
+
+        if (! array_key_exists('max_ready_due_age_ms', $tasks)
+            || ! array_key_exists('oldest_ready_due_at', $tasks)) {
+            $this->markTestSkipped(
+                'Vendored workflow package predates the ready-due age rollout-safety contract '
+                . '(operator_metrics.tasks.oldest_ready_due_at / max_ready_due_age_ms).',
+            );
+        }
+
+        $this->assertTrue(
+            $tasks['oldest_ready_due_at'] === null
+                || is_string($tasks['oldest_ready_due_at']),
+            'operator_metrics.tasks.oldest_ready_due_at must be null or ISO-8601 string',
+        );
+        $this->assertTrue(
+            $tasks['max_ready_due_age_ms'] === null
+                || is_int($tasks['max_ready_due_age_ms']),
+            'operator_metrics.tasks.max_ready_due_age_ms must be null or integer milliseconds',
+        );
+    }
 }
