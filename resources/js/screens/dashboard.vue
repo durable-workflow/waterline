@@ -305,6 +305,12 @@
                                     {{ operatorMetricLabel('tasks', 'dispatch_overdue') }} dispatch overdue,
                                     {{ operatorMetricLabel('tasks', 'lease_expired') }} lease expired
                                 </div>
+                                <div v-if="operatorStuckLeaseAgeAvailable()" class="wl-operator-metric__meta">
+                                    oldest lease {{ operatorDurationMetricLabel('tasks', 'max_lease_expired_age_ms') }} expired
+                                    <template v-if="operatorStuckLeaseOldestExpiredAt()">
+                                        (since {{ operatorStuckLeaseOldestExpiredAt() }})
+                                    </template>
+                                </div>
                             </div>
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Repair needed runs</div>
@@ -1114,6 +1120,24 @@ export default {
             const backlog = (this.operatorMetrics && this.operatorMetrics.backlog) || {};
 
             return backlog.oldest_compatibility_blocked_started_at || null;
+        },
+
+        operatorStuckLeaseAgeAvailable() {
+            const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
+
+            if (tasks.max_lease_expired_age_ms === undefined
+                || tasks.max_lease_expired_age_ms === null) {
+                return false;
+            }
+
+            return Number(tasks.lease_expired || 0) > 0
+                || Number(tasks.max_lease_expired_age_ms || 0) > 0;
+        },
+
+        operatorStuckLeaseOldestExpiredAt() {
+            const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
+
+            return tasks.oldest_lease_expired_at || null;
         },
 
         operatorSchedulesAvailable() {
