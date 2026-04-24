@@ -9,6 +9,7 @@ use Workflow\V2\CommandContext;
 use Workflow\V2\Enums\ScheduleOverlapPolicy;
 use Workflow\V2\Enums\ScheduleStatus;
 use Workflow\V2\Models\WorkflowSchedule;
+use Workflow\V2\Models\WorkflowScheduleHistoryEvent;
 use Workflow\V2\Support\ScheduleManager;
 use Waterline\Waterline;
 
@@ -153,6 +154,48 @@ class V2SchedulesController extends Controller
         ]);
     }
 
+    public function history(Request $request, string $scheduleId): JsonResponse
+    {
+        $schedule = $this->findSchedule($scheduleId);
+
+        if ($schedule === null) {
+            return response()->json(['error' => 'Schedule not found.'], 404);
+        }
+
+        $limit = $this->parseLimit($request->query('limit'));
+        $afterSequence = $this->parseAfterSequence($request->query('after_sequence'));
+
+        $query = $schedule->historyEvents();
+
+        if ($afterSequence !== null) {
+            $query->where('sequence', '>', $afterSequence);
+        }
+
+        $events = $query->limit($limit + 1)->get();
+        $hasMore = $events->count() > $limit;
+        $events = $events->take($limit);
+
+        $nextCursor = $hasMore && $events->isNotEmpty()
+            ? (int) $events->last()->sequence
+            : null;
+
+        return response()->json([
+            'schedule_id' => $schedule->schedule_id,
+            'namespace' => $schedule->namespace,
+            'events' => $events->map(fn (WorkflowScheduleHistoryEvent $event): array => [
+                'id' => $event->id,
+                'sequence' => (int) $event->sequence,
+                'event_type' => $event->event_type?->value,
+                'payload' => is_array($event->payload) ? $event->payload : [],
+                'workflow_instance_id' => $event->workflow_instance_id,
+                'workflow_run_id' => $event->workflow_run_id,
+                'recorded_at' => $event->recorded_at?->toIso8601String(),
+            ])->values(),
+            'next_cursor' => $nextCursor,
+            'has_more' => $hasMore,
+        ]);
+    }
+
     public function destroy(Request $request, string $scheduleId): JsonResponse
     {
         $schedule = $this->findSchedule($scheduleId);
@@ -164,6 +207,35 @@ class V2SchedulesController extends Controller
         ScheduleManager::delete($schedule, $this->commandContext($request));
 
         return response()->json(ScheduleManager::describe($schedule)->toArray());
+    }
+
+    private function parseLimit(mixed $raw): int
+    {
+        $default = 100;
+        $max = 500;
+
+        if (! is_string($raw) && ! is_int($raw)) {
+            return $default;
+        }
+
+        $value = (int) $raw;
+
+        if ($value <= 0) {
+            return $default;
+        }
+
+        return min($value, $max);
+    }
+
+    private function parseAfterSequence(mixed $raw): ?int
+    {
+        if (! is_string($raw) && ! is_int($raw)) {
+            return null;
+        }
+
+        $value = (int) $raw;
+
+        return $value > 0 ? $value : null;
     }
 
     private function findSchedule(string $scheduleId): ?WorkflowSchedule

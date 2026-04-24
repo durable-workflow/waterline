@@ -51,6 +51,7 @@ Route::prefix('api')->group(function () {
     Route::post('/instances/{instanceId}/archive', 'WorkflowsController@archiveInstance')->name('waterline.instances.archive');
     Route::get('/v2/schedules', 'V2SchedulesController@index')->name('waterline.v2.schedules.index');
     Route::get('/v2/schedules/{scheduleId}', 'V2SchedulesController@show')->name('waterline.v2.schedules.show');
+    Route::get('/v2/schedules/{scheduleId}/history', 'V2SchedulesController@history')->name('waterline.v2.schedules.history');
     Route::post('/v2/schedules/{scheduleId}/pause', 'V2SchedulesController@pause')->name('waterline.v2.schedules.pause');
     Route::post('/v2/schedules/{scheduleId}/resume', 'V2SchedulesController@resume')->name('waterline.v2.schedules.resume');
     Route::post('/v2/schedules/{scheduleId}/trigger', 'V2SchedulesController@trigger')->name('waterline.v2.schedules.trigger');
