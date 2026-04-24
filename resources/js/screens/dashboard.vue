@@ -342,6 +342,16 @@
                                     </template>
                                 </div>
                             </div>
+                            <div class="wl-operator-metric" v-if="operatorRunWaitAvailable()">
+                                <div class="wl-operator-metric__label">Waiting runs</div>
+                                <div class="wl-operator-metric__value">{{ operatorMetricLabel('runs', 'waiting') }}</div>
+                                <div v-if="operatorRunWaitAgeAvailable()" class="wl-operator-metric__meta">
+                                    oldest {{ operatorDurationMetricLabel('runs', 'max_wait_age_ms') }} parked
+                                    <template v-if="operatorRunWaitOldestStartedAt()">
+                                        (since {{ operatorRunWaitOldestStartedAt() }})
+                                    </template>
+                                </div>
+                            </div>
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Active workers</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('workers', 'active_workers') }}</div>
@@ -1186,6 +1196,29 @@ export default {
             const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
 
             return tasks.oldest_dispatch_overdue_since || null;
+        },
+
+        operatorRunWaitAvailable() {
+            const runs = (this.operatorMetrics && this.operatorMetrics.runs) || {};
+
+            return runs.waiting !== undefined && runs.waiting !== null;
+        },
+
+        operatorRunWaitAgeAvailable() {
+            const runs = (this.operatorMetrics && this.operatorMetrics.runs) || {};
+
+            if (runs.max_wait_age_ms === undefined || runs.max_wait_age_ms === null) {
+                return false;
+            }
+
+            return Number(runs.waiting || 0) > 0
+                || Number(runs.max_wait_age_ms || 0) > 0;
+        },
+
+        operatorRunWaitOldestStartedAt() {
+            const runs = (this.operatorMetrics && this.operatorMetrics.runs) || {};
+
+            return runs.oldest_wait_started_at || null;
         },
 
         operatorSchedulesAvailable() {

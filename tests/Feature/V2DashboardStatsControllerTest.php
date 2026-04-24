@@ -822,4 +822,36 @@ class V2DashboardStatsControllerTest extends TestCase
             'operator_metrics.tasks.max_dispatch_overdue_age_ms must be null or integer milliseconds',
         );
     }
+
+    public function testIndexExposesRunWaitAge(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $runs = $response->json('operator_metrics.runs');
+
+        $this->assertIsArray($runs);
+
+        if (! array_key_exists('waiting', $runs)
+            || ! array_key_exists('oldest_wait_started_at', $runs)
+            || ! array_key_exists('max_wait_age_ms', $runs)) {
+            $this->markTestSkipped(
+                'Vendored workflow package predates the run-wait-age rollout-safety contract '
+                . '(operator_metrics.runs.waiting / oldest_wait_started_at / max_wait_age_ms).',
+            );
+        }
+
+        $this->assertIsInt($runs['waiting']);
+        $this->assertTrue(
+            $runs['oldest_wait_started_at'] === null
+                || is_string($runs['oldest_wait_started_at']),
+            'operator_metrics.runs.oldest_wait_started_at must be null or ISO-8601 string',
+        );
+        $this->assertTrue(
+            $runs['max_wait_age_ms'] === null
+                || is_int($runs['max_wait_age_ms']),
+            'operator_metrics.runs.max_wait_age_ms must be null or integer milliseconds',
+        );
+    }
 }
