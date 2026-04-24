@@ -412,6 +412,40 @@
                         </section>
 
                         <section class="wl-operator-section">
+                            <div class="wl-panel-subtitle">Worker compatibility fleet</div>
+                            <p v-if="!operatorWorkerFleet().length" class="text-muted">
+                                No active worker compatibility heartbeats in this namespace.
+                            </p>
+                            <div v-else class="table-responsive">
+                                <table class="table table-sm mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Worker</th>
+                                            <th>Queue scope</th>
+                                            <th>Supports</th>
+                                            <th>Required</th>
+                                            <th>Source</th>
+                                            <th>Heartbeat</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr v-for="entry in operatorWorkerFleet()" :key="operatorWorkerFleetKey(entry)">
+                                            <td><code>{{ entry.worker_id }}</code></td>
+                                            <td>{{ operatorWorkerFleetScope(entry) }}</td>
+                                            <td>{{ (entry.supported || []).join(', ') || '—' }}</td>
+                                            <td>
+                                                <span v-if="entry.supports_required" class="wl-chip">yes</span>
+                                                <span v-else class="wl-chip wl-chip--warning">no</span>
+                                            </td>
+                                            <td>{{ entry.source || '—' }}</td>
+                                            <td>{{ entry.recorded_at || '—' }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <section class="wl-operator-section">
                             <div class="wl-panel-subtitle">Update wait policy</div>
                             <p>
                                 Wait up to {{ operatorUpdateWaitMetricLabel('completion_timeout_ms') }} ms for completion responses,
@@ -1034,6 +1068,37 @@ export default {
             const repair = (this.operatorMetrics && this.operatorMetrics.repair) || {};
 
             return repair.oldest_missing_run_started_at || null;
+        },
+
+        operatorWorkerFleet() {
+            const workers = (this.operatorMetrics && this.operatorMetrics.workers) || {};
+            const fleet = Array.isArray(workers.fleet) ? workers.fleet : [];
+
+            return fleet.slice(0, 20);
+        },
+
+        operatorWorkerFleetScope(entry) {
+            if (!entry) {
+                return '—';
+            }
+
+            return [
+                entry.connection || 'default',
+                entry.queue || 'default',
+            ].join(' / ');
+        },
+
+        operatorWorkerFleetKey(entry) {
+            if (!entry) {
+                return '';
+            }
+
+            return [
+                entry.worker_id || '',
+                entry.connection || '',
+                entry.queue || '',
+                entry.namespace || '',
+            ].join(':');
         },
 
         engineSourceLabel() {
