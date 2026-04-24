@@ -317,6 +317,12 @@
                                         (since {{ operatorStuckLeaseOldestExpiredAt() }})
                                     </template>
                                 </div>
+                                <div v-if="operatorDispatchOverdueAgeAvailable()" class="wl-operator-metric__meta">
+                                    oldest overdue {{ operatorDurationMetricLabel('tasks', 'max_dispatch_overdue_age_ms') }} waiting dispatch
+                                    <template v-if="operatorDispatchOverdueOldestSince()">
+                                        (since {{ operatorDispatchOverdueOldestSince() }})
+                                    </template>
+                                </div>
                             </div>
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Repair needed runs</div>
@@ -1162,6 +1168,24 @@ export default {
             const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
 
             return tasks.oldest_ready_due_at || null;
+        },
+
+        operatorDispatchOverdueAgeAvailable() {
+            const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
+
+            if (tasks.max_dispatch_overdue_age_ms === undefined
+                || tasks.max_dispatch_overdue_age_ms === null) {
+                return false;
+            }
+
+            return Number(tasks.dispatch_overdue || 0) > 0
+                || Number(tasks.max_dispatch_overdue_age_ms || 0) > 0;
+        },
+
+        operatorDispatchOverdueOldestSince() {
+            const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
+
+            return tasks.oldest_dispatch_overdue_since || null;
         },
 
         operatorSchedulesAvailable() {

@@ -792,4 +792,34 @@ class V2DashboardStatsControllerTest extends TestCase
             'operator_metrics.tasks.max_ready_due_age_ms must be null or integer milliseconds',
         );
     }
+
+    public function testIndexExposesDispatchOverdueAge(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $tasks = $response->json('operator_metrics.tasks');
+
+        $this->assertIsArray($tasks);
+
+        if (! array_key_exists('max_dispatch_overdue_age_ms', $tasks)
+            || ! array_key_exists('oldest_dispatch_overdue_since', $tasks)) {
+            $this->markTestSkipped(
+                'Vendored workflow package predates the dispatch-overdue age rollout-safety contract '
+                . '(operator_metrics.tasks.oldest_dispatch_overdue_since / max_dispatch_overdue_age_ms).',
+            );
+        }
+
+        $this->assertTrue(
+            $tasks['oldest_dispatch_overdue_since'] === null
+                || is_string($tasks['oldest_dispatch_overdue_since']),
+            'operator_metrics.tasks.oldest_dispatch_overdue_since must be null or ISO-8601 string',
+        );
+        $this->assertTrue(
+            $tasks['max_dispatch_overdue_age_ms'] === null
+                || is_int($tasks['max_dispatch_overdue_age_ms']),
+            'operator_metrics.tasks.max_dispatch_overdue_age_ms must be null or integer milliseconds',
+        );
+    }
 }
