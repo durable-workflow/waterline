@@ -660,4 +660,53 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.command_contracts.backfill_available_runs', 1)
             ->assertJsonPath('operator_metrics.command_contracts.backfill_unavailable_runs', 1);
     }
+
+    public function testIndexExposesSchedulerRoleMetricsWhenWorkflowAlphaSupportsThem(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $schedules = $response->json('operator_metrics.schedules');
+
+        if ($schedules === null) {
+            // Older workflow alpha releases predate the scheduler-role
+            // metrics contract frozen in docs/architecture/rollout-safety.md.
+            // The dashboard gracefully hides the scheduler-role section when
+            // those keys are absent. Skip until an alpha that emits the
+            // schedules snapshot is published; the assertions below will
+            // pin automatically at that point.
+            $this->markTestSkipped(
+                'Resolved workflow package does not yet expose operator_metrics.schedules; '
+                    . 'test is a no-op until a workflow alpha that emits the scheduler-role '
+                    . 'metrics contract is published.'
+            );
+        }
+
+        $this->assertIsArray($schedules);
+        foreach (
+            ['active', 'paused', 'missed', 'oldest_overdue_at', 'max_overdue_ms', 'fires_total', 'failures_total']
+            as $key
+        ) {
+            $this->assertArrayHasKey(
+                $key,
+                $schedules,
+                sprintf('operator_metrics.schedules.%s must be present in the dashboard payload', $key),
+            );
+        }
+
+        $this->assertIsInt($schedules['active']);
+        $this->assertIsInt($schedules['paused']);
+        $this->assertIsInt($schedules['missed']);
+        $this->assertIsInt($schedules['fires_total']);
+        $this->assertIsInt($schedules['failures_total']);
+        $this->assertTrue(
+            $schedules['oldest_overdue_at'] === null || is_string($schedules['oldest_overdue_at']),
+            'operator_metrics.schedules.oldest_overdue_at must be null or ISO-8601 string',
+        );
+        $this->assertTrue(
+            $schedules['max_overdue_ms'] === null || is_int($schedules['max_overdue_ms']),
+            'operator_metrics.schedules.max_overdue_ms must be null or integer milliseconds',
+        );
+    }
 }
