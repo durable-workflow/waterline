@@ -661,7 +661,7 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.command_contracts.backfill_unavailable_runs', 1);
     }
 
-    public function testIndexExposesSchedulerRoleMetricsWhenWorkflowAlphaSupportsThem(): void
+    public function testIndexExposesSchedulerRoleMetrics(): void
     {
         config()->set('waterline.engine_source', 'v2');
 
@@ -669,21 +669,11 @@ class V2DashboardStatsControllerTest extends TestCase
 
         $schedules = $response->json('operator_metrics.schedules');
 
-        if ($schedules === null) {
-            // Older workflow alpha releases predate the scheduler-role
-            // metrics contract frozen in docs/architecture/rollout-safety.md.
-            // The dashboard gracefully hides the scheduler-role section when
-            // those keys are absent. Skip until an alpha that emits the
-            // schedules snapshot is published; the assertions below will
-            // pin automatically at that point.
-            $this->markTestSkipped(
-                'Resolved workflow package does not yet expose operator_metrics.schedules; '
-                    . 'test is a no-op until a workflow alpha that emits the scheduler-role '
-                    . 'metrics contract is published.'
-            );
-        }
-
-        $this->assertIsArray($schedules);
+        $this->assertIsArray(
+            $schedules,
+            'operator_metrics.schedules must be present in the dashboard payload; '
+                . 'vendored workflow package must resolve to >=2.0.0-alpha.11.',
+        );
         foreach (
             ['active', 'paused', 'missed', 'oldest_overdue_at', 'max_overdue_ms', 'fires_total', 'failures_total']
             as $key
@@ -710,7 +700,7 @@ class V2DashboardStatsControllerTest extends TestCase
         );
     }
 
-    public function testIndexExposesCompatibilityBlockedAgeWhenWorkflowAlphaSupportsIt(): void
+    public function testIndexExposesCompatibilityBlockedAge(): void
     {
         config()->set('waterline.engine_source', 'v2');
 
@@ -719,21 +709,6 @@ class V2DashboardStatsControllerTest extends TestCase
         $backlog = $response->json('operator_metrics.backlog');
 
         $this->assertIsArray($backlog);
-
-        if (! array_key_exists('max_compatibility_blocked_age_ms', $backlog)) {
-            // Older workflow alpha releases predate the compatibility-blocked
-            // age metric contract frozen in docs/architecture/rollout-safety.md.
-            // The dashboard gracefully hides the age meta line when those
-            // keys are absent. Skip until an alpha that emits the age pair
-            // is vendored into Waterline; the assertions below will pin
-            // automatically at that point.
-            $this->markTestSkipped(
-                'Resolved workflow package does not yet expose '
-                    . 'operator_metrics.backlog.max_compatibility_blocked_age_ms; '
-                    . 'test is a no-op until a workflow alpha that emits the '
-                    . 'compatibility-blocked age contract is vendored.'
-            );
-        }
 
         foreach (
             ['oldest_compatibility_blocked_started_at', 'max_compatibility_blocked_age_ms']
