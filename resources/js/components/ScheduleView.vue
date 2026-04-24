@@ -191,6 +191,11 @@
                                                 @click="showBackfillDialog(schedule)">
                                                 Backfill
                                             </button>
+                                            <button
+                                                class="btn btn-sm btn-outline-secondary"
+                                                @click="showHistoryDialog(schedule)">
+                                                History
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>
@@ -276,6 +281,94 @@
                 </div>
             </div>
         </div>
+
+        <div v-if="showHistory" class="schedule-view__modal" @click.self="closeHistoryDialog">
+            <div class="schedule-view__dialog schedule-view__dialog--wide card">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <div>
+                        <h5 class="mb-0">Schedule audit history</h5>
+                        <small class="text-muted">
+                            Lifecycle events recorded for
+                            <code>{{ historyScheduleId || '—' }}</code>.
+                        </small>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @click="closeHistoryDialog">
+                        Close
+                    </button>
+                </div>
+
+                <div class="card-body card-bg-secondary schedule-view__history-body">
+                    <div v-if="historyLoading && historyEvents.length === 0" class="schedule-view__state">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color schedule-view__state-icon">
+                            <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
+                        </svg>
+                        <p class="schedule-view__state-copy">Loading audit history…</p>
+                    </div>
+
+                    <div v-else-if="historyError" class="schedule-view__state schedule-view__state--error">
+                        <strong>Unable to load audit history</strong>
+                        <p class="schedule-view__state-copy">{{ historyError }}</p>
+                        <button class="btn btn-sm btn-outline-primary" @click="loadHistoryEvents(true)">Retry</button>
+                    </div>
+
+                    <div v-else-if="historyEvents.length === 0" class="schedule-view__empty-state">
+                        <strong>No audit events recorded</strong>
+                        <p class="mb-0 text-muted">
+                            The audit stream begins at the next lifecycle transition (create, pause, resume, trigger, or delete).
+                        </p>
+                    </div>
+
+                    <ol v-else class="schedule-view__history-list">
+                        <li
+                            v-for="event in historyEvents"
+                            :key="event.id || event.sequence"
+                            class="schedule-view__history-entry">
+                            <div class="schedule-view__history-header">
+                                <span class="schedule-view__pill" :class="historyEventToneClass(event.event_type)">
+                                    {{ formatHistoryEventType(event.event_type) }}
+                                </span>
+                                <span class="schedule-view__history-sequence">#{{ event.sequence }}</span>
+                                <span class="schedule-view__history-timestamp" v-if="event.recorded_at">
+                                    {{ formatTimestamp(event.recorded_at) }}
+                                </span>
+                            </div>
+
+                            <div class="schedule-view__history-meta" v-if="event.workflow_instance_id || event.workflow_run_id">
+                                <span v-if="event.workflow_instance_id">
+                                    instance <code>{{ truncateId(event.workflow_instance_id) }}</code>
+                                </span>
+                                <span v-if="event.workflow_run_id">
+                                    run <code>{{ truncateId(event.workflow_run_id) }}</code>
+                                </span>
+                            </div>
+
+                            <pre
+                                v-if="event.payload && Object.keys(event.payload).length > 0"
+                                class="schedule-view__history-payload"
+                            >{{ formatHistoryPayload(event.payload) }}</pre>
+                        </li>
+                    </ol>
+                </div>
+
+                <div class="card-footer d-flex justify-content-between schedule-view__dialog-actions">
+                    <small class="text-muted">
+                        Showing {{ historyEvents.length.toLocaleString() }} event{{ historyEvents.length === 1 ? '' : 's' }}{{ historyHasMore ? ' (more available)' : '' }}.
+                    </small>
+
+                    <div>
+                        <button
+                            v-if="historyHasMore"
+                            class="btn btn-sm btn-outline-primary"
+                            :disabled="historyLoadingMore"
+                            @click="loadMoreHistoryEvents">
+                            {{ historyLoadingMore ? 'Loading…' : 'Load more' }}
+                        </button>
+                        <button class="btn btn-sm btn-secondary" @click="closeHistoryDialog">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -308,7 +401,16 @@ export default {
             backfillOverlapPolicy: '',
             operatorPreferences: {},
             effectiveOperatorPreferences: {},
-            savingOperatorPreferences: false
+            savingOperatorPreferences: false,
+            showHistory: false,
+            historyScheduleId: null,
+            historyEvents: [],
+            historyLoading: false,
+            historyLoadingMore: false,
+            historyError: null,
+            historyHasMore: false,
+            historyNextCursor: null,
+            historyPageLimit: 100
         };
     },
 
@@ -693,6 +795,108 @@ export default {
             }
         },
 
+        showHistoryDialog(schedule) {
+            this.historyScheduleId = schedule.id;
+            this.historyEvents = [];
+            this.historyError = null;
+            this.historyHasMore = false;
+            this.historyNextCursor = null;
+            this.showHistory = true;
+            this.loadHistoryEvents(true);
+        },
+
+        closeHistoryDialog() {
+            this.showHistory = false;
+        },
+
+        async loadHistoryEvents(reset = false) {
+            if (!this.historyScheduleId) {
+                return;
+            }
+
+            if (reset) {
+                this.historyLoading = true;
+                this.historyError = null;
+                this.historyEvents = [];
+                this.historyNextCursor = null;
+                this.historyHasMore = false;
+            }
+
+            try {
+                const params = { limit: this.historyPageLimit };
+                if (!reset && this.historyNextCursor !== null) {
+                    params.after_sequence = this.historyNextCursor;
+                }
+
+                const response = await axios.get(
+                    `${this.resolvedApiEndpoint()}/${this.historyScheduleId}/history`,
+                    { params }
+                );
+
+                const events = Array.isArray(response.data?.events) ? response.data.events : [];
+
+                if (reset) {
+                    this.historyEvents = events;
+                } else {
+                    this.historyEvents = this.historyEvents.concat(events);
+                }
+
+                this.historyHasMore = Boolean(response.data?.has_more);
+                this.historyNextCursor = response.data?.next_cursor ?? null;
+            } catch (e) {
+                this.historyError = e.response?.data?.error
+                    || e.response?.data?.message
+                    || e.message
+                    || 'Failed to load audit history';
+            } finally {
+                this.historyLoading = false;
+                this.historyLoadingMore = false;
+            }
+        },
+
+        async loadMoreHistoryEvents() {
+            if (this.historyLoadingMore || !this.historyHasMore) {
+                return;
+            }
+            this.historyLoadingMore = true;
+            await this.loadHistoryEvents(false);
+        },
+
+        formatHistoryEventType(type) {
+            if (typeof type !== 'string' || type === '') {
+                return 'Unknown event';
+            }
+            return type
+                .replace(/([a-z])([A-Z])/g, '$1 $2')
+                .replace(/_/g, ' ');
+        },
+
+        historyEventToneClass(type) {
+            switch (type) {
+                case 'ScheduleCreated':
+                case 'ScheduleResumed':
+                case 'ScheduleTriggered':
+                    return 'is-success';
+                case 'SchedulePaused':
+                case 'ScheduleTriggerSkipped':
+                    return 'is-warning';
+                case 'ScheduleDeleted':
+                    return 'is-danger';
+                case 'ScheduleUpdated':
+                    return 'is-info';
+                default:
+                    return 'is-muted';
+            }
+        },
+
+        formatHistoryPayload(payload) {
+            try {
+                return JSON.stringify(payload, null, 2);
+            } catch (e) {
+                return String(payload);
+            }
+        },
+
         statusToneClass(status) {
             return {
                 active: 'is-success',
@@ -932,6 +1136,16 @@ export default {
     color: var(--wl-text-muted);
 }
 
+.schedule-view__pill.is-info {
+    background: color-mix(in srgb, var(--wl-info, #3182ce) 16%, transparent);
+    color: var(--wl-info, #3182ce);
+}
+
+.schedule-view__pill.is-danger {
+    background: color-mix(in srgb, var(--wl-danger) 16%, transparent);
+    color: var(--wl-danger);
+}
+
 .schedule-view__row--overdue {
     background: color-mix(in srgb, var(--wl-danger) 8%, transparent);
 }
@@ -1031,6 +1245,77 @@ export default {
 
 .schedule-view__dialog-actions {
     gap: 0.75rem;
+}
+
+.schedule-view__dialog--wide {
+    width: min(56rem, 100%);
+}
+
+.schedule-view__history-body {
+    max-height: min(70vh, 40rem);
+    overflow-y: auto;
+}
+
+.schedule-view__history-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.schedule-view__history-entry {
+    padding: 0.85rem 1rem;
+    border-radius: 0.5rem;
+    background: color-mix(in srgb, var(--wl-text) 3%, transparent);
+    border: 1px solid color-mix(in srgb, var(--wl-text) 8%, transparent);
+}
+
+.schedule-view__history-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.35rem;
+}
+
+.schedule-view__history-sequence {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--wl-text-muted);
+}
+
+.schedule-view__history-timestamp {
+    font-size: 0.8rem;
+    color: var(--wl-text-muted);
+    margin-left: auto;
+}
+
+.schedule-view__history-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    font-size: 0.8rem;
+    color: var(--wl-text-muted);
+    margin-bottom: 0.4rem;
+}
+
+.schedule-view__history-meta code {
+    font-size: 0.75rem;
+}
+
+.schedule-view__history-payload {
+    margin: 0;
+    padding: 0.6rem 0.75rem;
+    border-radius: 0.35rem;
+    background: color-mix(in srgb, var(--wl-text) 6%, transparent);
+    color: var(--wl-text-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    max-height: 14rem;
+    overflow: auto;
 }
 
 .schedule-view .table th,
@@ -1337,7 +1622,16 @@ export default {
             backfillOverlapPolicy: '',
             operatorPreferences: {},
             effectiveOperatorPreferences: {},
-            savingOperatorPreferences: false
+            savingOperatorPreferences: false,
+            showHistory: false,
+            historyScheduleId: null,
+            historyEvents: [],
+            historyLoading: false,
+            historyLoadingMore: false,
+            historyError: null,
+            historyHasMore: false,
+            historyNextCursor: null,
+            historyPageLimit: 100
         };
     },
 
