@@ -525,6 +525,25 @@ class V2DashboardWorkflowTest extends TestCase
             'SLA / 300s',
             $diagnostics->firstWhere('code', 'condition_wait_stuck')['evidence_summary'],
         );
+
+        foreach ($diagnostics as $diagnostic) {
+            $this->assertArrayHasKey(
+                'guidance',
+                $diagnostic,
+                sprintf('Run diagnostic %s must expose operator guidance aligned with the v2 execution-semantics contract.', $diagnostic['code']),
+            );
+            $this->assertIsString($diagnostic['guidance']);
+            $this->assertNotSame('', $diagnostic['guidance']);
+        }
+
+        $this->assertStringContainsString(
+            'at-least-once',
+            $diagnostics->firstWhere('code', 'activity_repeated_failure')['guidance'],
+        );
+        $this->assertStringContainsString(
+            'activity_execution_id',
+            $diagnostics->firstWhere('code', 'activity_repeated_failure')['guidance'],
+        );
     }
 
     public function testShowExposesDeclaredEntryMethodContractForCanonicalAndCompatibilityRuns(): void

@@ -18,6 +18,45 @@ class RunDiagnostics
     private const HISTORY_BUDGET_WARNING_RATIO = 0.8;
 
     /**
+     * Operator-facing guidance strings aligned with the v2 execution-semantics
+     * contract frozen in workflow@docs/architecture/execution-guarantees.md.
+     * Each string names the semantics (at-least-once, deterministic replay,
+     * exactly-once at the durable state layer) and, where applicable, the
+     * framework idempotency surface an operator should reason about when the
+     * diagnostic fires. The matching codes are pinned by
+     * tests/Unit/Support/V2DiagnosticsExecutionContractAlignmentTest.php;
+     * changes here must update that test in the same change.
+     */
+    public const GUIDANCE = [
+        'activity_repeated_failure' =>
+            'Activity attempts are at-least-once. Every retry shares the same '
+            . 'activity_execution_id, which is the recommended idempotency key '
+            . 'for external calls and conditional database writes.',
+        'activity_heartbeat_timeout_not_effective' =>
+            'Heartbeats renew the activity attempt lease. When heartbeat_timeout '
+            . 'is greater than or equal to start_to_close_timeout the start-to-close '
+            . 'timeout closes the attempt first and the heartbeat timeout never '
+            . 'fires — redelivery will not kick in on a stalled worker.',
+        'activity_unbounded_retry_policy' =>
+            'Activity attempts are at-least-once. Without a max_attempts ceiling, '
+            . 'only a non-retryable error or a timeout ends the retry loop, so '
+            . 'the activity_execution_id can keep producing new attempts.',
+        'workflow_task_repeated_failure' =>
+            'Workflow tasks are replayed deterministically, not retried against '
+            . 'application logic. Repeated workflow-task failures indicate host '
+            . 'or deps issues, not duplicate application execution; replay does '
+            . 'not re-invoke activity side effects.',
+        'history_budget_near_limit' =>
+            'Durable history rows are the exactly-once record for this run. '
+            . 'Continue-as-new starts a new workflow_run_id under the same '
+            . 'workflow_instance_id rather than truncating history in place.',
+        'condition_wait_stuck' =>
+            'Condition waits block the run on a durable resume source. Until a '
+            . 'signal, update, timer, or cancel fires on the named target, the '
+            . 'wait stays open — there is no automatic abandonment.',
+    ];
+
+    /**
      * @param array<string, mixed> $detail
      * @return list<array<string, mixed>>
      */
@@ -624,6 +663,7 @@ class RunDiagnostics
             'docs_url' => $docsUrl,
             'evidence' => $evidence,
             'evidence_summary' => $evidenceSummary,
+            'guidance' => self::GUIDANCE[$code] ?? null,
         ];
     }
 

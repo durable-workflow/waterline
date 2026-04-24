@@ -556,6 +556,12 @@
                         <strong>{{ diagnostic.title }}</strong>
                     </div>
                     <div class="mt-1">{{ diagnostic.summary }}</div>
+                    <div
+                        class="small text-muted mt-1 font-italic"
+                        v-if="hasDetailValue(diagnostic.guidance)"
+                    >
+                        {{ diagnostic.guidance }}
+                    </div>
                     <div class="small mt-1" v-if="diagnosticEvidenceRows(diagnostic).length">
                         {{ diagnosticEvidenceRows(diagnostic).join(' | ') }}
                     </div>
