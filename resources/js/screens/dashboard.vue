@@ -293,10 +293,26 @@
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Runnable tasks</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'runnable_tasks') }}</div>
+                                <div class="wl-operator-metric__meta">
+                                    {{ operatorMetricLabel('backlog', 'delayed_tasks') }} delayed,
+                                    {{ operatorMetricLabel('backlog', 'leased_tasks') }} leased
+                                </div>
+                            </div>
+                            <div class="wl-operator-metric">
+                                <div class="wl-operator-metric__label">Unhealthy tasks</div>
+                                <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'unhealthy_tasks') }}</div>
+                                <div class="wl-operator-metric__meta">
+                                    {{ operatorMetricLabel('tasks', 'dispatch_overdue') }} dispatch overdue,
+                                    {{ operatorMetricLabel('tasks', 'lease_expired') }} lease expired
+                                </div>
                             </div>
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Repair needed runs</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'repair_needed_runs') }}</div>
+                            </div>
+                            <div class="wl-operator-metric">
+                                <div class="wl-operator-metric__label">Claim failed runs</div>
+                                <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'claim_failed_runs') }}</div>
                             </div>
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Compatibility blocked</div>
@@ -372,14 +388,27 @@
                             <div class="wl-panel-subtitle">Repair policy</div>
                             <p>
                                 Redispatch after {{ operatorPolicyMetricLabel('redispatch_after_seconds') }} seconds,
-                                throttle worker sweeps for {{ operatorPolicyMetricLabel('throttle_seconds') }} seconds,
-                                scan {{ operatorPolicyMetricLabel('scan_rows_per_pass') }} rows per pass.
+                                throttle worker sweeps for {{ operatorPolicyMetricLabel('loop_throttle_seconds') }} seconds,
+                                scan {{ operatorPolicyMetricLabel('scan_limit') }} rows per pass,
+                                backoff capped at {{ operatorPolicyMetricLabel('failure_backoff_max_seconds') }} seconds.
                             </p>
                             <div v-if="operatorRepairScopes().length" class="wl-inline-list">
                                 <span v-for="scope in operatorRepairScopes()" :key="operatorRepairScopeLabel(scope)">
                                     {{ operatorRepairScopeLabel(scope) }}
                                 </span>
                             </div>
+                        </section>
+
+                        <section class="wl-operator-section">
+                            <div class="wl-panel-subtitle">Stuck-run detectors</div>
+                            <p>
+                                {{ operatorMetricLabel('repair', 'missing_task_candidates') }} runs missing a next task
+                                ({{ operatorMetricLabel('repair', 'selected_missing_task_candidates') }} selected this pass),
+                                oldest {{ operatorDurationMetricLabel('repair', 'max_missing_run_age_ms') }} behind.
+                            </p>
+                            <p v-if="operatorRepairOldestStartedAt()">
+                                Oldest missing-task run started at {{ operatorRepairOldestStartedAt() }}.
+                            </p>
                         </section>
 
                         <section class="wl-operator-section">
@@ -999,6 +1028,12 @@ export default {
                 scope.queue || 'default',
                 scope.compatibility || 'any',
             ].join(' / ');
+        },
+
+        operatorRepairOldestStartedAt() {
+            const repair = (this.operatorMetrics && this.operatorMetrics.repair) || {};
+
+            return repair.oldest_missing_run_started_at || null;
         },
 
         engineSourceLabel() {

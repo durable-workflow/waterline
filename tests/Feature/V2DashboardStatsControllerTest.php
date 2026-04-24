@@ -450,10 +450,16 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.activities.running', 0)
             ->assertJsonPath('operator_metrics.activities.failed_attempts', 1)
             ->assertJsonPath('operator_metrics.activities.max_attempt_count', 2)
+            ->assertJsonPath('operator_metrics.tasks.dispatch_overdue', 0)
+            ->assertJsonPath('operator_metrics.tasks.lease_expired', 0)
+            ->assertJsonPath('operator_metrics.tasks.unhealthy', 1)
             ->assertJsonPath('operator_metrics.backlog.runnable_tasks', 2)
             ->assertJsonPath('operator_metrics.backlog.retrying_activities', 1)
             ->assertJsonPath('operator_metrics.backlog.repair_needed_runs', 1)
             ->assertJsonPath('operator_metrics.backlog.claim_failed_runs', 1)
+            ->assertJsonPath('operator_metrics.backlog.delayed_tasks', 0)
+            ->assertJsonPath('operator_metrics.backlog.leased_tasks', 0)
+            ->assertJsonPath('operator_metrics.backlog.unhealthy_tasks', 1)
             ->assertJsonPath('operator_metrics.repair.existing_task_candidates', 0)
             ->assertJsonPath('operator_metrics.repair.missing_task_candidates', 1)
             ->assertJsonPath('operator_metrics.repair.total_candidates', 1)
@@ -470,6 +476,11 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.repair.scopes.0.selected_existing_task_candidates', 0)
             ->assertJsonPath('operator_metrics.repair.scopes.0.selected_total_candidates', 1)
             ->assertJsonPath('operator_metrics.repair.scopes.0.scan_limited_by_global_policy', false)
+            ->assertJsonStructure([
+                'operator_metrics' => [
+                    'repair' => ['max_missing_run_age_ms', 'oldest_missing_run_started_at'],
+                ],
+            ])
             ->assertJsonPath('operator_metrics.starts.pending_runs', 1)
             ->assertJsonPath('operator_metrics.starts.pending_commands', 1)
             ->assertJsonPath('operator_metrics.starts.ready_tasks', 1)
