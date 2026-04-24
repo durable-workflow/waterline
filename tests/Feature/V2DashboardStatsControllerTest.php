@@ -854,4 +854,35 @@ class V2DashboardStatsControllerTest extends TestCase
             'operator_metrics.runs.max_wait_age_ms must be null or integer milliseconds',
         );
     }
+
+    public function testIndexExposesMatchingRole(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $matchingRole = $response->json('operator_metrics.matching_role');
+
+        if (! is_array($matchingRole)
+            || ! array_key_exists('queue_wake_enabled', $matchingRole)
+            || ! array_key_exists('shape', $matchingRole)
+            || ! array_key_exists('task_dispatch_mode', $matchingRole)) {
+            $this->markTestSkipped(
+                'Vendored workflow package predates the matching-role rollout-safety contract '
+                . '(operator_metrics.matching_role.{queue_wake_enabled,shape,task_dispatch_mode}).',
+            );
+        }
+
+        $this->assertIsBool($matchingRole['queue_wake_enabled']);
+        $this->assertContains(
+            $matchingRole['shape'],
+            ['in_worker', 'dedicated'],
+            'operator_metrics.matching_role.shape must be in_worker or dedicated',
+        );
+        $this->assertContains(
+            $matchingRole['task_dispatch_mode'],
+            ['queue', 'poll'],
+            'operator_metrics.matching_role.task_dispatch_mode must be queue or poll',
+        );
+    }
 }

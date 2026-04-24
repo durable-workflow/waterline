@@ -468,6 +468,23 @@
                         </section>
 
                         <section class="wl-operator-section">
+                            <div class="wl-panel-subtitle">Matching-role (this node)</div>
+                            <p v-if="!operatorMatchingRoleAvailable()" class="text-muted">
+                                No matching-role metrics exposed by the current workflow engine.
+                            </p>
+                            <template v-else>
+                                <p>
+                                    Shape <code>{{ operatorMatchingRoleShape() }}</code>,
+                                    queue-wake {{ operatorMatchingRoleQueueWakeEnabled() ? 'enabled' : 'disabled' }},
+                                    task dispatch <code>{{ operatorMatchingRoleTaskDispatchMode() }}</code>.
+                                </p>
+                                <p class="text-muted">
+                                    Single-process scope &mdash; read one snapshot per node to see the full deployment.
+                                </p>
+                            </template>
+                        </section>
+
+                        <section class="wl-operator-section">
                             <div class="wl-panel-subtitle">Worker compatibility fleet</div>
                             <p v-if="!operatorWorkerFleet().length" class="text-muted">
                                 No active worker compatibility heartbeats in this namespace.
@@ -1225,6 +1242,38 @@ export default {
             const schedules = this.operatorMetrics && this.operatorMetrics.schedules;
 
             return schedules !== undefined && schedules !== null;
+        },
+
+        operatorMatchingRoleAvailable() {
+            const matchingRole = this.operatorMetrics && this.operatorMetrics.matching_role;
+
+            if (!matchingRole || typeof matchingRole !== 'object') {
+                return false;
+            }
+
+            return typeof matchingRole.shape === 'string' && matchingRole.shape !== '';
+        },
+
+        operatorMatchingRoleShape() {
+            const matchingRole = (this.operatorMetrics && this.operatorMetrics.matching_role) || {};
+
+            return typeof matchingRole.shape === 'string' && matchingRole.shape !== ''
+                ? matchingRole.shape
+                : 'unknown';
+        },
+
+        operatorMatchingRoleQueueWakeEnabled() {
+            const matchingRole = (this.operatorMetrics && this.operatorMetrics.matching_role) || {};
+
+            return matchingRole.queue_wake_enabled === true;
+        },
+
+        operatorMatchingRoleTaskDispatchMode() {
+            const matchingRole = (this.operatorMetrics && this.operatorMetrics.matching_role) || {};
+
+            return typeof matchingRole.task_dispatch_mode === 'string' && matchingRole.task_dispatch_mode !== ''
+                ? matchingRole.task_dispatch_mode
+                : 'unknown';
         },
 
         operatorScheduleOldestOverdueAt() {
