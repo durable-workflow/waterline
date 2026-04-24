@@ -100,6 +100,8 @@
                                         <th v-if="columnEnabled('task_queue')">Task Queue</th>
                                         <th v-if="columnEnabled('heartbeat')">Heartbeat</th>
                                         <th v-if="columnEnabled('status')">Status</th>
+                                        <th v-if="columnEnabled('compatibility')">Compatibility</th>
+                                        <th v-if="columnEnabled('source')">Source</th>
                                         <th v-if="columnEnabled('workflows')">Workflow Support</th>
                                         <th v-if="columnEnabled('activities')">Activity Support</th>
                                         <th v-if="columnEnabled('concurrency')">Concurrency</th>
@@ -140,6 +142,30 @@
                                             <span class="worker-health__pill" :class="workerStatusToneClass(worker)">
                                                 {{ worker.status || 'unknown' }}
                                             </span>
+                                        </td>
+
+                                        <td v-if="columnEnabled('compatibility')">
+                                            <div class="worker-health__cell-main">
+                                                <span
+                                                    v-if="workerCompatibilityMarkers(worker).length > 0"
+                                                    class="worker-health__pill"
+                                                    :class="compatibilityToneClass(worker)"
+                                                    :title="compatibilityTitle(worker)"
+                                                >
+                                                    {{ workerCompatibilityMarkers(worker).slice(0, 2).join(', ') }}<span v-if="workerCompatibilityMarkers(worker).length > 2">…</span>
+                                                </span>
+                                                <span v-else class="text-muted">—</span>
+                                                <div class="worker-health__cell-meta" v-if="workerCompatibilityMarkers(worker).length > 0">
+                                                    {{ worker.supports_required === true ? 'Supports required marker' : worker.supports_required === false ? 'Does not support required marker' : 'Required marker not set' }}
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        <td v-if="columnEnabled('source')">
+                                            <span class="worker-health__pill worker-health__pill--muted" v-if="worker.heartbeat_source">
+                                                {{ worker.heartbeat_source }}
+                                            </span>
+                                            <span v-else class="text-muted">—</span>
                                         </td>
 
                                         <td v-if="columnEnabled('workflows')">
@@ -288,7 +314,11 @@ export default {
         },
 
         totalLeases() {
-            return this.workers.reduce((sum, worker) => sum + (worker.current_leases || 0), 0);
+            return this.workers.reduce((sum, worker) => {
+                const leases = Number.isFinite(worker.current_leases) ? worker.current_leases : 0;
+
+                return sum + leases;
+            }, 0);
         },
 
         staleWorkerCount() {
@@ -370,7 +400,7 @@ export default {
             try {
                 const response = await axios.get(this.resolvedApiEndpoint());
                 this.healthData = response.data;
-                this.workers = response.data.operator_metrics?.workers?.registrations || [];
+                this.workers = this.workersFromSnapshot(response.data);
             } catch (e) {
                 this.error = e.response?.data?.message || e.message || 'Failed to load worker health';
                 console.error('Worker health error:', e);
@@ -452,10 +482,62 @@ export default {
                 {key: 'task_queue', label: 'Task Queue'},
                 {key: 'heartbeat', label: 'Heartbeat'},
                 {key: 'status', label: 'Status'},
+                {key: 'compatibility', label: 'Compatibility'},
+                {key: 'source', label: 'Heartbeat Source'},
                 {key: 'workflows', label: 'Workflows'},
                 {key: 'activities', label: 'Activities'},
                 {key: 'concurrency', label: 'Concurrency'},
             ];
+        },
+
+        workersFromSnapshot(payload) {
+            const workers = payload?.operator_metrics?.workers;
+
+            if (!workers || typeof workers !== 'object') {
+                return [];
+            }
+
+            const registrations = Array.isArray(workers.registrations)
+                ? workers.registrations
+                : null;
+
+            if (registrations && registrations.length > 0) {
+                return registrations;
+            }
+
+            const fleet = Array.isArray(workers.fleet) ? workers.fleet : [];
+
+            return fleet
+                .filter((entry) => entry && typeof entry === 'object')
+                .map((entry) => this.fleetEntryToWorker(entry));
+        },
+
+        fleetEntryToWorker(entry) {
+            const supported = Array.isArray(entry.supported) ? entry.supported : [];
+            const supportsRequired = entry.supports_required === true;
+            const connection = typeof entry.connection === 'string' && entry.connection !== ''
+                ? entry.connection
+                : null;
+            const queue = typeof entry.queue === 'string' && entry.queue !== ''
+                ? entry.queue
+                : null;
+            const taskQueue = [connection, queue].filter((value) => value !== null).join(':') || null;
+
+            return {
+                worker_id: typeof entry.worker_id === 'string' ? entry.worker_id : '',
+                runtime: null,
+                task_queue: taskQueue,
+                last_heartbeat_at: typeof entry.recorded_at === 'string' ? entry.recorded_at : null,
+                status: supportsRequired ? 'active' : 'incompatible',
+                supported_workflow_types: null,
+                supported_activity_types: null,
+                max_concurrent_workflow_tasks: null,
+                max_concurrent_activity_tasks: null,
+                current_leases: null,
+                supported_compatibility: supported,
+                supports_required: supportsRequired,
+                heartbeat_source: typeof entry.source === 'string' ? entry.source : null,
+            };
         },
 
         defaultWorkersListColumns() {
@@ -632,7 +714,41 @@ export default {
         },
 
         workerStatusToneClass(worker) {
+            if (worker.status === 'incompatible') {
+                return 'is-warning';
+            }
+
             return this.statusToneClass(worker.status || 'unknown');
+        },
+
+        workerCompatibilityMarkers(worker) {
+            if (Array.isArray(worker.supported_compatibility)) {
+                return worker.supported_compatibility;
+            }
+
+            return [];
+        },
+
+        compatibilityToneClass(worker) {
+            if (worker.supports_required === true) {
+                return 'is-ok';
+            }
+
+            if (worker.supports_required === false) {
+                return 'is-warning';
+            }
+
+            return 'is-muted';
+        },
+
+        compatibilityTitle(worker) {
+            const markers = this.workerCompatibilityMarkers(worker);
+
+            if (markers.length === 0) {
+                return 'No compatibility markers advertised';
+            }
+
+            return 'Advertised: ' + markers.join(', ');
         },
 
         heartbeatClass(worker) {

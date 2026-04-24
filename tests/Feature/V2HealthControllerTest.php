@@ -9,6 +9,7 @@ use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Support\WorkerCompatibilityFleet;
 
 class V2HealthControllerTest extends TestCase
 {
@@ -104,6 +105,40 @@ class V2HealthControllerTest extends TestCase
                 ),
             );
         }
+    }
+
+    public function testHealthEndpointExposesWorkerCompatibilityDataForWorkersPanel(): void
+    {
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('cache.default', 'file');
+        config()->set('workflows.v2.compatibility.namespace', 'waterline-workers-panel');
+        config()->set('workflows.v2.compatibility.current', 'build-alpha');
+
+        WorkerCompatibilityFleet::clear();
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'waterline-workers-panel',
+            supported: ['build-alpha'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'waterline-worker-alpha',
+        );
+
+        $response = $this->get('/waterline/api/v2/health')->assertStatus(200);
+
+        $payload = $response->json();
+        $this->assertIsArray($payload);
+
+        $workers = $payload['operator_metrics']['workers'] ?? null;
+        $this->assertIsArray($workers, 'Waterline health endpoint must expose operator_metrics.workers for the workers panel.');
+        $this->assertArrayHasKey('active_workers', $workers);
+        $this->assertArrayHasKey('active_workers_supporting_required', $workers);
+
+        $this->assertGreaterThanOrEqual(
+            1,
+            (int) ($workers['active_workers'] ?? 0),
+            'Seeded compatibility heartbeat must surface as at least one active worker so the workers panel has something to render.'
+        );
     }
 
     public function testHealthEndpointReturnsUnavailableForBlockingBackendIssues(): void
