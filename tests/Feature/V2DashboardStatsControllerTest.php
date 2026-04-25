@@ -1035,4 +1035,34 @@ class V2DashboardStatsControllerTest extends TestCase
             'operator_metrics.activities.max_timeout_overdue_age_ms must be null or integer milliseconds',
         );
     }
+
+    public function testIndexExposesRunRepairNeededAge(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $runs = $response->json('operator_metrics.runs');
+
+        $this->assertIsArray($runs);
+
+        if (! array_key_exists('oldest_repair_needed_at', $runs)
+            || ! array_key_exists('max_repair_needed_age_ms', $runs)) {
+            $this->markTestSkipped(
+                'Vendored workflow package predates the run repair-needed age rollout-safety '
+                . 'contract (operator_metrics.runs.{oldest_repair_needed_at,max_repair_needed_age_ms}).',
+            );
+        }
+
+        $this->assertTrue(
+            $runs['oldest_repair_needed_at'] === null
+                || is_string($runs['oldest_repair_needed_at']),
+            'operator_metrics.runs.oldest_repair_needed_at must be null or ISO-8601 string',
+        );
+        $this->assertTrue(
+            $runs['max_repair_needed_age_ms'] === null
+                || is_int($runs['max_repair_needed_age_ms']),
+            'operator_metrics.runs.max_repair_needed_age_ms must be null or integer milliseconds',
+        );
+    }
 }

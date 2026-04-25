@@ -342,6 +342,12 @@
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Repair needed runs</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'repair_needed_runs') }}</div>
+                                <div v-if="operatorRunRepairNeededAgeAvailable()" class="wl-operator-metric__meta">
+                                    oldest {{ operatorDurationMetricLabel('runs', 'max_repair_needed_age_ms') }} stuck
+                                    <template v-if="operatorRunRepairNeededOldestAt()">
+                                        (since {{ operatorRunRepairNeededOldestAt() }})
+                                    </template>
+                                </div>
                             </div>
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Claim failed runs</div>
@@ -1308,6 +1314,24 @@ export default {
             const runs = (this.operatorMetrics && this.operatorMetrics.runs) || {};
 
             return runs.oldest_wait_started_at || null;
+        },
+
+        operatorRunRepairNeededAgeAvailable() {
+            const runs = (this.operatorMetrics && this.operatorMetrics.runs) || {};
+
+            if (runs.max_repair_needed_age_ms === undefined
+                || runs.max_repair_needed_age_ms === null) {
+                return false;
+            }
+
+            return Number(runs.repair_needed || 0) > 0
+                || Number(runs.max_repair_needed_age_ms || 0) > 0;
+        },
+
+        operatorRunRepairNeededOldestAt() {
+            const runs = (this.operatorMetrics && this.operatorMetrics.runs) || {};
+
+            return runs.oldest_repair_needed_at || null;
         },
 
         operatorRetryingActivityAgeAvailable() {
