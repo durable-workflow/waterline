@@ -912,14 +912,9 @@ class V2DashboardStatsControllerTest extends TestCase
         $projections = $response->json('operator_metrics.projections');
         $runSummaries = is_array($projections['run_summaries'] ?? null) ? $projections['run_summaries'] : null;
 
-        if (! is_array($runSummaries)
-            || ! array_key_exists('max_missing_run_age_ms', $runSummaries)
-            || ! array_key_exists('oldest_missing_run_started_at', $runSummaries)) {
-            $this->markTestSkipped(
-                'Vendored workflow package predates the run-summary projection-lag rollout-safety '
-                . 'contract (operator_metrics.projections.run_summaries.{oldest_missing_run_started_at,max_missing_run_age_ms}).',
-            );
-        }
+        $this->assertIsArray($runSummaries);
+        $this->assertArrayHasKey('oldest_missing_run_started_at', $runSummaries);
+        $this->assertArrayHasKey('max_missing_run_age_ms', $runSummaries);
 
         $this->assertTrue(
             $runSummaries['oldest_missing_run_started_at'] === null
