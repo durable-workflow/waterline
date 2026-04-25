@@ -839,14 +839,9 @@ class V2DashboardStatsControllerTest extends TestCase
 
         $activities = $response->json('operator_metrics.activities');
 
-        if (! is_array($activities)
-            || ! array_key_exists('max_retrying_age_ms', $activities)
-            || ! array_key_exists('oldest_retrying_started_at', $activities)) {
-            $this->markTestSkipped(
-                'Vendored workflow package predates the retrying-activity age rollout-safety '
-                . 'contract (operator_metrics.activities.{oldest_retrying_started_at,max_retrying_age_ms}).',
-            );
-        }
+        $this->assertIsArray($activities);
+        $this->assertArrayHasKey('oldest_retrying_started_at', $activities);
+        $this->assertArrayHasKey('max_retrying_age_ms', $activities);
 
         $this->assertTrue(
             $activities['oldest_retrying_started_at'] === null
@@ -868,14 +863,9 @@ class V2DashboardStatsControllerTest extends TestCase
 
         $tasks = $response->json('operator_metrics.tasks');
 
-        if (! is_array($tasks)
-            || ! array_key_exists('max_claim_failed_age_ms', $tasks)
-            || ! array_key_exists('oldest_claim_failed_at', $tasks)) {
-            $this->markTestSkipped(
-                'Vendored workflow package predates the claim-failed age rollout-safety '
-                . 'contract (operator_metrics.tasks.{oldest_claim_failed_at,max_claim_failed_age_ms}).',
-            );
-        }
+        $this->assertIsArray($tasks);
+        $this->assertArrayHasKey('oldest_claim_failed_at', $tasks);
+        $this->assertArrayHasKey('max_claim_failed_age_ms', $tasks);
 
         $this->assertTrue(
             $tasks['oldest_claim_failed_at'] === null
