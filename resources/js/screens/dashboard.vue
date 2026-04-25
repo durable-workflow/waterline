@@ -331,6 +331,12 @@
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Claim failed runs</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'claim_failed_runs') }}</div>
+                                <div v-if="operatorClaimFailedAgeAvailable()" class="wl-operator-metric__meta">
+                                    oldest claim {{ operatorDurationMetricLabel('tasks', 'max_claim_failed_age_ms') }} failed
+                                    <template v-if="operatorClaimFailedOldestAt()">
+                                        (since {{ operatorClaimFailedOldestAt() }})
+                                    </template>
+                                </div>
                             </div>
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Compatibility blocked</div>
@@ -382,6 +388,12 @@
                                 {{ operatorMetricLabel('activities', 'running') }} running,
                                 {{ operatorMetricLabel('activities', 'failed_attempts') }} failed attempts,
                                 max {{ operatorMetricLabel('activities', 'max_attempt_count') }} attempts.
+                            </p>
+                            <p v-if="operatorRetryingActivityAgeAvailable()">
+                                Oldest retrying activity {{ operatorDurationMetricLabel('activities', 'max_retrying_age_ms') }} behind
+                                <template v-if="operatorRetryingActivityOldestStartedAt()">
+                                    (since {{ operatorRetryingActivityOldestStartedAt() }})
+                                </template>.
                             </p>
                         </section>
 
@@ -1236,6 +1248,42 @@ export default {
             const runs = (this.operatorMetrics && this.operatorMetrics.runs) || {};
 
             return runs.oldest_wait_started_at || null;
+        },
+
+        operatorRetryingActivityAgeAvailable() {
+            const activities = (this.operatorMetrics && this.operatorMetrics.activities) || {};
+
+            if (activities.max_retrying_age_ms === undefined
+                || activities.max_retrying_age_ms === null) {
+                return false;
+            }
+
+            return Number(activities.retrying || 0) > 0
+                || Number(activities.max_retrying_age_ms || 0) > 0;
+        },
+
+        operatorRetryingActivityOldestStartedAt() {
+            const activities = (this.operatorMetrics && this.operatorMetrics.activities) || {};
+
+            return activities.oldest_retrying_started_at || null;
+        },
+
+        operatorClaimFailedAgeAvailable() {
+            const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
+
+            if (tasks.max_claim_failed_age_ms === undefined
+                || tasks.max_claim_failed_age_ms === null) {
+                return false;
+            }
+
+            return Number(tasks.claim_failed || 0) > 0
+                || Number(tasks.max_claim_failed_age_ms || 0) > 0;
+        },
+
+        operatorClaimFailedOldestAt() {
+            const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
+
+            return tasks.oldest_claim_failed_at || null;
         },
 
         operatorSchedulesAvailable() {

@@ -831,6 +831,64 @@ class V2DashboardStatsControllerTest extends TestCase
         );
     }
 
+    public function testIndexExposesRetryingActivityAge(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $activities = $response->json('operator_metrics.activities');
+
+        if (! is_array($activities)
+            || ! array_key_exists('max_retrying_age_ms', $activities)
+            || ! array_key_exists('oldest_retrying_started_at', $activities)) {
+            $this->markTestSkipped(
+                'Vendored workflow package predates the retrying-activity age rollout-safety '
+                . 'contract (operator_metrics.activities.{oldest_retrying_started_at,max_retrying_age_ms}).',
+            );
+        }
+
+        $this->assertTrue(
+            $activities['oldest_retrying_started_at'] === null
+                || is_string($activities['oldest_retrying_started_at']),
+            'operator_metrics.activities.oldest_retrying_started_at must be null or ISO-8601 string',
+        );
+        $this->assertTrue(
+            $activities['max_retrying_age_ms'] === null
+                || is_int($activities['max_retrying_age_ms']),
+            'operator_metrics.activities.max_retrying_age_ms must be null or integer milliseconds',
+        );
+    }
+
+    public function testIndexExposesClaimFailedAge(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $tasks = $response->json('operator_metrics.tasks');
+
+        if (! is_array($tasks)
+            || ! array_key_exists('max_claim_failed_age_ms', $tasks)
+            || ! array_key_exists('oldest_claim_failed_at', $tasks)) {
+            $this->markTestSkipped(
+                'Vendored workflow package predates the claim-failed age rollout-safety '
+                . 'contract (operator_metrics.tasks.{oldest_claim_failed_at,max_claim_failed_age_ms}).',
+            );
+        }
+
+        $this->assertTrue(
+            $tasks['oldest_claim_failed_at'] === null
+                || is_string($tasks['oldest_claim_failed_at']),
+            'operator_metrics.tasks.oldest_claim_failed_at must be null or ISO-8601 string',
+        );
+        $this->assertTrue(
+            $tasks['max_claim_failed_age_ms'] === null
+                || is_int($tasks['max_claim_failed_age_ms']),
+            'operator_metrics.tasks.max_claim_failed_age_ms must be null or integer milliseconds',
+        );
+    }
+
     public function testIndexExposesMatchingRole(): void
     {
         config()->set('waterline.engine_source', 'v2');
