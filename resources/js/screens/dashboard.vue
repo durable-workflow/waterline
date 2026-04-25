@@ -155,6 +155,9 @@
 
                         <div class="wl-operator-backend">
                             <div class="wl-panel-subtitle">Backend capability</div>
+                            <div v-if="operatorBackendSeverity()" class="wl-operator-backend__summary">
+                                Severity {{ operatorBackendSeverity() }}
+                            </div>
                             <div class="wl-operator-backend__summary">
                                 Database {{ operatorBackendComponentLabel('database') }}
                             </div>
@@ -1128,6 +1131,12 @@ export default {
             const issues = this.operatorBackend().issues;
 
             return Array.isArray(issues) ? issues : [];
+        },
+
+        operatorBackendSeverity() {
+            const severity = this.operatorBackend().severity;
+
+            return typeof severity === 'string' && severity !== '' ? severity : null;
         },
 
         structuralLimitsSnapshot() {

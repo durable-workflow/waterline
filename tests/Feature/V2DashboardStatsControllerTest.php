@@ -958,4 +958,29 @@ class V2DashboardStatsControllerTest extends TestCase
             'operator_metrics.matching_role.task_dispatch_mode must be queue or poll',
         );
     }
+
+    public function testIndexExposesBackendSeverityRollup(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $backend = $response->json('operator_metrics.backend');
+
+        $this->assertIsArray($backend);
+
+        if (! array_key_exists('severity', $backend)) {
+            $this->markTestSkipped(
+                'Vendored workflow package predates the backend-admission severity rollup '
+                . '(operator_metrics.backend.severity).',
+            );
+        }
+
+        $this->assertIsString($backend['severity']);
+        $this->assertContains(
+            $backend['severity'],
+            ['ok', 'info', 'warning', 'error'],
+            'operator_metrics.backend.severity must be one of ok, info, warning, error',
+        );
+    }
 }
