@@ -1034,13 +1034,8 @@ class V2DashboardStatsControllerTest extends TestCase
 
         $this->assertIsArray($runs);
 
-        if (! array_key_exists('oldest_repair_needed_at', $runs)
-            || ! array_key_exists('max_repair_needed_age_ms', $runs)) {
-            $this->markTestSkipped(
-                'Vendored workflow package predates the run repair-needed age rollout-safety '
-                . 'contract (operator_metrics.runs.{oldest_repair_needed_at,max_repair_needed_age_ms}).',
-            );
-        }
+        $this->assertArrayHasKey('oldest_repair_needed_at', $runs);
+        $this->assertArrayHasKey('max_repair_needed_age_ms', $runs);
 
         $this->assertTrue(
             $runs['oldest_repair_needed_at'] === null
