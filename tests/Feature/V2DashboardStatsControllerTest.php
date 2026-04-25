@@ -926,15 +926,10 @@ class V2DashboardStatsControllerTest extends TestCase
 
         $matchingRole = $response->json('operator_metrics.matching_role');
 
-        if (! is_array($matchingRole)
-            || ! array_key_exists('queue_wake_enabled', $matchingRole)
-            || ! array_key_exists('shape', $matchingRole)
-            || ! array_key_exists('task_dispatch_mode', $matchingRole)) {
-            $this->markTestSkipped(
-                'Vendored workflow package predates the matching-role rollout-safety contract '
-                . '(operator_metrics.matching_role.{queue_wake_enabled,shape,task_dispatch_mode}).',
-            );
-        }
+        $this->assertIsArray($matchingRole);
+        $this->assertArrayHasKey('queue_wake_enabled', $matchingRole);
+        $this->assertArrayHasKey('shape', $matchingRole);
+        $this->assertArrayHasKey('task_dispatch_mode', $matchingRole);
 
         $this->assertIsBool($matchingRole['queue_wake_enabled']);
         $this->assertContains(
