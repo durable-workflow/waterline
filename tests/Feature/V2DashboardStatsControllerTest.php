@@ -903,6 +903,36 @@ class V2DashboardStatsControllerTest extends TestCase
         );
     }
 
+    public function testIndexExposesRunSummaryMissingAge(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $projections = $response->json('operator_metrics.projections');
+        $runSummaries = is_array($projections['run_summaries'] ?? null) ? $projections['run_summaries'] : null;
+
+        if (! is_array($runSummaries)
+            || ! array_key_exists('max_missing_run_age_ms', $runSummaries)
+            || ! array_key_exists('oldest_missing_run_started_at', $runSummaries)) {
+            $this->markTestSkipped(
+                'Vendored workflow package predates the run-summary projection-lag rollout-safety '
+                . 'contract (operator_metrics.projections.run_summaries.{oldest_missing_run_started_at,max_missing_run_age_ms}).',
+            );
+        }
+
+        $this->assertTrue(
+            $runSummaries['oldest_missing_run_started_at'] === null
+                || is_string($runSummaries['oldest_missing_run_started_at']),
+            'operator_metrics.projections.run_summaries.oldest_missing_run_started_at must be null or ISO-8601 string',
+        );
+        $this->assertTrue(
+            $runSummaries['max_missing_run_age_ms'] === null
+                || is_int($runSummaries['max_missing_run_age_ms']),
+            'operator_metrics.projections.run_summaries.max_missing_run_age_ms must be null or integer milliseconds',
+        );
+    }
+
     public function testIndexExposesMatchingRole(): void
     {
         config()->set('waterline.engine_source', 'v2');

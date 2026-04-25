@@ -412,6 +412,12 @@
                                 {{ operatorProjectionMetricLabel('orphaned') }} orphaned,
                                 {{ operatorProjectionMetricLabel('stale') }} stale.
                             </p>
+                            <p v-if="operatorRunSummaryMissingAgeAvailable()">
+                                Oldest run-summary missing run {{ operatorProjectionDurationMetricLabel('run_summaries', 'max_missing_run_age_ms') }} behind
+                                <template v-if="operatorRunSummaryMissingOldestStartedAt()">
+                                    (since {{ operatorRunSummaryMissingOldestStartedAt() }})
+                                </template>.
+                            </p>
                             <p>
                                 Wait rows: {{ operatorProjectionMetricLabel('run_waits', 'rows') }} rows across
                                 {{ operatorProjectionMetricLabel('run_waits', 'projected_runs') }} runs,
@@ -1063,6 +1069,32 @@ export default {
 
         operatorProjectionMetricLabel(group, key = null) {
             return this.operatorProjectionMetric(group, key).toLocaleString();
+        },
+
+        operatorProjectionDurationMetricLabel(group, key) {
+            const value = this.operatorProjectionMetric(group, key);
+
+            return value > 0 ? moment.duration(value).humanize() : '-';
+        },
+
+        operatorRunSummaryMissingAgeAvailable() {
+            const projections = (this.operatorMetrics && this.operatorMetrics.projections) || {};
+            const runSummaries = projections.run_summaries || {};
+
+            if (runSummaries.max_missing_run_age_ms === undefined
+                || runSummaries.max_missing_run_age_ms === null) {
+                return false;
+            }
+
+            return Number(runSummaries.missing || 0) > 0
+                || Number(runSummaries.max_missing_run_age_ms || 0) > 0;
+        },
+
+        operatorRunSummaryMissingOldestStartedAt() {
+            const projections = (this.operatorMetrics && this.operatorMetrics.projections) || {};
+            const runSummaries = projections.run_summaries || {};
+
+            return runSummaries.oldest_missing_run_started_at || null;
         },
 
         operatorProjectionNeedsRebuild() {
