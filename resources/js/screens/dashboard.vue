@@ -314,6 +314,12 @@
                                     {{ operatorMetricLabel('tasks', 'dispatch_overdue') }} dispatch overdue,
                                     {{ operatorMetricLabel('tasks', 'lease_expired') }} lease expired
                                 </div>
+                                <div v-if="operatorUnhealthyAgeAvailable()" class="wl-operator-metric__meta">
+                                    worst {{ operatorDurationMetricLabel('tasks', 'max_unhealthy_age_ms') }} unhealthy
+                                    <template v-if="operatorUnhealthyOldestAt()">
+                                        (since {{ operatorUnhealthyOldestAt() }})
+                                    </template>
+                                </div>
                                 <div v-if="operatorStuckLeaseAgeAvailable()" class="wl-operator-metric__meta">
                                     oldest lease {{ operatorDurationMetricLabel('tasks', 'max_lease_expired_age_ms') }} expired
                                     <template v-if="operatorStuckLeaseOldestExpiredAt()">
@@ -1349,6 +1355,24 @@ export default {
             const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
 
             return tasks.oldest_dispatch_failed_at || null;
+        },
+
+        operatorUnhealthyAgeAvailable() {
+            const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
+
+            if (tasks.max_unhealthy_age_ms === undefined
+                || tasks.max_unhealthy_age_ms === null) {
+                return false;
+            }
+
+            return Number(tasks.unhealthy || 0) > 0
+                || Number(tasks.max_unhealthy_age_ms || 0) > 0;
+        },
+
+        operatorUnhealthyOldestAt() {
+            const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
+
+            return tasks.oldest_unhealthy_at || null;
         },
 
         operatorSchedulesAvailable() {

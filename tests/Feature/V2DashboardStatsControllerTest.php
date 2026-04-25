@@ -959,6 +959,36 @@ class V2DashboardStatsControllerTest extends TestCase
         );
     }
 
+    public function testIndexExposesUnhealthyAgeRollup(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $tasks = $response->json('operator_metrics.tasks');
+
+        $this->assertIsArray($tasks);
+
+        if (! array_key_exists('oldest_unhealthy_at', $tasks)
+            || ! array_key_exists('max_unhealthy_age_ms', $tasks)) {
+            $this->markTestSkipped(
+                'Vendored workflow package predates the unhealthy-age rollup '
+                . '(operator_metrics.tasks.{oldest_unhealthy_at,max_unhealthy_age_ms}).',
+            );
+        }
+
+        $this->assertTrue(
+            $tasks['oldest_unhealthy_at'] === null
+                || is_string($tasks['oldest_unhealthy_at']),
+            'operator_metrics.tasks.oldest_unhealthy_at must be null or ISO-8601 string',
+        );
+        $this->assertTrue(
+            $tasks['max_unhealthy_age_ms'] === null
+                || is_int($tasks['max_unhealthy_age_ms']),
+            'operator_metrics.tasks.max_unhealthy_age_ms must be null or integer milliseconds',
+        );
+    }
+
     public function testIndexExposesBackendSeverityRollup(): void
     {
         config()->set('waterline.engine_source', 'v2');
