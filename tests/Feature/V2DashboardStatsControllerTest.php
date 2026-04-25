@@ -987,13 +987,7 @@ class V2DashboardStatsControllerTest extends TestCase
         $backend = $response->json('operator_metrics.backend');
 
         $this->assertIsArray($backend);
-
-        if (! array_key_exists('severity', $backend)) {
-            $this->markTestSkipped(
-                'Vendored workflow package predates the backend-admission severity rollup '
-                . '(operator_metrics.backend.severity).',
-            );
-        }
+        $this->assertArrayHasKey('severity', $backend);
 
         $this->assertIsString($backend['severity']);
         $this->assertContains(
