@@ -1006,15 +1006,9 @@ class V2DashboardStatsControllerTest extends TestCase
         $activities = $response->json('operator_metrics.activities');
 
         $this->assertIsArray($activities);
-
-        if (! array_key_exists('timeout_overdue', $activities)
-            || ! array_key_exists('oldest_timeout_overdue_at', $activities)
-            || ! array_key_exists('max_timeout_overdue_age_ms', $activities)) {
-            $this->markTestSkipped(
-                'Vendored workflow package predates the activity timeout-overdue rollup '
-                . '(operator_metrics.activities.{timeout_overdue,oldest_timeout_overdue_at,max_timeout_overdue_age_ms}).',
-            );
-        }
+        $this->assertArrayHasKey('timeout_overdue', $activities);
+        $this->assertArrayHasKey('oldest_timeout_overdue_at', $activities);
+        $this->assertArrayHasKey('max_timeout_overdue_age_ms', $activities);
 
         $this->assertIsInt($activities['timeout_overdue']);
         $this->assertGreaterThanOrEqual(0, $activities['timeout_overdue']);
