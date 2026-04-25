@@ -1013,4 +1013,37 @@ class V2DashboardStatsControllerTest extends TestCase
             'operator_metrics.backend.severity must be one of ok, info, warning, error',
         );
     }
+
+    public function testIndexExposesActivityTimeoutOverdueRollup(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $activities = $response->json('operator_metrics.activities');
+
+        $this->assertIsArray($activities);
+
+        if (! array_key_exists('timeout_overdue', $activities)
+            || ! array_key_exists('oldest_timeout_overdue_at', $activities)
+            || ! array_key_exists('max_timeout_overdue_age_ms', $activities)) {
+            $this->markTestSkipped(
+                'Vendored workflow package predates the activity timeout-overdue rollup '
+                . '(operator_metrics.activities.{timeout_overdue,oldest_timeout_overdue_at,max_timeout_overdue_age_ms}).',
+            );
+        }
+
+        $this->assertIsInt($activities['timeout_overdue']);
+        $this->assertGreaterThanOrEqual(0, $activities['timeout_overdue']);
+        $this->assertTrue(
+            $activities['oldest_timeout_overdue_at'] === null
+                || is_string($activities['oldest_timeout_overdue_at']),
+            'operator_metrics.activities.oldest_timeout_overdue_at must be null or ISO-8601 string',
+        );
+        $this->assertTrue(
+            $activities['max_timeout_overdue_age_ms'] === null
+                || is_int($activities['max_timeout_overdue_age_ms']),
+            'operator_metrics.activities.max_timeout_overdue_age_ms must be null or integer milliseconds',
+        );
+    }
 }

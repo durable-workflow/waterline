@@ -410,6 +410,13 @@
                                     (since {{ operatorRetryingActivityOldestStartedAt() }})
                                 </template>.
                             </p>
+                            <p v-if="operatorActivityTimeoutOverdueAvailable()">
+                                {{ operatorMetricLabel('activities', 'timeout_overdue') }} timeout overdue,
+                                worst {{ operatorDurationMetricLabel('activities', 'max_timeout_overdue_age_ms') }} past deadline
+                                <template v-if="operatorActivityTimeoutOverdueOldestAt()">
+                                    (since {{ operatorActivityTimeoutOverdueOldestAt() }})
+                                </template>.
+                            </p>
                         </section>
 
                         <section class="wl-operator-section">
@@ -1319,6 +1326,24 @@ export default {
             const activities = (this.operatorMetrics && this.operatorMetrics.activities) || {};
 
             return activities.oldest_retrying_started_at || null;
+        },
+
+        operatorActivityTimeoutOverdueAvailable() {
+            const activities = (this.operatorMetrics && this.operatorMetrics.activities) || {};
+
+            if (activities.max_timeout_overdue_age_ms === undefined
+                || activities.max_timeout_overdue_age_ms === null) {
+                return false;
+            }
+
+            return Number(activities.timeout_overdue || 0) > 0
+                || Number(activities.max_timeout_overdue_age_ms || 0) > 0;
+        },
+
+        operatorActivityTimeoutOverdueOldestAt() {
+            const activities = (this.operatorMetrics && this.operatorMetrics.activities) || {};
+
+            return activities.oldest_timeout_overdue_at || null;
         },
 
         operatorClaimFailedAgeAvailable() {
