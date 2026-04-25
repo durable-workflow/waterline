@@ -323,6 +323,12 @@
                                         (since {{ operatorDispatchOverdueOldestSince() }})
                                     </template>
                                 </div>
+                                <div v-if="operatorDispatchFailedAgeAvailable()" class="wl-operator-metric__meta">
+                                    oldest dispatch {{ operatorDurationMetricLabel('tasks', 'max_dispatch_failed_age_ms') }} failed
+                                    <template v-if="operatorDispatchFailedOldestAt()">
+                                        (since {{ operatorDispatchFailedOldestAt() }})
+                                    </template>
+                                </div>
                             </div>
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">Repair needed runs</div>
@@ -1284,6 +1290,24 @@ export default {
             const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
 
             return tasks.oldest_claim_failed_at || null;
+        },
+
+        operatorDispatchFailedAgeAvailable() {
+            const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
+
+            if (tasks.max_dispatch_failed_age_ms === undefined
+                || tasks.max_dispatch_failed_age_ms === null) {
+                return false;
+            }
+
+            return Number(tasks.dispatch_failed || 0) > 0
+                || Number(tasks.max_dispatch_failed_age_ms || 0) > 0;
+        },
+
+        operatorDispatchFailedOldestAt() {
+            const tasks = (this.operatorMetrics && this.operatorMetrics.tasks) || {};
+
+            return tasks.oldest_dispatch_failed_at || null;
         },
 
         operatorSchedulesAvailable() {
