@@ -963,14 +963,8 @@ class V2DashboardStatsControllerTest extends TestCase
         $tasks = $response->json('operator_metrics.tasks');
 
         $this->assertIsArray($tasks);
-
-        if (! array_key_exists('oldest_unhealthy_at', $tasks)
-            || ! array_key_exists('max_unhealthy_age_ms', $tasks)) {
-            $this->markTestSkipped(
-                'Vendored workflow package predates the unhealthy-age rollup '
-                . '(operator_metrics.tasks.{oldest_unhealthy_at,max_unhealthy_age_ms}).',
-            );
-        }
+        $this->assertArrayHasKey('oldest_unhealthy_at', $tasks);
+        $this->assertArrayHasKey('max_unhealthy_age_ms', $tasks);
 
         $this->assertTrue(
             $tasks['oldest_unhealthy_at'] === null
