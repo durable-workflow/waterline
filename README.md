@@ -140,8 +140,3 @@ If you prefer to run commands manually:
    composer run serve
    ```
 6. Access dashboard at http://localhost:18280/waterline
-
-<sub><sup>"Laravel" is a registered trademark of Taylor Otwell. This project is not affiliated, associated, endorsed, or sponsored by Taylor Otwell, nor has it been reviewed, tested, or certified by Taylor Otwell. The use of the trademark "Laravel" is for informational and descriptive purposes only. Waterline is not officially related to the Laravel trademark or Taylor Otwell.</sup></sub>
-## Public Boundary Checks
-
-This is a public repository. Do not add private tracker names, local-only absolute paths, or automation metadata to files or new commit metadata. Run `scripts/check-public-boundary.sh` before publishing changes; CI runs the same scan on pushes and pull requests.
