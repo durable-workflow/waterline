@@ -12,11 +12,9 @@ class V2HealthController extends Controller
     public function show()
     {
         $engineSource = WorkflowEngineSourceResolver::status();
-        $namespace = $this->namespace();
 
         if (($engineSource['uses_v2'] ?? false) !== true) {
             return response()->json([
-                'namespace' => $namespace,
                 'generated_at' => now()->toJSON(),
                 'status' => 'error',
                 'healthy' => false,
@@ -52,7 +50,6 @@ class V2HealthController extends Controller
                 'issue_count' => count(is_array($engineSource['issues'] ?? null) ? $engineSource['issues'] : []),
             ],
         ]);
-        $snapshot['namespace'] = $namespace;
         $snapshot['engine_source'] = $engineSource;
         $snapshot['readiness_contract'] = $engineSource['readiness_contract'] ?? null;
 
@@ -67,7 +64,7 @@ class V2HealthController extends Controller
      */
     private function snapshotForConfiguredNamespace(): array
     {
-        $namespace = $this->namespace();
+        $namespace = config('waterline.namespace');
         $now = now();
 
         if ((new \ReflectionMethod(HealthCheck::class, 'snapshot'))->getNumberOfParameters() >= 2) {
@@ -112,12 +109,5 @@ class V2HealthController extends Controller
             null,
             HealthCheck::class,
         )($method, $args);
-    }
-
-    private function namespace(): ?string
-    {
-        $namespace = config('waterline.namespace');
-
-        return is_string($namespace) && trim($namespace) !== '' ? trim($namespace) : null;
     }
 }
