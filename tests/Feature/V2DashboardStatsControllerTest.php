@@ -454,6 +454,8 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.tasks.lease_expired', 0)
             ->assertJsonPath('operator_metrics.tasks.unhealthy', 1)
             ->assertJsonPath('operator_metrics.backlog.runnable_tasks', 2)
+            ->assertJsonPath('operator_metrics.backlog.tasks_added_last_minute', 2)
+            ->assertJsonPath('operator_metrics.backlog.tasks_dispatched_last_minute', 0)
             ->assertJsonPath('operator_metrics.backlog.retrying_activities', 1)
             ->assertJsonPath('operator_metrics.backlog.repair_needed_runs', 1)
             ->assertJsonPath('operator_metrics.backlog.claim_failed_runs', 1)
@@ -759,6 +761,29 @@ class V2DashboardStatsControllerTest extends TestCase
                 || is_int($backlog['max_compatibility_blocked_age_ms']),
             'operator_metrics.backlog.max_compatibility_blocked_age_ms must be null or integer milliseconds',
         );
+    }
+
+    public function testIndexExposesBacklogFlowRates(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $response = $this->get('/waterline/api/stats')->assertStatus(200);
+
+        $backlog = $response->json('operator_metrics.backlog');
+
+        $this->assertIsArray($backlog);
+
+        foreach (['tasks_added_last_minute', 'tasks_dispatched_last_minute'] as $key) {
+            $this->assertArrayHasKey(
+                $key,
+                $backlog,
+                sprintf('operator_metrics.backlog.%s must be present in the dashboard payload', $key),
+            );
+            $this->assertIsInt(
+                $backlog[$key],
+                sprintf('operator_metrics.backlog.%s must be an integer count', $key),
+            );
+        }
     }
 
     public function testIndexExposesStuckLeaseAge(): void

@@ -300,6 +300,10 @@
                                     {{ operatorMetricLabel('backlog', 'delayed_tasks') }} delayed,
                                     {{ operatorMetricLabel('backlog', 'leased_tasks') }} leased
                                 </div>
+                                <div class="wl-operator-metric__meta">
+                                    {{ operatorMetricLabel('backlog', 'tasks_added_last_minute') }} added last minute,
+                                    {{ operatorMetricLabel('backlog', 'tasks_dispatched_last_minute') }} dispatched last minute
+                                </div>
                                 <div v-if="operatorReadyDueAgeAvailable()" class="wl-operator-metric__meta">
                                     oldest ready {{ operatorDurationMetricLabel('tasks', 'max_ready_due_age_ms') }} waiting
                                     <template v-if="operatorReadyDueOldestAt()">
