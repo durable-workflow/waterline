@@ -29,6 +29,7 @@ use Workflow\V2\Models\WorkflowFailure;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowLink;
+use Workflow\V2\Models\WorkflowMemo;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunLineageEntry;
 use Workflow\V2\Models\WorkflowRunSummary;
@@ -1443,6 +1444,24 @@ class V2DashboardWorkflowTest extends TestCase
         ]);
 
         $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowMemo::query()->create([
+            'workflow_run_id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'key' => 'customer',
+            'value' => ['name' => 'Taylor'],
+            'upserted_at_sequence' => 1,
+            'inherited_from_parent' => false,
+        ]);
+
+        WorkflowMemo::query()->create([
+            'workflow_run_id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'key' => 'order',
+            'value' => ['id' => 123],
+            'upserted_at_sequence' => 1,
+            'inherited_from_parent' => false,
+        ]);
 
         ConfiguredWaterlineDetailRunSummary::create([
             'id' => $run->id,
