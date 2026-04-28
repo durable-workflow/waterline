@@ -34,6 +34,7 @@ class V2HealthControllerTest extends TestCase
 
         $this->get('/waterline/api/v2/health')
             ->assertStatus(200)
+            ->assertJsonPath('namespace', null)
             ->assertJsonPath('status', 'ok')
             ->assertJsonPath('healthy', true)
             ->assertJsonPath('checks.0.name', 'engine_source')
@@ -63,6 +64,7 @@ class V2HealthControllerTest extends TestCase
 
         $this->get('/waterline/api/v2/health')
             ->assertStatus(200)
+            ->assertJsonPath('namespace', 'billing')
             ->assertJsonPath('status', 'ok')
             ->assertJsonPath('operator_metrics.runs.total', 1)
             ->assertJsonPath('operator_metrics.tasks.ready_due', 1)
