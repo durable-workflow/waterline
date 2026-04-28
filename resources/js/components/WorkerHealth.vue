@@ -270,7 +270,7 @@
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
                         <h5 class="mb-0">Task queues</h5>
-                        <small class="text-muted">Queue backlog, poller pressure, and repair candidates for the configured namespace.</small>
+                        <small class="text-muted">Queue backlog, recent flow, poller pressure, and repair candidates for the configured namespace.</small>
                     </div>
 
                     <span class="worker-health__pill worker-health__pill--muted">
@@ -319,6 +319,14 @@
                                     <div class="worker-health__queue-metric-meta">
                                         {{ integerLabel(taskQueue.stats.pollers.stale_after_seconds) }}s stale window
                                     </div>
+                                </div>
+
+                                <div class="worker-health__queue-metric">
+                                    <span class="worker-health__queue-metric-label">Flow (60s)</span>
+                                    <strong class="worker-health__queue-metric-value">
+                                        {{ integerLabel(taskQueue.stats.tasks_added_last_minute) }} in / {{ integerLabel(taskQueue.stats.tasks_dispatched_last_minute) }} out
+                                    </strong>
+                                    <div class="worker-health__queue-metric-meta">Added vs dispatched durable tasks.</div>
                                 </div>
 
                                 <div class="worker-health__queue-metric">

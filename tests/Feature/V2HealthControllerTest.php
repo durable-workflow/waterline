@@ -92,8 +92,23 @@ class V2HealthControllerTest extends TestCase
         });
 
         $this->createWorkerRegistrationsTable();
-        $this->createRunSummaryWithReadyTask(namespace: 'billing', availableSecondsAgo: 30);
+        $run = $this->createRunSummaryWithReadyTask(
+            namespace: 'billing',
+            availableSecondsAgo: 30,
+        );
         $this->createRunSummaryWithReadyTask(namespace: 'shipping', availableSecondsAgo: 45);
+
+        WorkflowTask::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'namespace' => 'billing',
+            'task_type' => TaskType::Activity->value,
+            'status' => TaskStatus::Leased->value,
+            'queue' => 'default',
+            'created_at' => now()->subMinutes(2),
+            'lease_expires_at' => now()->addMinute(),
+            'last_dispatched_at' => now()->subSeconds(15),
+        ]);
 
         WorkerRegistration::create([
             'worker_id' => 'billing-worker-1',
@@ -121,6 +136,8 @@ class V2HealthControllerTest extends TestCase
             ->assertJsonPath('queue_visibility.task_queues.0.stats.workflow_tasks.ready_count', 1)
             ->assertJsonPath('queue_visibility.task_queues.0.stats.pollers.active_count', 1)
             ->assertJsonPath('queue_visibility.task_queues.0.stats.pollers.stale_count', 0)
+            ->assertJsonPath('queue_visibility.task_queues.0.stats.tasks_added_last_minute', 1)
+            ->assertJsonPath('queue_visibility.task_queues.0.stats.tasks_dispatched_last_minute', 1)
             ->assertJsonPath('queue_visibility.task_queues.0.repair.candidates', 0);
     }
 
@@ -391,7 +408,10 @@ class V2HealthControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.command_contracts.backfill_unavailable_runs', 1);
     }
 
-    private function createRunSummaryWithReadyTask(string $namespace, int $availableSecondsAgo): void
+    private function createRunSummaryWithReadyTask(
+        string $namespace,
+        int $availableSecondsAgo,
+    ): WorkflowRun
     {
         $instanceId = 'waterline-health-'.Str::lower(Str::random(12));
         $runId = (string) Str::ulid();
@@ -446,6 +466,8 @@ class V2HealthControllerTest extends TestCase
             'queue' => 'default',
             'available_at' => now()->subSeconds($availableSecondsAgo),
         ]);
+
+        return $run;
     }
 
     private function createWorkerRegistrationsTable(): void

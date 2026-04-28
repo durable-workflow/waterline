@@ -2,13 +2,16 @@
 
 namespace Waterline\Http\Controllers;
 
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Schema;
 use Waterline\Models\WorkerRegistration;
 use Waterline\Support\WorkflowEngineSourceResolver;
+use Workflow\V2\Enums\TaskType;
 use Workflow\V2\Support\HealthCheck;
 use Workflow\V2\Support\OperatorMetrics;
 use Workflow\V2\Support\StandaloneWorkerVisibility;
 use Workflow\V2\Support\StructuralLimits;
+use Workflow\V2\Models\WorkflowTask;
 
 class V2HealthController extends Controller
 {
@@ -149,9 +152,15 @@ class V2HealthController extends Controller
         }
 
         try {
+            $now = now();
+
             return [
                 'available' => true,
-                ...StandaloneWorkerVisibility::queueSnapshot($namespace, WorkerRegistration::class)->toArray(),
+                ...$this->withRecentTaskFlowFallback(
+                    $namespace,
+                    StandaloneWorkerVisibility::queueSnapshot($namespace, WorkerRegistration::class, $now)->toArray(),
+                    $now,
+                ),
             ];
         } catch (\Throwable) {
             return $this->emptyQueueVisibility(
@@ -171,6 +180,72 @@ class V2HealthController extends Controller
             'namespace' => $namespace,
             'task_queues' => [],
             'reason' => $reason,
+        ];
+    }
+
+    /**
+     * Keep queue-flow facts visible on older workflow-package builds until the
+     * shared queue-visibility snapshot always carries them directly.
+     *
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function withRecentTaskFlowFallback(string $namespace, array $payload, CarbonInterface $now): array
+    {
+        if (! is_array($payload['task_queues'] ?? null)) {
+            return $payload;
+        }
+
+        $payload['task_queues'] = array_map(
+            fn (array $taskQueue): array => $this->withRecentTaskFlow($namespace, $taskQueue, $now),
+            $payload['task_queues'],
+        );
+
+        return $payload;
+    }
+
+    /**
+     * @param  array<string, mixed>  $taskQueue
+     * @return array<string, mixed>
+     */
+    private function withRecentTaskFlow(string $namespace, array $taskQueue, CarbonInterface $now): array
+    {
+        $stats = is_array($taskQueue['stats'] ?? null) ? $taskQueue['stats'] : [];
+
+        if (array_key_exists('tasks_added_last_minute', $stats)
+            && array_key_exists('tasks_dispatched_last_minute', $stats)) {
+            return $taskQueue;
+        }
+
+        $name = is_string($taskQueue['name'] ?? null) && trim((string) $taskQueue['name']) !== ''
+            ? trim((string) $taskQueue['name'])
+            : 'default';
+
+        $taskQueue['stats'] = array_merge($stats, $this->recentTaskFlow($namespace, $name, $now));
+
+        return $taskQueue;
+    }
+
+    /**
+     * @return array{tasks_added_last_minute: int, tasks_dispatched_last_minute: int}
+     */
+    private function recentTaskFlow(string $namespace, string $taskQueue, CarbonInterface $now): array
+    {
+        $windowStart = $now->copy()->subMinute();
+
+        $query = WorkflowTask::query()
+            ->where('namespace', $namespace)
+            ->where('queue', $taskQueue)
+            ->whereIn('task_type', [TaskType::Workflow->value, TaskType::Activity->value]);
+
+        return [
+            'tasks_added_last_minute' => (clone $query)
+                ->where('created_at', '>=', $windowStart)
+                ->count(),
+            'tasks_dispatched_last_minute' => (clone $query)
+                ->whereNotNull('last_dispatched_at')
+                ->where('last_dispatched_at', '>=', $windowStart)
+                ->count(),
         ];
     }
 
