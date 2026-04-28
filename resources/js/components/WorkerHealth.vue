@@ -355,10 +355,7 @@
                                         {{ integerLabel(taskQueue.repair.candidates) }} candidates
                                     </strong>
                                     <div class="worker-health__queue-metric-meta">
-                                        {{ integerLabel(taskQueue.repair.dispatch_failed) }} dispatch failed, {{ integerLabel(taskQueue.repair.dispatch_overdue) }} overdue, {{ integerLabel(taskQueue.repair.expired_leases) }} expired
-                                    </div>
-                                    <div class="worker-health__queue-metric-meta">
-                                        oldest failed {{ durationMillisecondsLabel(taskQueue.repair.max_dispatch_failed_age_ms) }}, overdue {{ durationMillisecondsLabel(taskQueue.repair.max_dispatch_overdue_age_ms) }}, expired {{ durationMillisecondsLabel(taskQueue.repair.max_lease_expired_age_ms) }}
+                                        {{ integerLabel(taskQueue.repair.dispatch_failed) }} dispatch failed, {{ integerLabel(taskQueue.repair.dispatch_overdue) }} overdue
                                     </div>
                                 </div>
                             </div>
@@ -860,30 +857,6 @@ export default {
             const number = Number(value || 0);
 
             return Number.isFinite(number) ? number.toLocaleString() : '0';
-        },
-
-        durationMillisecondsLabel(value) {
-            const milliseconds = Number(value || 0);
-
-            if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
-                return 'fresh';
-            }
-
-            if (milliseconds < 1000) {
-                return '<1s';
-            }
-
-            const seconds = Math.floor(milliseconds / 1000);
-
-            if (seconds < 60) {
-                return `${seconds}s`;
-            }
-
-            if (seconds < 3600) {
-                return `${Math.floor(seconds / 60)}m${String(seconds % 60).padStart(2, '0')}s`;
-            }
-
-            return `${Math.floor(seconds / 3600)}h${String(Math.floor((seconds % 3600) / 60)).padStart(2, '0')}m${String(seconds % 60).padStart(2, '0')}s`;
         },
 
         statusColor(status) {
