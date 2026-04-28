@@ -4,6 +4,8 @@ namespace Waterline\Http\Controllers;
 
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Workflow\V2\Support\HealthCheck;
+use Workflow\V2\Support\OperatorMetrics;
+use Workflow\V2\Support\StructuralLimits;
 
 class V2HealthController extends Controller
 {
@@ -35,7 +37,7 @@ class V2HealthController extends Controller
             ], 503);
         }
 
-        $snapshot = HealthCheck::snapshot();
+        $snapshot = $this->snapshotForConfiguredNamespace();
         array_unshift($snapshot['checks'], [
             'name' => 'engine_source',
             'status' => 'ok',
@@ -52,5 +54,60 @@ class V2HealthController extends Controller
         $snapshot['readiness_contract'] = $engineSource['readiness_contract'] ?? null;
 
         return response()->json($snapshot, HealthCheck::httpStatus($snapshot));
+    }
+
+    /**
+     * Keep Waterline compatible with both the released alpha package and the
+     * newer workflow branch while health snapshots gain namespace scoping.
+     *
+     * @return array<string, mixed>
+     */
+    private function snapshotForConfiguredNamespace(): array
+    {
+        $namespace = config('waterline.namespace');
+        $now = now();
+
+        if ((new \ReflectionMethod(HealthCheck::class, 'snapshot'))->getNumberOfParameters() >= 2) {
+            return HealthCheck::snapshot($now, $namespace);
+        }
+
+        $metrics = OperatorMetrics::snapshot($now, $namespace);
+        $checks = [
+            self::invokeLegacyHealthCheck('backendCheck', $metrics['backend'] ?? []),
+            self::invokeLegacyHealthCheck('runSummaryProjectionCheck', $metrics['projections']['run_summaries'] ?? []),
+            self::invokeLegacyHealthCheck('selectedRunProjectionCheck', $metrics['projections'] ?? []),
+            self::invokeLegacyHealthCheck('historyRetentionInvariantCheck', $metrics['history'] ?? []),
+            self::invokeLegacyHealthCheck('commandContractCheck', $metrics['command_contracts'] ?? []),
+            self::invokeLegacyHealthCheck('taskTransportCheck', $metrics['tasks'] ?? [], $metrics['backlog'] ?? []),
+            self::invokeLegacyHealthCheck(
+                'durableResumePathCheck',
+                $metrics['backlog'] ?? [],
+                $metrics['repair'] ?? [],
+                $metrics['runs'] ?? [],
+            ),
+            self::invokeLegacyHealthCheck('workerCompatibilityCheck', $metrics['workers'] ?? []),
+            self::invokeLegacyHealthCheck('schedulerRoleCheck', $metrics['schedules'] ?? []),
+            self::invokeLegacyHealthCheck('longPollWakeAccelerationCheck'),
+        ];
+        $status = self::invokeLegacyHealthCheck('status', $checks);
+
+        return [
+            'generated_at' => $metrics['generated_at'] ?? $now->toJSON(),
+            'status' => $status,
+            'healthy' => $status !== 'error',
+            'checks' => $checks,
+            'categories' => self::invokeLegacyHealthCheck('categorySummary', $checks),
+            'operator_metrics' => $metrics,
+            'structural_limits' => StructuralLimits::snapshot(),
+        ];
+    }
+
+    private static function invokeLegacyHealthCheck(string $method, mixed ...$args): mixed
+    {
+        return \Closure::bind(
+            static fn (string $method, array $args): mixed => HealthCheck::$method(...$args),
+            null,
+            HealthCheck::class,
+        )($method, $args);
     }
 }
