@@ -991,12 +991,18 @@ class V2DashboardStatsControllerTest extends TestCase
 
         $this->assertIsArray($matchingRole);
         $this->assertArrayHasKey('queue_wake_enabled', $matchingRole);
+        $this->assertArrayHasKey('wake_owner', $matchingRole);
         $this->assertArrayHasKey('shape', $matchingRole);
         $this->assertArrayHasKey('task_dispatch_mode', $matchingRole);
         $this->assertArrayHasKey('partition_primitives', $matchingRole);
         $this->assertArrayHasKey('backpressure_model', $matchingRole);
 
         $this->assertIsBool($matchingRole['queue_wake_enabled']);
+        $this->assertSame(
+            $matchingRole['queue_wake_enabled'] ? 'worker_loop' : 'dedicated_repair_pass',
+            $matchingRole['wake_owner'],
+            'operator_metrics.matching_role.wake_owner must track the queue-wake owner contract',
+        );
         $this->assertContains(
             $matchingRole['shape'],
             ['in_worker', 'dedicated'],
@@ -1017,6 +1023,17 @@ class V2DashboardStatsControllerTest extends TestCase
             $matchingRole['backpressure_model'],
             'operator_metrics.matching_role.backpressure_model must preserve the frozen matching-role backpressure contract',
         );
+    }
+
+    public function testIndexExposesDedicatedMatchingRoleWakeOwner(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.matching_role.queue_wake_enabled', false);
+
+        $this->get('/waterline/api/stats')
+            ->assertStatus(200)
+            ->assertJsonPath('operator_metrics.matching_role.queue_wake_enabled', false)
+            ->assertJsonPath('operator_metrics.matching_role.wake_owner', 'dedicated_repair_pass');
     }
 
     public function testIndexExposesUnhealthyAgeRollup(): void

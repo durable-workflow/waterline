@@ -525,6 +525,7 @@
                             <template v-else>
                                 <p>
                                     Shape <code>{{ operatorMatchingRoleShape() }}</code>,
+                                    wake owner <code>{{ operatorMatchingRoleWakeOwner() }}</code>,
                                     queue-wake {{ operatorMatchingRoleQueueWakeEnabled() ? 'enabled' : 'disabled' }},
                                     task dispatch <code>{{ operatorMatchingRoleTaskDispatchMode() }}</code>.
                                 </p>
@@ -1467,6 +1468,14 @@ export default {
 
             return typeof matchingRole.task_dispatch_mode === 'string' && matchingRole.task_dispatch_mode !== ''
                 ? matchingRole.task_dispatch_mode
+                : 'unknown';
+        },
+
+        operatorMatchingRoleWakeOwner() {
+            const matchingRole = (this.operatorMetrics && this.operatorMetrics.matching_role) || {};
+
+            return typeof matchingRole.wake_owner === 'string' && matchingRole.wake_owner !== ''
+                ? matchingRole.wake_owner
                 : 'unknown';
         },
 

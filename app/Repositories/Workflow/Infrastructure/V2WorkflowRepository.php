@@ -230,9 +230,10 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     }
 
     /**
-     * The task-matching contract freezes the partition primitives and the
-     * lease-based backpressure model even though older workflow alphas did
-     * not yet expose them on OperatorMetrics::snapshot().
+     * The task-matching contract freezes the wake owner, partition
+     * primitives, and lease-based backpressure model even though older
+     * workflow alphas did not yet expose the full matching-role block on
+     * OperatorMetrics::snapshot().
      *
      * @param mixed $matchingRole
      * @return mixed
@@ -241,6 +242,12 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     {
         if (! is_array($matchingRole)) {
             return $matchingRole;
+        }
+
+        if (! array_key_exists('wake_owner', $matchingRole)) {
+            $matchingRole['wake_owner'] = ($matchingRole['queue_wake_enabled'] ?? false) === true
+                ? 'worker_loop'
+                : 'dedicated_repair_pass';
         }
 
         if (! array_key_exists('partition_primitives', $matchingRole)) {
