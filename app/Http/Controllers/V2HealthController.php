@@ -2,9 +2,12 @@
 
 namespace Waterline\Http\Controllers;
 
+use Illuminate\Support\Facades\Schema;
+use Waterline\Models\WorkerRegistration;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Workflow\V2\Support\HealthCheck;
 use Workflow\V2\Support\OperatorMetrics;
+use Workflow\V2\Support\StandaloneWorkerVisibility;
 use Workflow\V2\Support\StructuralLimits;
 
 class V2HealthController extends Controller
@@ -17,6 +20,10 @@ class V2HealthController extends Controller
         if (($engineSource['uses_v2'] ?? false) !== true) {
             return response()->json([
                 'namespace' => $namespace,
+                'queue_visibility' => $this->emptyQueueVisibility(
+                    $namespace,
+                    'Queue visibility is unavailable until Waterline uses the v2 operator bridge.',
+                ),
                 'generated_at' => now()->toJSON(),
                 'status' => 'error',
                 'healthy' => false,
@@ -53,6 +60,7 @@ class V2HealthController extends Controller
             ],
         ]);
         $snapshot['namespace'] = $namespace;
+        $snapshot['queue_visibility'] = $this->queueVisibility($namespace);
         $snapshot['engine_source'] = $engineSource;
         $snapshot['readiness_contract'] = $engineSource['readiness_contract'] ?? null;
 
@@ -112,6 +120,58 @@ class V2HealthController extends Controller
             null,
             HealthCheck::class,
         )($method, $args);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function queueVisibility(?string $namespace): array
+    {
+        if ($namespace === null) {
+            return $this->emptyQueueVisibility(
+                null,
+                'Configure waterline.namespace to scope queue visibility to one task-queue fleet.',
+            );
+        }
+
+        if (! class_exists(StandaloneWorkerVisibility::class)) {
+            return $this->emptyQueueVisibility(
+                $namespace,
+                'The installed workflow package does not expose the queue-visibility contract yet.',
+            );
+        }
+
+        if (! Schema::hasTable((new WorkerRegistration())->getTable())) {
+            return $this->emptyQueueVisibility(
+                $namespace,
+                'Queue visibility requires the workflow_worker_registrations table from the standalone server schema.',
+            );
+        }
+
+        try {
+            return [
+                'available' => true,
+                ...StandaloneWorkerVisibility::queueSnapshot($namespace, WorkerRegistration::class)->toArray(),
+            ];
+        } catch (\Throwable) {
+            return $this->emptyQueueVisibility(
+                $namespace,
+                'Queue visibility could not be loaded from the current worker registration schema.',
+            );
+        }
+    }
+
+    /**
+     * @return array{available: bool, namespace: string|null, task_queues: array<int, array<string, mixed>>, reason: string}
+     */
+    private function emptyQueueVisibility(?string $namespace, string $reason): array
+    {
+        return [
+            'available' => false,
+            'namespace' => $namespace,
+            'task_queues' => [],
+            'reason' => $reason,
+        ];
     }
 
     private function namespace(): ?string

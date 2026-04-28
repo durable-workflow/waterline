@@ -265,6 +265,96 @@
                     </div>
                 </article>
             </section>
+
+            <section class="card worker-health__panel">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <div>
+                        <h5 class="mb-0">Task queues</h5>
+                        <small class="text-muted">Queue backlog, poller pressure, and repair candidates for the configured namespace.</small>
+                    </div>
+
+                    <span class="worker-health__pill worker-health__pill--muted">
+                        {{ taskQueues.length.toLocaleString() }} queues
+                    </span>
+                </div>
+
+                <div class="card-body card-bg-secondary">
+                    <div v-if="queueVisibility.available !== true" class="worker-health__empty-state worker-health__empty-state--compact">
+                        <strong>Queue visibility unavailable</strong>
+                        <p class="mb-0 text-muted">{{ queueVisibilityReason }}</p>
+                    </div>
+
+                    <div v-else-if="taskQueues.length === 0" class="worker-health__empty-state worker-health__empty-state--compact">
+                        <strong>No task queues observed</strong>
+                        <p class="mb-0 text-muted">No ready, leased, or polled queues are currently visible for this namespace.</p>
+                    </div>
+
+                    <div v-else class="worker-health__queue-grid">
+                        <article v-for="taskQueue in taskQueues" :key="taskQueue.name" class="worker-health__queue-card">
+                            <div class="worker-health__queue-head">
+                                <div>
+                                    <strong>{{ taskQueue.name }}</strong>
+                                    <div class="worker-health__cell-meta">
+                                        namespace {{ queueVisibility.namespace || 'default' }}
+                                    </div>
+                                </div>
+
+                                <span class="worker-health__pill" :class="queueVisibilityToneClass(taskQueue)">
+                                    {{ queueVisibilityStatusLabel(taskQueue) }}
+                                </span>
+                            </div>
+
+                            <div class="worker-health__queue-metrics">
+                                <div class="worker-health__queue-metric">
+                                    <span class="worker-health__queue-metric-label">Backlog</span>
+                                    <strong class="worker-health__queue-metric-value">{{ integerLabel(taskQueue.stats.approximate_backlog_count) }}</strong>
+                                    <div class="worker-health__queue-metric-meta">oldest ready {{ queueBacklogAge(taskQueue) }}</div>
+                                </div>
+
+                                <div class="worker-health__queue-metric">
+                                    <span class="worker-health__queue-metric-label">Pollers</span>
+                                    <strong class="worker-health__queue-metric-value">
+                                        {{ integerLabel(taskQueue.stats.pollers.active_count) }} active / {{ integerLabel(taskQueue.stats.pollers.stale_count) }} stale
+                                    </strong>
+                                    <div class="worker-health__queue-metric-meta">
+                                        {{ integerLabel(taskQueue.stats.pollers.stale_after_seconds) }}s stale window
+                                    </div>
+                                </div>
+
+                                <div class="worker-health__queue-metric">
+                                    <span class="worker-health__queue-metric-label">Workflow tasks</span>
+                                    <strong class="worker-health__queue-metric-value">
+                                        {{ integerLabel(taskQueue.stats.workflow_tasks.ready_count) }} ready
+                                    </strong>
+                                    <div class="worker-health__queue-metric-meta">
+                                        {{ integerLabel(taskQueue.stats.workflow_tasks.leased_count) }} leased, {{ integerLabel(taskQueue.stats.workflow_tasks.expired_lease_count) }} expired
+                                    </div>
+                                </div>
+
+                                <div class="worker-health__queue-metric">
+                                    <span class="worker-health__queue-metric-label">Activity tasks</span>
+                                    <strong class="worker-health__queue-metric-value">
+                                        {{ integerLabel(taskQueue.stats.activity_tasks.ready_count) }} ready
+                                    </strong>
+                                    <div class="worker-health__queue-metric-meta">
+                                        {{ integerLabel(taskQueue.stats.activity_tasks.leased_count) }} leased, {{ integerLabel(taskQueue.stats.activity_tasks.expired_lease_count) }} expired
+                                    </div>
+                                </div>
+
+                                <div class="worker-health__queue-metric">
+                                    <span class="worker-health__queue-metric-label">Repair</span>
+                                    <strong class="worker-health__queue-metric-value">
+                                        {{ integerLabel(taskQueue.repair.candidates) }} candidates
+                                    </strong>
+                                    <div class="worker-health__queue-metric-meta">
+                                        {{ integerLabel(taskQueue.repair.dispatch_failed) }} dispatch failed, {{ integerLabel(taskQueue.repair.dispatch_overdue) }} overdue
+                                    </div>
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+                </div>
+            </section>
         </div>
     </div>
 </template>
@@ -327,6 +417,33 @@ export default {
 
         healthChecks() {
             return this.healthData?.checks || [];
+        },
+
+        queueVisibility() {
+            const visibility = this.healthData?.queue_visibility;
+
+            if (!visibility || typeof visibility !== 'object') {
+                return {
+                    available: false,
+                    namespace: this.healthData?.namespace || null,
+                    task_queues: [],
+                    reason: 'Queue visibility is unavailable for this scope.',
+                };
+            }
+
+            return visibility;
+        },
+
+        queueVisibilityReason() {
+            return typeof this.queueVisibility.reason === 'string'
+                ? this.queueVisibility.reason
+                : 'Queue visibility is unavailable for this scope.';
+        },
+
+        taskQueues() {
+            return Array.isArray(this.queueVisibility.task_queues)
+                ? this.queueVisibility.task_queues
+                : [];
         },
 
         categorizedChecks() {
@@ -692,6 +809,48 @@ export default {
             return 'ok';
         },
 
+        queueVisibilityStatusLabel(taskQueue) {
+            const repair = taskQueue?.repair || {};
+            const stats = taskQueue?.stats || {};
+            const backlog = Number(stats.approximate_backlog_count || 0);
+            const activePollers = Number(stats.pollers?.active_count || 0);
+
+            if (Number(repair.candidates || 0) > 0) return 'needs attention';
+            if (backlog > 0 && activePollers === 0) return 'no active pollers';
+            if (Number(stats.pollers?.stale_count || 0) > 0) return 'stale pollers';
+
+            return 'healthy';
+        },
+
+        queueVisibilityToneClass(taskQueue) {
+            const repair = taskQueue?.repair || {};
+            const stats = taskQueue?.stats || {};
+            const backlog = Number(stats.approximate_backlog_count || 0);
+            const activePollers = Number(stats.pollers?.active_count || 0);
+
+            if (Number(repair.candidates || 0) > 0 || (backlog > 0 && activePollers === 0)) {
+                return 'is-warning';
+            }
+
+            if (Number(stats.pollers?.stale_count || 0) > 0) {
+                return 'is-info';
+            }
+
+            return 'is-ok';
+        },
+
+        queueBacklogAge(taskQueue) {
+            const age = taskQueue?.stats?.approximate_backlog_age;
+
+            return typeof age === 'string' && age !== '' ? age : 'fresh';
+        },
+
+        integerLabel(value) {
+            const number = Number(value || 0);
+
+            return Number.isFinite(number) ? number.toLocaleString() : '0';
+        },
+
         statusColor(status) {
             return {
                 ok: 'text-success',
@@ -958,6 +1117,62 @@ export default {
     display: grid;
     grid-template-columns: minmax(0, 2fr) minmax(18rem, 1fr);
     gap: 1rem;
+}
+
+.worker-health__queue-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 1rem;
+}
+
+.worker-health__queue-card {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid color-mix(in srgb, var(--wl-border) 70%, transparent);
+    border-radius: 1rem;
+    background: color-mix(in srgb, var(--wl-panel) 88%, var(--wl-bg) 12%);
+}
+
+.worker-health__queue-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.worker-health__queue-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 0.85rem;
+}
+
+.worker-health__queue-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.worker-health__queue-metric-label {
+    color: var(--wl-text-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.worker-health__queue-metric-value {
+    color: var(--wl-text);
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+}
+
+.worker-health__queue-metric-meta {
+    color: var(--wl-text-muted);
+    font-size: 0.85rem;
+    line-height: 1.4;
 }
 
 .worker-health__panel {

@@ -2,8 +2,11 @@
 
 namespace Waterline\Tests\Feature;
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Waterline\Models\WorkerRegistration;
 use Waterline\Tests\TestCase;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
 use Workflow\V2\Enums\HistoryEventType;
@@ -35,6 +38,11 @@ class V2HealthControllerTest extends TestCase
         $this->get('/waterline/api/v2/health')
             ->assertStatus(200)
             ->assertJsonPath('namespace', null)
+            ->assertJsonPath('queue_visibility.available', false)
+            ->assertJsonPath(
+                'queue_visibility.reason',
+                'Configure waterline.namespace to scope queue visibility to one task-queue fleet.',
+            )
             ->assertJsonPath('status', 'ok')
             ->assertJsonPath('healthy', true)
             ->assertJsonPath('checks.0.name', 'engine_source')
@@ -69,6 +77,51 @@ class V2HealthControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.runs.total', 1)
             ->assertJsonPath('operator_metrics.tasks.ready_due', 1)
             ->assertJsonPath('operator_metrics.tasks.oldest_ready_due_at', now()->subSecond()->toJSON());
+    }
+
+    public function testHealthEndpointExposesNamespaceScopedQueueVisibility(): void
+    {
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('cache.default', 'file');
+        config()->set('waterline.namespace', 'billing');
+
+        Carbon::setTestNow('2026-04-09 12:00:00');
+        $this->beforeApplicationDestroyed(static function (): void {
+            Carbon::setTestNow();
+        });
+
+        $this->createWorkerRegistrationsTable();
+        $this->createRunSummaryWithReadyTask(namespace: 'billing', availableSecondsAgo: 30);
+        $this->createRunSummaryWithReadyTask(namespace: 'shipping', availableSecondsAgo: 45);
+
+        WorkerRegistration::create([
+            'worker_id' => 'billing-worker-1',
+            'namespace' => 'billing',
+            'task_queue' => 'default',
+            'runtime' => 'php',
+            'sdk_version' => '1.0.0',
+            'build_id' => 'build-billing',
+            'supported_workflow_types' => ['workflow.billing'],
+            'supported_activity_types' => ['activity.charge'],
+            'max_concurrent_workflow_tasks' => 8,
+            'max_concurrent_activity_tasks' => 4,
+            'last_heartbeat_at' => now()->subSeconds(15),
+            'status' => 'active',
+        ]);
+
+        $this->get('/waterline/api/v2/health')
+            ->assertStatus(200)
+            ->assertJsonPath('namespace', 'billing')
+            ->assertJsonPath('queue_visibility.available', true)
+            ->assertJsonPath('queue_visibility.namespace', 'billing')
+            ->assertJsonCount(1, 'queue_visibility.task_queues')
+            ->assertJsonPath('queue_visibility.task_queues.0.name', 'default')
+            ->assertJsonPath('queue_visibility.task_queues.0.stats.approximate_backlog_count', 1)
+            ->assertJsonPath('queue_visibility.task_queues.0.stats.workflow_tasks.ready_count', 1)
+            ->assertJsonPath('queue_visibility.task_queues.0.stats.pollers.active_count', 1)
+            ->assertJsonPath('queue_visibility.task_queues.0.stats.pollers.stale_count', 0)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.candidates', 0);
     }
 
     public function testHealthEndpointCategorizesEveryCheckAndExposesWakeAcceleration(): void
@@ -393,5 +446,33 @@ class V2HealthControllerTest extends TestCase
             'queue' => 'default',
             'available_at' => now()->subSeconds($availableSecondsAgo),
         ]);
+    }
+
+    private function createWorkerRegistrationsTable(): void
+    {
+        if (Schema::hasTable('workflow_worker_registrations')) {
+            return;
+        }
+
+        Schema::create('workflow_worker_registrations', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('worker_id', 255);
+            $table->string('namespace', 128);
+            $table->string('task_queue', 255);
+            $table->string('runtime', 32);
+            $table->string('sdk_version', 64)->nullable();
+            $table->string('build_id', 255)->nullable();
+            $table->json('supported_workflow_types')->nullable();
+            $table->json('workflow_definition_fingerprints')->nullable();
+            $table->json('supported_activity_types')->nullable();
+            $table->unsignedInteger('max_concurrent_workflow_tasks')->default(100);
+            $table->unsignedInteger('max_concurrent_activity_tasks')->default(100);
+            $table->timestamp('last_heartbeat_at')->nullable();
+            $table->string('status', 32)->default('active');
+            $table->timestamps();
+
+            $table->unique(['worker_id', 'namespace']);
+            $table->index(['namespace', 'task_queue', 'status']);
+        });
     }
 }
