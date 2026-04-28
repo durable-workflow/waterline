@@ -81,7 +81,7 @@
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
                         <h5 class="mb-0">Coordination alerts</h5>
-                        <small class="text-muted">Warnings and errors distilled from health checks and queue visibility.</small>
+                        <small class="text-muted">{{ coordinationAlertSummary }}</small>
                     </div>
 
                     <span class="worker-health__pill" :class="statusToneClass(coordinationAlertRollup)">
@@ -107,6 +107,25 @@
                             <p v-if="coordinationAlertDetails(alert)" class="worker-health__cell-meta mb-0">
                                 {{ coordinationAlertDetails(alert) }}
                             </p>
+
+                            <div class="worker-health__alert-facts">
+                                <span class="worker-health__pill worker-health__pill--muted">
+                                    {{ coordinationAlertSourceLabel(alert) }}
+                                </span>
+                                <span
+                                    v-if="coordinationAlertCategoryLabel(alert)"
+                                    class="worker-health__pill worker-health__pill--muted"
+                                >
+                                    {{ coordinationAlertCategoryLabel(alert) }}
+                                </span>
+                                <span
+                                    v-for="fact in coordinationAlertFacts(alert)"
+                                    :key="`${alert.source || 'alert'}:${alert.key || 'unknown'}:${fact}`"
+                                    class="worker-health__pill worker-health__pill--muted"
+                                >
+                                    {{ fact }}
+                                </span>
+                            </div>
                         </article>
                     </div>
                 </div>
@@ -510,6 +529,26 @@ export default {
             }
 
             return 'ok';
+        },
+
+        coordinationAlertSummary() {
+            const errors = this.coordinationAlerts.filter((alert) => alert.status === 'error').length;
+            const warnings = this.coordinationAlerts.filter((alert) => alert.status === 'warning').length;
+            const parts = [];
+
+            if (errors > 0) {
+                parts.push(`${errors.toLocaleString()} error${errors === 1 ? '' : 's'}`);
+            }
+
+            if (warnings > 0) {
+                parts.push(`${warnings.toLocaleString()} warning${warnings === 1 ? '' : 's'}`);
+            }
+
+            if (parts.length === 0) {
+                return 'Warnings and errors distilled from health checks and queue visibility.';
+            }
+
+            return `${parts.join(' and ')} distilled from health checks and queue visibility.`;
         },
 
         categorizedChecks() {
@@ -942,6 +981,67 @@ export default {
             return `Queues: ${label}${suffix}`;
         },
 
+        coordinationAlertSourceLabel(alert) {
+            const source = typeof alert?.source === 'string' ? alert.source : '';
+
+            if (source === 'health_check') {
+                return 'Health check';
+            }
+
+            if (source === 'queue_visibility') {
+                return 'Queue visibility';
+            }
+
+            return 'Coordination';
+        },
+
+        coordinationAlertCategoryLabel(alert) {
+            const category = typeof alert?.category === 'string'
+                ? alert.category.toLowerCase()
+                : null;
+
+            if (category === 'correctness') {
+                return 'Correctness';
+            }
+
+            if (category === 'acceleration') {
+                return 'Acceleration';
+            }
+
+            return null;
+        },
+
+        coordinationAlertFacts(alert) {
+            const facts = [];
+            const queueCount = Number(alert?.queue_count);
+            const backlogCount = Number(alert?.backlog_count);
+            const stalePollerCount = Number(alert?.stale_poller_count);
+            const candidateCount = Number(alert?.candidate_count);
+            const maxAgeMs = Number(alert?.max_age_ms);
+
+            if (Number.isFinite(queueCount) && queueCount > 0) {
+                facts.push(`${queueCount.toLocaleString()} queue${queueCount === 1 ? '' : 's'}`);
+            }
+
+            if (Number.isFinite(backlogCount) && backlogCount > 0) {
+                facts.push(`backlog ${backlogCount.toLocaleString()}`);
+            }
+
+            if (Number.isFinite(stalePollerCount) && stalePollerCount > 0) {
+                facts.push(`stale pollers ${stalePollerCount.toLocaleString()}`);
+            }
+
+            if (Number.isFinite(candidateCount) && candidateCount > 0) {
+                facts.push(`repair candidates ${candidateCount.toLocaleString()}`);
+            }
+
+            if (Number.isFinite(maxAgeMs) && maxAgeMs > 0) {
+                facts.push(`max age ${this.durationMillisecondsLabel(maxAgeMs)}`);
+            }
+
+            return facts;
+        },
+
         integerLabel(value) {
             const number = Number(value || 0);
 
@@ -1294,6 +1394,13 @@ export default {
     color: var(--wl-text-muted);
     font-size: 0.85rem;
     line-height: 1.4;
+}
+
+.worker-health__alert-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.85rem;
 }
 
 .worker-health__panel {
