@@ -8,6 +8,7 @@ use Workflow\V2\Models\WorkflowRun;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\CompatibilitySemantics;
 use Waterline\Support\RunDiagnostics;
+use Waterline\Support\VisibilityMetadataBridge;
 
 /**
  * @mixin WorkflowRun
@@ -26,6 +27,7 @@ class V2StoredWorkflowResource extends JsonResource
             $this->resource,
             $this->timelineLimit($request),
         );
+        $detail = $this->withLegacyVisibilityMetadata($detail);
         $detail = $this->withTimelineWindow($detail, $request);
         $detail['run_diagnostics'] = app(RunDiagnostics::class)->forRun($this->resource, $detail);
         $detail = CompatibilitySemantics::annotateRun($detail);
@@ -60,6 +62,29 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['timeline_older_count'] = max(0, $total - $returned);
         $detail['timeline_window_start_sequence'] = $this->timelineBoundary($timeline, 'first');
         $detail['timeline_window_end_sequence'] = $this->timelineBoundary($timeline, 'last');
+
+        return $detail;
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     *
+     * @return array<string, mixed>
+     */
+    private function withLegacyVisibilityMetadata(array $detail): array
+    {
+        $summary = $this->resource->summary;
+
+        $detail['memo'] = VisibilityMetadataBridge::preserve(
+            $detail['memo'] ?? null,
+            $this->resource->getRawOriginal('memo'),
+            $this->resource->instance?->getRawOriginal('memo'),
+        );
+        $detail['search_attributes'] = VisibilityMetadataBridge::preserve(
+            $detail['search_attributes'] ?? null,
+            $summary?->getRawOriginal('search_attributes'),
+            $this->resource->getRawOriginal('search_attributes'),
+        );
 
         return $detail;
     }

@@ -61,6 +61,9 @@ class V2DashboardWorkflowListTest extends TestCase
             'class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
             'business_key' => 'configured-list-business',
+            'search_attributes' => [
+                'customer_tier' => 'gold',
+            ],
             'status' => RunStatus::Waiting->value,
             'status_bucket' => 'running',
             'started_at' => $startedAt,
@@ -77,6 +80,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('data.0.id', $run->id)
             ->assertJsonPath('data.0.business_key', 'configured-list-business')
             ->assertJsonPath('data.0.workflow_type', 'workflow.test')
+            ->assertJsonPath('data.0.search_attributes.customer_tier', 'gold')
             ->assertJsonPath('data.0.actionability.schema', 'waterline.actionability')
             ->assertJsonPath('data.0.actionability.repair_state', 'unknown')
             ->assertJsonPath('visibility_filters.actionability_contract.version', 1)
@@ -1156,6 +1160,7 @@ class V2DashboardWorkflowListTest extends TestCase
             $table->string('class');
             $table->string('workflow_type');
             $table->string('business_key')->nullable();
+            $table->json('search_attributes')->nullable();
             $table->string('declared_entry_mode')->nullable();
             $table->string('declared_contract_source')->nullable();
             $table->boolean('repair_attention')->default(false);

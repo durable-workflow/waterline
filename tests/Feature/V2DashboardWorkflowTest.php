@@ -1432,6 +1432,9 @@ class V2DashboardWorkflowTest extends TestCase
                     'id' => 123,
                 ],
             ],
+            'search_attributes' => [
+                'customer_tier' => 'gold',
+            ],
             'arguments' => Serializer::serialize([]),
             'connection' => 'redis',
             'queue' => 'default',
@@ -1490,6 +1493,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('business_key', 'configured-waterline-business')
             ->assertJsonPath('memo.customer.name', 'Taylor')
             ->assertJsonPath('memo.order.id', 123)
+            ->assertJsonPath('search_attributes.customer_tier', 'gold')
             ->assertJsonPath('declared_contract_source', 'durable_history')
             ->assertJsonPath('declared_signals.0', 'configured-waterline-signal')
             ->assertJsonPath('workflow_definition_fingerprint', 'configured-waterline-fingerprint');
