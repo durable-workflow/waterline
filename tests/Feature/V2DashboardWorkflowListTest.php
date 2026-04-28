@@ -87,6 +87,65 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonMissingPath('data.0.config_marker');
     }
 
+    public function testRunningFlowsPreserveLegacySearchAttributesFromRunWhenDefaultSummarySchemaOmitsThem(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $startedAt = Carbon::parse('2022-01-01 12:05:00');
+        $createdAt = Carbon::parse('2022-01-01 12:00:00');
+
+        $instance = WorkflowInstance::create([
+            'id' => 'default-summary-instance',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'business_key' => 'default-summary-business',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => 'default-summary-run',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'business_key' => 'default-summary-business',
+            'search_attributes' => [
+                'customer_tier' => 'gold',
+            ],
+            'status' => RunStatus::Waiting->value,
+            'started_at' => $startedAt,
+            'last_progress_at' => $startedAt,
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'business_key' => 'default-summary-business',
+            'status' => RunStatus::Waiting->value,
+            'status_bucket' => 'running',
+            'started_at' => $startedAt,
+            'sort_timestamp' => $startedAt,
+            'sort_key' => RunSummarySortKey::key($startedAt, $createdAt, $createdAt, $run->id),
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+
+        $this->get('/waterline/api/flows/running')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $run->id)
+            ->assertJsonPath('data.0.search_attributes.customer_tier', 'gold');
+    }
+
     public function testRunningFlowsAreSortedByStableV2SortContract(): void
     {
         config()->set('waterline.engine_source', 'v2');

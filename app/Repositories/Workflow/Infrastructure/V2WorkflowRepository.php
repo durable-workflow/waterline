@@ -313,7 +313,8 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     protected function filteredRunsQuery(?string $bucket = null)
     {
-        $query = $this->runSummaryModel::query();
+        $query = $this->runSummaryModel::query()
+            ->with(['run:id,search_attributes']);
         $context = V2VisibilityFilterContext::resolve(request(), $bucket);
 
         ActionabilityVisibilityFilters::apply(

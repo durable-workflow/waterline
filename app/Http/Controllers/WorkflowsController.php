@@ -628,6 +628,7 @@ class WorkflowsController extends Controller
         $item = RunListItemView::fromSummary($summary);
         $item['search_attributes'] = VisibilityMetadataBridge::preserve(
             $item['search_attributes'] ?? null,
+            $summary->run?->getRawOriginal('search_attributes'),
             $summary->getRawOriginal('search_attributes'),
         );
         $item['history_budget_indicator'] = $this->historyBudgetIndicator($item);
