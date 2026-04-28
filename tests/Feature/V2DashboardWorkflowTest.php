@@ -1518,6 +1518,110 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('workflow_definition_fingerprint', 'configured-waterline-fingerprint');
     }
 
+    public function testShowUsesConfiguredSummaryAndHistoryModelsWhenTypedMemosAreMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.run_summary_model', ConfiguredWaterlineDetailRunSummary::class);
+        config()->set('workflows.v2.history_event_model', ConfiguredWaterlineDetailHistoryEvent::class);
+
+        $this->createConfiguredDetailSummaryTable();
+        $this->createConfiguredDetailHistoryTable();
+
+        $instance = WorkflowInstance::create([
+            'id' => 'configured-waterline-detail-instance-no-typed-memo',
+            'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
+            'workflow_type' => 'configured.waterline.workflow',
+            'memo' => [
+                'customer' => [
+                    'name' => 'Taylor',
+                ],
+            ],
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => '01JTESTWATERLINECONFIG0002',
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
+            'workflow_type' => 'configured.waterline.workflow',
+            'status' => RunStatus::Waiting->value,
+            'memo' => [
+                'customer' => [
+                    'name' => 'Taylor',
+                ],
+                'order' => [
+                    'id' => 123,
+                ],
+            ],
+            'search_attributes' => [
+                'customer_tier' => 'gold',
+            ],
+            'arguments' => Serializer::serialize([]),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        ConfiguredWaterlineDetailRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'Missing\\ConfiguredWaterlineWorkflow',
+            'workflow_type' => 'configured.waterline.workflow',
+            'business_key' => 'configured-waterline-business',
+            'status' => RunStatus::Waiting->value,
+            'status_bucket' => 'running',
+            'started_at' => $run->started_at,
+            'history_event_count' => 1,
+            'history_size_bytes' => 128,
+            'continue_as_new_recommended' => false,
+            'sort_timestamp' => $run->started_at,
+            'sort_key' => 'configured-waterline-sort-key',
+            'created_at' => $run->started_at,
+            'updated_at' => $run->last_progress_at,
+        ]);
+
+        ConfiguredWaterlineDetailHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => HistoryEventType::WorkflowStarted->value,
+            'payload' => [
+                'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
+                'workflow_type' => 'configured.waterline.workflow',
+                'workflow_definition_fingerprint' => 'configured-waterline-fingerprint',
+                'declared_queries' => [],
+                'declared_query_contracts' => [],
+                'declared_signals' => ['configured-waterline-signal'],
+                'declared_signal_contracts' => [],
+                'declared_updates' => [],
+                'declared_update_contracts' => [],
+                'declared_entry_method' => 'handle',
+                'declared_entry_mode' => 'canonical',
+                'declared_entry_declaring_class' => 'Missing\\ConfiguredWaterlineWorkflow',
+            ],
+            'recorded_at' => $run->started_at,
+        ]);
+
+        $this->assertSame(0, WorkflowMemo::query()->count());
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertOk()
+            ->assertJsonPath('status_bucket', 'running')
+            ->assertJsonPath('business_key', 'configured-waterline-business')
+            ->assertJsonPath('memo.customer.name', 'Taylor')
+            ->assertJsonPath('memo.order.id', 123)
+            ->assertJsonPath('search_attributes.customer_tier', 'gold')
+            ->assertJsonPath('declared_contract_source', 'durable_history')
+            ->assertJsonPath('declared_signals.0', 'configured-waterline-signal')
+            ->assertJsonPath('workflow_definition_fingerprint', 'configured-waterline-fingerprint');
+    }
+
     public function testShowRebuildsTimelineProjectionRowsOnRead(): void
     {
         config()->set('waterline.engine_source', 'v2');

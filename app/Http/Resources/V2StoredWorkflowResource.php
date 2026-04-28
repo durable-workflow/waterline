@@ -2,7 +2,9 @@
 
 namespace Waterline\Http\Resources;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Facades\DB;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowRun;
 use Waterline\Support\ActionabilityContract;
@@ -77,13 +79,24 @@ class V2StoredWorkflowResource extends JsonResource
 
         $detail['memo'] = VisibilityMetadataBridge::preserve(
             $detail['memo'] ?? null,
+            $this->resource->memo,
+            $this->attributeValue($this->resource, 'memo'),
             $this->resource->getRawOriginal('memo'),
+            $this->resource->instance?->memo,
+            $this->attributeValue($this->resource->instance, 'memo'),
             $this->resource->instance?->getRawOriginal('memo'),
+            $this->databaseAttributeValue($this->resource, 'memo'),
+            $this->databaseAttributeValue($this->resource->instance, 'memo'),
         );
         $detail['search_attributes'] = VisibilityMetadataBridge::preserve(
             $detail['search_attributes'] ?? null,
+            $summary?->search_attributes,
+            $this->attributeValue($summary, 'search_attributes'),
             $summary?->getRawOriginal('search_attributes'),
+            $this->resource->search_attributes,
+            $this->attributeValue($this->resource, 'search_attributes'),
             $this->resource->getRawOriginal('search_attributes'),
+            $this->databaseAttributeValue($this->resource, 'search_attributes'),
         );
 
         return $detail;
@@ -132,5 +145,28 @@ class V2StoredWorkflowResource extends JsonResource
         $sequence = $entry['sequence'] ?? null;
 
         return is_numeric($sequence) ? (int) $sequence : null;
+    }
+
+    private function attributeValue(mixed $model, string $attribute): mixed
+    {
+        if (! is_object($model) || ! method_exists($model, 'getAttributes')) {
+            return null;
+        }
+
+        $attributes = $model->getAttributes();
+
+        return $attributes[$attribute] ?? null;
+    }
+
+    private function databaseAttributeValue(mixed $model, string $attribute): mixed
+    {
+        if (! $model instanceof Model || ! $model->exists) {
+            return null;
+        }
+
+        return DB::connection($model->getConnectionName())
+            ->table($model->getTable())
+            ->where($model->getKeyName(), $model->getKey())
+            ->value($attribute);
     }
 }
