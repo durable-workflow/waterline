@@ -297,6 +297,42 @@ class V2HealthControllerTest extends TestCase
         );
     }
 
+    public function testHealthEndpointPublishesCompatibilityAlertFactsWhenFailClosedWorkersAreMissing(): void
+    {
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('cache.default', 'file');
+        config()->set('waterline.namespace', 'waterline-workers-alerts');
+        config()->set('workflows.v2.compatibility.namespace', 'waterline-workers-alerts');
+        config()->set('workflows.v2.compatibility.current', 'build-beta');
+        config()->set('workflows.v2.fleet.validation_mode', 'fail');
+
+        WorkerCompatibilityFleet::clear();
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'waterline-workers-alerts',
+            supported: ['build-alpha'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'waterline-worker-alpha',
+        );
+
+        $payload = $this->get('/waterline/api/v2/health')
+            ->assertStatus(503)
+            ->json();
+
+        $alert = $this->coordinationAlertByKey($payload, 'worker_compatibility');
+        $this->assertNotNull($alert);
+        $this->assertSame('health_check', $alert['source']);
+        $this->assertSame('error', $alert['status']);
+        $this->assertSame('build-beta', $alert['facts']['required_compatibility'] ?? null);
+        $this->assertSame(1, $alert['facts']['active_workers'] ?? null);
+        $this->assertSame(1, $alert['facts']['active_worker_scopes'] ?? null);
+        $this->assertSame(0, $alert['facts']['active_workers_supporting_required'] ?? null);
+        $this->assertSame('fail', $alert['facts']['validation_mode'] ?? null);
+        $this->assertStringContainsString('build-beta', (string) ($alert['details'] ?? ''));
+        $this->assertStringContainsString('0 supporting workers', (string) ($alert['details'] ?? ''));
+    }
+
     public function testHealthEndpointReturnsUnavailableForBlockingBackendIssues(): void
     {
         config()->set('queue.default', 'sync');
@@ -374,6 +410,11 @@ class V2HealthControllerTest extends TestCase
         $this->assertSame('health_check', $alert['source']);
         $this->assertSame('warning', $alert['status']);
         $this->assertSame('Durable Resume Paths', $alert['title']);
+        $this->assertSame(1, $alert['facts']['repair_needed_runs'] ?? null);
+        $this->assertSame(1, $alert['facts']['missing_task_candidates'] ?? null);
+        $this->assertSame(1, $alert['facts']['waiting_runs'] ?? null);
+        $this->assertStringContainsString('1 repair-needed run', (string) ($alert['details'] ?? ''));
+        $this->assertStringContainsString('1 missing-task candidate', (string) ($alert['details'] ?? ''));
     }
 
     public function testHealthEndpointWarnsForCommandContractSnapshotsNeedingBackfill(): void
@@ -488,6 +529,15 @@ class V2HealthControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.command_contracts.backfill_needed_runs', 2)
             ->assertJsonPath('operator_metrics.command_contracts.backfill_available_runs', 1)
             ->assertJsonPath('operator_metrics.command_contracts.backfill_unavailable_runs', 1);
+
+        $payload = $this->get('/waterline/api/v2/health')->json();
+        $alert = $this->coordinationAlertByKey($payload, 'command_contract_snapshots');
+        $this->assertNotNull($alert);
+        $this->assertSame('health_check', $alert['source']);
+        $this->assertSame(2, $alert['facts']['backfill_needed_runs'] ?? null);
+        $this->assertSame(1, $alert['facts']['backfill_available_runs'] ?? null);
+        $this->assertSame(1, $alert['facts']['backfill_unavailable_runs'] ?? null);
+        $this->assertStringContainsString('2 runs need command-contract backfill', (string) ($alert['details'] ?? ''));
     }
 
     public function testHealthEndpointPublishesQueueCoordinationAlerts(): void
@@ -582,6 +632,18 @@ class V2HealthControllerTest extends TestCase
         $this->assertSame(1, $staleAlert['queue_count']);
         $this->assertSame(['default'], $staleAlert['queues']);
         $this->assertSame(1, $staleAlert['stale_poller_count']);
+
+        $taskTransportAlert = $this->coordinationAlertByKey($payload, 'task_transport');
+        $this->assertNotNull($taskTransportAlert);
+        $this->assertSame('health_check', $taskTransportAlert['source']);
+        $this->assertSame('warning', $taskTransportAlert['status']);
+        $this->assertSame(3, $taskTransportAlert['facts']['unhealthy_tasks'] ?? null);
+        $this->assertSame(1, $taskTransportAlert['facts']['dispatch_failed_tasks'] ?? null);
+        $this->assertSame(1, $taskTransportAlert['facts']['dispatch_overdue_tasks'] ?? null);
+        $this->assertSame(1, $taskTransportAlert['facts']['lease_expired_tasks'] ?? null);
+        $this->assertSame(2 * 60 * 1000, $taskTransportAlert['facts']['max_dispatch_overdue_age_ms'] ?? null);
+        $this->assertStringContainsString('3 unhealthy tasks', (string) ($taskTransportAlert['details'] ?? ''));
+        $this->assertStringContainsString('worst-case age 2m00s', (string) ($taskTransportAlert['details'] ?? ''));
     }
 
     private function createRunSummaryWithReadyTask(

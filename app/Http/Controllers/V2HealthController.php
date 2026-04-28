@@ -120,6 +120,7 @@ class V2HealthController extends Controller
             $summary = is_string($check['message'] ?? null) && trim((string) $check['message']) !== ''
                 ? trim((string) $check['message'])
                 : sprintf('%s reported %s.', $title, $status);
+            $facts = is_array($check['data'] ?? null) ? $check['data'] : [];
 
             $alerts[] = [
                 'key' => $key,
@@ -127,7 +128,8 @@ class V2HealthController extends Controller
                 'status' => $status,
                 'title' => $title,
                 'summary' => $summary,
-                'details' => null,
+                'details' => $this->healthCheckAlertDetails($key, $facts),
+                'facts' => $facts !== [] ? $facts : null,
                 'category' => is_string($check['category'] ?? null)
                     ? trim((string) $check['category'])
                     : null,
@@ -135,6 +137,209 @@ class V2HealthController extends Controller
         }
 
         return $alerts;
+    }
+
+    /**
+     * @param  array<string, mixed>  $facts
+     */
+    private function healthCheckAlertDetails(string $key, array $facts): ?string
+    {
+        return match ($key) {
+            'task_transport' => $this->taskTransportAlertDetails($facts),
+            'durable_resume_paths' => $this->durableResumePathAlertDetails($facts),
+            'worker_compatibility' => $this->workerCompatibilityAlertDetails($facts),
+            'command_contract_snapshots' => $this->commandContractAlertDetails($facts),
+            'scheduler_role' => $this->schedulerRoleAlertDetails($facts),
+            'long_poll_wake_acceleration' => $this->longPollWakeAlertDetails($facts),
+            default => null,
+        };
+    }
+
+    /**
+     * @param  array<string, mixed>  $facts
+     */
+    private function taskTransportAlertDetails(array $facts): ?string
+    {
+        $unhealthyTasks = $this->integerValue($facts['unhealthy_tasks'] ?? 0);
+        $breakdown = [];
+
+        foreach ([
+            'dispatch_failed_tasks' => 'dispatch failed',
+            'claim_failed_tasks' => 'claim failed',
+            'dispatch_overdue_tasks' => 'dispatch overdue',
+            'lease_expired_tasks' => 'lease expired',
+        ] as $key => $label) {
+            $count = $this->integerValue($facts[$key] ?? 0);
+
+            if ($count > 0) {
+                $breakdown[] = sprintf('%d %s', $count, $label);
+            }
+        }
+
+        $maxAgeMs = max([
+            $this->integerValue($facts['max_dispatch_failed_age_ms'] ?? 0),
+            $this->integerValue($facts['max_claim_failed_age_ms'] ?? 0),
+            $this->integerValue($facts['max_dispatch_overdue_age_ms'] ?? 0),
+            $this->integerValue($facts['max_lease_expired_age_ms'] ?? 0),
+        ]);
+
+        $parts = [];
+
+        if ($unhealthyTasks > 0) {
+            $parts[] = sprintf(
+                '%d unhealthy task%s are projected on the transport path',
+                $unhealthyTasks,
+                $unhealthyTasks === 1 ? '' : 's',
+            );
+        }
+
+        if ($breakdown !== []) {
+            $parts[] = sprintf('breakdown: %s', implode(', ', $breakdown));
+        }
+
+        if ($maxAgeMs > 0) {
+            $parts[] = sprintf('worst-case age %s', $this->formatDurationMilliseconds($maxAgeMs));
+        }
+
+        return $parts !== [] ? ucfirst(implode('; ', $parts)).'.' : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $facts
+     */
+    private function durableResumePathAlertDetails(array $facts): ?string
+    {
+        $repairNeededRuns = $this->integerValue($facts['repair_needed_runs'] ?? 0);
+        $missingCandidates = $this->integerValue($facts['missing_task_candidates'] ?? 0);
+        $selectedCandidates = $this->integerValue($facts['selected_missing_task_candidates'] ?? 0);
+        $waitingRuns = $this->integerValue($facts['waiting_runs'] ?? 0);
+        $maxMissingRunAgeMs = $this->integerValue($facts['max_missing_run_age_ms'] ?? 0);
+        $maxWaitAgeMs = $this->integerValue($facts['max_wait_age_ms'] ?? 0);
+
+        $parts = [];
+
+        if ($repairNeededRuns > 0) {
+            $parts[] = sprintf(
+                '%d repair-needed run%s',
+                $repairNeededRuns,
+                $repairNeededRuns === 1 ? '' : 's',
+            );
+        }
+
+        if ($missingCandidates > 0) {
+            $parts[] = sprintf(
+                '%d missing-task candidate%s (%d selected this pass)',
+                $missingCandidates,
+                $missingCandidates === 1 ? '' : 's',
+                $selectedCandidates,
+            );
+        }
+
+        if ($maxMissingRunAgeMs > 0) {
+            $parts[] = sprintf('oldest missing-run age %s', $this->formatDurationMilliseconds($maxMissingRunAgeMs));
+        }
+
+        if ($waitingRuns > 0) {
+            $parts[] = sprintf(
+                '%d waiting run%s with worst wait %s',
+                $waitingRuns,
+                $waitingRuns === 1 ? '' : 's',
+                $this->formatDurationMilliseconds($maxWaitAgeMs),
+            );
+        }
+
+        return $parts !== [] ? ucfirst(implode('; ', $parts)).'.' : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $facts
+     */
+    private function workerCompatibilityAlertDetails(array $facts): ?string
+    {
+        $requiredCompatibility = is_string($facts['required_compatibility'] ?? null)
+            ? trim((string) $facts['required_compatibility'])
+            : '';
+        $activeWorkers = $this->integerValue($facts['active_workers'] ?? 0);
+        $activeWorkerScopes = $this->integerValue($facts['active_worker_scopes'] ?? 0);
+        $supportingWorkers = $this->integerValue($facts['active_workers_supporting_required'] ?? 0);
+        $validationMode = is_string($facts['validation_mode'] ?? null)
+            ? trim((string) $facts['validation_mode'])
+            : 'warn';
+
+        if ($requiredCompatibility === '') {
+            return null;
+        }
+
+        return sprintf(
+            'Required marker %s has %d supporting worker%s across %d active scope%s (%d active worker%s total); validation mode is %s.',
+            $requiredCompatibility,
+            $supportingWorkers,
+            $supportingWorkers === 1 ? '' : 's',
+            $activeWorkerScopes,
+            $activeWorkerScopes === 1 ? '' : 's',
+            $activeWorkers,
+            $activeWorkers === 1 ? '' : 's',
+            $validationMode,
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $facts
+     */
+    private function commandContractAlertDetails(array $facts): ?string
+    {
+        $needed = $this->integerValue($facts['backfill_needed_runs'] ?? 0);
+
+        if ($needed <= 0) {
+            return null;
+        }
+
+        return sprintf(
+            '%d run%s need command-contract backfill; %d can be backfilled from history and %d still lack recoverable snapshots.',
+            $needed,
+            $needed === 1 ? '' : 's',
+            $this->integerValue($facts['backfill_available_runs'] ?? 0),
+            $this->integerValue($facts['backfill_unavailable_runs'] ?? 0),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $facts
+     */
+    private function schedulerRoleAlertDetails(array $facts): ?string
+    {
+        $missed = $this->integerValue($facts['missed'] ?? 0);
+
+        if ($missed <= 0) {
+            return null;
+        }
+
+        return sprintf(
+            '%d active schedule%s are overdue; worst overdue age %s (%d fires, %d failures recorded).',
+            $missed,
+            $missed === 1 ? '' : 's',
+            $this->formatDurationMilliseconds($this->integerValue($facts['max_overdue_ms'] ?? 0)),
+            $this->integerValue($facts['fires_total'] ?? 0),
+            $this->integerValue($facts['failures_total'] ?? 0),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $facts
+     */
+    private function longPollWakeAlertDetails(array $facts): ?string
+    {
+        $backend = is_string($facts['backend'] ?? null) ? trim((string) $facts['backend']) : 'unknown';
+        $reason = is_string($facts['reason'] ?? null) ? trim((string) $facts['reason']) : '';
+
+        if ($reason === '') {
+            return sprintf(
+                'Wake acceleration backend %s is not currently reporting a healthy multi-node posture.',
+                $backend,
+            );
+        }
+
+        return sprintf('Wake acceleration backend %s reports: %s', $backend, $reason);
     }
 
     /**
