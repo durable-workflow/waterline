@@ -138,7 +138,81 @@ class V2HealthControllerTest extends TestCase
             ->assertJsonPath('queue_visibility.task_queues.0.stats.pollers.stale_count', 0)
             ->assertJsonPath('queue_visibility.task_queues.0.stats.tasks_added_last_minute', 1)
             ->assertJsonPath('queue_visibility.task_queues.0.stats.tasks_dispatched_last_minute', 1)
-            ->assertJsonPath('queue_visibility.task_queues.0.repair.candidates', 0);
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.candidates', 0)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.dispatch_failed', 0)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.expired_leases', 0)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.dispatch_overdue', 0)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.oldest_dispatch_failed_at', null)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.max_dispatch_failed_age_ms', 0)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.oldest_lease_expired_at', null)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.max_lease_expired_age_ms', 0)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.oldest_dispatch_overdue_since', null)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.max_dispatch_overdue_age_ms', 0);
+    }
+
+    public function testHealthEndpointBackfillsQueueRepairAges(): void
+    {
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('cache.default', 'file');
+        config()->set('waterline.namespace', 'billing');
+
+        Carbon::setTestNow('2026-04-09 12:00:00');
+        $this->beforeApplicationDestroyed(static function (): void {
+            Carbon::setTestNow();
+        });
+
+        $this->createWorkerRegistrationsTable();
+        $run = $this->createRunSummaryWithReadyTask(
+            namespace: 'billing',
+            availableSecondsAgo: 15,
+        );
+
+        WorkflowTask::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'namespace' => 'billing',
+            'task_type' => TaskType::Activity->value,
+            'status' => TaskStatus::Ready->value,
+            'queue' => 'default',
+            'created_at' => now()->subMinutes(4),
+            'last_dispatch_attempt_at' => now()->subSeconds(45),
+            'last_dispatch_error' => 'transport timeout',
+        ]);
+
+        WorkflowTask::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'namespace' => 'billing',
+            'task_type' => TaskType::Activity->value,
+            'status' => TaskStatus::Leased->value,
+            'queue' => 'default',
+            'created_at' => now()->subMinutes(3),
+            'lease_expires_at' => now()->subSeconds(90),
+        ]);
+
+        WorkflowTask::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'namespace' => 'billing',
+            'task_type' => TaskType::Activity->value,
+            'status' => TaskStatus::Ready->value,
+            'queue' => 'default',
+            'created_at' => now()->subMinutes(2),
+        ]);
+
+        $this->get('/waterline/api/v2/health')
+            ->assertStatus(200)
+            ->assertJsonPath('queue_visibility.available', true)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.dispatch_failed', 1)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.expired_leases', 1)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.dispatch_overdue', 1)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.oldest_dispatch_failed_at', now()->subSeconds(45)->toJSON())
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.max_dispatch_failed_age_ms', 45 * 1000)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.oldest_lease_expired_at', now()->subSeconds(90)->toJSON())
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.max_lease_expired_age_ms', 90 * 1000)
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.oldest_dispatch_overdue_since', now()->subMinutes(2)->toJSON())
+            ->assertJsonPath('queue_visibility.task_queues.0.repair.max_dispatch_overdue_age_ms', 2 * 60 * 1000);
     }
 
     public function testHealthEndpointCategorizesEveryCheckAndExposesWakeAcceleration(): void
