@@ -524,6 +524,10 @@
                                     queue-wake {{ operatorMatchingRoleQueueWakeEnabled() ? 'enabled' : 'disabled' }},
                                     task dispatch <code>{{ operatorMatchingRoleTaskDispatchMode() }}</code>.
                                 </p>
+                                <p v-if="operatorMatchingRoleContractAvailable()">
+                                    Partitions by <code>{{ operatorMatchingRolePartitionPrimitivesLabel() }}</code>,
+                                    backpressure <code>{{ operatorMatchingRoleBackpressureModel() }}</code>.
+                                </p>
                                 <p class="text-muted">
                                     Single-process scope &mdash; read one snapshot per node to see the full deployment.
                                 </p>
@@ -1459,6 +1463,36 @@ export default {
 
             return typeof matchingRole.task_dispatch_mode === 'string' && matchingRole.task_dispatch_mode !== ''
                 ? matchingRole.task_dispatch_mode
+                : 'unknown';
+        },
+
+        operatorMatchingRoleContractAvailable() {
+            const matchingRole = (this.operatorMetrics && this.operatorMetrics.matching_role) || {};
+
+            return this.operatorMatchingRolePartitionPrimitives(matchingRole).length > 0
+                || (typeof matchingRole.backpressure_model === 'string' && matchingRole.backpressure_model !== '');
+        },
+
+        operatorMatchingRolePartitionPrimitives(matchingRole = null) {
+            const snapshot = matchingRole || ((this.operatorMetrics && this.operatorMetrics.matching_role) || {});
+            const primitives = Array.isArray(snapshot.partition_primitives) ? snapshot.partition_primitives : [];
+
+            return primitives.filter((primitive) => typeof primitive === 'string' && primitive !== '');
+        },
+
+        operatorMatchingRolePartitionPrimitivesLabel() {
+            const primitives = this.operatorMatchingRolePartitionPrimitives();
+
+            return primitives.length > 0
+                ? primitives.join(' / ')
+                : 'unknown';
+        },
+
+        operatorMatchingRoleBackpressureModel() {
+            const matchingRole = (this.operatorMetrics && this.operatorMetrics.matching_role) || {};
+
+            return typeof matchingRole.backpressure_model === 'string' && matchingRole.backpressure_model !== ''
+                ? matchingRole.backpressure_model
                 : 'unknown';
         },
 

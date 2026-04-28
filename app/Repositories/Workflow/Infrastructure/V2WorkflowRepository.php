@@ -73,8 +73,8 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         $namespace = $this->namespace();
         $now = now();
         $summary = app(OperatorObservabilityRepository::class)->dashboardSummary($now, $namespace);
-        $summary['operator_metrics']['workers'] = $this->scopedWorkerMetrics(
-            $summary['operator_metrics']['workers'] ?? null,
+        $summary['operator_metrics'] = $this->annotateOperatorMetrics(
+            $summary['operator_metrics'] ?? null,
             $namespace,
         );
 
@@ -152,7 +152,27 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     {
         $namespace = $this->namespace();
         $metrics = app(OperatorObservabilityRepository::class)->metrics(null, $namespace);
+        $metrics = $this->annotateOperatorMetrics($metrics, $namespace);
+
+        return $metrics;
+    }
+
+    /**
+     * Keep Waterline compatible with older workflow alphas that omit
+     * namespace-scoped worker snapshots or the expanded matching-role
+     * routing contract on the operator metrics surface.
+     *
+     * @param mixed $metrics
+     * @return mixed
+     */
+    private function annotateOperatorMetrics(mixed $metrics, ?string $namespace): mixed
+    {
+        if (! is_array($metrics)) {
+            return $metrics;
+        }
+
         $metrics['workers'] = $this->scopedWorkerMetrics($metrics['workers'] ?? null, $namespace);
+        $metrics['matching_role'] = $this->matchingRoleMetrics($metrics['matching_role'] ?? null);
 
         return $metrics;
     }
@@ -207,6 +227,31 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         $workers['fleet'] = $fleet;
 
         return $workers;
+    }
+
+    /**
+     * The task-matching contract freezes the partition primitives and the
+     * lease-based backpressure model even though older workflow alphas did
+     * not yet expose them on OperatorMetrics::snapshot().
+     *
+     * @param mixed $matchingRole
+     * @return mixed
+     */
+    private function matchingRoleMetrics(mixed $matchingRole): mixed
+    {
+        if (! is_array($matchingRole)) {
+            return $matchingRole;
+        }
+
+        if (! array_key_exists('partition_primitives', $matchingRole)) {
+            $matchingRole['partition_primitives'] = ['connection', 'queue', 'compatibility', 'namespace'];
+        }
+
+        if (! array_key_exists('backpressure_model', $matchingRole)) {
+            $matchingRole['backpressure_model'] = 'lease_ownership';
+        }
+
+        return $matchingRole;
     }
 
     /**

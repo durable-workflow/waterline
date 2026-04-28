@@ -968,6 +968,8 @@ class V2DashboardStatsControllerTest extends TestCase
         $this->assertArrayHasKey('queue_wake_enabled', $matchingRole);
         $this->assertArrayHasKey('shape', $matchingRole);
         $this->assertArrayHasKey('task_dispatch_mode', $matchingRole);
+        $this->assertArrayHasKey('partition_primitives', $matchingRole);
+        $this->assertArrayHasKey('backpressure_model', $matchingRole);
 
         $this->assertIsBool($matchingRole['queue_wake_enabled']);
         $this->assertContains(
@@ -979,6 +981,16 @@ class V2DashboardStatsControllerTest extends TestCase
             $matchingRole['task_dispatch_mode'],
             ['queue', 'poll'],
             'operator_metrics.matching_role.task_dispatch_mode must be queue or poll',
+        );
+        $this->assertSame(
+            ['connection', 'queue', 'compatibility', 'namespace'],
+            $matchingRole['partition_primitives'],
+            'operator_metrics.matching_role.partition_primitives must preserve the frozen queue routing order',
+        );
+        $this->assertSame(
+            'lease_ownership',
+            $matchingRole['backpressure_model'],
+            'operator_metrics.matching_role.backpressure_model must preserve the frozen matching-role backpressure contract',
         );
     }
 
