@@ -77,6 +77,41 @@
                 </article>
             </section>
 
+            <section v-if="coordinationAlerts.length > 0" class="card worker-health__panel">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <div>
+                        <h5 class="mb-0">Coordination alerts</h5>
+                        <small class="text-muted">Warnings and errors distilled from health checks and queue visibility.</small>
+                    </div>
+
+                    <span class="worker-health__pill" :class="statusToneClass(coordinationAlertRollup)">
+                        {{ coordinationAlerts.length.toLocaleString() }} open
+                    </span>
+                </div>
+
+                <div class="card-body card-bg-secondary">
+                    <div class="worker-health__checks">
+                        <article
+                            v-for="alert in coordinationAlerts"
+                            :key="`${alert.source || 'alert'}:${alert.key || 'unknown'}`"
+                            class="worker-health__check"
+                        >
+                            <div class="worker-health__check-head">
+                                <span class="worker-health__pill" :class="statusToneClass(alert.status)">
+                                    {{ (alert.status || 'warning').toUpperCase() }}
+                                </span>
+                                <strong>{{ coordinationAlertTitle(alert) }}</strong>
+                            </div>
+
+                            <p class="worker-health__check-copy">{{ alert.summary }}</p>
+                            <p v-if="coordinationAlertDetails(alert)" class="worker-health__cell-meta mb-0">
+                                {{ coordinationAlertDetails(alert) }}
+                            </p>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
             <section class="worker-health__grid">
                 <article class="card worker-health__panel worker-health__panel--wide">
                     <div class="card-header d-flex align-items-center justify-content-between">
@@ -455,6 +490,26 @@ export default {
             return Array.isArray(this.queueVisibility.task_queues)
                 ? this.queueVisibility.task_queues
                 : [];
+        },
+
+        coordinationAlerts() {
+            return Array.isArray(this.healthData?.coordination_alerts)
+                ? this.healthData.coordination_alerts.filter((alert) => alert && typeof alert === 'object')
+                : [];
+        },
+
+        coordinationAlertRollup() {
+            const statuses = this.coordinationAlerts.map((alert) => alert.status);
+
+            if (statuses.includes('error')) {
+                return 'error';
+            }
+
+            if (statuses.includes('warning')) {
+                return 'warning';
+            }
+
+            return 'ok';
         },
 
         categorizedChecks() {
@@ -854,6 +909,37 @@ export default {
             const age = taskQueue?.stats?.approximate_backlog_age;
 
             return typeof age === 'string' && age !== '' ? age : 'fresh';
+        },
+
+        coordinationAlertTitle(alert) {
+            if (typeof alert?.title === 'string' && alert.title !== '') {
+                return alert.title;
+            }
+
+            if (typeof alert?.key === 'string' && alert.key !== '') {
+                return alert.key.replace(/_/g, ' ');
+            }
+
+            return 'Coordination alert';
+        },
+
+        coordinationAlertDetails(alert) {
+            if (typeof alert?.details === 'string' && alert.details !== '') {
+                return alert.details;
+            }
+
+            const queues = Array.isArray(alert?.queues)
+                ? alert.queues.filter((queue) => typeof queue === 'string' && queue !== '')
+                : [];
+
+            if (queues.length === 0) {
+                return null;
+            }
+
+            const label = queues.slice(0, 3).join(', ');
+            const suffix = queues.length > 3 ? ` +${queues.length - 3} more` : '';
+
+            return `Queues: ${label}${suffix}`;
         },
 
         integerLabel(value) {

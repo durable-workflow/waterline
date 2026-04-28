@@ -23,7 +23,7 @@ class V2HealthController extends Controller
         $namespace = $this->namespace();
 
         if (($engineSource['uses_v2'] ?? false) !== true) {
-            return response()->json([
+            $payload = [
                 'namespace' => $namespace,
                 'queue_visibility' => $this->emptyQueueVisibility(
                     $namespace,
@@ -48,7 +48,13 @@ class V2HealthController extends Controller
                 ],
                 'engine_source' => $engineSource,
                 'readiness_contract' => $engineSource['readiness_contract'] ?? null,
-            ], 503);
+            ];
+            $payload['coordination_alerts'] = $this->coordinationAlerts(
+                $payload['checks'],
+                $payload['queue_visibility'],
+            );
+
+            return response()->json($payload, 503);
         }
 
         $snapshot = $this->snapshotForConfiguredNamespace();
@@ -68,8 +74,222 @@ class V2HealthController extends Controller
         $snapshot['queue_visibility'] = $this->queueVisibility($namespace);
         $snapshot['engine_source'] = $engineSource;
         $snapshot['readiness_contract'] = $engineSource['readiness_contract'] ?? null;
+        $snapshot['coordination_alerts'] = $this->coordinationAlerts(
+            $snapshot['checks'],
+            $snapshot['queue_visibility'],
+        );
 
         return response()->json($snapshot, HealthCheck::httpStatus($snapshot));
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $checks
+     * @param  array<string, mixed>  $queueVisibility
+     * @return array<int, array<string, mixed>>
+     */
+    private function coordinationAlerts(array $checks, array $queueVisibility): array
+    {
+        return array_values(array_merge(
+            $this->healthCheckAlerts($checks),
+            $this->queueVisibilityAlerts($queueVisibility),
+        ));
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $checks
+     * @return array<int, array<string, mixed>>
+     */
+    private function healthCheckAlerts(array $checks): array
+    {
+        $alerts = [];
+
+        foreach ($checks as $check) {
+            if (! is_array($check)) {
+                continue;
+            }
+
+            $status = is_string($check['status'] ?? null) ? strtolower(trim((string) $check['status'])) : '';
+            if (! in_array($status, ['warning', 'error'], true)) {
+                continue;
+            }
+
+            $key = is_string($check['name'] ?? null) && trim((string) $check['name']) !== ''
+                ? trim((string) $check['name'])
+                : 'health_check';
+            $title = $this->humanizeAlertKey($key);
+            $summary = is_string($check['message'] ?? null) && trim((string) $check['message']) !== ''
+                ? trim((string) $check['message'])
+                : sprintf('%s reported %s.', $title, $status);
+
+            $alerts[] = [
+                'key' => $key,
+                'source' => 'health_check',
+                'status' => $status,
+                'title' => $title,
+                'summary' => $summary,
+                'details' => null,
+                'category' => is_string($check['category'] ?? null)
+                    ? trim((string) $check['category'])
+                    : null,
+            ];
+        }
+
+        return $alerts;
+    }
+
+    /**
+     * @param  array<string, mixed>  $queueVisibility
+     * @return array<int, array<string, mixed>>
+     */
+    private function queueVisibilityAlerts(array $queueVisibility): array
+    {
+        $namespace = is_string($queueVisibility['namespace'] ?? null) && trim((string) $queueVisibility['namespace']) !== ''
+            ? trim((string) $queueVisibility['namespace'])
+            : null;
+
+        if (($queueVisibility['available'] ?? false) !== true) {
+            $reason = is_string($queueVisibility['reason'] ?? null)
+                ? trim((string) $queueVisibility['reason'])
+                : 'Queue visibility is unavailable for this scope.';
+
+            if ($namespace === null) {
+                return [];
+            }
+
+            return [[
+                'key' => 'queue_visibility_unavailable',
+                'source' => 'queue_visibility',
+                'status' => 'warning',
+                'title' => 'Queue visibility unavailable',
+                'summary' => $reason,
+                'details' => null,
+                'namespace' => $namespace,
+                'queue_count' => 0,
+                'queues' => [],
+            ]];
+        }
+
+        $taskQueues = array_values(array_filter(
+            is_array($queueVisibility['task_queues'] ?? null) ? $queueVisibility['task_queues'] : [],
+            static fn (mixed $taskQueue): bool => is_array($taskQueue),
+        ));
+
+        if ($taskQueues === []) {
+            return [];
+        }
+
+        $alerts = [];
+
+        $backlogWithoutPollers = array_values(array_filter(
+            $taskQueues,
+            fn (array $taskQueue): bool => $this->taskQueueBacklog($taskQueue) > 0
+                && $this->taskQueueActivePollers($taskQueue) === 0,
+        ));
+        if ($backlogWithoutPollers !== []) {
+            $queues = $this->taskQueueNames($backlogWithoutPollers);
+            $backlogCount = array_sum(array_map(
+                fn (array $taskQueue): int => $this->taskQueueBacklog($taskQueue),
+                $backlogWithoutPollers,
+            ));
+
+            $alerts[] = [
+                'key' => 'queue_backlog_without_pollers',
+                'source' => 'queue_visibility',
+                'status' => 'error',
+                'title' => 'Queued work has no active pollers',
+                'summary' => sprintf(
+                    '%d queue%s have backlog but no active pollers.',
+                    count($queues),
+                    count($queues) === 1 ? '' : 's',
+                ),
+                'details' => sprintf(
+                    '%d queued task%s currently wait on %s.',
+                    $backlogCount,
+                    $backlogCount === 1 ? '' : 's',
+                    $this->queueListLabel($queues),
+                ),
+                'namespace' => $namespace,
+                'queue_count' => count($queues),
+                'queues' => $queues,
+                'backlog_count' => $backlogCount,
+            ];
+        }
+
+        $stalePollers = array_values(array_filter(
+            $taskQueues,
+            fn (array $taskQueue): bool => $this->taskQueueStalePollers($taskQueue) > 0,
+        ));
+        if ($stalePollers !== []) {
+            $queues = $this->taskQueueNames($stalePollers);
+            $stalePollerCount = array_sum(array_map(
+                fn (array $taskQueue): int => $this->taskQueueStalePollers($taskQueue),
+                $stalePollers,
+            ));
+
+            $alerts[] = [
+                'key' => 'queue_stale_pollers',
+                'source' => 'queue_visibility',
+                'status' => 'warning',
+                'title' => 'Stale pollers detected',
+                'summary' => sprintf(
+                    '%d queue%s report stale pollers.',
+                    count($queues),
+                    count($queues) === 1 ? '' : 's',
+                ),
+                'details' => sprintf(
+                    '%d stale poller%s observed on %s.',
+                    $stalePollerCount,
+                    $stalePollerCount === 1 ? '' : 's',
+                    $this->queueListLabel($queues),
+                ),
+                'namespace' => $namespace,
+                'queue_count' => count($queues),
+                'queues' => $queues,
+                'stale_poller_count' => $stalePollerCount,
+            ];
+        }
+
+        $repairCandidates = array_values(array_filter(
+            $taskQueues,
+            fn (array $taskQueue): bool => $this->taskQueueRepairCandidates($taskQueue) > 0,
+        ));
+        if ($repairCandidates !== []) {
+            $queues = $this->taskQueueNames($repairCandidates);
+            $candidateCount = array_sum(array_map(
+                fn (array $taskQueue): int => $this->taskQueueRepairCandidates($taskQueue),
+                $repairCandidates,
+            ));
+            $maxAgeMs = max(array_map(
+                fn (array $taskQueue): int => $this->taskQueueMaxRepairAge($taskQueue),
+                $repairCandidates,
+            ));
+
+            $alerts[] = [
+                'key' => 'queue_repair_candidates',
+                'source' => 'queue_visibility',
+                'status' => 'warning',
+                'title' => 'Repair candidates need attention',
+                'summary' => sprintf(
+                    '%d queue%s have repair candidates waiting.',
+                    count($queues),
+                    count($queues) === 1 ? '' : 's',
+                ),
+                'details' => sprintf(
+                    '%d repair candidate%s visible on %s; worst age %s.',
+                    $candidateCount,
+                    $candidateCount === 1 ? '' : 's',
+                    $this->queueListLabel($queues),
+                    $this->formatDurationMilliseconds($maxAgeMs),
+                ),
+                'namespace' => $namespace,
+                'queue_count' => count($queues),
+                'queues' => $queues,
+                'candidate_count' => $candidateCount,
+                'max_age_ms' => $maxAgeMs,
+            ];
+        }
+
+        return $alerts;
     }
 
     /**
@@ -406,6 +626,119 @@ class V2HealthController extends Controller
         }
 
         return (int) $timestamp->diffInMilliseconds($now);
+    }
+
+    /**
+     * @param  array<string, mixed>  $taskQueue
+     */
+    private function taskQueueBacklog(array $taskQueue): int
+    {
+        return $this->integerValue($taskQueue['stats']['approximate_backlog_count'] ?? 0);
+    }
+
+    /**
+     * @param  array<string, mixed>  $taskQueue
+     */
+    private function taskQueueActivePollers(array $taskQueue): int
+    {
+        return $this->integerValue($taskQueue['stats']['pollers']['active_count'] ?? 0);
+    }
+
+    /**
+     * @param  array<string, mixed>  $taskQueue
+     */
+    private function taskQueueStalePollers(array $taskQueue): int
+    {
+        return $this->integerValue($taskQueue['stats']['pollers']['stale_count'] ?? 0);
+    }
+
+    /**
+     * @param  array<string, mixed>  $taskQueue
+     */
+    private function taskQueueRepairCandidates(array $taskQueue): int
+    {
+        return $this->integerValue($taskQueue['repair']['candidates'] ?? 0);
+    }
+
+    /**
+     * @param  array<string, mixed>  $taskQueue
+     */
+    private function taskQueueMaxRepairAge(array $taskQueue): int
+    {
+        $repair = is_array($taskQueue['repair'] ?? null) ? $taskQueue['repair'] : [];
+
+        return max([
+            $this->integerValue($repair['max_dispatch_failed_age_ms'] ?? 0),
+            $this->integerValue($repair['max_lease_expired_age_ms'] ?? 0),
+            $this->integerValue($repair['max_dispatch_overdue_age_ms'] ?? 0),
+        ]);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $taskQueues
+     * @return array<int, string>
+     */
+    private function taskQueueNames(array $taskQueues): array
+    {
+        $names = array_values(array_unique(array_map(
+            fn (array $taskQueue): string => $this->queueName($taskQueue),
+            $taskQueues,
+        )));
+
+        sort($names);
+
+        return $names;
+    }
+
+    /**
+     * @param  array<int, string>  $queues
+     */
+    private function queueListLabel(array $queues): string
+    {
+        $sample = array_slice($queues, 0, 3);
+        $label = implode(', ', $sample);
+        $remaining = count($queues) - count($sample);
+
+        return $remaining > 0
+            ? sprintf('%s +%d more', $label, $remaining)
+            : $label;
+    }
+
+    private function integerValue(mixed $value): int
+    {
+        return is_numeric($value) ? (int) $value : 0;
+    }
+
+    private function humanizeAlertKey(string $key): string
+    {
+        return ucwords(str_replace('_', ' ', trim($key)));
+    }
+
+    private function formatDurationMilliseconds(int $milliseconds): string
+    {
+        if ($milliseconds <= 0) {
+            return 'fresh';
+        }
+
+        if ($milliseconds < 1000) {
+            return '<1s';
+        }
+
+        $seconds = (int) floor($milliseconds / 1000);
+        if ($seconds < 60) {
+            return sprintf('%ds', $seconds);
+        }
+
+        if ($seconds < 3600) {
+            return sprintf('%dm%02ds', (int) floor($seconds / 60), $seconds % 60);
+        }
+
+        return sprintf(
+            '%dh%02dm%02ds',
+            (int) floor($seconds / 3600),
+            (int) floor(($seconds % 3600) / 60),
+            $seconds % 60,
+        );
     }
 
     private function namespace(): ?string

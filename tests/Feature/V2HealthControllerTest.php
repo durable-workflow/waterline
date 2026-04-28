@@ -52,6 +52,7 @@ class V2HealthControllerTest extends TestCase
             ->assertJsonPath('engine_source.resolved', 'v2')
             ->assertJsonPath('readiness_contract.version', 1)
             ->assertJsonPath('readiness_contract.effective_states.health.state', 'delegates_to_v2_health_check')
+            ->assertJsonCount(0, 'coordination_alerts')
             ->assertJsonPath('operator_metrics.backend.supported', true);
     }
 
@@ -366,6 +367,13 @@ class V2HealthControllerTest extends TestCase
             ])
             ->assertJsonPath('operator_metrics.backlog.repair_needed_runs', 1)
             ->assertJsonPath('operator_metrics.repair.missing_task_candidates', 1);
+
+        $payload = $this->get('/waterline/api/v2/health')->json();
+        $alert = $this->coordinationAlertByKey($payload, 'durable_resume_paths');
+        $this->assertNotNull($alert);
+        $this->assertSame('health_check', $alert['source']);
+        $this->assertSame('warning', $alert['status']);
+        $this->assertSame('Durable Resume Paths', $alert['title']);
     }
 
     public function testHealthEndpointWarnsForCommandContractSnapshotsNeedingBackfill(): void
@@ -482,6 +490,100 @@ class V2HealthControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.command_contracts.backfill_unavailable_runs', 1);
     }
 
+    public function testHealthEndpointPublishesQueueCoordinationAlerts(): void
+    {
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('cache.default', 'file');
+        config()->set('waterline.namespace', 'billing');
+
+        Carbon::setTestNow('2026-04-09 12:00:00');
+        $this->beforeApplicationDestroyed(static function (): void {
+            Carbon::setTestNow();
+        });
+
+        $this->createWorkerRegistrationsTable();
+        $run = $this->createRunSummaryWithReadyTask(
+            namespace: 'billing',
+            availableSecondsAgo: 15,
+        );
+
+        WorkflowTask::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'namespace' => 'billing',
+            'task_type' => TaskType::Activity->value,
+            'status' => TaskStatus::Ready->value,
+            'queue' => 'default',
+            'created_at' => now()->subMinutes(4),
+            'last_dispatch_attempt_at' => now()->subSeconds(45),
+            'last_dispatch_error' => 'transport timeout',
+        ]);
+
+        WorkflowTask::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'namespace' => 'billing',
+            'task_type' => TaskType::Activity->value,
+            'status' => TaskStatus::Leased->value,
+            'queue' => 'default',
+            'created_at' => now()->subMinutes(3),
+            'lease_expires_at' => now()->subSeconds(90),
+        ]);
+
+        WorkflowTask::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'namespace' => 'billing',
+            'task_type' => TaskType::Activity->value,
+            'status' => TaskStatus::Ready->value,
+            'queue' => 'default',
+            'created_at' => now()->subMinutes(2),
+        ]);
+
+        WorkerRegistration::create([
+            'worker_id' => 'billing-stale-worker',
+            'namespace' => 'billing',
+            'task_queue' => 'default',
+            'runtime' => 'php',
+            'sdk_version' => '1.0.0',
+            'build_id' => 'build-billing',
+            'supported_workflow_types' => ['workflow.billing'],
+            'supported_activity_types' => ['activity.charge'],
+            'max_concurrent_workflow_tasks' => 8,
+            'max_concurrent_activity_tasks' => 4,
+            'last_heartbeat_at' => now()->subMinutes(10),
+            'status' => 'active',
+        ]);
+
+        $payload = $this->get('/waterline/api/v2/health')
+            ->assertStatus(200)
+            ->json();
+
+        $repairAlert = $this->coordinationAlertByKey($payload, 'queue_repair_candidates');
+        $this->assertNotNull($repairAlert);
+        $this->assertSame('queue_visibility', $repairAlert['source']);
+        $this->assertSame('warning', $repairAlert['status']);
+        $this->assertSame(1, $repairAlert['queue_count']);
+        $this->assertSame(['default'], $repairAlert['queues']);
+        $this->assertGreaterThanOrEqual(3, (int) ($repairAlert['candidate_count'] ?? 0));
+        $this->assertSame(2 * 60 * 1000, $repairAlert['max_age_ms']);
+
+        $backlogAlert = $this->coordinationAlertByKey($payload, 'queue_backlog_without_pollers');
+        $this->assertNotNull($backlogAlert);
+        $this->assertSame('error', $backlogAlert['status']);
+        $this->assertSame(1, $backlogAlert['queue_count']);
+        $this->assertSame(['default'], $backlogAlert['queues']);
+        $this->assertGreaterThanOrEqual(1, (int) ($backlogAlert['backlog_count'] ?? 0));
+
+        $staleAlert = $this->coordinationAlertByKey($payload, 'queue_stale_pollers');
+        $this->assertNotNull($staleAlert);
+        $this->assertSame('warning', $staleAlert['status']);
+        $this->assertSame(1, $staleAlert['queue_count']);
+        $this->assertSame(['default'], $staleAlert['queues']);
+        $this->assertSame(1, $staleAlert['stale_poller_count']);
+    }
+
     private function createRunSummaryWithReadyTask(
         string $namespace,
         int $availableSecondsAgo,
@@ -570,5 +672,28 @@ class V2HealthControllerTest extends TestCase
             $table->unique(['worker_id', 'namespace']);
             $table->index(['namespace', 'task_queue', 'status']);
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>|null
+     */
+    private function coordinationAlertByKey(array $payload, string $key): ?array
+    {
+        $alerts = is_array($payload['coordination_alerts'] ?? null)
+            ? $payload['coordination_alerts']
+            : [];
+
+        foreach ($alerts as $alert) {
+            if (! is_array($alert)) {
+                continue;
+            }
+
+            if (($alert['key'] ?? null) === $key) {
+                return $alert;
+            }
+        }
+
+        return null;
     }
 }
