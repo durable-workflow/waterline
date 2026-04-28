@@ -555,6 +555,34 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.repair_policy.failure_backoff_strategy', 'exponential_by_repair_count');
     }
 
+    public function testIndexScopesWorkerFleetMetricsToConfiguredNamespace(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        WorkerCompatibilityFleet::recordForNamespace('billing', ['build-a'], 'redis', 'default', 'worker-billing');
+        WorkerCompatibilityFleet::recordForNamespace('shipping', ['build-a'], 'redis', 'default', 'worker-shipping');
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 1)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 1)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 1)
+            ->assertJsonCount(1, 'operator_metrics.workers.fleet')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.worker_id', 'worker-billing')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.connection', 'redis')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.queue', 'default')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.supports_required', true);
+    }
+
     public function testIndexIncludesCommandContractBackfillMetrics(): void
     {
         config()->set('waterline.engine_source', 'v2');

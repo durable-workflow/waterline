@@ -2,11 +2,14 @@
 
 namespace Waterline\Repositories\Workflow\Infrastructure;
 
+use Carbon\CarbonInterface;
+use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
+use Waterline\Support\ActionabilityVisibilityFilters;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Support\RunSummarySortKey;
 use Workflow\V2\Support\SelectedRunLocator;
-use Waterline\Support\ActionabilityVisibilityFilters;
-use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
+use Workflow\V2\Support\WorkerCompatibility;
+use Workflow\V2\Support\WorkerCompatibilityFleet;
 
 class V2WorkflowRepository implements WorkflowRepositoryInterface
 {
@@ -67,7 +70,15 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function dashboardStats(): array
     {
-        return app(OperatorObservabilityRepository::class)->dashboardSummary(namespace: $this->namespace());
+        $namespace = $this->namespace();
+        $now = now();
+        $summary = app(OperatorObservabilityRepository::class)->dashboardSummary($now, $namespace);
+        $summary['operator_metrics']['workers'] = $this->scopedWorkerMetrics(
+            $summary['operator_metrics']['workers'] ?? null,
+            $namespace,
+        );
+
+        return $summary;
     }
 
     public function flowsPastHour(): int
@@ -139,7 +150,99 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function operatorMetrics()
     {
-        return app(OperatorObservabilityRepository::class)->metrics(namespace: $this->namespace());
+        $namespace = $this->namespace();
+        $metrics = app(OperatorObservabilityRepository::class)->metrics(null, $namespace);
+        $metrics['workers'] = $this->scopedWorkerMetrics($metrics['workers'] ?? null, $namespace);
+
+        return $metrics;
+    }
+
+    /**
+     * Keep Waterline compatible with older workflow alphas that still expose
+     * a fleet-global workers snapshot even when the rest of the operator
+     * metrics payload is namespace-scoped.
+     *
+     * @param mixed $workers
+     * @return mixed
+     */
+    private function scopedWorkerMetrics(mixed $workers, ?string $namespace): mixed
+    {
+        if (! is_array($workers) || $namespace === null) {
+            return $workers;
+        }
+
+        if (($workers['compatibility_namespace'] ?? null) === $namespace) {
+            return $workers;
+        }
+
+        $required = WorkerCompatibility::current();
+        $snapshots = WorkerCompatibilityFleet::detailsForNamespace($namespace, $required);
+        $workerIds = [];
+        $supportingWorkerIds = [];
+        $fleet = [];
+
+        foreach ($snapshots as $snapshot) {
+            $workerId = is_string($snapshot['worker_id'] ?? null)
+                ? $snapshot['worker_id']
+                : null;
+
+            if ($workerId === null) {
+                continue;
+            }
+
+            $workerIds[$workerId] = true;
+
+            if (($snapshot['supports_required'] ?? false) === true) {
+                $supportingWorkerIds[$workerId] = true;
+            }
+
+            $fleet[] = $this->fleetEntry($snapshot);
+        }
+
+        $workers['compatibility_namespace'] = $namespace;
+        $workers['required_compatibility'] = $required;
+        $workers['active_workers'] = count($workerIds);
+        $workers['active_worker_scopes'] = count($snapshots);
+        $workers['active_workers_supporting_required'] = count($supportingWorkerIds);
+        $workers['fleet'] = $fleet;
+
+        return $workers;
+    }
+
+    /**
+     * @param array<string, mixed> $snapshot
+     * @return array<string, mixed>
+     */
+    private function fleetEntry(array $snapshot): array
+    {
+        $recordedAt = $snapshot['recorded_at'] ?? null;
+        $expiresAt = $snapshot['expires_at'] ?? null;
+        $supported = is_array($snapshot['supported'] ?? null)
+            ? array_values(array_filter($snapshot['supported'], static fn ($value): bool => is_string($value)))
+            : [];
+
+        return [
+            'worker_id' => (string) ($snapshot['worker_id'] ?? ''),
+            'namespace' => $this->stringOrNull($snapshot['namespace'] ?? null),
+            'host' => $this->stringOrNull($snapshot['host'] ?? null),
+            'process_id' => $this->stringOrNull($snapshot['process_id'] ?? null),
+            'connection' => $this->stringOrNull($snapshot['connection'] ?? null),
+            'queue' => $this->stringOrNull($snapshot['queue'] ?? null),
+            'supported' => $supported,
+            'supports_required' => ($snapshot['supports_required'] ?? false) === true,
+            'recorded_at' => $recordedAt instanceof CarbonInterface ? $recordedAt->toJSON() : $this->stringOrNull(
+                $recordedAt
+            ),
+            'expires_at' => $expiresAt instanceof CarbonInterface ? $expiresAt->toJSON() : $this->stringOrNull(
+                $expiresAt
+            ),
+            'source' => is_string($snapshot['source'] ?? null) ? $snapshot['source'] : '',
+        ];
+    }
+
+    private function stringOrNull(mixed $value): ?string
+    {
+        return is_string($value) ? $value : null;
     }
 
     protected function orderedRunsQuery(?string $bucket = null)
