@@ -520,16 +520,27 @@ class V2HealthController extends Controller
             self::invokeLegacyHealthCheck('historyRetentionInvariantCheck', $metrics['history'] ?? []),
             self::invokeLegacyHealthCheck('commandContractCheck', $metrics['command_contracts'] ?? []),
             self::invokeLegacyHealthCheck('taskTransportCheck', $metrics['tasks'] ?? [], $metrics['backlog'] ?? []),
-            self::invokeLegacyHealthCheck(
-                'durableResumePathCheck',
-                $metrics['backlog'] ?? [],
-                $metrics['repair'] ?? [],
-                $metrics['runs'] ?? [],
-            ),
-            self::invokeLegacyHealthCheck('workerCompatibilityCheck', $metrics['workers'] ?? []),
-            self::invokeLegacyHealthCheck('schedulerRoleCheck', $metrics['schedules'] ?? []),
-            self::invokeLegacyHealthCheck('longPollWakeAccelerationCheck'),
         ];
+
+        if (self::legacyHealthCheckExists('routingHealthCheck')) {
+            $checks[] = self::invokeLegacyHealthCheck(
+                'routingHealthCheck',
+                $metrics['tasks'] ?? [],
+                $metrics['backlog'] ?? [],
+                $metrics['matching_role'] ?? [],
+                $metrics['workers'] ?? [],
+            );
+        }
+
+        $checks[] = self::invokeLegacyHealthCheck(
+            'durableResumePathCheck',
+            $metrics['backlog'] ?? [],
+            $metrics['repair'] ?? [],
+            $metrics['runs'] ?? [],
+        );
+        $checks[] = self::invokeLegacyHealthCheck('workerCompatibilityCheck', $metrics['workers'] ?? []);
+        $checks[] = self::invokeLegacyHealthCheck('schedulerRoleCheck', $metrics['schedules'] ?? []);
+        $checks[] = self::invokeLegacyHealthCheck('longPollWakeAccelerationCheck');
         $status = self::invokeLegacyHealthCheck('status', $checks);
 
         return [
@@ -550,6 +561,11 @@ class V2HealthController extends Controller
             null,
             HealthCheck::class,
         )($method, $args);
+    }
+
+    private static function legacyHealthCheckExists(string $method): bool
+    {
+        return method_exists(HealthCheck::class, $method);
     }
 
     /**
