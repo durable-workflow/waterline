@@ -24,7 +24,7 @@
         "phpunit/phpunit": "^9.5.10|^12.5.12"
     },
     "conflict": {
-        "durable-workflow/workflow": "<2.0.0-alpha.11"
+        "durable-workflow/workflow": "<2.0.0-alpha.27"
     },
     "autoload": {
         "psr-4": {

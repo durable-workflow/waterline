@@ -738,7 +738,7 @@ class V2DashboardStatsControllerTest extends TestCase
         $this->assertIsArray(
             $schedules,
             'operator_metrics.schedules must be present in the dashboard payload; '
-                . 'vendored workflow package must resolve to >=2.0.0-alpha.11.',
+                . 'vendored workflow package must resolve to >=2.0.0-alpha.27.',
         );
         foreach (
             ['active', 'paused', 'missed', 'oldest_overdue_at', 'max_overdue_ms', 'fires_total', 'failures_total']

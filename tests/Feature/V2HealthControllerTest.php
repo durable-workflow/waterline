@@ -396,7 +396,7 @@ class V2HealthControllerTest extends TestCase
             'liveness_state' => 'repair_needed',
             'liveness_reason' => 'Run is non-terminal but has no durable next-resume source.',
             'created_at' => now()->subMinutes(10),
-            'updated_at' => now(),
+            'updated_at' => now()->subMinutes(4),
         ]);
 
         $this->get('/waterline/api/v2/health')
@@ -417,9 +417,12 @@ class V2HealthControllerTest extends TestCase
         $this->assertSame('warning', $alert['status']);
         $this->assertSame('Durable Resume Paths', $alert['title']);
         $this->assertSame(1, $alert['facts']['repair_needed_runs'] ?? null);
+        $this->assertSame(now()->subMinutes(4)->toJSON(), $alert['facts']['oldest_repair_needed_at'] ?? null);
+        $this->assertSame(240000, $alert['facts']['max_repair_needed_age_ms'] ?? null);
         $this->assertSame(1, $alert['facts']['missing_task_candidates'] ?? null);
         $this->assertSame(1, $alert['facts']['waiting_runs'] ?? null);
         $this->assertStringContainsString('1 repair-needed run', (string) ($alert['details'] ?? ''));
+        $this->assertStringContainsString('oldest repair-needed run age 4m', (string) ($alert['details'] ?? ''));
         $this->assertStringContainsString('1 missing-task candidate', (string) ($alert['details'] ?? ''));
     }
 

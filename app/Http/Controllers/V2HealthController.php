@@ -213,6 +213,7 @@ class V2HealthController extends Controller
         $missingCandidates = $this->integerValue($facts['missing_task_candidates'] ?? 0);
         $selectedCandidates = $this->integerValue($facts['selected_missing_task_candidates'] ?? 0);
         $waitingRuns = $this->integerValue($facts['waiting_runs'] ?? 0);
+        $maxRepairNeededAgeMs = $this->integerValue($facts['max_repair_needed_age_ms'] ?? 0);
         $maxMissingRunAgeMs = $this->integerValue($facts['max_missing_run_age_ms'] ?? 0);
         $maxWaitAgeMs = $this->integerValue($facts['max_wait_age_ms'] ?? 0);
 
@@ -223,6 +224,13 @@ class V2HealthController extends Controller
                 '%d repair-needed run%s',
                 $repairNeededRuns,
                 $repairNeededRuns === 1 ? '' : 's',
+            );
+        }
+
+        if ($maxRepairNeededAgeMs > 0) {
+            $parts[] = sprintf(
+                'oldest repair-needed run age %s',
+                $this->formatDurationMilliseconds($maxRepairNeededAgeMs),
             );
         }
 
