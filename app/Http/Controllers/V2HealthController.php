@@ -146,7 +146,6 @@ class V2HealthController extends Controller
     {
         return match ($key) {
             'task_transport' => $this->taskTransportAlertDetails($facts),
-            'routing_health' => $this->routingHealthAlertDetails($facts),
             'durable_resume_paths' => $this->durableResumePathAlertDetails($facts),
             'worker_compatibility' => $this->workerCompatibilityAlertDetails($facts),
             'command_contract_snapshots' => $this->commandContractAlertDetails($facts),
@@ -203,75 +202,6 @@ class V2HealthController extends Controller
         }
 
         return $parts !== [] ? ucfirst(implode('; ', $parts)).'.' : null;
-    }
-
-    /**
-     * @param  array<string, mixed>  $facts
-     */
-    private function routingHealthAlertDetails(array $facts): ?string
-    {
-        $compatibilityBlockedRuns = $this->integerValue($facts['compatibility_blocked_runs'] ?? 0);
-        $dispatchOverdueTasks = $this->integerValue($facts['dispatch_overdue_tasks'] ?? 0);
-        $claimFailedTasks = $this->integerValue($facts['claim_failed_tasks'] ?? 0);
-        $activeWorkerScopes = $this->integerValue($facts['active_worker_scopes'] ?? 0);
-        $matchingShape = is_string($facts['matching_shape'] ?? null)
-            ? trim((string) $facts['matching_shape'])
-            : 'in_worker';
-        $taskDispatchMode = is_string($facts['task_dispatch_mode'] ?? null)
-            ? trim((string) $facts['task_dispatch_mode'])
-            : 'queue';
-        $queueWakeEnabled = ($facts['queue_wake_enabled'] ?? false) === true;
-        $maxAgeMs = max([
-            $this->integerValue($facts['max_compatibility_blocked_age_ms'] ?? 0),
-            $this->integerValue($facts['max_dispatch_overdue_age_ms'] ?? 0),
-            $this->integerValue($facts['max_claim_failed_age_ms'] ?? 0),
-        ]);
-
-        $signals = [];
-        if ($compatibilityBlockedRuns > 0) {
-            $signals[] = sprintf(
-                '%d compatibility-blocked run%s',
-                $compatibilityBlockedRuns,
-                $compatibilityBlockedRuns === 1 ? '' : 's',
-            );
-        }
-
-        if ($dispatchOverdueTasks > 0) {
-            $signals[] = sprintf(
-                '%d dispatch-overdue task%s',
-                $dispatchOverdueTasks,
-                $dispatchOverdueTasks === 1 ? '' : 's',
-            );
-        }
-
-        if ($claimFailedTasks > 0) {
-            $signals[] = sprintf(
-                '%d claim-failed task%s',
-                $claimFailedTasks,
-                $claimFailedTasks === 1 ? '' : 's',
-            );
-        }
-
-        $parts = [];
-
-        if ($signals !== []) {
-            $parts[] = ucfirst(implode(', ', $signals));
-        }
-
-        $parts[] = sprintf(
-            'matching role %s in %s mode with queue wake %s across %d active worker scope%s',
-            $matchingShape,
-            $taskDispatchMode,
-            $queueWakeEnabled ? 'enabled' : 'disabled',
-            $activeWorkerScopes,
-            $activeWorkerScopes === 1 ? '' : 's',
-        );
-
-        if ($maxAgeMs > 0) {
-            $parts[] = sprintf('worst-case age %s', $this->formatDurationMilliseconds($maxAgeMs));
-        }
-
-        return $parts !== [] ? implode('; ', $parts).'.' : null;
     }
 
     /**

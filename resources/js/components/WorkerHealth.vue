@@ -1012,10 +1012,6 @@ export default {
         },
 
         coordinationAlertFacts(alert) {
-            if (alert?.source === 'health_check' && alert?.key === 'routing_health') {
-                return this.routingHealthAlertFacts(alert);
-            }
-
             const facts = [];
             const queueCount = Number(alert?.queue_count);
             const backlogCount = Number(alert?.backlog_count);
@@ -1037,56 +1033,6 @@ export default {
 
             if (Number.isFinite(candidateCount) && candidateCount > 0) {
                 facts.push(`repair candidates ${candidateCount.toLocaleString()}`);
-            }
-
-            if (Number.isFinite(maxAgeMs) && maxAgeMs > 0) {
-                facts.push(`max age ${this.durationMillisecondsLabel(maxAgeMs)}`);
-            }
-
-            return facts;
-        },
-
-        routingHealthAlertFacts(alert) {
-            const facts = [];
-            const healthFacts = alert?.facts && typeof alert.facts === 'object'
-                ? alert.facts
-                : {};
-            const compatibilityBlockedRuns = Number(healthFacts.compatibility_blocked_runs || 0);
-            const dispatchOverdueTasks = Number(healthFacts.dispatch_overdue_tasks || 0);
-            const claimFailedTasks = Number(healthFacts.claim_failed_tasks || 0);
-            const maxAgeMs = Math.max(
-                Number(healthFacts.max_compatibility_blocked_age_ms || 0),
-                Number(healthFacts.max_dispatch_overdue_age_ms || 0),
-                Number(healthFacts.max_claim_failed_age_ms || 0)
-            );
-            const activeWorkerScopes = Number(healthFacts.active_worker_scopes || 0);
-
-            if (Number.isFinite(compatibilityBlockedRuns) && compatibilityBlockedRuns > 0) {
-                facts.push(`compat blocked ${compatibilityBlockedRuns.toLocaleString()}`);
-            }
-
-            if (Number.isFinite(dispatchOverdueTasks) && dispatchOverdueTasks > 0) {
-                facts.push(`dispatch overdue ${dispatchOverdueTasks.toLocaleString()}`);
-            }
-
-            if (Number.isFinite(claimFailedTasks) && claimFailedTasks > 0) {
-                facts.push(`claim failed ${claimFailedTasks.toLocaleString()}`);
-            }
-
-            if (typeof healthFacts.matching_shape === 'string' && healthFacts.matching_shape !== '') {
-                facts.push(`matching ${healthFacts.matching_shape}`);
-            }
-
-            if (typeof healthFacts.task_dispatch_mode === 'string' && healthFacts.task_dispatch_mode !== '') {
-                facts.push(`dispatch ${healthFacts.task_dispatch_mode}`);
-            }
-
-            if (typeof healthFacts.queue_wake_enabled === 'boolean') {
-                facts.push(healthFacts.queue_wake_enabled ? 'wake enabled' : 'wake disabled');
-            }
-
-            if (Number.isFinite(activeWorkerScopes) && activeWorkerScopes > 0) {
-                facts.push(`worker scopes ${activeWorkerScopes.toLocaleString()}`);
             }
 
             if (Number.isFinite(maxAgeMs) && maxAgeMs > 0) {
