@@ -164,9 +164,32 @@ class V2StoredWorkflowResource extends JsonResource
             return null;
         }
 
+        if (! $this->databaseColumnExists($model, $attribute)) {
+            return null;
+        }
+
         return DB::connection($model->getConnectionName())
             ->table($model->getTable())
             ->where($model->getKeyName(), $model->getKey())
             ->value($attribute);
+    }
+
+    private function databaseColumnExists(Model $model, string $attribute): bool
+    {
+        static $cache = [];
+
+        $connection = DB::connection($model->getConnectionName());
+        $cacheKey = sprintf(
+            '%s|%s|%s',
+            $connection->getName(),
+            $model->getTable(),
+            $attribute,
+        );
+
+        if (! array_key_exists($cacheKey, $cache)) {
+            $cache[$cacheKey] = $connection->getSchemaBuilder()->hasColumn($model->getTable(), $attribute);
+        }
+
+        return $cache[$cacheKey];
     }
 }

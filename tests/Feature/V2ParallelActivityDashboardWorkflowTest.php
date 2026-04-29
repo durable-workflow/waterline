@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Waterline\Tests\Feature;
 
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Queue;
 use Waterline\Tests\Fixtures\V2\TestNestedParallelActivityWorkflow;
 use Waterline\Tests\Fixtures\V2\TestParallelActivityWorkflow;
@@ -147,6 +149,32 @@ final class V2ParallelActivityDashboardWorkflowTest extends TestCase
             ->assertJsonPath('waits.0.parallel_group_id', 'parallel-activities:1:2')
             ->assertJsonPath('waits.0.parallel_group_index', 0)
             ->assertJsonPath('waits.0.parallel_group_path.0.parallel_group_id', 'parallel-activities:1:2');
+    }
+
+    public function testShowSkipsLegacyVisibilityFallbackQueriesWhenWorkflowVisibilityColumnsAreAbsent(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        Queue::fake();
+
+        $workflow = WorkflowStub::make(TestParallelActivityWorkflow::class, 'waterline-parallel-activity-no-visibility-columns');
+        $workflow->start('Taylor', 'Abigail');
+        $runId = $workflow->runId();
+
+        $this->assertIsString($runId);
+        $this->runReadyWorkflowTask($runId);
+
+        Schema::table('workflow_runs', static function (Blueprint $table): void {
+            $table->dropColumn(['memo', 'search_attributes']);
+        });
+        Schema::table('workflow_instances', static function (Blueprint $table): void {
+            $table->dropColumn('memo');
+        });
+
+        $this->get('/waterline/api/flows/' . $runId)
+            ->assertOk()
+            ->assertJsonPath('wait_kind', 'activity')
+            ->assertJsonPath('open_wait_count', 2)
+            ->assertJsonPath('waits.0.kind', 'activity');
     }
 
     private function runReadyWorkflowTask(?string $runId): void
