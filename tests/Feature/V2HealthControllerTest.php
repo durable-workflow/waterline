@@ -242,9 +242,15 @@ class V2HealthControllerTest extends TestCase
             $workflowChecks,
             static fn (array $check): bool => ($check['name'] ?? null) === 'long_poll_wake_acceleration',
         ));
+        $routingChecks = array_values(array_filter(
+            $workflowChecks,
+            static fn (array $check): bool => ($check['name'] ?? null) === 'routing_health',
+        ));
 
         $this->assertCount(1, $wakeChecks, 'Waterline health must surface the long_poll_wake_acceleration check so operators can read acceleration-layer health.');
         $this->assertSame('acceleration', $wakeChecks[0]['category']);
+        $this->assertCount(1, $routingChecks, 'Waterline health must surface the routing_health check so operators can read routing drains without log archaeology.');
+        $this->assertSame('correctness', $routingChecks[0]['category']);
 
         foreach ($workflowChecks as $check) {
             $this->assertArrayHasKey('category', $check, sprintf(
