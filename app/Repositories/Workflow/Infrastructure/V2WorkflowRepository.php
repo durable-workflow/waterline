@@ -3,6 +3,7 @@
 namespace Waterline\Repositories\Workflow\Infrastructure;
 
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\DB;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityVisibilityFilters;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
@@ -17,6 +18,11 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     protected $runModel;
     protected $runSummaryModel;
     protected $failureModel;
+
+    /**
+     * @var array<string, bool>
+     */
+    private array $databaseColumnExistsCache = [];
 
     public function __construct()
     {
@@ -288,7 +294,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     protected function filteredRunsQuery(?string $bucket = null)
     {
         $query = $this->runSummaryModel::query()
-            ->with(['run:id,search_attributes']);
+            ->with([$this->runRelationSelect()]);
         $context = V2VisibilityFilterContext::resolve(request(), $bucket);
 
         ActionabilityVisibilityFilters::apply(
@@ -357,5 +363,38 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         $direction = is_string($direction) ? strtolower(trim($direction)) : '';
 
         return $direction === 'asc' ? 'asc' : 'desc';
+    }
+
+    private function runRelationSelect(): string
+    {
+        $columns = ['id'];
+
+        if ($this->runColumnExists('search_attributes')) {
+            $columns[] = 'search_attributes';
+        }
+
+        return 'run:'.implode(',', $columns);
+    }
+
+    private function runColumnExists(string $column): bool
+    {
+        $modelClass = $this->runModel;
+        $model = new $modelClass();
+        $connection = DB::connection($model->getConnectionName());
+        $cacheKey = sprintf(
+            '%s|%s|%s',
+            $connection->getName(),
+            $model->getTable(),
+            $column,
+        );
+
+        if (! array_key_exists($cacheKey, $this->databaseColumnExistsCache)) {
+            $this->databaseColumnExistsCache[$cacheKey] = $connection->getSchemaBuilder()->hasColumn(
+                $model->getTable(),
+                $column,
+            );
+        }
+
+        return $this->databaseColumnExistsCache[$cacheKey];
     }
 }

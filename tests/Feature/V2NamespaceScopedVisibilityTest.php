@@ -2,7 +2,9 @@
 
 namespace Waterline\Tests\Feature;
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Schema;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
@@ -34,6 +36,35 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             collect($response->json('data'))->contains('id', $shippingRun->id),
             'Runs from another namespace must not appear in list route payloads.',
         );
+    }
+
+    public function testListRoutesStayReadableWhenLegacyRunSearchAttributesColumnIsAbsent(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+
+        $billingRun = $this->createCompletedRun('waterline-list-billing-no-run-search-attributes', 'billing');
+        $droppedSearchAttributes = Schema::hasColumn('workflow_runs', 'search_attributes');
+
+        if ($droppedSearchAttributes) {
+            Schema::table('workflow_runs', static function (Blueprint $table): void {
+                $table->dropColumn('search_attributes');
+            });
+        }
+
+        try {
+            $this->get('/waterline/api/flows/completed')
+                ->assertOk()
+                ->assertJsonCount(1, 'data')
+                ->assertJsonPath('data.0.id', $billingRun->id)
+                ->assertJsonPath('data.0.namespace', 'billing');
+        } finally {
+            if ($droppedSearchAttributes) {
+                Schema::table('workflow_runs', static function (Blueprint $table): void {
+                    $table->json('search_attributes')->nullable();
+                });
+            }
+        }
     }
 
     public function testDirectRunDetailAndExportRoutesAreScopedToConfiguredNamespace(): void

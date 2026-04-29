@@ -913,8 +913,14 @@ class V2HealthControllerTest extends TestCase
             $table->timestamp('drained_at')->nullable();
             $table->timestamps();
 
-            $table->unique(['namespace', 'task_queue', 'build_id']);
-            $table->index(['namespace', 'task_queue', 'drain_intent']);
+            $table->unique(
+                ['namespace', 'task_queue', 'build_id'],
+                'worker_build_rollouts_ns_queue_build_uq',
+            );
+            $table->index(
+                ['namespace', 'task_queue', 'drain_intent'],
+                'worker_build_rollouts_ns_queue_drain_idx',
+            );
         });
     }
 

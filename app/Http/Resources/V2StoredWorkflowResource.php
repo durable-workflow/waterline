@@ -23,6 +23,11 @@ class V2StoredWorkflowResource extends JsonResource
     private const MIN_TIMELINE_WINDOW = 50;
     private const MAX_TIMELINE_WINDOW = 1000;
 
+    /**
+     * @var array<string, bool>
+     */
+    private array $databaseColumnExistsCache = [];
+
     public function toArray($request)
     {
         $detail = app(OperatorObservabilityRepository::class)->runDetail(
@@ -176,8 +181,6 @@ class V2StoredWorkflowResource extends JsonResource
 
     private function databaseColumnExists(Model $model, string $attribute): bool
     {
-        static $cache = [];
-
         $connection = DB::connection($model->getConnectionName());
         $cacheKey = sprintf(
             '%s|%s|%s',
@@ -186,10 +189,13 @@ class V2StoredWorkflowResource extends JsonResource
             $attribute,
         );
 
-        if (! array_key_exists($cacheKey, $cache)) {
-            $cache[$cacheKey] = $connection->getSchemaBuilder()->hasColumn($model->getTable(), $attribute);
+        if (! array_key_exists($cacheKey, $this->databaseColumnExistsCache)) {
+            $this->databaseColumnExistsCache[$cacheKey] = $connection->getSchemaBuilder()->hasColumn(
+                $model->getTable(),
+                $attribute,
+            );
         }
 
-        return $cache[$cacheKey];
+        return $this->databaseColumnExistsCache[$cacheKey];
     }
 }

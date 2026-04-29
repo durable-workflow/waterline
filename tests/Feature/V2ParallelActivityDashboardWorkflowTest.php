@@ -163,18 +163,59 @@ final class V2ParallelActivityDashboardWorkflowTest extends TestCase
         $this->assertIsString($runId);
         $this->runReadyWorkflowTask($runId);
 
-        Schema::table('workflow_runs', static function (Blueprint $table): void {
-            $table->dropColumn(['memo', 'search_attributes']);
-        });
-        Schema::table('workflow_instances', static function (Blueprint $table): void {
-            $table->dropColumn('memo');
-        });
+        $droppedRunMemo = Schema::hasColumn('workflow_runs', 'memo');
+        $droppedRunSearchAttributes = Schema::hasColumn('workflow_runs', 'search_attributes');
+        $droppedInstanceMemo = Schema::hasColumn('workflow_instances', 'memo');
 
-        $this->get('/waterline/api/flows/' . $runId)
-            ->assertOk()
-            ->assertJsonPath('wait_kind', 'activity')
-            ->assertJsonPath('open_wait_count', 2)
-            ->assertJsonPath('waits.0.kind', 'activity');
+        if ($droppedRunMemo || $droppedRunSearchAttributes) {
+            Schema::table('workflow_runs', static function (Blueprint $table) use ($droppedRunMemo, $droppedRunSearchAttributes): void {
+                $columns = [];
+
+                if ($droppedRunMemo) {
+                    $columns[] = 'memo';
+                }
+
+                if ($droppedRunSearchAttributes) {
+                    $columns[] = 'search_attributes';
+                }
+
+                if ($columns !== []) {
+                    $table->dropColumn($columns);
+                }
+            });
+        }
+
+        if ($droppedInstanceMemo) {
+            Schema::table('workflow_instances', static function (Blueprint $table): void {
+                $table->dropColumn('memo');
+            });
+        }
+
+        try {
+            $this->get('/waterline/api/flows/' . $runId)
+                ->assertOk()
+                ->assertJsonPath('wait_kind', 'activity')
+                ->assertJsonPath('open_wait_count', 2)
+                ->assertJsonPath('waits.0.kind', 'activity');
+        } finally {
+            if ($droppedRunMemo || $droppedRunSearchAttributes) {
+                Schema::table('workflow_runs', static function (Blueprint $table) use ($droppedRunMemo, $droppedRunSearchAttributes): void {
+                    if ($droppedRunMemo) {
+                        $table->json('memo')->nullable();
+                    }
+
+                    if ($droppedRunSearchAttributes) {
+                        $table->json('search_attributes')->nullable();
+                    }
+                });
+            }
+
+            if ($droppedInstanceMemo) {
+                Schema::table('workflow_instances', static function (Blueprint $table): void {
+                    $table->json('memo')->nullable();
+                });
+            }
+        }
     }
 
     private function runReadyWorkflowTask(?string $runId): void
