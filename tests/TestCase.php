@@ -2,8 +2,10 @@
 
 namespace Waterline\Tests;
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use function Orchestra\Testbench\artisan;
 use function Orchestra\Testbench\default_skeleton_path;
@@ -82,5 +84,32 @@ abstract class TestCase extends BaseTestCase
         }
 
         return DB::connection()->getDriverName() === 'sqlsrv';
+    }
+
+    protected function ensureLegacyVisibilityColumnsPresent(): void
+    {
+        if (Schema::hasTable('workflow_runs')) {
+            $missing = [];
+            if (! Schema::hasColumn('workflow_runs', 'memo')) {
+                $missing[] = 'memo';
+            }
+            if (! Schema::hasColumn('workflow_runs', 'search_attributes')) {
+                $missing[] = 'search_attributes';
+            }
+
+            if ($missing !== []) {
+                Schema::table('workflow_runs', static function (Blueprint $table) use ($missing): void {
+                    foreach ($missing as $column) {
+                        $table->json($column)->nullable();
+                    }
+                });
+            }
+        }
+
+        if (Schema::hasTable('workflow_instances') && ! Schema::hasColumn('workflow_instances', 'memo')) {
+            Schema::table('workflow_instances', static function (Blueprint $table): void {
+                $table->json('memo')->nullable();
+            });
+        }
     }
 }

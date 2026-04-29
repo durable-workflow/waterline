@@ -1406,6 +1406,8 @@ class V2DashboardWorkflowTest extends TestCase
         $this->createConfiguredDetailSummaryTable();
         $this->createConfiguredDetailHistoryTable();
 
+        $this->ensureLegacyVisibilityColumnsPresent();
+
         $instance = WorkflowInstance::create([
             'id' => 'configured-waterline-detail-instance',
             'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
@@ -1526,6 +1528,8 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->createConfiguredDetailSummaryTable();
         $this->createConfiguredDetailHistoryTable();
+
+        $this->ensureLegacyVisibilityColumnsPresent();
 
         $instance = WorkflowInstance::create([
             'id' => 'configured-waterline-detail-instance-no-typed-memo',

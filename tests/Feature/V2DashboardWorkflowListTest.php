@@ -91,6 +91,8 @@ class V2DashboardWorkflowListTest extends TestCase
     {
         config()->set('waterline.engine_source', 'v2');
 
+        $this->ensureLegacyVisibilityColumnsPresent();
+
         $startedAt = Carbon::parse('2022-01-01 12:05:00');
         $createdAt = Carbon::parse('2022-01-01 12:00:00');
 
