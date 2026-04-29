@@ -7,7 +7,6 @@ use RuntimeException;
 use Waterline\Support\WorkflowPackageApiFloor;
 use Waterline\Tests\TestCase;
 use Workflow\V2\CommandContext;
-use Workflow\V2\Support\HealthCheck;
 use Workflow\V2\Support\ScheduleManager;
 
 /**
@@ -57,22 +56,6 @@ class WorkflowPackageApiFloorTest extends TestCase
     public function test_find_missing_returns_empty_list_on_current_workflow_package(): void
     {
         $this->assertSame([], WorkflowPackageApiFloor::findMissing());
-    }
-
-    public function test_health_check_snapshot_accepts_namespace_parameter(): void
-    {
-        $reflection = new ReflectionClass(HealthCheck::class);
-        $reflectionMethod = $reflection->getMethod('snapshot');
-
-        $this->assertTrue($reflectionMethod->isPublic(), 'snapshot is not public');
-        $this->assertTrue($reflectionMethod->isStatic(), 'snapshot is not static');
-
-        $parameterNames = array_map(
-            static fn ($parameter): string => $parameter->getName(),
-            $reflectionMethod->getParameters(),
-        );
-
-        $this->assertContains('namespace', $parameterNames, 'snapshot does not declare a $namespace parameter');
     }
 
     public function test_find_missing_reports_missing_command_context_class(): void
@@ -159,7 +142,7 @@ class WorkflowPackageApiFloorTest extends TestCase
         $this->expectExceptionMessage('older than the API floor Waterline requires');
         $this->expectExceptionMessage('NonExistentCommandContext');
         $this->expectExceptionMessage('thisMethodDoesNotExist');
-        $this->expectExceptionMessage('namespace-scoped health snapshot signatures');
+        $this->expectExceptionMessage('context-accepting schedule mutation signatures');
 
         WorkflowPackageApiFloor::assertAgainst(
             contextClass: 'Waterline\\Tests\\Unit\\Support\\NonExistentCommandContext',
