@@ -150,6 +150,42 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('failed_flows_past_week', 0);
     }
 
+    public function testIndexScopesWorkerFleetToConfiguredWaterlineNamespace(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.namespace', 'shipping');
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-billing',
+        );
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'shipping',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-shipping',
+        );
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 1)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 1)
+            ->assertJsonPath('operator_metrics.workers.fleet.0.worker_id', 'worker-billing')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.namespace', 'billing');
+    }
+
     public function testIndexIncludesV2OperatorMetrics(): void
     {
         config()->set('waterline.engine_source', 'v2');
