@@ -1051,9 +1051,16 @@ export default {
             const healthFacts = alert?.facts && typeof alert.facts === 'object'
                 ? alert.facts
                 : {};
+            const routingDrains = healthFacts.routing_drains && typeof healthFacts.routing_drains === 'object'
+                ? healthFacts.routing_drains
+                : {};
             const compatibilityBlockedRuns = Number(healthFacts.compatibility_blocked_runs || 0);
             const dispatchOverdueTasks = Number(healthFacts.dispatch_overdue_tasks || 0);
             const claimFailedTasks = Number(healthFacts.claim_failed_tasks || 0);
+            const queuesWithDrains = Number(healthFacts.queues_with_drains ?? routingDrains.queues_with_drains ?? 0);
+            const drainingBuildIdCount = Number(healthFacts.draining_build_id_count ?? routingDrains.draining_build_id_count ?? 0);
+            const drainingWorkerCount = Number(healthFacts.draining_worker_count ?? routingDrains.draining_worker_count ?? 0);
+            const staleWorkerCount = Number(healthFacts.stale_worker_count ?? routingDrains.stale_worker_count ?? 0);
             const maxAgeMs = Math.max(
                 Number(healthFacts.max_compatibility_blocked_age_ms || 0),
                 Number(healthFacts.max_dispatch_overdue_age_ms || 0),
@@ -1071,6 +1078,22 @@ export default {
 
             if (Number.isFinite(claimFailedTasks) && claimFailedTasks > 0) {
                 facts.push(`claim failed ${claimFailedTasks.toLocaleString()}`);
+            }
+
+            if (Number.isFinite(queuesWithDrains) && queuesWithDrains > 0) {
+                facts.push(`draining queues ${queuesWithDrains.toLocaleString()}`);
+            }
+
+            if (Number.isFinite(drainingBuildIdCount) && drainingBuildIdCount > 0) {
+                facts.push(`draining builds ${drainingBuildIdCount.toLocaleString()}`);
+            }
+
+            if (Number.isFinite(drainingWorkerCount) && drainingWorkerCount > 0) {
+                facts.push(`draining workers ${drainingWorkerCount.toLocaleString()}`);
+            }
+
+            if (Number.isFinite(staleWorkerCount) && staleWorkerCount > 0) {
+                facts.push(`stale workers ${staleWorkerCount.toLocaleString()}`);
             }
 
             if (typeof healthFacts.matching_shape === 'string' && healthFacts.matching_shape !== '') {

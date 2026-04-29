@@ -4,6 +4,7 @@ namespace Waterline\Http\Controllers;
 
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Schema;
+use Waterline\Models\WorkerBuildIdRollout;
 use Waterline\Models\WorkerRegistration;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Workflow\V2\Enums\TaskStatus;
@@ -19,6 +20,7 @@ class V2HealthController extends Controller
     {
         $engineSource = WorkflowEngineSourceResolver::status();
         $namespace = $this->namespace();
+        $routingDrains = $this->routingDrains($namespace);
 
         if (($engineSource['uses_v2'] ?? false) !== true) {
             $payload = [
@@ -27,6 +29,7 @@ class V2HealthController extends Controller
                     $namespace,
                     'Queue visibility is unavailable until Waterline uses the v2 operator bridge.',
                 ),
+                'routing_drains' => $routingDrains,
                 'generated_at' => now()->toJSON(),
                 'status' => 'error',
                 'healthy' => false,
@@ -50,6 +53,7 @@ class V2HealthController extends Controller
             $payload['coordination_alerts'] = $this->coordinationAlerts(
                 $payload['checks'],
                 $payload['queue_visibility'],
+                $routingDrains,
             );
 
             return response()->json($payload, 503);
@@ -70,11 +74,13 @@ class V2HealthController extends Controller
         ]);
         $snapshot['namespace'] = $namespace;
         $snapshot['queue_visibility'] = $this->queueVisibility($namespace);
+        $snapshot['routing_drains'] = $routingDrains;
         $snapshot['engine_source'] = $engineSource;
         $snapshot['readiness_contract'] = $engineSource['readiness_contract'] ?? null;
         $snapshot['coordination_alerts'] = $this->coordinationAlerts(
             $snapshot['checks'],
             $snapshot['queue_visibility'],
+            $routingDrains,
         );
 
         return response()->json($snapshot, HealthCheck::httpStatus($snapshot));
@@ -83,21 +89,23 @@ class V2HealthController extends Controller
     /**
      * @param  array<int, array<string, mixed>>  $checks
      * @param  array<string, mixed>  $queueVisibility
+     * @param  array<string, mixed>  $routingDrains
      * @return array<int, array<string, mixed>>
      */
-    private function coordinationAlerts(array $checks, array $queueVisibility): array
+    private function coordinationAlerts(array $checks, array $queueVisibility, array $routingDrains): array
     {
         return array_values(array_merge(
-            $this->healthCheckAlerts($checks),
+            $this->healthCheckAlerts($checks, $routingDrains),
             $this->queueVisibilityAlerts($queueVisibility),
         ));
     }
 
     /**
      * @param  array<int, array<string, mixed>>  $checks
+     * @param  array<string, mixed>  $routingDrains
      * @return array<int, array<string, mixed>>
      */
-    private function healthCheckAlerts(array $checks): array
+    private function healthCheckAlerts(array $checks, array $routingDrains): array
     {
         $alerts = [];
 
@@ -119,6 +127,16 @@ class V2HealthController extends Controller
                 ? trim((string) $check['message'])
                 : sprintf('%s reported %s.', $title, $status);
             $facts = is_array($check['data'] ?? null) ? $check['data'] : [];
+            if ($key === 'routing_health') {
+                $facts = array_merge($facts, [
+                    'queues_with_drains' => $this->integerValue($routingDrains['queues_with_drains'] ?? 0),
+                    'draining_build_id_count' => $this->integerValue($routingDrains['draining_build_id_count'] ?? 0),
+                    'active_worker_count' => $this->integerValue($routingDrains['active_worker_count'] ?? 0),
+                    'draining_worker_count' => $this->integerValue($routingDrains['draining_worker_count'] ?? 0),
+                    'stale_worker_count' => $this->integerValue($routingDrains['stale_worker_count'] ?? 0),
+                    'routing_drains' => $routingDrains,
+                ]);
+            }
 
             $alerts[] = [
                 'key' => $key,
@@ -270,7 +288,254 @@ class V2HealthController extends Controller
             $parts[] = sprintf('worst-case age %s', $this->formatDurationMilliseconds($maxAgeMs));
         }
 
+        $routingDrains = is_array($facts['routing_drains'] ?? null) ? $facts['routing_drains'] : [];
+        $drainQueues = is_array($routingDrains['queues'] ?? null) ? $routingDrains['queues'] : [];
+        $drainQueueLabels = [];
+
+        foreach (array_slice($drainQueues, 0, 3) as $queue) {
+            if (! is_array($queue)) {
+                continue;
+            }
+
+            $taskQueue = is_string($queue['task_queue'] ?? null) && trim((string) $queue['task_queue']) !== ''
+                ? trim((string) $queue['task_queue'])
+                : 'default';
+            $buildIds = is_array($queue['build_ids'] ?? null) ? $queue['build_ids'] : [];
+            $buildLabels = [];
+
+            foreach ($buildIds as $build) {
+                if (! is_array($build)) {
+                    continue;
+                }
+
+                $buildLabel = is_string($build['build_id'] ?? null) && trim((string) $build['build_id']) !== ''
+                    ? trim((string) $build['build_id'])
+                    : 'unversioned';
+                $buildLabels[] = $buildLabel;
+            }
+
+            $buildLabels = array_values(array_unique($buildLabels));
+
+            if ($buildLabels === []) {
+                $drainQueueLabels[] = $taskQueue;
+                continue;
+            }
+
+            $drainQueueLabels[] = sprintf('%s (%s)', $taskQueue, implode(', ', array_slice($buildLabels, 0, 2)));
+        }
+
+        if ($drainQueueLabels !== []) {
+            $queueSuffix = count($drainQueues) > count($drainQueueLabels)
+                ? sprintf(' and %d more queue%s', count($drainQueues) - count($drainQueueLabels), count($drainQueues) - count($drainQueueLabels) === 1 ? '' : 's')
+                : '';
+            $parts[] = sprintf('draining cohorts %s%s', implode('; ', $drainQueueLabels), $queueSuffix);
+        }
+
         return $parts !== [] ? implode('; ', $parts).'.' : null;
+    }
+
+    /**
+     * @return array{
+     *     queues_with_drains: int,
+     *     draining_build_id_count: int,
+     *     active_worker_count: int,
+     *     draining_worker_count: int,
+     *     stale_worker_count: int,
+     *     queues: array<int, array<string, mixed>>
+     * }
+     */
+    private function routingDrains(?string $namespace): array
+    {
+        if ($namespace === null) {
+            return $this->emptyRoutingDrains();
+        }
+
+        if (! Schema::hasTable((new WorkerRegistration())->getTable())
+            || ! Schema::hasTable((new WorkerBuildIdRollout())->getTable())) {
+            return $this->emptyRoutingDrains();
+        }
+
+        $rollouts = WorkerBuildIdRollout::query()
+            ->where('namespace', $namespace)
+            ->where('drain_intent', WorkerBuildIdRollout::DRAIN_INTENT_DRAINING)
+            ->orderBy('task_queue')
+            ->orderBy('build_id')
+            ->get();
+
+        if ($rollouts->isEmpty()) {
+            return $this->emptyRoutingDrains();
+        }
+
+        $now = now();
+        $staleAfterSeconds = StandaloneWorkerVisibility::staleAfterSeconds();
+        $workers = WorkerRegistration::query()
+            ->where('namespace', $namespace)
+            ->orderBy('task_queue')
+            ->orderByDesc('last_heartbeat_at')
+            ->orderBy('worker_id')
+            ->get();
+
+        $workersByQueue = [];
+        foreach ($workers as $worker) {
+            $queueKey = $this->routingDrainQueueKey($worker->task_queue);
+            $workersByQueue[$queueKey] ??= [];
+            $workersByQueue[$queueKey][] = $worker;
+        }
+
+        $queues = [];
+
+        foreach ($rollouts as $rollout) {
+            $queueKey = $this->routingDrainQueueKey($rollout->task_queue);
+            $queueWorkers = $workersByQueue[$queueKey] ?? [];
+
+            if (! isset($queues[$queueKey])) {
+                $queueCounts = $this->routingDrainWorkerCounts($queueWorkers, $now, $staleAfterSeconds);
+                $queues[$queueKey] = [
+                    'namespace' => $namespace,
+                    'task_queue' => $queueKey,
+                    'draining_build_id_count' => 0,
+                    'active_worker_count' => $queueCounts['active_worker_count'],
+                    'draining_worker_count' => $queueCounts['draining_worker_count'],
+                    'stale_worker_count' => $queueCounts['stale_worker_count'],
+                    'build_ids' => [],
+                ];
+            }
+
+            $buildWorkers = array_values(array_filter(
+                $queueWorkers,
+                fn (WorkerRegistration $worker): bool => $this->routingDrainBuildIdKey($worker->build_id) === (string) $rollout->build_id,
+            ));
+            $buildCounts = $this->routingDrainWorkerCounts($buildWorkers, $now, $staleAfterSeconds);
+
+            $queues[$queueKey]['draining_build_id_count']++;
+            $queues[$queueKey]['build_ids'][] = [
+                'build_id' => $rollout->publicBuildId(),
+                'drain_intent' => (string) $rollout->drain_intent,
+                'drained_at' => $rollout->drained_at?->toJSON(),
+                'active_worker_count' => $buildCounts['active_worker_count'],
+                'draining_worker_count' => $buildCounts['draining_worker_count'],
+                'stale_worker_count' => $buildCounts['stale_worker_count'],
+                'total_worker_count' => $buildCounts['total_worker_count'],
+            ];
+        }
+
+        ksort($queues);
+
+        $queueSummaries = array_values(array_map(function (array $queue): array {
+            usort($queue['build_ids'], function (array $left, array $right): int {
+                return strcmp(
+                    $left['build_id'] ?? '',
+                    $right['build_id'] ?? '',
+                );
+            });
+
+            return $queue;
+        }, $queues));
+
+        return [
+            'queues_with_drains' => count($queueSummaries),
+            'draining_build_id_count' => array_sum(array_map(
+                fn (array $queue): int => $this->integerValue($queue['draining_build_id_count'] ?? 0),
+                $queueSummaries,
+            )),
+            'active_worker_count' => array_sum(array_map(
+                fn (array $queue): int => $this->integerValue($queue['active_worker_count'] ?? 0),
+                $queueSummaries,
+            )),
+            'draining_worker_count' => array_sum(array_map(
+                fn (array $queue): int => $this->integerValue($queue['draining_worker_count'] ?? 0),
+                $queueSummaries,
+            )),
+            'stale_worker_count' => array_sum(array_map(
+                fn (array $queue): int => $this->integerValue($queue['stale_worker_count'] ?? 0),
+                $queueSummaries,
+            )),
+            'queues' => $queueSummaries,
+        ];
+    }
+
+    /**
+     * @param  array<int, WorkerRegistration>  $workers
+     * @return array{
+     *     active_worker_count: int,
+     *     draining_worker_count: int,
+     *     stale_worker_count: int,
+     *     total_worker_count: int
+     * }
+     */
+    private function routingDrainWorkerCounts(array $workers, CarbonInterface $now, int $staleAfterSeconds): array
+    {
+        $counts = [
+            'active_worker_count' => 0,
+            'draining_worker_count' => 0,
+            'stale_worker_count' => 0,
+            'total_worker_count' => count($workers),
+        ];
+
+        foreach ($workers as $worker) {
+            $status = $this->routingDrainWorkerStatus($worker, $now, $staleAfterSeconds);
+
+            if ($status === 'stale') {
+                $counts['stale_worker_count']++;
+            } elseif ($status === WorkerBuildIdRollout::DRAIN_INTENT_DRAINING) {
+                $counts['draining_worker_count']++;
+            } else {
+                $counts['active_worker_count']++;
+            }
+        }
+
+        return $counts;
+    }
+
+    private function routingDrainWorkerStatus(
+        WorkerRegistration $worker,
+        CarbonInterface $now,
+        int $staleAfterSeconds,
+    ): string {
+        $heartbeat = $worker->last_heartbeat_at;
+
+        if ($heartbeat instanceof CarbonInterface
+            && $heartbeat->lt($now->copy()->subSeconds($staleAfterSeconds))) {
+            return 'stale';
+        }
+
+        return is_string($worker->status) && trim($worker->status) !== ''
+            ? trim($worker->status)
+            : WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE;
+    }
+
+    private function routingDrainQueueKey(mixed $taskQueue): string
+    {
+        return is_string($taskQueue) && trim($taskQueue) !== ''
+            ? trim($taskQueue)
+            : 'default';
+    }
+
+    private function routingDrainBuildIdKey(mixed $buildId): string
+    {
+        return WorkerBuildIdRollout::buildIdKey(is_string($buildId) ? $buildId : null);
+    }
+
+    /**
+     * @return array{
+     *     queues_with_drains: int,
+     *     draining_build_id_count: int,
+     *     active_worker_count: int,
+     *     draining_worker_count: int,
+     *     stale_worker_count: int,
+     *     queues: array<int, array<string, mixed>>
+     * }
+     */
+    private function emptyRoutingDrains(): array
+    {
+        return [
+            'queues_with_drains' => 0,
+            'draining_build_id_count' => 0,
+            'active_worker_count' => 0,
+            'draining_worker_count' => 0,
+            'stale_worker_count' => 0,
+            'queues' => [],
+        ];
     }
 
     /**

@@ -6,6 +6,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Waterline\Models\WorkerBuildIdRollout;
 use Waterline\Models\WorkerRegistration;
 use Waterline\Tests\TestCase;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
@@ -39,6 +40,7 @@ class V2HealthControllerTest extends TestCase
             ->assertStatus(200)
             ->assertJsonPath('namespace', null)
             ->assertJsonPath('queue_visibility.available', false)
+            ->assertJsonPath('routing_drains.queues_with_drains', 0)
             ->assertJsonPath(
                 'queue_visibility.reason',
                 'Configure waterline.namespace to scope queue visibility to one task-queue fleet.',
@@ -354,6 +356,7 @@ class V2HealthControllerTest extends TestCase
         config()->set('workflows.v2.task_dispatch_mode', 'poll');
 
         $this->createWorkerRegistrationsTable();
+        $this->createWorkerBuildIdRolloutsTable();
 
         WorkerRegistration::create([
             'worker_id' => 'routing-health-poller',
@@ -367,7 +370,15 @@ class V2HealthControllerTest extends TestCase
             'max_concurrent_workflow_tasks' => 8,
             'max_concurrent_activity_tasks' => 4,
             'last_heartbeat_at' => now()->subSeconds(15),
-            'status' => 'active',
+            'status' => 'draining',
+        ]);
+
+        WorkerBuildIdRollout::create([
+            'namespace' => 'waterline-routing-health',
+            'task_queue' => 'default',
+            'build_id' => WorkerBuildIdRollout::buildIdKey('build-routing-health'),
+            'drain_intent' => WorkerBuildIdRollout::DRAIN_INTENT_DRAINING,
+            'drained_at' => now()->subMinute(),
         ]);
 
         $instance = WorkflowInstance::query()->create([
@@ -460,12 +471,25 @@ class V2HealthControllerTest extends TestCase
         $this->assertSame('dedicated', $alert['facts']['matching_shape'] ?? null);
         $this->assertSame('poll', $alert['facts']['task_dispatch_mode'] ?? null);
         $this->assertSame(0, $alert['facts']['active_worker_scopes'] ?? null);
+        $this->assertSame(1, $alert['facts']['queues_with_drains'] ?? null);
+        $this->assertSame(1, $alert['facts']['draining_build_id_count'] ?? null);
+        $this->assertSame(0, $alert['facts']['active_worker_count'] ?? null);
+        $this->assertSame(1, $alert['facts']['draining_worker_count'] ?? null);
+        $this->assertSame(0, $alert['facts']['stale_worker_count'] ?? null);
+        $this->assertSame(1, $payload['routing_drains']['queues_with_drains'] ?? null);
+        $this->assertSame(1, $payload['routing_drains']['draining_build_id_count'] ?? null);
+        $this->assertSame('default', $payload['routing_drains']['queues'][0]['task_queue'] ?? null);
+        $this->assertSame(
+            'build-routing-health',
+            $payload['routing_drains']['queues'][0]['build_ids'][0]['build_id'] ?? null,
+        );
         $this->assertStringContainsString('compatibility-blocked run', (string) ($alert['details'] ?? ''));
         $this->assertStringContainsString('dispatch-overdue task', (string) ($alert['details'] ?? ''));
         $this->assertStringContainsString('claim-failed task', (string) ($alert['details'] ?? ''));
         $this->assertStringContainsString('matching role dedicated in poll mode', (string) ($alert['details'] ?? ''));
         $this->assertStringContainsString('queue wake disabled', (string) ($alert['details'] ?? ''));
         $this->assertStringContainsString('worst-case age 7m00s', (string) ($alert['details'] ?? ''));
+        $this->assertStringContainsString('default (build-routing-health)', (string) ($alert['details'] ?? ''));
     }
 
     public function testHealthEndpointReturnsUnavailableForBlockingBackendIssues(): void
@@ -871,6 +895,26 @@ class V2HealthControllerTest extends TestCase
 
             $table->unique(['worker_id', 'namespace']);
             $table->index(['namespace', 'task_queue', 'status']);
+        });
+    }
+
+    private function createWorkerBuildIdRolloutsTable(): void
+    {
+        if (Schema::hasTable('workflow_worker_build_id_rollouts')) {
+            return;
+        }
+
+        Schema::create('workflow_worker_build_id_rollouts', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('namespace', 128);
+            $table->string('task_queue', 255);
+            $table->string('build_id', 255)->default(WorkerBuildIdRollout::UNVERSIONED_KEY);
+            $table->string('drain_intent', 32)->default(WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE);
+            $table->timestamp('drained_at')->nullable();
+            $table->timestamps();
+
+            $table->unique(['namespace', 'task_queue', 'build_id']);
+            $table->index(['namespace', 'task_queue', 'drain_intent']);
         });
     }
 
