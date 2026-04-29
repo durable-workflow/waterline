@@ -172,7 +172,6 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         }
 
         $metrics['workers'] = $this->scopedWorkerMetrics($metrics['workers'] ?? null, $namespace);
-        $metrics['matching_role'] = $this->matchingRoleMetrics($metrics['matching_role'] ?? null);
 
         return $metrics;
     }
@@ -227,38 +226,6 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         $workers['fleet'] = $fleet;
 
         return $workers;
-    }
-
-    /**
-     * The task-matching contract freezes the wake owner, partition
-     * primitives, and lease-based backpressure model even though older
-     * workflow alphas did not yet expose the full matching-role block on
-     * OperatorMetrics::snapshot().
-     *
-     * @param mixed $matchingRole
-     * @return mixed
-     */
-    private function matchingRoleMetrics(mixed $matchingRole): mixed
-    {
-        if (! is_array($matchingRole)) {
-            return $matchingRole;
-        }
-
-        if (! array_key_exists('wake_owner', $matchingRole)) {
-            $matchingRole['wake_owner'] = ($matchingRole['queue_wake_enabled'] ?? false) === true
-                ? 'worker_loop'
-                : 'dedicated_repair_pass';
-        }
-
-        if (! array_key_exists('partition_primitives', $matchingRole)) {
-            $matchingRole['partition_primitives'] = ['connection', 'queue', 'compatibility', 'namespace'];
-        }
-
-        if (! array_key_exists('backpressure_model', $matchingRole)) {
-            $matchingRole['backpressure_model'] = 'lease_ownership';
-        }
-
-        return $matchingRole;
     }
 
     /**
