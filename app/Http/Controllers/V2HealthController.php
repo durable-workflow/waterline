@@ -162,6 +162,7 @@ class V2HealthController extends Controller
     {
         return match ($key) {
             'task_transport' => $this->taskTransportAlertDetails($facts),
+            'activity_path' => $this->activityPathAlertDetails($facts),
             'routing_health' => $this->routingHealthAlertDetails($facts),
             'durable_resume_paths' => $this->durableResumePathAlertDetails($facts),
             'worker_compatibility' => $this->workerCompatibilityAlertDetails($facts),
@@ -216,6 +217,56 @@ class V2HealthController extends Controller
 
         if ($maxAgeMs > 0) {
             $parts[] = sprintf('worst-case age %s', $this->formatDurationMilliseconds($maxAgeMs));
+        }
+
+        return $parts !== [] ? ucfirst(implode('; ', $parts)).'.' : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $facts
+     */
+    private function activityPathAlertDetails(array $facts): ?string
+    {
+        $timeoutOverdue = $this->integerValue($facts['timeout_overdue'] ?? 0);
+        $retrying = $this->integerValue($facts['retrying'] ?? 0);
+        $maxTimeoutOverdueAgeMs = $this->integerValue($facts['max_timeout_overdue_age_ms'] ?? 0);
+        $maxRetryingAgeMs = $this->integerValue($facts['max_retrying_age_ms'] ?? 0);
+        $maxAttemptCount = $this->integerValue($facts['max_attempt_count'] ?? 0);
+
+        $parts = [];
+
+        if ($timeoutOverdue > 0) {
+            $parts[] = sprintf(
+                '%d activity execution%s past a schedule-to-start, start-to-close, schedule-to-close, or heartbeat deadline without enforcement',
+                $timeoutOverdue,
+                $timeoutOverdue === 1 ? '' : 's',
+            );
+        }
+
+        if ($maxTimeoutOverdueAgeMs > 0) {
+            $parts[] = sprintf(
+                'worst-case overdue age %s',
+                $this->formatDurationMilliseconds($maxTimeoutOverdueAgeMs),
+            );
+        }
+
+        if ($retrying > 0) {
+            $parts[] = sprintf(
+                '%d activity execution%s in the retry backlog',
+                $retrying,
+                $retrying === 1 ? '' : 's',
+            );
+        }
+
+        if ($maxRetryingAgeMs > 0) {
+            $parts[] = sprintf(
+                'worst-case retry age %s',
+                $this->formatDurationMilliseconds($maxRetryingAgeMs),
+            );
+        }
+
+        if ($maxAttemptCount > 0) {
+            $parts[] = sprintf('highest attempt count %d', $maxAttemptCount);
         }
 
         return $parts !== [] ? ucfirst(implode('; ', $parts)).'.' : null;
