@@ -478,11 +478,35 @@ class V2HealthControllerTest extends TestCase
         $this->assertSame(0, $alert['facts']['stale_worker_count'] ?? null);
         $this->assertSame(1, $payload['routing_drains']['queues_with_drains'] ?? null);
         $this->assertSame(1, $payload['routing_drains']['draining_build_id_count'] ?? null);
-        $this->assertSame('default', $payload['routing_drains']['queues'][0]['task_queue'] ?? null);
+        $this->assertSame(0, $payload['routing_drains']['active_worker_count'] ?? null);
+        $this->assertSame(1, $payload['routing_drains']['draining_worker_count'] ?? null);
+        $this->assertSame(0, $payload['routing_drains']['stale_worker_count'] ?? null);
+        $this->assertCount(1, $payload['routing_drains']['queues'] ?? []);
+
+        $drainQueue = $payload['routing_drains']['queues'][0] ?? [];
+        $this->assertSame('waterline-routing-health', $drainQueue['namespace'] ?? null);
+        $this->assertSame('default', $drainQueue['task_queue'] ?? null);
+        $this->assertSame(1, $drainQueue['draining_build_id_count'] ?? null);
+        $this->assertSame(0, $drainQueue['active_worker_count'] ?? null);
+        $this->assertSame(1, $drainQueue['draining_worker_count'] ?? null);
+        $this->assertSame(0, $drainQueue['stale_worker_count'] ?? null);
+        $this->assertCount(1, $drainQueue['build_ids'] ?? []);
+
+        $drainBuild = $drainQueue['build_ids'][0] ?? [];
+        $this->assertSame('build-routing-health', $drainBuild['build_id'] ?? null);
+        $this->assertSame(WorkerBuildIdRollout::DRAIN_INTENT_DRAINING, $drainBuild['drain_intent'] ?? null);
+        $this->assertSame(now()->subMinute()->toJSON(), $drainBuild['drained_at'] ?? null);
+        $this->assertSame(0, $drainBuild['active_worker_count'] ?? null);
+        $this->assertSame(1, $drainBuild['draining_worker_count'] ?? null);
+        $this->assertSame(0, $drainBuild['stale_worker_count'] ?? null);
+        $this->assertSame(1, $drainBuild['total_worker_count'] ?? null);
+
         $this->assertSame(
-            'build-routing-health',
-            $payload['routing_drains']['queues'][0]['build_ids'][0]['build_id'] ?? null,
+            $payload['routing_drains'] ?? null,
+            $alert['facts']['routing_drains'] ?? null,
+            'Routing-health alert facts must mirror the routing_drains cohort breakdown so operators reading the workers-surface alert see the same per-queue and per-build cohorts.',
         );
+
         $this->assertStringContainsString('compatibility-blocked run', (string) ($alert['details'] ?? ''));
         $this->assertStringContainsString('dispatch-overdue task', (string) ($alert['details'] ?? ''));
         $this->assertStringContainsString('claim-failed task', (string) ($alert['details'] ?? ''));
