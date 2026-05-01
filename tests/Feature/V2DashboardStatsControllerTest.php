@@ -621,6 +621,156 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.workers.fleet.0.supports_required', true);
     }
 
+    public function testIndexDistinguishesSupportingWorkersInNamespaceScopedFleet(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-b');
+        config()->set('workflows.v2.compatibility.supported', ['build-b']);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-billing-old',
+        );
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a', 'build-b'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-billing-new',
+        );
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'shipping',
+            supported: ['build-b'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-shipping',
+        );
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-b')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 2)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 2)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 1)
+            ->assertJsonCount(2, 'operator_metrics.workers.fleet')
+            ->assertJsonFragment([
+                'worker_id' => 'worker-billing-old',
+                'namespace' => 'billing',
+                'connection' => 'redis',
+                'queue' => 'default',
+                'supported' => ['build-a'],
+                'supports_required' => false,
+            ])
+            ->assertJsonFragment([
+                'worker_id' => 'worker-billing-new',
+                'namespace' => 'billing',
+                'connection' => 'redis',
+                'queue' => 'default',
+                'supported' => ['build-a', 'build-b'],
+                'supports_required' => true,
+            ])
+            ->assertJsonMissing(['worker_id' => 'worker-shipping']);
+    }
+
+    public function testIndexCountsScopesSeparatelyFromUniqueWorkersInNamespaceFleet(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-billing-multi',
+        );
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'priority',
+            workerId: 'worker-billing-multi',
+        );
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 1)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 2)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 1)
+            ->assertJsonCount(2, 'operator_metrics.workers.fleet')
+            ->assertJsonFragment([
+                'worker_id' => 'worker-billing-multi',
+                'namespace' => 'billing',
+                'connection' => 'redis',
+                'queue' => 'default',
+                'supports_required' => true,
+            ])
+            ->assertJsonFragment([
+                'worker_id' => 'worker-billing-multi',
+                'namespace' => 'billing',
+                'connection' => 'redis',
+                'queue' => 'priority',
+                'supports_required' => true,
+            ]);
+    }
+
+    public function testIndexReturnsEmptyNamespaceScopedFleetWhenNoMatchingWorkers(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'shipping',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-shipping',
+        );
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'inventory',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-inventory',
+        );
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 0)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 0)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 0)
+            ->assertJsonPath('operator_metrics.workers.fleet', [])
+            ->assertJsonMissing(['worker_id' => 'worker-shipping'])
+            ->assertJsonMissing(['worker_id' => 'worker-inventory']);
+    }
+
     public function testIndexIncludesCommandContractBackfillMetrics(): void
     {
         config()->set('waterline.engine_source', 'v2');
