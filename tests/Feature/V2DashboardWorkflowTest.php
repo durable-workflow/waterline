@@ -1412,11 +1412,6 @@ class V2DashboardWorkflowTest extends TestCase
             'id' => 'configured-waterline-detail-instance',
             'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
             'workflow_type' => 'configured.waterline.workflow',
-            'memo' => [
-                'customer' => [
-                    'name' => 'Taylor',
-                ],
-            ],
             'run_count' => 1,
         ]);
 
@@ -1427,14 +1422,6 @@ class V2DashboardWorkflowTest extends TestCase
             'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
             'workflow_type' => 'configured.waterline.workflow',
             'status' => RunStatus::Waiting->value,
-            'memo' => [
-                'customer' => [
-                    'name' => 'Taylor',
-                ],
-                'order' => [
-                    'id' => 123,
-                ],
-            ],
             'search_attributes' => [
                 'customer_tier' => 'gold',
             ],
