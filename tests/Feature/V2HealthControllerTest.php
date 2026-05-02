@@ -461,6 +461,8 @@ class V2HealthControllerTest extends TestCase
         $this->assertSame('health_check', $alert['source']);
         $this->assertSame('warning', $alert['status']);
         $this->assertSame('correctness', $alert['category']);
+        $this->assertSame('Routing Health', $alert['title']);
+        $this->assertStringContainsString('Routing health is degraded', (string) ($alert['summary'] ?? ''));
         $this->assertSame(1, $alert['facts']['compatibility_blocked_runs'] ?? null);
         $this->assertSame(1, $alert['facts']['dispatch_overdue_tasks'] ?? null);
         $this->assertSame(1, $alert['facts']['claim_failed_tasks'] ?? null);
@@ -510,10 +512,27 @@ class V2HealthControllerTest extends TestCase
         $this->assertStringContainsString('compatibility-blocked run', (string) ($alert['details'] ?? ''));
         $this->assertStringContainsString('dispatch-overdue task', (string) ($alert['details'] ?? ''));
         $this->assertStringContainsString('claim-failed task', (string) ($alert['details'] ?? ''));
+        $this->assertStringContainsString(
+            '1 compatibility-blocked run, 1 dispatch-overdue task, 1 claim-failed task',
+            (string) ($alert['details'] ?? ''),
+        );
         $this->assertStringContainsString('matching role dedicated in poll mode', (string) ($alert['details'] ?? ''));
         $this->assertStringContainsString('queue wake disabled', (string) ($alert['details'] ?? ''));
+        $this->assertStringContainsString('across 0 active worker scopes', (string) ($alert['details'] ?? ''));
+        $this->assertStringContainsString(
+            'matching role dedicated in poll mode with queue wake disabled across 0 active worker scopes',
+            (string) ($alert['details'] ?? ''),
+        );
         $this->assertStringContainsString('worst-case age 7m00s', (string) ($alert['details'] ?? ''));
-        $this->assertStringContainsString('default (build-routing-health)', (string) ($alert['details'] ?? ''));
+        $this->assertStringContainsString('draining cohorts default (build-routing-health)', (string) ($alert['details'] ?? ''));
+        $this->assertStringContainsString(
+            'across 0 active worker scopes; worst-case age 7m00s',
+            (string) ($alert['details'] ?? ''),
+        );
+        $this->assertStringContainsString(
+            'worst-case age 7m00s; draining cohorts default (build-routing-health)',
+            (string) ($alert['details'] ?? ''),
+        );
     }
 
     public function testHealthEndpointReturnsUnavailableForBlockingBackendIssues(): void
