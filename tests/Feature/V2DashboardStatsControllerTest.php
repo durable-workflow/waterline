@@ -1209,6 +1209,32 @@ class V2DashboardStatsControllerTest extends TestCase
             $matchingRole['backpressure_model'],
             'operator_metrics.matching_role.backpressure_model must preserve the frozen matching-role backpressure contract',
         );
+
+        $this->assertArrayHasKey('discovery_limits', $matchingRole);
+        $this->assertIsArray($matchingRole['discovery_limits']);
+
+        foreach ([
+            'poll_batch_cap',
+            'availability_ceiling_seconds',
+            'wake_signal_ttl_seconds',
+            'workflow_task_lease_seconds',
+            'activity_task_lease_seconds',
+        ] as $limitKey) {
+            $this->assertArrayHasKey(
+                $limitKey,
+                $matchingRole['discovery_limits'],
+                "operator_metrics.matching_role.discovery_limits.{$limitKey} must be exposed for the dashboard",
+            );
+            $this->assertIsInt(
+                $matchingRole['discovery_limits'][$limitKey],
+                "operator_metrics.matching_role.discovery_limits.{$limitKey} must be an integer matching-role contract value",
+            );
+            $this->assertGreaterThan(
+                0,
+                $matchingRole['discovery_limits'][$limitKey],
+                "operator_metrics.matching_role.discovery_limits.{$limitKey} must be a positive matching-role contract value",
+            );
+        }
     }
 
     public function testIndexExposesDedicatedMatchingRoleWakeOwner(): void

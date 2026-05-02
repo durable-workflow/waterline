@@ -533,6 +533,13 @@
                                     Partitions by <code>{{ operatorMatchingRolePartitionPrimitivesLabel() }}</code>,
                                     backpressure <code>{{ operatorMatchingRoleBackpressureModel() }}</code>.
                                 </p>
+                                <p v-if="operatorMatchingRoleDiscoveryLimitsAvailable()">
+                                    Discovery limits: poll batch cap <code>{{ operatorMatchingRoleDiscoveryLimit('poll_batch_cap') }}</code>,
+                                    availability ceiling <code>{{ operatorMatchingRoleDiscoveryLimit('availability_ceiling_seconds') }}s</code>,
+                                    wake signal TTL <code>{{ operatorMatchingRoleDiscoveryLimit('wake_signal_ttl_seconds') }}s</code>,
+                                    workflow task lease <code>{{ operatorMatchingRoleDiscoveryLimit('workflow_task_lease_seconds') }}s</code>,
+                                    activity task lease <code>{{ operatorMatchingRoleDiscoveryLimit('activity_task_lease_seconds') }}s</code>.
+                                </p>
                                 <p class="text-muted">
                                     Single-process scope &mdash; read one snapshot per node to see the full deployment.
                                 </p>
@@ -1507,6 +1514,32 @@ export default {
             return typeof matchingRole.backpressure_model === 'string' && matchingRole.backpressure_model !== ''
                 ? matchingRole.backpressure_model
                 : 'unknown';
+        },
+
+        operatorMatchingRoleDiscoveryLimitsAvailable() {
+            const matchingRole = (this.operatorMetrics && this.operatorMetrics.matching_role) || {};
+            const limits = matchingRole.discovery_limits;
+
+            if (!limits || typeof limits !== 'object') {
+                return false;
+            }
+
+            return [
+                'poll_batch_cap',
+                'availability_ceiling_seconds',
+                'wake_signal_ttl_seconds',
+                'workflow_task_lease_seconds',
+                'activity_task_lease_seconds',
+            ].some((key) => Number.isFinite(limits[key]));
+        },
+
+        operatorMatchingRoleDiscoveryLimit(key) {
+            const matchingRole = (this.operatorMetrics && this.operatorMetrics.matching_role) || {};
+            const limits = (matchingRole.discovery_limits && typeof matchingRole.discovery_limits === 'object')
+                ? matchingRole.discovery_limits
+                : {};
+
+            return Number.isFinite(limits[key]) ? limits[key] : 'unknown';
         },
 
         operatorScheduleOldestOverdueAt() {
