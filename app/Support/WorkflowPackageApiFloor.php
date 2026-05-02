@@ -18,9 +18,11 @@ use RuntimeException;
  * boot cleanly even when the v2 classes are absent.
  *
  * Inside the v2 band, however, Waterline now depends on specific schedule
- * mutation signatures and the namespace-scoped v2 health snapshot. Older
- * v2 installs that predate those contracts fail schedule mutation routes
- * with unknown-named-parameter or argument-count errors, or silently lose
+ * mutation signatures and the namespace-scoped v2 health snapshot — both
+ * the `HealthCheck::snapshot` entry point and the `OperatorMetrics::snapshot`
+ * source it delegates to must accept the configured namespace. Older v2
+ * installs that predate those contracts fail schedule mutation routes with
+ * unknown-named-parameter or argument-count errors, or silently lose
  * namespace scoping on the operator health surface. `assertIfActive()` is
  * called at boot so those broken pairings surface with a clear diagnostic
  * instead of a 500 or a cross-namespace health payload at runtime.
@@ -42,6 +44,7 @@ final class WorkflowPackageApiFloor
         [\Workflow\V2\Support\ScheduleManager::class, 'backfill', 'context'],
         [\Workflow\V2\Support\ScheduleManager::class, 'delete', 'context'],
         [\Workflow\V2\Support\HealthCheck::class, 'snapshot', 'namespace'],
+        [\Workflow\V2\Support\OperatorMetrics::class, 'snapshot', 'namespace'],
     ];
 
     public const COMMAND_CONTEXT_CLASS = \Workflow\V2\CommandContext::class;

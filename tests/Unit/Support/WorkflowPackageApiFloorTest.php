@@ -8,6 +8,7 @@ use Waterline\Support\WorkflowPackageApiFloor;
 use Waterline\Tests\TestCase;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Support\HealthCheck;
+use Workflow\V2\Support\OperatorMetrics;
 use Workflow\V2\Support\ScheduleManager;
 
 /**
@@ -62,6 +63,22 @@ class WorkflowPackageApiFloorTest extends TestCase
     public function test_health_check_snapshot_accepts_namespace_parameter(): void
     {
         $reflection = new ReflectionClass(HealthCheck::class);
+        $reflectionMethod = $reflection->getMethod('snapshot');
+
+        $this->assertTrue($reflectionMethod->isPublic(), 'snapshot is not public');
+        $this->assertTrue($reflectionMethod->isStatic(), 'snapshot is not static');
+
+        $parameterNames = array_map(
+            static fn ($parameter): string => $parameter->getName(),
+            $reflectionMethod->getParameters(),
+        );
+
+        $this->assertContains('namespace', $parameterNames, 'snapshot does not declare a $namespace parameter');
+    }
+
+    public function test_operator_metrics_snapshot_accepts_namespace_parameter(): void
+    {
+        $reflection = new ReflectionClass(OperatorMetrics::class);
         $reflectionMethod = $reflection->getMethod('snapshot');
 
         $this->assertTrue($reflectionMethod->isPublic(), 'snapshot is not public');
