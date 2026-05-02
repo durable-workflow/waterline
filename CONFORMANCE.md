@@ -1,0 +1,60 @@
+# Platform Conformance — Waterline Claim
+
+Waterline participates in the platform conformance suite specified in
+[`workflow/docs/architecture/platform-conformance-suite.md`](https://github.com/durable-workflow/workflow/blob/v2/docs/architecture/platform-conformance-suite.md)
+and mirrored by `Workflow\V2\Support\PlatformConformanceSuite`. This
+document is the per-repo claim: it lists the conformance targets
+Waterline claims, the fixtures it serves, and the release gate that
+blocks publication when conformance is broken.
+
+## Claimed targets
+
+Waterline claims one target from the suite's matrix:
+
+- `waterline_contract_surface` — implements the
+  `/waterline/api/v2/*` HTTP API and the operator dashboard JSON
+  shapes. Covers the `waterline_api` surface family.
+
+## Fixture sources served by this repo
+
+| Category | Source path | Status |
+| --- | --- | --- |
+| `waterline_observer_envelopes` | `tests/fixtures/observer/` (planned) | provisional |
+
+The fixture set is **provisional** in suite version `1`. Waterline does
+not yet vendor a public `tests/fixtures/observer/` directory; the
+existing per-repo tests under `tests/Feature/` and `tests/Unit/`
+exercise the `/waterline/api/v2/*` shapes against in-process fakes.
+
+The fixture set is promoted to **required** in a future suite version
+once the contract slice for the operator dashboard JSON envelope is
+public. At that point the harness will block Waterline releases on a
+`nonconforming` result for this category; until then, a failure in
+this category is a warning, not a release blocker.
+
+## Release gate
+
+A release of `waterline` must produce a harness result document before
+tag.
+
+| Field | Value |
+| --- | --- |
+| Required claimed targets | `waterline_contract_surface` |
+| Required suite version | `PlatformConformanceSuite::VERSION` (currently `1`) |
+| CI job | `platform-conformance` (advisory only while `waterline_observer_envelopes` is provisional) |
+| Block on `nonconforming` | yes (once `waterline_observer_envelopes` is promoted to stable) |
+| Artifact attached to release | harness result document, schema `durable-workflow.v2.platform-conformance.result` |
+
+While the category is provisional, a release reviewer must still
+attach the harness result document to the release for traceability.
+The conformance level will read `provisional` until the fixture set is
+public; the release notes must enumerate the provisional categories
+the result depends on.
+
+## Cross-references
+
+- Authority spec: `workflow/docs/architecture/platform-conformance-suite.md`
+- Authority manifest class: `Workflow\V2\Support\PlatformConformanceSuite`
+- Public docs page: <https://durable-workflow.github.io/docs/2.0/compatibility>
+- Existing in-repo coverage: `tests/Feature/`, `tests/Unit/` exercising
+  the `/waterline/api/v2/*` surfaces.
