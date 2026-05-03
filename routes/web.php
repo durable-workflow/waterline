@@ -49,6 +49,15 @@ Route::prefix('api')->group(function () {
     Route::post('/instances/{instanceId}/cancel', 'WorkflowsController@cancelInstance')->name('waterline.instances.cancel');
     Route::post('/instances/{instanceId}/terminate', 'WorkflowsController@terminateInstance')->name('waterline.instances.terminate');
     Route::post('/instances/{instanceId}/archive', 'WorkflowsController@archiveInstance')->name('waterline.instances.archive');
+    Route::get('/v2/services/endpoints', 'V2ServicesController@endpointsIndex')->name('waterline.v2.services.endpoints.index');
+    Route::get('/v2/services/endpoints/{endpointId}', 'V2ServicesController@endpointShow')->name('waterline.v2.services.endpoints.show');
+    Route::get('/v2/services/services', 'V2ServicesController@servicesIndex')->name('waterline.v2.services.services.index');
+    Route::get('/v2/services/services/{serviceId}', 'V2ServicesController@serviceShow')->name('waterline.v2.services.services.show');
+    Route::get('/v2/services/operations', 'V2ServicesController@operationsIndex')->name('waterline.v2.services.operations.index');
+    Route::get('/v2/services/operations/{operationId}', 'V2ServicesController@operationShow')->name('waterline.v2.services.operations.show');
+    Route::get('/v2/services/calls', 'V2ServicesController@callsIndex')->name('waterline.v2.services.calls.index');
+    Route::get('/v2/services/calls/{callId}', 'V2ServicesController@callShow')->name('waterline.v2.services.calls.show');
+
     Route::get('/v2/schedules', 'V2SchedulesController@index')->name('waterline.v2.schedules.index');
     Route::get('/v2/schedules/{scheduleId}', 'V2SchedulesController@show')->name('waterline.v2.schedules.show');
     Route::get('/v2/schedules/{scheduleId}/history', 'V2SchedulesController@history')->name('waterline.v2.schedules.history');
