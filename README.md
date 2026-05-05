@@ -1,6 +1,12 @@
 # Waterline
 
-An elegant UI for monitoring [workflows](https://github.com/durable-workflow/workflow).
+An elegant operator UI for monitoring the technical runtime state of
+[workflows](https://github.com/durable-workflow/workflow).
+
+Waterline is for fleet health, queues, waits, retries, failures, repair,
+history, and runtime diagnostics. Business dashboards should read
+application-owned read models projected at domain milestones, with
+`workflow_id` and `run_id` stored only as correlation references.
 
 ## Installation
 
