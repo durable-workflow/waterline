@@ -20,6 +20,12 @@ export default [
     },
 
     {
+        path: '/services',
+        name: 'services',
+        component: require('./screens/services').default,
+    },
+
+    {
         path: '/flows/instances/:instanceId',
         name: 'flow-detail',
         component: require('./screens/flows/flow').default,

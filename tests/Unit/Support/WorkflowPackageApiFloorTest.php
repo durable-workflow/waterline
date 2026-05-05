@@ -7,9 +7,11 @@ use RuntimeException;
 use Waterline\Support\WorkflowPackageApiFloor;
 use Waterline\Tests\TestCase;
 use Workflow\V2\CommandContext;
+use Workflow\V2\Enums\ServiceCallOutcome;
 use Workflow\V2\Support\HealthCheck;
 use Workflow\V2\Support\OperatorMetrics;
 use Workflow\V2\Support\ScheduleManager;
+use Workflow\V2\Support\ServiceCatalog;
 
 /**
  * Pins the API floor Waterline relies on from durable-workflow/workflow.
@@ -90,6 +92,28 @@ class WorkflowPackageApiFloorTest extends TestCase
         );
 
         $this->assertContains('namespace', $parameterNames, 'snapshot does not declare a $namespace parameter');
+    }
+
+    public function test_service_catalog_query_accepts_outcome_parameter(): void
+    {
+        $reflection = new ReflectionClass(ServiceCatalog::class);
+        $reflectionMethod = $reflection->getMethod('serviceCallsQuery');
+
+        $this->assertTrue($reflectionMethod->isPublic(), 'serviceCallsQuery is not public');
+        $this->assertTrue($reflectionMethod->isStatic(), 'serviceCallsQuery is not static');
+
+        $parameterNames = array_map(
+            static fn ($parameter): string => $parameter->getName(),
+            $reflectionMethod->getParameters(),
+        );
+
+        $this->assertContains('outcome', $parameterNames, 'serviceCallsQuery does not declare an $outcome parameter');
+    }
+
+    public function test_service_call_outcome_buckets_are_available(): void
+    {
+        $this->assertTrue(class_exists(ServiceCallOutcome::class));
+        $this->assertArrayHasKey('policy', ServiceCallOutcome::buckets());
     }
 
     public function test_find_missing_reports_missing_command_context_class(): void
@@ -176,7 +200,7 @@ class WorkflowPackageApiFloorTest extends TestCase
         $this->expectExceptionMessage('older than the API floor Waterline requires');
         $this->expectExceptionMessage('NonExistentCommandContext');
         $this->expectExceptionMessage('thisMethodDoesNotExist');
-        $this->expectExceptionMessage('namespace-scoped health snapshot signatures');
+        $this->expectExceptionMessage('service catalog outcome-filter signatures');
 
         WorkflowPackageApiFloor::assertAgainst(
             contextClass: 'Waterline\\Tests\\Unit\\Support\\NonExistentCommandContext',

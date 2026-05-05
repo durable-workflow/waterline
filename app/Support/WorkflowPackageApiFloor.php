@@ -18,17 +18,28 @@ use RuntimeException;
  * boot cleanly even when the v2 classes are absent.
  *
  * Inside the v2 band, however, Waterline now depends on specific schedule
- * mutation signatures and the namespace-scoped v2 health snapshot — both
- * the `HealthCheck::snapshot` entry point and the `OperatorMetrics::snapshot`
- * source it delegates to must accept the configured namespace. Older v2
- * installs that predate those contracts fail schedule mutation routes with
- * unknown-named-parameter or argument-count errors, or silently lose
- * namespace scoping on the operator health surface. `assertIfActive()` is
- * called at boot so those broken pairings surface with a clear diagnostic
- * instead of a 500 or a cross-namespace health payload at runtime.
+ * mutation signatures, the namespace-scoped v2 health snapshot, and the
+ * service catalog/operator observability helpers. Older v2 installs that
+ * predate those contracts fail schedule mutation routes with unknown-named
+ * parameters, silently lose namespace scoping, or cannot render the service
+ * call outcome filters Waterline exposes. `assertIfActive()` is called at boot
+ * so those broken pairings surface with a clear diagnostic instead of a 500 or
+ * a cross-namespace health payload at runtime.
  */
 final class WorkflowPackageApiFloor
 {
+    /**
+     * @var list<class-string>
+     */
+    private const REQUIRED_CLASSES = [
+        \Workflow\V2\Enums\ServiceCallOutcome::class,
+        \Workflow\V2\Support\ServiceCallView::class,
+        \Workflow\V2\Support\ServiceCatalog::class,
+        \Workflow\V2\Support\ServiceEndpointView::class,
+        \Workflow\V2\Support\ServiceOperationView::class,
+        \Workflow\V2\Support\ServiceView::class,
+    ];
+
     /**
      * Each entry is `[FQCN, method, required_parameter]`. The class and
      * method must exist, the method must be public-static, and the named
@@ -45,6 +56,7 @@ final class WorkflowPackageApiFloor
         [\Workflow\V2\Support\ScheduleManager::class, 'delete', 'context'],
         [\Workflow\V2\Support\HealthCheck::class, 'snapshot', 'namespace'],
         [\Workflow\V2\Support\OperatorMetrics::class, 'snapshot', 'namespace'],
+        [\Workflow\V2\Support\ServiceCatalog::class, 'serviceCallsQuery', 'outcome'],
     ];
 
     public const COMMAND_CONTEXT_CLASS = \Workflow\V2\CommandContext::class;
@@ -94,7 +106,8 @@ final class WorkflowPackageApiFloor
         throw new RuntimeException(sprintf(
             "Installed durable-workflow/workflow package is older than the API floor Waterline requires. "
             ."Missing: %s. Upgrade the workflow package to a v2 snapshot that includes CommandContext "
-            .'plus the context-accepting schedule mutation and namespace-scoped health snapshot signatures.',
+            .'plus the context-accepting schedule mutation, namespace-scoped health snapshot, '
+            .'and service catalog outcome-filter signatures.',
             implode(', ', $missing),
         ));
     }
@@ -117,6 +130,12 @@ final class WorkflowPackageApiFloor
 
         if (! class_exists($contextClass)) {
             $missing[] = $contextClass;
+        }
+
+        foreach (self::REQUIRED_CLASSES as $class) {
+            if (! class_exists($class)) {
+                $missing[] = $class;
+            }
         }
 
         foreach ($requirements as [$class, $method, $parameter]) {

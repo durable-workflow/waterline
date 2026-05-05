@@ -3,6 +3,7 @@
 namespace Waterline\Tests\Feature;
 
 use Waterline\Tests\TestCase;
+use Workflow\V2\Enums\ServiceCallOutcome;
 use Workflow\V2\Enums\ServiceCallStatus;
 use Workflow\V2\Models\WorkflowService;
 use Workflow\V2\Models\WorkflowServiceCall;
@@ -45,14 +46,18 @@ class V2ServicesControllerTest extends TestCase
 
         $endpoint = $this->createEndpoint('billing', 'invoices');
         $service = $this->createService($endpoint, 'billing', 'inbox');
+        $this->createService($endpoint, 'shipping', 'foreign-inbox');
         $this->createOperation($endpoint, $service, 'billing', 'create');
+        $this->createOperation($endpoint, $service, 'shipping', 'foreign-create');
 
         $this->getJson('/waterline/api/v2/services/endpoints/'.$endpoint->id)
             ->assertOk()
             ->assertJsonPath('id', $endpoint->id)
             ->assertJsonPath('endpoint_name', 'invoices')
             ->assertJsonPath('services.0.service_name', 'inbox')
-            ->assertJsonPath('operations.0.operation_name', 'create');
+            ->assertJsonCount(1, 'services')
+            ->assertJsonPath('operations.0.operation_name', 'create')
+            ->assertJsonCount(1, 'operations');
     }
 
     public function testServicesIndexFiltersByEndpointAndNamespace(): void
@@ -72,6 +77,20 @@ class V2ServicesControllerTest extends TestCase
         $this->assertSame($billingService->id, $response->json('data.0.id'));
     }
 
+    public function testServiceShowHidesForeignEndpointAndOperationsFromDetail(): void
+    {
+        config()->set('waterline.namespace', 'billing');
+
+        $endpoint = $this->createEndpoint('shipping', 'invoices');
+        $service = $this->createService($endpoint, 'billing', 'inbox');
+        $this->createOperation($endpoint, $service, 'shipping', 'foreign-create');
+
+        $this->getJson('/waterline/api/v2/services/services/'.$service->id)
+            ->assertOk()
+            ->assertJsonPath('endpoint', null)
+            ->assertJsonCount(0, 'operations');
+    }
+
     public function testOperationShowReturnsNotFoundForOutOfNamespaceOperation(): void
     {
         config()->set('waterline.namespace', 'billing');
@@ -83,6 +102,20 @@ class V2ServicesControllerTest extends TestCase
         $this->getJson('/waterline/api/v2/services/operations/'.$operation->id)
             ->assertNotFound()
             ->assertJsonPath('error', 'Service operation not found.');
+    }
+
+    public function testOperationShowHidesForeignEndpointAndServiceFromDetail(): void
+    {
+        config()->set('waterline.namespace', 'billing');
+
+        $endpoint = $this->createEndpoint('shipping', 'invoices');
+        $service = $this->createService($endpoint, 'shipping', 'inbox');
+        $operation = $this->createOperation($endpoint, $service, 'billing', 'create');
+
+        $this->getJson('/waterline/api/v2/services/operations/'.$operation->id)
+            ->assertOk()
+            ->assertJsonPath('endpoint', null)
+            ->assertJsonPath('service', null);
     }
 
     public function testServiceCallsIndexShowsCallsOwnedByConfiguredNamespace(): void
@@ -114,12 +147,33 @@ class V2ServicesControllerTest extends TestCase
         $response = $this->getJson('/waterline/api/v2/services/calls')
             ->assertOk()
             ->assertJsonPath('namespace', 'billing')
-            ->assertJsonPath('scope', 'owned')
+            ->assertJsonPath('scope', 'relevant')
             ->assertJsonCount(1, 'data');
 
         $ids = collect($response->json('data'))->pluck('id')->all();
         $this->assertContains($billingCall->id, $ids);
         $this->assertNotContains($shippingCall->id, $ids);
+    }
+
+    public function testServiceCallsIndexDefaultScopeIncludesCallsInitiatedFromConfiguredNamespace(): void
+    {
+        config()->set('waterline.namespace', 'billing');
+
+        $endpoint = $this->createEndpoint('shipping', 'invoices');
+        $service = $this->createService($endpoint, 'shipping', 'inbox');
+        $operation = $this->createOperation($endpoint, $service, 'shipping', 'create');
+
+        $crossCall = $this->createServiceCall($endpoint, $service, $operation, [
+            'namespace' => 'shipping',
+            'caller_namespace' => 'billing',
+            'target_namespace' => 'shipping',
+            'status' => ServiceCallStatus::Started->value,
+        ]);
+
+        $this->getJson('/waterline/api/v2/services/calls')
+            ->assertOk()
+            ->assertJsonPath('scope', 'relevant')
+            ->assertJsonPath('data.0.id', $crossCall->id);
     }
 
     public function testServiceCallsIndexCallerScopeShowsCrossNamespaceCallsInitiatedFromNamespace(): void
@@ -134,7 +188,7 @@ class V2ServicesControllerTest extends TestCase
             'namespace' => 'shipping',
             'caller_namespace' => 'billing',
             'target_namespace' => 'shipping',
-            'status' => ServiceCallStatus::InProgress->value,
+            'status' => ServiceCallStatus::Started->value,
         ]);
 
         $this->getJson('/waterline/api/v2/services/calls?scope=owned')
@@ -158,23 +212,24 @@ class V2ServicesControllerTest extends TestCase
 
         $blocked = $this->createServiceCall($endpoint, $service, $operation, [
             'namespace' => 'billing',
-            'status' => ServiceCallStatus::Blocked->value,
+            'status' => ServiceCallStatus::Failed->value,
+            'outcome' => ServiceCallOutcome::HandlerFailed->value,
         ]);
         $accepted = $this->createServiceCall($endpoint, $service, $operation, [
             'namespace' => 'billing',
             'status' => ServiceCallStatus::Accepted->value,
         ]);
 
-        $response = $this->getJson('/waterline/api/v2/services/calls?status=blocked')
+        $response = $this->getJson('/waterline/api/v2/services/calls?status=failed')
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $blocked->id)
-            ->assertJsonPath('data.0.status', 'blocked')
-            ->assertJsonPath('data.0.status_bucket', 'policy')
-            ->assertJsonPath('data.0.is_policy_outcome', true);
+            ->assertJsonPath('data.0.status', 'failed')
+            ->assertJsonPath('data.0.status_bucket', 'failed')
+            ->assertJsonPath('data.0.outcome_bucket', 'failed');
 
         $this->assertNotContains($accepted->id, collect($response->json('data'))->pluck('id')->all());
-        $this->assertSame(['blocked', 'rejected'], $response->json('status_buckets.policy'));
+        $this->assertSame(['failed'], $response->json('status_buckets.failed'));
     }
 
     public function testServiceCallsIndexBucketFilterCollapsesToConfiguredStatuses(): void
@@ -187,25 +242,91 @@ class V2ServicesControllerTest extends TestCase
 
         $blocked = $this->createServiceCall($endpoint, $service, $operation, [
             'namespace' => 'billing',
-            'status' => ServiceCallStatus::Blocked->value,
+            'status' => ServiceCallStatus::Failed->value,
         ]);
-        $rejected = $this->createServiceCall($endpoint, $service, $operation, [
+        $cancelled = $this->createServiceCall($endpoint, $service, $operation, [
             'namespace' => 'billing',
-            'status' => ServiceCallStatus::Rejected->value,
+            'status' => ServiceCallStatus::Cancelled->value,
         ]);
         $accepted = $this->createServiceCall($endpoint, $service, $operation, [
             'namespace' => 'billing',
             'status' => ServiceCallStatus::Accepted->value,
         ]);
 
-        $response = $this->getJson('/waterline/api/v2/services/calls?bucket=policy')
+        $response = $this->getJson('/waterline/api/v2/services/calls?status_bucket=failed')
             ->assertOk()
-            ->assertJsonPath('bucket', 'policy')
+            ->assertJsonPath('status_bucket', 'failed')
+            ->assertJsonCount(1, 'data');
+
+        $ids = collect($response->json('data'))->pluck('id')->all();
+        $this->assertEqualsCanonicalizing([$blocked->id], $ids);
+        $this->assertNotContains($cancelled->id, $ids);
+        $this->assertNotContains($accepted->id, $ids);
+    }
+
+    public function testServiceCallsIndexFiltersByOutcomeAndExposesOutcomeBuckets(): void
+    {
+        config()->set('waterline.namespace', 'billing');
+
+        $endpoint = $this->createEndpoint('billing', 'invoices');
+        $service = $this->createService($endpoint, 'billing', 'inbox');
+        $operation = $this->createOperation($endpoint, $service, 'billing', 'create');
+
+        $policy = $this->createServiceCall($endpoint, $service, $operation, [
+            'namespace' => 'billing',
+            'status' => ServiceCallStatus::Failed->value,
+            'outcome' => ServiceCallOutcome::RejectedForbidden->value,
+        ]);
+        $handlerFailure = $this->createServiceCall($endpoint, $service, $operation, [
+            'namespace' => 'billing',
+            'status' => ServiceCallStatus::Failed->value,
+            'outcome' => ServiceCallOutcome::HandlerFailed->value,
+        ]);
+
+        $response = $this->getJson('/waterline/api/v2/services/calls?outcome=rejected_forbidden')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('outcome', 'rejected_forbidden')
+            ->assertJsonPath('data.0.id', $policy->id)
+            ->assertJsonPath('data.0.outcome_bucket', 'policy')
+            ->assertJsonPath('data.0.is_policy_outcome', true);
+
+        $this->assertNotContains($handlerFailure->id, collect($response->json('data'))->pluck('id')->all());
+        $this->assertContains('rejected_forbidden', $response->json('outcome_buckets.policy'));
+    }
+
+    public function testServiceCallsIndexOutcomeBucketFilterCollapsesToPolicyOutcomes(): void
+    {
+        config()->set('waterline.namespace', 'billing');
+
+        $endpoint = $this->createEndpoint('billing', 'invoices');
+        $service = $this->createService($endpoint, 'billing', 'inbox');
+        $operation = $this->createOperation($endpoint, $service, 'billing', 'create');
+
+        $policy = $this->createServiceCall($endpoint, $service, $operation, [
+            'namespace' => 'billing',
+            'status' => ServiceCallStatus::Failed->value,
+            'outcome' => ServiceCallOutcome::RejectedForbidden->value,
+        ]);
+        $throttled = $this->createServiceCall($endpoint, $service, $operation, [
+            'namespace' => 'billing',
+            'status' => ServiceCallStatus::Failed->value,
+            'outcome' => ServiceCallOutcome::RejectedThrottled->value,
+        ]);
+        $handlerFailure = $this->createServiceCall($endpoint, $service, $operation, [
+            'namespace' => 'billing',
+            'status' => ServiceCallStatus::Failed->value,
+            'outcome' => ServiceCallOutcome::HandlerFailed->value,
+        ]);
+
+        $response = $this->getJson('/waterline/api/v2/services/calls?outcome_bucket=policy')
+            ->assertOk()
+            ->assertJsonPath('outcome_bucket', 'policy')
             ->assertJsonCount(2, 'data');
 
         $ids = collect($response->json('data'))->pluck('id')->all();
-        $this->assertEqualsCanonicalizing([$blocked->id, $rejected->id], $ids);
-        $this->assertNotContains($accepted->id, $ids);
+        $this->assertEqualsCanonicalizing([$policy->id, $throttled->id], $ids);
+        $this->assertNotContains($handlerFailure->id, $ids);
     }
 
     public function testServiceCallShowReturns404WhenObserverNamespaceDoesNotMatchAnySide(): void
@@ -245,7 +366,7 @@ class V2ServicesControllerTest extends TestCase
             'linked_workflow_instance_id' => 'inst-shipping-1',
             'linked_workflow_run_id' => 'run-shipping-1',
             'linked_workflow_update_id' => 'upd-shipping-1',
-            'status' => ServiceCallStatus::InProgress->value,
+            'status' => ServiceCallStatus::Started->value,
         ]);
 
         $this->getJson('/waterline/api/v2/services/calls/'.$call->id)
@@ -259,13 +380,13 @@ class V2ServicesControllerTest extends TestCase
             ->assertJsonPath('linked_update_ref.in_observer_namespace', false);
     }
 
-    public function testInvalidScopeQueryParameterFallsBackToOwned(): void
+    public function testInvalidScopeQueryParameterFallsBackToRelevant(): void
     {
         config()->set('waterline.namespace', 'billing');
 
         $this->getJson('/waterline/api/v2/services/calls?scope=anything-else')
             ->assertOk()
-            ->assertJsonPath('scope', 'owned');
+            ->assertJsonPath('scope', 'relevant');
     }
 
     public function testInvalidStatusQueryParameterIsIgnored(): void
@@ -281,6 +402,24 @@ class V2ServicesControllerTest extends TestCase
         ]);
 
         $this->getJson('/waterline/api/v2/services/calls?status=garbage')
+            ->assertOk()
+            ->assertJsonCount(1, 'data');
+    }
+
+    public function testInvalidOutcomeQueryParameterIsIgnored(): void
+    {
+        config()->set('waterline.namespace', 'billing');
+
+        $endpoint = $this->createEndpoint('billing', 'invoices');
+        $service = $this->createService($endpoint, 'billing', 'inbox');
+        $operation = $this->createOperation($endpoint, $service, 'billing', 'create');
+        $this->createServiceCall($endpoint, $service, $operation, [
+            'namespace' => 'billing',
+            'status' => ServiceCallStatus::Failed->value,
+            'outcome' => ServiceCallOutcome::HandlerFailed->value,
+        ]);
+
+        $this->getJson('/waterline/api/v2/services/calls?outcome=garbage')
             ->assertOk()
             ->assertJsonCount(1, 'data');
     }

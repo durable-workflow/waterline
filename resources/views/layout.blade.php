@@ -94,6 +94,13 @@
                         </svg>
                         <span>Schedules</span>
                     </router-link>
+
+                    <router-link active-class="active" to="/services" class="wl-sidebar__link">
+                        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                            <path d="M3 2h6a2 2 0 0 1 2 2v1h6a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2v13h6V4H3zm8 3v7h6V7h-6zM4 6h4v2H4V6zm0 4h4v2H4v-2zm8-1h4v2h-4V9z"></path>
+                        </svg>
+                        <span>Services</span>
+                    </router-link>
                 </nav>
 
                 <div class="wl-sidebar__label">Runs</div>

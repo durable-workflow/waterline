@@ -4,6 +4,7 @@ namespace Waterline\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Workflow\V2\Enums\ServiceCallOutcome;
 use Workflow\V2\Enums\ServiceCallStatus;
 use Workflow\V2\Support\ServiceCallView;
 use Workflow\V2\Support\ServiceCatalog;
@@ -39,7 +40,7 @@ class V2ServicesController extends Controller
             return $this->notFound('Service endpoint');
         }
 
-        return response()->json(ServiceEndpointView::detail($endpoint));
+        return response()->json(ServiceEndpointView::detail($endpoint, $this->namespace()));
     }
 
     public function servicesIndex(Request $request): JsonResponse
@@ -64,7 +65,7 @@ class V2ServicesController extends Controller
             return $this->notFound('Service');
         }
 
-        return response()->json(ServiceView::detail($service));
+        return response()->json(ServiceView::detail($service, $this->namespace()));
     }
 
     public function operationsIndex(Request $request): JsonResponse
@@ -94,19 +95,25 @@ class V2ServicesController extends Controller
             return $this->notFound('Service operation');
         }
 
-        return response()->json(ServiceOperationView::detail($operation));
+        return response()->json(ServiceOperationView::detail($operation, $this->namespace()));
     }
 
     public function callsIndex(Request $request): JsonResponse
     {
         $scope = $this->parseScope($request->query('scope'));
         $status = $this->parseStatus($request->query('status'));
-        $bucket = $this->parseBucket($request->query('bucket'));
+        $statusBucket = $this->parseStatusBucket($request->query('status_bucket', $request->query('bucket')));
+        $outcome = $this->parseOutcome($request->query('outcome'));
+        $outcomeBucket = $this->parseOutcomeBucket($request->query('outcome_bucket'));
 
-        $query = ServiceCatalog::serviceCallsQuery($this->namespace(), $scope, $status);
+        $query = ServiceCatalog::serviceCallsQuery($this->namespace(), $scope, $status, $outcome);
 
-        if ($bucket !== null && $status === null) {
-            $query->whereIn('status', ServiceCallStatus::buckets()[$bucket]);
+        if ($statusBucket !== null && $status === null) {
+            $query->whereIn('status', ServiceCallStatus::buckets()[$statusBucket]);
+        }
+
+        if ($outcomeBucket !== null && $outcome === null) {
+            $query->whereIn('outcome', ServiceCallOutcome::buckets()[$outcomeBucket]);
         }
 
         $endpointId = $request->query('endpoint_id');
@@ -131,9 +138,15 @@ class V2ServicesController extends Controller
             static fn ($call): array => ServiceCallView::listItem($call),
             [
                 'scope' => $scope,
-                'bucket' => $bucket,
+                'bucket' => $statusBucket,
+                'status_bucket' => $statusBucket,
+                'outcome' => $outcome,
+                'outcome_bucket' => $outcomeBucket,
                 'namespace' => $this->namespace(),
+                'statuses' => array_map(static fn (ServiceCallStatus $status): string => $status->value, ServiceCallStatus::cases()),
+                'outcomes' => array_map(static fn (ServiceCallOutcome $outcome): string => $outcome->value, ServiceCallOutcome::cases()),
                 'status_buckets' => ServiceCallStatus::buckets(),
+                'outcome_buckets' => ServiceCallOutcome::buckets(),
             ],
         );
     }
@@ -171,7 +184,7 @@ class V2ServicesController extends Controller
 
         return in_array($value, ServiceCatalog::SCOPES, true)
             ? $value
-            : ServiceCatalog::SCOPE_OWNED;
+            : ServiceCatalog::SCOPE_RELEVANT;
     }
 
     private function parseStatus(mixed $raw): ?string
@@ -185,7 +198,18 @@ class V2ServicesController extends Controller
         return ServiceCallStatus::tryFrom($candidate)?->value;
     }
 
-    private function parseBucket(mixed $raw): ?string
+    private function parseOutcome(mixed $raw): ?string
+    {
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        $candidate = trim($raw);
+
+        return ServiceCallOutcome::tryFrom($candidate)?->value;
+    }
+
+    private function parseStatusBucket(mixed $raw): ?string
     {
         if (! is_string($raw) || trim($raw) === '') {
             return null;
@@ -193,6 +217,18 @@ class V2ServicesController extends Controller
 
         $candidate = strtolower(trim($raw));
         $buckets = ServiceCallStatus::buckets();
+
+        return array_key_exists($candidate, $buckets) ? $candidate : null;
+    }
+
+    private function parseOutcomeBucket(mixed $raw): ?string
+    {
+        if (! is_string($raw) || trim($raw) === '') {
+            return null;
+        }
+
+        $candidate = strtolower(trim($raw));
+        $buckets = ServiceCallOutcome::buckets();
 
         return array_key_exists($candidate, $buckets) ? $candidate : null;
     }
