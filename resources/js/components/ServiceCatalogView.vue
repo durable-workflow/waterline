@@ -73,6 +73,18 @@
                         </select>
                     </label>
                 </div>
+
+                <div class="service-catalog-view__preset-bar">
+                    <button
+                        v-for="preset in callPresets"
+                        :key="preset.key"
+                        type="button"
+                        class="btn btn-sm"
+                        :class="activePresetKey === preset.key ? 'btn-primary' : 'btn-outline-secondary'"
+                        @click="applyCallPreset(preset)">
+                        {{ preset.label }}
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -415,6 +427,14 @@ export default {
                 {key: 'services', label: 'Services', panelTitle: 'Services', panelSubtitle: 'Service registry rows owned by this namespace.', emptyLabel: 'services'},
                 {key: 'operations', label: 'Operations', panelTitle: 'Operations', panelSubtitle: 'Callable operations owned by this namespace.', emptyLabel: 'operations'},
             ],
+            callPresets: [
+                {key: 'relevant', label: 'Relevant', filters: {scope: 'relevant', status: '', status_bucket: '', outcome: '', outcome_bucket: ''}},
+                {key: 'open', label: 'Open', filters: {scope: 'relevant', status: '', status_bucket: 'open', outcome: '', outcome_bucket: ''}},
+                {key: 'failed', label: 'Failed', filters: {scope: 'relevant', status: '', status_bucket: 'failed', outcome: '', outcome_bucket: ''}},
+                {key: 'policy', label: 'Policy', filters: {scope: 'relevant', status: '', status_bucket: '', outcome: '', outcome_bucket: 'policy'}},
+                {key: 'caller', label: 'Caller', filters: {scope: 'caller', status: '', status_bucket: '', outcome: '', outcome_bucket: ''}},
+                {key: 'target', label: 'Target', filters: {scope: 'target', status: '', status_bucket: '', outcome: '', outcome_bucket: ''}},
+            ],
             activeTab: 'calls',
             loading: true,
             error: null,
@@ -495,6 +515,14 @@ export default {
 
         outcomeBucketOptions() {
             return Object.keys(this.outcomeBuckets);
+        },
+
+        activePresetKey() {
+            const match = this.callPresets.find((preset) =>
+                Object.keys(this.callFilters).every((key) => this.callFilters[key] === preset.filters[key])
+            );
+
+            return match ? match.key : null;
         },
 
         activeFilterLabel() {
@@ -632,22 +660,34 @@ export default {
     },
 
     watch: {
-        '$route.query.tab'() {
-            this.applyRouteTab();
+        '$route.query': {
+            handler() {
+                this.applyRouteState();
+            },
+            deep: true,
         },
     },
 
     mounted() {
-        this.applyRouteTab();
+        this.applyRouteState();
     },
 
     methods: {
-        applyRouteTab() {
-            const requested = typeof this.$route.query.tab === 'string' ? this.$route.query.tab : 'calls';
-            this.activeTab = this.tabs.some((tab) => tab.key === requested) ? requested : 'calls';
-            this.currentPage = 1;
-            this.closeDetail();
-            this.loadData();
+        applyRouteState() {
+            const state = this.routeState();
+            const tabChanged = state.tab !== this.activeTab;
+            const filtersChanged = JSON.stringify(state.filters) !== JSON.stringify(this.callFilters);
+            const pageChanged = state.page !== this.currentPage;
+
+            this.activeTab = state.tab;
+            this.callFilters = state.filters;
+            this.currentPage = state.page;
+
+            if (tabChanged || filtersChanged || pageChanged) {
+                this.closeDetail();
+            }
+
+            this.loadData(state.page);
         },
 
         setTab(tab) {
@@ -655,13 +695,10 @@ export default {
                 return;
             }
 
-            this.$router.push({
-                path: this.$route.path,
-                query: {
-                    ...this.$route.query,
-                    tab,
-                },
-            }).catch(() => {});
+            this.activeTab = tab;
+            this.currentPage = 1;
+            this.closeDetail();
+            this.syncRouteQuery(1, 'push');
         },
 
         refresh() {
@@ -671,7 +708,7 @@ export default {
         reloadFromFirstPage() {
             this.currentPage = 1;
             this.closeDetail();
-            this.loadData(1);
+            this.syncRouteQuery(1);
         },
 
         onSpecificStatusChanged() {
@@ -687,6 +724,14 @@ export default {
                 this.callFilters.outcome_bucket = '';
             }
 
+            this.reloadFromFirstPage();
+        },
+
+        applyCallPreset(preset) {
+            this.callFilters = {
+                ...this.callFilters,
+                ...preset.filters,
+            };
             this.reloadFromFirstPage();
         },
 
@@ -784,7 +829,88 @@ export default {
             }
 
             this.closeDetail();
-            this.loadData(page);
+            this.syncRouteQuery(page);
+        },
+
+        routeState() {
+            const query = this.$route.query || {};
+            const requested = typeof query.tab === 'string' ? query.tab : 'calls';
+            const tab = this.tabs.some((candidate) => candidate.key === requested) ? requested : 'calls';
+            const filters = {
+                scope: this.parseScopeQuery(query.scope),
+                status: this.stringQuery(query.status),
+                status_bucket: this.stringQuery(query.status_bucket || query.bucket),
+                outcome: this.stringQuery(query.outcome),
+                outcome_bucket: this.stringQuery(query.outcome_bucket),
+            };
+
+            if (filters.status) {
+                filters.status_bucket = '';
+            }
+
+            if (filters.outcome) {
+                filters.outcome_bucket = '';
+            }
+
+            return {
+                tab,
+                filters,
+                page: this.parsePageQuery(query.page),
+            };
+        },
+
+        syncRouteQuery(page = 1, mode = 'replace') {
+            const query = {
+                ...this.$route.query,
+                tab: this.activeTab,
+            };
+
+            delete query.page;
+            delete query.scope;
+            delete query.status;
+            delete query.status_bucket;
+            delete query.bucket;
+            delete query.outcome;
+            delete query.outcome_bucket;
+
+            if (page > 1) {
+                query.page = String(page);
+            }
+
+            if (this.activeTab === 'calls') {
+                Object.entries(this.callFilters).forEach(([key, value]) => {
+                    if (value) {
+                        query[key] = value;
+                    }
+                });
+            }
+
+            const route = {
+                path: this.$route.path,
+                query,
+            };
+
+            const navigate = mode === 'push' ? this.$router.push : this.$router.replace;
+            navigate.call(this.$router, route)
+                .catch(() => {
+                    this.loadData(page);
+                });
+        },
+
+        parseScopeQuery(value) {
+            const scope = typeof value === 'string' ? value : 'relevant';
+
+            return ['relevant', 'owned', 'caller', 'target'].includes(scope) ? scope : 'relevant';
+        },
+
+        parsePageQuery(value) {
+            const page = Number.parseInt(value, 10);
+
+            return Number.isFinite(page) && page > 0 ? page : 1;
+        },
+
+        stringQuery(value) {
+            return typeof value === 'string' ? value.trim() : '';
         },
 
         rowClass(row) {
@@ -968,6 +1094,13 @@ export default {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 0.75rem;
+}
+
+.service-catalog-view__preset-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.9rem;
 }
 
 .service-catalog-view__filter-grid label {
