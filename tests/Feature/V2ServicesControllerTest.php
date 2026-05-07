@@ -3,6 +3,7 @@
 namespace Waterline\Tests\Feature;
 
 use Waterline\Tests\TestCase;
+use Workflow\V2\Enums\ServiceCallBindingKind;
 use Workflow\V2\Enums\ServiceCallOutcome;
 use Workflow\V2\Enums\ServiceCallStatus;
 use Workflow\V2\Models\WorkflowService;
@@ -475,7 +476,7 @@ class V2ServicesControllerTest extends TestCase
             'service_name' => $service->service_name,
             'operation_name' => $operation->operation_name,
             'operation_mode' => $operation->operation_mode,
-            'resolved_binding_kind' => $operation->handler_binding_kind,
+            'resolved_binding_kind' => ServiceCallBindingKind::WorkflowRun->value,
         ];
 
         return WorkflowServiceCall::create(array_merge($defaults, $overrides));
