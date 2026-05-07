@@ -58,6 +58,7 @@ class V2ServicesControllerTest extends TestCase
             ->assertJsonPath('services.0.service_name', 'inbox')
             ->assertJsonCount(1, 'services')
             ->assertJsonPath('operations.0.operation_name', 'create')
+            ->assertJsonPath('operations.0.handler_binding_kind', 'start_workflow')
             ->assertJsonCount(1, 'operations');
     }
 
@@ -454,7 +455,7 @@ class V2ServicesControllerTest extends TestCase
             'namespace' => $namespace,
             'operation_name' => $name,
             'operation_mode' => 'request_reply',
-            'handler_binding_kind' => 'workflow_class',
+            'handler_binding_kind' => 'start_workflow',
             'handler_target_reference' => 'Tests\\HandlerWorkflow',
         ]);
     }
