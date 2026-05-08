@@ -23,7 +23,6 @@ use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\CompatibilitySemantics;
-use Waterline\Support\VisibilityMetadataBridge;
 use Waterline\Waterline;
 
 class WorkflowsController extends Controller
@@ -626,11 +625,6 @@ class WorkflowsController extends Controller
     private function listItemView(WorkflowRunSummary $summary): array
     {
         $item = RunListItemView::fromSummary($summary);
-        $item['search_attributes'] = VisibilityMetadataBridge::preserve(
-            $item['search_attributes'] ?? null,
-            $summary->run?->getRawOriginal('search_attributes'),
-            $summary->getRawOriginal('search_attributes'),
-        );
         $item['history_budget_indicator'] = $this->historyBudgetIndicator($item);
         $item = CompatibilitySemantics::annotateListItem($item);
         $item['actionability'] = ActionabilityContract::annotateRun($item)['actionability'];
