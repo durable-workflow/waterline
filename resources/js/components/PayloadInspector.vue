@@ -106,7 +106,13 @@ export default {
                 return;
             }
 
-            // Handle envelope format: {codec: "json", blob: "..."}
+            // Handle envelope format: {codec, blob}.
+            //
+            // The run-detail backend pre-decodes payloads through the
+            // workflow CommandPayloadPreview helper, so this component
+            // normally receives plain values. The envelope branch is a
+            // defensive fallback for surfaces that may forward a raw
+            // {codec, blob} pair (e.g. external history exports).
             if (this.isEnvelope(this.payload)) {
                 this.decodeEnvelope(this.payload);
                 return;
@@ -149,38 +155,32 @@ export default {
             const codec = envelope.codec;
             const blob = envelope.blob;
 
-            if (codec === 'json') {
-                try {
-                    this.decoded = JSON.parse(blob);
-                    this.updateCollapsedState();
-                } catch (e) {
-                    this.error = `Failed to decode JSON: ${e.message}`;
-                    this.rawValue = blob;
-                }
-            } else if (codec === 'avro') {
-                // Avro blobs are base64-encoded binary — client-side decoding
-                // requires the apache-avro JS library which is not bundled.
-                // The blob may already be a pre-decoded object from the server
-                // (via CommandPayloadPreview::previewWithCodec).
+            if (codec === 'avro') {
+                // Avro blobs are base64-encoded binary — client-side
+                // decoding would require the apache-avro JS library, which
+                // is not bundled. In normal flows the server pre-decodes
+                // and we never see a raw avro envelope here; if one does
+                // arrive, accept a pre-decoded object, then try JSON, then
+                // surface the binary size.
                 if (typeof blob === 'object' && blob !== null) {
                     this.decoded = blob;
                     this.updateCollapsedState();
                 } else if (typeof blob === 'string') {
-                    // Try JSON parse — the server may have pre-decoded
                     try {
                         this.decoded = JSON.parse(blob);
                         this.updateCollapsedState();
                     } catch (e) {
-                        // Raw Avro binary blob — show as-is
                         this.rawValue = `[Avro payload: ${blob.length} bytes]`;
                     }
                 } else {
                     this.rawValue = blob;
                 }
-            } else if (codec === 'null') {
-                this.decoded = null;
             } else {
-                // Legacy PHP codecs or unknown — show raw
+                // Legacy PHP-only codecs (workflow-serializer-y,
+                // workflow-serializer-base64) cannot be decoded in the
+                // browser. v2 does not register any other codecs — JSON is
+                // not a v2 codec — so unknown values fall through here and
+                // render as the raw blob.
                 this.rawValue = blob;
             }
         },
