@@ -1112,6 +1112,31 @@ export default {
                 facts.push(`worker scopes ${activeWorkerScopes.toLocaleString()}`);
             }
 
+            // Surface fleet compatibility coverage so a "compatibility block"
+            // alert distinguishes "no live worker advertises the required
+            // marker" (the canonical fail-closed admission case) from a
+            // transient race that still has fleet coverage. The fields are
+            // forwarded by the workflow package's routing_health check.
+            const fleetSupportsRequired = healthFacts.fleet_supports_required;
+            if (typeof fleetSupportsRequired === 'boolean' && !fleetSupportsRequired) {
+                const requiredCompatibility = typeof healthFacts.required_compatibility === 'string'
+                    && healthFacts.required_compatibility !== ''
+                    ? healthFacts.required_compatibility
+                    : null;
+                facts.push(requiredCompatibility !== null
+                    ? `no fleet coverage for ${requiredCompatibility}`
+                    : 'no fleet coverage for required marker');
+            }
+            const supportingWorkers = Number(healthFacts.active_workers_supporting_required ?? null);
+            const totalActiveWorkers = Number(healthFacts.active_workers ?? null);
+            if (Number.isFinite(supportingWorkers)
+                && Number.isFinite(totalActiveWorkers)
+                && totalActiveWorkers > 0
+                && supportingWorkers >= 0
+                && supportingWorkers < totalActiveWorkers) {
+                facts.push(`${supportingWorkers.toLocaleString()}/${totalActiveWorkers.toLocaleString()} workers support required marker`);
+            }
+
             if (Number.isFinite(maxAgeMs) && maxAgeMs > 0) {
                 facts.push(`max age ${this.durationMillisecondsLabel(maxAgeMs)}`);
             }
