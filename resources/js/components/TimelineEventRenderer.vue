@@ -78,6 +78,10 @@
                         <span class="text-muted">Signal ID:</span>
                         <code class="ml-1">{{ event.signal_id.substring(0, 8) }}...</code>
                     </div>
+                    <div v-if="commandPrincipalLabel">
+                        <span class="text-muted">Principal:</span>
+                        <span class="ml-1">{{ commandPrincipalLabel }}</span>
+                    </div>
                 </div>
 
                 <!-- Update Events -->
@@ -85,6 +89,10 @@
                     <div v-if="event.update_name">
                         <span class="text-muted">Update:</span>
                         <code class="ml-1">{{ event.update_name }}</code>
+                    </div>
+                    <div v-if="commandPrincipalLabel">
+                        <span class="text-muted">Principal:</span>
+                        <span class="ml-1">{{ commandPrincipalLabel }}</span>
                     </div>
                 </div>
 
