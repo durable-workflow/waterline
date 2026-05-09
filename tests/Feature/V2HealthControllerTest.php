@@ -305,6 +305,62 @@ class V2HealthControllerTest extends TestCase
         );
     }
 
+    public function testHealthEndpointSurfacesWorkerRegistrationsWithSlotsAndProcessMetrics(): void
+    {
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('cache.default', 'file');
+        config()->set('waterline.namespace', 'waterline-worker-status');
+        config()->set('waterline.worker_stale_after_seconds', 120);
+        config()->set('workflows.v2.compatibility.namespace', 'waterline-worker-status');
+
+        $this->createWorkerRegistrationsTable();
+
+        WorkerRegistration::create([
+            'worker_id' => 'waterline-worker-status-1',
+            'namespace' => 'waterline-worker-status',
+            'task_queue' => 'orders',
+            'runtime' => 'python',
+            'supported_workflow_types' => ['orders.process'],
+            'supported_activity_types' => ['inventory.sync'],
+            'max_concurrent_workflow_tasks' => 8,
+            'max_concurrent_activity_tasks' => 4,
+            'max_concurrent_worker_sessions' => 2,
+            'available_workflow_slots' => 6,
+            'available_activity_slots' => 3,
+            'available_session_slots' => 2,
+            'process_metrics' => [
+                'cpu_percent' => 11.5,
+                'memory_bytes' => 268435456,
+                'process_uptime_seconds' => 1200,
+                'process_id' => 7777,
+                'host' => 'py-host',
+            ],
+            'heartbeat_interval_seconds' => 30,
+            'last_heartbeat_at' => now(),
+            'status' => 'active',
+        ]);
+
+        $payload = $this->get('/waterline/api/v2/health')->assertStatus(200)->json();
+
+        $this->assertIsArray($payload);
+        $registrations = $payload['operator_metrics']['workers']['registrations'] ?? null;
+        $this->assertIsArray($registrations);
+        $this->assertCount(1, $registrations);
+
+        $first = $registrations[0];
+        $this->assertSame('waterline-worker-status-1', $first['worker_id']);
+        $this->assertSame('orders', $first['task_queue']);
+        $this->assertSame(6, $first['task_slots']['workflow_available']);
+        $this->assertSame(3, $first['task_slots']['activity_available']);
+        $this->assertSame(2, $first['task_slots']['session_available']);
+        $this->assertSame(8, $first['task_slots']['workflow_capacity']);
+        $this->assertSame(11.5, $first['process_metrics']['cpu_percent']);
+        $this->assertSame(7777, $first['process_metrics']['process_id']);
+        $this->assertSame(30, $first['heartbeat_interval_seconds']);
+        $this->assertSame(120, $payload['operator_metrics']['workers']['stale_after_seconds']);
+    }
+
     public function testHealthEndpointPublishesCompatibilityAlertFactsWhenFailClosedWorkersAreMissing(): void
     {
         config()->set('queue.default', 'redis');
@@ -932,6 +988,12 @@ class V2HealthControllerTest extends TestCase
             $table->json('supported_activity_types')->nullable();
             $table->unsignedInteger('max_concurrent_workflow_tasks')->default(100);
             $table->unsignedInteger('max_concurrent_activity_tasks')->default(100);
+            $table->unsignedInteger('max_concurrent_worker_sessions')->nullable();
+            $table->unsignedInteger('available_workflow_slots')->nullable();
+            $table->unsignedInteger('available_activity_slots')->nullable();
+            $table->unsignedInteger('available_session_slots')->nullable();
+            $table->json('process_metrics')->nullable();
+            $table->unsignedInteger('heartbeat_interval_seconds')->nullable();
             $table->timestamp('last_heartbeat_at')->nullable();
             $table->string('status', 32)->default('active');
             $table->timestamps();

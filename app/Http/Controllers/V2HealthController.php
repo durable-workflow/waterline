@@ -77,6 +77,7 @@ class V2HealthController extends Controller
         $snapshot['routing_drains'] = $routingDrains;
         $snapshot['engine_source'] = $engineSource;
         $snapshot['readiness_contract'] = $engineSource['readiness_contract'] ?? null;
+        $snapshot = $this->annotateWorkerRegistrations($snapshot, $namespace);
         $snapshot['coordination_alerts'] = $this->coordinationAlerts(
             $snapshot['checks'],
             $snapshot['queue_visibility'],
@@ -84,6 +85,108 @@ class V2HealthController extends Controller
         );
 
         return response()->json($snapshot, HealthCheck::httpStatus($snapshot));
+    }
+
+    /**
+     * Surface the per-worker registration roster (with task-slot availability
+     * and basic process metrics) onto the snapshot so the operator Worker
+     * Status view can answer "what workers are polling task queue X right
+     * now, what's their slot capacity, when did each last check in" without
+     * extra round-trips. Fleet entries from the workflow package's operator
+     * metrics surface remain present as a fallback for older clients.
+     *
+     * @param  array<string, mixed>  $snapshot
+     * @return array<string, mixed>
+     */
+    private function annotateWorkerRegistrations(array $snapshot, ?string $namespace): array
+    {
+        if ($namespace === null) {
+            return $snapshot;
+        }
+
+        if (! Schema::hasTable((new WorkerRegistration())->getTable())) {
+            return $snapshot;
+        }
+
+        $staleAfter = $this->workerStaleAfterSeconds();
+        $now = now();
+
+        $registrations = WorkerRegistration::query()
+            ->where('namespace', $namespace)
+            ->orderByDesc('last_heartbeat_at')
+            ->get();
+
+        $registrationPayload = [];
+        foreach ($registrations as $worker) {
+            $isStale = $worker->last_heartbeat_at instanceof CarbonInterface
+                && $worker->last_heartbeat_at->lt($now->copy()->subSeconds($staleAfter));
+
+            $registrationPayload[] = [
+                'worker_id' => (string) $worker->worker_id,
+                'namespace' => $worker->namespace,
+                'task_queue' => $worker->task_queue,
+                'runtime' => $worker->runtime,
+                'sdk_version' => $worker->sdk_version,
+                'build_id' => $worker->build_id,
+                'status' => $isStale ? 'stale' : ($worker->status ?? 'active'),
+                'last_heartbeat_at' => $worker->last_heartbeat_at instanceof CarbonInterface
+                    ? $worker->last_heartbeat_at->toJSON()
+                    : null,
+                'supported_workflow_types' => is_array($worker->supported_workflow_types ?? null)
+                    ? array_values($worker->supported_workflow_types)
+                    : [],
+                'supported_activity_types' => is_array($worker->supported_activity_types ?? null)
+                    ? array_values($worker->supported_activity_types)
+                    : [],
+                'max_concurrent_workflow_tasks' => $worker->max_concurrent_workflow_tasks,
+                'max_concurrent_activity_tasks' => $worker->max_concurrent_activity_tasks,
+                'max_concurrent_worker_sessions' => $worker->max_concurrent_worker_sessions ?? null,
+                'task_slots' => [
+                    'workflow_available' => $worker->available_workflow_slots ?? null,
+                    'activity_available' => $worker->available_activity_slots ?? null,
+                    'session_available' => $worker->available_session_slots ?? null,
+                    'workflow_capacity' => $worker->max_concurrent_workflow_tasks,
+                    'activity_capacity' => $worker->max_concurrent_activity_tasks,
+                    'session_capacity' => $worker->max_concurrent_worker_sessions ?? null,
+                ],
+                'process_metrics' => is_array($worker->process_metrics ?? null) && $worker->process_metrics !== []
+                    ? $worker->process_metrics
+                    : null,
+                'heartbeat_interval_seconds' => $worker->heartbeat_interval_seconds ?? null,
+            ];
+        }
+
+        if ($registrationPayload === []) {
+            return $snapshot;
+        }
+
+        $operatorMetrics = is_array($snapshot['operator_metrics'] ?? null)
+            ? $snapshot['operator_metrics']
+            : [];
+        $workersBlock = is_array($operatorMetrics['workers'] ?? null)
+            ? $operatorMetrics['workers']
+            : [];
+        $workersBlock['registrations'] = $registrationPayload;
+        $workersBlock['stale_after_seconds'] = $staleAfter;
+        $operatorMetrics['workers'] = $workersBlock;
+        $snapshot['operator_metrics'] = $operatorMetrics;
+
+        return $snapshot;
+    }
+
+    private function workerStaleAfterSeconds(): int
+    {
+        $configured = config('waterline.worker_stale_after_seconds');
+        if (is_numeric($configured) && (int) $configured > 0) {
+            return (int) $configured;
+        }
+
+        $serverConfigured = config('server.workers.stale_after_seconds');
+        if (is_numeric($serverConfigured) && (int) $serverConfigured > 0) {
+            return (int) $serverConfigured;
+        }
+
+        return 300;
     }
 
     /**

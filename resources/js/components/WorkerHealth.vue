@@ -159,6 +159,8 @@
                                         <th v-if="columnEnabled('workflows')">Workflow Support</th>
                                         <th v-if="columnEnabled('activities')">Activity Support</th>
                                         <th v-if="columnEnabled('concurrency')">Concurrency</th>
+                                        <th v-if="columnEnabled('slots')">Slots (free / cap)</th>
+                                        <th v-if="columnEnabled('process')">Process</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -250,6 +252,26 @@
                                             <div class="worker-health__cell-main">
                                                 WF {{ worker.max_concurrent_workflow_tasks || 0 }} / ACT {{ worker.max_concurrent_activity_tasks || 0 }}
                                                 <div class="worker-health__cell-meta">Task slot limits</div>
+                                            </div>
+                                        </td>
+
+                                        <td v-if="columnEnabled('slots')">
+                                            <div class="worker-health__cell-main">
+                                                <span v-if="hasSlotData(worker)">{{ formatSlotPair(worker.task_slots && worker.task_slots.workflow_available, slotCapacity(worker, 'workflow')) }} wf · {{ formatSlotPair(worker.task_slots && worker.task_slots.activity_available, slotCapacity(worker, 'activity')) }} act</span>
+                                                <span v-else class="text-muted">—</span>
+                                                <div class="worker-health__cell-meta" v-if="worker.task_slots && worker.task_slots.session_available !== null && worker.task_slots.session_available !== undefined">
+                                                    sessions {{ formatSlotPair(worker.task_slots.session_available, slotCapacity(worker, 'session')) }}
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        <td v-if="columnEnabled('process')">
+                                            <div class="worker-health__cell-main">
+                                                <span v-if="hasProcessMetrics(worker)">{{ formatProcessSummary(worker) }}</span>
+                                                <span v-else class="text-muted">—</span>
+                                                <div class="worker-health__cell-meta" v-if="worker.process_metrics && worker.process_metrics.host">
+                                                    {{ worker.process_metrics.host }}<span v-if="worker.process_metrics.process_id !== null && worker.process_metrics.process_id !== undefined"> · pid {{ worker.process_metrics.process_id }}</span>
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>
@@ -709,6 +731,8 @@ export default {
                 {key: 'workflows', label: 'Workflows'},
                 {key: 'activities', label: 'Activities'},
                 {key: 'concurrency', label: 'Concurrency'},
+                {key: 'slots', label: 'Free Slots'},
+                {key: 'process', label: 'Process'},
             ];
         },
 
@@ -1266,6 +1290,82 @@ export default {
         truncateId(id) {
             if (!id) return '';
             return id.length > 12 ? `${id.substring(0, 8)}...${id.substring(id.length - 4)}` : id;
+        },
+
+        slotCapacity(worker, kind) {
+            const slots = worker.task_slots && typeof worker.task_slots === 'object' ? worker.task_slots : null;
+
+            if (slots) {
+                const value = slots[`${kind}_capacity`];
+                if (Number.isFinite(value)) return value;
+            }
+
+            const fallback = worker[`max_concurrent_${kind === 'workflow' ? 'workflow_tasks'
+                : kind === 'activity' ? 'activity_tasks'
+                : 'worker_sessions'}`];
+
+            return Number.isFinite(fallback) ? fallback : null;
+        },
+
+        hasSlotData(worker) {
+            const slots = worker.task_slots && typeof worker.task_slots === 'object' ? worker.task_slots : null;
+            if (!slots) return false;
+            return Number.isFinite(slots.workflow_available)
+                || Number.isFinite(slots.activity_available)
+                || Number.isFinite(slots.session_available);
+        },
+
+        formatSlotPair(available, capacity) {
+            const hasAvailable = Number.isFinite(available);
+            const hasCapacity = Number.isFinite(capacity) && capacity > 0;
+
+            if (!hasAvailable && !hasCapacity) return '—';
+            if (!hasAvailable) return `?/${capacity}`;
+            if (!hasCapacity) return `${available}/?`;
+
+            return `${available}/${capacity}`;
+        },
+
+        hasProcessMetrics(worker) {
+            const metrics = worker.process_metrics;
+            return metrics && typeof metrics === 'object' && Object.keys(metrics).length > 0;
+        },
+
+        formatProcessSummary(worker) {
+            const metrics = worker.process_metrics || {};
+            const parts = [];
+
+            if (Number.isFinite(metrics.cpu_percent)) {
+                parts.push(`CPU ${Number(metrics.cpu_percent).toFixed(1)}%`);
+            }
+            if (Number.isFinite(metrics.memory_bytes)) {
+                parts.push(`mem ${this.formatBytes(metrics.memory_bytes)}`);
+            }
+            if (Number.isFinite(metrics.process_uptime_seconds)) {
+                parts.push(`up ${this.formatUptime(metrics.process_uptime_seconds)}`);
+            }
+
+            return parts.length > 0 ? parts.join(' · ') : '—';
+        },
+
+        formatBytes(bytes) {
+            const value = Number(bytes);
+            if (!Number.isFinite(value) || value < 0) return '—';
+            if (value < 1024) return `${value} B`;
+            if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
+            if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MiB`;
+
+            return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
+        },
+
+        formatUptime(seconds) {
+            const value = Number(seconds);
+            if (!Number.isFinite(value) || value < 0) return '—';
+            if (value < 60) return `${value}s`;
+            if (value < 3600) return `${Math.floor(value / 60)}m`;
+            if (value < 86400) return `${Math.floor(value / 3600)}h`;
+
+            return `${Math.floor(value / 86400)}d`;
         },
 
         swalBackground() {
