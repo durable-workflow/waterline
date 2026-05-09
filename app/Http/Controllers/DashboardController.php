@@ -3,13 +3,15 @@
 namespace Waterline\Http\Controllers;
 
 use Illuminate\Support\Facades\App;
+use RuntimeException;
+use Waterline\Waterline;
 
 class DashboardController extends Controller
 {
     public function index()
     {
         return view('waterline::layout', [
-            'assetsAreCurrent' => true,
+            'assetsAreCurrent' => $this->assetsAreCurrent(),
             'cssFile' => true ? 'app-dark.css' : 'app.css',
             'waterlineScriptVariables' => [
                 'path' => config('waterline.path', 'waterline'),
@@ -17,6 +19,15 @@ class DashboardController extends Controller
             'environmentBanner' => $this->environmentBanner(),
             'isDownForMaintenance' => App::isDownForMaintenance(),
         ]);
+    }
+
+    private function assetsAreCurrent(): bool
+    {
+        try {
+            return (bool) Waterline::assetsAreCurrent();
+        } catch (RuntimeException) {
+            return false;
+        }
     }
 
     private function environmentBanner(): ?array
