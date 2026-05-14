@@ -23,6 +23,7 @@ use Workflow\V2\Models\WorkflowRunWait;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\Models\WorkflowTimelineEntry;
+use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Support\RunSummaryProjector;
 use Workflow\V2\Support\WorkerCompatibilityFleet;
 
@@ -682,6 +683,75 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonMissing(['worker_id' => 'worker-shipping']);
     }
 
+    public function testIndexReportsZeroSupportingWorkersWhenNamespaceFleetLacksRequiredCompatibility(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-c');
+        config()->set('workflows.v2.compatibility.supported', ['build-c']);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        // Two workers heartbeat in the configured namespace but advertise only
+        // older builds — the rebuild path must surface them as fleet entries
+        // while still reporting zero workers supporting the required build.
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-billing-stale-a',
+        );
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a', 'build-b'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-billing-stale-ab',
+        );
+        // A foreign-namespace worker advertises the required build. The
+        // namespace filter must keep it out of the billing-scoped fleet, so
+        // its support cannot rescue active_workers_supporting_required from
+        // zero — that metric tells operators whether the configured namespace
+        // can safely accept work, not whether the fleet at large can.
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'shipping',
+            supported: ['build-c'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-shipping-current',
+        );
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-c')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 2)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 2)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 0)
+            ->assertJsonCount(2, 'operator_metrics.workers.fleet')
+            ->assertJsonFragment([
+                'worker_id' => 'worker-billing-stale-a',
+                'namespace' => 'billing',
+                'connection' => 'redis',
+                'queue' => 'default',
+                'supported' => ['build-a'],
+                'supports_required' => false,
+            ])
+            ->assertJsonFragment([
+                'worker_id' => 'worker-billing-stale-ab',
+                'namespace' => 'billing',
+                'connection' => 'redis',
+                'queue' => 'default',
+                'supported' => ['build-a', 'build-b'],
+                'supports_required' => false,
+            ])
+            ->assertJsonMissing(['worker_id' => 'worker-shipping-current']);
+    }
+
     public function testIndexCountsScopesSeparatelyFromUniqueWorkersInNamespaceFleet(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -769,6 +839,849 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.workers.fleet', [])
             ->assertJsonMissing(['worker_id' => 'worker-shipping'])
             ->assertJsonMissing(['worker_id' => 'worker-inventory']);
+    }
+
+    public function testIndexPassesThroughEngineSuppliedNamespaceScopedWorkerFleet(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        // If Waterline ignored the engine-supplied namespace scoping and rebuilt
+        // the fleet from WorkerCompatibilityFleet, this entry would surface in
+        // the response. The early-return path means the engine payload wins.
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'rebuild-only',
+            workerId: 'worker-rebuild-only',
+        );
+
+        $this->app->instance(
+            OperatorObservabilityRepository::class,
+            new class implements OperatorObservabilityRepository
+            {
+                public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+                {
+                    return [];
+                }
+
+                public function listItem(WorkflowRunSummary $summary): array
+                {
+                    return [];
+                }
+
+                public function runHistoryExport(
+                    WorkflowRun $run,
+                    ?\Carbon\CarbonInterface $exportedAt = null,
+                    \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+                ): array {
+                    return [];
+                }
+
+                public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [
+                        'flows' => 0,
+                        'flows_per_minute' => 0,
+                        'flows_past_hour' => 0,
+                        'exceptions_past_hour' => 0,
+                        'failed_flows_past_week' => 0,
+                        'max_wait_time_workflow' => null,
+                        'max_duration_workflow' => null,
+                        'max_exceptions_workflow' => null,
+                        'operator_metrics' => [
+                            'workers' => [
+                                'compatibility_namespace' => 'billing',
+                                'required_compatibility' => 'build-a',
+                                'active_workers' => 7,
+                                'active_worker_scopes' => 9,
+                                'active_workers_supporting_required' => 5,
+                                'fleet' => [
+                                    [
+                                        'worker_id' => 'engine-billing-1',
+                                        'namespace' => 'billing',
+                                        'connection' => 'redis',
+                                        'queue' => 'engine-default',
+                                        'supported' => ['build-a'],
+                                        'supports_required' => true,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+
+                public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [];
+                }
+            }
+        );
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 7)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 9)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 5)
+            ->assertJsonCount(1, 'operator_metrics.workers.fleet')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.worker_id', 'engine-billing-1')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.queue', 'engine-default')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.supports_required', true)
+            ->assertJsonMissing(['worker_id' => 'worker-rebuild-only']);
+    }
+
+    public function testIndexPassesThroughWorkerFleetWhenWaterlineNamespaceUnconfigured(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', null);
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        // If Waterline rebuilt the fleet from WorkerCompatibilityFleet despite no
+        // configured namespace, this entry's distinct queue would surface in the
+        // response. With a null namespace, scopedWorkerMetrics must early-return
+        // the engine payload verbatim.
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'fleet-global',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'rebuild-only',
+            workerId: 'worker-rebuild-only',
+        );
+
+        $this->app->instance(
+            OperatorObservabilityRepository::class,
+            new class implements OperatorObservabilityRepository
+            {
+                public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+                {
+                    return [];
+                }
+
+                public function listItem(WorkflowRunSummary $summary): array
+                {
+                    return [];
+                }
+
+                public function runHistoryExport(
+                    WorkflowRun $run,
+                    ?\Carbon\CarbonInterface $exportedAt = null,
+                    \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+                ): array {
+                    return [];
+                }
+
+                public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [
+                        'flows' => 0,
+                        'flows_per_minute' => 0,
+                        'flows_past_hour' => 0,
+                        'exceptions_past_hour' => 0,
+                        'failed_flows_past_week' => 0,
+                        'max_wait_time_workflow' => null,
+                        'max_duration_workflow' => null,
+                        'max_exceptions_workflow' => null,
+                        'operator_metrics' => [
+                            'workers' => [
+                                'compatibility_namespace' => 'fleet-global',
+                                'required_compatibility' => 'build-a',
+                                'active_workers' => 4,
+                                'active_worker_scopes' => 6,
+                                'active_workers_supporting_required' => 3,
+                                'fleet' => [
+                                    [
+                                        'worker_id' => 'engine-fleet-1',
+                                        'namespace' => 'fleet-global',
+                                        'connection' => 'redis',
+                                        'queue' => 'engine-default',
+                                        'supported' => ['build-a'],
+                                        'supports_required' => true,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+
+                public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [];
+                }
+            }
+        );
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'fleet-global')
+            ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 4)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 6)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 3)
+            ->assertJsonCount(1, 'operator_metrics.workers.fleet')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.worker_id', 'engine-fleet-1')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.queue', 'engine-default')
+            ->assertJsonMissing(['worker_id' => 'worker-rebuild-only']);
+    }
+
+    public function testIndexRebuildsWorkerFleetWhenEngineSuppliesForeignNamespaceScope(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        // Recorded under the configured namespace so the rebuild path produces a
+        // deterministic fleet entry; the engine response below intentionally
+        // disagrees on namespace, and Waterline must trust the configured value.
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-billing-rebuilt',
+        );
+
+        $this->app->instance(
+            OperatorObservabilityRepository::class,
+            new class implements OperatorObservabilityRepository
+            {
+                public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+                {
+                    return [];
+                }
+
+                public function listItem(WorkflowRunSummary $summary): array
+                {
+                    return [];
+                }
+
+                public function runHistoryExport(
+                    WorkflowRun $run,
+                    ?\Carbon\CarbonInterface $exportedAt = null,
+                    \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+                ): array {
+                    return [];
+                }
+
+                public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [
+                        'flows' => 0,
+                        'flows_per_minute' => 0,
+                        'flows_past_hour' => 0,
+                        'exceptions_past_hour' => 0,
+                        'failed_flows_past_week' => 0,
+                        'max_wait_time_workflow' => null,
+                        'max_duration_workflow' => null,
+                        'max_exceptions_workflow' => null,
+                        'operator_metrics' => [
+                            'workers' => [
+                                'compatibility_namespace' => 'shipping',
+                                'required_compatibility' => 'build-z',
+                                'active_workers' => 99,
+                                'active_worker_scopes' => 99,
+                                'active_workers_supporting_required' => 99,
+                                'fleet' => [
+                                    [
+                                        'worker_id' => 'engine-shipping-1',
+                                        'namespace' => 'shipping',
+                                        'connection' => 'redis',
+                                        'queue' => 'engine-shipping-queue',
+                                        'supported' => ['build-z'],
+                                        'supports_required' => true,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+
+                public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [];
+                }
+            }
+        );
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 1)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 1)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 1)
+            ->assertJsonCount(1, 'operator_metrics.workers.fleet')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.worker_id', 'worker-billing-rebuilt')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.queue', 'default')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.supports_required', true)
+            ->assertJsonMissing(['worker_id' => 'engine-shipping-1']);
+    }
+
+    public function testIndexSurfacesHostProcessAndHeartbeatTimestampsOnNamespaceScopedFleet(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+        config()->set('workflows.v2.compatibility.heartbeat_ttl_seconds', 30);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        $recordedAt = now();
+        $expiresAt = $recordedAt->copy()->addSeconds(30);
+
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-billing-correlated',
+        );
+
+        $rawHost = gethostname();
+        $expectedHost = is_string($rawHost) && trim($rawHost) !== '' ? trim($rawHost) : null;
+        $expectedProcessId = (string) getmypid();
+
+        $response = $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            ->assertJsonCount(1, 'operator_metrics.workers.fleet')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.worker_id', 'worker-billing-correlated')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.host', $expectedHost)
+            ->assertJsonPath('operator_metrics.workers.fleet.0.process_id', $expectedProcessId)
+            ->assertJsonPath('operator_metrics.workers.fleet.0.source', 'database');
+
+        $entry = $response->json('operator_metrics.workers.fleet.0');
+        $this->assertIsArray($entry);
+        $this->assertArrayHasKey('recorded_at', $entry);
+        $this->assertArrayHasKey('expires_at', $entry);
+        $this->assertIsString($entry['recorded_at']);
+        $this->assertIsString($entry['expires_at']);
+        $this->assertTrue(\Illuminate\Support\Carbon::parse($entry['recorded_at'])->equalTo($recordedAt));
+        $this->assertTrue(\Illuminate\Support\Carbon::parse($entry['expires_at'])->equalTo($expiresAt));
+    }
+
+    public function testIndexRebuildEmptiesFleetWhenConfiguredNamespaceUnpopulatedDespiteForeignEngineFleet(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        // Recorded under foreign namespaces only — the rebuild path filters by
+        // the configured billing namespace, so neither of these may surface.
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'shipping',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-shipping-fleet',
+        );
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'inventory',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'priority',
+            workerId: 'worker-inventory-fleet',
+        );
+
+        // Engine reports a foreign-scoped fleet with multiple entries and
+        // non-zero counts. Because the engine namespace disagrees with the
+        // configured billing namespace, scopedWorkerMetrics must rebuild from
+        // WorkerCompatibilityFleet — and since billing has no recorded
+        // workers, the rebuilt fleet must be empty and all engine entries
+        // dropped wholesale.
+        $this->app->instance(
+            OperatorObservabilityRepository::class,
+            new class implements OperatorObservabilityRepository
+            {
+                public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+                {
+                    return [];
+                }
+
+                public function listItem(WorkflowRunSummary $summary): array
+                {
+                    return [];
+                }
+
+                public function runHistoryExport(
+                    WorkflowRun $run,
+                    ?\Carbon\CarbonInterface $exportedAt = null,
+                    \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+                ): array {
+                    return [];
+                }
+
+                public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [
+                        'flows' => 0,
+                        'flows_per_minute' => 0,
+                        'flows_past_hour' => 0,
+                        'exceptions_past_hour' => 0,
+                        'failed_flows_past_week' => 0,
+                        'max_wait_time_workflow' => null,
+                        'max_duration_workflow' => null,
+                        'max_exceptions_workflow' => null,
+                        'operator_metrics' => [
+                            'workers' => [
+                                'compatibility_namespace' => 'shipping',
+                                'required_compatibility' => 'build-a',
+                                'active_workers' => 5,
+                                'active_worker_scopes' => 7,
+                                'active_workers_supporting_required' => 4,
+                                'fleet' => [
+                                    [
+                                        'worker_id' => 'engine-shipping-1',
+                                        'namespace' => 'shipping',
+                                        'connection' => 'redis',
+                                        'queue' => 'engine-default',
+                                        'supported' => ['build-a'],
+                                        'supports_required' => true,
+                                    ],
+                                    [
+                                        'worker_id' => 'engine-shipping-2',
+                                        'namespace' => 'shipping',
+                                        'connection' => 'redis',
+                                        'queue' => 'engine-priority',
+                                        'supported' => ['build-a'],
+                                        'supports_required' => true,
+                                    ],
+                                    [
+                                        'worker_id' => 'engine-shipping-3',
+                                        'namespace' => 'shipping',
+                                        'connection' => 'redis',
+                                        'queue' => 'engine-bulk',
+                                        'supported' => ['build-a'],
+                                        'supports_required' => true,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+
+                public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [];
+                }
+            }
+        );
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 0)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 0)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 0)
+            ->assertJsonPath('operator_metrics.workers.fleet', [])
+            ->assertJsonMissing(['worker_id' => 'engine-shipping-1'])
+            ->assertJsonMissing(['worker_id' => 'engine-shipping-2'])
+            ->assertJsonMissing(['worker_id' => 'engine-shipping-3'])
+            ->assertJsonMissing(['worker_id' => 'worker-shipping-fleet'])
+            ->assertJsonMissing(['worker_id' => 'worker-inventory-fleet']);
+    }
+
+    public function testIndexPreservesEngineSuppliedCoordinationHealthFieldsOnNamespaceScopedFleet(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        // Recorded under the configured namespace with a distinct queue so that
+        // if Waterline took the rebuild branch instead of the pass-through, the
+        // surfaced fleet would name "rebuild-only" rather than the engine's
+        // "engine-default" — and the engine-supplied coordination-health
+        // fields below would be dropped.
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'rebuild-only',
+            workerId: 'worker-rebuild-only',
+        );
+
+        $this->app->instance(
+            OperatorObservabilityRepository::class,
+            new class implements OperatorObservabilityRepository
+            {
+                public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+                {
+                    return [];
+                }
+
+                public function listItem(WorkflowRunSummary $summary): array
+                {
+                    return [];
+                }
+
+                public function runHistoryExport(
+                    WorkflowRun $run,
+                    ?\Carbon\CarbonInterface $exportedAt = null,
+                    \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+                ): array {
+                    return [];
+                }
+
+                public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [
+                        'flows' => 0,
+                        'flows_per_minute' => 0,
+                        'flows_past_hour' => 0,
+                        'exceptions_past_hour' => 0,
+                        'failed_flows_past_week' => 0,
+                        'max_wait_time_workflow' => null,
+                        'max_duration_workflow' => null,
+                        'max_exceptions_workflow' => null,
+                        'operator_metrics' => [
+                            'workers' => [
+                                'compatibility_namespace' => 'billing',
+                                'required_compatibility' => 'build-a',
+                                'active_workers' => 3,
+                                'active_worker_scopes' => 4,
+                                'active_workers_supporting_required' => 3,
+                                // Coordination-health fields the engine may grow at
+                                // the workers level. Pinning that pass-through preserves
+                                // them lets workflow ship new operator surfaces without
+                                // a coordinated Waterline change.
+                                'wake_latency_ms_p95' => 42,
+                                'queue_latency_ms_p95' => 17,
+                                'lease_conflicts_past_hour' => 2,
+                                'retry_rate_past_hour' => 0.125,
+                                'duplicate_risk_indicators' => ['stale_lease', 'wake_dup'],
+                                'routing_health' => [
+                                    'status' => 'healthy',
+                                    'blocked_cohorts' => [],
+                                ],
+                                'stuck_workflow_detector' => [
+                                    'count' => 0,
+                                    'oldest_age_seconds' => null,
+                                ],
+                                'fleet' => [
+                                    [
+                                        'worker_id' => 'engine-billing-1',
+                                        'namespace' => 'billing',
+                                        'connection' => 'redis',
+                                        'queue' => 'engine-default',
+                                        'supported' => ['build-a'],
+                                        'supports_required' => true,
+                                        // Per-fleet-entry coordination metadata the
+                                        // engine may surface alongside heartbeat data.
+                                        'lease_conflicts_past_hour' => 1,
+                                        'last_wake_latency_ms' => 35,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+
+                public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [];
+                }
+            }
+        );
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 3)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 4)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 3)
+            ->assertJsonPath('operator_metrics.workers.wake_latency_ms_p95', 42)
+            ->assertJsonPath('operator_metrics.workers.queue_latency_ms_p95', 17)
+            ->assertJsonPath('operator_metrics.workers.lease_conflicts_past_hour', 2)
+            ->assertJsonPath('operator_metrics.workers.retry_rate_past_hour', 0.125)
+            ->assertJsonPath('operator_metrics.workers.duplicate_risk_indicators', ['stale_lease', 'wake_dup'])
+            ->assertJsonPath('operator_metrics.workers.routing_health.status', 'healthy')
+            ->assertJsonPath('operator_metrics.workers.routing_health.blocked_cohorts', [])
+            ->assertJsonPath('operator_metrics.workers.stuck_workflow_detector.count', 0)
+            ->assertJsonPath('operator_metrics.workers.stuck_workflow_detector.oldest_age_seconds', null)
+            ->assertJsonCount(1, 'operator_metrics.workers.fleet')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.worker_id', 'engine-billing-1')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.queue', 'engine-default')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.lease_conflicts_past_hour', 1)
+            ->assertJsonPath('operator_metrics.workers.fleet.0.last_wake_latency_ms', 35)
+            ->assertJsonMissing(['worker_id' => 'worker-rebuild-only']);
+    }
+
+    public function testIndexRebuildKeepsEngineSuppliedTopLevelCoordinationFieldsButDropsPerFleetEntryAnnotations(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        // The rebuild branch fires because the engine reports a foreign
+        // namespace below, so the surfaced fleet must be derived from this
+        // local recording — and engine-supplied per-entry annotations must
+        // not bleed onto the rebuilt entry.
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-billing-rebuilt',
+        );
+
+        $this->app->instance(
+            OperatorObservabilityRepository::class,
+            new class implements OperatorObservabilityRepository
+            {
+                public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+                {
+                    return [];
+                }
+
+                public function listItem(WorkflowRunSummary $summary): array
+                {
+                    return [];
+                }
+
+                public function runHistoryExport(
+                    WorkflowRun $run,
+                    ?\Carbon\CarbonInterface $exportedAt = null,
+                    \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+                ): array {
+                    return [];
+                }
+
+                public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [
+                        'flows' => 0,
+                        'flows_per_minute' => 0,
+                        'flows_past_hour' => 0,
+                        'exceptions_past_hour' => 0,
+                        'failed_flows_past_week' => 0,
+                        'max_wait_time_workflow' => null,
+                        'max_duration_workflow' => null,
+                        'max_exceptions_workflow' => null,
+                        'operator_metrics' => [
+                            'workers' => [
+                                // Foreign namespace forces the rebuild branch.
+                                'compatibility_namespace' => 'shipping',
+                                'required_compatibility' => 'build-z',
+                                'active_workers' => 99,
+                                'active_worker_scopes' => 99,
+                                'active_workers_supporting_required' => 99,
+                                // Top-level coordination fields the engine
+                                // surfaces. The rebuild branch mutates the
+                                // existing $workers array, so these keys must
+                                // survive into the response even though the
+                                // fleet itself is replaced.
+                                'wake_latency_ms_p95' => 88,
+                                'queue_latency_ms_p95' => 71,
+                                'lease_conflicts_past_hour' => 5,
+                                'retry_rate_past_hour' => 0.5,
+                                'duplicate_risk_indicators' => ['stale_lease'],
+                                'routing_health' => [
+                                    'status' => 'degraded',
+                                    'blocked_cohorts' => ['shipping'],
+                                ],
+                                'stuck_workflow_detector' => [
+                                    'count' => 2,
+                                    'oldest_age_seconds' => 600,
+                                ],
+                                'fleet' => [
+                                    [
+                                        'worker_id' => 'engine-shipping-1',
+                                        'namespace' => 'shipping',
+                                        'connection' => 'redis',
+                                        'queue' => 'engine-default',
+                                        'supported' => ['build-z'],
+                                        'supports_required' => true,
+                                        // Per-entry coordination metadata
+                                        // that the rebuild path cannot carry
+                                        // because it constructs entries from
+                                        // local heartbeats only.
+                                        'lease_conflicts_past_hour' => 9,
+                                        'last_wake_latency_ms' => 123,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+
+                public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [];
+                }
+            }
+        );
+
+        $response = $this->get('/waterline/api/stats')
+            ->assertOk()
+            // Rebuild reasserts the configured namespace and counts.
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
+            ->assertJsonPath('operator_metrics.workers.active_workers', 1)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 1)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 1)
+            ->assertJsonCount(1, 'operator_metrics.workers.fleet')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.worker_id', 'worker-billing-rebuilt')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.namespace', 'billing')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.queue', 'default')
+            ->assertJsonMissing(['worker_id' => 'engine-shipping-1'])
+            // Top-level engine coordination fields survive the rebuild.
+            ->assertJsonPath('operator_metrics.workers.wake_latency_ms_p95', 88)
+            ->assertJsonPath('operator_metrics.workers.queue_latency_ms_p95', 71)
+            ->assertJsonPath('operator_metrics.workers.lease_conflicts_past_hour', 5)
+            ->assertJsonPath('operator_metrics.workers.retry_rate_past_hour', 0.5)
+            ->assertJsonPath('operator_metrics.workers.duplicate_risk_indicators', ['stale_lease'])
+            ->assertJsonPath('operator_metrics.workers.routing_health.status', 'degraded')
+            ->assertJsonPath('operator_metrics.workers.routing_health.blocked_cohorts', ['shipping'])
+            ->assertJsonPath('operator_metrics.workers.stuck_workflow_detector.count', 2)
+            ->assertJsonPath('operator_metrics.workers.stuck_workflow_detector.oldest_age_seconds', 600);
+
+        // Per-entry coordination annotations are NOT carried by the rebuild
+        // path — fleetEntry produces a fixed shape, so any engine-supplied
+        // per-entry keys are dropped.
+        $entry = $response->json('operator_metrics.workers.fleet.0');
+        $this->assertIsArray($entry);
+        $this->assertArrayNotHasKey('lease_conflicts_past_hour', $entry);
+        $this->assertArrayNotHasKey('last_wake_latency_ms', $entry);
+    }
+
+    public function testIndexLeavesWorkersNullWhenEngineOmitsSectionUnderConfiguredNamespace(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        // A heartbeat exists under the configured namespace. If
+        // scopedWorkerMetrics ignored the early-return guard on a non-array
+        // engine workers value, this entry would surface in the rebuilt
+        // fleet — which would silently change the surface contract for
+        // older workflow alphas that intentionally omit the workers section
+        // until they catch up to the namespace-scoped snapshot shape.
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-billing-only',
+        );
+
+        $this->app->instance(
+            OperatorObservabilityRepository::class,
+            new class implements OperatorObservabilityRepository
+            {
+                public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+                {
+                    return [];
+                }
+
+                public function listItem(WorkflowRunSummary $summary): array
+                {
+                    return [];
+                }
+
+                public function runHistoryExport(
+                    WorkflowRun $run,
+                    ?\Carbon\CarbonInterface $exportedAt = null,
+                    \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+                ): array {
+                    return [];
+                }
+
+                public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [
+                        'flows' => 0,
+                        'flows_per_minute' => 0,
+                        'flows_past_hour' => 0,
+                        'exceptions_past_hour' => 0,
+                        'failed_flows_past_week' => 0,
+                        'max_wait_time_workflow' => null,
+                        'max_duration_workflow' => null,
+                        'max_exceptions_workflow' => null,
+                        // operator_metrics intentionally omits the workers
+                        // key — older workflow alphas surface only the runs
+                        // metrics until they grow the namespace-scoped
+                        // workers snapshot.
+                        'operator_metrics' => [
+                            'runs' => [
+                                'oldest_repair_needed_at' => null,
+                                'max_repair_needed_age_ms' => null,
+                            ],
+                        ],
+                    ];
+                }
+
+                public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [];
+                }
+            }
+        );
+
+        $response = $this->get('/waterline/api/stats')
+            ->assertOk()
+            // The early-return guard preserves the engine's non-array
+            // workers value (here: omitted, becoming null) verbatim — it
+            // must not be synthesised from local heartbeats just because a
+            // namespace happens to be configured.
+            ->assertJsonPath('operator_metrics.workers', null)
+            ->assertJsonMissing(['worker_id' => 'worker-billing-only']);
+
+        $operatorMetrics = $response->json('operator_metrics');
+        $this->assertIsArray($operatorMetrics);
+        $this->assertArrayHasKey('workers', $operatorMetrics);
+        $this->assertNull($operatorMetrics['workers']);
     }
 
     public function testIndexIncludesCommandContractBackfillMetrics(): void
@@ -1341,5 +2254,232 @@ class V2DashboardStatsControllerTest extends TestCase
                 || is_int($runs['max_repair_needed_age_ms']),
             'operator_metrics.runs.max_repair_needed_age_ms must be null or integer milliseconds',
         );
+    }
+
+    public function testIndexTrustsEngineSuppliedCountsWhenNamespaceScopeMatches(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        // Local config and heartbeats disagree with the engine on what the
+        // required build is and how many workers support it. The early-return
+        // contract says: once the engine's compatibility_namespace matches the
+        // configured namespace, the engine's view wins — Waterline must not
+        // second-guess the counts or the required build by re-deriving from
+        // local state.
+        config()->set('workflows.v2.compatibility.current', 'build-a');
+        config()->set('workflows.v2.compatibility.supported', ['build-a']);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        // Two local heartbeats under the configured namespace. If Waterline
+        // ever re-derived counts on a namespace match, active_workers would be
+        // 2 and the fleet would name these workers — neither must happen.
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-billing-local-1',
+        );
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'priority',
+            workerId: 'worker-billing-local-2',
+        );
+
+        $this->app->instance(
+            OperatorObservabilityRepository::class,
+            new class implements OperatorObservabilityRepository
+            {
+                public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+                {
+                    return [];
+                }
+
+                public function listItem(WorkflowRunSummary $summary): array
+                {
+                    return [];
+                }
+
+                public function runHistoryExport(
+                    WorkflowRun $run,
+                    ?\Carbon\CarbonInterface $exportedAt = null,
+                    \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+                ): array {
+                    return [];
+                }
+
+                public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [
+                        'flows' => 0,
+                        'flows_per_minute' => 0,
+                        'flows_past_hour' => 0,
+                        'exceptions_past_hour' => 0,
+                        'failed_flows_past_week' => 0,
+                        'max_wait_time_workflow' => null,
+                        'max_duration_workflow' => null,
+                        'max_exceptions_workflow' => null,
+                        'operator_metrics' => [
+                            'workers' => [
+                                // Namespace matches the configured value, so
+                                // the early-return path fires.
+                                'compatibility_namespace' => 'billing',
+                                // Required build disagrees with the local
+                                // compatibility.current ('build-a'). The
+                                // pass-through must keep the engine's value.
+                                'required_compatibility' => 'build-z',
+                                // Counts disagree with what local heartbeats
+                                // would yield (2 / 2 / 2). The pass-through
+                                // must keep the engine's numbers.
+                                'active_workers' => 11,
+                                'active_worker_scopes' => 17,
+                                'active_workers_supporting_required' => 4,
+                                'fleet' => [
+                                    [
+                                        'worker_id' => 'engine-billing-only',
+                                        'namespace' => 'billing',
+                                        'connection' => 'redis',
+                                        'queue' => 'engine-default',
+                                        'supported' => ['build-z'],
+                                        'supports_required' => true,
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+
+                public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+                {
+                    return [];
+                }
+            }
+        );
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            // Engine's required_compatibility survives even though it
+            // disagrees with the locally-configured current build.
+            ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-z')
+            // Engine's counts survive verbatim — Waterline does not
+            // re-derive them from the two local heartbeats above.
+            ->assertJsonPath('operator_metrics.workers.active_workers', 11)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 17)
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 4)
+            ->assertJsonCount(1, 'operator_metrics.workers.fleet')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.worker_id', 'engine-billing-only')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.queue', 'engine-default')
+            ->assertJsonPath('operator_metrics.workers.fleet.0.supported', ['build-z'])
+            ->assertJsonPath('operator_metrics.workers.fleet.0.supports_required', true)
+            // Local heartbeats must not bleed into the surface when the
+            // engine has already supplied a namespace-matching snapshot.
+            ->assertJsonMissing(['worker_id' => 'worker-billing-local-1'])
+            ->assertJsonMissing(['worker_id' => 'worker-billing-local-2']);
+    }
+
+    public function testIndexRebuildCountsAllNamespaceWorkersAsSupportingWhenRequiredCompatibilityUnset(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        // No compatibility marker is configured. The rebuild path must treat
+        // this as the permissive "single-fleet, no pinning" posture documented
+        // in the workflows config defaults — every namespace heartbeat
+        // counts as a supporting worker, and required_compatibility surfaces
+        // as null. Operators reading the dashboard during early bootstrap
+        // (before any build marker has been assigned) need a single signal
+        // that distinguishes "we have no marker configured" from "we have a
+        // marker and zero workers support it" — the latter is a rollout-block
+        // signal, the former is not.
+        config()->set('workflows.v2.compatibility.current', null);
+        config()->set('workflows.v2.compatibility.supported', null);
+
+        WorkerCompatibilityFleet::clear();
+        $this->beforeApplicationDestroyed(static function (): void {
+            WorkerCompatibilityFleet::clear();
+        });
+
+        // Three billing-scoped workers, deliberately advertising disjoint and
+        // even empty supported lists. Without a required marker, none of
+        // those values can fail the check — every worker must report
+        // supports_required=true and roll up into active_workers_supporting_required.
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-billing-a',
+        );
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: ['build-legacy'],
+            connection: 'redis',
+            queue: 'priority',
+            workerId: 'worker-billing-legacy',
+        );
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'billing',
+            supported: [],
+            connection: 'redis',
+            queue: 'background',
+            workerId: 'worker-billing-empty',
+        );
+        // A foreign-namespace worker must stay out of the billing-scoped
+        // fleet even when no required marker is configured — the namespace
+        // filter is the contract that prevents one cohort's permissive view
+        // from leaking into another's.
+        WorkerCompatibilityFleet::recordForNamespace(
+            namespace: 'shipping',
+            supported: ['build-a'],
+            connection: 'redis',
+            queue: 'default',
+            workerId: 'worker-shipping',
+        );
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
+            // Required marker passes through as null instead of being
+            // synthesized into a placeholder string — Waterline must not
+            // invent a marker when none is configured, otherwise dashboards
+            // would mislead operators into thinking a rollout pin exists.
+            ->assertJsonPath('operator_metrics.workers.required_compatibility', null)
+            ->assertJsonPath('operator_metrics.workers.active_workers', 3)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 3)
+            // The defining contract: with no required marker, every
+            // namespace-scoped worker counts as supporting it.
+            ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 3)
+            ->assertJsonCount(3, 'operator_metrics.workers.fleet')
+            ->assertJsonFragment([
+                'worker_id' => 'worker-billing-a',
+                'namespace' => 'billing',
+                'connection' => 'redis',
+                'queue' => 'default',
+                'supported' => ['build-a'],
+                'supports_required' => true,
+            ])
+            ->assertJsonFragment([
+                'worker_id' => 'worker-billing-legacy',
+                'namespace' => 'billing',
+                'connection' => 'redis',
+                'queue' => 'priority',
+                'supported' => ['build-legacy'],
+                'supports_required' => true,
+            ])
+            ->assertJsonFragment([
+                'worker_id' => 'worker-billing-empty',
+                'namespace' => 'billing',
+                'connection' => 'redis',
+                'queue' => 'background',
+                'supported' => [],
+                'supports_required' => true,
+            ])
+            ->assertJsonMissing(['worker_id' => 'worker-shipping']);
     }
 }
