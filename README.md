@@ -32,6 +32,13 @@ Gate::define('viewWaterline', function ($user) {
 
 This will allow only the single admin user to access the Waterline UI.
 
+Isolated observer stacks that have no application users can opt in to
+unauthenticated Waterline access:
+
+```dotenv
+WATERLINE_ALLOW_UNAUTHENTICATED=true
+```
+
 ## Configuration
 
 Waterline can display a thin environment strip above the dashboard so production and non-production tabs are visibly distinct before an operator acts:

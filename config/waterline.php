@@ -43,6 +43,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Unauthenticated Access
+    |--------------------------------------------------------------------------
+    |
+    | Waterline normally requires the host application's Waterline::auth gate.
+    | Ephemeral observer stacks can opt in to unauthenticated dashboard/API
+    | access by setting WATERLINE_ALLOW_UNAUTHENTICATED=true.
+    |
+    */
+
+    'allow_unauthenticated' => env('WATERLINE_ALLOW_UNAUTHENTICATED', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Workflow Engine Source
     |--------------------------------------------------------------------------
     |

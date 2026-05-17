@@ -14,9 +14,28 @@ class Waterline
 
     public static function check($request)
     {
+        if (static::allowsUnauthenticatedAccess()) {
+            return true;
+        }
+
         return (static::$authUsing ?: function () {
             return app()->environment('local');
         })($request);
+    }
+
+    public static function allowsUnauthenticatedAccess(): bool
+    {
+        $configured = config('waterline.allow_unauthenticated', false);
+
+        if (is_bool($configured)) {
+            return $configured;
+        }
+
+        if (is_scalar($configured)) {
+            return filter_var($configured, FILTER_VALIDATE_BOOLEAN);
+        }
+
+        return false;
     }
 
     public static function auth(Closure $callback)

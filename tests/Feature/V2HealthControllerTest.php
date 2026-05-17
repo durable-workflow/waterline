@@ -10,6 +10,7 @@ use Waterline\Models\WorkerBuildIdRollout;
 use Waterline\Models\WorkerRegistration;
 use Waterline\Tests\TestCase;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
+use Waterline\Waterline;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Enums\TaskStatus;
 use Workflow\V2\Enums\TaskType;
@@ -56,6 +57,26 @@ class V2HealthControllerTest extends TestCase
             ->assertJsonPath('readiness_contract.effective_states.health.state', 'delegates_to_v2_health_check')
             ->assertJsonCount(0, 'coordination_alerts')
             ->assertJsonPath('operator_metrics.backend.supported', true);
+    }
+
+    public function testHealthEndpointSupportsOptInUnauthenticatedObserverStacks(): void
+    {
+        Waterline::auth(static fn () => false);
+        config()->set('waterline.allow_unauthenticated', 'true');
+
+        $this->get('/waterline/api/v2/health')
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'ok')
+            ->assertJsonPath('healthy', true);
+    }
+
+    public function testHealthEndpointRequiresAuthorizationByDefault(): void
+    {
+        Waterline::auth(static fn () => false);
+        config()->set('waterline.allow_unauthenticated', false);
+
+        $this->get('/waterline/api/v2/health')
+            ->assertStatus(403);
     }
 
     public function testHealthEndpointScopesSnapshotToConfiguredNamespace(): void
