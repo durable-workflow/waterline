@@ -13,10 +13,18 @@ application-owned read models projected at domain milestones, with
 This UI is installable via [Composer](https://getcomposer.org).
 
 ```bash
-composer require laravel-workflow/waterline
+composer require \
+    durable-workflow/waterline:^2.0.0-alpha@alpha \
+    durable-workflow/workflow:^2.0.0-alpha@alpha
 
 php artisan waterline:install
 ```
+
+The `@alpha` stability flags are required while Waterline and its Durable
+Workflow runtime dependency are on the 2.0 prerelease channel. Composer only
+honors prerelease stability allowances from the root project, so default-stable
+applications must allow both packages explicitly. Drop the flags after `2.0.0`
+is tagged stable for both packages.
 
 ## Authorization
 
@@ -72,10 +80,14 @@ values in `effective_preferences` without mutating the stored preferences.
 
 ## Upgrading Waterline
 
-After upgrading Waterline you must publish the latest assets.
+When upgrading into or within the 2.0 prerelease channel, keep both root
+package requirements on the Durable Workflow alpha channel and publish the
+latest assets.
 
 ```bash
-composer require laravel-workflow/waterline
+composer require --with-all-dependencies \
+    durable-workflow/waterline:^2.0.0-alpha@alpha \
+    durable-workflow/workflow:^2.0.0-alpha@alpha
 
 php artisan waterline:publish
 ```
