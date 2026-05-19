@@ -26,7 +26,7 @@ The stable `signal_query_runtime_contract` category is load-bearing for
 Waterline's observer comparison: a conformance run must be able to
 compare selected-run detail and the advertised query action path against
 public signal/query client results. The standalone observer-envelope
-fixture set remains **provisional** in suite version `4`. Waterline does
+fixture set remains **provisional** in suite version `5`. Waterline does
 not yet vendor a standalone public fixture directory; the existing
 per-repo tests under `tests/Feature/` and `tests/Unit/` exercise the
 `/waterline/api/v2/*` shapes against in-process fakes. Selected-run detail
@@ -57,7 +57,7 @@ tag.
 | Field | Value |
 | --- | --- |
 | Required claimed targets | `waterline_contract_surface` |
-| Required suite version | `PlatformConformanceSuite::VERSION` (currently `4`) |
+| Required suite version | `PlatformConformanceSuite::VERSION` (currently `5`) |
 | CI job | `platform-conformance` (blocks on stable categories; advisory only for `waterline_observer_envelopes` while it is provisional) |
 | Block on `nonconforming` | yes |
 | Artifact attached to release | harness result document, schema `durable-workflow.v2.platform-conformance.result` |
