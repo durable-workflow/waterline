@@ -19,9 +19,14 @@ Waterline claims one target from the suite's matrix:
 
 | Category | Source path | Status |
 | --- | --- | --- |
+| `signal_query_runtime_contract` | selected-run detail `observer_state` comparison and query action path advertised by this document | stable |
 | `waterline_observer_envelopes` | selected-run detail `observer_state` envelope | provisional |
 
-The fixture set is **provisional** in suite version `1`. Waterline does
+The stable `signal_query_runtime_contract` category is load-bearing for
+Waterline's observer comparison: a conformance run must be able to
+compare selected-run detail and the advertised query action path against
+public signal/query client results. The standalone observer-envelope
+fixture set remains **provisional** in suite version `2`. Waterline does
 not yet vendor a standalone public fixture directory; the existing
 per-repo tests under `tests/Feature/` and `tests/Unit/` exercise the
 `/waterline/api/v2/*` shapes against in-process fakes. Selected-run detail
@@ -39,11 +44,10 @@ typed reason
 `query_results_not_materialized_in_selected_run_detail` when a read-only
 detail envelope is the only observer surface captured.
 
-The fixture set is promoted to **required** in a future suite version
-once the contract slice for the operator dashboard JSON envelope is
-public. At that point the harness will block Waterline releases on a
-`nonconforming` result for this category; until then, a failure in
-this category is a warning, not a release blocker.
+The standalone observer-envelope fixture set is promoted to **required**
+in a future suite version once the contract slice for the operator
+dashboard JSON envelope is public. Until then, a failure in
+`waterline_observer_envelopes` is a warning, not a release blocker.
 
 ## Release gate
 
@@ -53,16 +57,16 @@ tag.
 | Field | Value |
 | --- | --- |
 | Required claimed targets | `waterline_contract_surface` |
-| Required suite version | `PlatformConformanceSuite::VERSION` (currently `1`) |
-| CI job | `platform-conformance` (advisory only while `waterline_observer_envelopes` is provisional) |
-| Block on `nonconforming` | yes (once `waterline_observer_envelopes` is promoted to stable) |
+| Required suite version | `PlatformConformanceSuite::VERSION` (currently `2`) |
+| CI job | `platform-conformance` (blocks on stable categories; advisory only for `waterline_observer_envelopes` while it is provisional) |
+| Block on `nonconforming` | yes |
 | Artifact attached to release | harness result document, schema `durable-workflow.v2.platform-conformance.result` |
 
-While the category is provisional, a release reviewer must still
-attach the harness result document to the release for traceability.
-The conformance level will read `provisional` until the fixture set is
-public; the release notes must enumerate the provisional categories
-the result depends on.
+While `waterline_observer_envelopes` is provisional, a release reviewer
+must still attach the harness result document to the release for
+traceability. The conformance level will read `provisional` when that
+provisional category is the only remaining gap; the release notes must
+enumerate the provisional categories the result depends on.
 
 ## Cross-references
 
