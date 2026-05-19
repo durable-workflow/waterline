@@ -19,12 +19,25 @@ Waterline claims one target from the suite's matrix:
 
 | Category | Source path | Status |
 | --- | --- | --- |
-| `waterline_observer_envelopes` | `tests/fixtures/observer/` (planned) | provisional |
+| `waterline_observer_envelopes` | selected-run detail `observer_state` envelope | provisional |
 
 The fixture set is **provisional** in suite version `1`. Waterline does
-not yet vendor a public `tests/fixtures/observer/` directory; the
-existing per-repo tests under `tests/Feature/` and `tests/Unit/`
-exercise the `/waterline/api/v2/*` shapes against in-process fakes.
+not yet vendor a standalone public fixture directory; the existing
+per-repo tests under `tests/Feature/` and `tests/Unit/` exercise the
+`/waterline/api/v2/*` shapes against in-process fakes. Selected-run detail
+responses include an `observer_state` envelope with the exact API paths
+and compact run status, output, signal argument, and declared-query facts
+that external conformance runners can compare against public client
+signal/query results.
+
+`observer_state.queries.live_results_materialized` is currently `false`.
+Waterline selected-run detail is a durable observer snapshot and does not
+store live workflow query results. Runners that need the live query value
+must compare through the query action path advertised in
+`observer_state.paths.selected_run_query_template`, and should record the
+typed reason
+`query_results_not_materialized_in_selected_run_detail` when a read-only
+detail envelope is the only observer surface captured.
 
 The fixture set is promoted to **required** in a future suite version
 once the contract slice for the operator dashboard JSON envelope is

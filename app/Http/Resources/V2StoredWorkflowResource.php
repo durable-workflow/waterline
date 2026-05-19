@@ -7,6 +7,7 @@ use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowRun;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\CompatibilitySemantics;
+use Waterline\Support\ObserverStateEnvelope;
 use Waterline\Support\RunDiagnostics;
 
 /**
@@ -28,9 +29,38 @@ class V2StoredWorkflowResource extends JsonResource
         );
         $detail = $this->withTimelineWindow($detail, $request);
         $detail['run_diagnostics'] = app(RunDiagnostics::class)->forRun($this->resource, $detail);
+        $detail = ObserverStateEnvelope::annotateRun($detail, $this->observerPaths($request, $detail));
         $detail = CompatibilitySemantics::annotateRun($detail);
 
         return ActionabilityContract::annotateRun($detail);
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     *
+     * @return array<string, string|null>
+     */
+    private function observerPaths($request, array $detail): array
+    {
+        $waterlinePath = trim((string) config('waterline.path', 'waterline'), '/');
+        $basePath = ($waterlinePath === '' ? '' : '/'.$waterlinePath).'/api';
+        $instanceId = $this->pathValue($detail['instance_id'] ?? null);
+        $runId = $this->pathValue($detail['run_id'] ?? $detail['selected_run_id'] ?? null);
+
+        return [
+            'selected_run_detail' => '/'.ltrim((string) $request->path(), '/'),
+            'selected_run_query_template' => $instanceId === null || $runId === null
+                ? null
+                : sprintf('%s/instances/%s/runs/%s/queries/{query}', $basePath, $instanceId, $runId),
+            'instance_query_template' => $instanceId === null
+                ? null
+                : sprintf('%s/instances/%s/queries/{query}', $basePath, $instanceId),
+        ];
+    }
+
+    private function pathValue(mixed $value): ?string
+    {
+        return is_string($value) && $value !== '' ? rawurlencode($value) : null;
     }
 
     /**

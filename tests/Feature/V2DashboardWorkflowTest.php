@@ -239,7 +239,10 @@ class V2DashboardWorkflowTest extends TestCase
             {
                 return [
                     'id' => $run->id,
+                    'instance_id' => $run->workflow_instance_id,
                     'run_id' => $run->id,
+                    'status' => 'waiting',
+                    'status_bucket' => 'running',
                     'contract_boundary' => 'detail',
                     'timeline_limit' => $timelineLimit,
                 ];
@@ -295,7 +298,18 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertOk()
             ->assertJsonPath('contract_boundary', 'detail')
             ->assertJsonPath('timeline_limit', 200)
-            ->assertJsonPath('run_id', $run->id);
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('observer_state.schema', 'waterline.observer-state')
+            ->assertJsonPath('observer_state.selected_run.status', 'waiting')
+            ->assertJsonPath('observer_state.selected_run.status_bucket', 'running')
+            ->assertJsonPath(
+                'observer_state.paths.selected_run_query_template',
+                '/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/queries/{query}',
+            )
+            ->assertJsonPath(
+                'observer_state.queries.limitation.reason',
+                'query_results_not_materialized_in_selected_run_detail',
+            );
 
         $this->get('/waterline/api/flows/' . $run->id . '/history-export')
             ->assertOk()
