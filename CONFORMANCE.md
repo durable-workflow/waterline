@@ -1,10 +1,11 @@
 # Platform Conformance — Waterline Claim
 
-Waterline participates in the platform conformance suite specified in
-[`workflow/docs/architecture/platform-conformance-suite.md`](https://github.com/durable-workflow/workflow/blob/v2/docs/architecture/platform-conformance-suite.md)
+Waterline participates in the public platform conformance suite specified
+at <https://durable-workflow.github.io/docs/2.0/platform-conformance>,
+schema `durable-workflow.v2.platform-conformance.suite`, version `6`,
 and mirrored by `Workflow\V2\Support\PlatformConformanceSuite`. This
 document is the per-repo claim: it lists the conformance targets
-Waterline claims, the fixtures it serves, and the release gate that
+Waterline claims, the categories it covers, and the release gate that
 blocks publication when conformance is broken.
 
 ## Claimed targets
@@ -15,18 +16,19 @@ Waterline claims one target from the suite's matrix:
   `/waterline/api/v2/*` HTTP API and the operator dashboard JSON
   shapes. Covers the `waterline_api` surface family.
 
-## Fixture sources served by this repo
+## Conformance categories covered by this claim
 
-| Category | Source path | Status |
+| Category | Evidence / fixture source | Status |
 | --- | --- | --- |
 | `signal_query_runtime_contract` | selected-run detail `observer_state` comparison and query action path advertised by this document | stable |
+| `namespace_runtime_contract` | public namespace runtime scenario manifest plus Waterline list, detail, health, and operator API captures | stable |
 | `waterline_observer_envelopes` | selected-run detail `observer_state` envelope | provisional |
 
 The stable `signal_query_runtime_contract` category is load-bearing for
 Waterline's observer comparison: a conformance run must be able to
 compare selected-run detail and the advertised query action path against
 public signal/query client results. The standalone observer-envelope
-fixture set remains **provisional** in suite version `5`. Waterline does
+fixture set remains **provisional** in suite version `6`. Waterline does
 not yet vendor a standalone public fixture directory; the existing
 per-repo tests under `tests/Feature/` and `tests/Unit/` exercise the
 `/waterline/api/v2/*` shapes against in-process fakes. Selected-run detail
@@ -44,6 +46,13 @@ typed reason
 `query_results_not_materialized_in_selected_run_detail` when a read-only
 detail envelope is the only observer surface captured.
 
+Namespace-scoped Waterline list, detail, health, and operator API
+visibility are load-bearing evidence for the stable
+`namespace_runtime_contract` category in suite version `6`. A release
+result must evaluate the public namespace runtime scenario manifest
+against published Waterline artifacts; in-repo feature coverage remains
+implementation evidence, not a substitute for the harness result.
+
 The standalone observer-envelope fixture set is promoted to **required**
 in a future suite version once the contract slice for the operator
 dashboard JSON envelope is public. Until then, a failure in
@@ -57,8 +66,8 @@ tag.
 | Field | Value |
 | --- | --- |
 | Required claimed targets | `waterline_contract_surface` |
-| Required suite version | `PlatformConformanceSuite::VERSION` (currently `5`) |
-| CI job | `platform-conformance` (blocks on stable categories; advisory only for `waterline_observer_envelopes` while it is provisional) |
+| Required suite version | `PlatformConformanceSuite::VERSION` (currently `6`) |
+| CI job | `platform-conformance` (blocks on stable categories including `signal_query_runtime_contract` and `namespace_runtime_contract`; advisory only for `waterline_observer_envelopes` while it is provisional) |
 | Block on `nonconforming` | yes |
 | Artifact attached to release | harness result document, schema `durable-workflow.v2.platform-conformance.result` |
 
@@ -70,7 +79,7 @@ enumerate the provisional categories the result depends on.
 
 ## Cross-references
 
-- Authority spec: `workflow/docs/architecture/platform-conformance-suite.md`
+- Authority spec: <https://durable-workflow.github.io/docs/2.0/platform-conformance>
 - Authority manifest class: `Workflow\V2\Support\PlatformConformanceSuite`
 - Public docs page: <https://durable-workflow.github.io/docs/2.0/compatibility>
 - Existing in-repo coverage: `tests/Feature/`, `tests/Unit/` exercising
