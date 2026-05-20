@@ -2,7 +2,7 @@
 
 Waterline participates in the public platform conformance suite specified
 at <https://durable-workflow.github.io/docs/2.0/platform-conformance>,
-schema `durable-workflow.v2.platform-conformance.suite`, version `6`,
+schema `durable-workflow.v2.platform-conformance.suite`, version `7`,
 and mirrored by `Workflow\V2\Support\PlatformConformanceSuite`. This
 document is the per-repo claim: it lists the conformance targets
 Waterline claims, the categories it covers, and the release gate that
@@ -21,14 +21,14 @@ Waterline claims one target from the suite's matrix:
 | Category | Evidence / fixture source | Status |
 | --- | --- | --- |
 | `signal_query_runtime_contract` | selected-run detail `observer_state` comparison and query action path advertised by this document | stable |
-| `namespace_runtime_contract` | public namespace runtime scenario manifest plus Waterline list, detail, health, and operator API captures | stable |
+| `namespace_runtime_contract` | public namespace runtime scenario manifest at `/platform-conformance/namespace-runtime-scenarios.json` plus Waterline list, detail, health, and operator API captures | stable |
 | `waterline_observer_envelopes` | selected-run detail `observer_state` envelope | provisional |
 
 The stable `signal_query_runtime_contract` category is load-bearing for
 Waterline's observer comparison: a conformance run must be able to
 compare selected-run detail and the advertised query action path against
 public signal/query client results. The standalone observer-envelope
-fixture set remains **provisional** in suite version `6`. Waterline does
+fixture set remains **provisional** in suite version `7`. Waterline does
 not yet vendor a standalone public fixture directory; the existing
 per-repo tests under `tests/Feature/` and `tests/Unit/` exercise the
 `/waterline/api/v2/*` shapes against in-process fakes. Selected-run detail
@@ -48,10 +48,13 @@ detail envelope is the only observer surface captured.
 
 Namespace-scoped Waterline list, detail, health, and operator API
 visibility are load-bearing evidence for the stable
-`namespace_runtime_contract` category in suite version `6`. A release
+`namespace_runtime_contract` category in suite version `7`. A release
 result must evaluate the public namespace runtime scenario manifest
+published at `/platform-conformance/namespace-runtime-scenarios.json`
 against published Waterline artifacts; in-repo feature coverage remains
-implementation evidence, not a substitute for the harness result.
+implementation evidence, not a substitute for the harness result. A
+missing, redirected-to-404, or otherwise unloadable namespace runtime
+manifest is nonconforming for this stable category and blocks release.
 
 The standalone observer-envelope fixture set is promoted to **required**
 in a future suite version once the contract slice for the operator
@@ -66,7 +69,8 @@ tag.
 | Field | Value |
 | --- | --- |
 | Required claimed targets | `waterline_contract_surface` |
-| Required suite version | `PlatformConformanceSuite::VERSION` (currently `6`) |
+| Required suite version | `PlatformConformanceSuite::VERSION` (currently `7`) |
+| Namespace runtime source | `/platform-conformance/namespace-runtime-scenarios.json` from the public docs origin |
 | CI job | `platform-conformance` (blocks on stable categories including `signal_query_runtime_contract` and `namespace_runtime_contract`; advisory only for `waterline_observer_envelopes` while it is provisional) |
 | Block on `nonconforming` | yes |
 | Artifact attached to release | harness result document, schema `durable-workflow.v2.platform-conformance.result` |
