@@ -2,7 +2,7 @@
 
 Waterline participates in the public platform conformance suite specified
 at <https://durable-workflow.github.io/docs/2.0/platform-conformance>,
-schema `durable-workflow.v2.platform-conformance.suite`, version `7`,
+schema `durable-workflow.v2.platform-conformance.suite`, version `8`,
 and mirrored by `Workflow\V2\Support\PlatformConformanceSuite`. This
 document is the per-repo claim: it lists the conformance targets
 Waterline claims, the categories it covers, and the release gate that
@@ -28,7 +28,7 @@ The stable `signal_query_runtime_contract` category is load-bearing for
 Waterline's observer comparison: a conformance run must be able to
 compare selected-run detail and the advertised query action path against
 public signal/query client results. The standalone observer-envelope
-fixture set remains **provisional** in suite version `7`. Waterline does
+fixture set remains **provisional** in suite version `8`. Waterline does
 not yet vendor a standalone public fixture directory; the existing
 per-repo tests under `tests/Feature/` and `tests/Unit/` exercise the
 `/waterline/api/v2/*` shapes against in-process fakes. Selected-run detail
@@ -48,12 +48,24 @@ detail envelope is the only observer surface captured.
 
 Namespace-scoped Waterline list, detail, health, and operator API
 visibility are load-bearing evidence for the stable
-`namespace_runtime_contract` category in suite version `7`. A release
+`namespace_runtime_contract` category in suite version `8`. A release
 result must evaluate the public namespace runtime scenario manifest
 published at `/platform-conformance/namespace-runtime-scenarios.json`
 against published Waterline artifacts; in-repo feature coverage remains
-implementation evidence, not a substitute for the harness result. A
-missing, redirected-to-404, or otherwise unloadable namespace runtime
+implementation evidence, not a substitute for the harness result. The
+current namespace runtime manifest requires published-artifact install
+evidence, namespace lifecycle cleanup and recreate coverage, workflow and
+worker isolation, CLI and SDK namespace selection, search-attribute and
+schedule isolation, Waterline operator namespace visibility, explicit
+Nexus cross-namespace calls, reserved-name refusal, and result-record
+routing for product findings. Suite version `8` also binds the lifecycle
+cleanup criteria that preserve cross-namespace external payload ownership:
+cleanup may remove only payload references owned by the deleted namespace,
+must keep tenant-owned cross-namespace workflow and service-call records
+readable through the owning namespace storage context, and must refuse
+unsafe cleanup with an operator-visible typed reason instead of resolving
+or deleting payloads through the wrong namespace. A missing,
+redirected-to-404, stale-suite, or otherwise unloadable namespace runtime
 manifest is nonconforming for this stable category and blocks release.
 
 The standalone observer-envelope fixture set is promoted to **required**
@@ -69,8 +81,8 @@ tag.
 | Field | Value |
 | --- | --- |
 | Required claimed targets | `waterline_contract_surface` |
-| Required suite version | `PlatformConformanceSuite::VERSION` (currently `7`) |
-| Namespace runtime source | `/platform-conformance/namespace-runtime-scenarios.json` from the public docs origin |
+| Required suite version | `PlatformConformanceSuite::VERSION` / public suite manifest version `8` |
+| Namespace runtime source | `/platform-conformance/namespace-runtime-scenarios.json` from the public docs origin, with `suite_version` `8` |
 | CI job | `platform-conformance` (blocks on stable categories including `signal_query_runtime_contract` and `namespace_runtime_contract`; advisory only for `waterline_observer_envelopes` while it is provisional) |
 | Block on `nonconforming` | yes |
 | Artifact attached to release | harness result document, schema `durable-workflow.v2.platform-conformance.result` |
