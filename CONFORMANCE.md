@@ -76,6 +76,25 @@ load-bearing evidence for `search_attribute_runtime_contract`; a
 Waterline result must compare the public scenario manifest against
 published artifacts rather than substituting in-repo feature tests.
 
+Waterline also ships a focused evidence shard for the namespace operator
+visibility cell:
+
+```bash
+php artisan waterline:namespace-conformance \
+  --artifact-version=waterline=2.0.0-alpha.N \
+  --artifact-source=waterline=packagist_package \
+  --json
+```
+
+The command seeds two tenant namespaces in the host database, exercises
+Waterline list, detail, schedule, search-attribute, and unscoped authority
+surfaces through the package HTTP routes, emits a
+`durable-workflow.v2.namespace-runtime.result` document with
+`waterline_operator_namespace_visibility` populated, and removes its fixture
+rows unless `--keep-fixtures` is supplied. It is a shard, not a full namespace
+run: all non-Waterline namespace scenarios remain `not_covered` for the full
+harness to merge or evaluate separately.
+
 Saga compensation visibility is load-bearing evidence for
 `saga_runtime_contract`. A result must compare the public saga runtime
 scenario manifest against published artifacts and show whether operators

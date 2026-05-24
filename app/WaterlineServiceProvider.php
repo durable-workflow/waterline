@@ -106,6 +106,7 @@ class WaterlineServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 Console\InstallCommand::class,
+                Console\NamespaceConformanceCommand::class,
                 Console\PublishCommand::class,
             ]);
         }

@@ -51,9 +51,7 @@ class V2SchedulesController extends Controller
             return response()->json(['error' => 'Schedule not found.'], 404);
         }
 
-        $description = ScheduleManager::describe($schedule);
-
-        return response()->json($this->withOperatorScope($description->toArray()));
+        return response()->json($this->schedulePayload($schedule));
     }
 
     public function pause(Request $request, string $scheduleId): JsonResponse
@@ -70,7 +68,7 @@ class V2SchedulesController extends Controller
             return response()->json(['error' => $e->getMessage()], 422);
         }
 
-        return response()->json($this->withOperatorScope(ScheduleManager::describe($schedule)->toArray()));
+        return response()->json($this->schedulePayload($schedule));
     }
 
     public function resume(Request $request, string $scheduleId): JsonResponse
@@ -87,7 +85,7 @@ class V2SchedulesController extends Controller
             return response()->json(['error' => $e->getMessage()], 422);
         }
 
-        return response()->json($this->withOperatorScope(ScheduleManager::describe($schedule)->toArray()));
+        return response()->json($this->schedulePayload($schedule));
     }
 
     public function trigger(Request $request, string $scheduleId): JsonResponse
@@ -211,7 +209,7 @@ class V2SchedulesController extends Controller
 
         ScheduleManager::delete($schedule, $this->commandContext($request));
 
-        return response()->json($this->withOperatorScope(ScheduleManager::describe($schedule)->toArray()));
+        return response()->json($this->schedulePayload($schedule));
     }
 
     private function parseLimit(mixed $raw): int
@@ -260,6 +258,19 @@ class V2SchedulesController extends Controller
         $payload['operator_scope'] = OperatorScope::payload();
 
         return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function schedulePayload(WorkflowSchedule $schedule): array
+    {
+        $payload = ScheduleManager::describe($schedule)->toArray();
+        $payload['search_attributes'] = is_array($schedule->search_attributes)
+            ? $schedule->search_attributes
+            : null;
+
+        return $this->withOperatorScope($payload);
     }
 
     private function commandContext(Request $request): CommandContext

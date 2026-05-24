@@ -224,6 +224,7 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             ->assertOk()
             ->assertJsonPath('schedule_id', 'shared-schedule')
             ->assertJsonPath('namespace', 'billing')
+            ->assertJsonPath('search_attributes.tenant_marker', 'billing-schedule')
             ->assertJsonPath('operator_scope.namespace', 'billing');
 
         $historyResponse = $this->getJson('/waterline/api/v2/schedules/shared-schedule/history')
@@ -570,6 +571,7 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             'action' => ['workflow_type' => 'workflow.namespace-schedule', 'workflow_class' => 'WorkflowClass'],
             'status' => ScheduleStatus::Active,
             'overlap_policy' => 'skip',
+            'search_attributes' => ['tenant_marker' => $namespace.'-schedule'],
             'fires_count' => 0,
             'failures_count' => 0,
             'skipped_trigger_count' => 0,
