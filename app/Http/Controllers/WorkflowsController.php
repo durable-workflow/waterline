@@ -23,6 +23,7 @@ use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\CompatibilitySemantics;
+use Waterline\Support\OperatorScope;
 use Waterline\Waterline;
 
 class WorkflowsController extends Controller
@@ -615,6 +616,7 @@ class WorkflowsController extends Controller
             'saved_view_warning' => $context['saved_view_warning'],
             'actionability_contract' => ActionabilityContract::definition(),
         ];
+        $payload['operator_scope'] = OperatorScope::payload();
 
         return response()->json($payload);
     }

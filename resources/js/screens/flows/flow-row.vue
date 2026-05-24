@@ -12,6 +12,7 @@
                 </div>
 
                 <div class="flow-row__badges">
+                    <span v-if="flow.namespace" class="badge badge-light">Namespace {{ flow.namespace }}</span>
                     <span v-if="flow.status === 'continued' || flow.closed_reason === 'continued'" class="badge badge-info">Continued</span>
                     <span v-if="showStatusBadge(flow)" :class="statusBadgeClass(flow)" class="badge">{{ statusBadgeLabel(flow) }}</span>
                     <span v-if="showRepairBadge(flow)"

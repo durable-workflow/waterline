@@ -8,6 +8,7 @@ use Workflow\V2\Models\WorkflowRun;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\CompatibilitySemantics;
 use Waterline\Support\ObserverStateEnvelope;
+use Waterline\Support\OperatorScope;
 use Waterline\Support\RunDiagnostics;
 
 /**
@@ -31,6 +32,7 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['run_diagnostics'] = app(RunDiagnostics::class)->forRun($this->resource, $detail);
         $detail = ObserverStateEnvelope::annotateRun($detail, $this->observerPaths($request, $detail));
         $detail = CompatibilitySemantics::annotateRun($detail);
+        $detail['operator_scope'] = OperatorScope::payload();
 
         return ActionabilityContract::annotateRun($detail);
     }

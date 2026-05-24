@@ -76,7 +76,9 @@ return [
     | When set, Waterline restricts all v2 workflow visibility and operations
     | to the specified namespace. This enables namespace-scoped observation
     | in service-mode deployments where multiple namespaces share one database.
-    | When null, Waterline shows all workflows regardless of namespace.
+    | When null, Waterline runs in cluster-wide operator scope and can observe
+    | every namespace in the shared store; expose that mode only behind an
+    | authorization boundary intended for fleet administrators.
     |
     */
 

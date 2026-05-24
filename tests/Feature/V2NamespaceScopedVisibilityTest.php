@@ -9,11 +9,14 @@ use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Enums\HistoryEventType;
+use Workflow\V2\Enums\ScheduleStatus;
 use Workflow\V2\Models\WorkflowFailure;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Models\WorkflowSchedule;
+use Workflow\V2\Models\WorkflowScheduleHistoryEvent;
 
 class V2NamespaceScopedVisibilityTest extends TestCase
 {
@@ -36,6 +39,50 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             collect($response->json('data'))->contains('id', $shippingRun->id),
             'Runs from another namespace must not appear in list route payloads.',
         );
+    }
+
+    public function testListAndDetailSearchAttributeDisplaysAreScopedToConfiguredNamespace(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+
+        $billingRun = $this->createCompletedRun(
+            'waterline-search-attributes-billing',
+            'billing',
+            ['tenant_marker' => 'billing-visible'],
+        );
+        $shippingRun = $this->createCompletedRun(
+            'waterline-search-attributes-shipping',
+            'shipping',
+            ['tenant_marker' => 'shipping-secret'],
+        );
+
+        $listResponse = $this->get('/waterline/api/flows/completed')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $billingRun->id)
+            ->assertJsonPath('data.0.namespace', 'billing')
+            ->assertJsonPath('data.0.search_attributes.tenant_marker', 'billing-visible')
+            ->assertJsonPath('operator_scope.namespace', 'billing')
+            ->assertJsonPath('visibility_filters.applied.namespace', 'billing');
+
+        $this->assertFalse(
+            collect($listResponse->json('data'))->contains('id', $shippingRun->id),
+            'Search-attribute list payloads must not include runs from another namespace.',
+        );
+        $this->assertStringNotContainsString('shipping-secret', json_encode($listResponse->json(), JSON_THROW_ON_ERROR));
+
+        $detailResponse = $this->get('/waterline/api/flows/'.$billingRun->id)
+            ->assertOk()
+            ->assertJsonPath('run_id', $billingRun->id)
+            ->assertJsonPath('namespace', 'billing')
+            ->assertJsonPath('search_attributes.tenant_marker', 'billing-visible')
+            ->assertJsonPath('operator_scope.namespace', 'billing');
+
+        $this->assertStringNotContainsString('shipping-secret', json_encode($detailResponse->json(), JSON_THROW_ON_ERROR));
+
+        $this->get('/waterline/api/flows/'.$shippingRun->id)
+            ->assertNotFound();
     }
 
     public function testListRoutesStayReadableWhenLegacyRunSearchAttributesColumnIsAbsent(): void
@@ -124,6 +171,66 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             ->assertNotFound();
 
         $this->get('/waterline/api/instances/'.$shippingRun->workflow_instance_id.'/runs/'.$shippingRun->id.'/history-export')
+            ->assertNotFound();
+    }
+
+    public function testScheduleOperatorApiIsScopedToConfiguredNamespace(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+
+        $billingSchedule = $this->createSchedule('shared-schedule', 'billing');
+        $shippingSchedule = $this->createSchedule('shared-schedule', 'shipping');
+        $shippingOnlySchedule = $this->createSchedule('shipping-only-schedule', 'shipping');
+
+        WorkflowScheduleHistoryEvent::record(
+            $billingSchedule,
+            HistoryEventType::SchedulePaused,
+            [
+                'reason' => 'billing maintenance',
+                'command_context' => ['source' => 'waterline'],
+            ],
+        );
+        WorkflowScheduleHistoryEvent::record(
+            $shippingSchedule,
+            HistoryEventType::SchedulePaused,
+            [
+                'reason' => 'shipping maintenance',
+                'command_context' => ['source' => 'waterline'],
+            ],
+        );
+
+        $indexResponse = $this->getJson('/waterline/api/v2/schedules')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.schedule_id', 'shared-schedule')
+            ->assertJsonPath('data.0.namespace', 'billing')
+            ->assertJsonPath('operator_scope.namespace', 'billing');
+
+        $this->assertFalse(
+            collect($indexResponse->json('data'))->contains('id', $shippingOnlySchedule->id),
+            'Schedule list payloads must not include schedules from another namespace.',
+        );
+
+        $this->getJson('/waterline/api/v2/schedules/shared-schedule')
+            ->assertOk()
+            ->assertJsonPath('schedule_id', 'shared-schedule')
+            ->assertJsonPath('namespace', 'billing')
+            ->assertJsonPath('operator_scope.namespace', 'billing');
+
+        $historyResponse = $this->getJson('/waterline/api/v2/schedules/shared-schedule/history')
+            ->assertOk()
+            ->assertJsonPath('namespace', 'billing')
+            ->assertJsonPath('operator_scope.namespace', 'billing')
+            ->assertJsonCount(1, 'events');
+
+        $this->assertSame('billing maintenance', $historyResponse->json('events.0.payload.reason'));
+        $this->assertStringNotContainsString('shipping maintenance', json_encode($historyResponse->json(), JSON_THROW_ON_ERROR));
+
+        $this->getJson('/waterline/api/v2/schedules/'.$shippingOnlySchedule->schedule_id)
+            ->assertNotFound();
+
+        $this->postJson('/waterline/api/v2/schedules/'.$shippingOnlySchedule->schedule_id.'/pause')
             ->assertNotFound();
     }
 
@@ -253,7 +360,10 @@ class V2NamespaceScopedVisibilityTest extends TestCase
         $this->assertSame($billingRun->id, $repository->maxExceptionsWorkflow()?->id);
     }
 
-    private function createCompletedRun(string $instanceId, string $namespace): WorkflowRun
+    /**
+     * @param array<string, mixed> $searchAttributes
+     */
+    private function createCompletedRun(string $instanceId, string $namespace, array $searchAttributes = []): WorkflowRun
     {
         $instance = WorkflowInstance::create([
             'id' => $instanceId,
@@ -276,6 +386,7 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             'payload_codec' => config('workflows.serializer'),
             'arguments' => Serializer::serialize([]),
             'output' => Serializer::serialize(['ok' => true]),
+            'search_attributes' => $searchAttributes === [] ? null : $searchAttributes,
             'connection' => 'redis',
             'queue' => 'default',
             'last_history_sequence' => 2,
@@ -332,5 +443,22 @@ class V2NamespaceScopedVisibilityTest extends TestCase
         ]);
 
         return $run;
+    }
+
+    private function createSchedule(string $scheduleId, string $namespace): WorkflowSchedule
+    {
+        return WorkflowSchedule::create([
+            'schedule_id' => $scheduleId,
+            'namespace' => $namespace,
+            'spec' => ['cron_expressions' => ['0 * * * *'], 'timezone' => 'UTC'],
+            'action' => ['workflow_type' => 'workflow.namespace-schedule', 'workflow_class' => 'WorkflowClass'],
+            'status' => ScheduleStatus::Active,
+            'overlap_policy' => 'skip',
+            'fires_count' => 0,
+            'failures_count' => 0,
+            'skipped_trigger_count' => 0,
+            'jitter_seconds' => 0,
+            'next_fire_at' => now()->addHour(),
+        ]);
     }
 }

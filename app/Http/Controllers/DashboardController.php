@@ -4,18 +4,23 @@ namespace Waterline\Http\Controllers;
 
 use Illuminate\Support\Facades\App;
 use RuntimeException;
+use Waterline\Support\OperatorScope;
 use Waterline\Waterline;
 
 class DashboardController extends Controller
 {
     public function index()
     {
+        $operatorScope = OperatorScope::payload();
+
         return view('waterline::layout', [
             'assetsAreCurrent' => $this->assetsAreCurrent(),
             'cssFile' => true ? 'app-dark.css' : 'app.css',
             'waterlineScriptVariables' => [
                 'path' => config('waterline.path', 'waterline'),
+                'operator_scope' => $operatorScope,
             ],
+            'operatorScope' => $operatorScope,
             'environmentBanner' => $this->environmentBanner(),
             'isDownForMaintenance' => App::isDownForMaintenance(),
         ]);

@@ -503,6 +503,39 @@ button:hover {
     gap: 0.75rem;
 }
 
+.wl-topbar__scope {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid rgba($primary, 0.35);
+    border-radius: 999px;
+    background: rgba($primary, 0.1);
+    color: var(--wl-text);
+    min-width: 0;
+}
+
+.wl-topbar__scope-label {
+    color: var(--wl-text-soft);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.wl-topbar__scope-value {
+    max-width: 14rem;
+    overflow: hidden;
+    color: var(--wl-text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .wl-topbar__button {
     display: inline-flex;
     align-items: center;
@@ -711,6 +744,11 @@ button:hover {
     }
 
     .wl-topbar__button {
+        flex: 1 1 10rem;
+        justify-content: center;
+    }
+
+    .wl-topbar__scope {
         flex: 1 1 10rem;
         justify-content: center;
     }

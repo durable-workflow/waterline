@@ -11,6 +11,7 @@ use Workflow\V2\Enums\ScheduleStatus;
 use Workflow\V2\Models\WorkflowSchedule;
 use Workflow\V2\Models\WorkflowScheduleHistoryEvent;
 use Workflow\V2\Support\ScheduleManager;
+use Waterline\Support\OperatorScope;
 use Waterline\Waterline;
 
 class V2SchedulesController extends Controller
@@ -20,8 +21,8 @@ class V2SchedulesController extends Controller
         $query = WorkflowSchedule::query()
             ->orderByDesc('created_at');
 
-        $namespace = config('waterline.namespace');
-        if (is_string($namespace) && $namespace !== '') {
+        $namespace = OperatorScope::namespace();
+        if ($namespace !== null) {
             $query->where('namespace', $namespace);
         }
 
@@ -36,9 +37,10 @@ class V2SchedulesController extends Controller
             ]);
         }
 
-        $schedules = $query->paginate(50);
+        $payload = $query->paginate(50)->toArray();
+        $payload['operator_scope'] = OperatorScope::payload();
 
-        return response()->json($schedules);
+        return response()->json($payload);
     }
 
     public function show(string $scheduleId): JsonResponse
@@ -51,7 +53,7 @@ class V2SchedulesController extends Controller
 
         $description = ScheduleManager::describe($schedule);
 
-        return response()->json($description->toArray());
+        return response()->json($this->withOperatorScope($description->toArray()));
     }
 
     public function pause(Request $request, string $scheduleId): JsonResponse
@@ -68,7 +70,7 @@ class V2SchedulesController extends Controller
             return response()->json(['error' => $e->getMessage()], 422);
         }
 
-        return response()->json(ScheduleManager::describe($schedule)->toArray());
+        return response()->json($this->withOperatorScope(ScheduleManager::describe($schedule)->toArray()));
     }
 
     public function resume(Request $request, string $scheduleId): JsonResponse
@@ -85,7 +87,7 @@ class V2SchedulesController extends Controller
             return response()->json(['error' => $e->getMessage()], 422);
         }
 
-        return response()->json(ScheduleManager::describe($schedule)->toArray());
+        return response()->json($this->withOperatorScope(ScheduleManager::describe($schedule)->toArray()));
     }
 
     public function trigger(Request $request, string $scheduleId): JsonResponse
@@ -105,6 +107,7 @@ class V2SchedulesController extends Controller
             'schedule_id' => $scheduleId,
             'instance_id' => $instanceId,
             'triggered' => $instanceId !== null,
+            'operator_scope' => OperatorScope::payload(),
         ]);
     }
 
@@ -151,6 +154,7 @@ class V2SchedulesController extends Controller
         return response()->json([
             'schedule_id' => $scheduleId,
             'results' => $results,
+            'operator_scope' => OperatorScope::payload(),
         ]);
     }
 
@@ -193,6 +197,7 @@ class V2SchedulesController extends Controller
             ])->values(),
             'next_cursor' => $nextCursor,
             'has_more' => $hasMore,
+            'operator_scope' => OperatorScope::payload(),
         ]);
     }
 
@@ -206,7 +211,7 @@ class V2SchedulesController extends Controller
 
         ScheduleManager::delete($schedule, $this->commandContext($request));
 
-        return response()->json(ScheduleManager::describe($schedule)->toArray());
+        return response()->json($this->withOperatorScope(ScheduleManager::describe($schedule)->toArray()));
     }
 
     private function parseLimit(mixed $raw): int
@@ -240,12 +245,21 @@ class V2SchedulesController extends Controller
 
     private function findSchedule(string $scheduleId): ?WorkflowSchedule
     {
-        $namespace = config('waterline.namespace');
-
         return ScheduleManager::findByScheduleId(
             $scheduleId,
-            namespace: is_string($namespace) && $namespace !== '' ? $namespace : null,
+            namespace: OperatorScope::namespace(),
         );
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function withOperatorScope(array $payload): array
+    {
+        $payload['operator_scope'] = OperatorScope::payload();
+
+        return $payload;
     }
 
     private function commandContext(Request $request): CommandContext

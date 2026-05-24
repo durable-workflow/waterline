@@ -23,6 +23,10 @@
                         <span class="wl-flow-detail__headline-pill mono" v-if="hasDetailValue(flow.run_id)">
                             run {{ flow.run_id }}
                         </span>
+
+                        <span class="wl-flow-detail__headline-pill mono" v-if="hasDetailValue(flow.namespace)">
+                            namespace {{ flow.namespace }}
+                        </span>
                     </div>
                 </div>
 
@@ -125,6 +129,11 @@
                         {{ flow.status }}
                         <span v-if="hasDetailValue(flow.status_bucket)"> / {{ flow.status_bucket }}</span>
                     </div>
+                </div>
+
+                <div class="row mb-2" v-if="hasDetailValue(flow.namespace)">
+                    <div class="col-md-2"><strong>Namespace</strong></div>
+                    <div class="col">{{ flow.namespace }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="taskProblemBadge(flow)">

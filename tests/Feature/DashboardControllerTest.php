@@ -67,6 +67,30 @@ class DashboardControllerTest extends TestCase
             ->assertSee('Production');
     }
 
+    public function testDashboardRendersConfiguredOperatorNamespaceScope(): void
+    {
+        config()->set('waterline.namespace', 'billing');
+
+        $this->get('/waterline')
+            ->assertOk()
+            ->assertSee('wl-topbar__scope', false)
+            ->assertSee('Scope')
+            ->assertSee('billing')
+            ->assertSee('"operator_scope":{"mode":"namespace","namespace":"billing"', false);
+    }
+
+    public function testDashboardRendersClusterWideOperatorScopeWhenNamespaceIsUnset(): void
+    {
+        config()->set('waterline.namespace', null);
+
+        $this->get('/waterline')
+            ->assertOk()
+            ->assertSee('wl-topbar__scope', false)
+            ->assertSee('Cluster-wide')
+            ->assertSee('Cluster-wide Waterline scope can observe all namespaces', false)
+            ->assertSee('"operator_scope":{"mode":"cluster","namespace":null', false);
+    }
+
     public function testDashboardFallsBackWhenEnvironmentStripColorIsUnsafe(): void
     {
         config()->set('waterline.env_name', 'Staging');
