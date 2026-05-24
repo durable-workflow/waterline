@@ -3,6 +3,7 @@
 namespace Waterline\Http\Controllers;
 
 use Waterline\Support\EngineSourceReadiness;
+use Waterline\Support\OperatorScope;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 
@@ -17,6 +18,7 @@ class DashboardStatsController extends Controller
 
         return response()->json([
             ...$repository->dashboardStats(),
+            'operator_scope' => OperatorScope::payload(),
             'engine_source' => $engineSource,
         ]);
     }

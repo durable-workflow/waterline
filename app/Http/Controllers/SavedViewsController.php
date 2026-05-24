@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Waterline\Models\SavedWorkflowView;
 use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\EngineSourceReadiness;
+use Waterline\Support\OperatorScope;
 use Waterline\Support\WorkflowEngineSourceResolver;
 
 class SavedViewsController extends Controller
@@ -27,6 +28,7 @@ class SavedViewsController extends Controller
                 'supported_filter_versions' => ActionabilityVisibilityFilters::supportedVersions(),
                 'filter_definition' => ActionabilityVisibilityFilters::definition(),
                 'saved_view_policy' => $this->savedViewPolicy(),
+                'operator_scope' => OperatorScope::payload(),
             ]);
         }
 
@@ -49,6 +51,7 @@ class SavedViewsController extends Controller
             'supported_filter_versions' => ActionabilityVisibilityFilters::supportedVersions(),
             'filter_definition' => ActionabilityVisibilityFilters::definition(),
             'saved_view_policy' => $this->savedViewPolicy(),
+            'operator_scope' => OperatorScope::payload(),
         ]);
     }
 
@@ -82,7 +85,7 @@ class SavedViewsController extends Controller
             'owner_id' => $owner['id'],
         ]);
 
-        return response()->json($view->toWaterlinePayload($request), 201);
+        return response()->json($this->withOperatorScope($view->toWaterlinePayload($request)), 201);
     }
 
     public function show(string $view, Request $request)
@@ -90,7 +93,7 @@ class SavedViewsController extends Controller
         EngineSourceReadiness::throwIfPinnedV2Unavailable();
         abort_unless($this->available(), 404);
 
-        return response()->json($this->findViewPayload($view, $request));
+        return response()->json($this->withOperatorScope($this->findViewPayload($view, $request)));
     }
 
     public function update(string $view, Request $request)
@@ -122,7 +125,7 @@ class SavedViewsController extends Controller
             'shared' => $payload['shared'],
         ]);
 
-        return response()->json($savedView->fresh()->toWaterlinePayload($request));
+        return response()->json($this->withOperatorScope($savedView->fresh()->toWaterlinePayload($request)));
     }
 
     public function destroy(string $view, Request $request)
@@ -233,9 +236,21 @@ class SavedViewsController extends Controller
                 'private' => 'Readable only by the owner within the configured Waterline saved-view scope.',
                 'shared' => 'Readable by any Waterline operator within the configured saved-view scope.',
             ],
+            'operator_scope' => OperatorScope::payload(),
             'mutation' => 'Only the saved-view owner can update or delete a custom view, including shared views.',
             'name_uniqueness' => 'Custom saved-view names are unique per configured scope and bucket.',
             'reserved_id_prefix' => 'system:',
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function withOperatorScope(array $payload): array
+    {
+        $payload['operator_scope'] = OperatorScope::payload();
+
+        return $payload;
     }
 }

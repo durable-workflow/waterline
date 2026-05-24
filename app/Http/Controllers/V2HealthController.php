@@ -6,6 +6,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Schema;
 use Waterline\Models\WorkerBuildIdRollout;
 use Waterline\Models\WorkerRegistration;
+use Waterline\Support\OperatorScope;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Workflow\V2\Enums\TaskStatus;
 use Workflow\V2\Enums\TaskType;
@@ -25,6 +26,7 @@ class V2HealthController extends Controller
         if (($engineSource['uses_v2'] ?? false) !== true) {
             $payload = [
                 'namespace' => $namespace,
+                'operator_scope' => OperatorScope::payload(),
                 'queue_visibility' => $this->emptyQueueVisibility(
                     $namespace,
                     'Queue visibility is unavailable until Waterline uses the v2 operator bridge.',
@@ -73,6 +75,7 @@ class V2HealthController extends Controller
             ],
         ]);
         $snapshot['namespace'] = $namespace;
+        $snapshot['operator_scope'] = OperatorScope::payload();
         $snapshot['queue_visibility'] = $this->queueVisibility($namespace);
         $snapshot['routing_drains'] = $routingDrains;
         $snapshot['engine_source'] = $engineSource;

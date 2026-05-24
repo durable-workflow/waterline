@@ -22,7 +22,7 @@ final class EngineSourceReadiness
 
     /**
      * @param array<string, mixed>|null $status
-     * @return array{message: string, engine_source: array<string, mixed>}
+     * @return array{message: string, operator_scope: array<string, mixed>, engine_source: array<string, mixed>}
      */
     public static function unavailablePayload(?array $status = null): array
     {
@@ -30,6 +30,7 @@ final class EngineSourceReadiness
 
         return [
             'message' => self::unavailableMessage($status),
+            'operator_scope' => OperatorScope::payload(),
             'engine_source' => $status,
         ];
     }

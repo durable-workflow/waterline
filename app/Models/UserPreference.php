@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Waterline\Support\OperatorScope;
 
 class UserPreference extends Model
 {
@@ -66,9 +67,8 @@ class UserPreference extends Model
     public static function configuredScope(): string
     {
         $scope = config('waterline.preferences.scope', config('waterline.saved_views.scope', 'default'));
-        $scope = is_string($scope) ? trim($scope) : 'default';
 
-        return $scope === '' ? 'default' : $scope;
+        return OperatorScope::persistenceScope($scope);
     }
 
     public static function subjectKey(Request $request): string

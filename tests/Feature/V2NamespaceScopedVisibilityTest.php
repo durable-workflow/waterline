@@ -129,7 +129,10 @@ class V2NamespaceScopedVisibilityTest extends TestCase
 
         $this->get('/waterline/api/flows/'.$billingRun->id.'/history-export')
             ->assertOk()
-            ->assertJsonPath('workflow.run_id', $billingRun->id);
+            ->assertJsonPath('workflow.run_id', $billingRun->id)
+            ->assertJsonPath('workflow.namespace', 'billing')
+            ->assertJsonPath('namespace', 'billing')
+            ->assertJsonPath('operator_scope.namespace', 'billing');
 
         $this->get('/waterline/api/flows/'.$shippingRun->id)
             ->assertNotFound();
@@ -156,11 +159,15 @@ class V2NamespaceScopedVisibilityTest extends TestCase
 
         $this->get('/waterline/api/instances/'.$billingRun->workflow_instance_id.'/history-export')
             ->assertOk()
-            ->assertJsonPath('workflow.run_id', $billingRun->id);
+            ->assertJsonPath('workflow.run_id', $billingRun->id)
+            ->assertJsonPath('workflow.namespace', 'billing')
+            ->assertJsonPath('operator_scope.namespace', 'billing');
 
         $this->get('/waterline/api/instances/'.$billingRun->workflow_instance_id.'/runs/'.$billingRun->id.'/history-export')
             ->assertOk()
-            ->assertJsonPath('workflow.run_id', $billingRun->id);
+            ->assertJsonPath('workflow.run_id', $billingRun->id)
+            ->assertJsonPath('workflow.namespace', 'billing')
+            ->assertJsonPath('operator_scope.namespace', 'billing');
 
         $this->get('/waterline/api/instances/'.$shippingRun->workflow_instance_id)
             ->assertNotFound();
@@ -297,7 +304,98 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             ->assertJsonPath('operator_metrics.runs.completed', 1)
             ->assertJsonPath('operator_metrics.runs.failed', 0)
             ->assertJsonPath('operator_metrics.projections.run_summaries.runs', 1)
-            ->assertJsonPath('operator_metrics.projections.run_summaries.summaries', 1);
+            ->assertJsonPath('operator_metrics.projections.run_summaries.summaries', 1)
+            ->assertJsonPath('operator_scope.namespace', 'billing');
+    }
+
+    public function testOperatorHealthApiSurfacesConfiguredNamespaceScope(): void
+    {
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('cache.default', 'file');
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+
+        $this->getJson('/waterline/api/v2/health')
+            ->assertOk()
+            ->assertJsonPath('namespace', 'billing')
+            ->assertJsonPath('operator_scope.namespace', 'billing');
+    }
+
+    public function testSavedViewsAndPreferencesDefaultToNamespacePersistenceScope(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('waterline.saved_views.scope', 'default');
+        config()->set('waterline.preferences.scope', 'default');
+
+        $billingViewId = $this->postJson('/waterline/api/saved-views', [
+            'name' => 'Billing customer filter',
+            'bucket' => 'running',
+            'filters' => [
+                'search_attributes' => [
+                    'customer_id' => 'billing-customer',
+                ],
+            ],
+            'shared' => true,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('scope', 'namespace:billing')
+            ->assertJsonPath('operator_scope.namespace', 'billing')
+            ->json('id');
+
+        $this->putJson('/waterline/api/preferences/workflow-list', [
+            'preferences' => [
+                'saved_view_id' => $billingViewId,
+            ],
+        ])
+            ->assertOk()
+            ->assertJsonPath('scope', 'namespace:billing')
+            ->assertJsonPath('operator_scope.namespace', 'billing');
+
+        config()->set('waterline.namespace', 'shipping');
+
+        $this->getJson('/waterline/api/saved-views?bucket=running')
+            ->assertOk()
+            ->assertJsonMissing(['id' => $billingViewId])
+            ->assertJsonPath('operator_scope.namespace', 'shipping')
+            ->assertJsonPath('saved_view_policy.operator_scope.namespace', 'shipping');
+
+        $this->getJson('/waterline/api/preferences/workflow-list')
+            ->assertOk()
+            ->assertJsonPath('scope', 'namespace:shipping')
+            ->assertJsonPath('preferences', [])
+            ->assertJsonPath('effective_preferences', [])
+            ->assertJsonPath('operator_scope.namespace', 'shipping');
+
+        $shippingViewId = $this->postJson('/waterline/api/saved-views', [
+            'name' => 'Shipping customer filter',
+            'bucket' => 'running',
+            'filters' => [
+                'search_attributes' => [
+                    'customer_id' => 'shipping-customer',
+                ],
+            ],
+            'shared' => true,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('scope', 'namespace:shipping')
+            ->assertJsonPath('operator_scope.namespace', 'shipping')
+            ->json('id');
+
+        $this->assertDatabaseHas('waterline_saved_views', [
+            'id' => $billingViewId,
+            'scope' => 'namespace:billing',
+        ]);
+        $this->assertDatabaseHas('waterline_saved_views', [
+            'id' => $shippingViewId,
+            'scope' => 'namespace:shipping',
+        ]);
+        $this->assertDatabaseHas('waterline_user_preferences', [
+            'scope' => 'namespace:billing',
+            'subject_key' => 'scope:namespace:billing',
+            'surface' => 'workflow-list',
+        ]);
     }
 
     public function testRepositoryMetricHelpersAreScopedToConfiguredNamespace(): void

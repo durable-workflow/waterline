@@ -7,6 +7,7 @@ namespace Waterline\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Waterline\Models\UserPreference;
+use Waterline\Support\OperatorScope;
 
 class UserPreferencesController extends Controller
 {
@@ -18,10 +19,10 @@ class UserPreferencesController extends Controller
         $stored = $model::normalizePreferences($preference->preferences ?? []);
         $overrides = $this->overrides($request);
 
-        return response()->json($preference->toWaterlinePayload(
+        return response()->json($this->withOperatorScope($preference->toWaterlinePayload(
             effectivePreferences: array_replace($stored, $overrides),
             overrides: $overrides,
-        ));
+        )));
     }
 
     public function update(string $surface, Request $request)
@@ -42,10 +43,10 @@ class UserPreferencesController extends Controller
         $stored = $model::normalizePreferences($preference->preferences ?? []);
         $overrides = $this->overrides($request);
 
-        return response()->json($preference->fresh()->toWaterlinePayload(
+        return response()->json($this->withOperatorScope($preference->fresh()->toWaterlinePayload(
             effectivePreferences: array_replace($stored, $overrides),
             overrides: $overrides,
-        ));
+        )));
     }
 
     private function surface(string $surface): string
@@ -139,5 +140,16 @@ class UserPreferencesController extends Controller
         $model = $this->model();
 
         return $model::normalizePreferences($raw);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function withOperatorScope(array $payload): array
+    {
+        $payload['operator_scope'] = OperatorScope::payload();
+
+        return $payload;
     }
 }

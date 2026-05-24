@@ -11,6 +11,7 @@ use Workflow\V2\Support\ServiceCatalog;
 use Workflow\V2\Support\ServiceEndpointView;
 use Workflow\V2\Support\ServiceOperationView;
 use Workflow\V2\Support\ServiceView;
+use Waterline\Support\OperatorScope;
 
 /**
  * Namespace-scoped operator views for the v2 cross-namespace service catalog.
@@ -40,7 +41,7 @@ class V2ServicesController extends Controller
             return $this->notFound('Service endpoint');
         }
 
-        return response()->json(ServiceEndpointView::detail($endpoint, $this->namespace()));
+        return response()->json($this->withOperatorScope(ServiceEndpointView::detail($endpoint, $this->namespace())));
     }
 
     public function servicesIndex(Request $request): JsonResponse
@@ -65,7 +66,7 @@ class V2ServicesController extends Controller
             return $this->notFound('Service');
         }
 
-        return response()->json(ServiceView::detail($service, $this->namespace()));
+        return response()->json($this->withOperatorScope(ServiceView::detail($service, $this->namespace())));
     }
 
     public function operationsIndex(Request $request): JsonResponse
@@ -95,7 +96,7 @@ class V2ServicesController extends Controller
             return $this->notFound('Service operation');
         }
 
-        return response()->json(ServiceOperationView::detail($operation, $this->namespace()));
+        return response()->json($this->withOperatorScope(ServiceOperationView::detail($operation, $this->namespace())));
     }
 
     public function callsIndex(Request $request): JsonResponse
@@ -159,7 +160,7 @@ class V2ServicesController extends Controller
             return $this->notFound('Service call');
         }
 
-        return response()->json(ServiceCallView::detail($call, $this->namespace()));
+        return response()->json($this->withOperatorScope(ServiceCallView::detail($call, $this->namespace())));
     }
 
     /**
@@ -175,7 +176,19 @@ class V2ServicesController extends Controller
             'per_page' => $page->perPage(),
             'total' => $page->total(),
             'last_page' => $page->lastPage(),
+            'operator_scope' => OperatorScope::payload(),
         ], $extra));
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function withOperatorScope(array $payload): array
+    {
+        $payload['operator_scope'] = OperatorScope::payload();
+
+        return $payload;
     }
 
     private function parseScope(mixed $raw): string

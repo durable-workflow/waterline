@@ -81,8 +81,9 @@ class WorkflowsController extends Controller
 
         $flow = $repository->findFlow($id);
 
-        return response()->json(ActionabilityContract::annotateExport(
-            $observability->runHistoryExport($flow),
+        return response()->json($this->annotateHistoryExport(
+            ActionabilityContract::annotateExport($observability->runHistoryExport($flow)),
+            $flow->namespace,
         ));
     }
 
@@ -95,8 +96,9 @@ class WorkflowsController extends Controller
 
         $flow = $repository->findFlowSelection($instanceId);
 
-        return response()->json(ActionabilityContract::annotateExport(
-            $observability->runHistoryExport($flow),
+        return response()->json($this->annotateHistoryExport(
+            ActionabilityContract::annotateExport($observability->runHistoryExport($flow)),
+            $flow->namespace,
         ));
     }
 
@@ -110,8 +112,9 @@ class WorkflowsController extends Controller
 
         $flow = $repository->findFlowSelection($instanceId, $runId);
 
-        return response()->json(ActionabilityContract::annotateExport(
-            $observability->runHistoryExport($flow),
+        return response()->json($this->annotateHistoryExport(
+            ActionabilityContract::annotateExport($observability->runHistoryExport($flow)),
+            $flow->namespace,
         ));
     }
 
@@ -178,7 +181,7 @@ class WorkflowsController extends Controller
             ->attemptCancel($reason);
 
         return response()->json(
-            CommandResponse::payload($result),
+            $this->withOperatorScope(CommandResponse::payload($result)),
             $result->accepted() ? 200 : 409,
         );
     }
@@ -354,7 +357,7 @@ class WorkflowsController extends Controller
             ->attemptCancel($reason);
 
         return response()->json(
-            CommandResponse::payload($result),
+            $this->withOperatorScope(CommandResponse::payload($result)),
             $result->accepted() ? 200 : 409,
         );
     }
@@ -374,7 +377,7 @@ class WorkflowsController extends Controller
             ->attemptCancel($reason);
 
         return response()->json(
-            CommandResponse::payload($result),
+            $this->withOperatorScope(CommandResponse::payload($result)),
             $result->accepted() ? 200 : 409,
         );
     }
@@ -389,7 +392,7 @@ class WorkflowsController extends Controller
             ->attemptRepair();
 
         return response()->json(
-            CommandResponse::payload($result),
+            $this->withOperatorScope(CommandResponse::payload($result)),
             $result->accepted() ? 200 : 409,
         );
     }
@@ -403,7 +406,7 @@ class WorkflowsController extends Controller
             ->attemptRepair();
 
         return response()->json(
-            CommandResponse::payload($result),
+            $this->withOperatorScope(CommandResponse::payload($result)),
             $result->accepted() ? 200 : 409,
         );
     }
@@ -421,7 +424,7 @@ class WorkflowsController extends Controller
             ->attemptRepair();
 
         return response()->json(
-            CommandResponse::payload($result),
+            $this->withOperatorScope(CommandResponse::payload($result)),
             $result->accepted() ? 200 : 409,
         );
     }
@@ -438,7 +441,7 @@ class WorkflowsController extends Controller
             ->attemptTerminate($reason);
 
         return response()->json(
-            CommandResponse::payload($result),
+            $this->withOperatorScope(CommandResponse::payload($result)),
             $result->accepted() ? 200 : 409,
         );
     }
@@ -454,7 +457,7 @@ class WorkflowsController extends Controller
             ->attemptTerminate($reason);
 
         return response()->json(
-            CommandResponse::payload($result),
+            $this->withOperatorScope(CommandResponse::payload($result)),
             $result->accepted() ? 200 : 409,
         );
     }
@@ -474,7 +477,7 @@ class WorkflowsController extends Controller
             ->attemptTerminate($reason);
 
         return response()->json(
-            CommandResponse::payload($result),
+            $this->withOperatorScope(CommandResponse::payload($result)),
             $result->accepted() ? 200 : 409,
         );
     }
@@ -622,6 +625,33 @@ class WorkflowsController extends Controller
     }
 
     /**
+     * @param array<string, mixed> $export
+     * @return array<string, mixed>
+     */
+    private function annotateHistoryExport(array $export, ?string $namespace): array
+    {
+        if (isset($export['workflow']) && is_array($export['workflow'])) {
+            $export['workflow']['namespace'] = $namespace;
+        }
+
+        $export['namespace'] = $namespace;
+        $export = $this->withOperatorScope($export);
+
+        return $export;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function withOperatorScope(array $payload): array
+    {
+        $payload['operator_scope'] = OperatorScope::payload();
+
+        return $payload;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function listItemView(WorkflowRunSummary $summary): array
@@ -735,7 +765,7 @@ class WorkflowsController extends Controller
             : ($result->accepted() ? 200 : 409);
 
         return response()->json(
-            CommandResponse::payload($result),
+            $this->withOperatorScope(CommandResponse::payload($result)),
             $status,
         );
     }
@@ -743,7 +773,7 @@ class WorkflowsController extends Controller
     private function updateLookupResponse(UpdateResult $result)
     {
         return response()->json(
-            CommandResponse::payload($result),
+            $this->withOperatorScope(CommandResponse::payload($result)),
             $result->updateStatus() === 'accepted' ? 202 : 200,
         );
     }
@@ -759,6 +789,6 @@ class WorkflowsController extends Controller
     ) {
         $response = QueryResponse::execute($workflow, $query, $arguments, $targetScope);
 
-        return response()->json($response['payload'], $response['status']);
+        return response()->json($this->withOperatorScope($response['payload']), $response['status']);
     }
 }

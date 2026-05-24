@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Waterline\Support\ActionabilityVisibilityFilters;
+use Waterline\Support\OperatorScope;
 
 class SavedWorkflowView extends Model
 {
@@ -94,9 +95,8 @@ class SavedWorkflowView extends Model
     public static function configuredScope(): string
     {
         $scope = config('waterline.saved_views.scope', 'default');
-        $scope = is_string($scope) ? trim($scope) : 'default';
 
-        return $scope === '' ? 'default' : $scope;
+        return OperatorScope::persistenceScope($scope);
     }
 
     /**

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Waterline\Support;
 
+use Illuminate\Support\Str;
+
 final class OperatorScope
 {
     public static function namespace(): ?string
@@ -37,5 +39,21 @@ final class OperatorScope
             'authority' => 'tenant',
             'description' => 'Waterline is restricted to one workflow namespace.',
         ];
+    }
+
+    public static function persistenceScope(mixed $configuredScope): string
+    {
+        $scope = is_string($configuredScope) ? trim($configuredScope) : '';
+        $namespace = self::namespace();
+
+        if ($scope !== '' && ($scope !== 'default' || $namespace === null)) {
+            return $scope;
+        }
+
+        if ($namespace === null) {
+            return 'default';
+        }
+
+        return Str::limit('namespace:'.$namespace, 120, '');
     }
 }

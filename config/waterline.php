@@ -104,8 +104,10 @@ return [
     |--------------------------------------------------------------------------
     |
     | Waterline v2 saved views persist repeatable operator filters over the
-    | workflow run-summary visibility contract. The scope lets one database
-    | partition saved views by app, environment, tenant, or operator namespace.
+    | workflow run-summary visibility contract. The default scope follows
+    | WATERLINE_NAMESPACE when configured so tenant-specific filters and search
+    | attribute values are not shared across namespaces. Set an explicit scope
+    | only for an intentionally shared operator authority.
     |
     */
 
@@ -122,8 +124,9 @@ return [
     |
     | Waterline persists small operator view preferences server-side so the
     | workflow list, run detail, schedules, and workers views can follow an
-    | authenticated operator across workstations. URL parameters remain the
-    | final override when a link needs deterministic shared state.
+    | authenticated operator across workstations. The default scope follows the
+    | saved-view scope, including namespace partitioning. URL parameters remain
+    | the final override when a link needs deterministic shared state.
     |
     */
 
