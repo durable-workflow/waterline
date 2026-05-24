@@ -32,6 +32,7 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['run_diagnostics'] = app(RunDiagnostics::class)->forRun($this->resource, $detail);
         $detail = ObserverStateEnvelope::annotateRun($detail, $this->observerPaths($request, $detail));
         $detail = CompatibilitySemantics::annotateRun($detail);
+        $detail['namespace'] = $this->resource->namespace;
         $detail['operator_scope'] = OperatorScope::payload();
 
         return ActionabilityContract::annotateRun($detail);

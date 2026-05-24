@@ -59,9 +59,13 @@ abstract class TestCase extends BaseTestCase
         $this->loadMigrationsFrom(default_skeleton_path('migrations'));
         artisan($this, 'migrate:fresh');
 
-        $this->beforeApplicationDestroyed(
-            fn () => artisan($this, 'migrate:rollback')
-        );
+        $this->beforeApplicationDestroyed(function (): void {
+            if (DB::connection()->getDriverName() === 'sqlite') {
+                return;
+            }
+
+            artisan($this, 'migrate:rollback');
+        });
     }
 
     protected function getPackageProviders($app)

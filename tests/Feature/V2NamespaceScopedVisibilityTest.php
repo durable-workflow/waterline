@@ -17,6 +17,7 @@ use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowSchedule;
 use Workflow\V2\Models\WorkflowScheduleHistoryEvent;
+use Workflow\V2\Models\WorkflowSearchAttribute;
 
 class V2NamespaceScopedVisibilityTest extends TestCase
 {
@@ -374,7 +375,7 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             'started_at' => now()->subMinutes(5),
         ]);
 
-        $run = WorkflowRun::create([
+        $runAttributes = [
             'id' => (string) Str::ulid(),
             'workflow_instance_id' => $instance->id,
             'run_number' => 1,
@@ -386,14 +387,19 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             'payload_codec' => config('workflows.serializer'),
             'arguments' => Serializer::serialize([]),
             'output' => Serializer::serialize(['ok' => true]),
-            'search_attributes' => $searchAttributes === [] ? null : $searchAttributes,
             'connection' => 'redis',
             'queue' => 'default',
             'last_history_sequence' => 2,
             'started_at' => now()->subMinutes(5),
             'closed_at' => now()->subMinute(),
             'last_progress_at' => now()->subMinute(),
-        ]);
+        ];
+
+        if (Schema::hasColumn('workflow_runs', 'search_attributes')) {
+            $runAttributes['search_attributes'] = $searchAttributes === [] ? null : $searchAttributes;
+        }
+
+        $run = WorkflowRun::create($runAttributes);
 
         $instance->update(['current_run_id' => $run->id]);
 
@@ -419,6 +425,18 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             'created_at' => now()->subMinutes(5),
             'updated_at' => now()->subMinute(),
         ]);
+
+        foreach ($searchAttributes as $key => $value) {
+            $attribute = new WorkflowSearchAttribute([
+                'workflow_run_id' => $run->id,
+                'workflow_instance_id' => $instance->id,
+                'key' => $key,
+                'upserted_at_sequence' => 1,
+                'inherited_from_parent' => false,
+            ]);
+            $attribute->setTypedValueWithInference($value);
+            $attribute->save();
+        }
 
         WorkflowHistoryEvent::create([
             'id' => (string) Str::ulid(),
