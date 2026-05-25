@@ -115,6 +115,12 @@ evidence for `worker_versioning_runtime_contract`. A result must compare
 worker build IDs, drain/resume state, no-compatible-worker diagnostics,
 and run compatibility fields through public Waterline surfaces.
 
+Upgrade-path migration visibility is outside this suite-12 claim until
+the public conformance origin publishes a stable runtime manifest for
+that category. Waterline release evidence must not treat in-repo upgrade
+smoke coverage as a substitute for a downloadable public scenario
+manifest.
+
 The standalone observer-envelope fixture set is promoted to **required**
 in a future suite version once the contract slice for the operator
 dashboard JSON envelope is public. Until then, a failure in
