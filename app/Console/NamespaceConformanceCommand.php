@@ -161,6 +161,11 @@ class NamespaceConformanceCommand extends Command
                 ],
                 'fixture_ids' => $fixtures,
             ];
+            $evidence['operator_surface_matrix'] = $this->operatorSurfaceMatrix(
+                $tenantAEvidence,
+                $tenantBEvidence,
+                $unscopedAuthority,
+            );
 
             $scenarioPassed = $this->waterlineEvidencePassed($evidence);
             $waterlineScenario = [
@@ -1021,6 +1026,140 @@ class NamespaceConformanceCommand extends Command
             && data_get($unscoped, 'api_captures.dashboard_view.path') === '/';
     }
 
+    /**
+     * @param array<string, mixed> $tenantA
+     * @param array<string, mixed> $tenantB
+     * @param array<string, mixed> $unscoped
+     * @return array<string, mixed>
+     */
+    private function operatorSurfaceMatrix(array $tenantA, array $tenantB, array $unscoped): array
+    {
+        return [
+            'tenant_scoped_surfaces' => [
+                'tenant_a' => $this->tenantOperatorSurfaceVerdict($tenantA),
+                'tenant_b' => $this->tenantOperatorSurfaceVerdict($tenantB),
+            ],
+            'unscoped_authority' => $this->unscopedOperatorSurfaceVerdict($unscoped),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $tenant
+     * @return array<string, mixed>
+     */
+    private function tenantOperatorSurfaceVerdict(array $tenant): array
+    {
+        $namespace = $tenant['namespace'] ?? null;
+        $namespace = is_string($namespace) ? $namespace : '';
+
+        return [
+            'namespace' => $namespace,
+            'active_namespace_visible' => $namespace !== '' && $this->tenantDashboardViewPass($tenant, $namespace),
+            'workflow_list_scoped' => data_get($tenant, 'workflow_list.status') === 200
+                && data_get($tenant, 'workflow_list.operator_scope.mode') === 'namespace'
+                && data_get($tenant, 'workflow_list.operator_scope.namespace') === $namespace
+                && data_get($tenant, 'workflow_list.includes_own_run') === true
+                && data_get($tenant, 'workflow_list.excludes_foreign_run') === true,
+            'workflow_detail_scoped' => data_get($tenant, 'workflow_detail.status') === 200
+                && data_get($tenant, 'workflow_detail.operator_scope.mode') === 'namespace'
+                && data_get($tenant, 'workflow_detail.operator_scope.namespace') === $namespace
+                && data_get($tenant, 'workflow_detail.namespace') === $namespace
+                && data_get($tenant, 'foreign_workflow_detail.not_found') === true,
+            'schedule_list_scoped' => data_get($tenant, 'schedule_list.status') === 200
+                && data_get($tenant, 'schedule_list.operator_scope.mode') === 'namespace'
+                && data_get($tenant, 'schedule_list.operator_scope.namespace') === $namespace
+                && data_get($tenant, 'schedule_list.includes_own_schedule') === true
+                && data_get($tenant, 'schedule_list.excludes_foreign_schedule') === true,
+            'schedule_detail_scoped' => data_get($tenant, 'schedule_detail.status') === 200
+                && data_get($tenant, 'schedule_detail.operator_scope.mode') === 'namespace'
+                && data_get($tenant, 'schedule_detail.operator_scope.namespace') === $namespace
+                && data_get($tenant, 'schedule_detail.namespace') === $namespace
+                && data_get($tenant, 'foreign_schedule_detail.not_found') === true,
+            'search_attribute_values_scoped' => $this->captureSearchAttributePass($tenant, 'workflow_list')
+                && $this->captureSearchAttributePass($tenant, 'workflow_detail')
+                && $this->captureSearchAttributePass($tenant, 'schedule_list')
+                && $this->captureSearchAttributePass($tenant, 'schedule_detail'),
+            'operator_api_scoped' => data_get($tenant, 'operator_api_stats.status') === 200
+                && data_get($tenant, 'operator_api_stats.operator_scope.mode') === 'namespace'
+                && data_get($tenant, 'operator_api_stats.operator_scope.namespace') === $namespace
+                && data_get($tenant, 'operator_api_stats.excludes_foreign_run') === true,
+            'api_captures_scoped' => $namespace !== '' && $this->tenantApiCapturesPass($tenant, $namespace),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $unscoped
+     * @return array<string, mixed>
+     */
+    private function unscopedOperatorSurfaceVerdict(array $unscoped): array
+    {
+        return [
+            'documented_cluster_authority' => data_get($unscoped, 'documented_safe_authority') === true,
+            'dashboard_cluster_authority_visible' => $this->unscopedDashboardViewPass($unscoped),
+            'workflow_list_cluster_authority' => data_get($unscoped, 'workflow_list.status') === 200
+                && data_get($unscoped, 'workflow_list.operator_scope.mode') === 'cluster'
+                && data_get($unscoped, 'workflow_list.operator_scope.namespace') === null
+                && data_get($unscoped, 'workflow_list.includes_tenant_a_run') === true
+                && data_get($unscoped, 'workflow_list.includes_tenant_b_run') === true,
+            'schedule_list_cluster_authority' => data_get($unscoped, 'schedule_list.status') === 200
+                && data_get($unscoped, 'schedule_list.operator_scope.mode') === 'cluster'
+                && data_get($unscoped, 'schedule_list.operator_scope.namespace') === null
+                && data_get($unscoped, 'schedule_list.includes_tenant_a_schedule') === true
+                && data_get($unscoped, 'schedule_list.includes_tenant_b_schedule') === true,
+            'operator_api_cluster_authority' => data_get($unscoped, 'operator_api_stats.status') === 200
+                && data_get($unscoped, 'operator_api_stats.operator_scope.mode') === 'cluster'
+                && data_get($unscoped, 'operator_api_stats.operator_scope.namespace') === null
+                && data_get($unscoped, 'operator_api_stats.flow_count_covers_fixture_runs') === true,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $matrix
+     */
+    private function operatorSurfaceMatrixPass(array $matrix): bool
+    {
+        foreach (['tenant_a', 'tenant_b'] as $tenantKey) {
+            $tenant = data_get($matrix, 'tenant_scoped_surfaces.'.$tenantKey);
+            if (! is_array($tenant) || ! is_string($tenant['namespace'] ?? null) || $tenant['namespace'] === '') {
+                return false;
+            }
+
+            foreach ([
+                'active_namespace_visible',
+                'workflow_list_scoped',
+                'workflow_detail_scoped',
+                'schedule_list_scoped',
+                'schedule_detail_scoped',
+                'search_attribute_values_scoped',
+                'operator_api_scoped',
+                'api_captures_scoped',
+            ] as $field) {
+                if (($tenant[$field] ?? null) !== true) {
+                    return false;
+                }
+            }
+        }
+
+        $unscoped = data_get($matrix, 'unscoped_authority');
+        if (! is_array($unscoped)) {
+            return false;
+        }
+
+        foreach ([
+            'documented_cluster_authority',
+            'dashboard_cluster_authority_visible',
+            'workflow_list_cluster_authority',
+            'schedule_list_cluster_authority',
+            'operator_api_cluster_authority',
+        ] as $field) {
+            if (($unscoped[$field] ?? null) !== true) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private function captureStatusAndScopePass(
         mixed $capture,
         string $path,
@@ -1080,6 +1219,11 @@ class NamespaceConformanceCommand extends Command
      */
     private function waterlineEvidencePassed(array $evidence): bool
     {
+        $matrix = $evidence['operator_surface_matrix'] ?? [];
+        if (! is_array($matrix) || ! $this->operatorSurfaceMatrixPass($matrix)) {
+            return false;
+        }
+
         foreach (['tenant_a_scoped_views', 'tenant_b_scoped_views'] as $tenantKey) {
             $tenant = $evidence[$tenantKey] ?? [];
             if (! is_array($tenant)) {

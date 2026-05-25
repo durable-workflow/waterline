@@ -93,7 +93,10 @@ routes, emits a
 `durable-workflow.v2.namespace-runtime.result` document with
 `waterline_operator_namespace_visibility` populated, includes the scoped and
 unscoped API and dashboard response captures used by the pass/fail checks,
-and removes its fixture rows unless `--keep-fixtures` is supplied. It is a shard, not a full
+adds an `operator_surface_matrix` verdict for scoped workflow lists,
+workflow details, schedule views, search-attribute values, dashboard scope,
+stats/operator APIs, and documented unscoped authority, and removes its
+fixture rows unless `--keep-fixtures` is supplied. It is a shard, not a full
 namespace run: all non-Waterline namespace scenarios remain `not_covered` for
 the full harness to merge or evaluate separately.
 

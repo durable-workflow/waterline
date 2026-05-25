@@ -123,6 +123,20 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertTrue($visibility['unscoped_view_authority']['schedule_list']['includes_tenant_b_schedule']);
         $this->assertSame('billing-schedule', $visibility['unscoped_view_authority']['schedule_list']['tenant_a_search_attribute_visible']);
         $this->assertSame('shipping-schedule', $visibility['unscoped_view_authority']['schedule_list']['tenant_b_search_attribute_visible']);
+        $this->assertSame('billing', $visibility['operator_surface_matrix']['tenant_scoped_surfaces']['tenant_a']['namespace']);
+        $this->assertTrue($visibility['operator_surface_matrix']['tenant_scoped_surfaces']['tenant_a']['active_namespace_visible']);
+        $this->assertTrue($visibility['operator_surface_matrix']['tenant_scoped_surfaces']['tenant_a']['workflow_list_scoped']);
+        $this->assertTrue($visibility['operator_surface_matrix']['tenant_scoped_surfaces']['tenant_a']['workflow_detail_scoped']);
+        $this->assertTrue($visibility['operator_surface_matrix']['tenant_scoped_surfaces']['tenant_a']['schedule_list_scoped']);
+        $this->assertTrue($visibility['operator_surface_matrix']['tenant_scoped_surfaces']['tenant_a']['schedule_detail_scoped']);
+        $this->assertTrue($visibility['operator_surface_matrix']['tenant_scoped_surfaces']['tenant_a']['search_attribute_values_scoped']);
+        $this->assertTrue($visibility['operator_surface_matrix']['tenant_scoped_surfaces']['tenant_a']['operator_api_scoped']);
+        $this->assertTrue($visibility['operator_surface_matrix']['tenant_scoped_surfaces']['tenant_b']['workflow_list_scoped']);
+        $this->assertTrue($visibility['operator_surface_matrix']['unscoped_authority']['documented_cluster_authority']);
+        $this->assertTrue($visibility['operator_surface_matrix']['unscoped_authority']['dashboard_cluster_authority_visible']);
+        $this->assertTrue($visibility['operator_surface_matrix']['unscoped_authority']['workflow_list_cluster_authority']);
+        $this->assertTrue($visibility['operator_surface_matrix']['unscoped_authority']['schedule_list_cluster_authority']);
+        $this->assertTrue($visibility['operator_surface_matrix']['unscoped_authority']['operator_api_cluster_authority']);
         $this->assertWaterlineEvidencePassCriteriaRequireHttpCaptures($visibility);
 
         $this->assertSame('not_covered', $scenarios['nexus_explicit_cross_namespace_invocation']['status']);
@@ -181,6 +195,14 @@ class NamespaceConformanceCommandTest extends TestCase
         $wrongStatsScope = $visibility;
         data_set($wrongStatsScope, 'tenant_a_scoped_views.operator_api_stats.operator_scope.namespace', 'shipping');
         $this->assertFalse($passes($wrongStatsScope));
+
+        $missingVerdictMatrix = $visibility;
+        unset($missingVerdictMatrix['operator_surface_matrix']);
+        $this->assertFalse($passes($missingVerdictMatrix));
+
+        $failedVerdictMatrix = $visibility;
+        data_set($failedVerdictMatrix, 'operator_surface_matrix.tenant_scoped_surfaces.tenant_a.workflow_list_scoped', false);
+        $this->assertFalse($passes($failedVerdictMatrix));
 
         $missingCapturedOwnSearchAttribute = $visibility;
         data_set($missingCapturedOwnSearchAttribute, 'tenant_a_scoped_views.api_captures.workflow_list.json.data.0.search_attributes.tenant_marker', null);
