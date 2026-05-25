@@ -108,6 +108,14 @@ class NamespaceConformanceCommand extends Command
                 $namespaces['b'],
                 ['tenant_marker' => $namespaces['b'].'-secret'],
             );
+            WorkflowRunSummary::query()->whereKey($tenantA->id)->update([
+                'duration_ms' => 60000,
+                'exception_count' => 1,
+            ]);
+            WorkflowRunSummary::query()->whereKey($tenantB->id)->update([
+                'duration_ms' => 900000,
+                'exception_count' => 9,
+            ]);
             $scheduleA = $this->createSchedule($scheduleIds['a'], $namespaces['a']);
             $scheduleB = $this->createSchedule($scheduleIds['b'], $namespaces['b']);
 
@@ -424,6 +432,8 @@ class NamespaceConformanceCommand extends Command
         $list = $this->apiGet($kernel, '/api/flows/completed');
         $detail = $this->apiGet($kernel, '/api/flows/'.$ownRun->id);
         $foreignDetail = $this->apiGet($kernel, '/api/flows/'.$foreignRun->id);
+        $stats = $this->apiGet($kernel, '/api/stats');
+        $dashboard = $this->dashboardGet($kernel);
         $schedules = $this->apiGet($kernel, '/api/v2/schedules');
         $scheduleDetail = $this->apiGet($kernel, '/api/v2/schedules/'.$ownSchedule->schedule_id);
         $foreignScheduleDetail = $this->apiGet($kernel, '/api/v2/schedules/'.$foreignSchedule->schedule_id);
@@ -431,8 +441,10 @@ class NamespaceConformanceCommand extends Command
 
         $listJson = $list['json'];
         $detailJson = $detail['json'];
+        $statsJson = $stats['json'];
         $schedulesJson = $schedules['json'];
         $scheduleDetailJson = $scheduleDetail['json'];
+        $dashboardVariables = $this->dashboardVariables($dashboard['body']);
 
         $listRows = is_array($listJson['data'] ?? null) ? $listJson['data'] : [];
         $scheduleRows = is_array($schedulesJson['data'] ?? null) ? $schedulesJson['data'] : [];
@@ -450,6 +462,8 @@ class NamespaceConformanceCommand extends Command
                 'workflow_list' => $this->responseCapture($list),
                 'workflow_detail' => $this->responseCapture($detail),
                 'foreign_workflow_detail' => $this->responseCapture($foreignDetail),
+                'operator_api_stats' => $this->responseCapture($stats),
+                'dashboard_view' => $this->responseCapture($dashboard),
                 'schedule_list' => $this->responseCapture($schedules),
                 'schedule_detail' => $this->responseCapture($scheduleDetail),
                 'foreign_schedule_detail' => $this->responseCapture($foreignScheduleDetail),
@@ -494,6 +508,32 @@ class NamespaceConformanceCommand extends Command
                 'path' => '/api/flows/'.$foreignRun->id,
                 'status' => $foreignDetail['status'],
                 'not_found' => $foreignDetail['status'] === 404,
+            ],
+            'operator_api_stats' => [
+                'path' => '/api/stats',
+                'status' => $stats['status'],
+                'operator_scope' => $this->operatorScope($statsJson),
+                'flows' => data_get($statsJson, 'flows'),
+                'operator_metric_runs' => data_get($statsJson, 'operator_metrics.runs.total'),
+                'max_duration_workflow_id' => data_get($statsJson, 'max_duration_workflow.id'),
+                'max_exceptions_workflow_id' => data_get($statsJson, 'max_exceptions_workflow.id'),
+                'includes_own_run' => $this->jsonContains($statsJson, $ownRun->id),
+                'flow_count_covers_fixture_run' => is_numeric(data_get($statsJson, 'flows'))
+                    && (int) data_get($statsJson, 'flows') >= 1,
+                'excludes_foreign_run' => ! $this->jsonContains($statsJson, $foreignRun->id),
+                'operator_scope_namespace' => data_get($statsJson, 'operator_scope.namespace'),
+                'operator_scope_authority' => data_get($statsJson, 'operator_scope.authority'),
+            ],
+            'dashboard_view' => [
+                'path' => '/',
+                'status' => $dashboard['status'],
+                'request_path' => $dashboard['request_path'],
+                'body_sha256' => hash('sha256', $dashboard['body']),
+                'scope_label_visible' => str_contains($dashboard['body'], 'Scope'),
+                'scope_value_visible' => str_contains($dashboard['body'], $namespace),
+                'script_operator_scope' => $this->operatorScope($dashboardVariables),
+                'script_operator_scope_namespace' => data_get($dashboardVariables, 'operator_scope.namespace'),
+                'script_operator_scope_authority' => data_get($dashboardVariables, 'operator_scope.authority'),
             ],
             'schedule_list' => [
                 'path' => '/api/v2/schedules',
@@ -567,8 +607,12 @@ class NamespaceConformanceCommand extends Command
         config()->set('waterline.namespace', null);
 
         $workflowList = $this->apiGet($kernel, '/api/flows/completed');
+        $stats = $this->apiGet($kernel, '/api/stats');
+        $dashboard = $this->dashboardGet($kernel);
         $scheduleList = $this->apiGet($kernel, '/api/v2/schedules');
         $workflowJson = $workflowList['json'];
+        $statsJson = $stats['json'];
+        $dashboardVariables = $this->dashboardVariables($dashboard['body']);
         $scheduleJson = $scheduleList['json'];
         $workflowRows = is_array($workflowJson['data'] ?? null) ? $workflowJson['data'] : [];
         $scheduleRows = is_array($scheduleJson['data'] ?? null) ? $scheduleJson['data'] : [];
@@ -578,6 +622,8 @@ class NamespaceConformanceCommand extends Command
                 && $this->documentsClusterAuthority($scheduleJson),
             'api_captures' => [
                 'workflow_list' => $this->responseCapture($workflowList),
+                'operator_api_stats' => $this->responseCapture($stats),
+                'dashboard_view' => $this->responseCapture($dashboard),
                 'schedule_list' => $this->responseCapture($scheduleList),
             ],
             'workflow_list' => [
@@ -610,6 +656,30 @@ class NamespaceConformanceCommand extends Command
                     $tenantBRun->search_attributes,
                     'tenant_marker',
                 ),
+            ],
+            'operator_api_stats' => [
+                'path' => '/api/stats',
+                'status' => $stats['status'],
+                'operator_scope' => $this->operatorScope($statsJson),
+                'flows' => data_get($statsJson, 'flows'),
+                'operator_metric_runs' => data_get($statsJson, 'operator_metrics.runs.total'),
+                'flow_count_covers_fixture_runs' => is_numeric(data_get($statsJson, 'flows'))
+                    && (int) data_get($statsJson, 'flows') >= 2,
+            ],
+            'dashboard_view' => [
+                'path' => '/',
+                'status' => $dashboard['status'],
+                'request_path' => $dashboard['request_path'],
+                'body_sha256' => hash('sha256', $dashboard['body']),
+                'scope_label_visible' => str_contains($dashboard['body'], 'Scope'),
+                'scope_value_visible' => str_contains($dashboard['body'], 'Cluster-wide'),
+                'authority_description_visible' => str_contains(
+                    $dashboard['body'],
+                    'Cluster-wide Waterline scope can observe all namespaces',
+                ),
+                'script_operator_scope' => $this->operatorScope($dashboardVariables),
+                'script_operator_scope_namespace' => data_get($dashboardVariables, 'operator_scope.namespace'),
+                'script_operator_scope_authority' => data_get($dashboardVariables, 'operator_scope.authority'),
             ],
             'schedule_list' => [
                 'path' => '/api/v2/schedules',
@@ -654,11 +724,27 @@ class NamespaceConformanceCommand extends Command
      */
     private function apiGet(HttpKernel $kernel, string $path): array
     {
+        return $this->httpGet($kernel, $path, 'application/json');
+    }
+
+    /**
+     * @return array{method: string, path: string, request_path: string, status: int, json: array<string, mixed>, body: string}
+     */
+    private function dashboardGet(HttpKernel $kernel): array
+    {
+        return $this->httpGet($kernel, '/', 'text/html');
+    }
+
+    /**
+     * @return array{method: string, path: string, request_path: string, status: int, json: array<string, mixed>, body: string}
+     */
+    private function httpGet(HttpKernel $kernel, string $path, string $accept): array
+    {
         $requestPath = '/'.trim((string) config('waterline.path', 'waterline'), '/').$path;
         $request = Request::create(
             $requestPath,
             'GET',
-            server: ['HTTP_ACCEPT' => 'application/json'],
+            server: ['HTTP_ACCEPT' => $accept],
         );
         $response = $kernel->handle($request);
         $body = (string) $response->getContent();
@@ -681,6 +767,24 @@ class NamespaceConformanceCommand extends Command
             'json' => $json,
             'body' => $body,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function dashboardVariables(string $body): array
+    {
+        if (preg_match('/window\\.Waterline\\s*=\\s*(\\{.*?\\});/s', $body, $matches) !== 1) {
+            return [];
+        }
+
+        try {
+            $decoded = json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
+
+            return is_array($decoded) ? $decoded : [];
+        } catch (JsonException) {
+            return [];
+        }
     }
 
     /**
@@ -778,6 +882,7 @@ class NamespaceConformanceCommand extends Command
         foreach ([
             'workflow_list' => '/api/flows/completed',
             'workflow_detail' => (string) data_get($tenant, 'workflow_detail.path'),
+            'operator_api_stats' => '/api/stats',
             'schedule_list' => '/api/v2/schedules',
             'schedule_detail' => (string) data_get($tenant, 'schedule_detail.path'),
             'schedule_history' => (string) data_get($tenant, 'schedule_history.path'),
@@ -801,6 +906,10 @@ class NamespaceConformanceCommand extends Command
             if (! $this->captureStatusPass(data_get($tenant, 'api_captures.'.$captureKey), $path, 404)) {
                 return false;
             }
+        }
+
+        if (! $this->tenantDashboardViewPass($tenant, $namespace)) {
+            return false;
         }
 
         foreach ([
@@ -829,6 +938,7 @@ class NamespaceConformanceCommand extends Command
 
         foreach ([
             'workflow_list' => '/api/flows/completed',
+            'operator_api_stats' => '/api/stats',
             'schedule_list' => '/api/v2/schedules',
         ] as $captureKey => $path) {
             if (! $this->captureStatusAndScopePass(
@@ -841,6 +951,10 @@ class NamespaceConformanceCommand extends Command
             )) {
                 return false;
             }
+        }
+
+        if (! $this->unscopedDashboardViewPass($unscoped)) {
+            return false;
         }
 
         foreach ([
@@ -862,6 +976,49 @@ class NamespaceConformanceCommand extends Command
         }
 
         return true;
+    }
+
+    /**
+     * @param array<string, mixed> $tenant
+     */
+    private function tenantDashboardViewPass(array $tenant, string $namespace): bool
+    {
+        $dashboard = $tenant['dashboard_view'] ?? [];
+        if (! is_array($dashboard)) {
+            return false;
+        }
+
+        return data_get($dashboard, 'status') === 200
+            && data_get($dashboard, 'path') === '/'
+            && data_get($dashboard, 'scope_label_visible') === true
+            && data_get($dashboard, 'scope_value_visible') === true
+            && data_get($dashboard, 'script_operator_scope.mode') === 'namespace'
+            && data_get($dashboard, 'script_operator_scope.namespace') === $namespace
+            && data_get($dashboard, 'script_operator_scope.authority') === 'tenant'
+            && data_get($tenant, 'api_captures.dashboard_view.status') === 200
+            && data_get($tenant, 'api_captures.dashboard_view.path') === '/';
+    }
+
+    /**
+     * @param array<string, mixed> $unscoped
+     */
+    private function unscopedDashboardViewPass(array $unscoped): bool
+    {
+        $dashboard = $unscoped['dashboard_view'] ?? [];
+        if (! is_array($dashboard)) {
+            return false;
+        }
+
+        return data_get($dashboard, 'status') === 200
+            && data_get($dashboard, 'path') === '/'
+            && data_get($dashboard, 'scope_label_visible') === true
+            && data_get($dashboard, 'scope_value_visible') === true
+            && data_get($dashboard, 'authority_description_visible') === true
+            && data_get($dashboard, 'script_operator_scope.mode') === 'cluster'
+            && data_get($dashboard, 'script_operator_scope.namespace') === null
+            && data_get($dashboard, 'script_operator_scope.authority') === 'cluster'
+            && data_get($unscoped, 'api_captures.dashboard_view.status') === 200
+            && data_get($unscoped, 'api_captures.dashboard_view.path') === '/';
     }
 
     private function captureStatusAndScopePass(
@@ -950,6 +1107,10 @@ class NamespaceConformanceCommand extends Command
                 'workflow_detail.operator_scope.mode' => 'namespace',
                 'workflow_detail.operator_scope.namespace' => $namespace,
                 'workflow_detail.operator_scope.authority' => 'tenant',
+                'operator_api_stats.status' => 200,
+                'operator_api_stats.operator_scope.mode' => 'namespace',
+                'operator_api_stats.operator_scope.namespace' => $namespace,
+                'operator_api_stats.operator_scope.authority' => 'tenant',
                 'schedule_list.status' => 200,
                 'schedule_list.operator_scope.mode' => 'namespace',
                 'schedule_list.operator_scope.namespace' => $namespace,
@@ -975,6 +1136,8 @@ class NamespaceConformanceCommand extends Command
                 'workflow_detail.foreign_search_attribute_absent',
                 'workflow_detail.namespace',
                 'foreign_workflow_detail.not_found',
+                'operator_api_stats.flow_count_covers_fixture_run',
+                'operator_api_stats.excludes_foreign_run',
                 'schedule_list.includes_own_schedule',
                 'schedule_list.excludes_foreign_schedule',
                 'schedule_list.foreign_search_attribute_absent',
@@ -1029,6 +1192,11 @@ class NamespaceConformanceCommand extends Command
             'workflow_list.operator_scope.namespace' => null,
             'workflow_list.includes_tenant_a_run' => true,
             'workflow_list.includes_tenant_b_run' => true,
+            'operator_api_stats.status' => 200,
+            'operator_api_stats.operator_scope.mode' => 'cluster',
+            'operator_api_stats.operator_scope.authority' => 'cluster',
+            'operator_api_stats.operator_scope.namespace' => null,
+            'operator_api_stats.flow_count_covers_fixture_runs' => true,
             'schedule_list.status' => 200,
             'schedule_list.operator_scope.mode' => 'cluster',
             'schedule_list.operator_scope.authority' => 'cluster',

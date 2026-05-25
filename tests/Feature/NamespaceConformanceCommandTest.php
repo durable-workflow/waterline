@@ -86,6 +86,15 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertSame('billing', $visibility['tenant_a_scoped_views']['workflow_detail']['operator_scope']['namespace']);
         $this->assertSame('billing-visible', $visibility['tenant_a_scoped_views']['workflow_detail']['search_attribute_value_visible']);
         $this->assertTrue($visibility['tenant_a_scoped_views']['foreign_workflow_detail']['not_found']);
+        $this->assertSame('/api/stats', $visibility['tenant_a_scoped_views']['operator_api_stats']['path']);
+        $this->assertSame('billing', $visibility['tenant_a_scoped_views']['operator_api_stats']['operator_scope']['namespace']);
+        $this->assertTrue($visibility['tenant_a_scoped_views']['operator_api_stats']['flow_count_covers_fixture_run']);
+        $this->assertTrue($visibility['tenant_a_scoped_views']['operator_api_stats']['excludes_foreign_run']);
+        $this->assertSame('/', $visibility['tenant_a_scoped_views']['dashboard_view']['path']);
+        $this->assertSame('/waterline/', $visibility['tenant_a_scoped_views']['dashboard_view']['request_path']);
+        $this->assertTrue($visibility['tenant_a_scoped_views']['dashboard_view']['scope_label_visible']);
+        $this->assertTrue($visibility['tenant_a_scoped_views']['dashboard_view']['scope_value_visible']);
+        $this->assertSame('billing', $visibility['tenant_a_scoped_views']['dashboard_view']['script_operator_scope']['namespace']);
         $this->assertTrue($visibility['tenant_a_scoped_views']['schedule_list']['includes_own_schedule']);
         $this->assertTrue($visibility['tenant_a_scoped_views']['schedule_list']['excludes_foreign_schedule']);
         $this->assertSame('billing', $visibility['tenant_a_scoped_views']['schedule_list']['operator_scope']['namespace']);
@@ -101,6 +110,13 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertTrue($visibility['unscoped_view_authority']['workflow_list']['includes_tenant_b_run']);
         $this->assertSame('billing-visible', $visibility['unscoped_view_authority']['workflow_list']['tenant_a_search_attribute_visible']);
         $this->assertSame('shipping-secret', $visibility['unscoped_view_authority']['workflow_list']['tenant_b_search_attribute_visible']);
+        $this->assertSame('cluster', $visibility['unscoped_view_authority']['operator_api_stats']['operator_scope']['authority']);
+        $this->assertNull($visibility['unscoped_view_authority']['operator_api_stats']['operator_scope']['namespace']);
+        $this->assertTrue($visibility['unscoped_view_authority']['operator_api_stats']['flow_count_covers_fixture_runs']);
+        $this->assertSame('/', $visibility['unscoped_view_authority']['dashboard_view']['path']);
+        $this->assertTrue($visibility['unscoped_view_authority']['dashboard_view']['scope_value_visible']);
+        $this->assertTrue($visibility['unscoped_view_authority']['dashboard_view']['authority_description_visible']);
+        $this->assertSame('cluster', $visibility['unscoped_view_authority']['dashboard_view']['script_operator_scope']['authority']);
         $this->assertSame('cluster', $visibility['unscoped_view_authority']['schedule_list']['operator_scope']['authority']);
         $this->assertNull($visibility['unscoped_view_authority']['schedule_list']['operator_scope']['namespace']);
         $this->assertTrue($visibility['unscoped_view_authority']['schedule_list']['includes_tenant_a_schedule']);
@@ -157,6 +173,14 @@ class NamespaceConformanceCommandTest extends TestCase
         $wrongCapturedScope = $visibility;
         data_set($wrongCapturedScope, 'tenant_a_scoped_views.api_captures.workflow_list.json.operator_scope.namespace', 'shipping');
         $this->assertFalse($passes($wrongCapturedScope));
+
+        $missingDashboardScope = $visibility;
+        data_set($missingDashboardScope, 'tenant_a_scoped_views.dashboard_view.script_operator_scope.namespace', null);
+        $this->assertFalse($passes($missingDashboardScope));
+
+        $wrongStatsScope = $visibility;
+        data_set($wrongStatsScope, 'tenant_a_scoped_views.operator_api_stats.operator_scope.namespace', 'shipping');
+        $this->assertFalse($passes($wrongStatsScope));
 
         $missingCapturedOwnSearchAttribute = $visibility;
         data_set($missingCapturedOwnSearchAttribute, 'tenant_a_scoped_views.api_captures.workflow_list.json.data.0.search_attributes.tenant_marker', null);
