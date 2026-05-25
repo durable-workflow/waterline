@@ -90,10 +90,11 @@ The command seeds two tenant namespaces in the host database, exercises
 Waterline list, detail, schedule, search-attribute, and unscoped authority
 surfaces through the package HTTP routes, emits a
 `durable-workflow.v2.namespace-runtime.result` document with
-`waterline_operator_namespace_visibility` populated, and removes its fixture
-rows unless `--keep-fixtures` is supplied. It is a shard, not a full namespace
-run: all non-Waterline namespace scenarios remain `not_covered` for the full
-harness to merge or evaluate separately.
+`waterline_operator_namespace_visibility` populated, includes the scoped and
+unscoped API response captures used by the pass/fail checks, and removes its
+fixture rows unless `--keep-fixtures` is supplied. It is a shard, not a full
+namespace run: all non-Waterline namespace scenarios remain `not_covered` for
+the full harness to merge or evaluate separately.
 
 Saga compensation visibility is load-bearing evidence for
 `saga_runtime_contract`. A result must compare the public saga runtime

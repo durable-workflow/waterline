@@ -70,6 +70,18 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertTrue($visibility['tenant_a_scoped_views']['workflow_list']['foreign_search_attribute_absent']);
         $this->assertSame('billing', $visibility['tenant_a_scoped_views']['workflow_list']['operator_scope']['namespace']);
         $this->assertSame('billing-visible', $visibility['tenant_a_scoped_views']['workflow_list']['search_attribute_value_visible']);
+        $this->assertSame($visibility['api_captures'], $report['api_captures']);
+        $this->assertSame('/api/flows/completed', $visibility['tenant_a_scoped_views']['api_captures']['workflow_list']['path']);
+        $this->assertSame('/waterline/api/flows/completed', $visibility['tenant_a_scoped_views']['api_captures']['workflow_list']['request_path']);
+        $this->assertSame('billing', $visibility['tenant_a_scoped_views']['api_captures']['workflow_list']['json']['operator_scope']['namespace']);
+        $this->assertStringContainsString(
+            'billing-visible',
+            json_encode($visibility['tenant_a_scoped_views']['api_captures']['workflow_list']['json'], JSON_THROW_ON_ERROR),
+        );
+        $this->assertStringNotContainsString(
+            'shipping-secret',
+            json_encode($visibility['tenant_a_scoped_views']['api_captures']['workflow_list']['json'], JSON_THROW_ON_ERROR),
+        );
         $this->assertSame('billing', $visibility['tenant_a_scoped_views']['workflow_detail']['namespace']);
         $this->assertSame('billing', $visibility['tenant_a_scoped_views']['workflow_detail']['operator_scope']['namespace']);
         $this->assertSame('billing-visible', $visibility['tenant_a_scoped_views']['workflow_detail']['search_attribute_value_visible']);
@@ -137,6 +149,18 @@ class NamespaceConformanceCommandTest extends TestCase
         $missingOwnSearchAttribute = $visibility;
         data_set($missingOwnSearchAttribute, 'tenant_a_scoped_views.workflow_list.search_attribute_value_visible', null);
         $this->assertFalse($passes($missingOwnSearchAttribute));
+
+        $missingHttpCapture = $visibility;
+        unset($missingHttpCapture['tenant_a_scoped_views']['api_captures']['workflow_list']);
+        $this->assertFalse($passes($missingHttpCapture));
+
+        $wrongCapturedScope = $visibility;
+        data_set($wrongCapturedScope, 'tenant_a_scoped_views.api_captures.workflow_list.json.operator_scope.namespace', 'shipping');
+        $this->assertFalse($passes($wrongCapturedScope));
+
+        $missingCapturedOwnSearchAttribute = $visibility;
+        data_set($missingCapturedOwnSearchAttribute, 'tenant_a_scoped_views.api_captures.workflow_list.json.data.0.search_attributes.tenant_marker', null);
+        $this->assertFalse($passes($missingCapturedOwnSearchAttribute));
 
         $missingUnscopedRequest = $visibility;
         unset($missingUnscopedRequest['unscoped_view_authority']['workflow_list']);

@@ -146,6 +146,11 @@ class NamespaceConformanceCommand extends Command
                     $namespaces['b'] => $tenantBEvidence['detail_namespace_identity'],
                 ],
                 'unscoped_view_authority' => $unscopedAuthority,
+                'api_captures' => [
+                    'tenant_a_scoped_views' => $tenantAEvidence['api_captures'] ?? [],
+                    'tenant_b_scoped_views' => $tenantBEvidence['api_captures'] ?? [],
+                    'unscoped_view_authority' => $unscopedAuthority['api_captures'] ?? [],
+                ],
                 'fixture_ids' => $fixtures,
             ];
 
@@ -215,6 +220,7 @@ class NamespaceConformanceCommand extends Command
             ],
             'scenario_results' => array_values($scenarioResults),
             'waterline_operator_visibility' => $evidence,
+            'api_captures' => is_array($evidence['api_captures'] ?? null) ? $evidence['api_captures'] : [],
             'findings' => $this->findings($scenarioResults),
             'finding_links' => $this->findingLinks($scenarioResults),
         ];
@@ -440,6 +446,15 @@ class NamespaceConformanceCommand extends Command
         return [
             'namespace' => $namespace,
             'operator_scope' => $this->operatorScope($listJson),
+            'api_captures' => [
+                'workflow_list' => $this->responseCapture($list),
+                'workflow_detail' => $this->responseCapture($detail),
+                'foreign_workflow_detail' => $this->responseCapture($foreignDetail),
+                'schedule_list' => $this->responseCapture($schedules),
+                'schedule_detail' => $this->responseCapture($scheduleDetail),
+                'foreign_schedule_detail' => $this->responseCapture($foreignScheduleDetail),
+                'schedule_history' => $this->responseCapture($scheduleHistory),
+            ],
             'workflow_list' => [
                 'path' => '/api/flows/completed',
                 'status' => $list['status'],
@@ -456,6 +471,7 @@ class NamespaceConformanceCommand extends Command
                 'excludes_foreign_run' => ! collect($listRows)->contains('id', $foreignRun->id),
                 'search_attribute_value_visible' => data_get($ownListRow, 'search_attributes.tenant_marker'),
                 'expected_search_attribute_value' => $ownRunMarker,
+                'forbidden_search_attribute_value' => $foreignRunMarker,
                 'foreign_search_attribute_absent' => ! $this->jsonContains($listJson, $foreignRunMarker),
                 'visibility_namespace' => data_get($listJson, 'visibility_filters.applied.namespace'),
                 'operator_scope_namespace' => data_get($listJson, 'operator_scope.namespace'),
@@ -469,6 +485,7 @@ class NamespaceConformanceCommand extends Command
                 'namespace' => data_get($detailJson, 'namespace'),
                 'search_attribute_value_visible' => data_get($detailJson, 'search_attributes.tenant_marker'),
                 'expected_search_attribute_value' => $ownRunMarker,
+                'forbidden_search_attribute_value' => $foreignRunMarker,
                 'foreign_search_attribute_absent' => ! $this->jsonContains($detailJson, $foreignRunMarker),
                 'operator_scope_namespace' => data_get($detailJson, 'operator_scope.namespace'),
                 'operator_scope_authority' => data_get($detailJson, 'operator_scope.authority'),
@@ -498,6 +515,7 @@ class NamespaceConformanceCommand extends Command
                     && ! collect($scheduleRows)->contains('id', $foreignSchedule->schedule_id),
                 'search_attribute_value_visible' => data_get($ownScheduleRow, 'search_attributes.tenant_marker'),
                 'expected_search_attribute_value' => $ownScheduleMarker,
+                'forbidden_search_attribute_value' => $foreignScheduleMarker,
                 'foreign_search_attribute_absent' => ! $this->jsonContains($schedulesJson, $foreignScheduleMarker),
                 'operator_scope_namespace' => data_get($schedulesJson, 'operator_scope.namespace'),
                 'operator_scope_authority' => data_get($schedulesJson, 'operator_scope.authority'),
@@ -510,6 +528,7 @@ class NamespaceConformanceCommand extends Command
                 'namespace' => data_get($scheduleDetailJson, 'namespace'),
                 'search_attribute_value_visible' => data_get($scheduleDetailJson, 'search_attributes.tenant_marker'),
                 'expected_search_attribute_value' => $ownScheduleMarker,
+                'forbidden_search_attribute_value' => $foreignScheduleMarker,
                 'foreign_search_attribute_absent' => ! $this->jsonContains($scheduleDetailJson, $foreignScheduleMarker),
                 'operator_scope_namespace' => data_get($scheduleDetailJson, 'operator_scope.namespace'),
                 'operator_scope_authority' => data_get($scheduleDetailJson, 'operator_scope.authority'),
@@ -557,6 +576,10 @@ class NamespaceConformanceCommand extends Command
         return [
             'documented_safe_authority' => $this->documentsClusterAuthority($workflowJson)
                 && $this->documentsClusterAuthority($scheduleJson),
+            'api_captures' => [
+                'workflow_list' => $this->responseCapture($workflowList),
+                'schedule_list' => $this->responseCapture($scheduleList),
+            ],
             'workflow_list' => [
                 'path' => '/api/flows/completed',
                 'status' => $workflowList['status'],
@@ -627,12 +650,13 @@ class NamespaceConformanceCommand extends Command
     }
 
     /**
-     * @return array{status: int, json: array<string, mixed>, body: string}
+     * @return array{method: string, path: string, request_path: string, status: int, json: array<string, mixed>, body: string}
      */
     private function apiGet(HttpKernel $kernel, string $path): array
     {
+        $requestPath = '/'.trim((string) config('waterline.path', 'waterline'), '/').$path;
         $request = Request::create(
-            '/'.trim((string) config('waterline.path', 'waterline'), '/').$path,
+            $requestPath,
             'GET',
             server: ['HTTP_ACCEPT' => 'application/json'],
         );
@@ -650,9 +674,32 @@ class NamespaceConformanceCommand extends Command
         }
 
         return [
+            'method' => 'GET',
+            'path' => $path,
+            'request_path' => $requestPath,
             'status' => $response->getStatusCode(),
             'json' => $json,
             'body' => $body,
+        ];
+    }
+
+    /**
+     * @param array{method?: string, path?: string, request_path?: string, status?: int, json?: array<string, mixed>, body?: string} $response
+     * @return array<string, mixed>
+     */
+    private function responseCapture(array $response): array
+    {
+        $body = (string) ($response['body'] ?? '');
+        $json = $response['json'] ?? [];
+
+        return [
+            'method' => (string) ($response['method'] ?? 'GET'),
+            'path' => (string) ($response['path'] ?? ''),
+            'request_path' => (string) ($response['request_path'] ?? ''),
+            'status' => (int) ($response['status'] ?? 0),
+            'operator_scope' => is_array($json) ? $this->operatorScope($json) : [],
+            'body_sha256' => hash('sha256', $body),
+            'json' => is_array($json) ? $json : [],
         ];
     }
 
@@ -721,6 +768,154 @@ class NamespaceConformanceCommand extends Command
             && data_get($json, 'operator_scope.namespace') === null
             && is_string($description)
             && trim($description) !== '';
+    }
+
+    /**
+     * @param array<string, mixed> $tenant
+     */
+    private function tenantApiCapturesPass(array $tenant, string $namespace): bool
+    {
+        foreach ([
+            'workflow_list' => '/api/flows/completed',
+            'workflow_detail' => (string) data_get($tenant, 'workflow_detail.path'),
+            'schedule_list' => '/api/v2/schedules',
+            'schedule_detail' => (string) data_get($tenant, 'schedule_detail.path'),
+            'schedule_history' => (string) data_get($tenant, 'schedule_history.path'),
+        ] as $captureKey => $path) {
+            if (! $this->captureStatusAndScopePass(
+                data_get($tenant, 'api_captures.'.$captureKey),
+                $path,
+                200,
+                'namespace',
+                $namespace,
+                'tenant',
+            )) {
+                return false;
+            }
+        }
+
+        foreach ([
+            'foreign_workflow_detail' => (string) data_get($tenant, 'foreign_workflow_detail.path'),
+            'foreign_schedule_detail' => (string) data_get($tenant, 'foreign_schedule_detail.path'),
+        ] as $captureKey => $path) {
+            if (! $this->captureStatusPass(data_get($tenant, 'api_captures.'.$captureKey), $path, 404)) {
+                return false;
+            }
+        }
+
+        foreach ([
+            'workflow_list',
+            'workflow_detail',
+            'schedule_list',
+            'schedule_detail',
+        ] as $evidenceKey) {
+            if (! $this->captureSearchAttributePass($tenant, $evidenceKey)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param array<string, mixed> $evidence
+     */
+    private function unscopedApiCapturesPass(array $evidence): bool
+    {
+        $unscoped = $evidence['unscoped_view_authority'] ?? [];
+        if (! is_array($unscoped)) {
+            return false;
+        }
+
+        foreach ([
+            'workflow_list' => '/api/flows/completed',
+            'schedule_list' => '/api/v2/schedules',
+        ] as $captureKey => $path) {
+            if (! $this->captureStatusAndScopePass(
+                data_get($unscoped, 'api_captures.'.$captureKey),
+                $path,
+                200,
+                'cluster',
+                null,
+                'cluster',
+            )) {
+                return false;
+            }
+        }
+
+        foreach ([
+            'workflow_list.tenant_a',
+            'workflow_list.tenant_b',
+            'schedule_list.tenant_a',
+            'schedule_list.tenant_b',
+        ] as $prefix) {
+            $expected = data_get($unscoped, $prefix.'_expected_search_attribute_value');
+            if (! is_string($expected) || $expected === '') {
+                return false;
+            }
+
+            $captureKey = str_starts_with($prefix, 'workflow_list.') ? 'workflow_list' : 'schedule_list';
+            $json = data_get($unscoped, 'api_captures.'.$captureKey.'.json');
+            if (! is_array($json) || ! $this->jsonContains($json, $expected)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function captureStatusAndScopePass(
+        mixed $capture,
+        string $path,
+        int $status,
+        string $mode,
+        ?string $namespace,
+        string $authority,
+    ): bool {
+        if (! $this->captureStatusPass($capture, $path, $status)) {
+            return false;
+        }
+
+        return data_get($capture, 'json.operator_scope.mode') === $mode
+            && data_get($capture, 'json.operator_scope.namespace') === $namespace
+            && data_get($capture, 'json.operator_scope.authority') === $authority
+            && data_get($capture, 'operator_scope.mode') === $mode
+            && data_get($capture, 'operator_scope.namespace') === $namespace
+            && data_get($capture, 'operator_scope.authority') === $authority;
+    }
+
+    private function captureStatusPass(mixed $capture, string $path, int $status): bool
+    {
+        return is_array($capture)
+            && data_get($capture, 'method') === 'GET'
+            && data_get($capture, 'path') === $path
+            && data_get($capture, 'status') === $status
+            && is_string(data_get($capture, 'body_sha256'))
+            && preg_match('/^[a-f0-9]{64}$/', (string) data_get($capture, 'body_sha256')) === 1
+            && is_array(data_get($capture, 'json'));
+    }
+
+    /**
+     * @param array<string, mixed> $tenant
+     */
+    private function captureSearchAttributePass(array $tenant, string $evidenceKey): bool
+    {
+        $expected = data_get($tenant, $evidenceKey.'.expected_search_attribute_value');
+        if (! is_string($expected) || $expected === '') {
+            return false;
+        }
+
+        $json = data_get($tenant, 'api_captures.'.$evidenceKey.'.json');
+        if (! is_array($json) || ! $this->jsonContains($json, $expected)) {
+            return false;
+        }
+
+        $forbidden = data_get($tenant, $evidenceKey.'.forbidden_search_attribute_value');
+        if (is_string($forbidden) && $forbidden !== '' && $this->jsonContains($json, $forbidden)) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -817,6 +1012,10 @@ class NamespaceConformanceCommand extends Command
                     return false;
                 }
             }
+
+            if (! $this->tenantApiCapturesPass($tenant, $namespace)) {
+                return false;
+            }
         }
 
         if (data_get($evidence, 'unscoped_view_authority.documented_safe_authority') !== true) {
@@ -856,6 +1055,10 @@ class NamespaceConformanceCommand extends Command
             if (data_get($evidence, 'unscoped_view_authority.'.$prefix.'_search_attribute_visible') !== $expected) {
                 return false;
             }
+        }
+
+        if (! $this->unscopedApiCapturesPass($evidence)) {
+            return false;
         }
 
         return true;
