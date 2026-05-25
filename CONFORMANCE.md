@@ -81,7 +81,15 @@ visibility cell:
 
 ```bash
 php artisan waterline:namespace-conformance \
+  --artifact-version=server=0.2.N \
+  --artifact-version=cli=0.1.N \
+  --artifact-version=workflow=2.0.0-alpha.N \
+  --artifact-version=sdk-python=0.4.N \
   --artifact-version=waterline=2.0.0-alpha.N \
+  --artifact-source=server=docker_image \
+  --artifact-source=cli=official_install_script \
+  --artifact-source=workflow=packagist_package \
+  --artifact-source=sdk-python=pypi_package \
   --artifact-source=waterline=packagist_package \
   --json
 ```
@@ -93,10 +101,12 @@ routes, emits a
 `durable-workflow.v2.namespace-runtime.result` document with
 `waterline_operator_namespace_visibility` populated, includes the scoped and
 unscoped API and dashboard response captures used by the pass/fail checks,
-adds an `operator_surface_matrix` verdict for scoped workflow lists,
-workflow details, schedule views, search-attribute values, dashboard scope,
-stats/operator APIs, and documented unscoped authority, and removes its
-fixture rows unless `--keep-fixtures` is supplied. It is a shard, not a full
+records the conformance suite version and rejects missing, local, source, or
+development artifact metadata, adds an `operator_surface_matrix` verdict for
+scoped workflow lists, workflow details, schedule views,
+search-attribute values, dashboard scope, stats/operator APIs, and documented
+unscoped authority, and removes its fixture rows unless `--keep-fixtures` is
+supplied. It is a shard, not a full
 namespace run: all non-Waterline namespace scenarios remain `not_covered` for
 the full harness to merge or evaluate separately.
 

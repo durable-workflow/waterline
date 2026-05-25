@@ -10,6 +10,7 @@ use Waterline\Console\NamespaceConformanceCommand;
 use Waterline\Tests\TestCase;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowSchedule;
+use Workflow\V2\Support\PlatformConformanceSuite;
 
 class NamespaceConformanceCommandTest extends TestCase
 {
@@ -29,10 +30,10 @@ class NamespaceConformanceCommandTest extends TestCase
             ],
             '--artifact-source' => [
                 'server=docker_image',
-                'cli=official_install_script',
-                'workflow=packagist_package',
-                'sdk-python=pypi_package',
-                'waterline=packagist_package',
+                'cli=published_install_script',
+                'workflow=published_composer_package',
+                'sdk-python=published_pypi_package',
+                'waterline=published_package',
             ],
         ];
 
@@ -55,12 +56,21 @@ class NamespaceConformanceCommandTest extends TestCase
         $visibility = $report['waterline_operator_visibility'];
 
         $this->assertSame('durable-workflow.v2.namespace-runtime.result', $report['schema']);
+        $this->assertSame(PlatformConformanceSuite::VERSION, $report['suite_version']);
         $this->assertSame('waterline-operator-namespace-shard', $report['coverage_scope']);
         $this->assertSame('non_passing', $report['outcome']);
         $this->assertSame('2.0.0-alpha.61', $report['artifact_versions']['waterline']);
-        $this->assertSame('packagist_package', $report['artifact_sources']['waterline']);
+        $this->assertSame('2.0.0-alpha.177', $report['artifact_versions']['workflow']);
+        $this->assertSame('2.0.0-alpha.177', $report['artifact_versions']['workflow-php']);
+        $this->assertSame('published_package', $report['artifact_sources']['waterline']);
+        $this->assertSame('published_composer_package', $report['artifact_sources']['workflow']);
+        $this->assertSame('published_composer_package', $report['artifact_sources']['workflow-php']);
+        $this->assertSame('waterline_contract_surface', $report['runtime_matrix']['claimed_targets'][0]);
+        $this->assertContains('waterline_operator_namespace_visibility', $report['runtime_matrix']['covered_scenarios']);
 
+        $this->assertSame('pass', $scenarios['published_artifact_install_only']['status']);
         $this->assertSame('pass', $waterline['status']);
+        $this->assertSame('pass', $scenarios['result_record_and_product_finding_routing']['status']);
         $this->assertSame('billing', $visibility['tenant_a_scoped_views']['operator_scope']['namespace']);
         $this->assertSame('tenant', $visibility['tenant_a_scoped_views']['operator_scope']['authority']);
         $this->assertSame('shipping', $visibility['tenant_b_scoped_views']['operator_scope']['namespace']);
@@ -153,6 +163,42 @@ class NamespaceConformanceCommandTest extends TestCase
             'The command should clean up schedule fixture rows by default.',
         );
         $this->assertScheduleFixturesDeletedIncludingTrashed($visibility['fixture_ids']['schedule_ids']);
+    }
+
+    public function testCommandFailsWhenPublishedArtifactTupleIsNotProven(): void
+    {
+        $reportPath = $this->ephemeralPath('waterline-namespace-conformance');
+
+        $this->artisan('waterline:namespace-conformance', [
+            '--namespace-a' => 'billing',
+            '--namespace-b' => 'shipping',
+            '--run-id' => 'waterline-ns-local-artifact-test',
+            '--artifact-version' => [
+                'waterline=dev-main',
+            ],
+            '--artifact-source' => [
+                'waterline=local_checkout',
+            ],
+            '--output' => $reportPath,
+        ])->assertExitCode(1);
+
+        $report = $this->readJson($reportPath);
+        $scenarios = array_column($report['scenario_results'], null, 'scenario_id');
+
+        $this->assertSame('fail', $report['outcome']);
+        $this->assertSame('fail', $scenarios['published_artifact_install_only']['status']);
+        $this->assertSame(
+            ['server', 'cli', 'workflow-php', 'sdk-python'],
+            $scenarios['published_artifact_install_only']['observed_outputs']['missing_artifact_versions'],
+        );
+        $this->assertSame(
+            'local_checkout',
+            $scenarios['published_artifact_install_only']['observed_outputs']['forbidden_sources']['waterline'],
+        );
+        $this->assertSame(
+            'dev_or_branch_version',
+            $scenarios['published_artifact_install_only']['observed_outputs']['rejected_versions']['waterline']['reason'],
+        );
     }
 
     /**

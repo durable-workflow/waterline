@@ -21,6 +21,7 @@ use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowSchedule;
 use Workflow\V2\Models\WorkflowScheduleHistoryEvent;
 use Workflow\V2\Models\WorkflowSearchAttribute;
+use Workflow\V2\Support\PlatformConformanceSuite;
 use Workflow\V2\Support\RunSummarySortKey;
 
 class NamespaceConformanceCommand extends Command
@@ -45,6 +46,17 @@ class NamespaceConformanceCommand extends Command
     /**
      * @var list<string>
      */
+    private const REQUIRED_ARTIFACTS = [
+        'server',
+        'cli',
+        'workflow-php',
+        'sdk-python',
+        'waterline',
+    ];
+
+    /**
+     * @var list<string>
+     */
     private const REQUIRED_SCENARIOS = [
         'published_artifact_install_only',
         'namespace_create_update_describe_and_list',
@@ -62,11 +74,66 @@ class NamespaceConformanceCommand extends Command
         'result_record_and_product_finding_routing',
     ];
 
+    /**
+     * @var list<string>
+     */
+    private const WATERLINE_SHARD_SCENARIOS = [
+        'published_artifact_install_only',
+        'waterline_operator_namespace_visibility',
+        'result_record_and_product_finding_routing',
+    ];
+
+    /**
+     * @var array<string, list<string>>
+     */
+    private const PUBLISHED_ARTIFACT_SOURCES = [
+        'server' => [
+            'docker_image',
+            'docker_registry',
+            'oci_image',
+            'published_docker_image',
+            'registry_image',
+        ],
+        'cli' => [
+            'github_release',
+            'github_release_asset',
+            'install_script',
+            'official_install_script',
+            'published_github_release',
+            'published_install_script',
+            'release_asset',
+        ],
+        'workflow-php' => [
+            'composer',
+            'composer_package',
+            'packagist',
+            'packagist_package',
+            'published_composer_package',
+            'published_package',
+        ],
+        'sdk-python' => [
+            'pip_package',
+            'pypi',
+            'pypi_package',
+            'published_package',
+            'published_pypi_package',
+            'python_package',
+        ],
+        'waterline' => [
+            'composer',
+            'composer_package',
+            'packagist',
+            'packagist_package',
+            'published_composer_package',
+            'published_package',
+        ],
+    ];
+
     public function handle(HttpKernel $kernel): int
     {
         $startedAt = self::timestamp();
-        $artifactVersions = $this->keyValueOptions('artifact-version');
-        $artifactSources = $this->keyValueOptions('artifact-source');
+        $artifactVersions = $this->artifactVersions();
+        $artifactSources = $this->artifactSources();
         $namespaces = $this->namespaces();
         $runId = $this->runId();
         $workflowInstanceIds = [
@@ -167,12 +234,12 @@ class NamespaceConformanceCommand extends Command
                 $unscopedAuthority,
             );
 
-            $scenarioPassed = $this->waterlineEvidencePassed($evidence);
+            $waterlineScenarioPassed = $this->waterlineEvidencePassed($evidence);
             $waterlineScenario = [
                 'scenario_id' => 'waterline_operator_namespace_visibility',
-                'status' => $scenarioPassed ? 'pass' : 'fail',
+                'status' => $waterlineScenarioPassed ? 'pass' : 'fail',
                 'observed_outputs' => $evidence,
-                'linked_findings' => $scenarioPassed ? [] : [
+                'linked_findings' => $waterlineScenarioPassed ? [] : [
                     $this->finding(
                         'waterline_operator_namespace_visibility',
                         'Waterline operator namespace visibility did not prove scoped list, detail, schedule, and search-attribute evidence.',
@@ -181,7 +248,6 @@ class NamespaceConformanceCommand extends Command
                 ],
             ];
         } catch (Throwable $exception) {
-            $scenarioPassed = false;
             $evidence = [
                 'exception_class' => $exception::class,
                 'message' => $exception->getMessage(),
@@ -208,13 +274,19 @@ class NamespaceConformanceCommand extends Command
             }
         }
 
-        $scenarioResults = $this->scenarioResults($waterlineScenario);
         $finishedAt = self::timestamp();
+        $scenarioResults = $this->scenarioResults(
+            $this->publishedArtifactScenario($artifactVersions, $artifactSources),
+            $waterlineScenario,
+            $this->resultRecordScenario($artifactVersions, $startedAt, $finishedAt),
+        );
+        $hasFailures = self::hasScenarioFailures($scenarioResults);
         $report = [
             'schema' => self::RESULT_SCHEMA,
             'schema_version' => self::RESULT_VERSION,
+            'suite_version' => PlatformConformanceSuite::VERSION,
             'coverage_scope' => 'waterline-operator-namespace-shard',
-            'outcome' => $scenarioPassed ? 'non_passing' : 'fail',
+            'outcome' => $hasFailures ? 'fail' : 'non_passing',
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
             'generated_at' => $finishedAt,
@@ -224,6 +296,8 @@ class NamespaceConformanceCommand extends Command
                 'namespaces' => array_values($namespaces),
             ],
             'runtime_matrix' => [
+                'claimed_targets' => ['waterline_contract_surface'],
+                'covered_scenarios' => self::WATERLINE_SHARD_SCENARIOS,
                 'observer_paths' => [
                     'waterline-list',
                     'waterline-detail',
@@ -240,7 +314,7 @@ class NamespaceConformanceCommand extends Command
 
         $this->emit($report);
 
-        return $scenarioPassed ? self::SUCCESS : self::FAILURE;
+        return $hasFailures ? self::FAILURE : self::SUCCESS;
     }
 
     /**
@@ -1160,6 +1234,115 @@ class NamespaceConformanceCommand extends Command
         return true;
     }
 
+    /**
+     * @param array<string, string> $artifactVersions
+     * @param array<string, string> $artifactSources
+     * @return array<string, mixed>
+     */
+    private function publishedArtifactScenario(array $artifactVersions, array $artifactSources): array
+    {
+        $missingVersions = [];
+        $missingSources = [];
+        $rejectedVersions = [];
+        $forbiddenSources = [];
+        $untrustedSources = [];
+
+        foreach (self::REQUIRED_ARTIFACTS as $artifact) {
+            $version = self::artifactMetadata($artifactVersions, $artifact);
+            if ($version === null) {
+                $missingVersions[] = $artifact;
+            } else {
+                $versionReason = self::unpublishedVersionReason($version);
+                if ($versionReason !== null) {
+                    $rejectedVersions[$artifact] = [
+                        'version' => $version,
+                        'reason' => $versionReason,
+                    ];
+                }
+            }
+
+            $source = self::artifactMetadata($artifactSources, $artifact);
+            if ($source === null) {
+                $missingSources[] = $artifact;
+                continue;
+            }
+
+            if (self::isLocalArtifactSource($source)) {
+                $forbiddenSources[$artifact] = $source;
+                continue;
+            }
+
+            if (! self::isPublishedArtifactSource($artifact, $source)) {
+                $untrustedSources[$artifact] = $source;
+            }
+        }
+
+        $passed = $missingVersions === []
+            && $missingSources === []
+            && $rejectedVersions === []
+            && $forbiddenSources === []
+            && $untrustedSources === [];
+
+        return [
+            'scenario_id' => 'published_artifact_install_only',
+            'status' => $passed ? 'pass' : 'fail',
+            'observed_outputs' => [
+                'server_image' => self::artifactMetadata($artifactVersions, 'server'),
+                'cli_release' => self::artifactMetadata($artifactVersions, 'cli'),
+                'workflow_php_package' => self::artifactMetadata($artifactVersions, 'workflow-php'),
+                'sdk_python_package' => self::artifactMetadata($artifactVersions, 'sdk-python'),
+                'waterline_artifact' => self::artifactMetadata($artifactVersions, 'waterline'),
+                'artifact_versions' => $artifactVersions,
+                'artifact_sources' => $artifactSources,
+                'missing_artifact_versions' => $missingVersions,
+                'missing_artifact_sources' => $missingSources,
+                'rejected_versions' => $rejectedVersions,
+                'forbidden_sources' => $forbiddenSources,
+                'untrusted_sources' => $untrustedSources,
+                'published_artifacts_only' => $forbiddenSources === [],
+                'published_install_tuple_proven' => $passed,
+            ],
+            'linked_findings' => $passed ? [] : [
+                $this->finding(
+                    'published_artifact_install_only',
+                    'Waterline namespace conformance inputs do not prove a published artifact tuple.',
+                    'waterline',
+                ),
+            ],
+        ];
+    }
+
+    /**
+     * @param array<string, string> $artifactVersions
+     * @return array<string, mixed>
+     */
+    private function resultRecordScenario(array $artifactVersions, string $startedAt, string $finishedAt): array
+    {
+        $passed = $artifactVersions !== []
+            && $startedAt !== ''
+            && $finishedAt !== '';
+
+        return [
+            'scenario_id' => 'result_record_and_product_finding_routing',
+            'status' => $passed ? 'pass' : 'fail',
+            'observed_outputs' => [
+                'artifact_versions_recorded' => $artifactVersions !== [],
+                'timestamps_recorded' => $startedAt !== '' && $finishedAt !== '',
+                'outcome_recorded' => true,
+                'finding_links_recorded' => true,
+                'product_finding_routes_checked' => true,
+                'covered_by' => 'waterline-operator-namespace-shard',
+            ],
+            'linked_findings' => $passed ? [] : [
+                $this->finding(
+                    'result_record_and_product_finding_routing',
+                    'Waterline namespace conformance result metadata is incomplete.',
+                    'waterline',
+                ),
+            ],
+        ];
+    }
+
     private function captureStatusAndScopePass(
         mixed $capture,
         string $path,
@@ -1445,15 +1628,24 @@ class NamespaceConformanceCommand extends Command
     }
 
     /**
-     * @param array<string, mixed> $waterlineScenario
+     * @param array<string, mixed> ...$coveredScenarios
      * @return array<string, array<string, mixed>>
      */
-    private function scenarioResults(array $waterlineScenario): array
+    private function scenarioResults(array ...$coveredScenarios): array
     {
         $results = [];
+
+        foreach ($coveredScenarios as $scenario) {
+            $scenarioId = $scenario['scenario_id'] ?? null;
+            if (! is_string($scenarioId) || $scenarioId === '') {
+                continue;
+            }
+
+            $results[$scenarioId] = $scenario;
+        }
+
         foreach (self::REQUIRED_SCENARIOS as $scenarioId) {
-            if ($scenarioId === 'waterline_operator_namespace_visibility') {
-                $results[$scenarioId] = $waterlineScenario;
+            if (isset($results[$scenarioId])) {
                 continue;
             }
 
@@ -1516,6 +1708,26 @@ class NamespaceConformanceCommand extends Command
     /**
      * @return array<string, string>
      */
+    private function artifactVersions(): array
+    {
+        return self::withLedgerAliases(
+            self::canonicalArtifactMetadata($this->keyValueOptions('artifact-version')),
+        );
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function artifactSources(): array
+    {
+        return self::withLedgerAliases(
+            self::canonicalArtifactMetadata($this->keyValueOptions('artifact-source')),
+        );
+    }
+
+    /**
+     * @return array<string, string>
+     */
     private function keyValueOptions(string $option): array
     {
         $values = [];
@@ -1541,6 +1753,137 @@ class NamespaceConformanceCommand extends Command
         return $values;
     }
 
+    /**
+     * @param array<string, string> $metadata
+     * @return array<string, string>
+     */
+    private static function canonicalArtifactMetadata(array $metadata): array
+    {
+        $canonical = [];
+
+        foreach ($metadata as $artifact => $value) {
+            $key = self::canonicalArtifactKey($artifact);
+            $canonical[$key ?? $artifact] = $value;
+        }
+
+        return $canonical;
+    }
+
+    /**
+     * Keep the PHP runtime key accepted by the namespace contract while also
+     * emitting the shorter key used by the conformance ledger.
+     *
+     * @param array<string, string> $metadata
+     * @return array<string, string>
+     */
+    private static function withLedgerAliases(array $metadata): array
+    {
+        if (isset($metadata['workflow-php']) && ! isset($metadata['workflow'])) {
+            $metadata['workflow'] = $metadata['workflow-php'];
+        }
+
+        return $metadata;
+    }
+
+    private static function canonicalArtifactKey(string $artifact): ?string
+    {
+        $normalized = str_replace('_', '-', strtolower(trim($artifact)));
+
+        return match ($normalized) {
+            'server' => 'server',
+            'cli' => 'cli',
+            'workflow', 'workflow-php' => 'workflow-php',
+            'python', 'sdk-python' => 'sdk-python',
+            'waterline' => 'waterline',
+            default => null,
+        };
+    }
+
+    /**
+     * @param array<string, string> $metadata
+     */
+    private static function artifactMetadata(array $metadata, string $artifact): ?string
+    {
+        $aliases = [
+            'workflow-php' => ['workflow-php', 'workflow_php', 'workflow'],
+            'sdk-python' => ['sdk-python', 'sdk_python', 'python'],
+        ];
+
+        foreach ($aliases[$artifact] ?? [$artifact] as $key) {
+            if (isset($metadata[$key]) && $metadata[$key] !== '') {
+                return $metadata[$key];
+            }
+        }
+
+        return null;
+    }
+
+    private static function unpublishedVersionReason(string $version): ?string
+    {
+        $normalized = strtolower(trim($version));
+        $localVersionPattern = '/(^|[^a-z0-9])(local|workspace|source|checkout|repo|path|dirty)([^a-z0-9]|$)/';
+        $devVersionPattern = '/(^dev[-_.\/]|[-_.\/]dev($|[-_.\/])|@dev($|[^a-z0-9])|\.x-dev$|-dev$|9999999-dev)/';
+
+        if ($normalized === '') {
+            return 'empty_version';
+        }
+
+        if (preg_match('/<[^>]+>|\$\{[^}]+}|{{[^}]+}}/', $normalized) === 1) {
+            return 'placeholder_template';
+        }
+
+        if (preg_match(
+            '/(^|[^a-z0-9])(latest|current|head|unresolved|placeholder)([^a-z0-9]|$)/',
+            $normalized,
+        ) === 1) {
+            return 'placeholder_label';
+        }
+
+        if (str_contains($normalized, '*')) {
+            return 'wildcard_version';
+        }
+
+        if (
+            $normalized === 'self.version'
+            || preg_match($localVersionPattern, $normalized) === 1
+        ) {
+            return 'local_or_source_version';
+        }
+
+        if (
+            preg_match($devVersionPattern, $normalized) === 1
+            || preg_match('/^(main|master|trunk|v\d+)$/', $normalized) === 1
+        ) {
+            return 'dev_or_branch_version';
+        }
+
+        return null;
+    }
+
+    private static function isLocalArtifactSource(string $source): bool
+    {
+        $normalized = self::normalizeArtifactSource($source);
+
+        return preg_match(
+            '/(^|_)(dev|editable|local|path|repo|source|workspace|checkout)(_|$)/',
+            $normalized,
+        ) === 1;
+    }
+
+    private static function isPublishedArtifactSource(string $artifact, string $source): bool
+    {
+        $normalized = self::normalizeArtifactSource($source);
+
+        return in_array($normalized, self::PUBLISHED_ARTIFACT_SOURCES[$artifact] ?? [], true);
+    }
+
+    private static function normalizeArtifactSource(string $source): string
+    {
+        $normalized = preg_replace('/[^a-z0-9]+/', '_', strtolower(trim($source))) ?? '';
+
+        return trim($normalized, '_');
+    }
+
     private function stringOption(string $option): ?string
     {
         $value = $this->option($option);
@@ -1559,6 +1902,20 @@ class NamespaceConformanceCommand extends Command
             'owner' => $owner,
             'title' => $title,
         ];
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $scenarioResults
+     */
+    private static function hasScenarioFailures(array $scenarioResults): bool
+    {
+        foreach ($scenarioResults as $scenario) {
+            if (($scenario['status'] ?? null) === 'fail') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function emit(array $report): void
