@@ -1839,8 +1839,16 @@ class NamespaceConformanceCommand extends Command
             return 'placeholder_label';
         }
 
+        if (preg_match('/(^|[._+~\/-])(?:n|x|xx|xxx)(?=$|[._+~\/-])/', $normalized) === 1) {
+            return 'placeholder_version_segment';
+        }
+
         if (str_contains($normalized, '*')) {
             return 'wildcard_version';
+        }
+
+        if (preg_match('/(^|[,\s])(?:[~^]|[<>]=?|=)/', $normalized) === 1) {
+            return 'version_constraint';
         }
 
         if (

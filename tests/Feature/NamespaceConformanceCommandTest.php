@@ -22,11 +22,11 @@ class NamespaceConformanceCommandTest extends TestCase
             '--shared-namespace' => 'shared',
             '--run-id' => 'waterline-ns-test',
             '--artifact-version' => [
-                'server=0.2.186',
-                'cli=0.1.67',
-                'workflow=2.0.0-alpha.177',
-                'sdk-python=0.4.78',
-                'waterline=2.0.0-alpha.61',
+                'server=0.2.202',
+                'cli=0.1.70',
+                'workflow=2.0.0-alpha.185',
+                'sdk-python=0.4.83',
+                'waterline=2.0.0-alpha.68',
             ],
             '--artifact-source' => [
                 'server=docker_image',
@@ -59,9 +59,9 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertSame(PlatformConformanceSuite::VERSION, $report['suite_version']);
         $this->assertSame('waterline-operator-namespace-shard', $report['coverage_scope']);
         $this->assertSame('non_passing', $report['outcome']);
-        $this->assertSame('2.0.0-alpha.61', $report['artifact_versions']['waterline']);
-        $this->assertSame('2.0.0-alpha.177', $report['artifact_versions']['workflow']);
-        $this->assertSame('2.0.0-alpha.177', $report['artifact_versions']['workflow-php']);
+        $this->assertSame('2.0.0-alpha.68', $report['artifact_versions']['waterline']);
+        $this->assertSame('2.0.0-alpha.185', $report['artifact_versions']['workflow']);
+        $this->assertSame('2.0.0-alpha.185', $report['artifact_versions']['workflow-php']);
         $this->assertSame('published_package', $report['artifact_sources']['waterline']);
         $this->assertSame('published_composer_package', $report['artifact_sources']['workflow']);
         $this->assertSame('published_composer_package', $report['artifact_sources']['workflow-php']);
@@ -199,6 +199,45 @@ class NamespaceConformanceCommandTest extends TestCase
             'dev_or_branch_version',
             $scenarios['published_artifact_install_only']['observed_outputs']['rejected_versions']['waterline']['reason'],
         );
+    }
+
+    public function testCommandRejectsPlaceholderPublishedArtifactVersions(): void
+    {
+        $reportPath = $this->ephemeralPath('waterline-namespace-conformance');
+
+        $this->artisan('waterline:namespace-conformance', [
+            '--namespace-a' => 'billing',
+            '--namespace-b' => 'shipping',
+            '--run-id' => 'waterline-ns-placeholder-artifact-test',
+            '--artifact-version' => [
+                'server=0.2.N',
+                'cli=0.1.N',
+                'workflow=2.0.0-alpha.N',
+                'sdk-python=0.4.N',
+                'waterline=2.0.0-alpha.N',
+            ],
+            '--artifact-source' => [
+                'server=docker_image',
+                'cli=published_install_script',
+                'workflow=published_composer_package',
+                'sdk-python=published_pypi_package',
+                'waterline=published_package',
+            ],
+            '--output' => $reportPath,
+        ])->assertExitCode(1);
+
+        $report = $this->readJson($reportPath);
+        $scenarios = array_column($report['scenario_results'], null, 'scenario_id');
+        $rejectedVersions = $scenarios['published_artifact_install_only']['observed_outputs']['rejected_versions'];
+
+        $this->assertSame('fail', $report['outcome']);
+        $this->assertSame('fail', $scenarios['published_artifact_install_only']['status']);
+        $this->assertSame([], $scenarios['published_artifact_install_only']['observed_outputs']['missing_artifact_versions']);
+        $this->assertSame('placeholder_version_segment', $rejectedVersions['server']['reason']);
+        $this->assertSame('placeholder_version_segment', $rejectedVersions['cli']['reason']);
+        $this->assertSame('placeholder_version_segment', $rejectedVersions['workflow-php']['reason']);
+        $this->assertSame('placeholder_version_segment', $rejectedVersions['sdk-python']['reason']);
+        $this->assertSame('placeholder_version_segment', $rejectedVersions['waterline']['reason']);
     }
 
     /**

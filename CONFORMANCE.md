@@ -2,7 +2,7 @@
 
 Waterline participates in the public platform conformance suite specified
 at <https://durable-workflow.github.io/docs/2.0/platform-conformance>,
-schema `durable-workflow.v2.platform-conformance.suite`, version `12`,
+schema `durable-workflow.v2.platform-conformance.suite`, version `15`,
 and mirrored by `Workflow\V2\Support\PlatformConformanceSuite`. This
 document is the per-repo claim: it lists the conformance targets
 Waterline claims, the categories it covers, and the release gate that
@@ -25,13 +25,15 @@ Waterline claims one target from the suite's matrix:
 | `namespace_runtime_contract` | public namespace runtime scenario manifest at `/platform-conformance/namespace-runtime-scenarios.json` plus Waterline list, detail, health, and operator API captures | stable |
 | `saga_runtime_contract` | public saga runtime scenario manifest at `/platform-conformance/saga-runtime-scenarios.json` plus in-progress and terminal compensation detail captures | stable |
 | `worker_versioning_runtime_contract` | public worker-versioning runtime scenario manifest at `/platform-conformance/worker-versioning-runtime-scenarios.json` plus worker and run compatibility captures | stable |
+| `migration_runtime_contract` | public migration runtime scenario manifest at `/platform-conformance/migration-runtime-scenarios.json` plus Waterline operator visibility for migrated histories, schedules, worker registrations, and rollback state | stable |
+| `skew_refusal_matrix_contract` | public skew refusal scenario manifest at `/platform-conformance/skew-refusal-matrix-scenarios.json` plus Waterline render classification and version-pair evidence | stable |
 | `waterline_observer_envelopes` | selected-run detail `observer_state` envelope | provisional |
 
 The stable `signal_query_runtime_contract` category is load-bearing for
 Waterline's observer comparison: a conformance run must be able to
 compare selected-run detail and the advertised query action path against
 public signal/query client results. The standalone observer-envelope
-fixture set remains **provisional** in suite version `12`. Waterline does
+fixture set remains **provisional** in suite version `15`. Waterline does
 not yet vendor a standalone public fixture directory; the existing
 per-repo tests under `tests/Feature/` and `tests/Unit/` exercise the
 `/waterline/api/v2/*` shapes against in-process fakes. Selected-run detail
@@ -51,7 +53,7 @@ detail envelope is the only observer surface captured.
 
 Namespace-scoped Waterline list, detail, health, and operator API
 visibility are load-bearing evidence for the stable
-`namespace_runtime_contract` category in suite version `12`. A release
+`namespace_runtime_contract` category in suite version `15`. A release
 result must evaluate the public namespace runtime scenario manifest
 published at `/platform-conformance/namespace-runtime-scenarios.json`
 against published Waterline artifacts; in-repo feature coverage remains
@@ -61,7 +63,7 @@ evidence, namespace lifecycle cleanup and recreate coverage, workflow and
 worker isolation, CLI and SDK namespace selection, search-attribute and
 schedule isolation, Waterline operator namespace visibility, explicit
 Nexus cross-namespace calls, reserved-name refusal, and result-record
-routing for product findings. Suite version `12` also binds the lifecycle
+routing for product findings. Suite version `15` also binds the lifecycle
 cleanup criteria that preserve cross-namespace external payload ownership:
 cleanup may remove only payload references owned by the deleted namespace,
 must keep tenant-owned cross-namespace workflow and service-call records
@@ -81,11 +83,11 @@ visibility cell:
 
 ```bash
 php artisan waterline:namespace-conformance \
-  --artifact-version=server=0.2.N \
-  --artifact-version=cli=0.1.N \
-  --artifact-version=workflow=2.0.0-alpha.N \
-  --artifact-version=sdk-python=0.4.N \
-  --artifact-version=waterline=2.0.0-alpha.N \
+  --artifact-version=server=0.2.202 \
+  --artifact-version=cli=0.1.70 \
+  --artifact-version=workflow=2.0.0-alpha.185 \
+  --artifact-version=sdk-python=0.4.83 \
+  --artifact-version=waterline=2.0.0-alpha.68 \
   --artifact-source=server=docker_image \
   --artifact-source=cli=official_install_script \
   --artifact-source=workflow=packagist_package \
@@ -101,8 +103,9 @@ routes, emits a
 `durable-workflow.v2.namespace-runtime.result` document with
 `waterline_operator_namespace_visibility` populated, includes the scoped and
 unscoped API and dashboard response captures used by the pass/fail checks,
-records the conformance suite version and rejects missing, local, source, or
-development artifact metadata, adds an `operator_surface_matrix` verdict for
+records the conformance suite version and rejects missing, placeholder,
+local, source, or development artifact metadata, adds an
+`operator_surface_matrix` verdict for
 scoped workflow lists, workflow details, schedule views,
 search-attribute values, dashboard scope, stats/operator APIs, and documented
 unscoped authority, and removes its fixture rows unless `--keep-fixtures` is
@@ -128,11 +131,18 @@ evidence for `worker_versioning_runtime_contract`. A result must compare
 worker build IDs, drain/resume state, no-compatible-worker diagnostics,
 and run compatibility fields through public Waterline surfaces.
 
-Upgrade-path migration visibility is outside this suite-12 claim until
-the public conformance origin publishes a stable runtime manifest for
-that category. Waterline release evidence must not treat in-repo upgrade
-smoke coverage as a substitute for a downloadable public scenario
-manifest.
+Migration runtime visibility is part of this suite-15 claim. Waterline
+release evidence must compare the public migration runtime scenario
+manifest against the resolved published artifact tuple and prove operator
+visibility for migrated histories, in-flight progress, schedules, worker
+registrations, new v2 starts, rollback state, and version-skew refusal.
+In-repo upgrade smoke coverage remains implementation evidence, not a
+substitute for a downloadable public scenario manifest result.
+
+Skew refusal matrix coverage is also part of this suite-15 claim. A
+release result must compare the public skew refusal scenario manifest
+against published artifacts and show how Waterline classifies compatible,
+backward-skewed, and unsupported server or worker protocol combinations.
 
 The standalone observer-envelope fixture set is promoted to **required**
 in a future suite version once the contract slice for the operator
@@ -147,10 +157,12 @@ tag.
 | Field | Value |
 | --- | --- |
 | Required claimed targets | `waterline_contract_surface` |
-| Required suite version | `PlatformConformanceSuite::VERSION` / public suite manifest version `12` |
-| Namespace runtime source | `/platform-conformance/namespace-runtime-scenarios.json` from the public docs origin, with `suite_version` `12` |
-| Saga runtime source | `/platform-conformance/saga-runtime-scenarios.json` from the public docs origin, with `suite_version` `12` |
-| CI job | `platform-conformance` (blocks on stable runtime categories including `signal_query_runtime_contract`, `search_attribute_runtime_contract`, `namespace_runtime_contract`, `saga_runtime_contract`, and `worker_versioning_runtime_contract`; advisory only for `waterline_observer_envelopes` while it is provisional) |
+| Required suite version | `PlatformConformanceSuite::VERSION` / public suite manifest version `15` |
+| Namespace runtime source | `/platform-conformance/namespace-runtime-scenarios.json` from the public docs origin, with `suite_version` `15` |
+| Saga runtime source | `/platform-conformance/saga-runtime-scenarios.json` from the public docs origin, with `suite_version` `15` |
+| Migration runtime source | `/platform-conformance/migration-runtime-scenarios.json` from the public docs origin, with `suite_version` `15` |
+| Skew refusal source | `/platform-conformance/skew-refusal-matrix-scenarios.json` from the public docs origin, with `suite_version` `15` |
+| CI job | `platform-conformance` (blocks on stable runtime categories including `signal_query_runtime_contract`, `search_attribute_runtime_contract`, `namespace_runtime_contract`, `saga_runtime_contract`, `worker_versioning_runtime_contract`, `migration_runtime_contract`, and `skew_refusal_matrix_contract`; advisory only for `waterline_observer_envelopes` while it is provisional) |
 | Block on `nonconforming` | yes |
 | Artifact attached to release | harness result document, schema `durable-workflow.v2.platform-conformance.result` |
 
