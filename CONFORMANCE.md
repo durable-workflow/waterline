@@ -77,6 +77,37 @@ Search-attribute filters and selected-run detail values are
 load-bearing evidence for `search_attribute_runtime_contract`; a
 Waterline result must compare the public scenario manifest against
 published artifacts rather than substituting in-repo feature tests.
+Waterline ships a focused evidence shard for the operator-visible
+search-attribute cell:
+
+```bash
+php artisan waterline:search-attributes-conformance \
+  --artifact-version=server=0.2.228 \
+  --artifact-version=cli=0.1.75 \
+  --artifact-version=workflow=2.0.0-alpha.188 \
+  --artifact-version=sdk-python=0.4.84 \
+  --artifact-version=waterline=2.0.0-alpha.69 \
+  --artifact-source=server=docker_image \
+  --artifact-source=cli=official_install_script \
+  --artifact-source=workflow=packagist_package \
+  --artifact-source=sdk-python=pypi_package \
+  --artifact-source=waterline=packagist_package \
+  --json
+```
+
+The command seeds two namespaces in the host database and exercises
+Waterline list filters, selected-run detail, saved-view retrieval and
+application, keyword-list membership filtering, and scoped namespace
+isolation through package HTTP routes. It emits a
+`durable-workflow.v2.search-attribute-runtime.result` document with the
+expected and actual workflow counts for search-attribute list filters,
+the typed selected-run search attributes, saved filter state before and
+after retrieval, API response captures, and an operator surface matrix for
+the focused Waterline cell. It is a shard, not a full
+search-attribute runtime run: schema definition, workflow-side upserts,
+range queries, type-safety probes, cross-language checks, indexing
+latency, and adversarial parser checks remain the responsibility of the
+full search-attribute harness.
 
 Waterline also ships a focused evidence shard for the namespace operator
 visibility cell:

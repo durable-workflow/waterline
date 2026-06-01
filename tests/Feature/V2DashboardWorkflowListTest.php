@@ -12,6 +12,7 @@ use Workflow\V2\Enums\RunStatus;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Models\WorkflowSearchAttribute;
 use Workflow\V2\Support\RunListItemView;
 use Workflow\V2\Support\RunSummarySortKey;
 use Workflow\V2\Support\VisibilityFilters;
@@ -411,6 +412,94 @@ class V2DashboardWorkflowListTest extends TestCase
 
         $this->get('/waterline/api/flows/completed?view='.$id)
             ->assertStatus(422);
+    }
+
+    public function testV2ListRoutesCanFilterBySearchAttributesAndRoundTripSavedSearchAttributeViews(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.saved_views.scope', 'ops');
+
+        $matching = $this->createRunningSummary(
+            'sa-visible-order',
+            'run-sa-visible-order',
+            Carbon::parse('2022-01-01 12:05:00'),
+            Carbon::parse('2022-01-01 12:05:00'),
+            businessKey: 'order-123',
+        );
+        $this->createSearchAttribute($matching, 'customer_id', 'cust-7');
+        $this->createSearchAttribute($matching, 'order_total_cents', 7500);
+        $this->createSearchAttribute($matching, 'priority_tier', 'gold');
+        $this->createSearchAttribute($matching, 'is_vip', true);
+        $this->createSearchAttribute($matching, 'created_at', Carbon::parse('2022-01-01 12:05:00'));
+        $this->createSearchAttribute($matching, 'tags', ['urgent', 'oversized']);
+
+        $otherCustomer = $this->createRunningSummary(
+            'sa-other-order',
+            'run-sa-other-order',
+            Carbon::parse('2022-01-01 12:06:00'),
+            Carbon::parse('2022-01-01 12:06:00'),
+            businessKey: 'order-456',
+        );
+        $this->createSearchAttribute($otherCustomer, 'customer_id', 'cust-8');
+        $this->createSearchAttribute($otherCustomer, 'tags', ['standard']);
+
+        $this->get('/waterline/api/flows/running?search_attributes[customer_id]=cust-7')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $matching->id)
+            ->assertJsonPath('data.0.search_attributes.customer_id', 'cust-7')
+            ->assertJsonPath('data.0.search_attributes.order_total_cents', 7500)
+            ->assertJsonPath('data.0.search_attributes.priority_tier', 'gold')
+            ->assertJsonPath('data.0.search_attributes.is_vip', true)
+            ->assertJsonPath('data.0.search_attributes.tags.0', 'urgent')
+            ->assertJsonPath('data.0.search_attributes.tags.1', 'oversized')
+            ->assertJsonPath('visibility_filters.applied.search_attributes.customer_id', 'cust-7');
+
+        $this->get('/waterline/api/flows/running?search_attributes[tags]=urgent')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $matching->id)
+            ->assertJsonPath('visibility_filters.applied.search_attributes.tags', 'urgent');
+
+        $this->get('/waterline/api/flows/'.$matching->id)
+            ->assertOk()
+            ->assertJsonPath('search_attributes.customer_id', 'cust-7')
+            ->assertJsonPath('search_attributes.order_total_cents', 7500)
+            ->assertJsonPath('search_attributes.priority_tier', 'gold')
+            ->assertJsonPath('search_attributes.is_vip', true)
+            ->assertJsonPath('search_attributes.tags.0', 'urgent')
+            ->assertJsonPath('search_attributes.tags.1', 'oversized');
+
+        $savedViewId = $this->postJson('/waterline/api/saved-views', [
+            'name' => 'Customer cust-7',
+            'bucket' => 'running',
+            'filters' => [
+                'search_attributes' => [
+                    'customer_id' => 'cust-7',
+                ],
+            ],
+            'shared' => true,
+        ])->assertCreated()
+            ->assertJsonPath('filters.search_attributes.customer_id', 'cust-7')
+            ->json('id');
+
+        $this->get('/waterline/api/saved-views/'.$savedViewId)
+            ->assertOk()
+            ->assertJsonPath('filters.search_attributes.customer_id', 'cust-7');
+
+        $this->get('/waterline/api/saved-views?bucket=running')
+            ->assertOk()
+            ->assertJsonFragment([
+                'id' => $savedViewId,
+                'name' => 'Customer cust-7',
+            ]);
+
+        $this->get('/waterline/api/flows/running?view='.$savedViewId)
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $matching->id)
+            ->assertJsonPath('visibility_filters.saved_view.id', $savedViewId)
+            ->assertJsonPath('visibility_filters.applied.search_attributes.customer_id', 'cust-7');
     }
 
     public function testV2ListRoutesCanFilterByExpandedVisibilityFieldsAndEchoAppliedContract(): void
@@ -1152,6 +1241,19 @@ class V2DashboardWorkflowListTest extends TestCase
             'created_at' => $createdAt,
             'updated_at' => $createdAt,
         ]);
+    }
+
+    private function createSearchAttribute(WorkflowRunSummary $summary, string $key, mixed $value): void
+    {
+        $attribute = new WorkflowSearchAttribute([
+            'workflow_run_id' => $summary->id,
+            'workflow_instance_id' => $summary->workflow_instance_id,
+            'key' => $key,
+            'upserted_at_sequence' => 1,
+            'inherited_from_parent' => false,
+        ]);
+        $attribute->setTypedValueWithInference($value);
+        $attribute->save();
     }
 
     private function createTerminalSummary(

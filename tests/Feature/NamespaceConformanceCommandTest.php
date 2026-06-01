@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 use Waterline\Console\NamespaceConformanceCommand;
+use Waterline\Console\SearchAttributesConformanceCommand;
+use Waterline\Models\SavedWorkflowView;
 use Waterline\Tests\TestCase;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowSchedule;
@@ -14,6 +16,117 @@ use Workflow\V2\Support\PlatformConformanceSuite;
 
 class NamespaceConformanceCommandTest extends TestCase
 {
+    public function testSearchAttributesCommandEmitsWaterlineOperatorVisibilityShard(): void
+    {
+        $commandOptions = [
+            '--namespace-a' => 'billing',
+            '--namespace-b' => 'shipping',
+            '--run-id' => 'waterline-sa-test',
+            '--artifact-version' => [
+                'server=0.2.228',
+                'cli=0.1.75',
+                'workflow=2.0.0-alpha.188',
+                'sdk-python=0.4.84',
+                'waterline=2.0.0-alpha.69',
+            ],
+            '--artifact-source' => [
+                'server=docker_image',
+                'cli=published_install_script',
+                'workflow=published_composer_package',
+                'sdk-python=published_pypi_package',
+                'waterline=published_package',
+            ],
+        ];
+
+        $reportPath = $this->ephemeralPath('waterline-search-attributes-conformance');
+        $this->artisan('waterline:search-attributes-conformance', $commandOptions + [
+            '--output' => $reportPath,
+        ])->assertSuccessful();
+
+        $report = $this->readJson($reportPath);
+        $scenarios = array_column($report['scenario_results'], null, 'scenario_id');
+        $visibility = $report['waterline_search_attribute_visibility'];
+        $matrix = $visibility['operator_surface_matrix'];
+
+        $this->assertSame('durable-workflow.v2.search-attribute-runtime.result', $report['schema']);
+        $this->assertSame(PlatformConformanceSuite::VERSION, $report['suite_version']);
+        $this->assertSame('waterline-search-attribute-operator-shard', $report['coverage_scope']);
+        $this->assertSame('non_passing', $report['outcome']);
+        $this->assertSame('2.0.0-alpha.69', $report['artifact_versions']['waterline']);
+        $this->assertSame('2.0.0-alpha.188', $report['artifact_versions']['workflow']);
+        $this->assertSame('2.0.0-alpha.188', $report['artifact_versions']['workflow-php']);
+        $this->assertSame('waterline_contract_surface', $report['runtime_matrix']['claimed_targets'][0]);
+        $this->assertContains(
+            'waterline_operator_search_attribute_visibility',
+            $report['runtime_matrix']['covered_scenarios'],
+        );
+        $this->assertSame('pass', $scenarios['published_artifact_install_only']['status']);
+        $this->assertSame('pass', $scenarios['waterline_operator_search_attribute_visibility']['status']);
+        $this->assertSame('pass', $scenarios['result_record_and_product_finding_routing']['status']);
+        $this->assertTrue($matrix['workflow_list_search_attribute_filter']);
+        $this->assertTrue($matrix['keyword_list_search_attribute_filter']);
+        $this->assertTrue($matrix['selected_run_search_attributes']);
+        $this->assertTrue($matrix['saved_filter_round_trip']);
+        $this->assertTrue($matrix['namespace_scoped_visibility']);
+        $this->assertSame(2, $visibility['workflow_list_filter']['expected_count']);
+        $this->assertSame(2, $visibility['workflow_list_filter']['actual_count']);
+        $this->assertTrue($visibility['workflow_list_filter']['matched']);
+        $this->assertSame('cust-7', $visibility['workflow_list_filter']['visibility_filter_echo']['customer_id']);
+        $this->assertTrue($visibility['workflow_list_filter']['foreign_run_absent']);
+        $this->assertSame(1, $visibility['keyword_list_filter']['expected_count']);
+        $this->assertSame(1, $visibility['keyword_list_filter']['actual_count']);
+        $this->assertTrue($visibility['keyword_list_filter']['matched']);
+        $this->assertSame('urgent', $visibility['keyword_list_filter']['visibility_filter_echo']['tags']);
+        $this->assertTrue($visibility['selected_run_detail']['expected_attributes_visible']);
+        $this->assertSame('cust-7', $visibility['selected_run_detail']['actual_search_attributes']['customer_id']);
+        $this->assertSame(7500, $visibility['selected_run_detail']['actual_search_attributes']['order_total_cents']);
+        $this->assertSame('gold', $visibility['selected_run_detail']['actual_search_attributes']['priority_tier']);
+        $this->assertTrue($visibility['selected_run_detail']['actual_search_attributes']['is_vip']);
+        $this->assertNotEmpty($visibility['selected_run_detail']['actual_search_attributes']['created_at']);
+        $this->assertSame(['urgent', 'oversized'], $visibility['selected_run_detail']['actual_search_attributes']['tags']);
+        $this->assertTrue($visibility['saved_filter_state']['filter_preserved_on_retrieval']);
+        $this->assertTrue($visibility['saved_filter_state']['filter_preserved_on_list_retrieval']);
+        $this->assertTrue($visibility['saved_filter_state']['applied_filter_matched']);
+        $this->assertSame(2, $visibility['saved_filter_state']['applied_actual_count']);
+        $this->assertSame('cust-7', $visibility['saved_filter_state']['applied_filter_echo']['customer_id']);
+        foreach ($visibility['fixture_ids']['saved_view_ids'] as $savedViewId) {
+            $this->assertSame(26, strlen($savedViewId));
+        }
+        foreach ($visibility['fixture_ids']['workflow_run_ids'] as $workflowRunId) {
+            $this->assertSame(26, strlen($workflowRunId));
+        }
+        $this->assertTrue($visibility['namespace_isolation']['tenant_a_excludes_tenant_b']);
+        $this->assertTrue($visibility['namespace_isolation']['tenant_b_excludes_tenant_a']);
+        $this->assertTrue($visibility['namespace_isolation']['tenant_b_filter_matched']);
+        $this->assertSame('billing', $visibility['namespace_isolation']['tenant_a_operator_scope']['namespace']);
+        $this->assertSame('shipping', $visibility['namespace_isolation']['tenant_b_operator_scope']['namespace']);
+        $this->assertSame($visibility['api_captures'], $report['api_captures']);
+        $this->assertSame(
+            '/api/flows/running?search_attributes[customer_id]=cust-7',
+            $visibility['api_captures']['workflow_list_customer_filter']['path'],
+        );
+        $this->assertStringContainsString(
+            'cust-7',
+            json_encode($visibility['api_captures']['workflow_list_customer_filter']['json'], JSON_THROW_ON_ERROR),
+        );
+        $this->assertStringNotContainsString(
+            $visibility['fixture_ids']['workflow_run_ids'][3],
+            json_encode($visibility['api_captures']['workflow_list_customer_filter']['json'], JSON_THROW_ON_ERROR),
+        );
+        $this->assertSearchAttributeEvidencePassCriteriaRequireHttpCaptures($visibility);
+
+        $this->assertSame(
+            0,
+            WorkflowRun::query()->whereIn('id', $visibility['fixture_ids']['workflow_run_ids'])->count(),
+            'The command should clean up workflow fixture rows by default.',
+        );
+        $this->assertSame(
+            0,
+            SavedWorkflowView::query()->whereIn('id', $visibility['fixture_ids']['saved_view_ids'])->count(),
+            'The command should clean up saved view fixture rows by default.',
+        );
+    }
+
     public function testCommandEmitsWaterlineOperatorNamespaceVisibilityShard(): void
     {
         $commandOptions = [
@@ -296,6 +409,48 @@ class NamespaceConformanceCommandTest extends TestCase
         $missingUnscopedRequest = $visibility;
         unset($missingUnscopedRequest['unscoped_view_authority']['workflow_list']);
         $this->assertFalse($passes($missingUnscopedRequest));
+    }
+
+    /**
+     * @param array<string, mixed> $visibility
+     */
+    private function assertSearchAttributeEvidencePassCriteriaRequireHttpCaptures(array $visibility): void
+    {
+        $command = app(SearchAttributesConformanceCommand::class);
+        $passes = Closure::bind(
+            function (array $evidence): bool {
+                return $this->waterlineEvidencePassed($evidence);
+            },
+            $command,
+            SearchAttributesConformanceCommand::class,
+        );
+
+        $this->assertNotNull($passes);
+        $this->assertTrue($passes($visibility));
+
+        $missingCount = $visibility;
+        data_set($missingCount, 'workflow_list_filter.actual_count', 0);
+        data_set($missingCount, 'workflow_list_filter.matched', false);
+        data_set($missingCount, 'operator_surface_matrix.workflow_list_search_attribute_filter', false);
+        $this->assertFalse($passes($missingCount));
+
+        $missingDetailAttributes = $visibility;
+        data_set($missingDetailAttributes, 'selected_run_detail.expected_attributes_visible', false);
+        data_set($missingDetailAttributes, 'operator_surface_matrix.selected_run_search_attributes', false);
+        $this->assertFalse($passes($missingDetailAttributes));
+
+        $missingSavedViewRoundTrip = $visibility;
+        data_set($missingSavedViewRoundTrip, 'saved_filter_state.filter_preserved_on_retrieval', false);
+        data_set($missingSavedViewRoundTrip, 'operator_surface_matrix.saved_filter_round_trip', false);
+        $this->assertFalse($passes($missingSavedViewRoundTrip));
+
+        $wrongNamespaceScope = $visibility;
+        data_set($wrongNamespaceScope, 'namespace_isolation.tenant_b_operator_scope.namespace', 'billing');
+        $this->assertFalse($passes($wrongNamespaceScope));
+
+        $missingHttpCapture = $visibility;
+        unset($missingHttpCapture['api_captures']['workflow_list_customer_filter']);
+        $this->assertFalse($passes($missingHttpCapture));
     }
 
     private function ephemeralPath(string $prefix): string
