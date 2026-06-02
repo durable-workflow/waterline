@@ -10,12 +10,96 @@ use Waterline\Console\NamespaceConformanceCommand;
 use Waterline\Console\SearchAttributesConformanceCommand;
 use Waterline\Models\SavedWorkflowView;
 use Waterline\Tests\TestCase;
+use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowSchedule;
 use Workflow\V2\Support\PlatformConformanceSuite;
 
 class NamespaceConformanceCommandTest extends TestCase
 {
+    public function testPrincipalAttributionCommandEmitsWaterlineOperatorVisibilityShard(): void
+    {
+        $commandOptions = [
+            '--run-id' => 'waterline-principal-test',
+            '--artifact-version' => [
+                'server=0.2.238',
+                'cli=0.1.75',
+                'workflow=2.0.0-alpha.189',
+                'sdk-python=0.4.84',
+                'waterline=2.0.0-alpha.76',
+            ],
+            '--artifact-source' => [
+                'server=docker_image',
+                'cli=published_install_script',
+                'workflow=published_composer_package',
+                'sdk-python=published_pypi_package',
+                'waterline=published_package',
+            ],
+        ];
+
+        $reportPath = $this->ephemeralPath('waterline-principal-attribution-conformance');
+        $this->artisan('waterline:principal-attribution-conformance', $commandOptions + [
+            '--output' => $reportPath,
+        ])->assertSuccessful();
+
+        $report = $this->readJson($reportPath);
+        $scenarios = array_column($report['scenario_results'], null, 'scenario_id');
+        $visibility = $report['waterline_principal_visibility'];
+        $matrix = $visibility['operator_surface_matrix'];
+
+        $this->assertSame('durable-workflow.v2.principal-attribution.waterline-operator-shard', $report['schema']);
+        $this->assertSame(PlatformConformanceSuite::VERSION, $report['suite_version']);
+        $this->assertSame('waterline-principal-attribution-operator-shard', $report['coverage_scope']);
+        $this->assertSame('non_passing', $report['outcome']);
+        $this->assertSame('2.0.0-alpha.76', $report['artifact_versions']['waterline']);
+        $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow']);
+        $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow-php']);
+        $this->assertSame('waterline_contract_surface', $report['runtime_matrix']['claimed_targets'][0]);
+        $this->assertContains('waterline_operator_visibility', $report['runtime_matrix']['covered_scenarios']);
+
+        $this->assertSame('pass', $scenarios['published_artifact_install_only']['status']);
+        $this->assertSame('pass', $scenarios['waterline_operator_visibility']['status']);
+        $this->assertSame('selected-run detail API commands and timeline', $scenarios['waterline_operator_visibility']['surface']);
+        $this->assertTrue($scenarios['waterline_operator_visibility']['principal_visible']);
+        $this->assertIsString($scenarios['waterline_operator_visibility']['output_sample']);
+        $this->assertTrue($matrix['selected_run_detail_status']);
+        $this->assertTrue($matrix['command_principal_fields']);
+        $this->assertTrue($matrix['command_context_principal']);
+        $this->assertTrue($matrix['timeline_command_principal_fields']);
+        $this->assertTrue($matrix['waterline_auth_fields_visible']);
+        $this->assertSame('user', $visibility['command_principal']['principal_type']);
+        $this->assertSame('waterline-user:42', $visibility['command_principal']['principal_id']);
+        $this->assertSame('Taylor Operator', $visibility['command_principal']['principal_label']);
+        $this->assertSame('user', $visibility['timeline_principal']['principal_type']);
+        $this->assertSame('waterline-user:42', $visibility['timeline_principal']['principal_id']);
+        $this->assertSame('Taylor Operator', $visibility['timeline_principal']['principal_label']);
+        $this->assertSame('authorized', $visibility['command_principal']['auth_status']);
+        $this->assertSame('waterline', $visibility['command_principal']['auth_method']);
+        $this->assertSame($visibility['api_captures'], $report['api_captures']);
+        foreach ($visibility['fixture_ids']['workflow_run_ids'] as $workflowRunId) {
+            $this->assertSame(26, strlen($workflowRunId));
+        }
+        foreach ($visibility['fixture_ids']['workflow_command_ids'] as $workflowCommandId) {
+            $this->assertSame(26, strlen($workflowCommandId));
+        }
+        $this->assertSame(200, $visibility['api_captures']['selected_run_detail']['status']);
+        $this->assertStringContainsString(
+            'waterline-user:42',
+            json_encode($visibility['api_captures']['selected_run_detail']['json'], JSON_THROW_ON_ERROR),
+        );
+
+        $this->assertSame(
+            0,
+            WorkflowRun::query()->whereIn('id', $visibility['fixture_ids']['workflow_run_ids'])->count(),
+            'The command should clean up workflow fixture rows by default.',
+        );
+        $this->assertSame(
+            0,
+            WorkflowCommand::query()->whereIn('id', $visibility['fixture_ids']['workflow_command_ids'])->count(),
+            'The command should clean up command fixture rows by default.',
+        );
+    }
+
     public function testSearchAttributesCommandEmitsWaterlineOperatorVisibilityShard(): void
     {
         $commandOptions = [
@@ -23,11 +107,11 @@ class NamespaceConformanceCommandTest extends TestCase
             '--namespace-b' => 'shipping',
             '--run-id' => 'waterline-sa-test',
             '--artifact-version' => [
-                'server=0.2.236',
+                'server=0.2.238',
                 'cli=0.1.75',
                 'workflow=2.0.0-alpha.189',
                 'sdk-python=0.4.84',
-                'waterline=2.0.0-alpha.75',
+                'waterline=2.0.0-alpha.76',
             ],
             '--artifact-source' => [
                 'server=docker_image',
@@ -52,7 +136,7 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertSame(PlatformConformanceSuite::VERSION, $report['suite_version']);
         $this->assertSame('waterline-search-attribute-operator-shard', $report['coverage_scope']);
         $this->assertSame('non_passing', $report['outcome']);
-        $this->assertSame('2.0.0-alpha.75', $report['artifact_versions']['waterline']);
+        $this->assertSame('2.0.0-alpha.76', $report['artifact_versions']['waterline']);
         $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow']);
         $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow-php']);
         $this->assertSame('waterline_contract_surface', $report['runtime_matrix']['claimed_targets'][0]);
@@ -135,11 +219,11 @@ class NamespaceConformanceCommandTest extends TestCase
             '--shared-namespace' => 'shared',
             '--run-id' => 'waterline-ns-test',
             '--artifact-version' => [
-                'server=0.2.236',
+                'server=0.2.238',
                 'cli=0.1.75',
                 'workflow=2.0.0-alpha.189',
                 'sdk-python=0.4.84',
-                'waterline=2.0.0-alpha.75',
+                'waterline=2.0.0-alpha.76',
             ],
             '--artifact-source' => [
                 'server=docker_image',
@@ -172,7 +256,7 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertSame(PlatformConformanceSuite::VERSION, $report['suite_version']);
         $this->assertSame('waterline-operator-namespace-shard', $report['coverage_scope']);
         $this->assertSame('non_passing', $report['outcome']);
-        $this->assertSame('2.0.0-alpha.75', $report['artifact_versions']['waterline']);
+        $this->assertSame('2.0.0-alpha.76', $report['artifact_versions']['waterline']);
         $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow']);
         $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow-php']);
         $this->assertSame('published_package', $report['artifact_sources']['waterline']);

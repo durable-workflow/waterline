@@ -107,6 +107,7 @@ class WaterlineServiceProvider extends ServiceProvider
             $this->commands([
                 Console\InstallCommand::class,
                 Console\NamespaceConformanceCommand::class,
+                Console\PrincipalAttributionConformanceCommand::class,
                 Console\PublishCommand::class,
                 Console\SearchAttributesConformanceCommand::class,
             ]);

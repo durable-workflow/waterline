@@ -27,6 +27,7 @@ Waterline claims one target from the suite's matrix:
 | `worker_versioning_runtime_contract` | public worker-versioning runtime scenario manifest at `/platform-conformance/worker-versioning-runtime-scenarios.json` plus worker and run compatibility captures | stable |
 | `migration_runtime_contract` | public migration runtime scenario manifest at `/platform-conformance/migration-runtime-scenarios.json` plus Waterline operator visibility for migrated histories, schedules, worker registrations, and rollback state | stable |
 | `skew_refusal_matrix_contract` | public skew refusal scenario manifest at `/platform-conformance/skew-refusal-matrix-scenarios.json` plus Waterline render classification and version-pair evidence | stable |
+| `principal_attribution_contract` | server-published principal-attribution scenario manifest plus selected-run command and timeline principal captures | stable |
 | `waterline_observer_envelopes` | selected-run detail `observer_state` envelope | provisional |
 
 The stable `signal_query_runtime_contract` category is load-bearing for
@@ -82,11 +83,11 @@ search-attribute cell:
 
 ```bash
 php artisan waterline:search-attributes-conformance \
-  --artifact-version=server=0.2.236 \
+  --artifact-version=server=0.2.238 \
   --artifact-version=cli=0.1.75 \
   --artifact-version=workflow=2.0.0-alpha.189 \
   --artifact-version=sdk-python=0.4.84 \
-  --artifact-version=waterline=2.0.0-alpha.75 \
+  --artifact-version=waterline=2.0.0-alpha.76 \
   --artifact-source=server=docker_image \
   --artifact-source=cli=official_install_script \
   --artifact-source=workflow=packagist_package \
@@ -109,16 +110,48 @@ range queries, type-safety probes, cross-language checks, indexing
 latency, and adversarial parser checks remain the responsibility of the
 full search-attribute harness.
 
+Principal attribution is load-bearing evidence for
+`principal_attribution_contract`. Waterline ships a focused evidence
+shard for the operator-visible principal-attribution cell:
+
+```bash
+php artisan waterline:principal-attribution-conformance \
+  --artifact-version=server=0.2.238 \
+  --artifact-version=cli=0.1.75 \
+  --artifact-version=workflow=2.0.0-alpha.189 \
+  --artifact-version=sdk-python=0.4.84 \
+  --artifact-version=waterline=2.0.0-alpha.76 \
+  --artifact-source=server=docker_image \
+  --artifact-source=cli=official_install_script \
+  --artifact-source=workflow=packagist_package \
+  --artifact-source=sdk-python=pypi_package \
+  --artifact-source=waterline=packagist_package \
+  --json
+```
+
+The command seeds a completed run, workflow command, and history timeline
+with an authenticated principal, exercises the selected-run detail API
+through package HTTP routes, and emits a
+`durable-workflow.v2.principal-attribution.waterline-operator-shard`
+document with command principal fields, command-context auth fields,
+timeline principal fields, API response captures, and an operator surface
+matrix for the focused Waterline cell. It claims the
+`waterline_contract_surface` target and reports `non_passing` when the
+local shard passes because it is not a full principal-attribution
+contract run. Server, worker, CLI, SDK, anonymous, spoofing, completion,
+failure, and query attribution scenarios remain the responsibility of the
+full principal-attribution harness.
+
 Waterline also ships a focused evidence shard for the namespace operator
 visibility cell:
 
 ```bash
 php artisan waterline:namespace-conformance \
-  --artifact-version=server=0.2.236 \
+  --artifact-version=server=0.2.238 \
   --artifact-version=cli=0.1.75 \
   --artifact-version=workflow=2.0.0-alpha.189 \
   --artifact-version=sdk-python=0.4.84 \
-  --artifact-version=waterline=2.0.0-alpha.75 \
+  --artifact-version=waterline=2.0.0-alpha.76 \
   --artifact-source=server=docker_image \
   --artifact-source=cli=official_install_script \
   --artifact-source=workflow=packagist_package \
@@ -175,6 +208,11 @@ release result must compare the public skew refusal scenario manifest
 against published artifacts and show how Waterline classifies compatible,
 backward-skewed, and unsupported server or worker protocol combinations.
 
+Principal attribution visibility is also part of the Waterline release
+evidence. The focused Waterline shard must be evaluated with the full
+principal-attribution harness output before the operator visibility cell
+is treated as covered.
+
 The standalone observer-envelope fixture set is promoted to **required**
 in a future suite version once the contract slice for the operator
 dashboard JSON envelope is public. Until then, a failure in
@@ -193,7 +231,8 @@ tag.
 | Saga runtime source | `/platform-conformance/saga-runtime-scenarios.json` from the public docs origin, with `suite_version` `17` |
 | Migration runtime source | `/platform-conformance/migration-runtime-scenarios.json` from the public docs origin, with `suite_version` `17` |
 | Skew refusal source | `/platform-conformance/skew-refusal-matrix-scenarios.json` from the public docs origin, with `suite_version` `17` |
-| CI job | `platform-conformance` (blocks on stable runtime categories including `signal_query_runtime_contract`, `search_attribute_runtime_contract`, `namespace_runtime_contract`, `saga_runtime_contract`, `worker_versioning_runtime_contract`, `migration_runtime_contract`, and `skew_refusal_matrix_contract`; advisory only for `waterline_observer_envelopes` while it is provisional) |
+| Principal attribution source | server-published principal-attribution scenario manifest plus the `waterline:principal-attribution-conformance` shard output |
+| CI job | `platform-conformance` (blocks on stable runtime categories including `signal_query_runtime_contract`, `search_attribute_runtime_contract`, `namespace_runtime_contract`, `saga_runtime_contract`, `worker_versioning_runtime_contract`, `migration_runtime_contract`, `skew_refusal_matrix_contract`, and `principal_attribution_contract`; advisory only for `waterline_observer_envelopes` while it is provisional) |
 | Block on `nonconforming` | yes |
 | Artifact attached to release | harness result document, schema `durable-workflow.v2.platform-conformance.result` |
 
