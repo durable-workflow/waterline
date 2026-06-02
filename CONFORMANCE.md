@@ -82,11 +82,11 @@ search-attribute cell:
 
 ```bash
 php artisan waterline:search-attributes-conformance \
-  --artifact-version=server=0.2.231 \
+  --artifact-version=server=0.2.233 \
   --artifact-version=cli=0.1.75 \
-  --artifact-version=workflow=2.0.0-alpha.188 \
+  --artifact-version=workflow=2.0.0-alpha.189 \
   --artifact-version=sdk-python=0.4.84 \
-  --artifact-version=waterline=2.0.0-alpha.70 \
+  --artifact-version=waterline=2.0.0-alpha.71 \
   --artifact-source=server=docker_image \
   --artifact-source=cli=official_install_script \
   --artifact-source=workflow=packagist_package \
@@ -114,11 +114,11 @@ visibility cell:
 
 ```bash
 php artisan waterline:namespace-conformance \
-  --artifact-version=server=0.2.231 \
+  --artifact-version=server=0.2.233 \
   --artifact-version=cli=0.1.75 \
-  --artifact-version=workflow=2.0.0-alpha.188 \
+  --artifact-version=workflow=2.0.0-alpha.189 \
   --artifact-version=sdk-python=0.4.84 \
-  --artifact-version=waterline=2.0.0-alpha.70 \
+  --artifact-version=waterline=2.0.0-alpha.71 \
   --artifact-source=server=docker_image \
   --artifact-source=cli=official_install_script \
   --artifact-source=workflow=packagist_package \

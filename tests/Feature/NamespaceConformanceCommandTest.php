@@ -23,11 +23,11 @@ class NamespaceConformanceCommandTest extends TestCase
             '--namespace-b' => 'shipping',
             '--run-id' => 'waterline-sa-test',
             '--artifact-version' => [
-                'server=0.2.231',
+                'server=0.2.233',
                 'cli=0.1.75',
-                'workflow=2.0.0-alpha.188',
+                'workflow=2.0.0-alpha.189',
                 'sdk-python=0.4.84',
-                'waterline=2.0.0-alpha.70',
+                'waterline=2.0.0-alpha.71',
             ],
             '--artifact-source' => [
                 'server=docker_image',
@@ -52,9 +52,9 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertSame(PlatformConformanceSuite::VERSION, $report['suite_version']);
         $this->assertSame('waterline-search-attribute-operator-shard', $report['coverage_scope']);
         $this->assertSame('non_passing', $report['outcome']);
-        $this->assertSame('2.0.0-alpha.70', $report['artifact_versions']['waterline']);
-        $this->assertSame('2.0.0-alpha.188', $report['artifact_versions']['workflow']);
-        $this->assertSame('2.0.0-alpha.188', $report['artifact_versions']['workflow-php']);
+        $this->assertSame('2.0.0-alpha.71', $report['artifact_versions']['waterline']);
+        $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow']);
+        $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow-php']);
         $this->assertSame('waterline_contract_surface', $report['runtime_matrix']['claimed_targets'][0]);
         $this->assertContains(
             'waterline_operator_search_attribute_visibility',
@@ -135,11 +135,11 @@ class NamespaceConformanceCommandTest extends TestCase
             '--shared-namespace' => 'shared',
             '--run-id' => 'waterline-ns-test',
             '--artifact-version' => [
-                'server=0.2.231',
+                'server=0.2.233',
                 'cli=0.1.75',
-                'workflow=2.0.0-alpha.188',
+                'workflow=2.0.0-alpha.189',
                 'sdk-python=0.4.84',
-                'waterline=2.0.0-alpha.70',
+                'waterline=2.0.0-alpha.71',
             ],
             '--artifact-source' => [
                 'server=docker_image',
@@ -172,9 +172,9 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertSame(PlatformConformanceSuite::VERSION, $report['suite_version']);
         $this->assertSame('waterline-operator-namespace-shard', $report['coverage_scope']);
         $this->assertSame('non_passing', $report['outcome']);
-        $this->assertSame('2.0.0-alpha.70', $report['artifact_versions']['waterline']);
-        $this->assertSame('2.0.0-alpha.188', $report['artifact_versions']['workflow']);
-        $this->assertSame('2.0.0-alpha.188', $report['artifact_versions']['workflow-php']);
+        $this->assertSame('2.0.0-alpha.71', $report['artifact_versions']['waterline']);
+        $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow']);
+        $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow-php']);
         $this->assertSame('published_package', $report['artifact_sources']['waterline']);
         $this->assertSame('published_composer_package', $report['artifact_sources']['workflow']);
         $this->assertSame('published_composer_package', $report['artifact_sources']['workflow-php']);
