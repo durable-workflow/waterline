@@ -12,10 +12,12 @@ class DashboardController extends Controller
     public function index()
     {
         $operatorScope = OperatorScope::payload();
+        $cssFile = 'app-dark.css';
 
         return view('waterline::layout', [
             'assetsAreCurrent' => $this->assetsAreCurrent(),
-            'cssFile' => true ? 'app-dark.css' : 'app.css',
+            'cssUrl' => $this->assetUrl($cssFile),
+            'jsUrl' => $this->assetUrl('app.js'),
             'waterlineScriptVariables' => [
                 'path' => config('waterline.path', 'waterline'),
                 'operator_scope' => $operatorScope,
@@ -33,6 +35,23 @@ class DashboardController extends Controller
         } catch (RuntimeException) {
             return false;
         }
+    }
+
+    private function assetUrl(string $asset): string
+    {
+        $asset = ltrim($asset, '/');
+        $manifestPath = public_path('vendor/waterline/mix-manifest.json');
+
+        if (is_file($manifestPath)) {
+            $manifest = json_decode((string) file_get_contents($manifestPath), true);
+            $versioned = is_array($manifest) ? $manifest['/'.$asset] ?? null : null;
+
+            if (is_string($versioned) && $versioned !== '') {
+                return asset('vendor/waterline/'.ltrim($versioned, '/'));
+            }
+        }
+
+        return asset('vendor/waterline/'.$asset);
     }
 
     private function environmentBanner(): ?array

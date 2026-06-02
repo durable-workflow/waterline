@@ -11,7 +11,7 @@
 
     <!-- Style sheets-->
     <link href="https://fonts.bunny.net/css?family=ibm-plex-sans:400,500,600,700|ibm-plex-mono:400,500,600&display=swap" rel="stylesheet">
-    <link id="app-stylesheet" href="{{ asset(mix($cssFile, 'vendor/waterline')) }}" rel="stylesheet">
+    <link id="app-stylesheet" href="{{ $cssUrl }}" rel="stylesheet">
 </head>
 <body>
 <!-- Skip to main content link for keyboard navigation (WCAG 2.4.1) -->
@@ -171,6 +171,6 @@
     window.Waterline = @json($waterlineScriptVariables);
 </script>
 
-<script src="{{asset(mix('app.js', 'vendor/waterline'))}}"></script>
+<script src="{{ $jsUrl }}"></script>
 </body>
 </html>

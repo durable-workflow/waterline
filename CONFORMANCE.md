@@ -86,7 +86,7 @@ php artisan waterline:search-attributes-conformance \
   --artifact-version=cli=0.1.75 \
   --artifact-version=workflow=2.0.0-alpha.189 \
   --artifact-version=sdk-python=0.4.84 \
-  --artifact-version=waterline=2.0.0-alpha.74 \
+  --artifact-version=waterline=2.0.0-alpha.75 \
   --artifact-source=server=docker_image \
   --artifact-source=cli=official_install_script \
   --artifact-source=workflow=packagist_package \
@@ -118,7 +118,7 @@ php artisan waterline:namespace-conformance \
   --artifact-version=cli=0.1.75 \
   --artifact-version=workflow=2.0.0-alpha.189 \
   --artifact-version=sdk-python=0.4.84 \
-  --artifact-version=waterline=2.0.0-alpha.74 \
+  --artifact-version=waterline=2.0.0-alpha.75 \
   --artifact-source=server=docker_image \
   --artifact-source=cli=official_install_script \
   --artifact-source=workflow=packagist_package \

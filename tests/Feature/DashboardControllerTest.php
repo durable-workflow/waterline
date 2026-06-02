@@ -130,6 +130,10 @@ class DashboardControllerTest extends TestCase
         $this->get('/waterline')
             ->assertOk()
             ->assertSee('alert-warning', false)
-            ->assertSee('php artisan waterline:publish', false);
+            ->assertSee('php artisan waterline:publish', false)
+            ->assertSee('vendor/waterline/app-dark.css', false)
+            ->assertSee('vendor/waterline/app.js', false)
+            ->assertSee('wl-topbar__scope', false)
+            ->assertSee('Scope');
     }
 }
