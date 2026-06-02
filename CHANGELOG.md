@@ -4,6 +4,6 @@
 
 Waterline keeps the Durable Workflow 2.0 conformance claim aligned to
 platform conformance suite version 15 and the current published artifact
-tuple: server 0.2.233, CLI 0.1.75, Workflow 2.0.0-alpha.189, Python SDK
-0.4.84, and Waterline 2.0.0-alpha.71. Migration runtime and skew refusal
+tuple: server 0.2.234, CLI 0.1.75, Workflow 2.0.0-alpha.189, Python SDK
+0.4.84, and Waterline 2.0.0-alpha.72. Migration runtime and skew refusal
 matrix evidence are now load-bearing Waterline release categories.
