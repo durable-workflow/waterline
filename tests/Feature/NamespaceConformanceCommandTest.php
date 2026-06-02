@@ -141,11 +141,11 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow-php']);
         $this->assertSame('waterline_contract_surface', $report['runtime_matrix']['claimed_targets'][0]);
         $this->assertContains(
-            'waterline_operator_search_attribute_visibility',
+            'waterline_operator_visibility',
             $report['runtime_matrix']['covered_scenarios'],
         );
         $this->assertSame('pass', $scenarios['published_artifact_install_only']['status']);
-        $this->assertSame('pass', $scenarios['waterline_operator_search_attribute_visibility']['status']);
+        $this->assertSame('pass', $scenarios['waterline_operator_visibility']['status']);
         $this->assertSame('pass', $scenarios['result_record_and_product_finding_routing']['status']);
         $this->assertTrue($matrix['workflow_list_search_attribute_filter']);
         $this->assertTrue($matrix['keyword_list_search_attribute_filter']);
@@ -208,6 +208,46 @@ class NamespaceConformanceCommandTest extends TestCase
             0,
             SavedWorkflowView::query()->whereIn('id', $visibility['fixture_ids']['saved_view_ids'])->count(),
             'The command should clean up saved view fixture rows by default.',
+        );
+    }
+
+    public function testSearchAttributesCommandRoutesWaterlineFindingsWithOperatorDiagnostics(): void
+    {
+        $reportPath = $this->ephemeralPath('waterline-search-attributes-conformance-finding');
+        $this->artisan('waterline:search-attributes-conformance', [
+            '--namespace-a' => 'billing',
+            '--namespace-b' => 'shipping',
+            '--run-id' => 'waterline-sa-finding-test',
+            '--artifact-version' => [
+                'waterline=dev-main',
+            ],
+            '--artifact-source' => [
+                'waterline=local_checkout',
+            ],
+            '--output' => $reportPath,
+        ])->assertExitCode(1);
+
+        $report = $this->readJson($reportPath);
+        $scenarios = array_column($report['scenario_results'], null, 'scenario_id');
+        $finding = $scenarios['published_artifact_install_only']['linked_findings'][0];
+
+        $this->assertSame('waterline-search-attributes-published_artifact_install_only', $finding['id']);
+        $this->assertSame('published_artifact_install_only', $finding['scenario_id']);
+        $this->assertSame('waterline', $finding['owning_surface']);
+        $this->assertSame('dev-main', $finding['artifact_versions']['waterline']);
+        $this->assertSame(
+            'Waterline workflow list filters, selected-run detail API, saved views API, and namespace-scoped operator scope.',
+            $finding['ui_api_surface'],
+        );
+        $this->assertStringContainsString('Waterline records workflow-list search-attribute filter counts', $finding['expected_behavior']);
+        $this->assertNotEmpty($finding['observed_behavior']);
+        $this->assertContains(
+            'Inspect scenario_results.waterline_operator_visibility, waterline_search_attribute_visibility.operator_surface_matrix, and api_captures.',
+            $finding['reproduction_steps'],
+        );
+        $this->assertStringContainsString(
+            'waterline_operator_visibility=pass',
+            $finding['next_acceptance_criterion'],
         );
     }
 

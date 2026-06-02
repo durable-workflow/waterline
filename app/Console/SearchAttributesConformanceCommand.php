@@ -55,7 +55,7 @@ class SearchAttributesConformanceCommand extends Command
      */
     private const WATERLINE_SHARD_SCENARIOS = [
         'published_artifact_install_only',
-        'waterline_operator_search_attribute_visibility',
+        'waterline_operator_visibility',
         'result_record_and_product_finding_routing',
     ];
 
@@ -137,12 +137,12 @@ class SearchAttributesConformanceCommand extends Command
 
             $passed = $this->waterlineEvidencePassed($evidence);
             $waterlineScenario = [
-                'scenario_id' => 'waterline_operator_search_attribute_visibility',
+                'scenario_id' => 'waterline_operator_visibility',
                 'status' => $passed ? 'pass' : 'fail',
                 'observed_outputs' => $evidence,
                 'linked_findings' => $passed ? [] : [
                     $this->finding(
-                        'waterline_operator_search_attribute_visibility',
+                        'waterline_operator_visibility',
                         'Waterline search-attribute operator visibility did not prove list filtering, detail values, saved filters, and namespace scope.',
                         'waterline',
                     ),
@@ -155,12 +155,12 @@ class SearchAttributesConformanceCommand extends Command
                 'fixture_ids' => $fixtureIds,
             ];
             $waterlineScenario = [
-                'scenario_id' => 'waterline_operator_search_attribute_visibility',
+                'scenario_id' => 'waterline_operator_visibility',
                 'status' => 'fail',
                 'observed_outputs' => $evidence,
                 'linked_findings' => [
                     $this->finding(
-                        'waterline_operator_search_attribute_visibility',
+                        'waterline_operator_visibility',
                         'Waterline search-attribute operator visibility shard failed before evidence completed.',
                         'waterline',
                     ),
@@ -1289,7 +1289,7 @@ class SearchAttributesConformanceCommand extends Command
     }
 
     /**
-     * @return array{id: string, scenario_id: string, owner: string, title: string}
+     * @return array{id: string, scenario_id: string, owner: string, title: string, owning_surface: string, artifact_versions: array<string, string>, ui_api_surface: string, observed_behavior: string, expected_behavior: string, reproduction_steps: list<string>, next_acceptance_criterion: string}
      */
     private function finding(string $scenarioId, string $title, string $owner): array
     {
@@ -1298,6 +1298,17 @@ class SearchAttributesConformanceCommand extends Command
             'scenario_id' => $scenarioId,
             'owner' => $owner,
             'title' => $title,
+            'owning_surface' => $owner,
+            'artifact_versions' => $this->artifactVersions(),
+            'ui_api_surface' => 'Waterline workflow list filters, selected-run detail API, saved views API, and namespace-scoped operator scope.',
+            'observed_behavior' => $title,
+            'expected_behavior' => 'Waterline records workflow-list search-attribute filter counts, selected-run typed search attributes, saved-filter round trip state, and namespace-scoped operator visibility through published package HTTP routes.',
+            'reproduction_steps' => [
+                'Install Waterline from the published package version recorded in artifact_versions.',
+                'Run php artisan waterline:search-attributes-conformance with the recorded published artifact versions and sources.',
+                'Inspect scenario_results.waterline_operator_visibility, waterline_search_attribute_visibility.operator_surface_matrix, and api_captures.',
+            ],
+            'next_acceptance_criterion' => 'Publish a Waterline artifact whose search-attribute shard records waterline_operator_visibility=pass and links into the full search-attribute runtime ledger.',
         ];
     }
 
