@@ -207,16 +207,13 @@ class SignalsQueriesConformanceCommand extends Command
             ? $this->observerPaths($instanceId, $runId, $queryName)
             : $this->observerPathTemplates($queryName);
 
-        $detailCapture = $this->providedCapture('selected_run_detail', 'GET', $paths['selected_run_detail'], $capturedAt)
+        $detailCapture = $this->providedCapture('selected_run_detail', $capturedAt)
             ?? ($instanceId !== null && $runId !== null
                 ? $this->captureWaterlineApi($kernel, 'GET', $paths['selected_run_detail_api'], null, $capturedAt)
                 : null);
         $queryCapture = $this->providedCapture(
             'selected_run_query_action',
-            'POST',
-            $paths['selected_run_query_action'],
             $capturedAt,
-            ['arguments' => []],
         ) ?? ($instanceId !== null && $runId !== null
             ? $this->captureWaterlineApi(
                 $kernel,
@@ -1253,22 +1250,18 @@ class SignalsQueriesConformanceCommand extends Command
     }
 
     /**
-     * @param array<string, mixed>|null $requestJson
      * @return array<string, mixed>|null
      */
     private function providedCapture(
         string $kind,
-        string $method,
-        string $expectedPath,
         string $capturedAt,
-        ?array $requestJson = null,
     ): ?array {
         $explicit = $kind === 'selected_run_detail'
             ? $this->optionString('selected-run-detail-capture')
             : $this->optionString('selected-run-query-capture');
 
         if ($explicit !== null) {
-            return $this->captureFromFile($explicit, $kind, $method, $expectedPath, $capturedAt, $requestJson);
+            return $this->captureFromFile($explicit, $kind, $capturedAt);
         }
 
         $paths = $this->option('api-capture');
@@ -1278,7 +1271,7 @@ class SignalsQueriesConformanceCommand extends Command
                 continue;
             }
 
-            $capture = $this->captureFromFile($path, $kind, $method, $expectedPath, $capturedAt, $requestJson);
+            $capture = $this->captureFromFile($path, $kind, $capturedAt);
             if ($capture !== null) {
                 return $capture;
             }
@@ -1288,16 +1281,12 @@ class SignalsQueriesConformanceCommand extends Command
     }
 
     /**
-     * @param array<string, mixed>|null $requestJson
      * @return array<string, mixed>|null
      */
     private function captureFromFile(
         string $path,
         string $kind,
-        string $method,
-        string $expectedPath,
         string $capturedAt,
-        ?array $requestJson,
     ): ?array {
         $contents = file_get_contents($path);
         if ($contents === false) {
@@ -1314,7 +1303,7 @@ class SignalsQueriesConformanceCommand extends Command
             return null;
         }
 
-        $capture = $this->normalizeCapture($candidate, $method, $expectedPath, $capturedAt, $requestJson);
+        $capture = $this->normalizeCapture($candidate, $capturedAt);
         $capture['capture_source'] = 'provided_waterline_api_capture';
         $capture['capture_input'] = [
             'file' => basename($path),
@@ -1377,15 +1366,11 @@ class SignalsQueriesConformanceCommand extends Command
 
     /**
      * @param array<string, mixed> $capture
-     * @param array<string, mixed>|null $requestJson
      * @return array<string, mixed>
      */
     private function normalizeCapture(
         array $capture,
-        string $method,
-        string $expectedPath,
         string $capturedAt,
-        ?array $requestJson,
     ): array {
         $json = $capture['json'] ?? $capture['response_json'] ?? data_get($capture, 'response.json');
         $json = is_array($json) ? $json : [];
@@ -1409,7 +1394,7 @@ class SignalsQueriesConformanceCommand extends Command
             'status' => (int) ($capture['status'] ?? $capture['response_status'] ?? data_get($capture, 'response.status') ?? 0),
             'request_json' => is_array($capture['request_json'] ?? null)
                 ? $capture['request_json']
-                : (is_array(data_get($capture, 'request.json')) ? data_get($capture, 'request.json') : $requestJson),
+                : (is_array(data_get($capture, 'request.json')) ? data_get($capture, 'request.json') : null),
             'captured_at' => (string) ($capture['captured_at'] ?? $capturedAt),
             'capture_source' => is_string($capture['capture_source'] ?? null)
                 ? $capture['capture_source']
@@ -1600,8 +1585,16 @@ class SignalsQueriesConformanceCommand extends Command
         $actualMethod = strtoupper((string) ($capture['method'] ?? ''));
         $actualPath = (string) ($capture['path'] ?? '');
         $actualRequestPath = (string) ($capture['request_path'] ?? '');
+        $actualRequestJson = is_array($capture['request_json'] ?? null)
+            ? $capture['request_json']
+            : null;
 
-        if ($actualMethod === $expectedMethod && $actualPath === $expectedPath && $actualRequestPath === $expectedPath) {
+        if (
+            $actualMethod === $expectedMethod
+            && $actualPath === $expectedPath
+            && $actualRequestPath === $expectedPath
+            && ($requestJson === null || $actualRequestJson === $requestJson)
+        ) {
             return null;
         }
 
@@ -1617,6 +1610,7 @@ class SignalsQueriesConformanceCommand extends Command
                 'observed_method' => $actualMethod,
                 'observed_path' => $actualPath,
                 'observed_request_path' => $actualRequestPath,
+                'observed_json' => $actualRequestJson,
             ],
             $capture,
         );

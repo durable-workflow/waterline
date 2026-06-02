@@ -306,6 +306,122 @@ class SignalsQueriesConformanceCommandTest extends TestCase
         }
     }
 
+    public function testItFailsClosedWhenSelectedRunQueryCaptureUsesWrongRequestJson(): void
+    {
+        $input = tempnam(sys_get_temp_dir(), 'waterline-sq-input-');
+        $output = tempnam(sys_get_temp_dir(), 'waterline-sq-output-');
+        $detailCapture = tempnam(sys_get_temp_dir(), 'waterline-sq-detail-');
+        $queryCapture = tempnam(sys_get_temp_dir(), 'waterline-sq-query-');
+        $this->assertIsString($input);
+        $this->assertIsString($output);
+        $this->assertIsString($detailCapture);
+        $this->assertIsString($queryCapture);
+
+        file_put_contents($input, json_encode($this->publicEvidence(), JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $detailCapture,
+            json_encode($this->selectedRunDetailCapture(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+        );
+
+        $query = $this->selectedRunQueryCapture();
+        $query['request_json'] = ['arguments' => [55]];
+        file_put_contents($queryCapture, json_encode($query, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        try {
+            $this->artisan('waterline:signals-queries-conformance', [
+                '--input' => $input,
+                '--output' => $output,
+                '--selected-run-detail-capture' => $detailCapture,
+                '--selected-run-query-capture' => $queryCapture,
+            ] + $this->publishedArtifactOptions())->assertExitCode(1);
+
+            $result = json_decode((string) file_get_contents($output), true, 512, JSON_THROW_ON_ERROR);
+            $scenarios = array_column($result['scenario_results'], null, 'scenario_id');
+            $scenario = $scenarios['waterline_operator_visibility'];
+            $findingIds = array_column($scenario['linked_findings'], 'id');
+
+            $this->assertSame('fail', $scenario['status']);
+            $this->assertContains('waterline_selected_run_query_capture_request_mismatch', $findingIds);
+            $this->assertSame(
+                ['arguments' => [55]],
+                $scenario['linked_findings'][0]['evidence']['request']['observed_json'],
+            );
+            $this->assertTrue($scenario['observed_outputs']['comparison']['counter_state_matches_public_clients']);
+        } finally {
+            if (is_string($input) && file_exists($input)) {
+                unlink($input);
+            }
+            if (is_string($output) && file_exists($output)) {
+                unlink($output);
+            }
+            if (is_string($detailCapture) && file_exists($detailCapture)) {
+                unlink($detailCapture);
+            }
+            if (is_string($queryCapture) && file_exists($queryCapture)) {
+                unlink($queryCapture);
+            }
+        }
+    }
+
+    public function testItFailsClosedWhenSelectedRunQueryCaptureOmitsRequestJson(): void
+    {
+        $input = tempnam(sys_get_temp_dir(), 'waterline-sq-input-');
+        $output = tempnam(sys_get_temp_dir(), 'waterline-sq-output-');
+        $detailCapture = tempnam(sys_get_temp_dir(), 'waterline-sq-detail-');
+        $queryCapture = tempnam(sys_get_temp_dir(), 'waterline-sq-query-');
+        $this->assertIsString($input);
+        $this->assertIsString($output);
+        $this->assertIsString($detailCapture);
+        $this->assertIsString($queryCapture);
+
+        file_put_contents($input, json_encode($this->publicEvidence(), JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $detailCapture,
+            json_encode($this->selectedRunDetailCapture(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+        );
+
+        $query = $this->selectedRunQueryCapture();
+        unset($query['request_json']);
+        file_put_contents($queryCapture, json_encode($query, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        try {
+            $this->artisan('waterline:signals-queries-conformance', [
+                '--input' => $input,
+                '--output' => $output,
+                '--selected-run-detail-capture' => $detailCapture,
+                '--selected-run-query-capture' => $queryCapture,
+            ] + $this->publishedArtifactOptions())->assertExitCode(1);
+
+            $result = json_decode((string) file_get_contents($output), true, 512, JSON_THROW_ON_ERROR);
+            $scenarios = array_column($result['scenario_results'], null, 'scenario_id');
+            $scenario = $scenarios['waterline_operator_visibility'];
+            $findings = array_column($scenario['linked_findings'], null, 'id');
+
+            $this->assertSame('fail', $scenario['status']);
+            $this->assertArrayHasKey('waterline_selected_run_query_capture_request_mismatch', $findings);
+            $this->assertNull(
+                $findings['waterline_selected_run_query_capture_request_mismatch']['evidence']['request']['observed_json'],
+            );
+            $this->assertNull(
+                $scenario['observed_outputs']['api_captures']['selected_run_query_action']['request_json'],
+            );
+            $this->assertTrue($scenario['observed_outputs']['comparison']['counter_state_matches_public_clients']);
+        } finally {
+            if (is_string($input) && file_exists($input)) {
+                unlink($input);
+            }
+            if (is_string($output) && file_exists($output)) {
+                unlink($output);
+            }
+            if (is_string($detailCapture) && file_exists($detailCapture)) {
+                unlink($detailCapture);
+            }
+            if (is_string($queryCapture) && file_exists($queryCapture)) {
+                unlink($queryCapture);
+            }
+        }
+    }
+
     public function testItFailsClosedWhenProvidedCapturesIdentifyADifferentRunOrQuery(): void
     {
         $input = tempnam(sys_get_temp_dir(), 'waterline-sq-input-');
