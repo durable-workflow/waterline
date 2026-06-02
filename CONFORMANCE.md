@@ -43,14 +43,31 @@ and compact run status, output, signal argument, and declared-query facts
 that external conformance runners can compare against public client
 signal/query results.
 
+The published package also exposes
+`waterline:signals-queries-conformance`. Host conformance runners pass the
+public signals/queries evidence JSON plus real Waterline selected-run
+detail and query-action captures to that command, or let the command
+exercise those routes through the installed application's HTTP kernel. The
+`waterline_operator_visibility` shard compares
+`observer_state.selected_run`, `observer_state.signals`, and the selected-run
+query action response against the server, CLI, and SDK query observations,
+records the selected-run API paths, and emits timestamped dashboard JSON
+envelopes with the published artifact versions used for the comparison. The
+shard fails with typed findings when real Waterline API captures are missing
+or cannot prove parity. It also records a
+`published_artifact_install_only` metadata scenario and returns a failing exit
+code when the server, CLI, workflow PHP, Python SDK, or Waterline version and
+source proof is missing, local, or not a recognized published artifact channel.
+
 `observer_state.queries.live_results_materialized` is currently `false`.
 Waterline selected-run detail is a durable observer snapshot and does not
 store live workflow query results. Runners that need the live query value
 must compare through the query action path advertised in
-`observer_state.paths.selected_run_query_template`, and should record the
-typed reason
-`query_results_not_materialized_in_selected_run_detail` when a read-only
-detail envelope is the only observer surface captured.
+`observer_state.paths.selected_run_query_template`. The conformance shard
+records the typed reason
+`query_results_not_materialized_in_selected_run_detail` alongside the exact
+selected-run detail capture whenever this read-only detail limitation is
+observed.
 
 Namespace-scoped Waterline list, detail, health, and operator API
 visibility are load-bearing evidence for the stable
