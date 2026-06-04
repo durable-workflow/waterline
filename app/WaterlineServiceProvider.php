@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Waterline\Http\Middleware\ControlPlaneVersion;
 use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryMySQL;
@@ -49,10 +50,23 @@ class WaterlineServiceProvider extends ServiceProvider
             'domain' => config('waterline.domain', null),
             'prefix' => config('waterline.path', 'waterline'),
             'namespace' => 'Waterline\Http\Controllers',
-            'middleware' => config('waterline.middleware', 'web'),
+            'middleware' => $this->routeMiddleware(),
         ], function () {
             $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
         });
+    }
+
+    /**
+     * @return list<class-string|string>
+     */
+    private function routeMiddleware(): array
+    {
+        $configured = config('waterline.middleware', 'web');
+        $middleware = is_array($configured) ? array_values($configured) : [$configured];
+
+        array_unshift($middleware, ControlPlaneVersion::class);
+
+        return $middleware;
     }
 
     /**
