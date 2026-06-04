@@ -362,6 +362,17 @@ class V2HealthControllerTest extends TestCase
             'status' => 'active',
         ]);
 
+        WorkerRegistration::create([
+            'worker_id' => 'waterline-worker-status-stale',
+            'namespace' => 'waterline-worker-status',
+            'task_queue' => 'orders',
+            'runtime' => 'python',
+            'supported_workflow_types' => ['orders.cancel'],
+            'supported_activity_types' => ['inventory.release'],
+            'last_heartbeat_at' => now()->subSeconds(180),
+            'status' => 'active',
+        ]);
+
         $payload = $this->get('/waterline/api/v2/health')->assertStatus(200)->json();
 
         $this->assertIsArray($payload);
@@ -380,6 +391,16 @@ class V2HealthControllerTest extends TestCase
         $this->assertSame(7777, $first['process_metrics']['process_id']);
         $this->assertSame(30, $first['heartbeat_interval_seconds']);
         $this->assertSame(120, $payload['operator_metrics']['workers']['stale_after_seconds']);
+        $this->assertSame(2, $payload['operator_metrics']['workers']['registration_count']);
+        $this->assertSame(1, $payload['operator_metrics']['workers']['stale_registration_count']);
+        $this->assertSame(
+            'waterline-worker-status-stale',
+            $payload['operator_metrics']['workers']['stale_registrations'][0]['worker_id'] ?? null,
+        );
+        $this->assertSame(
+            'stale',
+            $payload['operator_metrics']['workers']['stale_registrations'][0]['status'] ?? null,
+        );
     }
 
     public function testHealthEndpointPublishesCompatibilityAlertFactsWhenFailClosedWorkersAreMissing(): void

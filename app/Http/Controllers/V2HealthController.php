@@ -120,11 +120,12 @@ class V2HealthController extends Controller
             ->get();
 
         $registrationPayload = [];
+        $staleRegistrationPayload = [];
         foreach ($registrations as $worker) {
-            $isStale = $worker->last_heartbeat_at instanceof CarbonInterface
-                && $worker->last_heartbeat_at->lt($now->copy()->subSeconds($staleAfter));
+            $isStale = ! ($worker->last_heartbeat_at instanceof CarbonInterface)
+                || $worker->last_heartbeat_at->lt($now->copy()->subSeconds($staleAfter));
 
-            $registrationPayload[] = [
+            $workerPayload = [
                 'worker_id' => (string) $worker->worker_id,
                 'namespace' => $worker->namespace,
                 'task_queue' => $worker->task_queue,
@@ -157,9 +158,17 @@ class V2HealthController extends Controller
                     : null,
                 'heartbeat_interval_seconds' => $worker->heartbeat_interval_seconds ?? null,
             ];
+
+            if ($isStale) {
+                $staleRegistrationPayload[] = $workerPayload;
+
+                continue;
+            }
+
+            $registrationPayload[] = $workerPayload;
         }
 
-        if ($registrationPayload === []) {
+        if ($registrationPayload === [] && $staleRegistrationPayload === []) {
             return $snapshot;
         }
 
@@ -170,6 +179,9 @@ class V2HealthController extends Controller
             ? $operatorMetrics['workers']
             : [];
         $workersBlock['registrations'] = $registrationPayload;
+        $workersBlock['stale_registrations'] = $staleRegistrationPayload;
+        $workersBlock['registration_count'] = count($registrationPayload) + count($staleRegistrationPayload);
+        $workersBlock['stale_registration_count'] = count($staleRegistrationPayload);
         $workersBlock['stale_after_seconds'] = $staleAfter;
         $operatorMetrics['workers'] = $workersBlock;
         $snapshot['operator_metrics'] = $operatorMetrics;

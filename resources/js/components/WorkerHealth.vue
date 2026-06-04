@@ -56,7 +56,7 @@
                     <div class="card-body card-bg-secondary">
                         <div class="worker-health__summary-label">Active workers</div>
                         <div class="worker-health__summary-value">{{ activeWorkerCount.toLocaleString() }}</div>
-                        <div class="worker-health__summary-meta">{{ workers.length.toLocaleString() }} registrations returned.</div>
+                        <div class="worker-health__summary-meta">{{ workers.length.toLocaleString() }} active registrations returned.</div>
                     </div>
                 </article>
 
@@ -499,6 +499,12 @@ export default {
         },
 
         staleWorkerCount() {
+            const count = Number(this.healthData?.operator_metrics?.workers?.stale_registration_count);
+
+            if (Number.isFinite(count)) {
+                return count;
+            }
+
             return this.workers.filter((worker) => this.isHeartbeatStale(worker.last_heartbeat_at)).length;
         },
 
@@ -743,12 +749,8 @@ export default {
                 return [];
             }
 
-            const registrations = Array.isArray(workers.registrations)
-                ? workers.registrations
-                : null;
-
-            if (registrations && registrations.length > 0) {
-                return registrations;
+            if (Array.isArray(workers.registrations)) {
+                return workers.registrations.filter((entry) => entry && typeof entry === 'object');
             }
 
             const fleet = Array.isArray(workers.fleet) ? workers.fleet : [];
