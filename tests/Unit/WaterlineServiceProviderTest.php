@@ -3,6 +3,7 @@
 namespace Waterline\Tests\Unit;
 
 use Illuminate\Support\Facades\DB;
+use Waterline\Console\SignalsQueriesConformanceCommand;
 use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryMySQL;
@@ -126,6 +127,19 @@ class WaterlineServiceProviderTest extends TestCase
         (new WaterlineServiceProvider($this->app))->boot();
 
         $this->expectNotToPerformAssertions();
+    }
+
+    public function testSignalsQueriesConformanceCommandDoesNotParseRoutePlaceholdersAsArguments(): void
+    {
+        $definition = (new SignalsQueriesConformanceCommand())->getDefinition();
+
+        $this->assertFalse($definition->hasArgument('instance'));
+        $this->assertFalse($definition->hasArgument('run'));
+        $this->assertFalse($definition->hasArgument('query'));
+        $this->assertTrue($definition->hasOption('selected-run-detail-capture'));
+        $this->assertTrue($definition->hasOption('selected-run-query-capture'));
+        $this->assertTrue($definition->hasOption('run-id'));
+        $this->assertTrue($definition->hasOption('workflow-run-id'));
     }
 
     private function expectedLegacyRepositoryClass(): string

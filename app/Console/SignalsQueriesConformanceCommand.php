@@ -92,8 +92,8 @@ class SignalsQueriesConformanceCommand extends Command
         {--workflow-run-id= : Workflow run id to inspect when it is not present in the public evidence}
         {--run-status= : Public client observed run status}
         {--query=current : Query name to invoke through the Waterline selected-run query action}
-        {--selected-run-detail-capture= : JSON capture from GET /waterline/api/instances/{instance}/runs/{run}}
-        {--selected-run-query-capture= : JSON capture from POST /waterline/api/instances/{instance}/runs/{run}/queries/{query}}
+        {--selected-run-detail-capture= : JSON capture from GET /waterline/api/instances/<instance>/runs/<run>}
+        {--selected-run-query-capture= : JSON capture from POST /waterline/api/instances/<instance>/runs/<run>/queries/<query>}
         {--api-capture=* : Repeatable Waterline API capture JSON file; captures may be keyed by selected_run_detail or selected_run_query_action}
         {--artifact-version=* : Published artifact version pair, for example server=0.2.250}
         {--artifact-source=* : Published artifact source pair, for example waterline=packagist_package}';
