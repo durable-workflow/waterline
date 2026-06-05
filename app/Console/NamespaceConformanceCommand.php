@@ -280,13 +280,13 @@ class NamespaceConformanceCommand extends Command
             $waterlineScenario,
             $this->resultRecordScenario($artifactVersions, $startedAt, $finishedAt),
         );
-        $hasFailures = self::hasScenarioFailures($scenarioResults);
+        $outcome = self::scenarioOutcome($scenarioResults);
         $report = [
             'schema' => self::RESULT_SCHEMA,
             'schema_version' => self::RESULT_VERSION,
             'suite_version' => PlatformConformanceSuite::VERSION,
             'coverage_scope' => 'waterline-operator-namespace-shard',
-            'outcome' => $hasFailures ? 'fail' : 'non_passing',
+            'outcome' => $outcome,
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
             'generated_at' => $finishedAt,
@@ -314,7 +314,7 @@ class NamespaceConformanceCommand extends Command
 
         $this->emit($report);
 
-        return $hasFailures ? self::FAILURE : self::SUCCESS;
+        return $outcome === 'fail' ? self::FAILURE : self::SUCCESS;
     }
 
     /**
@@ -1703,6 +1703,24 @@ class NamespaceConformanceCommand extends Command
         }
 
         return $links;
+    }
+
+    /**
+     * @param array<string, array<string, mixed>> $scenarioResults
+     */
+    private static function scenarioOutcome(array $scenarioResults): string
+    {
+        if (self::hasScenarioFailures($scenarioResults)) {
+            return 'fail';
+        }
+
+        foreach ($scenarioResults as $scenario) {
+            if (($scenario['status'] ?? null) === 'not_covered' && ! empty($scenario['linked_findings'] ?? [])) {
+                return 'non_passing';
+            }
+        }
+
+        return 'pass';
     }
 
     /**
