@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Waterline\Tests\Feature;
 
 use Waterline\Tests\TestCase;
+use Workflow\V2\Models\WorkflowRunWait;
 use Workflow\V2\Models\WorkflowRunSummary;
 
 final class EngineSourceContractTest extends TestCase
@@ -56,6 +57,24 @@ final class EngineSourceContractTest extends TestCase
             ->assertJsonPath('readiness_contract.effective_states.health.http_status_when_requested', 503);
     }
 
+    public function testV2HealthEndpointStaysReadableWhenOptionalSelectedRunProjectionIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.run_wait_model', MissingWorkflowRunWait::class);
+
+        $this->get('/waterline/api/v2/health')
+            ->assertOk()
+            ->assertJsonPath('status', 'warning')
+            ->assertJsonPath('healthy', true)
+            ->assertJsonPath('engine_source.status', 'v2_pinned_degraded')
+            ->assertJsonPath('engine_source.uses_v2', true)
+            ->assertJsonPath('engine_source.degraded_operator_surface', true)
+            ->assertJsonPath('checks.0.name', 'engine_source')
+            ->assertJsonPath('checks.0.status', 'ok')
+            ->assertJsonPath('checks.1.name', 'operator_snapshot')
+            ->assertJsonPath('checks.1.status', 'warning');
+    }
+
     public function testSavedViewsReturnUnavailableWhenV2IsPinnedButOperatorSurfaceIsMissing(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -90,4 +109,9 @@ final class EngineSourceContractTest extends TestCase
 final class MissingWorkflowRunSummary extends WorkflowRunSummary
 {
     protected $table = 'missing_workflow_run_summaries';
+}
+
+final class MissingWorkflowRunWait extends WorkflowRunWait
+{
+    protected $table = 'missing_workflow_run_waits';
 }

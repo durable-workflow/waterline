@@ -216,6 +216,8 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             ->assertJsonPath('namespace', 'default')
             ->assertJsonPath('status', 'waiting')
             ->assertJsonPath('status_bucket', 'running')
+            ->assertJsonPath('current_compensation_marker', 'pause_after_refund')
+            ->assertJsonPath('compensation_visibility.current_marker', 'pause_after_refund')
             ->assertJsonPath('activities.0.type', 'pause_after_refund')
             ->assertJsonPath('activities.0.status', 'completed');
     }
@@ -226,6 +228,7 @@ class V2NamespaceScopedVisibilityTest extends TestCase
         config()->set('waterline.namespace', 'default');
 
         $run = $this->createCompletedRun('sagas-python-running-summary-fallback', 'default');
+        $this->recordCompletedActivity($run, 'pause_after_refund');
         $hiddenRun = $this->createCompletedRun('sagas-python-running-shipping', 'shipping');
 
         WorkflowRun::whereKey($run->id)->update([
@@ -259,12 +262,203 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             ->assertJsonPath('data.0.run_id', $run->id)
             ->assertJsonPath('data.0.status', 'waiting')
             ->assertJsonPath('data.0.status_bucket', 'running')
-            ->assertJsonPath('data.0.namespace', 'default');
+            ->assertJsonPath('data.0.namespace', 'default')
+            ->assertJsonPath('data.0.current_compensation_marker', 'pause_after_refund')
+            ->assertJsonPath('data.0.compensation_visibility.current_marker', 'pause_after_refund');
 
         $this->assertFalse(
             collect($response->json('data'))->contains('run_id', $hiddenRun->id),
             'Runs from another namespace must not appear through run-namespace fallback.',
         );
+    }
+
+    public function testRunningListCanUseDurableRunWhenSummaryProjectionIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+
+        $run = $this->createCompletedRun('sagas-python-durable-running-fallback', 'default');
+        $this->recordCompletedActivity($run, 'pause_after_refund');
+        $hiddenRun = $this->createCompletedRun('sagas-python-durable-running-shipping', 'shipping');
+
+        WorkflowRun::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'last_history_sequence' => 4,
+        ]);
+        WorkflowRun::whereKey($hiddenRun->id)->update([
+            'status' => 'waiting',
+            'closed_reason' => null,
+            'closed_at' => null,
+        ]);
+        WorkflowRunSummary::whereKey($run->id)->delete();
+        WorkflowRunSummary::whereKey($hiddenRun->id)->update([
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'closed_reason' => null,
+            'closed_at' => null,
+        ]);
+
+        $response = $this->get('/waterline/api/flows/running')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.workflow_instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('data.0.run_id', $run->id)
+            ->assertJsonPath('data.0.status', 'waiting')
+            ->assertJsonPath('data.0.status_bucket', 'running')
+            ->assertJsonPath('data.0.namespace', 'default')
+            ->assertJsonPath('data.0.current_compensation_marker', 'pause_after_refund')
+            ->assertJsonPath('data.0.compensation_visibility.current_marker', 'pause_after_refund')
+            ->assertJsonPath('data.0.operator_visibility_degraded.reason', 'run_summary_projection_unavailable');
+
+        $this->assertFalse(
+            collect($response->json('data'))->contains('run_id', $hiddenRun->id),
+            'Runs from another namespace must not appear through durable-run fallback.',
+        );
+    }
+
+    public function testRunningListDurableFallbackOnlyMergesRunsWithoutRunningSummaryProjection(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+
+        $missingRun = $this->createCompletedRun('waterline-running-missing-summary', 'default');
+
+        WorkflowRun::whereKey($missingRun->id)->update([
+            'status' => 'waiting',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'last_history_sequence' => 4,
+        ]);
+        WorkflowRunSummary::whereKey($missingRun->id)->delete();
+
+        $summaryBackedRunIds = [];
+
+        for ($i = 1; $i <= 51; $i++) {
+            $run = $this->createCompletedRun(sprintf('waterline-running-summary-backed-%02d', $i), 'default');
+            $summaryBackedRunIds[] = $run->id;
+
+            WorkflowRun::whereKey($run->id)->update([
+                'status' => 'waiting',
+                'closed_reason' => null,
+                'closed_at' => null,
+            ]);
+            WorkflowRunSummary::whereKey($run->id)->update([
+                'status' => 'waiting',
+                'status_bucket' => 'running',
+                'closed_reason' => null,
+                'closed_at' => null,
+            ]);
+        }
+
+        $response = $this->get('/waterline/api/flows/running')
+            ->assertOk()
+            ->assertJsonCount(50, 'data');
+
+        $rows = collect($response->json('data'));
+        $durableRows = $rows->filter(
+            static fn (array $row): bool => ($row['operator_visibility_degraded']['reason'] ?? null)
+                === 'run_summary_projection_unavailable',
+        );
+
+        $this->assertSame(52, $response->json('total'));
+        $this->assertCount(1, $durableRows);
+        $this->assertSame($missingRun->id, $durableRows->first()['run_id'] ?? null);
+        $this->assertRunningListContractFields($durableRows->first());
+        $summaryRow = $rows
+            ->reject(
+                static fn (array $row): bool => ($row['operator_visibility_degraded']['reason'] ?? null)
+                    === 'run_summary_projection_unavailable',
+            )
+            ->first();
+        $this->assertIsArray($summaryRow);
+        $this->assertRunningListContractFields($summaryRow);
+        $this->assertFalse(
+            $durableRows->contains(
+                static fn (array $row): bool => in_array($row['run_id'] ?? null, $summaryBackedRunIds, true),
+            ),
+            'Summary-backed runs from later pages must not be rendered again by the durable fallback.',
+        );
+
+        $pageTwoResponse = $this->get('/waterline/api/flows/running?page=2')
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $pageOneRunIds = $rows->pluck('run_id');
+        $pageTwoRows = collect($pageTwoResponse->json('data'));
+        $pageTwoRunIds = $pageTwoRows->pluck('run_id');
+        $allPagedSummaryRunIds = $pageOneRunIds
+            ->merge($pageTwoRunIds)
+            ->reject(static fn (mixed $runId): bool => $runId === $missingRun->id)
+            ->values()
+            ->all();
+
+        $this->assertSame(52, $pageTwoResponse->json('total'));
+        $this->assertFalse(
+            $pageTwoRunIds->contains($missingRun->id),
+            'Missing-summary durable fallback rows must not repeat on page 2.',
+        );
+        $this->assertEmpty(
+            $pageOneRunIds->intersect($pageTwoRunIds)->values()->all(),
+            'Mixed durable and summary pagination must not repeat rows across pages.',
+        );
+        $this->assertEqualsCanonicalizing($summaryBackedRunIds, $allPagedSummaryRunIds);
+        $this->assertFalse(
+            $pageTwoRows->contains(
+                static fn (array $row): bool => ($row['operator_visibility_degraded']['reason'] ?? null)
+                    === 'run_summary_projection_unavailable',
+            ),
+            'Page 2 should contain summary-backed rows after the page-1 durable fallback has been consumed.',
+        );
+    }
+
+    public function testRunningListMixedDurableFallbackRowsUseAnnotatedListItemContract(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+
+        $missingRun = $this->createCompletedRun('waterline-running-contract-missing-summary', 'default');
+        $summaryBackedRun = $this->createCompletedRun('waterline-running-contract-summary-backed', 'default');
+
+        foreach ([$missingRun, $summaryBackedRun] as $run) {
+            WorkflowRun::whereKey($run->id)->update([
+                'status' => 'waiting',
+                'closed_reason' => null,
+                'closed_at' => null,
+                'last_history_sequence' => 4,
+            ]);
+        }
+
+        WorkflowRunSummary::whereKey($missingRun->id)->delete();
+        WorkflowRunSummary::whereKey($summaryBackedRun->id)->update([
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'history_event_count' => 4,
+        ]);
+
+        $rows = collect(
+            $this->get('/waterline/api/flows/running')
+                ->assertOk()
+                ->assertJsonCount(2, 'data')
+                ->json('data'),
+        );
+
+        $durableRow = $rows->first(
+            static fn (array $row): bool => ($row['operator_visibility_degraded']['reason'] ?? null)
+                === 'run_summary_projection_unavailable',
+        );
+        $summaryRow = $rows->first(
+            static fn (array $row): bool => ($row['run_id'] ?? null) === $summaryBackedRun->id,
+        );
+
+        $this->assertIsArray($durableRow);
+        $this->assertIsArray($summaryRow);
+        $this->assertSame($missingRun->id, $durableRow['run_id'] ?? null);
+        $this->assertRunningListContractFields($durableRow);
+        $this->assertRunningListContractFields($summaryRow);
     }
 
     public function testScheduleOperatorApiIsScopedToConfiguredNamespace(): void
@@ -645,6 +839,35 @@ class V2NamespaceScopedVisibilityTest extends TestCase
         ]);
 
         return $run;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function assertRunningListContractFields(array $row): void
+    {
+        foreach ([
+            'history_budget_indicator',
+            'compatibility_supported',
+            'compatibility_reason',
+            'compatibility_supported_in_fleet',
+            'compatibility_fleet_reason',
+            'compatibility_namespace',
+            'compatibility_semantics',
+            'actionability',
+            'detail_action',
+        ] as $field) {
+            $this->assertArrayHasKey($field, $row);
+        }
+
+        $this->assertIsArray($row['history_budget_indicator']);
+        $this->assertIsArray($row['compatibility_semantics']);
+        $this->assertIsArray($row['actionability']);
+        $this->assertIsArray($row['detail_action']);
+        $this->assertSame('waterline.actionability', $row['actionability']['schema'] ?? null);
+        $this->assertSame(1, $row['actionability']['version'] ?? null);
+        $this->assertSame('Run Detail', $row['detail_action']['label'] ?? null);
+        $this->assertTrue($row['detail_action']['available'] ?? false);
     }
 
     private function recordCompletedActivity(WorkflowRun $run, string $activityType): void

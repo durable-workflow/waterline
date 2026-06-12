@@ -23,6 +23,7 @@ use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\CompatibilitySemantics;
+use Waterline\Support\CompensationVisibility;
 use Waterline\Support\OperatorScope;
 use Waterline\Waterline;
 
@@ -604,7 +605,7 @@ class WorkflowsController extends Controller
         $payload['data'] = array_map(
             fn (mixed $item): array => $item instanceof WorkflowRunSummary
                 ? $this->listItemView($item)
-                : (is_array($item) ? $item : []),
+                : (is_array($item) ? $this->annotateListItem($item) : []),
             $result instanceof LengthAwarePaginator ? $result->items() : ($payload['data'] ?? []),
         );
 
@@ -660,6 +661,30 @@ class WorkflowsController extends Controller
         $item['namespace'] ??= is_string($summary->run?->namespace ?? null)
             ? $summary->run->namespace
             : null;
+        $compensationVisibility = CompensationVisibility::forRun($summary->run);
+        $item['current_compensation_marker'] = $compensationVisibility['current_marker'];
+        $item['compensation_visibility'] = $compensationVisibility;
+
+        return $this->annotateListItem($item);
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @return array<string, mixed>
+     */
+    private function annotateListItem(array $item): array
+    {
+        $compensationVisibility = is_array($item['compensation_visibility'] ?? null)
+            ? $item['compensation_visibility']
+            : CompensationVisibility::fromActivities($item['activities'] ?? []);
+        $currentCompensationMarker = $item['current_compensation_marker'] ?? null;
+
+        $item['current_compensation_marker'] = is_string($currentCompensationMarker) && $currentCompensationMarker !== ''
+            ? $currentCompensationMarker
+            : (is_string($compensationVisibility['current_marker'] ?? null)
+                ? $compensationVisibility['current_marker']
+                : null);
+        $item['compensation_visibility'] = $compensationVisibility;
         $item['history_budget_indicator'] = $this->historyBudgetIndicator($item);
         $item = CompatibilitySemantics::annotateListItem($item);
         $item['actionability'] = ActionabilityContract::annotateRun($item)['actionability'];

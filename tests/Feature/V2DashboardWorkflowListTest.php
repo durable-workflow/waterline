@@ -1090,6 +1090,8 @@ class V2DashboardWorkflowListTest extends TestCase
 
         $item = $response->json('data.0');
         $expectedFields = RunListItemView::fields();
+        $expectedFields[] = 'current_compensation_marker';
+        $expectedFields[] = 'compensation_visibility';
         $expectedFields[] = 'history_budget_indicator';
         $expectedFields[] = 'compatibility_supported';
         $expectedFields[] = 'compatibility_reason';
@@ -1115,6 +1117,8 @@ class V2DashboardWorkflowListTest extends TestCase
         $this->assertTrue($item['repair_attention']);
         $this->assertIsArray($item['repair_blocked']);
         $this->assertSame('unsupported_history', $item['repair_blocked']['code']);
+        $this->assertNull($item['current_compensation_marker']);
+        $this->assertNull($item['compensation_visibility']['current_marker']);
         $this->assertSame('blocked', $item['actionability']['repair_state']);
         $this->assertFalse($item['actionability']['actions']['repair']['allowed']);
         $this->assertSame('unsupported_history', $item['actionability']['actions']['repair']['reason']);

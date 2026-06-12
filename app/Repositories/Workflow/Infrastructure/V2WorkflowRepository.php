@@ -2,12 +2,17 @@
 
 namespace Waterline\Repositories\Workflow\Infrastructure;
 
+use BackedEnum;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityVisibilityFilters;
+use Waterline\Support\CompensationVisibility;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
+use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Support\RunSummarySortKey;
 use Workflow\V2\Support\SelectedRunLocator;
 use Workflow\V2\Support\WorkerCompatibility;
@@ -60,9 +65,18 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function runningFlows()
     {
-        return $this->orderedRunsQuery('running')
-            ->where('status_bucket', 'running')
-            ->paginate(50);
+        try {
+            $query = $this->orderedRunsQuery('running')
+                ->where('status_bucket', 'running');
+
+            if (! $this->shouldMergeDurableRunningRows()) {
+                return $query->paginate(50);
+            }
+
+            return $this->runningFlowsWithDurableRows($query);
+        } catch (Throwable) {
+            return $this->runningFlowsFromDurableRuns();
+        }
     }
 
     public function findFlow(string $id)
@@ -84,7 +98,17 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
                 throw $exception;
             }
 
-            return $this->findFlowSelectionByRunScope($instanceId, $runId, $exception);
+            try {
+                return $this->findFlowSelectionByRunScope($instanceId, $runId, $exception);
+            } catch (Throwable $fallbackException) {
+                return $this->findFlowSelectionByDurableRun($instanceId, $runId, $fallbackException);
+            }
+        } catch (Throwable $exception) {
+            if ($runId === null) {
+                throw $exception;
+            }
+
+            return $this->findFlowSelectionByDurableRun($instanceId, $runId, $exception);
         }
     }
 
@@ -433,6 +457,279 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         }
 
         throw $previous;
+    }
+
+    private function findFlowSelectionByDurableRun(
+        string $instanceId,
+        string $runId,
+        Throwable $previous,
+    ) {
+        $query = $this->runModel::query()
+            ->where('workflow_instance_id', $instanceId)
+            ->whereKey($runId);
+
+        $this->applyRunNamespaceScope($query);
+
+        $run = $query->first();
+
+        if ($run !== null) {
+            return $run;
+        }
+
+        throw $previous;
+    }
+
+    private function runningFlowsWithDurableRows($summaryQuery): LengthAwarePaginator
+    {
+        $perPage = 50;
+        $page = LengthAwarePaginator::resolveCurrentPage();
+        $offset = max(0, ($page - 1) * $perPage);
+
+        $durable = $this->durableRunningRowsPage($offset, $perPage);
+
+        if ($durable['total'] === 0) {
+            return $summaryQuery->paginate($perPage);
+        }
+
+        $summaryTotal = (int) (clone $summaryQuery)->toBase()->getCountForPagination();
+        $summaryLimit = max(0, $perPage - count($durable['items']));
+        $summaryOffset = max(0, $offset - $durable['total']);
+        $summaryItems = $summaryLimit === 0
+            ? []
+            : (clone $summaryQuery)
+                ->skip($summaryOffset)
+                ->take($summaryLimit)
+                ->get()
+                ->all();
+
+        return new LengthAwarePaginator(
+            array_merge($durable['items'], $summaryItems),
+            $summaryTotal + $durable['total'],
+            $perPage,
+            $page,
+            [
+                'path' => request()->url(),
+                'query' => request()->query(),
+            ],
+        );
+    }
+
+    private function shouldMergeDurableRunningRows(): bool
+    {
+        $query = array_keys(request()->query());
+        $nonFilterKeys = ['page', 'sort', 'sort_direction'];
+
+        foreach ($query as $key) {
+            if (! in_array($key, $nonFilterKeys, true)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @return array{items: list<array<string, mixed>>, total: int}
+     */
+    private function durableRunningRowsPage(int $offset, int $limit): array
+    {
+        try {
+            $query = $this->runModel::query()
+                ->whereIn('status', ['pending', 'running', 'waiting'])
+                ->whereNotIn('id', $this->runningSummaryRunIdsQuery());
+
+            $this->applyRunNamespaceScope($query);
+
+            $total = (int) (clone $query)->count();
+            $runs = $limit === 0
+                ? collect()
+                : $query
+                    ->orderByDesc('last_progress_at')
+                    ->orderByDesc('created_at')
+                    ->orderByDesc('id')
+                    ->skip($offset)
+                    ->take($limit)
+                    ->get();
+
+            return [
+                'items' => $runs
+                    ->map(fn (WorkflowRun $run): array => $this->durableRunListItem($run))
+                    ->values()
+                    ->all(),
+                'total' => $total,
+            ];
+        } catch (Throwable) {
+            return [
+                'items' => [],
+                'total' => 0,
+            ];
+        }
+    }
+
+    private function runningSummaryRunIdsQuery()
+    {
+        $query = $this->runSummaryModel::query()
+            ->select('id')
+            ->where('status_bucket', 'running');
+
+        return $this->applySummaryNamespaceScope($query);
+    }
+
+    private function runningFlowsFromDurableRuns(): LengthAwarePaginator
+    {
+        $perPage = 50;
+        $page = LengthAwarePaginator::resolveCurrentPage();
+
+        try {
+            $query = $this->runModel::query()
+                ->whereIn('status', ['pending', 'running', 'waiting']);
+
+            $this->applyRunNamespaceScope($query);
+
+            $total = (clone $query)->count();
+            $runs = $query
+                ->orderByDesc('last_progress_at')
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->forPage($page, $perPage)
+                ->get();
+
+            $items = $runs
+                ->map(fn (WorkflowRun $run): array => $this->durableRunListItem($run))
+                ->values()
+                ->all();
+        } catch (Throwable) {
+            $total = 0;
+            $items = [];
+        }
+
+        return new LengthAwarePaginator(
+            $items,
+            $total,
+            $perPage,
+            $page,
+            [
+                'path' => request()->url(),
+                'query' => request()->query(),
+            ],
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function durableRunListItem(WorkflowRun $run): array
+    {
+        $status = $this->runStatusValue($run->status);
+        $compensationVisibility = CompensationVisibility::forRun($run);
+
+        return [
+            'id' => $run->id,
+            'workflow_instance_id' => $run->workflow_instance_id,
+            'instance_id' => $run->workflow_instance_id,
+            'selected_run_id' => $run->id,
+            'run_id' => $run->id,
+            'run_number' => (int) $run->run_number,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => $run->workflow_class,
+            'workflow_type' => $run->workflow_type,
+            'namespace' => $run->namespace,
+            'business_key' => $run->business_key,
+            'compatibility' => $run->compatibility,
+            'status' => $status,
+            'status_bucket' => $this->runStatusBucket($status),
+            'is_terminal' => $this->runStatusIsTerminal($status),
+            'closed_reason' => $run->closed_reason,
+            'started_at' => $this->timestamp($run->started_at),
+            'closed_at' => $this->timestamp($run->closed_at),
+            'created_at' => $this->timestamp($run->created_at),
+            'updated_at' => $this->timestamp($run->last_progress_at ?? $run->updated_at),
+            'sort_timestamp' => $this->timestamp($run->last_progress_at ?? $run->updated_at ?? $run->created_at),
+            'sort_key' => null,
+            'duration_ms' => null,
+            'archived_at' => $this->timestamp($run->archived_at),
+            'archive_reason' => $run->archive_reason,
+            'wait_kind' => null,
+            'wait_reason' => null,
+            'liveness_state' => $status === 'waiting' ? 'waiting' : null,
+            'visibility_labels' => is_array($run->visibility_labels) ? $run->visibility_labels : [],
+            'search_attributes' => $this->typedSearchAttributes($run),
+            'repair_attention' => false,
+            'repair_blocked_reason' => null,
+            'repair_blocked' => [
+                'blocked' => false,
+                'reason' => null,
+                'label' => null,
+            ],
+            'task_problem' => false,
+            'task_problem_badge' => [
+                'problem' => false,
+                'label' => 'No task problem',
+                'severity' => 'ok',
+            ],
+            'declared_entry_mode' => null,
+            'declared_contract_source' => null,
+            'exception_count' => 0,
+            'history_event_count' => is_numeric($run->last_history_sequence)
+                ? (int) $run->last_history_sequence
+                : 0,
+            'history_size_bytes' => 0,
+            'history_fan_out' => 0,
+            'continue_as_new_recommended' => false,
+            'history_budget_pressure' => 'ok',
+            'connection' => $run->connection,
+            'queue' => $run->queue,
+            'current_compensation_marker' => $compensationVisibility['current_marker'],
+            'compensation_visibility' => $compensationVisibility,
+            'operator_visibility_degraded' => [
+                'reason' => 'run_summary_projection_unavailable',
+                'message' => 'Waterline rendered this row from durable run state because the run-summary projection was unavailable.',
+            ],
+        ];
+    }
+
+    private function runStatusValue(mixed $status): ?string
+    {
+        if ($status instanceof BackedEnum) {
+            return is_string($status->value) ? $status->value : null;
+        }
+
+        return is_string($status) && $status !== '' ? $status : null;
+    }
+
+    private function runStatusBucket(?string $status): ?string
+    {
+        return match ($status) {
+            'completed' => 'completed',
+            'failed' => 'failed',
+            'cancelled' => 'cancelled',
+            'terminated' => 'terminated',
+            null => null,
+            default => 'running',
+        };
+    }
+
+    private function runStatusIsTerminal(?string $status): bool
+    {
+        return in_array($status, ['completed', 'failed', 'cancelled', 'terminated', 'timed_out'], true);
+    }
+
+    private function timestamp(mixed $value): ?string
+    {
+        return $value instanceof CarbonInterface ? $value->toIso8601String() : $this->stringOrNull($value);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function typedSearchAttributes(WorkflowRun $run): array
+    {
+        try {
+            return $run->typedSearchAttributes();
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     private function applySummaryNamespaceScope($query)

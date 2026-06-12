@@ -4,6 +4,7 @@ namespace Waterline\Http\Controllers;
 
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Schema;
+use Throwable;
 use Waterline\Models\WorkerBuildIdRollout;
 use Waterline\Models\WorkerRegistration;
 use Waterline\Support\OperatorScope;
@@ -61,7 +62,11 @@ class V2HealthController extends Controller
             return response()->json($payload, 503);
         }
 
-        $snapshot = $this->snapshotForConfiguredNamespace();
+        try {
+            $snapshot = $this->snapshotForConfiguredNamespace();
+        } catch (Throwable) {
+            $snapshot = $this->degradedSnapshotForConfiguredNamespace();
+        }
         array_unshift($snapshot['checks'], [
             'name' => 'engine_source',
             'status' => 'ok',
@@ -88,6 +93,41 @@ class V2HealthController extends Controller
         );
 
         return response()->json($snapshot, HealthCheck::httpStatus($snapshot));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function degradedSnapshotForConfiguredNamespace(): array
+    {
+        return [
+            'generated_at' => now()->toJSON(),
+            'status' => 'warning',
+            'healthy' => true,
+            'checks' => [
+                [
+                    'name' => 'operator_snapshot',
+                    'status' => 'warning',
+                    'category' => 'correctness',
+                    'message' => 'Waterline health metrics were unavailable; durable selected-run views remain readable when core v2 tables are present.',
+                    'data' => [
+                        'reason' => 'operator_metrics_unavailable',
+                    ],
+                ],
+            ],
+            'categories' => [
+                'correctness' => [
+                    'status' => 'warning',
+                    'check_count' => 1,
+                ],
+                'acceleration' => [
+                    'status' => 'ok',
+                    'check_count' => 0,
+                ],
+            ],
+            'operator_metrics' => [],
+            'structural_limits' => [],
+        ];
     }
 
     /**

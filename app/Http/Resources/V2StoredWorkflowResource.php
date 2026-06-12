@@ -2,11 +2,14 @@
 
 namespace Waterline\Http\Resources;
 
+use BackedEnum;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Throwable;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowRun;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\CompatibilitySemantics;
+use Waterline\Support\CompensationVisibility;
 use Waterline\Support\ObserverStateEnvelope;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\RunDiagnostics;
@@ -24,13 +27,21 @@ class V2StoredWorkflowResource extends JsonResource
 
     public function toArray($request)
     {
-        $detail = app(OperatorObservabilityRepository::class)->runDetail(
-            $this->resource,
-            $this->timelineLimit($request),
-        );
+        try {
+            $detail = app(OperatorObservabilityRepository::class)->runDetail(
+                $this->resource,
+                $this->timelineLimit($request),
+            );
+        } catch (Throwable) {
+            $detail = $this->fallbackRunDetail();
+        }
+
         $detail = $this->withTimelineWindow($detail, $request);
         $detail['workflow_instance_id'] ??= $detail['instance_id'] ?? $this->resource->workflow_instance_id;
         $detail['workflow_run_id'] ??= $detail['run_id'] ?? $detail['selected_run_id'] ?? $this->resource->id;
+        $compensationVisibility = CompensationVisibility::fromActivities($detail['activities'] ?? []);
+        $detail['current_compensation_marker'] = $compensationVisibility['current_marker'];
+        $detail['compensation_visibility'] = $compensationVisibility;
         $detail['run_diagnostics'] = app(RunDiagnostics::class)->forRun($this->resource, $detail);
         $detail = ObserverStateEnvelope::annotateRun($detail, $this->observerPaths($request, $detail));
         $detail = CompatibilitySemantics::annotateRun($detail);
@@ -38,6 +49,82 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['operator_scope'] = OperatorScope::payload();
 
         return ActionabilityContract::annotateRun($detail);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fallbackRunDetail(): array
+    {
+        $status = $this->statusValue($this->resource->status);
+        $activities = CompensationVisibility::activitiesForRun($this->resource);
+
+        return [
+            'id' => $this->resource->id,
+            'instance_id' => $this->resource->workflow_instance_id,
+            'workflow_instance_id' => $this->resource->workflow_instance_id,
+            'selected_run_id' => $this->resource->id,
+            'run_id' => $this->resource->id,
+            'workflow_run_id' => $this->resource->id,
+            'run_number' => $this->resource->run_number,
+            'is_current_run' => true,
+            'current_run_id' => $this->resource->id,
+            'engine_source' => 'v2',
+            'class' => $this->resource->workflow_class,
+            'workflow_type' => $this->resource->workflow_type,
+            'namespace' => $this->resource->namespace,
+            'business_key' => $this->resource->business_key,
+            'visibility_labels' => is_array($this->resource->visibility_labels)
+                ? $this->resource->visibility_labels
+                : [],
+            'status' => $status,
+            'status_bucket' => $this->statusBucket($status),
+            'is_terminal' => $this->isTerminalStatus($status),
+            'closed_reason' => $this->resource->closed_reason,
+            'closed_at' => $this->resource->closed_at,
+            'created_at' => $this->resource->started_at ?? $this->resource->created_at,
+            'updated_at' => $this->resource->last_progress_at ?? $this->resource->updated_at,
+            'history_event_count' => is_numeric($this->resource->last_history_sequence)
+                ? (int) $this->resource->last_history_sequence
+                : count($activities),
+            'history_size_bytes' => 0,
+            'history_fan_out' => 0,
+            'activities_scope' => 'selected_run',
+            'activities' => $activities,
+            'timeline' => [],
+            'timeline_total_count' => 0,
+            'timeline_returned_count' => 0,
+            'operator_visibility_degraded' => [
+                'reason' => 'selected_run_projection_unavailable',
+                'message' => 'Waterline rendered durable run state and activity history because selected-run projections were unavailable.',
+            ],
+        ];
+    }
+
+    private function statusValue(mixed $status): ?string
+    {
+        if ($status instanceof BackedEnum) {
+            return is_string($status->value) ? $status->value : null;
+        }
+
+        return is_string($status) && $status !== '' ? $status : null;
+    }
+
+    private function statusBucket(?string $status): ?string
+    {
+        return match ($status) {
+            'completed' => 'completed',
+            'failed' => 'failed',
+            'cancelled' => 'cancelled',
+            'terminated' => 'terminated',
+            null => null,
+            default => 'running',
+        };
+    }
+
+    private function isTerminalStatus(?string $status): bool
+    {
+        return in_array($status, ['completed', 'failed', 'cancelled', 'terminated', 'timed_out'], true);
     }
 
     /**
