@@ -657,6 +657,9 @@ class WorkflowsController extends Controller
     private function listItemView(WorkflowRunSummary $summary): array
     {
         $item = RunListItemView::fromSummary($summary);
+        $item['namespace'] ??= is_string($summary->run?->namespace ?? null)
+            ? $summary->run->namespace
+            : null;
         $item['history_budget_indicator'] = $this->historyBudgetIndicator($item);
         $item = CompatibilitySemantics::annotateListItem($item);
         $item['actionability'] = ActionabilityContract::annotateRun($item)['actionability'];

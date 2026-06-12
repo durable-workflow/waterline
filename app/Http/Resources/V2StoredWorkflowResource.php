@@ -29,6 +29,8 @@ class V2StoredWorkflowResource extends JsonResource
             $this->timelineLimit($request),
         );
         $detail = $this->withTimelineWindow($detail, $request);
+        $detail['workflow_instance_id'] ??= $detail['instance_id'] ?? $this->resource->workflow_instance_id;
+        $detail['workflow_run_id'] ??= $detail['run_id'] ?? $detail['selected_run_id'] ?? $this->resource->id;
         $detail['run_diagnostics'] = app(RunDiagnostics::class)->forRun($this->resource, $detail);
         $detail = ObserverStateEnvelope::annotateRun($detail, $this->observerPaths($request, $detail));
         $detail = CompatibilitySemantics::annotateRun($detail);

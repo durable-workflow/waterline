@@ -182,6 +182,91 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             ->assertNotFound();
     }
 
+    public function testSelectedRunDetailCanUseRunNamespaceWhenInstanceProjectionIsMissingNamespace(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+
+        $run = $this->createCompletedRun('sagas-python-operator-visible-run', 'default');
+        $this->recordCompletedActivity($run, 'pause_after_refund');
+        WorkflowRun::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'last_history_sequence' => 4,
+        ]);
+        WorkflowRunSummary::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'history_event_count' => 4,
+        ]);
+
+        WorkflowInstance::whereKey($run->workflow_instance_id)->update([
+            'namespace' => null,
+        ]);
+
+        $this->get('/waterline/api/instances/'.$run->workflow_instance_id.'/runs/'.$run->id.'?history_limit=all')
+            ->assertOk()
+            ->assertJsonPath('workflow_instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('workflow_run_id', $run->id)
+            ->assertJsonPath('instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('namespace', 'default')
+            ->assertJsonPath('status', 'waiting')
+            ->assertJsonPath('status_bucket', 'running')
+            ->assertJsonPath('activities.0.type', 'pause_after_refund')
+            ->assertJsonPath('activities.0.status', 'completed');
+    }
+
+    public function testRunningListCanUseRunNamespaceWhenSummaryProjectionIsMissingNamespace(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+
+        $run = $this->createCompletedRun('sagas-python-running-summary-fallback', 'default');
+        $hiddenRun = $this->createCompletedRun('sagas-python-running-shipping', 'shipping');
+
+        WorkflowRun::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'closed_reason' => null,
+            'closed_at' => null,
+        ]);
+        WorkflowRunSummary::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'namespace' => null,
+        ]);
+        WorkflowRun::whereKey($hiddenRun->id)->update([
+            'status' => 'waiting',
+            'closed_reason' => null,
+            'closed_at' => null,
+        ]);
+        WorkflowRunSummary::whereKey($hiddenRun->id)->update([
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'closed_reason' => null,
+            'closed_at' => null,
+        ]);
+
+        $response = $this->get('/waterline/api/flows/running')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.workflow_instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('data.0.run_id', $run->id)
+            ->assertJsonPath('data.0.status', 'waiting')
+            ->assertJsonPath('data.0.status_bucket', 'running')
+            ->assertJsonPath('data.0.namespace', 'default');
+
+        $this->assertFalse(
+            collect($response->json('data'))->contains('run_id', $hiddenRun->id),
+            'Runs from another namespace must not appear through run-namespace fallback.',
+        );
+    }
+
     public function testScheduleOperatorApiIsScopedToConfiguredNamespace(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -560,6 +645,69 @@ class V2NamespaceScopedVisibilityTest extends TestCase
         ]);
 
         return $run;
+    }
+
+    private function recordCompletedActivity(WorkflowRun $run, string $activityType): void
+    {
+        $activityId = (string) Str::ulid();
+        $attemptId = (string) Str::ulid();
+        $scheduledAt = now()->subSeconds(20);
+        $startedAt = now()->subSeconds(15);
+        $closedAt = now()->subSeconds(10);
+
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 3,
+            'event_type' => HistoryEventType::ActivityScheduled->value,
+            'payload' => [
+                'activity_execution_id' => $activityId,
+                'activity_type' => $activityType,
+                'activity_class' => 'SagaPauseActivity',
+                'sequence' => 1,
+                'activity' => [
+                    'id' => $activityId,
+                    'sequence' => 1,
+                    'type' => $activityType,
+                    'class' => 'SagaPauseActivity',
+                    'attempt_id' => $attemptId,
+                    'status' => 'pending',
+                    'attempt_count' => 1,
+                    'connection' => 'redis',
+                    'queue' => 'default',
+                    'created_at' => $scheduledAt->jsonSerialize(),
+                ],
+            ],
+            'recorded_at' => $scheduledAt,
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 4,
+            'event_type' => HistoryEventType::ActivityCompleted->value,
+            'payload' => [
+                'activity_execution_id' => $activityId,
+                'activity_type' => $activityType,
+                'activity_class' => 'SagaPauseActivity',
+                'sequence' => 1,
+                'activity' => [
+                    'id' => $activityId,
+                    'sequence' => 1,
+                    'type' => $activityType,
+                    'class' => 'SagaPauseActivity',
+                    'attempt_id' => $attemptId,
+                    'status' => 'completed',
+                    'attempt_count' => 1,
+                    'connection' => 'redis',
+                    'queue' => 'default',
+                    'created_at' => $scheduledAt->jsonSerialize(),
+                    'started_at' => $startedAt->jsonSerialize(),
+                    'closed_at' => $closedAt->jsonSerialize(),
+                ],
+            ],
+            'recorded_at' => $closedAt,
+        ]);
     }
 
     private function createSchedule(string $scheduleId, string $namespace): WorkflowSchedule

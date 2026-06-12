@@ -3,6 +3,7 @@
 namespace Waterline\Repositories\Workflow\Infrastructure;
 
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityVisibilityFilters;
@@ -71,7 +72,20 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function findFlowSelection(string $instanceId, ?string $runId = null)
     {
-        return SelectedRunLocator::forInstanceIdOrFail($instanceId, $runId, $this->detailRelations(), $this->namespace());
+        try {
+            return SelectedRunLocator::forInstanceIdOrFail(
+                $instanceId,
+                $runId,
+                $this->detailRelations(),
+                $this->namespace(),
+            );
+        } catch (ModelNotFoundException $exception) {
+            if ($runId === null || $this->namespace() === null) {
+                throw $exception;
+            }
+
+            return $this->findFlowSelectionByRunScope($instanceId, $runId, $exception);
+        }
     }
 
     public function dashboardStats(): array
@@ -295,11 +309,12 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     {
         $query = $this->runSummaryModel::query()
             ->with([$this->runRelationSelect()]);
+        $query = $this->applySummaryNamespaceScope($query);
         $context = V2VisibilityFilterContext::resolve(request(), $bucket);
 
         ActionabilityVisibilityFilters::apply(
             $query,
-            $context['applied_filters'],
+            $this->visibilityFiltersForQuery($context['applied_filters']),
         );
 
         return $query;
@@ -335,11 +350,8 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     private function runSummaryQuery()
     {
         $query = $this->runSummaryModel::query();
-        $namespace = $this->namespace();
 
-        return $namespace === null
-            ? $query
-            : $query->where('namespace', $namespace);
+        return $this->applySummaryNamespaceScope($query);
     }
 
     private function failureQuery()
@@ -369,6 +381,10 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     {
         $columns = ['id'];
 
+        if ($this->runColumnExists('namespace')) {
+            $columns[] = 'namespace';
+        }
+
         if ($this->runColumnExists('search_attributes')) {
             $columns[] = 'search_attributes';
         }
@@ -396,5 +412,73 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         }
 
         return $this->databaseColumnExistsCache[$cacheKey];
+    }
+
+    private function findFlowSelectionByRunScope(
+        string $instanceId,
+        string $runId,
+        ModelNotFoundException $previous,
+    ) {
+        $query = $this->runModel::query()
+            ->with($this->detailRelations())
+            ->where('workflow_instance_id', $instanceId)
+            ->whereKey($runId);
+
+        $this->applyRunNamespaceScope($query);
+
+        $run = $query->first();
+
+        if ($run !== null) {
+            return $run;
+        }
+
+        throw $previous;
+    }
+
+    private function applySummaryNamespaceScope($query)
+    {
+        $namespace = $this->namespace();
+
+        if ($namespace === null) {
+            return $query;
+        }
+
+        return $query->where(static function ($scope) use ($namespace): void {
+            $scope->where('namespace', $namespace)
+                ->orWhereHas('run', static function ($runQuery) use ($namespace): void {
+                    $runQuery->where('namespace', $namespace);
+                });
+        });
+    }
+
+    private function applyRunNamespaceScope($query): void
+    {
+        $namespace = $this->namespace();
+
+        if ($namespace === null) {
+            return;
+        }
+
+        $query->where(static function ($scope) use ($namespace): void {
+            $scope->where('namespace', $namespace)
+                ->orWhereHas('instance', static function ($instanceQuery) use ($namespace): void {
+                    $instanceQuery->where('namespace', $namespace);
+                });
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return array<string, mixed>
+     */
+    private function visibilityFiltersForQuery(array $filters): array
+    {
+        if ($this->namespace() === null) {
+            return $filters;
+        }
+
+        unset($filters['namespace']);
+
+        return $filters;
     }
 }
