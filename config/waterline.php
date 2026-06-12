@@ -86,6 +86,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Health Snapshot Task Dispatch Mode
+    |--------------------------------------------------------------------------
+    |
+    | Waterline is commonly deployed as a read-only observer pointed at a
+    | server-owned workflow database. In that topology the Waterline host
+    | process does not dispatch workflow tasks itself, so its local Laravel
+    | queue driver should not make the observer health endpoint fail. The
+    | default poll mode keeps backend readiness focused on database visibility.
+    | Set this to "queue" when using Waterline health as an embedded execution
+    | node readiness check.
+    |
+    */
+
+    'health' => [
+        'task_dispatch_mode' => env('WATERLINE_HEALTH_TASK_DISPATCH_MODE', 'poll'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Environment Banner
     |--------------------------------------------------------------------------
     |

@@ -1017,7 +1017,33 @@ class V2HealthController extends Controller
      */
     private function snapshotForConfiguredNamespace(): array
     {
-        return HealthCheck::snapshot(now(), $this->namespace());
+        $taskDispatchMode = $this->healthTaskDispatchMode();
+
+        if ($taskDispatchMode === null) {
+            return HealthCheck::snapshot(now(), $this->namespace());
+        }
+
+        $originalTaskDispatchMode = config('workflows.v2.task_dispatch_mode');
+        config(['workflows.v2.task_dispatch_mode' => $taskDispatchMode]);
+
+        try {
+            return HealthCheck::snapshot(now(), $this->namespace());
+        } finally {
+            config(['workflows.v2.task_dispatch_mode' => $originalTaskDispatchMode]);
+        }
+    }
+
+    private function healthTaskDispatchMode(): ?string
+    {
+        $configured = config('waterline.health.task_dispatch_mode');
+
+        if (! is_string($configured)) {
+            return null;
+        }
+
+        $normalized = strtolower(trim($configured));
+
+        return in_array($normalized, ['poll', 'queue'], true) ? $normalized : null;
     }
 
     /**

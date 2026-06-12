@@ -70,6 +70,29 @@ class V2HealthControllerTest extends TestCase
             ->assertJsonPath('healthy', true);
     }
 
+    public function testHealthEndpointTreatsLocalSyncQueueAsObserverReadyByDefault(): void
+    {
+        config()->set('queue.default', 'sync');
+        config()->set('queue.connections.sync.driver', 'sync');
+        config()->set('cache.default', 'file');
+        config()->set('workflows.v2.task_dispatch_mode', 'queue');
+
+        $payload = $this->get('/waterline/api/v2/health')
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'ok')
+            ->assertJsonPath('healthy', true)
+            ->json();
+
+        $backend = collect($payload['checks'] ?? [])->firstWhere('name', 'backend_capabilities');
+        $this->assertIsArray($backend);
+        $this->assertSame('ok', $backend['status'] ?? null);
+        $this->assertSame('poll', $payload['operator_metrics']['matching_role']['task_dispatch_mode'] ?? null);
+
+        $queueIssue = collect($backend['data']['issues'] ?? [])->firstWhere('code', 'queue_sync_unsupported');
+        $this->assertIsArray($queueIssue);
+        $this->assertSame('info', $queueIssue['severity'] ?? null);
+    }
+
     public function testHealthEndpointRequiresAuthorizationByDefault(): void
     {
         Waterline::auth(static fn () => false);
@@ -638,6 +661,7 @@ class V2HealthControllerTest extends TestCase
         config()->set('queue.default', 'sync');
         config()->set('queue.connections.sync.driver', 'sync');
         config()->set('workflows.v2.task_dispatch_mode', 'queue');
+        config()->set('waterline.health.task_dispatch_mode', 'queue');
 
         $this->get('/waterline/api/v2/health')
             ->assertStatus(503)
