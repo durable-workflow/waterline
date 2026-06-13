@@ -682,7 +682,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     private function durableRunListItem(WorkflowRun $run): array
     {
         $status = $this->runStatusValue($run->status);
-        $compensationVisibility = CompensationVisibility::forRun($run);
+        $compensationVisibility = CompensationVisibility::forRun($run, true, true);
 
         return [
             'id' => $run->id,

@@ -37,6 +37,7 @@ class V2StoredWorkflowResource extends JsonResource
         }
 
         $detail = $this->withTimelineWindow($detail, $request);
+        $detail = $this->withDurableCompensationActivities($detail);
         $detail['workflow_instance_id'] ??= $detail['instance_id'] ?? $this->resource->workflow_instance_id;
         $detail['workflow_run_id'] ??= $detail['run_id'] ?? $detail['selected_run_id'] ?? $this->resource->id;
         $compensationVisibility = CompensationVisibility::fromActivities($detail['activities'] ?? []);
@@ -49,6 +50,97 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['operator_scope'] = OperatorScope::payload();
 
         return ActionabilityContract::annotateRun($detail);
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     * @return array<string, mixed>
+     */
+    private function withDurableCompensationActivities(array $detail): array
+    {
+        $activities = $this->activityList($detail['activities'] ?? null);
+        $visibility = CompensationVisibility::fromActivities($activities);
+
+        if (is_string($visibility['current_marker'] ?? null)) {
+            $detail['activities'] = $activities;
+
+            return $detail;
+        }
+
+        $durableActivities = CompensationVisibility::durableHistoryActivitiesForRun($this->resource);
+        $durableVisibility = CompensationVisibility::fromActivities($durableActivities);
+
+        if (! is_string($durableVisibility['current_marker'] ?? null)) {
+            $detail['activities'] = $activities;
+
+            return $detail;
+        }
+
+        $detail['activities'] = $this->mergeActivityLists($activities, $durableActivities);
+
+        if (! is_array($detail['operator_visibility_degraded'] ?? null)) {
+            $detail['operator_visibility_degraded'] = [
+                'reason' => 'selected_run_projection_incomplete',
+                'message' => 'Waterline merged durable activity history because selected-run activity projections did not expose the current compensation marker.',
+            ];
+        }
+
+        return $detail;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function activityList(mixed $activities): array
+    {
+        if (! is_array($activities)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $activities,
+            static fn (mixed $activity): bool => is_array($activity),
+        ));
+    }
+
+    /**
+     * @param list<array<string, mixed>> $activities
+     * @param list<array<string, mixed>> $durableActivities
+     * @return list<array<string, mixed>>
+     */
+    private function mergeActivityLists(array $activities, array $durableActivities): array
+    {
+        $merged = [];
+
+        foreach ($activities as $index => $activity) {
+            $key = $this->activityKey($activity);
+            $key ??= 'selected:'.$index;
+            $merged[$key] = $activity;
+        }
+
+        foreach ($durableActivities as $index => $activity) {
+            $key = $this->activityKey($activity);
+            $key ??= 'durable:'.$index;
+            $merged[$key] = array_merge($merged[$key] ?? [], $activity);
+        }
+
+        return array_values($merged);
+    }
+
+    /**
+     * @param array<string, mixed> $activity
+     */
+    private function activityKey(array $activity): ?string
+    {
+        foreach (['id', 'idempotency_key', 'type'] as $field) {
+            $value = $activity[$field] ?? null;
+
+            if (is_string($value) && $value !== '') {
+                return $field.':'.$value;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -70,7 +162,7 @@ class V2StoredWorkflowResource extends JsonResource
     private function fallbackRunDetail(): array
     {
         $status = $this->statusValue($this->resource->status);
-        $activities = CompensationVisibility::activitiesForRun($this->resource);
+        $activities = CompensationVisibility::durableHistoryActivitiesForRun($this->resource);
 
         return [
             'id' => $this->resource->id,

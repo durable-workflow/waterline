@@ -603,7 +603,7 @@ class WorkflowsController extends Controller
 
         $payload['data'] = array_map(
             fn (mixed $item): array => $item instanceof WorkflowRunSummary
-                ? $this->listItemView($item)
+                ? $this->listItemView($item, $bucket === 'running')
                 : (is_array($item) ? $this->annotateListItem($item) : []),
             $result instanceof LengthAwarePaginator ? $result->items() : ($payload['data'] ?? []),
         );
@@ -1045,13 +1045,17 @@ class WorkflowsController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function listItemView(WorkflowRunSummary $summary): array
+    private function listItemView(WorkflowRunSummary $summary, bool $useDurableHistoryFallback = false): array
     {
         $item = RunListItemView::fromSummary($summary);
         $item['namespace'] ??= is_string($summary->run?->namespace ?? null)
             ? $summary->run->namespace
             : null;
-        $compensationVisibility = CompensationVisibility::forRun($summary->run);
+        $compensationVisibility = CompensationVisibility::forRun(
+            $summary->run,
+            $useDurableHistoryFallback,
+            $useDurableHistoryFallback,
+        );
         $item['current_compensation_marker'] = $compensationVisibility['current_marker'];
         $item['compensation_visibility'] = $compensationVisibility;
 

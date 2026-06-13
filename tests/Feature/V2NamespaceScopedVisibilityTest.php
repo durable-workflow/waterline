@@ -3,14 +3,17 @@
 namespace Waterline\Tests\Feature;
 
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
+use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Enums\ScheduleStatus;
+use Workflow\V2\Models\ActivityExecution;
 use Workflow\V2\Models\WorkflowFailure;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
@@ -446,6 +449,228 @@ class V2NamespaceScopedVisibilityTest extends TestCase
         } finally {
             TransientWaterlineDetailRunSummary::resetTransientFailure();
         }
+    }
+
+    public function testDirectRunDetailAndRunningListUseDurableHistoryWhenActivityProjectionIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+        config()->set('workflows.v2.activity_execution_model', MissingWaterlineDetailActivityExecution::class);
+
+        $run = $this->createCompletedRun('sagas-python-detail-missing-activity-projection', 'default');
+        $this->recordRunningActivity($run, 'pause_after_refund');
+
+        WorkflowRun::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'last_history_sequence' => 4,
+        ]);
+        WorkflowRunSummary::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'history_event_count' => 4,
+        ]);
+
+        $this->get('/waterline/api/flows/'.$run->id.'?history_limit=all')
+            ->assertOk()
+            ->assertJsonPath('workflow_instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('workflow_run_id', $run->id)
+            ->assertJsonPath('instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('namespace', 'default')
+            ->assertJsonPath('status', 'waiting')
+            ->assertJsonPath('status_bucket', 'running')
+            ->assertJsonPath('current_compensation_marker', 'pause_after_refund')
+            ->assertJsonPath('compensation_visibility.current_marker', 'pause_after_refund')
+            ->assertJsonPath('activities.0.type', 'pause_after_refund')
+            ->assertJsonPath('activities.0.status', 'running')
+            ->assertJsonPath('activities.0.history_authority', 'durable_history_events')
+            ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable');
+
+        $this->get('/waterline/api/flows/running')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.workflow_instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('data.0.run_id', $run->id)
+            ->assertJsonPath('data.0.status', 'waiting')
+            ->assertJsonPath('data.0.status_bucket', 'running')
+            ->assertJsonPath('data.0.current_compensation_marker', 'pause_after_refund')
+            ->assertJsonPath('data.0.compensation_visibility.current_marker', 'pause_after_refund');
+    }
+
+    public function testDirectRunDetailMergesDurableHistoryWhenActivityProjectionLacksCompensationMarker(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+
+        $run = $this->createCompletedRun('sagas-python-detail-incomplete-activity-projection', 'default');
+        $this->recordRunningActivity($run, 'pause_after_refund');
+
+        $projectedActivityId = (string) Str::ulid();
+        ActivityExecution::create([
+            'id' => $projectedActivityId,
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ChargeCardActivity',
+            'activity_type' => 'charge_card',
+            'status' => 'completed',
+            'arguments' => Serializer::serialize(['order-123']),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subSeconds(40),
+            'closed_at' => now()->subSeconds(30),
+        ]);
+
+        $this->app->instance(OperatorObservabilityRepository::class, new class($projectedActivityId) implements OperatorObservabilityRepository {
+            public function __construct(private string $activityId)
+            {
+            }
+
+            public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+            {
+                return [
+                    'id' => $run->id,
+                    'instance_id' => $run->workflow_instance_id,
+                    'selected_run_id' => $run->id,
+                    'run_id' => $run->id,
+                    'workflow_instance_id' => $run->workflow_instance_id,
+                    'workflow_run_id' => $run->id,
+                    'run_number' => $run->run_number,
+                    'is_current_run' => true,
+                    'current_run_id' => $run->id,
+                    'engine_source' => 'v2',
+                    'class' => $run->workflow_class,
+                    'workflow_type' => $run->workflow_type,
+                    'namespace' => $run->namespace,
+                    'status' => 'waiting',
+                    'status_bucket' => 'running',
+                    'closed_reason' => null,
+                    'closed_at' => null,
+                    'activities_scope' => 'selected_run',
+                    'activities' => [
+                        [
+                            'id' => $this->activityId,
+                            'idempotency_key' => $this->activityId,
+                            'sequence' => 1,
+                            'type' => 'charge_card',
+                            'class' => 'ChargeCardActivity',
+                            'status' => 'completed',
+                            'row_status' => 'completed',
+                            'history_authority' => 'typed_history',
+                            'history_event_types' => [],
+                        ],
+                    ],
+                    'timeline' => [],
+                    'timeline_total_count' => 0,
+                    'timeline_returned_count' => 0,
+                ];
+            }
+
+            public function listItem(WorkflowRunSummary $summary): array
+            {
+                return [];
+            }
+
+            public function runHistoryExport(
+                WorkflowRun $run,
+                ?\Carbon\CarbonInterface $exportedAt = null,
+                \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+            ): array {
+                return [];
+            }
+
+            public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+
+            public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+        });
+
+        WorkflowRun::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'last_history_sequence' => 4,
+        ]);
+        WorkflowRunSummary::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'history_event_count' => 4,
+        ]);
+
+        $response = $this->get('/waterline/api/flows/'.$run->id.'?history_limit=all')
+            ->assertOk()
+            ->assertJsonPath('workflow_instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('workflow_run_id', $run->id)
+            ->assertJsonPath('instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('namespace', 'default')
+            ->assertJsonPath('status', 'waiting')
+            ->assertJsonPath('status_bucket', 'running')
+            ->assertJsonPath('current_compensation_marker', 'pause_after_refund')
+            ->assertJsonPath('compensation_visibility.current_marker', 'pause_after_refund')
+            ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_incomplete');
+
+        $activities = collect($response->json('activities'));
+
+        $this->assertTrue(
+            $activities->contains(static fn (array $activity): bool => ($activity['type'] ?? null) === 'charge_card'),
+            'The selected-run activity projection should remain in the merged detail payload.',
+        );
+        $this->assertTrue(
+            $activities->contains(static fn (array $activity): bool => ($activity['type'] ?? null) === 'pause_after_refund'
+                && ($activity['status'] ?? null) === 'running'
+                && ($activity['history_authority'] ?? null) === 'durable_history_events'),
+            'The durable activity fallback should recover the visible compensation marker.',
+        );
+    }
+
+    public function testSummaryBackedListRowsDoNotReadDurableHistoryWhenActivityProjectionIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+
+        for ($index = 1; $index <= 3; $index++) {
+            $this->createCompletedRun(sprintf('waterline-list-no-activity-projection-%02d', $index), 'default');
+        }
+
+        DB::enableQueryLog();
+
+        try {
+            $this->get('/waterline/api/flows/completed')
+                ->assertOk()
+                ->assertJsonCount(3, 'data')
+                ->assertJsonPath('data.0.current_compensation_marker', null)
+                ->assertJsonPath('data.0.compensation_visibility.current_marker', null);
+
+            $historySelects = array_values(array_filter(
+                DB::getQueryLog(),
+                static function (array $query): bool {
+                    $sql = strtolower((string) ($query['query'] ?? ''));
+
+                    return str_starts_with(ltrim($sql), 'select')
+                        && str_contains($sql, 'workflow_history_events');
+                },
+            ));
+        } finally {
+            DB::disableQueryLog();
+            DB::flushQueryLog();
+        }
+
+        $this->assertSame(
+            [],
+            $historySelects,
+            'Summary-backed list rows without activity projections should not fall back to durable history scans.',
+        );
     }
 
     public function testRunningListDurableFallbackOnlyMergesRunsWithoutRunningSummaryProjection(): void
@@ -1124,6 +1349,69 @@ class V2NamespaceScopedVisibilityTest extends TestCase
         ]);
     }
 
+    private function recordRunningActivity(WorkflowRun $run, string $activityType): void
+    {
+        $activityId = (string) Str::ulid();
+        $attemptId = (string) Str::ulid();
+        $scheduledAt = now()->subSeconds(20);
+        $startedAt = now()->subSeconds(15);
+
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 3,
+            'event_type' => HistoryEventType::ActivityScheduled->value,
+            'payload' => [
+                'activity_execution_id' => $activityId,
+                'activity_type' => $activityType,
+                'activity_class' => 'SagaPauseActivity',
+                'sequence' => 1,
+                'activity' => [
+                    'id' => $activityId,
+                    'sequence' => 1,
+                    'type' => $activityType,
+                    'class' => 'SagaPauseActivity',
+                    'attempt_id' => $attemptId,
+                    'status' => 'pending',
+                    'attempt_count' => 1,
+                    'connection' => 'redis',
+                    'queue' => 'default',
+                    'created_at' => $scheduledAt->jsonSerialize(),
+                ],
+            ],
+            'recorded_at' => $scheduledAt,
+        ]);
+
+        WorkflowHistoryEvent::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 4,
+            'event_type' => HistoryEventType::ActivityStarted->value,
+            'payload' => [
+                'activity_execution_id' => $activityId,
+                'activity_attempt_id' => $attemptId,
+                'activity_type' => $activityType,
+                'activity_class' => 'SagaPauseActivity',
+                'sequence' => 1,
+                'attempt_number' => 1,
+                'activity' => [
+                    'id' => $activityId,
+                    'sequence' => 1,
+                    'type' => $activityType,
+                    'class' => 'SagaPauseActivity',
+                    'attempt_id' => $attemptId,
+                    'status' => 'running',
+                    'attempt_count' => 1,
+                    'connection' => 'redis',
+                    'queue' => 'default',
+                    'created_at' => $scheduledAt->jsonSerialize(),
+                    'started_at' => $startedAt->jsonSerialize(),
+                ],
+            ],
+            'recorded_at' => $startedAt,
+        ]);
+    }
+
     private function createSchedule(string $scheduleId, string $namespace): WorkflowSchedule
     {
         return WorkflowSchedule::create([
@@ -1141,6 +1429,11 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             'next_fire_at' => now()->addHour(),
         ]);
     }
+}
+
+final class MissingWaterlineDetailActivityExecution extends \Workflow\V2\Models\ActivityExecution
+{
+    protected $table = 'missing_activity_executions';
 }
 
 final class TransientWaterlineDetailRunSummary extends WorkflowRunSummary
