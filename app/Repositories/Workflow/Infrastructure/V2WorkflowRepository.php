@@ -12,7 +12,9 @@ use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\CompensationVisibility;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
+use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
+use Workflow\V2\Support\CurrentRunResolver;
 use Workflow\V2\Support\RunSummarySortKey;
 use Workflow\V2\Support\SelectedRunLocator;
 use Workflow\V2\Support\WorkerCompatibility;
@@ -81,7 +83,11 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function findFlow(string $id)
     {
-        return SelectedRunLocator::forIdOrFail($id, $this->detailRelations(), $this->namespace());
+        try {
+            return SelectedRunLocator::forIdOrFail($id, $this->detailRelations(), $this->namespace());
+        } catch (Throwable $exception) {
+            return $this->findFlowByDurableRunOrInstance($id, $exception);
+        }
     }
 
     public function findFlowSelection(string $instanceId, ?string $runId = null)
@@ -94,7 +100,11 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
                 $this->namespace(),
             );
         } catch (ModelNotFoundException $exception) {
-            if ($runId === null || $this->namespace() === null) {
+            if ($runId === null) {
+                return $this->findFlowSelectionByDurableInstance($instanceId, $exception);
+            }
+
+            if ($this->namespace() === null) {
                 throw $exception;
             }
 
@@ -105,7 +115,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
             }
         } catch (Throwable $exception) {
             if ($runId === null) {
-                throw $exception;
+                return $this->findFlowSelectionByDurableInstance($instanceId, $exception);
             }
 
             return $this->findFlowSelectionByDurableRun($instanceId, $runId, $exception);
@@ -459,6 +469,17 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         throw $previous;
     }
 
+    private function findFlowByDurableRunOrInstance(string $id, Throwable $previous)
+    {
+        $run = $this->findDurableRunById($id, $previous);
+
+        if ($run instanceof WorkflowRun) {
+            return $run;
+        }
+
+        return $this->findFlowSelectionByDurableInstance($id, $previous);
+    }
+
     private function findFlowSelectionByDurableRun(
         string $instanceId,
         string $runId,
@@ -477,6 +498,46 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         }
 
         throw $previous;
+    }
+
+    private function findFlowSelectionByDurableInstance(string $instanceId, Throwable $previous)
+    {
+        try {
+            $query = $this->instanceModel::query()
+                ->whereKey($instanceId);
+
+            $this->applyInstanceNamespaceScope($query);
+
+            $instance = $query->first();
+
+            if ($instance instanceof WorkflowInstance) {
+                $run = CurrentRunResolver::forInstance($instance);
+
+                if ($run instanceof WorkflowRun) {
+                    return $run;
+                }
+            }
+        } catch (Throwable) {
+            throw $previous;
+        }
+
+        throw $previous;
+    }
+
+    private function findDurableRunById(string $runId, Throwable $previous): ?WorkflowRun
+    {
+        try {
+            $query = $this->runModel::query()
+                ->whereKey($runId);
+
+            $this->applyRunNamespaceScope($query);
+
+            $run = $query->first();
+
+            return $run instanceof WorkflowRun ? $run : null;
+        } catch (Throwable) {
+            throw $previous;
+        }
     }
 
     private function runningFlowsWithDurableRows($summaryQuery): LengthAwarePaginator
@@ -762,6 +823,17 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
                     $instanceQuery->where('namespace', $namespace);
                 });
         });
+    }
+
+    private function applyInstanceNamespaceScope($query): void
+    {
+        $namespace = $this->namespace();
+
+        if ($namespace === null) {
+            return;
+        }
+
+        $query->where('namespace', $namespace);
     }
 
     /**

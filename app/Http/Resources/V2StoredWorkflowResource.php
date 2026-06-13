@@ -42,13 +42,26 @@ class V2StoredWorkflowResource extends JsonResource
         $compensationVisibility = CompensationVisibility::fromActivities($detail['activities'] ?? []);
         $detail['current_compensation_marker'] = $compensationVisibility['current_marker'];
         $detail['compensation_visibility'] = $compensationVisibility;
-        $detail['run_diagnostics'] = app(RunDiagnostics::class)->forRun($this->resource, $detail);
+        $detail['run_diagnostics'] = $this->runDiagnostics($detail);
         $detail = ObserverStateEnvelope::annotateRun($detail, $this->observerPaths($request, $detail));
         $detail = CompatibilitySemantics::annotateRun($detail);
         $detail['namespace'] = $this->resource->namespace;
         $detail['operator_scope'] = OperatorScope::payload();
 
         return ActionabilityContract::annotateRun($detail);
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     * @return list<array<string, mixed>>
+     */
+    private function runDiagnostics(array $detail): array
+    {
+        try {
+            return app(RunDiagnostics::class)->forRun($this->resource, $detail);
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     /**

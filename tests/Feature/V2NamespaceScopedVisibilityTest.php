@@ -5,6 +5,7 @@ namespace Waterline\Tests\Feature;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
@@ -316,6 +317,135 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             collect($response->json('data'))->contains('run_id', $hiddenRun->id),
             'Runs from another namespace must not appear through durable-run fallback.',
         );
+    }
+
+    public function testDirectRunDetailUsesDurableFallbackWhenOptionalSelectedRunProjectionTableIsMissing(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+
+        $run = $this->createCompletedRun('sagas-python-detail-missing-signal-projection', 'default');
+        $this->recordCompletedActivity($run, 'pause_after_refund');
+
+        WorkflowRun::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'last_history_sequence' => 4,
+        ]);
+        WorkflowRunSummary::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'history_event_count' => 4,
+        ]);
+
+        Schema::dropIfExists('workflow_signal_records');
+
+        try {
+            $this->get('/waterline/api/instances/'.$run->workflow_instance_id.'/runs/'.$run->id.'?history_limit=all')
+                ->assertOk()
+                ->assertJsonPath('workflow_instance_id', $run->workflow_instance_id)
+                ->assertJsonPath('workflow_run_id', $run->id)
+                ->assertJsonPath('instance_id', $run->workflow_instance_id)
+                ->assertJsonPath('run_id', $run->id)
+                ->assertJsonPath('namespace', 'default')
+                ->assertJsonPath('status', 'waiting')
+                ->assertJsonPath('status_bucket', 'running')
+                ->assertJsonPath('current_compensation_marker', 'pause_after_refund')
+                ->assertJsonPath('compensation_visibility.current_marker', 'pause_after_refund')
+                ->assertJsonPath('activities.0.type', 'pause_after_refund')
+                ->assertJsonPath('activities.0.status', 'completed')
+                ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable');
+
+            $this->get('/waterline/api/flows/'.$run->id.'?history_limit=all')
+                ->assertOk()
+                ->assertJsonPath('workflow_instance_id', $run->workflow_instance_id)
+                ->assertJsonPath('workflow_run_id', $run->id)
+                ->assertJsonPath('instance_id', $run->workflow_instance_id)
+                ->assertJsonPath('run_id', $run->id)
+                ->assertJsonPath('namespace', 'default')
+                ->assertJsonPath('status', 'waiting')
+                ->assertJsonPath('status_bucket', 'running')
+                ->assertJsonPath('current_compensation_marker', 'pause_after_refund')
+                ->assertJsonPath('compensation_visibility.current_marker', 'pause_after_refund')
+                ->assertJsonPath('activities.0.type', 'pause_after_refund')
+                ->assertJsonPath('activities.0.status', 'completed')
+                ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable');
+
+            $this->get('/waterline/api/flows/'.$run->id.'/history-export')
+                ->assertOk()
+                ->assertJsonPath('workflow.run_id', $run->id)
+                ->assertJsonPath('workflow.namespace', 'default')
+                ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable');
+
+            $this->postJson('/waterline/api/flows/'.$run->id.'/queries/current_state')
+                ->assertStatus(409)
+                ->assertJsonPath('run_id', $run->id)
+                ->assertJsonPath('target_scope', 'run');
+        } finally {
+            $this->recreateWorkflowSignalRecordsTable();
+        }
+    }
+
+    public function testDirectRunDetailUsesDurableFallbackWhenDetailProjectionInspectionFailsTransiently(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+        config()->set('workflows.v2.run_summary_model', TransientWaterlineDetailRunSummary::class);
+
+        $run = $this->createCompletedRun('sagas-python-detail-transient-projection-failure', 'default');
+        $this->recordCompletedActivity($run, 'pause_after_refund');
+
+        WorkflowRun::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'last_history_sequence' => 4,
+        ]);
+        WorkflowRunSummary::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'history_event_count' => 4,
+        ]);
+
+        TransientWaterlineDetailRunSummary::failAfterReadinessInspection();
+
+        try {
+            $this->get('/waterline/api/instances/'.$run->workflow_instance_id.'/runs/'.$run->id.'?history_limit=all')
+                ->assertOk()
+                ->assertJsonPath('workflow_instance_id', $run->workflow_instance_id)
+                ->assertJsonPath('workflow_run_id', $run->id)
+                ->assertJsonPath('instance_id', $run->workflow_instance_id)
+                ->assertJsonPath('run_id', $run->id)
+                ->assertJsonPath('namespace', 'default')
+                ->assertJsonPath('status', 'waiting')
+                ->assertJsonPath('status_bucket', 'running')
+                ->assertJsonPath('current_compensation_marker', 'pause_after_refund')
+                ->assertJsonPath('compensation_visibility.current_marker', 'pause_after_refund')
+                ->assertJsonPath('activities.0.type', 'pause_after_refund')
+                ->assertJsonPath('activities.0.status', 'completed')
+                ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable');
+
+            $this->get('/waterline/api/flows/'.$run->id.'?history_limit=all')
+                ->assertOk()
+                ->assertJsonPath('workflow_instance_id', $run->workflow_instance_id)
+                ->assertJsonPath('workflow_run_id', $run->id)
+                ->assertJsonPath('run_id', $run->id)
+                ->assertJsonPath('namespace', 'default')
+                ->assertJsonPath('status', 'waiting')
+                ->assertJsonPath('status_bucket', 'running')
+                ->assertJsonPath('current_compensation_marker', 'pause_after_refund')
+                ->assertJsonPath('compensation_visibility.current_marker', 'pause_after_refund')
+                ->assertJsonPath('activities.0.type', 'pause_after_refund')
+                ->assertJsonPath('activities.0.status', 'completed')
+                ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable');
+        } finally {
+            TransientWaterlineDetailRunSummary::resetTransientFailure();
+        }
     }
 
     public function testRunningListDurableFallbackOnlyMergesRunsWithoutRunningSummaryProjection(): void
@@ -870,6 +1000,67 @@ class V2NamespaceScopedVisibilityTest extends TestCase
         $this->assertTrue($row['detail_action']['available'] ?? false);
     }
 
+    private function recreateWorkflowSignalRecordsTable(): void
+    {
+        if (Schema::hasTable('workflow_signal_records')) {
+            return;
+        }
+
+        Schema::create('workflow_signal_records', static function (Blueprint $table): void {
+            $table->string('id', 26)
+                ->primary();
+            $table->string('workflow_command_id', 26)
+                ->unique();
+            $table->string('workflow_instance_id', 191)
+                ->nullable()
+                ->index();
+            $table->string('workflow_run_id', 26)
+                ->nullable()
+                ->index();
+            $table->string('target_scope')
+                ->default('instance');
+            $table->string('requested_workflow_run_id', 26)
+                ->nullable()
+                ->index();
+            $table->string('resolved_workflow_run_id', 26)
+                ->nullable()
+                ->index();
+            $table->string('signal_name')
+                ->index();
+            $table->string('signal_wait_id')
+                ->nullable()
+                ->index();
+            $table->string('status')
+                ->index();
+            $table->string('outcome')
+                ->nullable()
+                ->index();
+            $table->unsignedInteger('command_sequence')
+                ->nullable()
+                ->index();
+            $table->unsignedInteger('workflow_sequence')
+                ->nullable()
+                ->index();
+            $table->string('payload_codec')
+                ->nullable();
+            $table->longText('arguments')
+                ->nullable();
+            $table->json('validation_errors')
+                ->nullable();
+            $table->string('rejection_reason')
+                ->nullable();
+            $table->timestamp('received_at', 6)
+                ->nullable();
+            $table->timestamp('applied_at', 6)
+                ->nullable();
+            $table->timestamp('rejected_at', 6)
+                ->nullable();
+            $table->timestamp('closed_at', 6)
+                ->nullable();
+            $table->timestamps(6);
+        });
+    }
+
     private function recordCompletedActivity(WorkflowRun $run, string $activityType): void
     {
         $activityId = (string) Str::ulid();
@@ -949,5 +1140,37 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             'jitter_seconds' => 0,
             'next_fire_at' => now()->addHour(),
         ]);
+    }
+}
+
+final class TransientWaterlineDetailRunSummary extends WorkflowRunSummary
+{
+    private static bool $failAfterFirstTableResolution = false;
+
+    private static int $tableResolutions = 0;
+
+    public static function failAfterReadinessInspection(): void
+    {
+        self::$failAfterFirstTableResolution = true;
+        self::$tableResolutions = 0;
+    }
+
+    public static function resetTransientFailure(): void
+    {
+        self::$failAfterFirstTableResolution = false;
+        self::$tableResolutions = 0;
+    }
+
+    public function getTable()
+    {
+        if (self::$failAfterFirstTableResolution) {
+            self::$tableResolutions++;
+
+            if (self::$tableResolutions > 1) {
+                throw new RuntimeException('Transient selected-run projection schema inspection failure.');
+            }
+        }
+
+        return parent::getTable();
     }
 }

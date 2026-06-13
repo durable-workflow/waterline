@@ -2,16 +2,22 @@
 
 namespace Waterline\Http\Controllers;
 
+use BackedEnum;
+use Carbon\CarbonInterface;
+use Closure;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
 use LogicException;
+use Throwable;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Contracts\HistoryExportRedactor;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
+use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Support\CommandResponse;
+use Workflow\V2\Support\HistoryExport;
 use Workflow\V2\Support\HistoryBudget;
 use Workflow\V2\Support\QueryResponse;
 use Workflow\V2\Support\RunListItemView;
@@ -84,12 +90,7 @@ class WorkflowsController extends Controller
 
         $flow = $repository->findFlow($id);
 
-        return response()->json($this->annotateHistoryExport(
-            ActionabilityContract::annotateExport(
-                $observability->runHistoryExport($flow, null, $this->historyExportRedactor())
-            ),
-            $flow->namespace,
-        ));
+        return $this->historyExportResponse($flow, $observability);
     }
 
     public function historyExportInstance(
@@ -101,12 +102,7 @@ class WorkflowsController extends Controller
 
         $flow = $repository->findFlowSelection($instanceId);
 
-        return response()->json($this->annotateHistoryExport(
-            ActionabilityContract::annotateExport(
-                $observability->runHistoryExport($flow, null, $this->historyExportRedactor())
-            ),
-            $flow->namespace,
-        ));
+        return $this->historyExportResponse($flow, $observability);
     }
 
     public function historyExportSelection(
@@ -119,12 +115,7 @@ class WorkflowsController extends Controller
 
         $flow = $repository->findFlowSelection($instanceId, $runId);
 
-        return response()->json($this->annotateHistoryExport(
-            ActionabilityContract::annotateExport(
-                $observability->runHistoryExport($flow, null, $this->historyExportRedactor())
-            ),
-            $flow->namespace,
-        ));
+        return $this->historyExportResponse($flow, $observability);
     }
 
     public function query(
@@ -634,6 +625,374 @@ class WorkflowsController extends Controller
     }
 
     /**
+     * @return mixed
+     */
+    private function historyExportResponse(WorkflowRun $flow, OperatorObservabilityRepository $observability)
+    {
+        $redactor = $this->historyExportRedactor();
+
+        try {
+            $export = $observability->runHistoryExport($flow, null, $redactor);
+        } catch (Throwable) {
+            $export = $this->durableHistoryExportFallback($flow, $redactor);
+        }
+
+        return response()->json($this->annotateHistoryExport(
+            ActionabilityContract::annotateExport($export),
+            $flow->namespace,
+        ));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function durableHistoryExportFallback(
+        WorkflowRun $flow,
+        HistoryExportRedactor|callable|null $redactor = null,
+    ): array {
+        $status = $this->statusValue($flow->status);
+        $historyEvents = $this->durableHistoryEvents($flow);
+
+        $export = [
+            'schema' => HistoryExport::SCHEMA,
+            'schema_version' => HistoryExport::SCHEMA_VERSION,
+            'exported_at' => $this->timestamp(now()),
+            'dedupe_key' => hash('sha256', implode('|', [
+                $flow->workflow_instance_id,
+                $flow->id,
+                (string) ($flow->last_history_sequence ?? ''),
+                (string) count($historyEvents),
+            ])),
+            'history_complete' => $this->isTerminalStatus($status),
+            'workflow' => [
+                'instance_id' => $flow->workflow_instance_id,
+                'run_id' => $flow->id,
+                'run_number' => $flow->run_number,
+                'is_current_run' => true,
+                'current_run_id' => $flow->id,
+                'current_run_source' => 'durable_run_fallback',
+                'workflow_type' => $flow->workflow_type,
+                'workflow_class' => $flow->workflow_class,
+                'business_key' => $flow->business_key,
+                'visibility_labels' => is_array($flow->visibility_labels) ? $flow->visibility_labels : [],
+                'status' => $status,
+                'status_bucket' => $this->statusBucket($status),
+                'closed_reason' => $flow->closed_reason,
+                'archived_at' => $this->timestamp($flow->archived_at),
+                'archive_command_id' => $flow->archive_command_id,
+                'archive_reason' => $flow->archive_reason,
+                'compatibility' => $flow->compatibility,
+                'connection' => $flow->connection,
+                'queue' => $flow->queue,
+                'last_history_sequence' => $flow->last_history_sequence,
+                'started_at' => $this->timestamp($flow->started_at),
+                'closed_at' => $this->timestamp($flow->closed_at),
+                'last_progress_at' => $this->timestamp($flow->last_progress_at),
+            ],
+            'payloads' => [
+                'codec' => is_string($flow->payload_codec) && $flow->payload_codec !== ''
+                    ? $flow->payload_codec
+                    : config('workflows.serializer'),
+                'arguments' => [
+                    'available' => is_string($flow->arguments),
+                    'data' => null,
+                ],
+                'output' => [
+                    'available' => is_string($flow->output),
+                    'data' => null,
+                ],
+            ],
+            'summary' => null,
+            'selected_run' => [
+                'waits_projection_source' => 'durable_run_fallback',
+                'timeline_projection_source' => 'durable_history_events',
+                'timers_projection_source' => 'durable_run_fallback',
+                'timers_projection_rebuild_reasons' => [],
+                'lineage_projection_source' => 'durable_run_fallback',
+            ],
+            'history_events' => $historyEvents,
+            'waits' => [],
+            'timeline' => $historyEvents,
+            'linked_intakes_scope' => 'selected_run',
+            'linked_intakes' => [],
+            'commands' => [],
+            'signals' => [],
+            'updates' => [],
+            'tasks' => [],
+            'activities' => [],
+            'timers' => [],
+            'failures' => [],
+            'links' => [
+                'projection_source' => 'durable_run_fallback',
+                'parents' => [],
+                'children' => [],
+            ],
+            'operator_visibility_degraded' => [
+                'reason' => 'selected_run_projection_unavailable',
+                'message' => 'Waterline rendered a durable history export fallback because selected-run projections were unavailable.',
+            ],
+        ];
+
+        $export = $this->withFallbackRedaction($export, $flow, $redactor);
+        $export['integrity'] = $this->fallbackIntegrity($export);
+
+        return $export;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function durableHistoryEvents(WorkflowRun $flow): array
+    {
+        try {
+            return $flow->historyEvents()
+                ->orderBy('sequence')
+                ->get()
+                ->map(fn ($event): array => [
+                    'id' => $event->id,
+                    'sequence' => $event->sequence,
+                    'type' => $this->statusValue($event->event_type) ?? (string) $event->event_type,
+                    'payload' => is_array($event->payload) ? $event->payload : [],
+                    'recorded_at' => $this->timestamp($event->recorded_at),
+                ])
+                ->values()
+                ->all();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $export
+     * @return array<string, mixed>
+     */
+    private function withFallbackRedaction(
+        array $export,
+        WorkflowRun $flow,
+        HistoryExportRedactor|callable|null $redactor,
+    ): array {
+        if ($redactor === null) {
+            $export['redaction'] = [
+                'applied' => false,
+                'policy' => null,
+                'paths' => [],
+            ];
+
+            return $export;
+        }
+
+        $paths = [];
+
+        if (isset($export['payloads']['arguments']) && is_array($export['payloads']['arguments'])) {
+            $this->redactFallbackField(
+                $export['payloads']['arguments'],
+                'data',
+                $redactor,
+                $this->fallbackRedactionContext($flow, 'payloads.arguments.data', 'workflow_payload', [
+                    'field' => 'arguments',
+                ]),
+                $paths,
+            );
+        }
+
+        if (isset($export['payloads']['output']) && is_array($export['payloads']['output'])) {
+            $this->redactFallbackField(
+                $export['payloads']['output'],
+                'data',
+                $redactor,
+                $this->fallbackRedactionContext($flow, 'payloads.output.data', 'workflow_payload', [
+                    'field' => 'output',
+                ]),
+                $paths,
+            );
+        }
+
+        foreach (['history_events', 'timeline'] as $section) {
+            if (! isset($export[$section]) || ! is_array($export[$section])) {
+                continue;
+            }
+
+            foreach ($export[$section] as $index => &$event) {
+                if (! is_array($event)) {
+                    continue;
+                }
+
+                $this->redactFallbackField(
+                    $event,
+                    'payload',
+                    $redactor,
+                    $this->fallbackRedactionContext($flow, "{$section}.{$index}.payload", 'history_event', [
+                        'history_event_id' => $event['id'] ?? null,
+                        'history_event_type' => $event['type'] ?? null,
+                        'sequence' => $event['sequence'] ?? null,
+                    ]),
+                    $paths,
+                );
+            }
+
+            unset($event);
+        }
+
+        $export['redaction'] = [
+            'applied' => true,
+            'policy' => $this->fallbackRedactorName($redactor),
+            'paths' => array_values(array_unique($paths)),
+        ];
+
+        return $export;
+    }
+
+    /**
+     * @param array<string, mixed> $target
+     * @param array<string, mixed> $context
+     * @param list<string> $paths
+     */
+    private function redactFallbackField(
+        array &$target,
+        string $field,
+        HistoryExportRedactor|callable $redactor,
+        array $context,
+        array &$paths,
+    ): void {
+        if (! array_key_exists($field, $target)) {
+            return;
+        }
+
+        $target[$field] = $this->redactFallbackValue($redactor, $target[$field], $context);
+        $paths[] = (string) $context['path'];
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function redactFallbackValue(
+        HistoryExportRedactor|callable $redactor,
+        mixed $value,
+        array $context,
+    ): mixed {
+        try {
+            return $redactor instanceof HistoryExportRedactor
+                ? $redactor->redact($value, $context)
+                : $redactor($value, $context);
+        } catch (Throwable $exception) {
+            throw new LogicException(
+                sprintf(
+                    'Workflow v2 history export redactor failed for [%s]: %s',
+                    $context['path'] ?? 'unknown',
+                    $exception->getMessage(),
+                ),
+                previous: $exception,
+            );
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $extra
+     * @return array<string, mixed>
+     */
+    private function fallbackRedactionContext(
+        WorkflowRun $flow,
+        string $path,
+        string $category,
+        array $extra = [],
+    ): array {
+        return array_merge([
+            'path' => $path,
+            'category' => $category,
+            'workflow_instance_id' => $flow->workflow_instance_id,
+            'workflow_run_id' => $flow->id,
+            'workflow_type' => $flow->workflow_type,
+        ], $extra);
+    }
+
+    private function fallbackRedactorName(HistoryExportRedactor|callable $redactor): string
+    {
+        if ($redactor instanceof Closure) {
+            return 'closure';
+        }
+
+        if ($redactor instanceof HistoryExportRedactor || is_object($redactor)) {
+            return $redactor::class;
+        }
+
+        if (is_array($redactor)) {
+            $target = $redactor[0] ?? null;
+            $method = $redactor[1] ?? '__invoke';
+            $targetName = is_object($target)
+                ? $target::class
+                : (is_string($target) ? $target : 'callable');
+
+            return $targetName . '::' . (is_string($method) ? $method : '__invoke');
+        }
+
+        return is_string($redactor) ? $redactor : 'callable';
+    }
+
+    /**
+     * @param array<string, mixed> $export
+     * @return array<string, mixed>
+     */
+    private function fallbackIntegrity(array $export): array
+    {
+        $canonicalJson = json_encode($this->canonicalize($export), JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        $signingKey = $this->fallbackSigningKey();
+
+        return [
+            'canonicalization' => 'json-recursive-ksort-v1',
+            'checksum_algorithm' => 'sha256',
+            'checksum' => hash('sha256', $canonicalJson),
+            'signature_algorithm' => $signingKey === null ? null : 'hmac-sha256',
+            'signature' => $signingKey === null ? null : hash_hmac('sha256', $canonicalJson, $signingKey),
+            'key_id' => $signingKey === null ? null : $this->fallbackSigningKeyId(),
+        ];
+    }
+
+    private function canonicalize(mixed $value): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        if (array_is_list($value)) {
+            return array_map(fn (mixed $item): mixed => $this->canonicalize($item), $value);
+        }
+
+        ksort($value, SORT_STRING);
+
+        foreach ($value as $key => $item) {
+            $value[$key] = $this->canonicalize($item);
+        }
+
+        return $value;
+    }
+
+    private function fallbackSigningKey(): ?string
+    {
+        $key = config('workflows.v2.history_export.signing_key');
+
+        if (! is_string($key)) {
+            return null;
+        }
+
+        $key = trim($key);
+
+        return $key === '' ? null : $key;
+    }
+
+    private function fallbackSigningKeyId(): ?string
+    {
+        $keyId = config('workflows.v2.history_export.signing_key_id');
+
+        if (! is_string($keyId)) {
+            return null;
+        }
+
+        $keyId = trim($keyId);
+
+        return $keyId === '' ? null : $keyId;
+    }
+
+    /**
      * @param array<string, mixed> $export
      * @return array<string, mixed>
      */
@@ -802,6 +1161,37 @@ class WorkflowsController extends Controller
         return is_numeric($configured)
             ? max(0.0, min(1.0, (float) $configured))
             : 0.8;
+    }
+
+    private function statusValue(mixed $status): ?string
+    {
+        if ($status instanceof BackedEnum) {
+            return is_string($status->value) ? $status->value : null;
+        }
+
+        return is_string($status) && $status !== '' ? $status : null;
+    }
+
+    private function statusBucket(?string $status): ?string
+    {
+        return match ($status) {
+            'completed' => 'completed',
+            'failed' => 'failed',
+            'cancelled' => 'cancelled',
+            'terminated' => 'terminated',
+            null => null,
+            default => 'running',
+        };
+    }
+
+    private function isTerminalStatus(?string $status): bool
+    {
+        return in_array($status, ['completed', 'failed', 'cancelled', 'terminated', 'timed_out'], true);
+    }
+
+    private function timestamp(mixed $value): ?string
+    {
+        return $value instanceof CarbonInterface ? $value->toIso8601String() : (is_string($value) ? $value : null);
     }
 
     private function intValue(mixed $value): ?int

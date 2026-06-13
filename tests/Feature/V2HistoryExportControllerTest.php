@@ -584,6 +584,78 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('history_events.0.payload.path', 'history_events.0.payload');
     }
 
+    public function testDurableHistoryExportFallbackPreservesConfiguredRedactionPolicy(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+        config()->set('workflows.v2.history_export.redactor', new class() implements HistoryExportRedactor {
+            /**
+             * @param array<string, mixed> $context
+             *
+             * @return array<string, mixed>
+             */
+            public function redact(mixed $value, array $context): array
+            {
+                return [
+                    'redacted' => true,
+                    'path' => $context['path'],
+                    'workflow_run_id' => $context['workflow_run_id'],
+                ];
+            }
+        });
+
+        [$instance, $run] = $this->createCompletedRunWithHistory();
+        $instance->forceFill(['namespace' => null])->save();
+        $run->forceFill(['namespace' => 'default'])->save();
+        WorkflowRunSummary::whereKey($run->id)->update(['namespace' => null]);
+
+        $this->app->instance(OperatorObservabilityRepository::class, new class() implements OperatorObservabilityRepository {
+            public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+            {
+                return [];
+            }
+
+            public function listItem(WorkflowRunSummary $summary): array
+            {
+                return [];
+            }
+
+            public function runHistoryExport(
+                WorkflowRun $run,
+                ?CarbonInterface $exportedAt = null,
+                HistoryExportRedactor|callable|null $redactor = null,
+            ): array {
+                throw new \RuntimeException('Selected-run projections are unavailable.');
+            }
+
+            public function dashboardSummary(?CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+
+            public function metrics(?CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+        });
+
+        $this->get('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
+            ->assertOk()
+            ->assertJsonPath('namespace', 'default')
+            ->assertJsonPath('workflow.namespace', 'default')
+            ->assertJsonPath('operator_scope.namespace', 'default')
+            ->assertJsonPath('selected_run.timeline_projection_source', 'durable_history_events')
+            ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable')
+            ->assertJsonPath('redaction.applied', true)
+            ->assertJsonPath('redaction.paths.0', 'payloads.arguments.data')
+            ->assertJsonPath('redaction.paths.1', 'payloads.output.data')
+            ->assertJsonPath('redaction.paths.2', 'history_events.0.payload')
+            ->assertJsonPath('payloads.arguments.data.redacted', true)
+            ->assertJsonPath('payloads.arguments.data.workflow_run_id', $run->id)
+            ->assertJsonPath('history_events.0.payload.path', 'history_events.0.payload')
+            ->assertJsonPath('integrity.checksum', fn ($value): bool => is_string($value) && preg_match('/^[a-f0-9]{64}$/', $value) === 1);
+    }
+
     public function testCanonicalRouteExportsLineageLinksFromTypedHistoryWhenLinkRowsAreMissing(): void
     {
         config()->set('waterline.engine_source', 'v2');
