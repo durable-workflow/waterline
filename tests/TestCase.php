@@ -77,8 +77,18 @@ abstract class TestCase extends BaseTestCase
         return array_values(array_unique(array_merge(parent::getPackageProviders($app), [
             WorkflowServiceProvider::class,
             'Waterline\WaterlineServiceProvider',
-            'Waterline\WaterlineApplicationServiceProvider',
+            ...$this->waterlineHostApplicationProviders(),
         ])));
+    }
+
+    /**
+     * @return list<class-string|string>
+     */
+    protected function waterlineHostApplicationProviders(): array
+    {
+        return [
+            'Waterline\WaterlineApplicationServiceProvider',
+        ];
     }
 
     private function shouldSkipSqlServerV2FeatureCoverage(): bool

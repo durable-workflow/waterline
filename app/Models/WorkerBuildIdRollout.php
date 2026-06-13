@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Waterline\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Waterline\Traits\ResolvesStorageConnection;
 
 class WorkerBuildIdRollout extends Model
 {
+    use ResolvesStorageConnection;
+
     public const DRAIN_INTENT_ACTIVE = 'active';
 
     public const DRAIN_INTENT_DRAINING = 'draining';

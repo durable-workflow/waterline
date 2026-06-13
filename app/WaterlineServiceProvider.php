@@ -49,7 +49,6 @@ class WaterlineServiceProvider extends ServiceProvider
         Route::group([
             'domain' => config('waterline.domain', null),
             'prefix' => config('waterline.path', 'waterline'),
-            'namespace' => 'Waterline\Http\Controllers',
             'middleware' => $this->routeMiddleware(),
         ], function () {
             $this->loadRoutesFrom(__DIR__.'/../routes/web.php');

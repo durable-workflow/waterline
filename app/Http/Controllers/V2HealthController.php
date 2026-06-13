@@ -3,7 +3,8 @@
 namespace Waterline\Http\Controllers;
 
 use Carbon\CarbonInterface;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 use Waterline\Models\WorkerBuildIdRollout;
 use Waterline\Models\WorkerRegistration;
@@ -147,7 +148,7 @@ class V2HealthController extends Controller
             return $snapshot;
         }
 
-        if (! Schema::hasTable((new WorkerRegistration())->getTable())) {
+        if (! $this->modelTableExists(new WorkerRegistration())) {
             return $snapshot;
         }
 
@@ -559,8 +560,8 @@ class V2HealthController extends Controller
             return $this->emptyRoutingDrains();
         }
 
-        if (! Schema::hasTable((new WorkerRegistration())->getTable())
-            || ! Schema::hasTable((new WorkerBuildIdRollout())->getTable())) {
+        if (! $this->modelTableExists(new WorkerRegistration())
+            || ! $this->modelTableExists(new WorkerBuildIdRollout())) {
             return $this->emptyRoutingDrains();
         }
 
@@ -1105,7 +1106,7 @@ class V2HealthController extends Controller
             );
         }
 
-        if (! Schema::hasTable((new WorkerRegistration())->getTable())) {
+        if (! $this->modelTableExists(new WorkerRegistration())) {
             return $this->emptyQueueVisibility(
                 $namespace,
                 'Queue visibility requires the workflow_worker_registrations table from the standalone server schema.',
@@ -1128,6 +1129,17 @@ class V2HealthController extends Controller
                 $namespace,
                 'Queue visibility could not be loaded from the current worker registration schema.',
             );
+        }
+    }
+
+    private function modelTableExists(Model $model): bool
+    {
+        try {
+            return DB::connection($model->getConnectionName())
+                ->getSchemaBuilder()
+                ->hasTable($model->getTable());
+        } catch (Throwable) {
+            return false;
         }
     }
 

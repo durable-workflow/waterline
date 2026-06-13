@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Waterline\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Waterline\Traits\ResolvesStorageConnection;
 
 class WorkerRegistration extends Model
 {
+    use ResolvesStorageConnection;
+
     protected $table = 'workflow_worker_registrations';
 
     protected $fillable = [
