@@ -5,8 +5,10 @@ namespace Waterline\Http\Controllers;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Contracts\Support\Arrayable;
 use Illuminate\Http\Request;
+use InvalidArgumentException;
 use LogicException;
 use Workflow\V2\CommandContext;
+use Workflow\V2\Contracts\HistoryExportRedactor;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Support\CommandResponse;
@@ -83,7 +85,9 @@ class WorkflowsController extends Controller
         $flow = $repository->findFlow($id);
 
         return response()->json($this->annotateHistoryExport(
-            ActionabilityContract::annotateExport($observability->runHistoryExport($flow)),
+            ActionabilityContract::annotateExport(
+                $observability->runHistoryExport($flow, null, $this->historyExportRedactor())
+            ),
             $flow->namespace,
         ));
     }
@@ -98,7 +102,9 @@ class WorkflowsController extends Controller
         $flow = $repository->findFlowSelection($instanceId);
 
         return response()->json($this->annotateHistoryExport(
-            ActionabilityContract::annotateExport($observability->runHistoryExport($flow)),
+            ActionabilityContract::annotateExport(
+                $observability->runHistoryExport($flow, null, $this->historyExportRedactor())
+            ),
             $flow->namespace,
         ));
     }
@@ -114,7 +120,9 @@ class WorkflowsController extends Controller
         $flow = $repository->findFlowSelection($instanceId, $runId);
 
         return response()->json($this->annotateHistoryExport(
-            ActionabilityContract::annotateExport($observability->runHistoryExport($flow)),
+            ActionabilityContract::annotateExport(
+                $observability->runHistoryExport($flow, null, $this->historyExportRedactor())
+            ),
             $flow->namespace,
         ));
     }
@@ -639,6 +647,29 @@ class WorkflowsController extends Controller
         $export = $this->withOperatorScope($export);
 
         return $export;
+    }
+
+    private function historyExportRedactor(): HistoryExportRedactor|callable|null
+    {
+        $configured = config('workflows.v2.history_export.redactor');
+
+        if ($configured === null || $configured === false || $configured === '') {
+            return null;
+        }
+
+        if (is_string($configured) && class_exists($configured)) {
+            $configured = app($configured);
+        }
+
+        if ($configured instanceof HistoryExportRedactor || is_callable($configured)) {
+            return $configured;
+        }
+
+        throw new InvalidArgumentException(
+            'Configured workflow v2 history export redactor must implement '
+            . HistoryExportRedactor::class
+            . ' or be callable.',
+        );
     }
 
     /**

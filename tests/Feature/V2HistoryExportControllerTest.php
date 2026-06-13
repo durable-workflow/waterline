@@ -2,11 +2,13 @@
 
 namespace Waterline\Tests\Feature;
 
+use Carbon\CarbonInterface;
 use Illuminate\Support\Str;
 use Waterline\Tests\Fixtures\V2\TestCommandContractWorkflow;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Contracts\HistoryExportRedactor;
+use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Enums\ActivityStatus;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Enums\TimerStatus;
@@ -439,6 +441,146 @@ class V2HistoryExportControllerTest extends TestCase
             ->assertJsonPath('payloads.arguments.data.redacted', true)
             ->assertJsonPath('payloads.arguments.data.path', 'payloads.arguments.data')
             ->assertJsonPath('integrity.checksum', fn ($value): bool => is_string($value) && preg_match('/^[a-f0-9]{64}$/', $value) === 1)
+            ->assertJsonPath('history_events.0.payload.path', 'history_events.0.payload');
+    }
+
+    public function testFallbackSelectionHistoryExportPreservesConfiguredRedactionPolicy(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+        config()->set('workflows.v2.history_export.redactor', new class() implements HistoryExportRedactor {
+            /**
+             * @param array<string, mixed> $context
+             *
+             * @return array<string, mixed>
+             */
+            public function redact(mixed $value, array $context): array
+            {
+                return [
+                    'redacted' => true,
+                    'path' => $context['path'],
+                    'workflow_run_id' => $context['workflow_run_id'],
+                ];
+            }
+        });
+
+        [$instance, $run] = $this->createCompletedRunWithHistory();
+        $instance->forceFill(['namespace' => null])->save();
+        $run->forceFill(['namespace' => 'default'])->save();
+        WorkflowRunSummary::whereKey($run->id)->update(['namespace' => null]);
+
+        $this->app->instance(OperatorObservabilityRepository::class, new class() implements OperatorObservabilityRepository {
+            public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+            {
+                return [];
+            }
+
+            public function listItem(WorkflowRunSummary $summary): array
+            {
+                return [];
+            }
+
+            public function runHistoryExport(
+                WorkflowRun $run,
+                ?CarbonInterface $exportedAt = null,
+                HistoryExportRedactor|callable|null $redactor = null,
+            ): array {
+                $export = [
+                    'schema' => HistoryExport::SCHEMA,
+                    'schema_version' => HistoryExport::SCHEMA_VERSION,
+                    'workflow' => [
+                        'instance_id' => $run->workflow_instance_id,
+                        'run_id' => $run->id,
+                    ],
+                    'payloads' => [
+                        'arguments' => [
+                            'available' => true,
+                            'data' => 'unredacted-arguments',
+                        ],
+                    ],
+                    'history_events' => [
+                        [
+                            'id' => 'fallback-event-1',
+                            'type' => 'WorkflowStarted',
+                            'sequence' => 1,
+                            'payload' => ['secret' => 'unredacted-history'],
+                        ],
+                    ],
+                    'waits' => [],
+                    'timeline' => [],
+                    'timers' => [],
+                    'activities' => [],
+                    'redaction' => [
+                        'applied' => false,
+                        'policy' => null,
+                        'paths' => [],
+                    ],
+                    'selected_run' => [
+                        'projection_fallback' => 'durable_run',
+                    ],
+                ];
+
+                if ($redactor === null) {
+                    return $export;
+                }
+
+                $paths = ['payloads.arguments.data', 'history_events.0.payload'];
+                $export['payloads']['arguments']['data'] = $this->redact($redactor, 'unredacted-arguments', [
+                    'path' => 'payloads.arguments.data',
+                    'category' => 'workflow_payload',
+                    'workflow_instance_id' => $run->workflow_instance_id,
+                    'workflow_run_id' => $run->id,
+                ]);
+                $export['history_events'][0]['payload'] = $this->redact($redactor, ['secret' => 'unredacted-history'], [
+                    'path' => 'history_events.0.payload',
+                    'category' => 'history_event',
+                    'workflow_instance_id' => $run->workflow_instance_id,
+                    'workflow_run_id' => $run->id,
+                    'history_event_id' => 'fallback-event-1',
+                    'history_event_type' => 'WorkflowStarted',
+                    'sequence' => 1,
+                ]);
+                $export['redaction'] = [
+                    'applied' => true,
+                    'policy' => $redactor instanceof HistoryExportRedactor ? $redactor::class : 'callable',
+                    'paths' => $paths,
+                ];
+
+                return $export;
+            }
+
+            public function dashboardSummary(?CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+
+            public function metrics(?CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+
+            /**
+             * @param array<string, mixed> $context
+             */
+            private function redact(HistoryExportRedactor|callable $redactor, mixed $value, array $context): mixed
+            {
+                return $redactor instanceof HistoryExportRedactor
+                    ? $redactor->redact($value, $context)
+                    : $redactor($value, $context);
+            }
+        });
+
+        $this->get('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
+            ->assertOk()
+            ->assertJsonPath('namespace', 'default')
+            ->assertJsonPath('workflow.namespace', 'default')
+            ->assertJsonPath('operator_scope.namespace', 'default')
+            ->assertJsonPath('selected_run.projection_fallback', 'durable_run')
+            ->assertJsonPath('redaction.applied', true)
+            ->assertJsonPath('redaction.paths.0', 'payloads.arguments.data')
+            ->assertJsonPath('redaction.paths.1', 'history_events.0.payload')
+            ->assertJsonPath('payloads.arguments.data.redacted', true)
+            ->assertJsonPath('payloads.arguments.data.workflow_run_id', $run->id)
             ->assertJsonPath('history_events.0.payload.path', 'history_events.0.payload');
     }
 
