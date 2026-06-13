@@ -45,7 +45,9 @@ class PackageInstalledSharedStorageHostTest extends TestCase
         $app['config']->set('queue.default', 'sync');
         $app['config']->set('queue.connections.sync.driver', 'sync');
         $app['config']->set('cache.default', 'array');
-        $app['config']->set('session.driver', 'array');
+        $app['config']->set('session.driver', 'database');
+        $app['config']->set('session.connection', 'host');
+        $app['config']->set('session.table', 'sessions');
     }
 
     protected function waterlineHostApplicationProviders(): array
@@ -85,6 +87,10 @@ class PackageInstalledSharedStorageHostTest extends TestCase
         $this->assertTrue(
             DB::connection('server_storage')->getSchemaBuilder()->hasTable('workflow_runs'),
             'The shared server storage database must contain workflow runtime tables.',
+        );
+        $this->assertFalse(
+            DB::connection('host')->getSchemaBuilder()->hasTable('sessions'),
+            'The generated host default database intentionally lacks Laravel session tables.',
         );
 
         $run = $this->seedPausedSagaRun();

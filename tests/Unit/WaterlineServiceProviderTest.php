@@ -4,6 +4,8 @@ namespace Waterline\Tests\Unit;
 
 use Illuminate\Support\Facades\DB;
 use Waterline\Console\SignalsQueriesConformanceCommand;
+use Waterline\Http\Middleware\ControlPlaneVersion;
+use Waterline\Http\Middleware\UseEphemeralApiSessionWhenDatabaseTableMissing;
 use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryMySQL;
@@ -98,6 +100,27 @@ class WaterlineServiceProviderTest extends TestCase
         (new WaterlineServiceProvider($this->app))->register();
 
         $this->assertSame($custom, $this->app->make(WorkflowRepositoryInterface::class));
+    }
+
+    public function testPackageApiRoutesGuardMissingDatabaseSessionTablesBeforeWebMiddleware(): void
+    {
+        $routes = $this->app['router']->getRoutes();
+        $healthRoute = $routes->getByName('waterline.v2.health');
+        $dashboardRoute = $routes->getByName('waterline.index');
+
+        $this->assertNotNull($healthRoute);
+        $this->assertNotNull($dashboardRoute);
+        $healthMiddleware = $healthRoute->gatherMiddleware();
+        $fallbackIndex = array_search(UseEphemeralApiSessionWhenDatabaseTableMissing::class, $healthMiddleware, true);
+        $webIndex = array_search('web', $healthMiddleware, true);
+
+        $this->assertContains(ControlPlaneVersion::class, $healthMiddleware);
+        $this->assertContains(UseEphemeralApiSessionWhenDatabaseTableMissing::class, $healthMiddleware);
+        $this->assertContains('web', $healthMiddleware);
+        $this->assertIsInt($fallbackIndex);
+        $this->assertIsInt($webIndex);
+        $this->assertLessThan($webIndex, $fallbackIndex);
+        $this->assertContains('web', $dashboardRoute->gatherMiddleware());
     }
 
     public function testBootPassesFloorGuardWhenPinnedToV1EvenIfV2SurfaceIsMissing(): void

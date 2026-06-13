@@ -43,6 +43,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Waterline API Route Middleware
+    |--------------------------------------------------------------------------
+    |
+    | Leave this null to use the route middleware above for the JSON operator
+    | API. Waterline inserts a package middleware before that stack so
+    | database-backed Laravel sessions fall back to an ephemeral request session
+    | when an observer host intentionally has no sessions table. Set an explicit
+    | list when the API must run through a different host-specific guard.
+    |
+    */
+
+    'api_middleware' => null,
+
+    /*
+    |--------------------------------------------------------------------------
     | Unauthenticated Access
     |--------------------------------------------------------------------------
     |

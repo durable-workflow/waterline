@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Waterline\Http\Middleware\ControlPlaneVersion;
+use Waterline\Http\Middleware\UseEphemeralApiSessionWhenDatabaseTableMissing;
 use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryMySQL;
@@ -46,11 +47,20 @@ class WaterlineServiceProvider extends ServiceProvider
      */
     protected function registerRoutes()
     {
-        Route::group([
+        $routeOptions = [
             'domain' => config('waterline.domain', null),
             'prefix' => config('waterline.path', 'waterline'),
-            'middleware' => $this->routeMiddleware(),
-        ], function () {
+        ];
+
+        Route::group(array_merge($routeOptions, [
+            'middleware' => $this->apiRouteMiddleware(),
+        ]), function () {
+            $this->loadRoutesFrom(__DIR__.'/../routes/api.php');
+        });
+
+        Route::group(array_merge($routeOptions, [
+            'middleware' => $this->webRouteMiddleware(),
+        ]), function () {
             $this->loadRoutesFrom(__DIR__.'/../routes/web.php');
         });
     }
@@ -58,11 +68,56 @@ class WaterlineServiceProvider extends ServiceProvider
     /**
      * @return list<class-string|string>
      */
-    private function routeMiddleware(): array
+    private function webRouteMiddleware(): array
     {
-        $configured = config('waterline.middleware', 'web');
-        $middleware = is_array($configured) ? array_values($configured) : [$configured];
+        return $this->withControlPlaneVersion(
+            $this->normalizeMiddleware(config('waterline.middleware', ['web']))
+        );
+    }
 
+    /**
+     * @return list<class-string|string>
+     */
+    private function apiRouteMiddleware(): array
+    {
+        $configured = config('waterline.api_middleware')
+            ?? config('waterline.middleware', ['web']);
+
+        return $this->withControlPlaneVersion(
+            $this->withEphemeralSessionFallback($this->normalizeMiddleware($configured))
+        );
+    }
+
+    /**
+     * @param  list<class-string|string>  $middleware
+     * @return list<class-string|string>
+     */
+    private function withEphemeralSessionFallback(array $middleware): array
+    {
+        array_unshift($middleware, UseEphemeralApiSessionWhenDatabaseTableMissing::class);
+
+        return $middleware;
+    }
+
+    /**
+     * @param  mixed  $configured
+     * @return list<class-string|string>
+     */
+    private function normalizeMiddleware($configured): array
+    {
+        if ($configured === null || $configured === false || $configured === '') {
+            return [];
+        }
+
+        return is_array($configured) ? array_values($configured) : [$configured];
+    }
+
+    /**
+     * @param  list<class-string|string>  $middleware
+     * @return list<class-string|string>
+     */
+    private function withControlPlaneVersion(array $middleware): array
+    {
         array_unshift($middleware, ControlPlaneVersion::class);
 
         return $middleware;
