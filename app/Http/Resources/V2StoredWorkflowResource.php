@@ -38,8 +38,7 @@ class V2StoredWorkflowResource extends JsonResource
 
         $detail = $this->withTimelineWindow($detail, $request);
         $detail = $this->withDurableCompensationActivities($detail);
-        $detail['workflow_instance_id'] ??= $detail['instance_id'] ?? $this->resource->workflow_instance_id;
-        $detail['workflow_run_id'] ??= $detail['run_id'] ?? $detail['selected_run_id'] ?? $this->resource->id;
+        $detail = $this->withSelectedRunIdentity($detail);
         $compensationVisibility = CompensationVisibility::fromActivities($detail['activities'] ?? []);
         $detail['current_compensation_marker'] = $compensationVisibility['current_marker'];
         $detail['compensation_visibility'] = $compensationVisibility;
@@ -50,6 +49,22 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['operator_scope'] = OperatorScope::payload();
 
         return ActionabilityContract::annotateRun($detail);
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     * @return array<string, mixed>
+     */
+    private function withSelectedRunIdentity(array $detail): array
+    {
+        $detail['id'] = $this->resource->id;
+        $detail['workflow_instance_id'] = $this->resource->workflow_instance_id;
+        $detail['instance_id'] = $this->resource->workflow_instance_id;
+        $detail['workflow_run_id'] = $this->resource->id;
+        $detail['run_id'] = $this->resource->id;
+        $detail['selected_run_id'] = $this->resource->id;
+
+        return $detail;
     }
 
     /**

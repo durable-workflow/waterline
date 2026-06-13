@@ -1048,6 +1048,7 @@ class WorkflowsController extends Controller
     private function listItemView(WorkflowRunSummary $summary, bool $useDurableHistoryFallback = false): array
     {
         $item = RunListItemView::fromSummary($summary);
+        $item = $this->withSummaryRunIdentity($item, $summary);
         $item['namespace'] ??= is_string($summary->run?->namespace ?? null)
             ? $summary->run->namespace
             : null;
@@ -1060,6 +1061,31 @@ class WorkflowsController extends Controller
         $item['compensation_visibility'] = $compensationVisibility;
 
         return $this->annotateListItem($item);
+    }
+
+    /**
+     * @param array<string, mixed> $item
+     * @return array<string, mixed>
+     */
+    private function withSummaryRunIdentity(array $item, WorkflowRunSummary $summary): array
+    {
+        if (! $summary->run instanceof WorkflowRun) {
+            return $item;
+        }
+
+        $item['id'] = $summary->run->id;
+        $item['workflow_instance_id'] = $summary->run->workflow_instance_id;
+        $item['instance_id'] = $summary->run->workflow_instance_id;
+        $item['selected_run_id'] = $summary->run->id;
+        $item['run_id'] = $summary->run->id;
+
+        $runNamespace = $summary->run->namespace ?? null;
+
+        if (is_string($runNamespace)) {
+            $item['namespace'] = $runNamespace;
+        }
+
+        return $item;
     }
 
     /**

@@ -634,6 +634,139 @@ class V2NamespaceScopedVisibilityTest extends TestCase
         );
     }
 
+    public function testSelectedPausedCompensationRunUsesDurableIdentityWhenProjectionsDrift(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+
+        $run = $this->createCompletedRun('sagas-python-operator_visible_mid_compensation_status', 'default');
+        $this->recordRunningActivity($run, 'pause_after_refund');
+
+        $projectedActivityId = (string) Str::ulid();
+        ActivityExecution::create([
+            'id' => $projectedActivityId,
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'activity_class' => 'ChargeCardActivity',
+            'activity_type' => 'charge_card',
+            'status' => 'completed',
+            'arguments' => Serializer::serialize(['order-123']),
+            'connection' => 'redis',
+            'queue' => 'default',
+            'started_at' => now()->subSeconds(40),
+            'closed_at' => now()->subSeconds(30),
+        ]);
+
+        $this->app->instance(OperatorObservabilityRepository::class, new class($projectedActivityId) implements OperatorObservabilityRepository {
+            public function __construct(private string $activityId)
+            {
+            }
+
+            public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+            {
+                return [
+                    'id' => 'stale-projected-run',
+                    'instance_id' => 'stale-projected-instance',
+                    'selected_run_id' => 'stale-projected-run',
+                    'run_id' => 'stale-projected-run',
+                    'workflow_instance_id' => 'stale-projected-instance',
+                    'workflow_run_id' => 'stale-projected-run',
+                    'run_number' => $run->run_number,
+                    'is_current_run' => true,
+                    'current_run_id' => 'stale-projected-run',
+                    'engine_source' => 'v2',
+                    'class' => $run->workflow_class,
+                    'workflow_type' => $run->workflow_type,
+                    'namespace' => $run->namespace,
+                    'status' => 'waiting',
+                    'status_bucket' => 'running',
+                    'closed_reason' => null,
+                    'closed_at' => null,
+                    'activities_scope' => 'selected_run',
+                    'activities' => [
+                        [
+                            'id' => $this->activityId,
+                            'idempotency_key' => $this->activityId,
+                            'sequence' => 1,
+                            'type' => 'charge_card',
+                            'class' => 'ChargeCardActivity',
+                            'status' => 'completed',
+                            'row_status' => 'completed',
+                            'history_authority' => 'typed_history',
+                            'history_event_types' => [],
+                        ],
+                    ],
+                    'timeline' => [],
+                    'timeline_total_count' => 0,
+                    'timeline_returned_count' => 0,
+                ];
+            }
+
+            public function listItem(WorkflowRunSummary $summary): array
+            {
+                return [];
+            }
+
+            public function runHistoryExport(
+                WorkflowRun $run,
+                ?\Carbon\CarbonInterface $exportedAt = null,
+                \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+            ): array {
+                return [];
+            }
+
+            public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+
+            public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+        });
+
+        WorkflowRun::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'last_history_sequence' => 4,
+        ]);
+        WorkflowRunSummary::whereKey($run->id)->update([
+            'workflow_instance_id' => 'stale-summary-instance',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'history_event_count' => 4,
+        ]);
+
+        $this->get('/waterline/api/instances/'.$run->workflow_instance_id.'/runs/'.$run->id.'?history_limit=all')
+            ->assertOk()
+            ->assertJsonPath('id', $run->id)
+            ->assertJsonPath('workflow_instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('workflow_run_id', $run->id)
+            ->assertJsonPath('instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('selected_run_id', $run->id)
+            ->assertJsonPath('status', 'waiting')
+            ->assertJsonPath('status_bucket', 'running')
+            ->assertJsonPath('current_compensation_marker', 'pause_after_refund')
+            ->assertJsonPath('compensation_visibility.current_marker', 'pause_after_refund');
+
+        $this->get('/waterline/api/flows/running')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.workflow_instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('data.0.instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('data.0.run_id', $run->id)
+            ->assertJsonPath('data.0.selected_run_id', $run->id)
+            ->assertJsonPath('data.0.status', 'waiting')
+            ->assertJsonPath('data.0.status_bucket', 'running')
+            ->assertJsonPath('data.0.current_compensation_marker', 'pause_after_refund')
+            ->assertJsonPath('data.0.compensation_visibility.current_marker', 'pause_after_refund');
+    }
+
     public function testSummaryBackedListRowsDoNotReadDurableHistoryWhenActivityProjectionIsMissing(): void
     {
         config()->set('waterline.engine_source', 'v2');

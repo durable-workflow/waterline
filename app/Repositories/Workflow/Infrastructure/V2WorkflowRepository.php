@@ -413,7 +413,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     private function runRelationSelect(): string
     {
-        $columns = ['id'];
+        $columns = ['id', 'workflow_instance_id'];
 
         if ($this->runColumnExists('namespace')) {
             $columns[] = 'namespace';

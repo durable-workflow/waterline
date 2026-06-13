@@ -149,6 +149,60 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('data.0.search_attributes.customer_tier', 'gold');
     }
 
+    public function testRunningFlowsPreserveSummaryNamespaceWhenDurableRunNamespaceIsNull(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $summary = $this->createRunningSummaryWithNamespaces(
+            'summary-namespace-instance',
+            'summary-namespace-run',
+            'billing',
+            null,
+        );
+
+        $this->get('/waterline/api/flows/running')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $summary->id)
+            ->assertJsonPath('data.0.workflow_instance_id', $summary->workflow_instance_id)
+            ->assertJsonPath('data.0.namespace', 'billing');
+    }
+
+    public function testRunningFlowsPreserveSummaryNamespaceWhenDurableRunNamespaceColumnIsAbsent(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $summary = $this->createRunningSummaryWithNamespaces(
+            'legacy-run-namespace-instance',
+            'legacy-run-namespace-run',
+            'billing',
+            'billing',
+        );
+
+        $droppedNamespace = Schema::hasColumn('workflow_runs', 'namespace');
+
+        if ($droppedNamespace) {
+            Schema::table('workflow_runs', static function (Blueprint $table): void {
+                $table->dropColumn('namespace');
+            });
+        }
+
+        try {
+            $this->get('/waterline/api/flows/running')
+                ->assertOk()
+                ->assertJsonCount(1, 'data')
+                ->assertJsonPath('data.0.id', $summary->id)
+                ->assertJsonPath('data.0.workflow_instance_id', $summary->workflow_instance_id)
+                ->assertJsonPath('data.0.namespace', 'billing');
+        } finally {
+            if ($droppedNamespace) {
+                Schema::table('workflow_runs', static function (Blueprint $table): void {
+                    $table->string('namespace')->nullable()->index();
+                });
+            }
+        }
+    }
+
     public function testRunningFlowsAreSortedByStableV2SortContract(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -1239,6 +1293,61 @@ class V2DashboardWorkflowListTest extends TestCase
             'declared_entry_mode' => $declaredEntryMode,
             'declared_contract_source' => $declaredContractSource,
             'archived_at' => $archivedAt,
+            'started_at' => $startedAt,
+            'sort_timestamp' => $startedAt,
+            'sort_key' => RunSummarySortKey::key($startedAt, $createdAt, $createdAt, $run->id),
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+    }
+
+    private function createRunningSummaryWithNamespaces(
+        string $instanceId,
+        string $runId,
+        string $summaryNamespace,
+        ?string $runNamespace,
+    ): WorkflowRunSummary {
+        $startedAt = Carbon::parse('2022-01-01 12:05:00');
+        $createdAt = Carbon::parse('2022-01-01 12:00:00');
+
+        $instance = WorkflowInstance::create([
+            'id' => $instanceId,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'namespace' => $summaryNamespace,
+            'business_key' => 'summary-namespace-business',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => $runId,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'namespace' => $runNamespace,
+            'business_key' => 'summary-namespace-business',
+            'status' => RunStatus::Waiting->value,
+            'started_at' => $startedAt,
+            'last_progress_at' => $startedAt,
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        return WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'namespace' => $summaryNamespace,
+            'business_key' => 'summary-namespace-business',
+            'status' => RunStatus::Waiting->value,
+            'status_bucket' => 'running',
             'started_at' => $startedAt,
             'sort_timestamp' => $startedAt,
             'sort_key' => RunSummarySortKey::key($startedAt, $createdAt, $createdAt, $run->id),
