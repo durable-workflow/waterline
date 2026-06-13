@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Waterline\Tests\Feature;
 
 use Waterline\Tests\TestCase;
+use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunWait;
-use Workflow\V2\Models\WorkflowRunSummary;
 
 final class EngineSourceContractTest extends TestCase
 {
@@ -31,7 +31,7 @@ final class EngineSourceContractTest extends TestCase
     public function testStatsEndpointReturnsUnavailableWhenV2IsPinnedButOperatorSurfaceIsMissing(): void
     {
         config()->set('waterline.engine_source', 'v2');
-        config()->set('workflows.v2.run_summary_model', MissingWorkflowRunSummary::class);
+        config()->set('workflows.v2.run_model', MissingWorkflowRun::class);
 
         $this->get('/waterline/api/stats')
             ->assertStatus(503)
@@ -46,7 +46,7 @@ final class EngineSourceContractTest extends TestCase
     public function testV2HealthEndpointReturnsEngineSourceErrorWhenAutoFallsBackToV1(): void
     {
         config()->set('waterline.engine_source', 'auto');
-        config()->set('workflows.v2.run_summary_model', MissingWorkflowRunSummary::class);
+        config()->set('workflows.v2.run_model', MissingWorkflowRun::class);
 
         $this->get('/waterline/api/v2/health')
             ->assertStatus(503)
@@ -78,18 +78,18 @@ final class EngineSourceContractTest extends TestCase
     public function testSavedViewsReturnUnavailableWhenV2IsPinnedButOperatorSurfaceIsMissing(): void
     {
         config()->set('waterline.engine_source', 'v2');
-        config()->set('workflows.v2.run_summary_model', MissingWorkflowRunSummary::class);
+        config()->set('workflows.v2.run_model', MissingWorkflowRun::class);
 
         $this->get('/waterline/api/saved-views?bucket=running')
             ->assertStatus(503)
             ->assertJsonPath('engine_source.status', 'v2_pinned_unavailable')
-            ->assertJsonPath('engine_source.issues.0.table', 'missing_workflow_run_summaries');
+            ->assertJsonPath('engine_source.issues.0.table', 'missing_workflow_runs');
     }
 
     public function testInstanceRoutesReturnNotFoundWhenAutoFallsBackToLegacyRepository(): void
     {
         config()->set('waterline.engine_source', 'auto');
-        config()->set('workflows.v2.run_summary_model', MissingWorkflowRunSummary::class);
+        config()->set('workflows.v2.run_model', MissingWorkflowRun::class);
 
         $this->get('/waterline/api/instances/example-instance')
             ->assertNotFound();
@@ -98,7 +98,7 @@ final class EngineSourceContractTest extends TestCase
     public function testInstanceRoutesReturnUnavailableWhenV2IsPinnedButOperatorSurfaceIsMissing(): void
     {
         config()->set('waterline.engine_source', 'v2');
-        config()->set('workflows.v2.run_summary_model', MissingWorkflowRunSummary::class);
+        config()->set('workflows.v2.run_model', MissingWorkflowRun::class);
 
         $this->get('/waterline/api/instances/example-instance')
             ->assertStatus(503)
@@ -106,9 +106,9 @@ final class EngineSourceContractTest extends TestCase
     }
 }
 
-final class MissingWorkflowRunSummary extends WorkflowRunSummary
+final class MissingWorkflowRun extends WorkflowRun
 {
-    protected $table = 'missing_workflow_run_summaries';
+    protected $table = 'missing_workflow_runs';
 }
 
 final class MissingWorkflowRunWait extends WorkflowRunWait

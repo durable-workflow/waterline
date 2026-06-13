@@ -501,6 +501,68 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             ->assertJsonPath('data.0.compensation_visibility.current_marker', 'pause_after_refund');
     }
 
+    public function testPublishedHostRoutesExposePausedSagaRunFromSharedDurableStorage(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'default');
+        config()->set('waterline.health.task_dispatch_mode', 'poll');
+
+        $run = $this->createCompletedRun('sagas-python-operator_visible_mid_compensation_status', 'default');
+        $this->recordRunningActivity($run, 'pause_after_refund');
+
+        WorkflowRun::whereKey($run->id)->update([
+            'status' => 'waiting',
+            'closed_reason' => null,
+            'closed_at' => null,
+            'last_history_sequence' => 4,
+        ]);
+        WorkflowRunSummary::whereKey($run->id)->delete();
+
+        config()->set('workflows.v2.run_summary_model', MissingWaterlineHostRunSummary::class);
+        config()->set('workflows.v2.activity_execution_model', MissingWaterlineDetailActivityExecution::class);
+
+        $this->get('/waterline/api/v2/health')
+            ->assertOk()
+            ->assertJsonPath('healthy', true)
+            ->assertJsonPath('engine_source.status', 'v2_pinned_degraded')
+            ->assertJsonPath('engine_source.uses_v2', true)
+            ->assertJsonPath('engine_source.degraded_operator_surface', true)
+            ->assertJsonPath('checks.0.name', 'engine_source')
+            ->assertJsonPath('checks.0.status', 'ok');
+
+        $this->get('/waterline/api/flows/running')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.workflow_instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('data.0.instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('data.0.run_id', $run->id)
+            ->assertJsonPath('data.0.selected_run_id', $run->id)
+            ->assertJsonPath('data.0.status', 'waiting')
+            ->assertJsonPath('data.0.status_bucket', 'running')
+            ->assertJsonPath('data.0.namespace', 'default')
+            ->assertJsonPath('data.0.current_compensation_marker', 'pause_after_refund')
+            ->assertJsonPath('data.0.compensation_visibility.current_marker', 'pause_after_refund')
+            ->assertJsonPath('data.0.operator_visibility_degraded.reason', 'run_summary_projection_unavailable');
+
+        $this->get('/waterline/api/instances/'.$run->workflow_instance_id.'/runs/'.$run->id.'?history_limit=all')
+            ->assertOk()
+            ->assertJsonPath('id', $run->id)
+            ->assertJsonPath('workflow_instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('workflow_run_id', $run->id)
+            ->assertJsonPath('instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('selected_run_id', $run->id)
+            ->assertJsonPath('namespace', 'default')
+            ->assertJsonPath('status', 'waiting')
+            ->assertJsonPath('status_bucket', 'running')
+            ->assertJsonPath('current_compensation_marker', 'pause_after_refund')
+            ->assertJsonPath('compensation_visibility.current_marker', 'pause_after_refund')
+            ->assertJsonPath('activities.0.type', 'pause_after_refund')
+            ->assertJsonPath('activities.0.status', 'running')
+            ->assertJsonPath('activities.0.history_authority', 'durable_history_events')
+            ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable');
+    }
+
     public function testDirectRunDetailMergesDurableHistoryWhenActivityProjectionLacksCompensationMarker(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -1567,6 +1629,11 @@ class V2NamespaceScopedVisibilityTest extends TestCase
 final class MissingWaterlineDetailActivityExecution extends \Workflow\V2\Models\ActivityExecution
 {
     protected $table = 'missing_activity_executions';
+}
+
+final class MissingWaterlineHostRunSummary extends WorkflowRunSummary
+{
+    protected $table = 'missing_host_workflow_run_summaries';
 }
 
 final class TransientWaterlineDetailRunSummary extends WorkflowRunSummary

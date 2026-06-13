@@ -44,7 +44,7 @@ class WaterlineServiceProviderTest extends TestCase
     public function testAutoEngineSourceFallsBackToLegacyRepositoryWhenWorkflowOperatorSurfaceIsMissing(): void
     {
         config()->set('waterline.engine_source', 'auto');
-        config()->set('workflows.v2.run_summary_model', MissingWorkflowRunSummary::class);
+        config()->set('workflows.v2.run_model', MissingWorkflowRun::class);
 
         $repository = $this->app->make(WorkflowRepositoryInterface::class);
 
@@ -63,7 +63,7 @@ class WaterlineServiceProviderTest extends TestCase
     public function testExplicitV2EngineSourceBindsUnavailableRepositoryWhenOperatorSurfaceIsMissing(): void
     {
         config()->set('waterline.engine_source', 'v2');
-        config()->set('workflows.v2.run_summary_model', MissingWorkflowRunSummary::class);
+        config()->set('workflows.v2.run_model', MissingWorkflowRun::class);
 
         $repository = $this->app->make(WorkflowRepositoryInterface::class);
 
@@ -103,7 +103,7 @@ class WaterlineServiceProviderTest extends TestCase
     public function testBootPassesFloorGuardWhenPinnedToV1EvenIfV2SurfaceIsMissing(): void
     {
         config()->set('waterline.engine_source', 'v1');
-        config()->set('workflows.v2.run_summary_model', MissingWorkflowRunSummary::class);
+        config()->set('workflows.v2.run_model', MissingWorkflowRun::class);
 
         (new WaterlineServiceProvider($this->app))->boot();
 
@@ -113,7 +113,7 @@ class WaterlineServiceProviderTest extends TestCase
     public function testBootPassesFloorGuardWhenAutoFallsBackToV1(): void
     {
         config()->set('waterline.engine_source', 'auto');
-        config()->set('workflows.v2.run_summary_model', MissingWorkflowRunSummary::class);
+        config()->set('workflows.v2.run_model', MissingWorkflowRun::class);
 
         (new WaterlineServiceProvider($this->app))->boot();
 
@@ -153,7 +153,7 @@ class WaterlineServiceProviderTest extends TestCase
     }
 }
 
-final class MissingWorkflowRunSummary extends \Workflow\V2\Models\WorkflowRunSummary
+final class MissingWorkflowRun extends \Workflow\V2\Models\WorkflowRun
 {
-    protected $table = 'missing_workflow_run_summaries';
+    protected $table = 'missing_workflow_runs';
 }

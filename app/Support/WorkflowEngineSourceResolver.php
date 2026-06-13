@@ -15,19 +15,38 @@ final class WorkflowEngineSourceResolver
 
     private const ENGINE_V2 = 'v2';
 
+    // The operator bridge can still serve health, running-list, and selected-run
+    // detail from durable instance/run/history state when these projections lag
+    // or are absent in a package-installed Waterline host.
     private const OPTIONAL_V2_CONFIG_KEYS = [
+        'activity_attempt_model',
+        'activity_execution_model',
+        'command_model',
+        'failure_model',
+        'link_model',
+        'run_summary_model',
         'run_lineage_entry_model',
         'run_timer_entry_model',
         'run_timeline_entry_model',
         'run_wait_model',
+        'task_model',
+        'timer_model',
     ];
 
     private const OPTIONAL_V2_TABLES = [
+        'activity_attempts',
+        'activity_executions',
+        'workflow_commands',
+        'workflow_failures',
+        'workflow_links',
+        'workflow_run_summaries',
         'workflow_run_lineage_entries',
         'workflow_run_timer_entries',
         'workflow_run_timeline_entries',
         'workflow_run_waits',
         'workflow_signal_records',
+        'workflow_tasks',
+        'workflow_timers',
         'workflow_updates',
     ];
 
