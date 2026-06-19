@@ -4,6 +4,13 @@ declare(strict_types=1);
 
 namespace Waterline\Support;
 
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+use Throwable;
+use Waterline\Models\WorkerRegistration;
+use Workflow\V2\Models\WorkflowHistoryEvent;
+use Workflow\V2\Models\WorkflowInstance;
+use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Support\ReadinessContract;
 use Workflow\V2\Support\WaterlineEngineSource;
 
@@ -121,10 +128,24 @@ final class WorkflowEngineSourceResolver
 
         $issues = is_array($status['issues'] ?? null) ? $status['issues'] : [];
 
-        if ($issues === [] || ! self::onlyOptionalProjectionIssues($issues)) {
+        if ($issues === []) {
             return $status;
         }
 
+        if (! self::onlyOptionalProjectionIssues($issues)
+            && ! self::durableWorkerVersioningSurfaceAvailable()) {
+            return $status;
+        }
+
+        return self::degradedV2Status($status, $configured);
+    }
+
+    /**
+     * @param array<string, mixed> $status
+     * @return array<string, mixed>
+     */
+    private static function degradedV2Status(array $status, string $configured): array
+    {
         $status['resolved'] = self::ENGINE_V2;
         $status['uses_v2'] = true;
         $status['v2_operator_surface_available'] = true;
@@ -167,5 +188,45 @@ final class WorkflowEngineSourceResolver
         }
 
         return true;
+    }
+
+    private static function durableWorkerVersioningSurfaceAvailable(): bool
+    {
+        return self::configuredModelTableExists('workflows.v2.instance_model', WorkflowInstance::class)
+            && self::configuredModelTableExists('workflows.v2.run_model', WorkflowRun::class)
+            && self::configuredModelTableExists('workflows.v2.history_event_model', WorkflowHistoryEvent::class)
+            && self::modelTableExists(WorkerRegistration::class);
+    }
+
+    /**
+     * @param class-string<Model> $fallback
+     */
+    private static function configuredModelTableExists(string $configKey, string $fallback): bool
+    {
+        $modelClass = config($configKey, $fallback);
+
+        if (! is_string($modelClass)) {
+            return false;
+        }
+
+        return self::modelTableExists($modelClass);
+    }
+
+    private static function modelTableExists(string $modelClass): bool
+    {
+        if (! class_exists($modelClass) || ! is_subclass_of($modelClass, Model::class)) {
+            return false;
+        }
+
+        try {
+            /** @var Model $model */
+            $model = new $modelClass();
+
+            return DB::connection($model->getConnectionName())
+                ->getSchemaBuilder()
+                ->hasTable($model->getTable());
+        } catch (Throwable) {
+            return false;
+        }
     }
 }

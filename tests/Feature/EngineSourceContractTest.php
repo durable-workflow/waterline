@@ -4,8 +4,14 @@ declare(strict_types=1);
 
 namespace Waterline\Tests\Feature;
 
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
+use Waterline\Models\WorkerRegistration;
 use Waterline\Tests\TestCase;
+use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowRun;
+use Workflow\V2\Models\WorkflowRunTimerEntry;
 use Workflow\V2\Models\WorkflowRunWait;
 
 final class EngineSourceContractTest extends TestCase
@@ -75,6 +81,80 @@ final class EngineSourceContractTest extends TestCase
             ->assertJsonPath('checks.1.status', 'warning');
     }
 
+    public function testPackageHostHealthAndStatsStayReadableWhenWorkerVersioningTablesAreReachable(): void
+    {
+        Carbon::setTestNow('2026-04-09 12:00:00');
+        $this->beforeApplicationDestroyed(static function (): void {
+            Carbon::setTestNow();
+        });
+
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'worker-versioning-conformance');
+        config()->set('waterline.worker_stale_after_seconds', 120);
+        config()->set('workflows.v2.run_timer_entry_model', MissingWorkflowRunTimerEntry::class);
+
+        $this->createWorkerRegistrationsTable();
+
+        WorkerRegistration::create([
+            'worker_id' => 'package-host-v2-worker',
+            'namespace' => 'worker-versioning-conformance',
+            'task_queue' => 'worker-versioning-shared',
+            'runtime' => 'python',
+            'sdk_version' => '0.4.89',
+            'build_id' => 'build-v2',
+            'supported_workflow_types' => ['Sequence'],
+            'supported_activity_types' => ['activity.b'],
+            'max_concurrent_workflow_tasks' => 8,
+            'max_concurrent_activity_tasks' => 4,
+            'available_workflow_slots' => 7,
+            'last_heartbeat_at' => now()->subSeconds(5),
+            'status' => 'active',
+        ]);
+
+        $healthPayload = $this->get('/waterline/api/v2/health')
+            ->assertOk()
+            ->assertJsonPath('healthy', true)
+            ->assertJsonPath('engine_source.status', 'v2_pinned_degraded')
+            ->assertJsonPath('engine_source.uses_v2', true)
+            ->assertJsonPath('engine_source.v2_operator_surface_available', true)
+            ->assertJsonPath('engine_source.degraded_operator_surface', true)
+            ->assertJsonPath('queue_visibility.available', true)
+            ->assertJsonPath('operator_metrics.workers.registrations.0.build_id', 'build-v2')
+            ->json();
+
+        $this->assertContains('build-v2', $healthPayload['worker_versioning']['worker_cohorts'] ?? []);
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('engine_source.status', 'v2_pinned_degraded')
+            ->assertJsonPath('engine_source.uses_v2', true);
+    }
+
+    public function testPackageHostDoesNotExposeGlobalV2SurfaceWhenDurableHistoryIsUnavailable(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'worker-versioning-conformance');
+        config()->set('workflows.v2.history_event_model', MissingWorkflowHistoryEvent::class);
+
+        $this->createWorkerRegistrationsTable();
+
+        $this->get('/waterline/api/v2/health')
+            ->assertStatus(503)
+            ->assertJsonPath('engine_source.status', 'v2_pinned_unavailable')
+            ->assertJsonPath('engine_source.uses_v2', false)
+            ->assertJsonPath('engine_source.v2_operator_surface_available', false)
+            ->assertJsonPath('queue_visibility.available', false);
+
+        $this->get('/waterline/api/stats')
+            ->assertStatus(503)
+            ->assertJsonPath('engine_source.status', 'v2_pinned_unavailable')
+            ->assertJsonPath('engine_source.uses_v2', false);
+
+        $this->get('/waterline/api/instances/example-instance/runs/example-run')
+            ->assertStatus(503)
+            ->assertJsonPath('engine_source.status', 'v2_pinned_unavailable');
+    }
+
     public function testSavedViewsReturnUnavailableWhenV2IsPinnedButOperatorSurfaceIsMissing(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -104,6 +184,44 @@ final class EngineSourceContractTest extends TestCase
             ->assertStatus(503)
             ->assertJsonPath('engine_source.status', 'v2_pinned_unavailable');
     }
+
+    private function createWorkerRegistrationsTable(): void
+    {
+        Schema::dropIfExists('workflow_worker_registrations');
+        Schema::create('workflow_worker_registrations', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('worker_id')->unique();
+            $table->string('namespace')->default('default')->index();
+            $table->string('task_queue')->default('default')->index();
+            $table->string('runtime')->nullable();
+            $table->string('sdk_version')->nullable();
+            $table->string('build_id')->nullable()->index();
+            $table->json('supported_workflow_types')->nullable();
+            $table->json('workflow_definition_fingerprints')->nullable();
+            $table->json('supported_activity_types')->nullable();
+            $table->unsignedInteger('max_concurrent_workflow_tasks')->nullable();
+            $table->unsignedInteger('max_concurrent_activity_tasks')->nullable();
+            $table->unsignedInteger('max_concurrent_worker_sessions')->nullable();
+            $table->unsignedInteger('available_workflow_slots')->nullable();
+            $table->unsignedInteger('available_activity_slots')->nullable();
+            $table->unsignedInteger('available_session_slots')->nullable();
+            $table->json('process_metrics')->nullable();
+            $table->unsignedInteger('heartbeat_interval_seconds')->nullable();
+            $table->timestamp('last_heartbeat_at')->nullable()->index();
+            $table->string('status')->default('active')->index();
+            $table->timestamps();
+        });
+    }
+}
+
+final class MissingWorkflowHistoryEvent extends WorkflowHistoryEvent
+{
+    protected $table = 'missing_workflow_history_events';
+}
+
+final class MissingWorkflowRunTimerEntry extends WorkflowRunTimerEntry
+{
+    protected $table = 'missing_workflow_run_timer_entries';
 }
 
 final class MissingWorkflowRun extends WorkflowRun
