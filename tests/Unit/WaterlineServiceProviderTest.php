@@ -14,6 +14,7 @@ use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryPostgreSQL;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLite;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLServer;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
+use Waterline\Support\RuntimeConfiguration;
 use Waterline\Tests\TestCase;
 use Waterline\WaterlineServiceProvider;
 
@@ -90,6 +91,46 @@ class WaterlineServiceProviderTest extends TestCase
             $this->assertSame('worker-versioning-conformance', config('waterline.namespace'));
             $this->assertSame('poll', config('waterline.health.task_dispatch_mode'));
             $this->assertTrue(config('waterline.allow_unauthenticated'));
+        });
+    }
+
+    public function testRuntimeConfigurationPromotesProcessEnvironmentForArtisanServeChild(): void
+    {
+        $this->withProcessEnvironmentOnly([
+            'DB_CONNECTION' => 'mysql',
+            'DB_HOST' => 'mysql',
+            'DB_DATABASE' => 'durable_workflow',
+            'DB_USERNAME' => 'workflow',
+            'DB_PASSWORD' => 'workflow',
+            'WATERLINE_ENGINE_SOURCE' => 'v2',
+            'WATERLINE_NAMESPACE' => 'worker-versioning-conformance',
+            'WATERLINE_HEALTH_TASK_DISPATCH_MODE' => 'poll',
+            'WATERLINE_ALLOW_UNAUTHENTICATED' => 'true',
+            'DW_V2_TASK_DISPATCH_MODE' => 'poll',
+        ], function (): void {
+            config()->set('waterline.engine_source', 'auto');
+            config()->set('waterline.namespace', null);
+            config()->set('waterline.health.task_dispatch_mode', 'queue');
+            config()->set('waterline.allow_unauthenticated', false);
+            $_ENV['DB_CONNECTION'] = 'sqlite';
+            $_SERVER['DB_CONNECTION'] = 'sqlite';
+            $_ENV['WATERLINE_ENGINE_SOURCE'] = 'auto';
+            $_SERVER['WATERLINE_ENGINE_SOURCE'] = 'auto';
+            $_ENV['WATERLINE_NAMESPACE'] = 'stale-namespace';
+            $_SERVER['WATERLINE_NAMESPACE'] = 'stale-namespace';
+
+            RuntimeConfiguration::hydrate();
+
+            $this->assertSame('v2', config('waterline.engine_source'));
+            $this->assertSame('worker-versioning-conformance', config('waterline.namespace'));
+            $this->assertSame('poll', config('waterline.health.task_dispatch_mode'));
+            $this->assertTrue(config('waterline.allow_unauthenticated'));
+
+            $this->assertSame('mysql', $_ENV['DB_CONNECTION'] ?? null);
+            $this->assertSame('workflow', $_ENV['DB_PASSWORD'] ?? null);
+            $this->assertSame('v2', $_ENV['WATERLINE_ENGINE_SOURCE'] ?? null);
+            $this->assertSame('worker-versioning-conformance', $_ENV['WATERLINE_NAMESPACE'] ?? null);
+            $this->assertSame('poll', $_ENV['DW_V2_TASK_DISPATCH_MODE'] ?? null);
         });
     }
 
@@ -265,6 +306,48 @@ class WaterlineServiceProviderTest extends TestCase
             putenv($key.'='.$value);
             $_ENV[$key] = $value;
             $_SERVER[$key] = $value;
+        }
+
+        try {
+            $callback();
+        } finally {
+            foreach ($previous as $key => $state) {
+                if ($state['getenv'] === false) {
+                    putenv($key);
+                } else {
+                    putenv($key.'='.$state['getenv']);
+                }
+
+                if ($state['env_exists']) {
+                    $_ENV[$key] = $state['env'];
+                } else {
+                    unset($_ENV[$key]);
+                }
+
+                if ($state['server_exists']) {
+                    $_SERVER[$key] = $state['server'];
+                } else {
+                    unset($_SERVER[$key]);
+                }
+            }
+        }
+    }
+
+    private function withProcessEnvironmentOnly(array $values, callable $callback): void
+    {
+        $previous = [];
+
+        foreach ($values as $key => $value) {
+            $previous[$key] = [
+                'getenv' => getenv($key),
+                'env_exists' => array_key_exists($key, $_ENV),
+                'env' => $_ENV[$key] ?? null,
+                'server_exists' => array_key_exists($key, $_SERVER),
+                'server' => $_SERVER[$key] ?? null,
+            ];
+
+            putenv($key.'='.$value);
+            unset($_ENV[$key], $_SERVER[$key]);
         }
 
         try {
