@@ -406,6 +406,7 @@ class V2HealthControllerTest extends TestCase
         $first = $registrations[0];
         $this->assertSame('waterline-worker-status-1', $first['worker_id']);
         $this->assertSame('orders', $first['task_queue']);
+        $this->assertSame([], $first['supported_compatibility']);
         $this->assertSame(6, $first['task_slots']['workflow_available']);
         $this->assertSame(3, $first['task_slots']['activity_available']);
         $this->assertSame(2, $first['task_slots']['session_available']);
@@ -424,6 +425,205 @@ class V2HealthControllerTest extends TestCase
             'stale',
             $payload['operator_metrics']['workers']['stale_registrations'][0]['status'] ?? null,
         );
+    }
+
+    public function testHealthEndpointExposesWorkerVersioningCohortsAndRolloutState(): void
+    {
+        Carbon::setTestNow('2026-04-09 12:00:00');
+        $this->beforeApplicationDestroyed(static function (): void {
+            Carbon::setTestNow();
+        });
+
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('cache.default', 'file');
+        config()->set('waterline.namespace', 'worker-versioning-conformance');
+        config()->set('waterline.worker_stale_after_seconds', 120);
+
+        $this->createWorkerRegistrationsTable();
+        $this->createWorkerBuildIdRolloutsTable();
+
+        WorkerRegistration::create([
+            'worker_id' => 'wv-v1-worker',
+            'namespace' => 'worker-versioning-conformance',
+            'task_queue' => 'worker-versioning-shared',
+            'runtime' => 'php',
+            'sdk_version' => '2.0.0-alpha.206',
+            'build_id' => 'build-v1',
+            'supported_workflow_types' => ['Sequence'],
+            'supported_activity_types' => ['activity.a'],
+            'max_concurrent_workflow_tasks' => 8,
+            'max_concurrent_activity_tasks' => 4,
+            'last_heartbeat_at' => now()->subSeconds(10),
+            'status' => 'active',
+        ]);
+
+        WorkerRegistration::create([
+            'worker_id' => 'wv-v2-worker',
+            'namespace' => 'worker-versioning-conformance',
+            'task_queue' => 'worker-versioning-shared',
+            'runtime' => 'python',
+            'sdk_version' => '0.4.89',
+            'build_id' => 'build-v2',
+            'supported_workflow_types' => ['Sequence'],
+            'supported_activity_types' => ['activity.b'],
+            'max_concurrent_workflow_tasks' => 8,
+            'max_concurrent_activity_tasks' => 4,
+            'last_heartbeat_at' => now()->subSeconds(5),
+            'status' => 'active',
+        ]);
+
+        WorkerBuildIdRollout::create([
+            'namespace' => 'worker-versioning-conformance',
+            'task_queue' => 'worker-versioning-shared',
+            'build_id' => WorkerBuildIdRollout::buildIdKey('build-v1'),
+            'drain_intent' => WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE,
+            'promoted_at' => now()->subMinutes(10),
+        ]);
+
+        WorkerBuildIdRollout::create([
+            'namespace' => 'worker-versioning-conformance',
+            'task_queue' => 'worker-versioning-shared',
+            'build_id' => WorkerBuildIdRollout::buildIdKey('build-v2'),
+            'drain_intent' => WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE,
+            'promoted_at' => now()->subMinute(),
+        ]);
+
+        $noCompatibleInstance = WorkflowInstance::create([
+            'id' => 'worker-versioning-no-compatible-instance',
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'namespace' => 'worker-versioning-conformance',
+            'run_count' => 1,
+        ]);
+        $noCompatibleRun = WorkflowRun::create([
+            'id' => 'worker-versioning-no-compatible-run',
+            'workflow_instance_id' => $noCompatibleInstance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => 'waiting',
+            'namespace' => 'worker-versioning-conformance',
+            'compatibility' => 'build-v3',
+            'connection' => 'redis',
+            'queue' => 'worker-versioning-shared',
+            'started_at' => now()->subMinutes(2),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+        $noCompatibleInstance->update(['current_run_id' => $noCompatibleRun->id]);
+        WorkflowTask::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $noCompatibleRun->id,
+            'namespace' => 'worker-versioning-conformance',
+            'task_type' => TaskType::Workflow->value,
+            'status' => TaskStatus::Ready->value,
+            'queue' => 'worker-versioning-shared',
+            'compatibility' => 'build-v3',
+            'available_at' => now()->subMinute(),
+            'created_at' => now()->subMinute(),
+        ]);
+
+        $payload = $this->get('/waterline/api/v2/health')
+            ->assertStatus(200)
+            ->assertJsonPath('queue_visibility.available', true)
+            ->json();
+
+        $queue = collect($payload['queue_visibility']['task_queues'] ?? [])
+            ->firstWhere('task_queue', 'worker-versioning-shared');
+        $this->assertIsArray($queue, 'Queue visibility must include worker-versioning task queues discovered from worker registrations.');
+
+        $workers = collect($queue['workers'] ?? []);
+        $this->assertTrue($workers->contains(fn (array $worker): bool => ($worker['build_id'] ?? null) === 'build-v1'));
+        $this->assertTrue($workers->contains(fn (array $worker): bool => ($worker['build_id'] ?? null) === 'build-v2'));
+
+        $buildIds = collect($queue['build_ids'] ?? []);
+        $this->assertTrue($buildIds->contains(fn (array $build): bool => ($build['build_id'] ?? null) === 'build-v1'));
+        $this->assertTrue($buildIds->contains(fn (array $build): bool => ($build['build_id'] ?? null) === 'build-v2'));
+        $noCompatibleBuild = $buildIds->firstWhere('build_id', 'build-v3');
+        $this->assertIsArray($noCompatibleBuild, 'Queue visibility must expose pending build ids with no compatible active worker.');
+        $this->assertSame('no_compatible_worker', $noCompatibleBuild['pending_workflow_tasks']['status'] ?? null);
+        $this->assertSame('no_compatible_worker', $noCompatibleBuild['pending_workflow_tasks']['operator_visible_signal'] ?? null);
+        $this->assertSame(1, $noCompatibleBuild['pending_workflow_tasks']['total_count'] ?? null);
+        $this->assertSame(
+            'build-v2',
+            $queue['rollout_state']['selected_new_start_build_id'] ?? null,
+            'The latest promoted active build id should be visible as the selected new-start cohort.',
+        );
+
+        $this->assertContains('build-v1', $payload['worker_versioning']['worker_cohorts'] ?? []);
+        $this->assertContains('build-v2', $payload['worker_versioning']['worker_cohorts'] ?? []);
+        $this->assertSame(
+            ['build-v1', 'build-v2'],
+            $payload['operator_metrics']['workers']['worker_versioning']['worker_cohorts'] ?? null,
+        );
+    }
+
+    public function testHealthEndpointFillsQueueVisibilityContractForRolloutOnlyQueues(): void
+    {
+        Carbon::setTestNow('2026-04-09 12:00:00');
+        $this->beforeApplicationDestroyed(static function (): void {
+            Carbon::setTestNow();
+        });
+
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('cache.default', 'file');
+        config()->set('waterline.namespace', 'worker-versioning-conformance');
+
+        $this->createWorkerRegistrationsTable();
+        $this->createWorkerBuildIdRolloutsTable();
+
+        WorkerBuildIdRollout::create([
+            'namespace' => 'worker-versioning-conformance',
+            'task_queue' => 'rollout-only',
+            'build_id' => WorkerBuildIdRollout::buildIdKey('build-rollout-only'),
+            'drain_intent' => WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE,
+            'promoted_at' => now()->subMinute(),
+            'required_compatibility' => 'build-rollout-only',
+            'compatibility_policy' => 'fail_closed',
+        ]);
+
+        $payload = $this->get('/waterline/api/v2/health')
+            ->assertStatus(200)
+            ->assertJsonPath('queue_visibility.available', true)
+            ->json();
+
+        $queue = collect($payload['queue_visibility']['task_queues'] ?? [])
+            ->firstWhere('task_queue', 'rollout-only');
+
+        $this->assertIsArray(
+            $queue,
+            'Queue visibility must include queues discovered only from worker-versioning rollout rows.',
+        );
+        $this->assertSame(0, $queue['stats']['approximate_backlog_count'] ?? null);
+        $this->assertSame(0, $queue['stats']['pollers']['active_count'] ?? null);
+        $this->assertSame(0, $queue['stats']['pollers']['stale_count'] ?? null);
+        $this->assertSame(60, $queue['stats']['pollers']['stale_after_seconds'] ?? null);
+        $this->assertSame(0, $queue['stats']['workflow_tasks']['ready_count'] ?? null);
+        $this->assertSame(0, $queue['stats']['workflow_tasks']['leased_count'] ?? null);
+        $this->assertSame(0, $queue['stats']['workflow_tasks']['expired_lease_count'] ?? null);
+        $this->assertSame(0, $queue['stats']['activity_tasks']['ready_count'] ?? null);
+        $this->assertSame(0, $queue['stats']['activity_tasks']['leased_count'] ?? null);
+        $this->assertSame(0, $queue['stats']['activity_tasks']['expired_lease_count'] ?? null);
+        $this->assertSame(0, $queue['stats']['tasks_added_last_minute'] ?? null);
+        $this->assertSame(0, $queue['stats']['tasks_dispatched_last_minute'] ?? null);
+        $this->assertSame([], $queue['pollers'] ?? null);
+        $this->assertSame([], $queue['current_leases'] ?? null);
+        $this->assertSame(0, $queue['repair']['candidates'] ?? null);
+        $this->assertSame(0, $queue['repair']['dispatch_failed'] ?? null);
+        $this->assertSame(0, $queue['repair']['dispatch_overdue'] ?? null);
+        $this->assertSame(0, $queue['repair']['expired_leases'] ?? null);
+        $this->assertFalse($queue['repair']['needs_attention'] ?? true);
+        $this->assertSame(
+            'build-rollout-only',
+            $queue['rollout_state']['selected_new_start_build_id'] ?? null,
+        );
+
+        $build = collect($queue['build_ids'] ?? [])->firstWhere('build_id', 'build-rollout-only');
+        $this->assertIsArray($build);
+        $this->assertSame('no_workers', $build['rollout_status'] ?? null);
+        $this->assertSame('fail_closed', $build['compatibility_policy'] ?? null);
+        $this->assertSame('build-rollout-only', $build['required_compatibility'] ?? null);
     }
 
     public function testHealthEndpointPublishesCompatibilityAlertFactsWhenFailClosedWorkersAreMissing(): void
@@ -1082,6 +1282,12 @@ class V2HealthControllerTest extends TestCase
             $table->string('build_id', 255)->default(WorkerBuildIdRollout::UNVERSIONED_KEY);
             $table->string('drain_intent', 32)->default(WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE);
             $table->timestamp('drained_at')->nullable();
+            $table->timestamp('promoted_at')->nullable();
+            $table->timestamp('rolled_back_at')->nullable();
+            $table->string('required_compatibility', 255)->nullable();
+            $table->string('recorded_fingerprint', 255)->nullable();
+            $table->string('compatibility_policy', 32)->nullable();
+            $table->json('workflow_types')->nullable();
             $table->timestamps();
 
             $table->unique(

@@ -438,6 +438,37 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <div v-if="queueBuildIds(taskQueue).length > 0" class="worker-health__build-grid">
+                                <article
+                                    v-for="build in queueBuildIds(taskQueue)"
+                                    :key="queueBuildIdKey(taskQueue, build)"
+                                    class="worker-health__build-card"
+                                >
+                                    <div class="worker-health__build-head">
+                                        <div>
+                                            <div class="worker-health__queue-metric-label">Build ID</div>
+                                            <strong class="worker-health__build-label">{{ buildIdLabel(build) }}</strong>
+                                        </div>
+                                        <span class="worker-health__pill" :class="buildIdToneClass(build)">
+                                            {{ buildIdStatusLabel(build) }}
+                                        </span>
+                                    </div>
+
+                                    <div class="worker-health__queue-metric-meta">
+                                        {{ buildIdCountsLabel(build) }}
+                                    </div>
+                                    <div class="worker-health__queue-metric-meta" v-if="buildIdRuntimeLabel(build)">
+                                        {{ buildIdRuntimeLabel(build) }}
+                                    </div>
+                                    <div class="worker-health__queue-metric-meta" v-if="buildIdRolloutMeta(build)">
+                                        {{ buildIdRolloutMeta(build) }}
+                                    </div>
+                                    <div class="worker-health__build-warning" v-if="buildIdPendingLabel(build)">
+                                        {{ buildIdPendingLabel(build) }}
+                                    </div>
+                                </article>
+                            </div>
                         </article>
                     </div>
                 </div>
@@ -974,6 +1005,121 @@ export default {
             const age = taskQueue?.stats?.approximate_backlog_age;
 
             return typeof age === 'string' && age !== '' ? age : 'fresh';
+        },
+
+        queueBuildIds(taskQueue) {
+            return Array.isArray(taskQueue?.build_ids)
+                ? taskQueue.build_ids.filter((build) => build && typeof build === 'object')
+                : [];
+        },
+
+        queueBuildIdKey(taskQueue, build) {
+            return [
+                taskQueue?.task_queue || taskQueue?.name || 'default',
+                this.buildIdLabel(build),
+            ].join(':');
+        },
+
+        buildIdLabel(build) {
+            return typeof build?.build_id === 'string' && build.build_id !== ''
+                ? build.build_id
+                : 'unversioned';
+        },
+
+        buildIdStatusLabel(build) {
+            const pendingStatus = build?.pending_workflow_tasks?.status;
+
+            if (pendingStatus === 'no_compatible_worker') {
+                return 'no compatible worker';
+            }
+
+            if (build?.new_start_selected === true) {
+                return 'selected';
+            }
+
+            return typeof build?.rollout_status === 'string' && build.rollout_status !== ''
+                ? build.rollout_status.replace(/_/g, ' ')
+                : 'observed';
+        },
+
+        buildIdToneClass(build) {
+            if (build?.pending_workflow_tasks?.status === 'no_compatible_worker') {
+                return 'is-error';
+            }
+
+            const status = typeof build?.rollout_status === 'string' ? build.rollout_status : '';
+
+            if (status === 'active' || status === 'active_with_draining') {
+                return 'is-ok';
+            }
+
+            if (status === 'draining' || status === 'stale_only') {
+                return 'is-warning';
+            }
+
+            return 'is-muted';
+        },
+
+        buildIdCountsLabel(build) {
+            const active = this.integerLabel(build?.active_worker_count);
+            const stale = this.integerLabel(build?.stale_worker_count);
+            const total = this.integerLabel(build?.total_worker_count);
+
+            return `${active} active, ${stale} stale, ${total} total`;
+        },
+
+        buildIdRuntimeLabel(build) {
+            const runtimes = Array.isArray(build?.runtimes) ? build.runtimes.filter(Boolean) : [];
+            const sdkVersions = Array.isArray(build?.sdk_versions) ? build.sdk_versions.filter(Boolean) : [];
+            const parts = [];
+
+            if (runtimes.length > 0) {
+                parts.push(`runtime ${runtimes.slice(0, 2).join(', ')}${runtimes.length > 2 ? '…' : ''}`);
+            }
+
+            if (sdkVersions.length > 0) {
+                parts.push(`SDK ${sdkVersions.slice(0, 2).join(', ')}${sdkVersions.length > 2 ? '…' : ''}`);
+            }
+
+            return parts.join(' · ');
+        },
+
+        buildIdRolloutMeta(build) {
+            const parts = [];
+
+            if (build?.new_start_selected === true) {
+                parts.push('selected for new starts');
+            }
+
+            if (typeof build?.drain_intent === 'string' && build.drain_intent !== '') {
+                parts.push(`drain ${build.drain_intent}`);
+            }
+
+            if (typeof build?.promoted_at === 'string' && build.promoted_at !== '') {
+                parts.push(`promoted ${build.promoted_at}`);
+            }
+
+            return parts.join(' · ');
+        },
+
+        buildIdPendingLabel(build) {
+            const pending = build?.pending_workflow_tasks;
+
+            if (!pending || typeof pending !== 'object') {
+                return null;
+            }
+
+            const total = Number(pending.total_count || 0);
+
+            if (!Number.isFinite(total) || total <= 0) {
+                return null;
+            }
+
+            if (pending.status === 'no_compatible_worker') {
+                return `${this.integerLabel(total)} pending workflow task${total === 1 ? '' : 's'} without an active compatible worker.`;
+            }
+
+            return `${this.integerLabel(total)} pending workflow task${total === 1 ? '' : 's'} for this build.`;
         },
 
         coordinationAlertTitle(alert) {
@@ -1598,6 +1744,43 @@ export default {
     color: var(--wl-text-muted);
     font-size: 0.85rem;
     line-height: 1.4;
+}
+
+.worker-health__build-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.9rem;
+}
+
+.worker-health__build-card {
+    border: 1px solid color-mix(in srgb, var(--wl-text) 8%, transparent);
+    border-radius: 8px;
+    padding: 0.85rem;
+    background: color-mix(in srgb, var(--wl-panel) 88%, var(--wl-bg) 12%);
+}
+
+.worker-health__build-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.55rem;
+}
+
+.worker-health__build-label {
+    display: block;
+    max-width: 13rem;
+    overflow-wrap: anywhere;
+    color: var(--wl-text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.9rem;
+}
+
+.worker-health__build-warning {
+    margin-top: 0.6rem;
+    color: var(--wl-danger);
+    font-size: 0.8rem;
 }
 
 .worker-health__alert-facts {

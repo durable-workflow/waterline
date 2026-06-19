@@ -1085,6 +1085,16 @@ class WorkflowsController extends Controller
             $item['namespace'] = $runNamespace;
         }
 
+        foreach (['compatibility', 'connection', 'queue'] as $field) {
+            $value = $summary->run->{$field} ?? null;
+
+            if ((! is_string($item[$field] ?? null) || trim((string) $item[$field]) === '')
+                && is_string($value)
+                && trim($value) !== '') {
+                $item[$field] = trim($value);
+            }
+        }
+
         return $item;
     }
 

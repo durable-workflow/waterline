@@ -423,6 +423,12 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
             $columns[] = 'search_attributes';
         }
 
+        foreach (['compatibility', 'connection', 'queue'] as $column) {
+            if ($this->runColumnExists($column)) {
+                $columns[] = $column;
+            }
+        }
+
         return 'run:'.implode(',', $columns);
     }
 

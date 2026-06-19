@@ -101,7 +101,9 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             ->assertJsonPath('namespace', 'default')
             ->assertJsonPath('healthy', true)
             ->assertJsonPath('engine_source.uses_v2', true)
-            ->assertJsonPath('queue_visibility.available', true);
+            ->assertJsonPath('queue_visibility.available', true)
+            ->assertJsonPath('operator_metrics.workers.registrations.0.build_id', 'python-v1')
+            ->assertJsonPath('queue_visibility.task_queues.0.build_ids.0.build_id', 'python-v1');
 
         $runningResponse = $this->getJson('/waterline/api/flows/running')
             ->assertOk();
@@ -114,6 +116,7 @@ class PackageInstalledSharedStorageHostTest extends TestCase
         $this->assertIsArray($runningRow);
         $this->assertSame('waiting', $runningRow['status'] ?? null);
         $this->assertSame('running', $runningRow['status_bucket'] ?? null);
+        $this->assertSame('python-v1', $runningRow['compatibility'] ?? null);
         $this->assertSame('pause_after_refund', $runningRow['current_compensation_marker'] ?? null);
         $this->assertSame(
             'pause_after_refund',
@@ -137,6 +140,9 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             ->assertJsonPath('namespace', 'default')
             ->assertJsonPath('status', 'waiting')
             ->assertJsonPath('status_bucket', 'running')
+            ->assertJsonPath('compatibility', 'python-v1')
+            ->assertJsonPath('connection', 'redis')
+            ->assertJsonPath('queue', 'sagas-python')
             ->assertJsonPath('current_compensation_marker', 'pause_after_refund')
             ->assertJsonPath('compensation_visibility.current_marker', 'pause_after_refund')
             ->assertJsonPath('activities.0.type', 'pause_after_refund')
@@ -180,6 +186,7 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             'status' => 'waiting',
             'closed_reason' => null,
             'closed_at' => null,
+            'compatibility' => 'python-v1',
             'connection' => 'redis',
             'queue' => 'sagas-python',
             'started_at' => now()->subMinutes(2),
@@ -222,7 +229,7 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             'task_queue' => 'sagas-python',
             'runtime' => 'python',
             'sdk_version' => '0.4.88',
-            'build_id' => null,
+            'build_id' => 'python-v1',
             'supported_workflow_types' => json_encode(['python.book-trip']),
             'workflow_definition_fingerprints' => json_encode([]),
             'supported_activity_types' => json_encode(['pause_after_refund']),
@@ -292,6 +299,12 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             $table->string('build_id', 255)->default(WorkerBuildIdRollout::UNVERSIONED_KEY);
             $table->string('drain_intent', 32)->default(WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE);
             $table->timestamp('drained_at')->nullable();
+            $table->timestamp('promoted_at')->nullable();
+            $table->timestamp('rolled_back_at')->nullable();
+            $table->string('required_compatibility', 255)->nullable();
+            $table->string('recorded_fingerprint', 255)->nullable();
+            $table->string('compatibility_policy', 32)->nullable();
+            $table->json('workflow_types')->nullable();
             $table->timestamps();
 
             $table->unique(

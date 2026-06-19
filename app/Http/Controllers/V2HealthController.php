@@ -84,6 +84,11 @@ class V2HealthController extends Controller
         $snapshot['operator_scope'] = OperatorScope::payload();
         $snapshot['queue_visibility'] = $this->queueVisibility($namespace);
         $snapshot['routing_drains'] = $routingDrains;
+        $snapshot['worker_versioning'] = $this->workerVersioningVisibility(
+            $namespace,
+            $snapshot['queue_visibility'],
+            $routingDrains,
+        );
         $snapshot['engine_source'] = $engineSource;
         $snapshot['readiness_contract'] = $engineSource['readiness_contract'] ?? null;
         $snapshot = $this->annotateWorkerRegistrations($snapshot, $namespace);
@@ -173,6 +178,9 @@ class V2HealthController extends Controller
                 'runtime' => $worker->runtime,
                 'sdk_version' => $worker->sdk_version,
                 'build_id' => $worker->build_id,
+                'supported_compatibility' => is_string($worker->build_id) && trim((string) $worker->build_id) !== ''
+                    ? [trim((string) $worker->build_id)]
+                    : [],
                 'status' => $isStale ? 'stale' : ($worker->status ?? 'active'),
                 'last_heartbeat_at' => $worker->last_heartbeat_at instanceof CarbonInterface
                     ? $worker->last_heartbeat_at->toJSON()
@@ -224,6 +232,9 @@ class V2HealthController extends Controller
         $workersBlock['registration_count'] = count($registrationPayload) + count($staleRegistrationPayload);
         $workersBlock['stale_registration_count'] = count($staleRegistrationPayload);
         $workersBlock['stale_after_seconds'] = $staleAfter;
+        $workersBlock['worker_versioning'] = $this->workerVersioningWorkersSummary(
+            array_merge($registrationPayload, $staleRegistrationPayload),
+        );
         $operatorMetrics['workers'] = $workersBlock;
         $snapshot['operator_metrics'] = $operatorMetrics;
 
@@ -1166,19 +1177,97 @@ class V2HealthController extends Controller
     private function withQueueVisibilityFallback(string $namespace, array $payload, CarbonInterface $now): array
     {
         if (! is_array($payload['task_queues'] ?? null)) {
-            return $payload;
+            $payload['task_queues'] = [];
         }
 
+        $payload['task_queues'] = $this->withWorkerVersioningTaskQueueScopes(
+            $namespace,
+            $payload['task_queues'],
+        );
         $payload['task_queues'] = array_map(
-            fn (array $taskQueue): array => $this->withQueueRepairAgeFallback(
+            fn (array $taskQueue): array => $this->withWorkerVersioningQueueVisibility(
                 $namespace,
-                $this->withRecentTaskFlow($namespace, $taskQueue, $now),
+                $this->withQueueVisibilityContract(
+                    $this->withQueueRepairAgeFallback(
+                        $namespace,
+                        $this->withRecentTaskFlow($namespace, $taskQueue, $now),
+                        $now,
+                    ),
+                ),
                 $now,
             ),
             $payload['task_queues'],
         );
 
         return $payload;
+    }
+
+    /**
+     * @param  array<int, mixed>  $taskQueues
+     * @return array<int, array<string, mixed>>
+     */
+    private function withWorkerVersioningTaskQueueScopes(string $namespace, array $taskQueues): array
+    {
+        $normalized = array_values(array_filter($taskQueues, 'is_array'));
+        $seen = [];
+
+        foreach ($normalized as $taskQueue) {
+            $seen[$this->queueName($taskQueue)] = true;
+        }
+
+        foreach ($this->workerVersioningTaskQueueNames($namespace) as $name) {
+            if (isset($seen[$name])) {
+                continue;
+            }
+
+            $normalized[] = [
+                'name' => $name,
+                'task_queue' => $name,
+                'stats' => [],
+                'pollers' => [],
+                'current_leases' => [],
+                'repair' => [],
+            ];
+            $seen[$name] = true;
+        }
+
+        return $normalized;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function workerVersioningTaskQueueNames(string $namespace): array
+    {
+        $names = [];
+
+        foreach ([new WorkerRegistration(), new WorkerBuildIdRollout()] as $model) {
+            if (! $this->modelTableExists($model)) {
+                continue;
+            }
+
+            try {
+                $modelClass = $model::class;
+                $rows = $modelClass::query()
+                    ->select('task_queue')
+                    ->where('namespace', $namespace)
+                    ->distinct()
+                    ->get();
+            } catch (Throwable) {
+                continue;
+            }
+
+            foreach ($rows as $row) {
+                if (is_string($row->task_queue ?? null) && trim((string) $row->task_queue) !== '') {
+                    $names[trim((string) $row->task_queue)] = true;
+                }
+            }
+        }
+
+        $values = array_keys($names);
+        sort($values);
+
+        return $values;
     }
 
     /**
@@ -1351,9 +1440,634 @@ class V2HealthController extends Controller
      */
     private function queueName(array $taskQueue): string
     {
-        return is_string($taskQueue['name'] ?? null) && trim((string) $taskQueue['name']) !== ''
-            ? trim((string) $taskQueue['name'])
-            : 'default';
+        foreach (['task_queue', 'taskQueue', 'name'] as $key) {
+            if (is_string($taskQueue[$key] ?? null) && trim((string) $taskQueue[$key]) !== '') {
+                return trim((string) $taskQueue[$key]);
+            }
+        }
+
+        return 'default';
+    }
+
+    /**
+     * @param  array<string, mixed>  $taskQueue
+     * @return array<string, mixed>
+     */
+    private function withWorkerVersioningQueueVisibility(
+        string $namespace,
+        array $taskQueue,
+        CarbonInterface $now,
+    ): array {
+        $queueName = $this->queueName($taskQueue);
+        $workers = $this->workerRowsForTaskQueue($namespace, $queueName, $now);
+        $buildIds = $this->buildIdRowsForTaskQueue($namespace, $queueName, $workers);
+
+        $taskQueue['task_queue'] = $queueName;
+        $taskQueue['workers'] = $workers;
+        $taskQueue['build_ids'] = $buildIds;
+        $taskQueue['rollout_state'] = [
+            'namespace' => $namespace,
+            'task_queue' => $queueName,
+            'build_ids' => $buildIds,
+            'selected_new_start_build_id' => $this->selectedNewStartBuildId($buildIds),
+            'cohort_count' => count($buildIds),
+        ];
+
+        return $taskQueue;
+    }
+
+    /**
+     * @param  array<string, mixed>  $queueVisibility
+     * @param  array<string, mixed>  $routingDrains
+     * @return array<string, mixed>
+     */
+    private function workerVersioningVisibility(
+        ?string $namespace,
+        array $queueVisibility,
+        array $routingDrains,
+    ): array {
+        $taskQueues = is_array($queueVisibility['task_queues'] ?? null)
+            ? array_values(array_filter($queueVisibility['task_queues'], 'is_array'))
+            : [];
+        $buildIds = [];
+        $workers = [];
+
+        foreach ($taskQueues as $taskQueue) {
+            foreach (is_array($taskQueue['build_ids'] ?? null) ? $taskQueue['build_ids'] : [] as $buildId) {
+                if (is_array($buildId)) {
+                    $buildIds[] = $buildId;
+                }
+            }
+
+            foreach (is_array($taskQueue['workers'] ?? null) ? $taskQueue['workers'] : [] as $worker) {
+                if (is_array($worker)) {
+                    $workers[] = $worker;
+                }
+            }
+        }
+
+        return [
+            'namespace' => $namespace,
+            'available' => ($queueVisibility['available'] ?? false) === true,
+            'task_queue_count' => count($taskQueues),
+            'worker_count' => count($workers),
+            'build_id_count' => count($buildIds),
+            'worker_cohorts' => $this->workerVersioningBuildIds($buildIds),
+            'workers' => $workers,
+            'task_queues' => $taskQueues,
+            'routing_drains' => $routingDrains,
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $workers
+     * @return array<string, mixed>
+     */
+    private function workerVersioningWorkersSummary(array $workers): array
+    {
+        $cohorts = array_values(array_unique(array_values(array_filter(array_map(
+            fn (array $worker): ?string => is_string($worker['build_id'] ?? null) && trim((string) $worker['build_id']) !== ''
+                ? trim((string) $worker['build_id'])
+                : null,
+            $workers,
+        )))));
+        sort($cohorts);
+
+        return [
+            'worker_count' => count($workers),
+            'worker_cohorts' => $cohorts,
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $buildIds
+     * @return array<int, string>
+     */
+    private function workerVersioningBuildIds(array $buildIds): array
+    {
+        $values = array_values(array_unique(array_values(array_filter(array_map(
+            fn (array $build): ?string => is_string($build['build_id'] ?? null) && trim((string) $build['build_id']) !== ''
+                ? trim((string) $build['build_id'])
+                : null,
+            $buildIds,
+        )))));
+
+        sort($values);
+
+        return $values;
+    }
+
+    /**
+     * Fill queue-visibility defaults expected by published Waterline UI
+     * surfaces when worker-versioning queues are synthesized from rollout rows
+     * instead of returned directly by the workflow package.
+     *
+     * @param  array<string, mixed>  $taskQueue
+     * @return array<string, mixed>
+     */
+    private function withQueueVisibilityContract(array $taskQueue): array
+    {
+        $stats = is_array($taskQueue['stats'] ?? null) ? $taskQueue['stats'] : [];
+        $workflowTasks = is_array($stats['workflow_tasks'] ?? null) ? $stats['workflow_tasks'] : [];
+        $activityTasks = is_array($stats['activity_tasks'] ?? null) ? $stats['activity_tasks'] : [];
+        $pollers = is_array($stats['pollers'] ?? null) ? $stats['pollers'] : [];
+        $defaultStats = $this->emptyQueueStats();
+
+        $taskQueue['stats'] = array_replace($defaultStats, $stats);
+        $taskQueue['stats']['workflow_tasks'] = array_replace(
+            $defaultStats['workflow_tasks'],
+            $workflowTasks,
+        );
+        $taskQueue['stats']['activity_tasks'] = array_replace(
+            $defaultStats['activity_tasks'],
+            $activityTasks,
+        );
+        $taskQueue['stats']['pollers'] = array_replace(
+            $defaultStats['pollers'],
+            $pollers,
+        );
+
+        if (! is_array($taskQueue['pollers'] ?? null)) {
+            $taskQueue['pollers'] = [];
+        }
+
+        if (! is_array($taskQueue['current_leases'] ?? null)) {
+            $taskQueue['current_leases'] = [];
+        }
+
+        $repair = is_array($taskQueue['repair'] ?? null) ? $taskQueue['repair'] : [];
+        $repairPolicy = is_array($repair['policy'] ?? null) ? $repair['policy'] : [];
+        $defaultRepair = $this->emptyQueueRepair();
+        $taskQueue['repair'] = array_replace($defaultRepair, $repair);
+        $taskQueue['repair']['policy'] = array_replace(
+            $defaultRepair['policy'],
+            $repairPolicy,
+        );
+
+        if (! array_key_exists('needs_attention', $repair)) {
+            $taskQueue['repair']['needs_attention'] = ((int) ($taskQueue['repair']['candidates'] ?? 0)) > 0;
+        }
+
+        return $taskQueue;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function emptyQueueStats(): array
+    {
+        $taskStats = [
+            'ready_count' => 0,
+            'leased_count' => 0,
+            'expired_lease_count' => 0,
+            'added_last_minute' => 0,
+            'dispatched_last_minute' => 0,
+        ];
+
+        return [
+            'approximate_backlog_count' => 0,
+            'approximate_backlog_age' => null,
+            'approximate_backlog_age_seconds' => null,
+            'oldest_ready_task' => null,
+            'workflow_tasks' => $taskStats,
+            'activity_tasks' => $taskStats,
+            'pollers' => [
+                'active_count' => 0,
+                'stale_count' => 0,
+                'stale_after_seconds' => StandaloneWorkerVisibility::staleAfterSeconds(),
+            ],
+            'tasks_added_last_minute' => 0,
+            'tasks_dispatched_last_minute' => 0,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function emptyQueueRepair(): array
+    {
+        return [
+            'candidates' => 0,
+            'dispatch_failed' => 0,
+            'oldest_dispatch_failed_at' => null,
+            'max_dispatch_failed_age_ms' => 0,
+            'expired_leases' => 0,
+            'oldest_lease_expired_at' => null,
+            'max_lease_expired_age_ms' => 0,
+            'dispatch_overdue' => 0,
+            'oldest_dispatch_overdue_since' => null,
+            'max_dispatch_overdue_age_ms' => 0,
+            'needs_attention' => false,
+            'policy' => [
+                'redispatch_after_seconds' => TaskRepairPolicy::redispatchAfterSeconds(),
+            ],
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function workerRowsForTaskQueue(string $namespace, string $taskQueue, CarbonInterface $now): array
+    {
+        if (! $this->modelTableExists(new WorkerRegistration())) {
+            return [];
+        }
+
+        $staleAfter = $this->workerStaleAfterSeconds();
+
+        try {
+            return WorkerRegistration::query()
+                ->where('namespace', $namespace)
+                ->where('task_queue', $taskQueue)
+                ->orderByDesc('last_heartbeat_at')
+                ->orderBy('worker_id')
+                ->get()
+                ->map(fn (WorkerRegistration $worker): array => $this->workerVersioningWorkerRow($worker, $now, $staleAfter))
+                ->values()
+                ->all();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function workerVersioningWorkerRow(
+        WorkerRegistration $worker,
+        CarbonInterface $now,
+        int $staleAfter,
+    ): array {
+        $heartbeat = $worker->last_heartbeat_at;
+        $isStale = ! ($heartbeat instanceof CarbonInterface)
+            || $heartbeat->lt($now->copy()->subSeconds($staleAfter));
+
+        return [
+            'worker_id' => (string) $worker->worker_id,
+            'namespace' => $worker->namespace,
+            'task_queue' => $worker->task_queue,
+            'runtime' => $worker->runtime,
+            'sdk_version' => $worker->sdk_version,
+            'build_id' => $worker->build_id,
+            'supported_compatibility' => is_string($worker->build_id) && trim((string) $worker->build_id) !== ''
+                ? [trim((string) $worker->build_id)]
+                : [],
+            'status' => $isStale ? 'stale' : ($worker->status ?? 'active'),
+            'last_heartbeat_at' => $heartbeat instanceof CarbonInterface ? $heartbeat->toJSON() : null,
+            'supported_workflow_types' => is_array($worker->supported_workflow_types ?? null)
+                ? array_values($worker->supported_workflow_types)
+                : [],
+            'supported_activity_types' => is_array($worker->supported_activity_types ?? null)
+                ? array_values($worker->supported_activity_types)
+                : [],
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $workers
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildIdRowsForTaskQueue(string $namespace, string $taskQueue, array $workers): array
+    {
+        $groups = [];
+
+        foreach ($workers as $worker) {
+            $buildId = is_string($worker['build_id'] ?? null) && trim((string) $worker['build_id']) !== ''
+                ? trim((string) $worker['build_id'])
+                : null;
+            $key = WorkerBuildIdRollout::buildIdKey($buildId);
+
+            $groups[$key] ??= $this->emptyBuildIdGroup($buildId);
+            $groups[$key]['total_worker_count']++;
+
+            $status = is_string($worker['status'] ?? null) ? $worker['status'] : 'active';
+            if ($status === 'stale') {
+                $groups[$key]['stale_worker_count']++;
+            } elseif ($status === WorkerBuildIdRollout::DRAIN_INTENT_DRAINING) {
+                $groups[$key]['draining_worker_count']++;
+            } else {
+                $groups[$key]['active_worker_count']++;
+            }
+
+            foreach (['runtime' => 'runtimes', 'sdk_version' => 'sdk_versions'] as $workerKey => $groupKey) {
+                if (is_string($worker[$workerKey] ?? null) && trim((string) $worker[$workerKey]) !== '') {
+                    $groups[$key][$groupKey][trim((string) $worker[$workerKey])] = true;
+                }
+            }
+
+            if (is_string($worker['last_heartbeat_at'] ?? null)) {
+                $current = $groups[$key]['last_heartbeat_at'];
+                if ($current === null || strcmp((string) $worker['last_heartbeat_at'], $current) > 0) {
+                    $groups[$key]['last_heartbeat_at'] = (string) $worker['last_heartbeat_at'];
+                }
+            }
+        }
+
+        $rollouts = $this->rolloutRowsForTaskQueue($namespace, $taskQueue);
+        foreach ($rollouts as $key => $rollout) {
+            $groups[$key] ??= $this->emptyBuildIdGroup($rollout['build_id']);
+            $groups[$key]['rollout'] = $rollout;
+        }
+
+        foreach ($this->pendingWorkflowTaskCountsForTaskQueue($namespace, $taskQueue) as $key => $pending) {
+            $groups[$key] ??= $this->emptyBuildIdGroup($pending['build_id']);
+            $groups[$key]['pending_workflow_tasks'] = $pending;
+        }
+
+        $selectedKey = $this->selectedNewStartBuildIdKey($rollouts);
+        $buildIds = [];
+
+        foreach ($groups as $key => $group) {
+            $rollout = is_array($group['rollout'] ?? null) ? $group['rollout'] : [];
+            $pending = is_array($group['pending_workflow_tasks'] ?? null)
+                ? $group['pending_workflow_tasks']
+                : $this->emptyPendingWorkflowTasks($group['build_id']);
+            $buildIds[] = [
+                'build_id' => $group['build_id'],
+                'rollout_status' => $this->buildIdRolloutStatus(
+                    $group['active_worker_count'],
+                    $group['draining_worker_count'],
+                    $group['stale_worker_count'],
+                    is_string($rollout['drain_intent'] ?? null)
+                        ? $rollout['drain_intent']
+                        : WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE,
+                ),
+                'drain_intent' => $rollout['drain_intent'] ?? WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE,
+                'drained_at' => $rollout['drained_at'] ?? null,
+                'promoted_at' => $rollout['promoted_at'] ?? null,
+                'rolled_back_at' => $rollout['rolled_back_at'] ?? null,
+                'required_compatibility' => $rollout['required_compatibility'] ?? null,
+                'compatibility_policy' => $rollout['compatibility_policy'] ?? null,
+                'new_start_selected' => $key === $selectedKey,
+                'active_worker_count' => $group['active_worker_count'],
+                'draining_worker_count' => $group['draining_worker_count'],
+                'stale_worker_count' => $group['stale_worker_count'],
+                'total_worker_count' => $group['total_worker_count'],
+                'runtimes' => $this->sortedKeys($group['runtimes']),
+                'sdk_versions' => $this->sortedKeys($group['sdk_versions']),
+                'last_heartbeat_at' => $group['last_heartbeat_at'],
+                'pending_workflow_tasks' => $this->pendingWorkflowTaskDiagnostic(
+                    $pending,
+                    $group['active_worker_count'],
+                ),
+            ];
+        }
+
+        usort($buildIds, function (array $left, array $right): int {
+            return strcmp((string) ($left['build_id'] ?? ''), (string) ($right['build_id'] ?? ''));
+        });
+
+        return $buildIds;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function emptyBuildIdGroup(?string $buildId): array
+    {
+        return [
+            'build_id' => $buildId,
+            'active_worker_count' => 0,
+            'stale_worker_count' => 0,
+            'draining_worker_count' => 0,
+            'total_worker_count' => 0,
+            'runtimes' => [],
+            'sdk_versions' => [],
+            'last_heartbeat_at' => null,
+            'rollout' => null,
+            'pending_workflow_tasks' => $this->emptyPendingWorkflowTasks($buildId),
+        ];
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function rolloutRowsForTaskQueue(string $namespace, string $taskQueue): array
+    {
+        if (! $this->modelTableExists(new WorkerBuildIdRollout())) {
+            return [];
+        }
+
+        try {
+            $query = WorkerBuildIdRollout::query()
+                ->where('namespace', $namespace)
+                ->where('task_queue', $taskQueue)
+                ->orderBy('build_id');
+
+            return $query->get()
+                ->mapWithKeys(function (WorkerBuildIdRollout $rollout): array {
+                    $key = (string) $rollout->build_id;
+
+                    return [$key => [
+                        'build_id' => $rollout->publicBuildId(),
+                        'drain_intent' => is_string($rollout->drain_intent ?? null)
+                            ? $rollout->drain_intent
+                            : WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE,
+                        'drained_at' => $rollout->drained_at instanceof CarbonInterface
+                            ? $rollout->drained_at->toJSON()
+                            : null,
+                        'promoted_at' => $rollout->promoted_at instanceof CarbonInterface
+                            ? $rollout->promoted_at->toJSON()
+                            : null,
+                        'rolled_back_at' => $rollout->rolled_back_at instanceof CarbonInterface
+                            ? $rollout->rolled_back_at->toJSON()
+                            : null,
+                        'required_compatibility' => is_string($rollout->required_compatibility ?? null)
+                            ? $rollout->required_compatibility
+                            : null,
+                        'compatibility_policy' => is_string($rollout->compatibility_policy ?? null)
+                            ? $rollout->compatibility_policy
+                            : null,
+                    ]];
+                })
+                ->all();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $rollouts
+     */
+    private function selectedNewStartBuildIdKey(array $rollouts): ?string
+    {
+        $selectedKey = null;
+        $selectedPromotedAt = null;
+
+        foreach ($rollouts as $key => $rollout) {
+            if (($rollout['drain_intent'] ?? null) !== WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE) {
+                continue;
+            }
+
+            if (($rollout['rolled_back_at'] ?? null) !== null) {
+                continue;
+            }
+
+            $promotedAt = is_string($rollout['promoted_at'] ?? null) ? $rollout['promoted_at'] : null;
+            if ($promotedAt === null) {
+                continue;
+            }
+
+            if ($selectedPromotedAt === null || strcmp($promotedAt, $selectedPromotedAt) >= 0) {
+                $selectedPromotedAt = $promotedAt;
+                $selectedKey = $key;
+            }
+        }
+
+        return $selectedKey;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $buildIds
+     */
+    private function selectedNewStartBuildId(array $buildIds): ?string
+    {
+        foreach ($buildIds as $buildId) {
+            if (($buildId['new_start_selected'] ?? false) === true) {
+                return is_string($buildId['build_id'] ?? null) ? $buildId['build_id'] : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, array{build_id: string|null, total_count: int, ready_count: int, leased_count: int}>
+     */
+    private function pendingWorkflowTaskCountsForTaskQueue(string $namespace, string $taskQueue): array
+    {
+        try {
+            if (! $this->modelTableExists(new WorkflowTask())) {
+                return [];
+            }
+
+            $compatibilityExpression = "COALESCE(NULLIF(TRIM(workflow_tasks.compatibility), ''), "
+                ."NULLIF(TRIM(workflow_runs.compatibility), ''))";
+
+            $rows = WorkflowTask::query()
+                ->toBase()
+                ->select('workflow_tasks.status')
+                ->selectRaw($compatibilityExpression.' as effective_compatibility')
+                ->selectRaw('COUNT(*) as task_count')
+                ->leftJoin('workflow_runs', 'workflow_runs.id', '=', 'workflow_tasks.workflow_run_id')
+                ->where('workflow_tasks.namespace', $namespace)
+                ->where('workflow_tasks.task_type', TaskType::Workflow->value)
+                ->where('workflow_tasks.queue', $taskQueue)
+                ->whereIn('workflow_tasks.status', [TaskStatus::Ready->value, TaskStatus::Leased->value])
+                ->groupBy('workflow_tasks.status')
+                ->groupByRaw($compatibilityExpression)
+                ->get();
+        } catch (Throwable) {
+            return [];
+        }
+
+        $counts = [];
+
+        foreach ($rows as $row) {
+            $compatibility = is_string($row->effective_compatibility ?? null)
+                && trim((string) $row->effective_compatibility) !== ''
+                ? trim((string) $row->effective_compatibility)
+                : null;
+            $key = WorkerBuildIdRollout::buildIdKey($compatibility);
+            $counts[$key] ??= $this->emptyPendingWorkflowTasks($compatibility);
+
+            $taskCount = max(0, (int) ($row->task_count ?? 0));
+            if ($taskCount === 0) {
+                continue;
+            }
+
+            $counts[$key]['total_count'] += $taskCount;
+
+            $status = is_string($row->status ?? null) ? $row->status : null;
+            if ($status === TaskStatus::Leased->value) {
+                $counts[$key]['leased_count'] += $taskCount;
+            } else {
+                $counts[$key]['ready_count'] += $taskCount;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * @return array{build_id: string|null, total_count: int, ready_count: int, leased_count: int}
+     */
+    private function emptyPendingWorkflowTasks(?string $buildId): array
+    {
+        return [
+            'build_id' => $buildId,
+            'total_count' => 0,
+            'ready_count' => 0,
+            'leased_count' => 0,
+        ];
+    }
+
+    /**
+     * @param  array{build_id: string|null, total_count: int, ready_count: int, leased_count: int}  $pending
+     * @return array<string, mixed>
+     */
+    private function pendingWorkflowTaskDiagnostic(array $pending, int $activeWorkerCount): array
+    {
+        $total = max(0, (int) $pending['total_count']);
+        $ready = max(0, (int) $pending['ready_count']);
+        $leased = max(0, (int) $pending['leased_count']);
+        $status = 'idle';
+        $signal = null;
+        $message = null;
+
+        if ($total > 0) {
+            $status = 'pending';
+
+            if ($pending['build_id'] !== null && $activeWorkerCount === 0) {
+                $status = 'no_compatible_worker';
+                $signal = 'no_compatible_worker';
+                $message = sprintf(
+                    'This build id has %d pending workflow task%s but no active compatible worker.',
+                    $total,
+                    $total === 1 ? '' : 's',
+                );
+            }
+        }
+
+        return [
+            'status' => $status,
+            'operator_visible_signal' => $signal,
+            'message' => $message,
+            'total_count' => $total,
+            'ready_count' => $ready,
+            'leased_count' => $leased,
+        ];
+    }
+
+    private function buildIdRolloutStatus(
+        int $active,
+        int $draining,
+        int $stale,
+        string $drainIntent,
+    ): string {
+        if ($active > 0) {
+            return $drainIntent === WorkerBuildIdRollout::DRAIN_INTENT_DRAINING || $draining > 0
+                ? 'active_with_draining'
+                : 'active';
+        }
+
+        if ($draining > 0 || $drainIntent === WorkerBuildIdRollout::DRAIN_INTENT_DRAINING) {
+            return 'draining';
+        }
+
+        return $stale > 0 ? 'stale_only' : 'no_workers';
+    }
+
+    /**
+     * @param  array<string, true>  $map
+     * @return array<int, string>
+     */
+    private function sortedKeys(array $map): array
+    {
+        $values = array_keys($map);
+        sort($values);
+
+        return $values;
     }
 
     /**

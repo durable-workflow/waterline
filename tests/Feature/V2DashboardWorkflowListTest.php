@@ -149,6 +149,51 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('data.0.search_attributes.customer_tier', 'gold');
     }
 
+    public function testWorkflowListsExposeSelectedRunCompatibilityFromDurableRun(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('workflows.v2.compatibility.supported', ['build-v2']);
+
+        $startedAt = Carbon::parse('2022-01-01 12:05:00');
+        $createdAt = Carbon::parse('2022-01-01 12:00:00');
+
+        $runningRun = $this->createSparseSummaryRun(
+            instanceId: 'worker-versioning-running-instance',
+            runId: 'worker-versioning-running-run',
+            status: 'waiting',
+            statusBucket: 'running',
+            compatibility: 'build-v1',
+            startedAt: $startedAt,
+            createdAt: $createdAt,
+        );
+
+        $completedRun = $this->createSparseSummaryRun(
+            instanceId: 'worker-versioning-completed-instance',
+            runId: 'worker-versioning-completed-run',
+            status: 'completed',
+            statusBucket: 'completed',
+            compatibility: 'build-v2',
+            startedAt: $startedAt->copy()->subMinute(),
+            createdAt: $createdAt->copy()->subMinute(),
+        );
+
+        $this->get('/waterline/api/flows/running')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $runningRun->id)
+            ->assertJsonPath('data.0.compatibility', 'build-v1')
+            ->assertJsonPath('data.0.connection', 'redis')
+            ->assertJsonPath('data.0.queue', 'worker-versioning-shared')
+            ->assertJsonPath('data.0.compatibility_semantics.required_marker', 'build-v1');
+
+        $this->get('/waterline/api/flows/completed')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $completedRun->id)
+            ->assertJsonPath('data.0.compatibility', 'build-v2')
+            ->assertJsonPath('data.0.connection', 'redis')
+            ->assertJsonPath('data.0.queue', 'worker-versioning-shared')
+            ->assertJsonPath('data.0.compatibility_semantics.required_marker', 'build-v2');
+    }
+
     public function testRunningFlowsPreserveSummaryNamespaceWhenDurableRunNamespaceIsNull(): void
     {
         config()->set('waterline.engine_source', 'v2');
@@ -1299,6 +1344,62 @@ class V2DashboardWorkflowListTest extends TestCase
             'created_at' => $createdAt,
             'updated_at' => $createdAt,
         ]);
+    }
+
+    private function createSparseSummaryRun(
+        string $instanceId,
+        string $runId,
+        string $status,
+        string $statusBucket,
+        string $compatibility,
+        Carbon $startedAt,
+        Carbon $createdAt,
+    ): WorkflowRun {
+        $instance = WorkflowInstance::create([
+            'id' => $instanceId,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'run_count' => 1,
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => $runId,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => $status,
+            'compatibility' => $compatibility,
+            'connection' => 'redis',
+            'queue' => 'worker-versioning-shared',
+            'started_at' => $startedAt,
+            'last_progress_at' => $startedAt,
+            'closed_at' => $statusBucket === 'completed' ? $startedAt->copy()->addMinute() : null,
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'WorkflowClass',
+            'workflow_type' => 'workflow.test',
+            'status' => $status,
+            'status_bucket' => $statusBucket,
+            'started_at' => $startedAt,
+            'closed_at' => $statusBucket === 'completed' ? $startedAt->copy()->addMinute() : null,
+            'sort_timestamp' => $startedAt,
+            'sort_key' => RunSummarySortKey::key($startedAt, $createdAt, $createdAt, $run->id),
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+
+        return $run;
     }
 
     private function createRunningSummaryWithNamespaces(

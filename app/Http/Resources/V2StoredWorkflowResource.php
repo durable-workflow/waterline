@@ -39,6 +39,7 @@ class V2StoredWorkflowResource extends JsonResource
         $detail = $this->withTimelineWindow($detail, $request);
         $detail = $this->withDurableCompensationActivities($detail);
         $detail = $this->withSelectedRunIdentity($detail);
+        $detail = $this->withSelectedRunCompatibility($detail);
         $compensationVisibility = CompensationVisibility::fromActivities($detail['activities'] ?? []);
         $detail['current_compensation_marker'] = $compensationVisibility['current_marker'];
         $detail['compensation_visibility'] = $compensationVisibility;
@@ -63,6 +64,25 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['workflow_run_id'] = $this->resource->id;
         $detail['run_id'] = $this->resource->id;
         $detail['selected_run_id'] = $this->resource->id;
+
+        return $detail;
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     * @return array<string, mixed>
+     */
+    private function withSelectedRunCompatibility(array $detail): array
+    {
+        foreach ([
+            'compatibility' => $this->resource->compatibility,
+            'connection' => $this->resource->connection,
+            'queue' => $this->resource->queue,
+        ] as $key => $value) {
+            if (! is_string($detail[$key] ?? null) || trim((string) $detail[$key]) === '') {
+                $detail[$key] = is_string($value) && trim($value) !== '' ? trim($value) : null;
+            }
+        }
 
         return $detail;
     }
@@ -194,6 +214,9 @@ class V2StoredWorkflowResource extends JsonResource
             'workflow_type' => $this->resource->workflow_type,
             'namespace' => $this->resource->namespace,
             'business_key' => $this->resource->business_key,
+            'compatibility' => $this->resource->compatibility,
+            'connection' => $this->resource->connection,
+            'queue' => $this->resource->queue,
             'visibility_labels' => is_array($this->resource->visibility_labels)
                 ? $this->resource->visibility_labels
                 : [],
