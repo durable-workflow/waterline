@@ -223,6 +223,7 @@ class WaterlineServiceProvider extends ServiceProvider
     public function register()
     {
         $this->mergeConfigFrom(__DIR__.'/../config/waterline.php', 'waterline');
+        $this->hydrateRuntimeConfigurationFromEnvironment();
 
         if (! defined('WATERLINE_PATH')) {
             define('WATERLINE_PATH', realpath(__DIR__.'/../'));
@@ -262,5 +263,62 @@ class WaterlineServiceProvider extends ServiceProvider
 
             return app($drivers[$driver] ?? WorkflowRepositoryMySQL::class);
         });
+    }
+
+    private function hydrateRuntimeConfigurationFromEnvironment(): void
+    {
+        $this->setStringConfigFromEnvironment('WATERLINE_DOMAIN', 'waterline.domain');
+        $this->setStringConfigFromEnvironment('WATERLINE_PATH', 'waterline.path');
+        $this->setStringConfigFromEnvironment('WATERLINE_ENGINE_SOURCE', 'waterline.engine_source');
+        $this->setStringConfigFromEnvironment('WATERLINE_NAMESPACE', 'waterline.namespace');
+        $this->setStringConfigFromEnvironment('WATERLINE_HEALTH_TASK_DISPATCH_MODE', 'waterline.health.task_dispatch_mode');
+        $this->setBooleanConfigFromEnvironment('WATERLINE_ALLOW_UNAUTHENTICATED', 'waterline.allow_unauthenticated');
+    }
+
+    private function setStringConfigFromEnvironment(string $environmentKey, string $configKey): void
+    {
+        $value = $this->environmentValue($environmentKey);
+
+        if ($value !== null) {
+            config()->set($configKey, $value);
+        }
+    }
+
+    private function setBooleanConfigFromEnvironment(string $environmentKey, string $configKey): void
+    {
+        $value = $this->environmentValue($environmentKey);
+
+        if ($value === null) {
+            return;
+        }
+
+        $parsed = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        if ($parsed !== null) {
+            config()->set($configKey, $parsed);
+        }
+    }
+
+    private function environmentValue(string $environmentKey): ?string
+    {
+        $values = [
+            $_SERVER[$environmentKey] ?? null,
+            $_ENV[$environmentKey] ?? null,
+            getenv($environmentKey),
+        ];
+
+        foreach ($values as $value) {
+            if (! is_scalar($value)) {
+                continue;
+            }
+
+            $value = trim((string) $value);
+
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return null;
     }
 }

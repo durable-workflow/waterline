@@ -20,18 +20,51 @@ class WaterlineServiceProviderTest extends TestCase
 {
     public function testProviderMergesEngineSourceIntoLegacyPublishedConfig(): void
     {
-        config()->set('waterline', [
-            'domain' => null,
-            'path' => 'legacy-waterline',
-            'middleware' => ['web'],
-        ]);
+        $this->withEnvironment([
+            'WATERLINE_PATH' => null,
+            'WATERLINE_ENGINE_SOURCE' => null,
+            'WATERLINE_NAMESPACE' => null,
+            'WATERLINE_HEALTH_TASK_DISPATCH_MODE' => null,
+            'WATERLINE_ALLOW_UNAUTHENTICATED' => null,
+        ], function (): void {
+            config()->set('waterline', [
+                'domain' => null,
+                'path' => 'legacy-waterline',
+                'middleware' => ['web'],
+            ]);
 
-        (new WaterlineServiceProvider($this->app))->register();
+            (new WaterlineServiceProvider($this->app))->register();
 
-        $this->assertSame('legacy-waterline', config('waterline.path'));
-        $this->assertSame(['web'], config('waterline.middleware'));
-        $this->assertFalse(config('waterline.allow_unauthenticated'));
-        $this->assertSame('v1', config('waterline.engine_source'));
+            $this->assertSame('legacy-waterline', config('waterline.path'));
+            $this->assertSame(['web'], config('waterline.middleware'));
+            $this->assertFalse(config('waterline.allow_unauthenticated'));
+            $this->assertSame('v1', config('waterline.engine_source'));
+        });
+    }
+
+    public function testPackageRegisterHydratesRuntimeConfigurationFromEnvironment(): void
+    {
+        $this->withEnvironment([
+            'WATERLINE_PATH' => 'waterline',
+            'WATERLINE_ENGINE_SOURCE' => 'v2',
+            'WATERLINE_NAMESPACE' => 'worker-versioning-conformance',
+            'WATERLINE_HEALTH_TASK_DISPATCH_MODE' => 'poll',
+            'WATERLINE_ALLOW_UNAUTHENTICATED' => 'true',
+        ], function (): void {
+            config()->set('waterline.path', 'stale-waterline');
+            config()->set('waterline.engine_source', 'auto');
+            config()->set('waterline.namespace', null);
+            config()->set('waterline.health.task_dispatch_mode', 'queue');
+            config()->set('waterline.allow_unauthenticated', false);
+
+            (new WaterlineServiceProvider($this->app))->register();
+
+            $this->assertSame('waterline', config('waterline.path'));
+            $this->assertSame('v2', config('waterline.engine_source'));
+            $this->assertSame('worker-versioning-conformance', config('waterline.namespace'));
+            $this->assertSame('poll', config('waterline.health.task_dispatch_mode'));
+            $this->assertTrue(config('waterline.allow_unauthenticated'));
+        });
     }
 
     public function testAutoEngineSourceUsesV2RepositoryWhenWorkflowOperatorSurfaceIsAvailable(): void
@@ -179,6 +212,56 @@ class WaterlineServiceProviderTest extends TestCase
             'sqlsrv' => WorkflowRepositorySQLServer::class,
             default => WorkflowRepositoryMySQL::class,
         };
+    }
+
+    private function withEnvironment(array $values, callable $callback): void
+    {
+        $previous = [];
+
+        foreach ($values as $key => $value) {
+            $previous[$key] = [
+                'getenv' => getenv($key),
+                'env_exists' => array_key_exists($key, $_ENV),
+                'env' => $_ENV[$key] ?? null,
+                'server_exists' => array_key_exists($key, $_SERVER),
+                'server' => $_SERVER[$key] ?? null,
+            ];
+
+            if ($value === null) {
+                putenv($key);
+                unset($_ENV[$key], $_SERVER[$key]);
+
+                continue;
+            }
+
+            putenv($key.'='.$value);
+            $_ENV[$key] = $value;
+            $_SERVER[$key] = $value;
+        }
+
+        try {
+            $callback();
+        } finally {
+            foreach ($previous as $key => $state) {
+                if ($state['getenv'] === false) {
+                    putenv($key);
+                } else {
+                    putenv($key.'='.$state['getenv']);
+                }
+
+                if ($state['env_exists']) {
+                    $_ENV[$key] = $state['env'];
+                } else {
+                    unset($_ENV[$key]);
+                }
+
+                if ($state['server_exists']) {
+                    $_SERVER[$key] = $state['server'];
+                } else {
+                    unset($_SERVER[$key]);
+                }
+            }
+        }
     }
 }
 
