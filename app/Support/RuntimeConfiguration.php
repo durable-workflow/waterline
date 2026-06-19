@@ -73,6 +73,7 @@ final class RuntimeConfiguration
 
     public static function hydrate(): void
     {
+        self::allowLaravelServeEnvironmentPassthrough();
         self::promoteProcessEnvironmentForServe();
 
         self::hydrateLaravelRuntimeConfig();
@@ -318,6 +319,30 @@ final class RuntimeConfiguration
             DB::purge($connection);
         } catch (Throwable) {
             // The database manager may not be bootstrapped during early package registration.
+        }
+    }
+
+    private static function allowLaravelServeEnvironmentPassthrough(): void
+    {
+        $serveCommand = 'Illuminate\\Foundation\\Console\\ServeCommand';
+
+        if (! class_exists($serveCommand) || ! property_exists($serveCommand, 'passthroughVariables')) {
+            return;
+        }
+
+        try {
+            $passthrough = $serveCommand::$passthroughVariables;
+
+            if (! is_array($passthrough)) {
+                return;
+            }
+
+            $serveCommand::$passthroughVariables = array_values(array_unique(array_merge(
+                $passthrough,
+                self::SERVE_ENVIRONMENT_KEYS,
+            )));
+        } catch (Throwable) {
+            // Older framework versions may not expose this extension point.
         }
     }
 

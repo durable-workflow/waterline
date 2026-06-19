@@ -153,6 +153,32 @@ class WaterlineServiceProviderTest extends TestCase
         });
     }
 
+    public function testRuntimeConfigurationAllowsWaterlineEnvironmentThroughLaravelServe(): void
+    {
+        $serveCommand = 'Illuminate\\Foundation\\Console\\ServeCommand';
+
+        if (! class_exists($serveCommand) || ! property_exists($serveCommand, 'passthroughVariables')) {
+            $this->markTestSkipped('Laravel ServeCommand passthrough variables are not available.');
+        }
+
+        $previous = $serveCommand::$passthroughVariables;
+
+        try {
+            $serveCommand::$passthroughVariables = ['APP_ENV', 'PATH'];
+
+            RuntimeConfiguration::hydrate();
+
+            $this->assertContains('WATERLINE_ENGINE_SOURCE', $serveCommand::$passthroughVariables);
+            $this->assertContains('WATERLINE_NAMESPACE', $serveCommand::$passthroughVariables);
+            $this->assertContains('WATERLINE_HEALTH_TASK_DISPATCH_MODE', $serveCommand::$passthroughVariables);
+            $this->assertContains('DW_V2_TASK_DISPATCH_MODE', $serveCommand::$passthroughVariables);
+            $this->assertContains('DW_WV_WATERLINE_DB_DATABASE', $serveCommand::$passthroughVariables);
+            $this->assertContains('WORKFLOW_STORAGE_CONNECTION', $serveCommand::$passthroughVariables);
+        } finally {
+            $serveCommand::$passthroughVariables = $previous;
+        }
+    }
+
     public function testRuntimeConfigurationKeepsCachedDatabasePasswordWhenRuntimePasswordIsAbsent(): void
     {
         $this->withEnvironment([
