@@ -59,6 +59,33 @@ class V2HealthControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.backend.supported', true);
     }
 
+    public function testHealthEndpointKeepsObserverSurfaceReachableWhenWorkflowApiFloorIsDiagnostic(): void
+    {
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('cache.default', 'file');
+        config()->set('waterline.workflow_package_api_floor', [
+            'active' => true,
+            'available' => false,
+            'missing' => [
+                'Workflow\\V2\\Support\\ServiceCatalog::serviceCallsQuery($outcome)',
+            ],
+            'message' => 'Installed workflow package is missing an optional Waterline API contract.',
+        ]);
+
+        $this->get('/waterline/api/v2/health')
+            ->assertStatus(200)
+            ->assertJsonPath('status', 'warning')
+            ->assertJsonPath('healthy', true)
+            ->assertJsonPath('checks.0.name', 'engine_source')
+            ->assertJsonPath('checks.0.status', 'ok')
+            ->assertJsonPath('checks.1.name', 'workflow_package_api_floor')
+            ->assertJsonPath('checks.1.status', 'warning')
+            ->assertJsonPath('checks.1.data.missing_count', 1)
+            ->assertJsonPath('coordination_alerts.0.key', 'workflow_package_api_floor')
+            ->assertJsonPath('coordination_alerts.0.status', 'warning');
+    }
+
     public function testHealthEndpointSupportsOptInUnauthenticatedObserverStacks(): void
     {
         Waterline::auth(static fn () => false);

@@ -163,6 +163,9 @@ class PackageInstalledSharedStorageHostTest extends TestCase
 
         config()->set('waterline.namespace', 'worker-versioning-conformance');
         config()->set('waterline.worker_stale_after_seconds', 120);
+        config()->set('database.default', 'server_storage');
+        config()->set('workflows.storage.connection', null);
+        Schema::connection('server_storage')->dropIfExists('workflow_run_timers');
 
         $this->assertFalse(
             DB::connection('host')->getSchemaBuilder()->hasTable('workflow_runs'),
@@ -182,6 +185,8 @@ class PackageInstalledSharedStorageHostTest extends TestCase
         $healthPayload = $this->getJson('/waterline/api/v2/health')
             ->assertOk()
             ->assertJsonPath('namespace', 'worker-versioning-conformance')
+            ->assertJsonPath('engine_source.uses_v2', true)
+            ->assertJsonPath('engine_source.degraded_operator_surface', true)
             ->assertJsonPath('queue_visibility.available', true)
             ->json();
 

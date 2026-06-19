@@ -130,7 +130,9 @@ class WaterlineServiceProviderTest extends TestCase
 
         (new WaterlineServiceProvider($this->app))->boot();
 
-        $this->expectNotToPerformAssertions();
+        $this->assertFalse(config('waterline.workflow_package_api_floor.active'));
+        $this->assertTrue(config('waterline.workflow_package_api_floor.available'));
+        $this->assertSame([], config('waterline.workflow_package_api_floor.missing'));
     }
 
     public function testBootPassesFloorGuardWhenAutoFallsBackToV1(): void
@@ -140,7 +142,9 @@ class WaterlineServiceProviderTest extends TestCase
 
         (new WaterlineServiceProvider($this->app))->boot();
 
-        $this->expectNotToPerformAssertions();
+        $this->assertFalse(config('waterline.workflow_package_api_floor.active'));
+        $this->assertTrue(config('waterline.workflow_package_api_floor.available'));
+        $this->assertSame([], config('waterline.workflow_package_api_floor.missing'));
     }
 
     public function testBootPassesFloorGuardWhenResolvedToV2OnCurrentWorkflowPackage(): void
@@ -149,7 +153,9 @@ class WaterlineServiceProviderTest extends TestCase
 
         (new WaterlineServiceProvider($this->app))->boot();
 
-        $this->expectNotToPerformAssertions();
+        $this->assertTrue(config('waterline.workflow_package_api_floor.active'));
+        $this->assertTrue(config('waterline.workflow_package_api_floor.available'));
+        $this->assertSame([], config('waterline.workflow_package_api_floor.missing'));
     }
 
     public function testSignalsQueriesConformanceCommandDoesNotParseRoutePlaceholdersAsArguments(): void

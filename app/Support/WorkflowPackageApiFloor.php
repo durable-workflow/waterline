@@ -22,9 +22,9 @@ use RuntimeException;
  * service catalog/operator observability helpers. Older v2 installs that
  * predate those contracts fail schedule mutation routes with unknown-named
  * parameters, silently lose namespace scoping, or cannot render the service
- * call outcome filters Waterline exposes. `assertIfActive()` is called at boot
- * so those broken pairings surface with a clear diagnostic instead of a 500 or
- * a cross-namespace health payload at runtime.
+ * call outcome filters Waterline exposes. The package provider records this
+ * diagnostic at boot so read-only observer routes can still register while
+ * health reports the pairing clearly.
  */
 final class WorkflowPackageApiFloor
 {

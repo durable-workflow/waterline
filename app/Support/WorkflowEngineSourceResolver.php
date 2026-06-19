@@ -46,6 +46,7 @@ final class WorkflowEngineSourceResolver
         'workflow_run_waits',
         'workflow_signal_records',
         'workflow_tasks',
+        'workflow_run_timers',
         'workflow_timers',
         'workflow_updates',
     ];

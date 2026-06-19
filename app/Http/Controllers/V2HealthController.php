@@ -91,6 +91,7 @@ class V2HealthController extends Controller
         );
         $snapshot['engine_source'] = $engineSource;
         $snapshot['readiness_contract'] = $engineSource['readiness_contract'] ?? null;
+        $snapshot = $this->withWorkflowPackageApiFloorCheck($snapshot);
         $snapshot = $this->annotateWorkerRegistrations($snapshot, $namespace);
         $snapshot['coordination_alerts'] = $this->coordinationAlerts(
             $snapshot['checks'],
@@ -99,6 +100,71 @@ class V2HealthController extends Controller
         );
 
         return response()->json($snapshot, HealthCheck::httpStatus($snapshot));
+    }
+
+    /**
+     * @param  array<string, mixed>  $snapshot
+     * @return array<string, mixed>
+     */
+    private function withWorkflowPackageApiFloorCheck(array $snapshot): array
+    {
+        $check = $this->workflowPackageApiFloorCheck();
+
+        if ($check === null) {
+            return $snapshot;
+        }
+
+        $checks = is_array($snapshot['checks'] ?? null) ? array_values($snapshot['checks']) : [];
+        array_splice($checks, min(1, count($checks)), 0, [$check]);
+        $snapshot['checks'] = $checks;
+
+        if (($snapshot['status'] ?? null) !== 'error') {
+            $snapshot['status'] = 'warning';
+            $snapshot['healthy'] = true;
+        }
+
+        $categories = is_array($snapshot['categories'] ?? null) ? $snapshot['categories'] : [];
+        $correctness = is_array($categories['correctness'] ?? null)
+            ? $categories['correctness']
+            : ['status' => 'ok', 'check_count' => 0];
+        $correctness['check_count'] = $this->integerValue($correctness['check_count'] ?? 0) + 1;
+        if (($correctness['status'] ?? null) !== 'error') {
+            $correctness['status'] = 'warning';
+        }
+        $categories['correctness'] = $correctness;
+        $snapshot['categories'] = $categories;
+
+        return $snapshot;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function workflowPackageApiFloorCheck(): ?array
+    {
+        $floor = config('waterline.workflow_package_api_floor');
+
+        if (! is_array($floor)
+            || ($floor['active'] ?? false) !== true
+            || ($floor['available'] ?? true) === true) {
+            return null;
+        }
+
+        $missing = is_array($floor['missing'] ?? null)
+            ? array_values(array_filter($floor['missing'], 'is_string'))
+            : [];
+
+        return [
+            'name' => 'workflow_package_api_floor',
+            'status' => 'warning',
+            'category' => 'correctness',
+            'message' => 'The installed workflow package is missing one or more optional Waterline API contracts; read-only observer endpoints remain available.',
+            'data' => [
+                'missing' => $missing,
+                'missing_count' => count($missing),
+                'message' => is_string($floor['message'] ?? null) ? $floor['message'] : null,
+            ],
+        ];
     }
 
     /**
@@ -1062,8 +1128,8 @@ class V2HealthController extends Controller
 
     /**
      * Waterline relies on the namespace-scoped v2 health snapshot contract.
-     * WorkflowPackageApiFloor asserts the required signature at boot whenever
-     * the resolved engine source is v2.
+     * The service provider records WorkflowPackageApiFloor diagnostics at boot
+     * whenever the resolved engine source is v2.
      *
      * @return array<string, mixed>
      */

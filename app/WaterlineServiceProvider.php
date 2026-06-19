@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Throwable;
 use Waterline\Http\Middleware\ControlPlaneVersion;
 use Waterline\Http\Middleware\UseEphemeralApiSessionWhenDatabaseTableMissing;
 use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
@@ -21,6 +22,8 @@ use Workflow\Models\StoredWorkflow;
 
 class WaterlineServiceProvider extends ServiceProvider
 {
+    private const WORKFLOW_PACKAGE_API_FLOOR_CONFIG = 'waterline.workflow_package_api_floor';
+
     /**
      * Bootstrap any application services.
      *
@@ -28,16 +31,45 @@ class WaterlineServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        // Assert the v2 API floor only when the resolved engine source is
-        // v2. v1 installs and auto-mode installs that fall back to v1 must
-        // continue to boot even when the v2 surface is absent or stale.
-        WorkflowPackageApiFloor::assertIfActive();
+        $this->recordWorkflowPackageApiFloor();
 
         $this->registerRoutes();
         $this->registerResources();
         $this->defineAssetPublishing();
         $this->offerPublishing();
         $this->registerCommands();
+    }
+
+    private function recordWorkflowPackageApiFloor(): void
+    {
+        if (! WorkflowEngineSourceResolver::usesV2()) {
+            config()->set(self::WORKFLOW_PACKAGE_API_FLOOR_CONFIG, [
+                'active' => false,
+                'available' => true,
+                'missing' => [],
+                'message' => null,
+            ]);
+
+            return;
+        }
+
+        try {
+            WorkflowPackageApiFloor::assert();
+
+            config()->set(self::WORKFLOW_PACKAGE_API_FLOOR_CONFIG, [
+                'active' => true,
+                'available' => true,
+                'missing' => [],
+                'message' => null,
+            ]);
+        } catch (Throwable $exception) {
+            config()->set(self::WORKFLOW_PACKAGE_API_FLOOR_CONFIG, [
+                'active' => true,
+                'available' => false,
+                'missing' => WorkflowPackageApiFloor::findMissing(),
+                'message' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**
