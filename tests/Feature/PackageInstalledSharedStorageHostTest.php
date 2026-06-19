@@ -297,6 +297,15 @@ class PackageInstalledSharedStorageHostTest extends TestCase
         $this->assertIsArray($storageConnection);
         $this->assertSame('connection_unavailable', $storageConnection['core_table_status'] ?? null);
         $this->assertSame(false, $storageConnection['core_tables_available'] ?? null);
+        $this->assertContains(
+            'v2_workflow_storage_unreadable',
+            $status['readiness_issue_codes'] ?? [],
+        );
+        $storageIssue = collect($status['readiness_issues'] ?? [])
+            ->firstWhere('code', 'v2_workflow_storage_unreadable');
+        $this->assertIsArray($storageIssue);
+        $this->assertSame('storage_connection', $storageIssue['category'] ?? null);
+        $this->assertSame('connection_unavailable', $storageIssue['reason'] ?? null);
 
         $unavailableConnection = collect($storageConnection['connections'] ?? [])
             ->firstWhere('name', 'unavailable_storage');
@@ -315,6 +324,14 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             $storageConnection,
             [$this->hostDatabase, $this->serverDatabase, $unavailableDatabase],
         );
+
+        $readinessJson = json_encode($status['readiness_issues'] ?? [], JSON_UNESCAPED_SLASHES);
+        $this->assertIsString($readinessJson);
+        $this->assertStringNotContainsString($unavailableDatabase, $readinessJson);
+
+        $engineSourceIssuesJson = json_encode($status['issues'] ?? [], JSON_UNESCAPED_SLASHES);
+        $this->assertIsString($engineSourceIssuesJson);
+        $this->assertStringNotContainsString($unavailableDatabase, $engineSourceIssuesJson);
     }
 
     /**

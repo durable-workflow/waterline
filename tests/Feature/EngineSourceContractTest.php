@@ -46,6 +46,16 @@ final class EngineSourceContractTest extends TestCase
             ->assertJsonPath('engine_source.status', 'v2_pinned_unavailable')
             ->assertJsonPath('engine_source.uses_v2', false)
             ->assertJsonPath('engine_source.issues.0.reason', 'missing_table')
+            ->assertJsonPath('engine_source.issues.0.code', 'v2_workflow_table_missing')
+            ->assertJsonPath('engine_source.readiness_issues.0.code', 'v2_workflow_table_missing')
+            ->assertJsonPath('engine_source.readiness_issues.0.category', 'workflow_schema')
+            ->assertJsonPath('engine_source.readiness_issues.0.condition', 'model:run_model')
+            ->assertJsonPath('engine_source.readiness_issues.0.reason', 'missing_table')
+            ->assertJsonPath(
+                'engine_source.readiness_issues.0.remediation',
+                'Run the workflow v2 migrations on the shared workflow storage connection or point workflows.storage.connection at the migrated store.'
+            )
+            ->assertJsonPath('readiness_issue_codes.0', 'v2_workflow_table_missing')
             ->assertJsonPath('engine_source.readiness_contract.effective_states.stats.state', 'unavailable_503');
     }
 
@@ -60,6 +70,9 @@ final class EngineSourceContractTest extends TestCase
             ->assertJsonPath('checks.0.status', 'error')
             ->assertJsonPath('engine_source.status', 'auto_fallback_to_v1')
             ->assertJsonPath('engine_source.resolved', 'v1')
+            ->assertJsonPath('checks.0.meta.readiness_issue_codes.0', 'v2_workflow_table_missing')
+            ->assertJsonPath('checks.0.meta.readiness_issues.0.category', 'workflow_schema')
+            ->assertJsonPath('readiness_issues.0.code', 'v2_workflow_table_missing')
             ->assertJsonPath('readiness_contract.effective_states.health.http_status_when_requested', 503);
     }
 
@@ -163,7 +176,8 @@ final class EngineSourceContractTest extends TestCase
         $this->get('/waterline/api/saved-views?bucket=running')
             ->assertStatus(503)
             ->assertJsonPath('engine_source.status', 'v2_pinned_unavailable')
-            ->assertJsonPath('engine_source.issues.0.table', 'missing_workflow_runs');
+            ->assertJsonPath('engine_source.issues.0.table', 'missing_workflow_runs')
+            ->assertJsonPath('engine_source.readiness_issues.0.code', 'v2_workflow_table_missing');
     }
 
     public function testInstanceRoutesReturnNotFoundWhenAutoFallsBackToLegacyRepository(): void

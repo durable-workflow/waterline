@@ -11,6 +11,7 @@ use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowTask;
+use Workflow\V2\Support\BackendCapabilities;
 use Workflow\V2\Support\ReadinessContract;
 use Workflow\V2\Support\WaterlineEngineSource;
 
@@ -83,17 +84,17 @@ final class WorkflowEngineSourceResolver
 
             $status['storage_connection'] = self::storageConnectionDiagnostics($repair);
 
-            return self::allowDegradedV2OperatorSurface(
+            return self::withReadinessIssueDiagnostics(self::allowDegradedV2OperatorSurface(
                 $status,
                 $normalized,
-            );
+            ));
         }
 
         $resolved = $normalized === self::ENGINE_V2
             ? self::ENGINE_V2
             : self::ENGINE_V1;
 
-        return [
+        return self::withReadinessIssueDiagnostics([
             'configured' => $normalized,
             'resolved' => $resolved,
             'uses_v2' => $resolved === self::ENGINE_V2,
@@ -105,7 +106,7 @@ final class WorkflowEngineSourceResolver
                 : 'Waterline is pinned to the legacy v1 workflow tables.',
             'issues' => [],
             'required_tables' => [],
-        ];
+        ]);
     }
 
     public static function resolve(string|null $configured = null): string
@@ -154,6 +155,352 @@ final class WorkflowEngineSourceResolver
         }
 
         return self::degradedV2Status($status, $configured);
+    }
+
+    /**
+     * @param array<string, mixed> $status
+     * @return array<string, mixed>
+     */
+    private static function withReadinessIssueDiagnostics(array $status): array
+    {
+        $rawIssues = is_array($status['issues'] ?? null) ? array_values($status['issues']) : [];
+        $readinessIssues = [];
+
+        foreach ($rawIssues as $index => $issue) {
+            if (! is_array($issue)) {
+                continue;
+            }
+
+            $readinessIssues[] = self::readinessIssueFromWorkflowIssue($issue, $index);
+        }
+
+        if (($status['v2_operator_surface_available'] ?? true) !== true) {
+            $readinessIssues = array_merge(
+                $readinessIssues,
+                self::readinessIssuesFromStorageConnection($status['storage_connection'] ?? []),
+                self::readinessIssuesFromBackendCapabilities(),
+            );
+        }
+
+        $readinessIssues = self::deduplicateReadinessIssues($readinessIssues);
+
+        $status['issues'] = self::redactedWorkflowIssues($rawIssues);
+        $status['required_tables'] = self::redactedRequiredTables($status['required_tables'] ?? []);
+        $status['readiness_issues'] = $readinessIssues;
+        $status['readiness_issue_codes'] = array_values(array_unique(array_map(
+            static fn (array $issue): string => $issue['code'],
+            $readinessIssues,
+        )));
+        $status['readiness_issue_count'] = count($readinessIssues);
+
+        return $status;
+    }
+
+    /**
+     * @param array<string, mixed> $issue
+     * @return array<string, mixed>
+     */
+    private static function readinessIssueFromWorkflowIssue(array $issue, int $index): array
+    {
+        $classification = self::classifyWorkflowIssue($issue);
+        $configKey = self::safeIdentifier($issue['config_key'] ?? null);
+        $table = self::safeIdentifier($issue['table'] ?? null);
+        $condition = $configKey !== null
+            ? 'model:'.$configKey
+            : ($table !== null ? 'table:'.$table : 'operator_surface_requirement:'.($index + 1));
+
+        return [
+            'code' => $classification['code'],
+            'category' => $classification['category'],
+            'severity' => $classification['severity'],
+            'condition' => $condition,
+            'reason' => $classification['reason'],
+            'summary' => $classification['summary'],
+            'remediation' => $classification['remediation'],
+            'config_key' => $configKey,
+            'table' => $table,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $issue
+     * @return array{code: string, category: string, severity: string, reason: string, summary: string, remediation: string}
+     */
+    private static function classifyWorkflowIssue(array $issue): array
+    {
+        $reason = self::safeReason($issue['reason'] ?? null);
+
+        if (in_array($reason, ['invalid_model', 'invalid_model_class', 'missing_table_name'], true)) {
+            return [
+                'code' => 'v2_operator_model_missing',
+                'category' => 'operator_model',
+                'severity' => 'error',
+                'reason' => $reason,
+                'summary' => 'A configured v2 operator model is missing or does not resolve to a readable table.',
+                'remediation' => 'Restore the workflow package model binding or configure workflows.v2.*_model to an Eloquent model backed by the workflow v2 schema.',
+            ];
+        }
+
+        if ($reason === 'schema_inspection_failed') {
+            return [
+                'code' => 'v2_workflow_table_unreadable',
+                'category' => 'workflow_schema',
+                'severity' => 'error',
+                'reason' => $reason,
+                'summary' => 'A required v2 workflow table could not be inspected through the effective workflow storage connection.',
+                'remediation' => 'Verify that the workflow storage connection is reachable and that the application can read the workflow v2 tables.',
+            ];
+        }
+
+        if ($reason === 'missing_table') {
+            return [
+                'code' => 'v2_workflow_table_missing',
+                'category' => 'workflow_schema',
+                'severity' => 'error',
+                'reason' => $reason,
+                'summary' => 'A required v2 workflow table is missing from the effective workflow storage connection.',
+                'remediation' => 'Run the workflow v2 migrations on the shared workflow storage connection or point workflows.storage.connection at the migrated store.',
+            ];
+        }
+
+        if (str_contains($reason, 'unsupported') || str_starts_with($reason, 'codec_')) {
+            return [
+                'code' => 'v2_backend_capability_unsupported',
+                'category' => 'backend_capability',
+                'severity' => 'error',
+                'reason' => $reason,
+                'summary' => 'A configured backend capability does not satisfy the workflow v2 operator contract.',
+                'remediation' => 'Switch the affected database, queue, cache, or serializer setting to a workflow v2 supported backend before enabling the v2 operator surface.',
+            ];
+        }
+
+        return [
+            'code' => 'v2_operator_surface_unavailable',
+            'category' => 'operator_surface',
+            'severity' => 'error',
+            'reason' => $reason,
+            'summary' => 'The workflow package reported an incomplete v2 operator surface.',
+            'remediation' => 'Check workflow v2 package readiness and storage configuration, then repair the failed readiness condition before enabling Waterline v2.',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed>|mixed $storageConnection
+     * @return list<array<string, mixed>>
+     */
+    private static function readinessIssuesFromStorageConnection(mixed $storageConnection): array
+    {
+        if (! is_array($storageConnection)) {
+            return [];
+        }
+
+        $issues = [];
+        $coreStatus = self::safeReason($storageConnection['core_table_status'] ?? null);
+        $candidateCount = self::availableCoreTableConnectionCount($storageConnection);
+
+        if (($storageConnection['core_tables_available'] ?? false) !== true && $candidateCount > 0) {
+            $issues[] = [
+                'code' => 'v2_workflow_storage_connection_mismatch',
+                'category' => 'storage_connection',
+                'severity' => 'error',
+                'condition' => 'workflow_storage_connection',
+                'reason' => 'core_tables_on_non_effective_connection',
+                'summary' => 'Waterline found v2 core tables outside the effective workflow storage connection.',
+                'remediation' => 'Set workflows.storage.connection to the migrated workflow store; if more than one configured connection has core tables, '
+                    .'choose the intended shared storage explicitly.',
+                'candidate_connection_count' => $candidateCount,
+            ];
+        }
+
+        if ($coreStatus === 'connection_unavailable') {
+            $issues[] = [
+                'code' => 'v2_workflow_storage_unreadable',
+                'category' => 'storage_connection',
+                'severity' => 'error',
+                'condition' => 'workflow_storage_connection',
+                'reason' => $coreStatus,
+                'summary' => 'The effective workflow storage connection could not be inspected for v2 core tables.',
+                'remediation' => 'Verify that the configured workflow storage connection is reachable and readable from the Waterline host.',
+            ];
+        } elseif ($coreStatus === 'no_v2_core_tables') {
+            $issues[] = [
+                'code' => 'v2_workflow_storage_core_tables_missing',
+                'category' => 'storage_connection',
+                'severity' => 'error',
+                'condition' => 'workflow_storage_connection',
+                'reason' => $coreStatus,
+                'summary' => 'The effective workflow storage connection has none of the v2 core workflow tables.',
+                'remediation' => 'Run the workflow v2 migrations against the shared workflow storage connection or configure Waterline to use the connection '
+                    .'that already contains those tables.',
+            ];
+        } elseif ($coreStatus === 'partial_v2_core_tables') {
+            $issues[] = [
+                'code' => 'v2_workflow_storage_core_tables_partial',
+                'category' => 'storage_connection',
+                'severity' => 'error',
+                'condition' => 'workflow_storage_connection',
+                'reason' => $coreStatus,
+                'summary' => 'The effective workflow storage connection has only part of the v2 core workflow schema.',
+                'remediation' => 'Apply the remaining workflow v2 migrations before enabling the Waterline v2 operator surface.',
+            ];
+        } elseif ($coreStatus === 'invalid_core_models') {
+            $issues[] = [
+                'code' => 'v2_operator_model_missing',
+                'category' => 'operator_model',
+                'severity' => 'error',
+                'condition' => 'workflow_storage_connection',
+                'reason' => $coreStatus,
+                'summary' => 'One or more configured v2 core operator models are missing or invalid.',
+                'remediation' => 'Restore the workflow package model bindings or configure workflows.v2 core models to valid Eloquent model classes.',
+            ];
+        }
+
+        return $issues;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private static function readinessIssuesFromBackendCapabilities(): array
+    {
+        if (! class_exists(BackendCapabilities::class)) {
+            return [];
+        }
+
+        try {
+            $snapshot = BackendCapabilities::snapshot();
+        } catch (Throwable) {
+            return [[
+                'code' => 'v2_backend_capability_inspection_failed',
+                'category' => 'backend_capability',
+                'severity' => 'warning',
+                'condition' => 'backend_capabilities',
+                'reason' => 'inspection_failed',
+                'summary' => 'Waterline could not inspect backend capability readiness.',
+                'remediation' => 'Check database, queue, cache, and serializer configuration before enabling the v2 operator surface.',
+            ]];
+        }
+
+        $issues = [];
+        foreach (is_array($snapshot['issues'] ?? null) ? $snapshot['issues'] : [] as $issue) {
+            if (! is_array($issue) || ($issue['severity'] ?? null) !== 'error') {
+                continue;
+            }
+
+            $component = self::safeIdentifier($issue['component'] ?? null) ?? 'backend';
+            $code = self::safeReason($issue['code'] ?? null);
+            $issues[] = [
+                'code' => 'v2_backend_capability_unsupported',
+                'category' => 'backend_capability',
+                'severity' => 'error',
+                'condition' => $component.':'.$code,
+                'reason' => $code,
+                'summary' => 'A configured backend capability does not satisfy the workflow v2 operator contract.',
+                'remediation' => 'Switch the affected database, queue, cache, or serializer setting to a workflow v2 supported backend before enabling the v2 operator surface.',
+                'backend_component' => $component,
+                'backend_issue_code' => $code,
+            ];
+        }
+
+        return $issues;
+    }
+
+    /**
+     * @param array<string, mixed> $storageConnection
+     */
+    private static function availableCoreTableConnectionCount(array $storageConnection): int
+    {
+        $count = 0;
+
+        foreach (is_array($storageConnection['connections'] ?? null) ? $storageConnection['connections'] : [] as $connection) {
+            if (is_array($connection) && ($connection['core_tables_available'] ?? false) === true) {
+                $count++;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
+     * @param list<mixed> $issues
+     * @return list<array<string, mixed>>
+     */
+    private static function redactedWorkflowIssues(array $issues): array
+    {
+        $redacted = [];
+
+        foreach ($issues as $index => $issue) {
+            if (! is_array($issue)) {
+                continue;
+            }
+
+            $readinessIssue = self::readinessIssueFromWorkflowIssue($issue, $index);
+            $redacted[] = [
+                'code' => $readinessIssue['code'],
+                'category' => $readinessIssue['category'],
+                'config_key' => $readinessIssue['config_key'],
+                'table' => $readinessIssue['table'],
+                'reason' => $readinessIssue['reason'],
+                'message' => $readinessIssue['summary'],
+                'remediation' => $readinessIssue['remediation'],
+            ];
+        }
+
+        return $redacted;
+    }
+
+    /**
+     * @param mixed $requiredTables
+     * @return list<array<string, mixed>>
+     */
+    private static function redactedRequiredTables(mixed $requiredTables): array
+    {
+        if (! is_array($requiredTables)) {
+            return [];
+        }
+
+        $redacted = [];
+        foreach ($requiredTables as $table) {
+            if (! is_array($table)) {
+                continue;
+            }
+
+            $redacted[] = [
+                'config_key' => self::safeIdentifier($table['config_key'] ?? null),
+                'table' => self::safeIdentifier($table['table'] ?? null),
+                'available' => ($table['available'] ?? false) === true,
+            ];
+        }
+
+        return $redacted;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $issues
+     * @return list<array<string, mixed>>
+     */
+    private static function deduplicateReadinessIssues(array $issues): array
+    {
+        $seen = [];
+        $deduplicated = [];
+
+        foreach ($issues as $issue) {
+            $key = implode('|', [
+                $issue['code'] ?? '',
+                $issue['category'] ?? '',
+                $issue['condition'] ?? '',
+                $issue['reason'] ?? '',
+            ]);
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $deduplicated[] = $issue;
+        }
+
+        return $deduplicated;
     }
 
     /**
@@ -528,5 +875,27 @@ final class WorkflowEngineSourceResolver
     private static function stringOrNull(mixed $value): ?string
     {
         return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    private static function safeIdentifier(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+
+        return preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $value) === 1 ? $value : null;
+    }
+
+    private static function safeReason(mixed $value): string
+    {
+        if (! is_string($value)) {
+            return 'unknown';
+        }
+
+        $value = strtolower(trim($value));
+
+        return preg_match('/^[a-z0-9_:-]+$/', $value) === 1 ? $value : 'unknown';
     }
 }

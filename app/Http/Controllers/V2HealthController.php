@@ -42,17 +42,13 @@ class V2HealthController extends Controller
                         'name' => 'engine_source',
                         'status' => 'error',
                         'message' => $engineSource['message'] ?? 'Waterline is not currently using the v2 operator bridge.',
-                        'meta' => [
-                            'configured' => $engineSource['configured'] ?? null,
-                            'resolved' => $engineSource['resolved'] ?? null,
-                            'uses_v2' => $engineSource['uses_v2'] ?? false,
-                            'v2_operator_surface_available' => $engineSource['v2_operator_surface_available'] ?? false,
-                            'issue_count' => count(is_array($engineSource['issues'] ?? null) ? $engineSource['issues'] : []),
-                        ],
+                        'meta' => $this->engineSourceMeta($engineSource),
                     ],
                 ],
                 'engine_source' => $engineSource,
                 'readiness_contract' => $engineSource['readiness_contract'] ?? null,
+                'readiness_issues' => $this->engineSourceReadinessIssues($engineSource),
+                'readiness_issue_codes' => $this->engineSourceReadinessIssueCodes($engineSource),
             ];
             $payload['coordination_alerts'] = $this->coordinationAlerts(
                 $payload['checks'],
@@ -72,13 +68,7 @@ class V2HealthController extends Controller
             'name' => 'engine_source',
             'status' => 'ok',
             'message' => $engineSource['message'] ?? 'Waterline is using the v2 operator bridge.',
-            'meta' => [
-                'configured' => $engineSource['configured'] ?? null,
-                'resolved' => $engineSource['resolved'] ?? null,
-                'uses_v2' => $engineSource['uses_v2'] ?? false,
-                'v2_operator_surface_available' => $engineSource['v2_operator_surface_available'] ?? false,
-                'issue_count' => count(is_array($engineSource['issues'] ?? null) ? $engineSource['issues'] : []),
-            ],
+            'meta' => $this->engineSourceMeta($engineSource),
         ]);
         $snapshot['namespace'] = $namespace;
         $snapshot['operator_scope'] = OperatorScope::payload();
@@ -100,6 +90,53 @@ class V2HealthController extends Controller
         );
 
         return response()->json($snapshot, HealthCheck::httpStatus($snapshot));
+    }
+
+    /**
+     * @param  array<string, mixed>  $engineSource
+     * @return array<string, mixed>
+     */
+    private function engineSourceMeta(array $engineSource): array
+    {
+        $readinessIssues = $this->engineSourceReadinessIssues($engineSource);
+
+        return [
+            'configured' => $engineSource['configured'] ?? null,
+            'resolved' => $engineSource['resolved'] ?? null,
+            'uses_v2' => $engineSource['uses_v2'] ?? false,
+            'v2_operator_surface_available' => $engineSource['v2_operator_surface_available'] ?? false,
+            'issue_count' => count(is_array($engineSource['issues'] ?? null) ? $engineSource['issues'] : []),
+            'readiness_issue_count' => count($readinessIssues),
+            'readiness_issue_codes' => $this->engineSourceReadinessIssueCodes($engineSource),
+            'readiness_issues' => $readinessIssues,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $engineSource
+     * @return list<array<string, mixed>>
+     */
+    private function engineSourceReadinessIssues(array $engineSource): array
+    {
+        return is_array($engineSource['readiness_issues'] ?? null)
+            ? array_values(array_filter($engineSource['readiness_issues'], 'is_array'))
+            : [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $engineSource
+     * @return list<string>
+     */
+    private function engineSourceReadinessIssueCodes(array $engineSource): array
+    {
+        if (is_array($engineSource['readiness_issue_codes'] ?? null)) {
+            return array_values(array_filter($engineSource['readiness_issue_codes'], 'is_string'));
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn (array $issue): mixed => $issue['code'] ?? null,
+            $this->engineSourceReadinessIssues($engineSource),
+        ), 'is_string')));
     }
 
     /**
