@@ -5,6 +5,7 @@ namespace Waterline\Tests\Unit;
 use Illuminate\Support\Facades\DB;
 use Waterline\Console\SignalsQueriesConformanceCommand;
 use Waterline\Http\Middleware\ControlPlaneVersion;
+use Waterline\Http\Middleware\RenderApiExceptionsAsJson;
 use Waterline\Http\Middleware\UseEphemeralApiSessionWhenDatabaseTableMissing;
 use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
@@ -58,6 +59,31 @@ class WaterlineServiceProviderTest extends TestCase
             config()->set('waterline.allow_unauthenticated', false);
 
             (new WaterlineServiceProvider($this->app))->register();
+
+            $this->assertSame('waterline', config('waterline.path'));
+            $this->assertSame('v2', config('waterline.engine_source'));
+            $this->assertSame('worker-versioning-conformance', config('waterline.namespace'));
+            $this->assertSame('poll', config('waterline.health.task_dispatch_mode'));
+            $this->assertTrue(config('waterline.allow_unauthenticated'));
+        });
+    }
+
+    public function testPackageBootHydratesRuntimeConfigurationFromEnvironment(): void
+    {
+        $this->withEnvironment([
+            'WATERLINE_PATH' => 'waterline',
+            'WATERLINE_ENGINE_SOURCE' => 'v2',
+            'WATERLINE_NAMESPACE' => 'worker-versioning-conformance',
+            'WATERLINE_HEALTH_TASK_DISPATCH_MODE' => 'poll',
+            'WATERLINE_ALLOW_UNAUTHENTICATED' => 'true',
+        ], function (): void {
+            config()->set('waterline.path', 'stale-waterline');
+            config()->set('waterline.engine_source', 'auto');
+            config()->set('waterline.namespace', null);
+            config()->set('waterline.health.task_dispatch_mode', 'queue');
+            config()->set('waterline.allow_unauthenticated', false);
+
+            (new WaterlineServiceProvider($this->app))->boot();
 
             $this->assertSame('waterline', config('waterline.path'));
             $this->assertSame('v2', config('waterline.engine_source'));
@@ -147,9 +173,11 @@ class WaterlineServiceProviderTest extends TestCase
         $fallbackIndex = array_search(UseEphemeralApiSessionWhenDatabaseTableMissing::class, $healthMiddleware, true);
         $webIndex = array_search('web', $healthMiddleware, true);
 
+        $this->assertContains(RenderApiExceptionsAsJson::class, $healthMiddleware);
         $this->assertContains(ControlPlaneVersion::class, $healthMiddleware);
         $this->assertContains(UseEphemeralApiSessionWhenDatabaseTableMissing::class, $healthMiddleware);
         $this->assertContains('web', $healthMiddleware);
+        $this->assertLessThan(array_search(ControlPlaneVersion::class, $healthMiddleware, true), array_search(RenderApiExceptionsAsJson::class, $healthMiddleware, true));
         $this->assertIsInt($fallbackIndex);
         $this->assertIsInt($webIndex);
         $this->assertLessThan($webIndex, $fallbackIndex);

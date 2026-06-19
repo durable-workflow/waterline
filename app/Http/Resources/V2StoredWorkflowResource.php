@@ -5,6 +5,7 @@ namespace Waterline\Http\Resources;
 use BackedEnum;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Throwable;
+use Waterline\Models\WorkerRegistration;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowRun;
 use Waterline\Support\ActionabilityContract;
@@ -258,6 +259,7 @@ class V2StoredWorkflowResource extends JsonResource
             'history_fan_out' => 0,
             'activities_scope' => 'selected_run',
             'activities' => $activities,
+            'tasks' => $this->fallbackTasks(),
             'timeline' => [],
             'timeline_total_count' => 0,
             'timeline_returned_count' => 0,
@@ -266,6 +268,77 @@ class V2StoredWorkflowResource extends JsonResource
                 'message' => 'Waterline rendered durable run state and activity history because selected-run projections were unavailable.',
             ],
         ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function fallbackTasks(): array
+    {
+        try {
+            return $this->resource->tasks()
+                ->orderBy('available_at')
+                ->get()
+                ->map(fn ($task): array => $this->fallbackTask($task))
+                ->values()
+                ->all();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fallbackTask($task): array
+    {
+        $type = $this->statusValue($task->task_type ?? null);
+        $status = $this->statusValue($task->status ?? null);
+        $compatibility = is_string($task->compatibility ?? null) && trim((string) $task->compatibility) !== ''
+            ? trim((string) $task->compatibility)
+            : null;
+        $supported = $this->fallbackTaskCompatibilitySupported($task, $compatibility);
+
+        return [
+            'id' => $task->id ?? null,
+            'type' => $type,
+            'status' => $status,
+            'is_open' => in_array($status, ['ready', 'leased'], true),
+            'compatibility' => $compatibility,
+            'connection' => $task->connection ?? null,
+            'queue' => $task->queue ?? null,
+            'attempt_count' => is_numeric($task->attempt_count ?? null) ? (int) $task->attempt_count : null,
+            'available_at' => $task->available_at,
+            'compatibility_supported_in_fleet' => $supported,
+            'compatibility_fleet_reason' => $supported === false && $compatibility !== null
+                ? sprintf('No active worker heartbeat advertises compatibility [%s].', $compatibility)
+                : null,
+        ];
+    }
+
+    private function fallbackTaskCompatibilitySupported($task, ?string $compatibility): ?bool
+    {
+        if ($compatibility === null) {
+            return null;
+        }
+
+        try {
+            $query = WorkerRegistration::query()
+                ->where('status', 'active')
+                ->where('build_id', $compatibility);
+
+            if (is_string($task->namespace ?? null) && trim((string) $task->namespace) !== '') {
+                $query->where('namespace', trim((string) $task->namespace));
+            }
+
+            if (is_string($task->queue ?? null) && trim((string) $task->queue) !== '') {
+                $query->where('task_queue', trim((string) $task->queue));
+            }
+
+            return $query->exists();
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     private function statusValue(mixed $status): ?string

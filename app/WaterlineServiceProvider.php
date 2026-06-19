@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Throwable;
 use Waterline\Http\Middleware\ControlPlaneVersion;
+use Waterline\Http\Middleware\RenderApiExceptionsAsJson;
 use Waterline\Http\Middleware\UseEphemeralApiSessionWhenDatabaseTableMissing;
 use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
@@ -16,6 +17,7 @@ use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryPostgreSQL;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLite;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLServer;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
+use Waterline\Support\RuntimeConfiguration;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Waterline\Support\WorkflowPackageApiFloor;
 use Workflow\Models\StoredWorkflow;
@@ -31,6 +33,7 @@ class WaterlineServiceProvider extends ServiceProvider
      */
     public function boot()
     {
+        RuntimeConfiguration::hydrate();
         $this->recordWorkflowPackageApiFloor();
 
         $this->registerRoutes();
@@ -115,8 +118,10 @@ class WaterlineServiceProvider extends ServiceProvider
         $configured = config('waterline.api_middleware')
             ?? config('waterline.middleware', ['web']);
 
-        return $this->withControlPlaneVersion(
-            $this->withEphemeralSessionFallback($this->normalizeMiddleware($configured))
+        return $this->withApiExceptionRenderer(
+            $this->withControlPlaneVersion(
+                $this->withEphemeralSessionFallback($this->normalizeMiddleware($configured))
+            )
         );
     }
 
@@ -151,6 +156,17 @@ class WaterlineServiceProvider extends ServiceProvider
     private function withControlPlaneVersion(array $middleware): array
     {
         array_unshift($middleware, ControlPlaneVersion::class);
+
+        return $middleware;
+    }
+
+    /**
+     * @param  list<class-string|string>  $middleware
+     * @return list<class-string|string>
+     */
+    private function withApiExceptionRenderer(array $middleware): array
+    {
+        array_unshift($middleware, RenderApiExceptionsAsJson::class);
 
         return $middleware;
     }
@@ -223,7 +239,7 @@ class WaterlineServiceProvider extends ServiceProvider
     public function register()
     {
         $this->mergeConfigFrom(__DIR__.'/../config/waterline.php', 'waterline');
-        $this->hydrateRuntimeConfigurationFromEnvironment();
+        RuntimeConfiguration::hydrate();
 
         if (! defined('WATERLINE_PATH')) {
             define('WATERLINE_PATH', realpath(__DIR__.'/../'));
@@ -265,60 +281,4 @@ class WaterlineServiceProvider extends ServiceProvider
         });
     }
 
-    private function hydrateRuntimeConfigurationFromEnvironment(): void
-    {
-        $this->setStringConfigFromEnvironment('WATERLINE_DOMAIN', 'waterline.domain');
-        $this->setStringConfigFromEnvironment('WATERLINE_PATH', 'waterline.path');
-        $this->setStringConfigFromEnvironment('WATERLINE_ENGINE_SOURCE', 'waterline.engine_source');
-        $this->setStringConfigFromEnvironment('WATERLINE_NAMESPACE', 'waterline.namespace');
-        $this->setStringConfigFromEnvironment('WATERLINE_HEALTH_TASK_DISPATCH_MODE', 'waterline.health.task_dispatch_mode');
-        $this->setBooleanConfigFromEnvironment('WATERLINE_ALLOW_UNAUTHENTICATED', 'waterline.allow_unauthenticated');
-    }
-
-    private function setStringConfigFromEnvironment(string $environmentKey, string $configKey): void
-    {
-        $value = $this->environmentValue($environmentKey);
-
-        if ($value !== null) {
-            config()->set($configKey, $value);
-        }
-    }
-
-    private function setBooleanConfigFromEnvironment(string $environmentKey, string $configKey): void
-    {
-        $value = $this->environmentValue($environmentKey);
-
-        if ($value === null) {
-            return;
-        }
-
-        $parsed = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-
-        if ($parsed !== null) {
-            config()->set($configKey, $parsed);
-        }
-    }
-
-    private function environmentValue(string $environmentKey): ?string
-    {
-        $values = [
-            $_SERVER[$environmentKey] ?? null,
-            $_ENV[$environmentKey] ?? null,
-            getenv($environmentKey),
-        ];
-
-        foreach ($values as $value) {
-            if (! is_scalar($value)) {
-                continue;
-            }
-
-            $value = trim((string) $value);
-
-            if ($value !== '') {
-                return $value;
-            }
-        }
-
-        return null;
-    }
 }

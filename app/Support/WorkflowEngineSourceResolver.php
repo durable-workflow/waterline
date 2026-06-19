@@ -62,6 +62,8 @@ final class WorkflowEngineSourceResolver
      */
     public static function status(string|null $configured = null): array
     {
+        RuntimeConfiguration::hydrate();
+
         $configured ??= config('waterline.engine_source');
         $normalized = self::normalize($configured);
 
