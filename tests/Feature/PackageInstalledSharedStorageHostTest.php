@@ -163,8 +163,6 @@ class PackageInstalledSharedStorageHostTest extends TestCase
 
         config()->set('waterline.namespace', 'worker-versioning-conformance');
         config()->set('waterline.worker_stale_after_seconds', 120);
-        config()->set('database.default', 'server_storage');
-        config()->set('workflows.storage.connection', null);
         Schema::connection('server_storage')->dropIfExists('workflow_run_timers');
 
         $this->assertFalse(
@@ -182,13 +180,22 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             'no_compatible' => $noCompatibleRun,
         ] = $this->seedWorkerVersioningTopology();
 
+        config()->set('workflows.storage.connection', null);
+        $this->assertSame('host', config('database.default'));
+        $this->assertNull(config('workflows.storage.connection'));
+
         $healthPayload = $this->getJson('/waterline/api/v2/health')
             ->assertOk()
             ->assertJsonPath('namespace', 'worker-versioning-conformance')
             ->assertJsonPath('engine_source.uses_v2', true)
             ->assertJsonPath('engine_source.degraded_operator_surface', true)
+            ->assertJsonPath('engine_source.storage_connection.repair.applied', true)
+            ->assertJsonPath('engine_source.storage_connection.repair.selected_connection', 'server_storage')
+            ->assertJsonPath('engine_source.storage_connection.database_default', 'host')
+            ->assertJsonPath('engine_source.storage_connection.effective_connection', 'server_storage')
             ->assertJsonPath('queue_visibility.available', true)
             ->json();
+        $this->assertSame('server_storage', config('workflows.storage.connection'));
 
         $this->assertContains(
             'build-v1',

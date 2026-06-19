@@ -90,6 +90,9 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
 
         $this->assertSame(self::NAMESPACE, $health['namespace'] ?? null);
         $this->assertSame(true, $health['engine_source']['uses_v2'] ?? null);
+        $this->assertSame('mysql', $health['engine_source']['storage_connection']['database_default'] ?? null);
+        $this->assertSame('mysql', $health['engine_source']['storage_connection']['effective_connection'] ?? null);
+        $this->assertSame(true, $health['engine_source']['storage_connection']['core_tables_available'] ?? null);
         $this->assertSame(true, $health['queue_visibility']['available'] ?? null);
 
         $queue = $this->firstWhere($health['queue_visibility']['task_queues'] ?? [], 'task_queue', self::TASK_QUEUE);

@@ -136,6 +136,10 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
         $this->assertSame(200, $healthResponse->getStatusCode(), json_encode($health));
         $this->assertSame('worker-versioning-conformance', $health['namespace'] ?? null);
         $this->assertSame(true, $health['engine_source']['uses_v2'] ?? null);
+        $this->assertSame('host', $health['engine_source']['storage_connection']['database_default'] ?? null);
+        $this->assertSame('server_storage', $health['engine_source']['storage_connection']['configured'] ?? null);
+        $this->assertSame('server_storage', $health['engine_source']['storage_connection']['effective_connection'] ?? null);
+        $this->assertSame(true, $health['engine_source']['storage_connection']['core_tables_available'] ?? null);
         $this->assertSame(true, $health['queue_visibility']['available'] ?? null);
 
         $queue = collect($health['queue_visibility']['task_queues'] ?? [])

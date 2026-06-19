@@ -10,6 +10,7 @@ use Throwable;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
+use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\Support\ReadinessContract;
 use Workflow\V2\Support\WaterlineEngineSource;
 
@@ -35,7 +36,6 @@ final class WorkflowEngineSourceResolver
         'run_timer_entry_model',
         'run_timeline_entry_model',
         'run_wait_model',
-        'task_model',
         'timer_model',
     ];
 
@@ -51,10 +51,16 @@ final class WorkflowEngineSourceResolver
         'workflow_run_timeline_entries',
         'workflow_run_waits',
         'workflow_signal_records',
-        'workflow_tasks',
         'workflow_run_timers',
         'workflow_timers',
         'workflow_updates',
+    ];
+
+    private const CORE_V2_MODELS = [
+        'instance_model' => WorkflowInstance::class,
+        'run_model' => WorkflowRun::class,
+        'history_event_model' => WorkflowHistoryEvent::class,
+        'task_model' => WorkflowTask::class,
     ];
 
     /**
@@ -68,8 +74,17 @@ final class WorkflowEngineSourceResolver
         $normalized = self::normalize($configured);
 
         if (class_exists(WaterlineEngineSource::class)) {
+            $status = WaterlineEngineSource::status(is_string($configured) ? $configured : null);
+            $repair = self::repairWorkflowStorageConnection($status, $normalized);
+
+            if (($repair['applied'] ?? false) === true) {
+                $status = WaterlineEngineSource::status(is_string($configured) ? $configured : null);
+            }
+
+            $status['storage_connection'] = self::storageConnectionDiagnostics($repair);
+
             return self::allowDegradedV2OperatorSurface(
-                WaterlineEngineSource::status(is_string($configured) ? $configured : null),
+                $status,
                 $normalized,
             );
         }
@@ -196,7 +211,8 @@ final class WorkflowEngineSourceResolver
     {
         return self::configuredModelTableExists('workflows.v2.instance_model', WorkflowInstance::class)
             && self::configuredModelTableExists('workflows.v2.run_model', WorkflowRun::class)
-            && self::configuredModelTableExists('workflows.v2.history_event_model', WorkflowHistoryEvent::class);
+            && self::configuredModelTableExists('workflows.v2.history_event_model', WorkflowHistoryEvent::class)
+            && self::configuredModelTableExists('workflows.v2.task_model', WorkflowTask::class);
     }
 
     /**
@@ -229,5 +245,222 @@ final class WorkflowEngineSourceResolver
         } catch (Throwable) {
             return false;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $status
+     * @return array<string, mixed>
+     */
+    private static function repairWorkflowStorageConnection(array $status, string $configured): array
+    {
+        if (($status['uses_v2'] ?? false) === true
+            || ! in_array($configured, [self::ENGINE_AUTO, self::ENGINE_V2], true)) {
+            return [
+                'applied' => false,
+                'reason' => 'not_needed',
+            ];
+        }
+
+        $current = self::currentStorageInspection();
+        if (($current['core_tables_available'] ?? false) === true) {
+            return [
+                'applied' => false,
+                'reason' => 'current_connection_has_core_tables',
+            ];
+        }
+
+        $matches = [];
+        foreach (self::connectionNamesToInspect() as $connection) {
+            $inspection = self::inspectConnectionForCoreTables($connection);
+            if (($inspection['core_tables_available'] ?? false) === true) {
+                $matches[] = $connection;
+            }
+        }
+
+        $matches = array_values(array_unique($matches));
+        if (count($matches) !== 1) {
+            return [
+                'applied' => false,
+                'reason' => count($matches) === 0
+                    ? 'no_configured_connection_has_core_tables'
+                    : 'multiple_configured_connections_have_core_tables',
+                'candidate_connections' => $matches,
+            ];
+        }
+
+        config()->set('workflows.storage.connection', $matches[0]);
+
+        return [
+            'applied' => true,
+            'reason' => 'selected_only_connection_with_core_tables',
+            'selected_connection' => $matches[0],
+            'previous_connection' => self::stringOrNull($current['effective_connection'] ?? null),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $repair
+     * @return array<string, mixed>
+     */
+    private static function storageConnectionDiagnostics(array $repair = []): array
+    {
+        $connections = [];
+        foreach (self::connectionNamesToInspect() as $connection) {
+            $connections[] = self::inspectConnectionForCoreTables($connection);
+        }
+
+        return [
+            'configured' => self::stringOrNull(config('workflows.storage.connection')),
+            'database_default' => self::stringOrNull(config('database.default')),
+            'effective_connection' => self::effectiveStorageConnectionName(),
+            'core_tables_available' => self::currentStorageInspection()['core_tables_available'] ?? false,
+            'connections' => $connections,
+            'repair' => [
+                'applied' => ($repair['applied'] ?? false) === true,
+                'reason' => self::stringOrNull($repair['reason'] ?? null),
+                'selected_connection' => self::stringOrNull($repair['selected_connection'] ?? null),
+                'previous_connection' => self::stringOrNull($repair['previous_connection'] ?? null),
+                'candidate_connections' => is_array($repair['candidate_connections'] ?? null)
+                    ? array_values(array_filter($repair['candidate_connections'], 'is_string'))
+                    : [],
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function currentStorageInspection(): array
+    {
+        return self::inspectConnectionForCoreTables(self::effectiveStorageConnectionName());
+    }
+
+    private static function effectiveStorageConnectionName(): ?string
+    {
+        $configured = self::stringOrNull(config('workflows.storage.connection'));
+
+        return $configured ?? self::stringOrNull(config('database.default'));
+    }
+
+    /**
+     * @return list<string|null>
+     */
+    private static function connectionNamesToInspect(): array
+    {
+        $connections = [];
+
+        $effective = self::effectiveStorageConnectionName();
+        if ($effective !== null) {
+            $connections[] = $effective;
+        }
+
+        $default = self::stringOrNull(config('database.default'));
+        if ($default !== null) {
+            $connections[] = $default;
+        }
+
+        $configuredConnections = config('database.connections');
+        if (is_array($configuredConnections)) {
+            foreach (array_keys($configuredConnections) as $connection) {
+                if (is_string($connection) && trim($connection) !== '') {
+                    $connections[] = trim($connection);
+                }
+            }
+        }
+
+        return array_values(array_unique($connections));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function inspectConnectionForCoreTables(?string $connection): array
+    {
+        $tables = [];
+        $missing = [];
+        $allAvailable = true;
+
+        foreach (self::CORE_V2_MODELS as $configKey => $fallback) {
+            $table = self::tableForConfiguredModel('workflows.v2.'.$configKey, $fallback);
+            $available = false;
+            $reason = 'missing_table';
+            $message = null;
+
+            if ($table === null) {
+                $reason = 'invalid_model';
+            } else {
+                try {
+                    $available = DB::connection($connection)
+                        ->getSchemaBuilder()
+                        ->hasTable($table);
+                    $reason = $available ? 'available' : 'missing_table';
+                } catch (Throwable $exception) {
+                    $reason = 'schema_inspection_failed';
+                    $message = $exception->getMessage();
+                }
+            }
+
+            $tables[] = [
+                'config_key' => $configKey,
+                'table' => $table,
+                'available' => $available,
+                'reason' => $reason,
+                'message' => $message,
+            ];
+
+            if (! $available) {
+                $allAvailable = false;
+
+                if (is_string($table)) {
+                    $missing[] = $table;
+                }
+            }
+        }
+
+        return [
+            'name' => $connection,
+            'driver' => self::connectionDriver($connection),
+            'core_tables_available' => $allAvailable && $tables !== [],
+            'missing_tables' => array_values(array_unique($missing)),
+            'tables' => $tables,
+        ];
+    }
+
+    /**
+     * @param class-string<Model> $fallback
+     */
+    private static function tableForConfiguredModel(string $configKey, string $fallback): ?string
+    {
+        $modelClass = config($configKey, $fallback);
+
+        if (! is_string($modelClass)
+            || ! class_exists($modelClass)
+            || ! is_subclass_of($modelClass, Model::class)) {
+            return null;
+        }
+
+        try {
+            /** @var Model $model */
+            $model = new $modelClass();
+            $table = $model->getTable();
+
+            return is_string($table) && trim($table) !== '' ? trim($table) : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private static function connectionDriver(?string $connection): ?string
+    {
+        try {
+            return DB::connection($connection)->getDriverName();
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private static function stringOrNull(mixed $value): ?string
+    {
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
     }
 }
