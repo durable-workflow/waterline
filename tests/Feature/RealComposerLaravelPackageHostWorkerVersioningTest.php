@@ -16,6 +16,8 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
 
     private ?string $temporaryDirectory = null;
 
+    private ?string $hostDatabase = null;
+
     private ?string $database = null;
 
     private ?string $databaseUsernameOverride = null;
@@ -54,7 +56,9 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
             .'/waterline-real-laravel-host-'.getmypid().'-'.bin2hex(random_bytes(4));
         mkdir($this->temporaryDirectory, 0777, true);
 
-        $this->database = 'waterline_real_host_'.getmypid().'_'.bin2hex(random_bytes(4));
+        $this->hostDatabase = 'waterline_real_host_app_'.getmypid().'_'.bin2hex(random_bytes(4));
+        $this->database = 'waterline_real_host_workflow_'.getmypid().'_'.bin2hex(random_bytes(4));
+        $this->createDatabase($this->hostDatabase);
         $this->createDatabase($this->database);
     }
 
@@ -62,8 +66,10 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
     {
         $this->stopServer();
 
-        if ($this->database !== null) {
-            $this->dropDatabase($this->database);
+        foreach ([$this->hostDatabase, $this->database] as $database) {
+            if ($database !== null) {
+                $this->dropDatabase($database);
+            }
         }
 
         $this->removeDirectory($this->temporaryDirectory);
@@ -80,6 +86,14 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
 
         $environment = $this->hostEnvironment();
         $this->seedWorkerVersioningTopology();
+        $this->assertFalse(
+            $this->tableExists($this->databaseConnection((string) $this->hostDatabase), 'workflow_runs'),
+            'The real Laravel host application database must not contain workflow runtime tables.',
+        );
+        $this->assertTrue(
+            $this->tableExists($this->databaseConnection((string) $this->database), 'workflow_runs'),
+            'The published server workflow database must contain workflow runtime tables.',
+        );
 
         $port = $this->freePort();
         $baseUrl = 'http://127.0.0.1:'.$port;
@@ -90,9 +104,27 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
 
         $this->assertSame(self::NAMESPACE, $health['namespace'] ?? null);
         $this->assertSame(true, $health['engine_source']['uses_v2'] ?? null);
-        $this->assertSame('mysql', $health['engine_source']['storage_connection']['database_default'] ?? null);
-        $this->assertSame('mysql', $health['engine_source']['storage_connection']['effective_connection'] ?? null);
+        $this->assertSame('mysql', $health['engine_source']['storage_connection']['default_connection'] ?? null);
+        $this->assertSame('waterline_workflow', $health['engine_source']['storage_connection']['configured'] ?? null);
+        $this->assertSame('waterline_workflow', $health['engine_source']['storage_connection']['effective_connection'] ?? null);
         $this->assertSame(true, $health['engine_source']['storage_connection']['core_tables_available'] ?? null);
+        $this->assertSame('available', $health['engine_source']['storage_connection']['core_table_status'] ?? null);
+        $this->assertStorageConnectionDiagnosticsRedacted(
+            $health['engine_source']['storage_connection'] ?? [],
+            [
+                $this->hostDatabase,
+                $this->database,
+                $this->databaseHost(),
+                $this->databasePort(),
+            ],
+        );
+        $workflowConnection = $this->firstWhere(
+            $health['engine_source']['storage_connection']['connections'] ?? [],
+            'name',
+            'waterline_workflow',
+        );
+        $this->assertIsArray($workflowConnection);
+        $this->assertSame('available', $workflowConnection['core_table_status'] ?? null);
         $this->assertSame(true, $health['queue_visibility']['available'] ?? null);
 
         $queue = $this->firstWhere($health['queue_visibility']['task_queues'] ?? [], 'task_queue', self::TASK_QUEUE);
@@ -284,9 +316,14 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
             'DB_CONNECTION' => 'mysql',
             'DB_HOST' => $this->databaseHost(),
             'DB_PORT' => $this->databasePort(),
-            'DB_DATABASE' => (string) $this->database,
+            'DB_DATABASE' => (string) $this->hostDatabase,
             'DB_USERNAME' => $this->databaseUsername(),
             'DB_PASSWORD' => $this->databasePassword(),
+            'DW_WV_WATERLINE_DB_HOST' => $this->databaseHost(),
+            'DW_WV_WATERLINE_DB_PORT' => $this->databasePort(),
+            'DW_WV_WATERLINE_DB_DATABASE' => (string) $this->database,
+            'DW_WV_WATERLINE_DB_USERNAME' => $this->databaseUsername(),
+            'DW_WV_WATERLINE_DB_PASSWORD' => $this->databasePassword(),
             'QUEUE_CONNECTION' => 'sync',
             'CACHE_DRIVER' => 'array',
             'CACHE_STORE' => 'array',
@@ -1010,6 +1047,31 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
     }
 
     /**
+     * @param array<string, mixed> $storageConnection
+     * @param list<string|null> $sensitiveValues
+     */
+    private function assertStorageConnectionDiagnosticsRedacted(array $storageConnection, array $sensitiveValues): void
+    {
+        foreach ($storageConnection['connections'] ?? [] as $connection) {
+            $this->assertIsArray($connection);
+            $this->assertArrayNotHasKey('database', $connection);
+            $this->assertArrayNotHasKey('host', $connection);
+            $this->assertArrayNotHasKey('port', $connection);
+        }
+
+        $encoded = json_encode($storageConnection, JSON_UNESCAPED_SLASHES);
+        $this->assertIsString($encoded);
+
+        foreach ($sensitiveValues as $value) {
+            if (! is_string($value) || $value === '') {
+                continue;
+            }
+
+            $this->assertStringNotContainsString($value, $encoded);
+        }
+    }
+
+    /**
      * @param array<int, string> $command
      * @param array<string, string> $environment
      */
@@ -1180,6 +1242,16 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         ]);
+    }
+
+    private function tableExists(PDO $pdo, string $table): bool
+    {
+        $statement = $pdo->prepare(
+            'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = :table_name',
+        );
+        $statement->execute(['table_name' => $table]);
+
+        return (int) $statement->fetchColumn() > 0;
     }
 
     private function databaseHost(): string

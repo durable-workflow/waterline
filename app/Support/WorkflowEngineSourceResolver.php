@@ -308,12 +308,17 @@ final class WorkflowEngineSourceResolver
         foreach (self::connectionNamesToInspect() as $connection) {
             $connections[] = self::inspectConnectionForCoreTables($connection);
         }
+        $current = self::currentStorageInspection();
 
         return [
             'configured' => self::stringOrNull(config('workflows.storage.connection')),
-            'database_default' => self::stringOrNull(config('database.default')),
+            'default_connection' => self::stringOrNull(config('database.default')),
             'effective_connection' => self::effectiveStorageConnectionName(),
-            'core_tables_available' => self::currentStorageInspection()['core_tables_available'] ?? false,
+            'core_tables_available' => $current['core_tables_available'] ?? false,
+            'core_table_status' => self::coreTableStatus($current),
+            'missing_core_tables' => is_array($current['missing_tables'] ?? null)
+                ? $current['missing_tables']
+                : [],
             'connections' => $connections,
             'repair' => [
                 'applied' => ($repair['applied'] ?? false) === true,
@@ -378,6 +383,8 @@ final class WorkflowEngineSourceResolver
     {
         $tables = [];
         $missing = [];
+        $availableCount = 0;
+        $inspectionFailureCount = 0;
         $allAvailable = true;
 
         foreach (self::CORE_V2_MODELS as $configKey => $fallback) {
@@ -394,9 +401,13 @@ final class WorkflowEngineSourceResolver
                         ->getSchemaBuilder()
                         ->hasTable($table);
                     $reason = $available ? 'available' : 'missing_table';
-                } catch (Throwable $exception) {
+                    if ($available) {
+                        $availableCount++;
+                    }
+                } catch (Throwable) {
                     $reason = 'schema_inspection_failed';
-                    $message = $exception->getMessage();
+                    $message = 'Schema inspection failed while checking workflow storage table availability.';
+                    $inspectionFailureCount++;
                 }
             }
 
@@ -421,6 +432,11 @@ final class WorkflowEngineSourceResolver
             'name' => $connection,
             'driver' => self::connectionDriver($connection),
             'core_tables_available' => $allAvailable && $tables !== [],
+            'core_table_status' => self::coreTableStatusFromCounts(
+                count($tables),
+                $availableCount,
+                $inspectionFailureCount,
+            ),
             'missing_tables' => array_values(array_unique($missing)),
             'tables' => $tables,
         ];
@@ -457,6 +473,56 @@ final class WorkflowEngineSourceResolver
         } catch (Throwable) {
             return null;
         }
+    }
+
+    /**
+     * @param array<string, mixed> $inspection
+     */
+    private static function coreTableStatus(array $inspection): string
+    {
+        if (($inspection['core_tables_available'] ?? false) === true) {
+            return 'available';
+        }
+
+        $tables = is_array($inspection['tables'] ?? null) ? $inspection['tables'] : [];
+        $availableCount = 0;
+        $inspectionFailureCount = 0;
+        foreach ($tables as $table) {
+            if (! is_array($table)) {
+                continue;
+            }
+
+            if (($table['available'] ?? false) === true) {
+                $availableCount++;
+            }
+
+            if (($table['reason'] ?? null) === 'schema_inspection_failed') {
+                $inspectionFailureCount++;
+            }
+        }
+
+        return self::coreTableStatusFromCounts(count($tables), $availableCount, $inspectionFailureCount);
+    }
+
+    private static function coreTableStatusFromCounts(int $tableCount, int $availableCount, int $inspectionFailureCount): string
+    {
+        if ($tableCount === 0) {
+            return 'invalid_core_models';
+        }
+
+        if ($inspectionFailureCount === $tableCount) {
+            return 'connection_unavailable';
+        }
+
+        if ($availableCount === $tableCount) {
+            return 'available';
+        }
+
+        if ($availableCount === 0) {
+            return 'no_v2_core_tables';
+        }
+
+        return 'partial_v2_core_tables';
     }
 
     private static function stringOrNull(mixed $value): ?string

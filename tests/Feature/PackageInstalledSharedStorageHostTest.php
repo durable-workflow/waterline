@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Waterline\Models\WorkerBuildIdRollout;
 use Waterline\Models\WorkerRegistration;
+use Waterline\Support\WorkflowEngineSourceResolver;
 use Waterline\Tests\TestCase;
 use Workflow\V2\Enums\TaskStatus;
 use Workflow\V2\Enums\TaskType;
@@ -191,11 +192,24 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             ->assertJsonPath('engine_source.degraded_operator_surface', true)
             ->assertJsonPath('engine_source.storage_connection.repair.applied', true)
             ->assertJsonPath('engine_source.storage_connection.repair.selected_connection', 'server_storage')
-            ->assertJsonPath('engine_source.storage_connection.database_default', 'host')
+            ->assertJsonPath('engine_source.storage_connection.default_connection', 'host')
             ->assertJsonPath('engine_source.storage_connection.effective_connection', 'server_storage')
+            ->assertJsonPath('engine_source.storage_connection.core_table_status', 'available')
             ->assertJsonPath('queue_visibility.available', true)
             ->json();
         $this->assertSame('server_storage', config('workflows.storage.connection'));
+        $this->assertStorageConnectionDiagnosticsRedacted(
+            $healthPayload['engine_source']['storage_connection'] ?? [],
+            [$this->hostDatabase, $this->serverDatabase],
+        );
+        $hostConnection = collect($healthPayload['engine_source']['storage_connection']['connections'] ?? [])
+            ->firstWhere('name', 'host');
+        $this->assertIsArray($hostConnection);
+        $this->assertSame('no_v2_core_tables', $hostConnection['core_table_status'] ?? null);
+        $serverConnection = collect($healthPayload['engine_source']['storage_connection']['connections'] ?? [])
+            ->firstWhere('name', 'server_storage');
+        $this->assertIsArray($serverConnection);
+        $this->assertSame('available', $serverConnection['core_table_status'] ?? null);
 
         $this->assertContains(
             'build-v1',
@@ -265,6 +279,41 @@ class PackageInstalledSharedStorageHostTest extends TestCase
         $this->assertNotNull(
             collect($noCompatibleDetail['run_diagnostics'] ?? [])->firstWhere('code', 'no_compatible_worker_for_task'),
             'Selected run detail must expose the no-compatible-worker operator diagnostic.',
+        );
+    }
+
+    public function testStorageConnectionDiagnosticsDistinguishUnavailableConnectionWithoutLeakingTopology(): void
+    {
+        $unavailableDatabase = $this->temporaryDirectory.'/missing/workflow.sqlite';
+
+        config()->set('database.connections.server_storage', null);
+        config()->set('database.connections.unavailable_storage', $this->sqliteConnection($unavailableDatabase));
+        config()->set('workflows.storage.connection', 'unavailable_storage');
+        DB::purge('server_storage');
+        DB::purge('unavailable_storage');
+
+        $status = WorkflowEngineSourceResolver::status('v2');
+        $storageConnection = $status['storage_connection'] ?? [];
+        $this->assertIsArray($storageConnection);
+        $this->assertSame('connection_unavailable', $storageConnection['core_table_status'] ?? null);
+        $this->assertSame(false, $storageConnection['core_tables_available'] ?? null);
+
+        $unavailableConnection = collect($storageConnection['connections'] ?? [])
+            ->firstWhere('name', 'unavailable_storage');
+        $this->assertIsArray($unavailableConnection);
+        $this->assertSame('connection_unavailable', $unavailableConnection['core_table_status'] ?? null);
+
+        $schemaFailures = collect($unavailableConnection['tables'] ?? [])
+            ->filter(static fn (array $table): bool => ($table['reason'] ?? null) === 'schema_inspection_failed');
+        $this->assertNotEmpty($schemaFailures);
+        $this->assertSame(
+            'Schema inspection failed while checking workflow storage table availability.',
+            $schemaFailures->first()['message'] ?? null,
+        );
+
+        $this->assertStorageConnectionDiagnosticsRedacted(
+            $storageConnection,
+            [$this->hostDatabase, $this->serverDatabase, $unavailableDatabase],
         );
     }
 
@@ -583,6 +632,31 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             ->json();
 
         return $payload;
+    }
+
+    /**
+     * @param array<string, mixed> $storageConnection
+     * @param list<string|null> $sensitiveValues
+     */
+    private function assertStorageConnectionDiagnosticsRedacted(array $storageConnection, array $sensitiveValues): void
+    {
+        foreach ($storageConnection['connections'] ?? [] as $connection) {
+            $this->assertIsArray($connection);
+            $this->assertArrayNotHasKey('database', $connection);
+            $this->assertArrayNotHasKey('host', $connection);
+            $this->assertArrayNotHasKey('port', $connection);
+        }
+
+        $encoded = json_encode($storageConnection, JSON_UNESCAPED_SLASHES);
+        $this->assertIsString($encoded);
+
+        foreach ($sensitiveValues as $value) {
+            if (! is_string($value) || $value === '') {
+                continue;
+            }
+
+            $this->assertStringNotContainsString($value, $encoded);
+        }
     }
 
     private function createServerWorkerRegistrationsTable(): void

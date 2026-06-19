@@ -188,6 +188,38 @@ class WaterlineServiceProviderTest extends TestCase
         });
     }
 
+    public function testRuntimeConfigurationBuildsWorkflowStorageConnectionFromWaterlineDatabaseEnvironment(): void
+    {
+        $this->withProcessEnvironmentOnly([
+            'DW_WV_WATERLINE_DB_HOST' => 'workflow-mysql',
+            'DW_WV_WATERLINE_DB_PORT' => '3307',
+            'DW_WV_WATERLINE_DB_DATABASE' => 'published_worker_versioning',
+            'DW_WV_WATERLINE_DB_USERNAME' => 'workflow_user',
+            'DW_WV_WATERLINE_DB_PASSWORD' => '',
+        ], function (): void {
+            config()->set('database.default', 'sqlite');
+            config()->set('database.connections.mysql.host', 'stale-host');
+            config()->set('database.connections.mysql.port', '3306');
+            config()->set('database.connections.mysql.database', 'stale_database');
+            config()->set('database.connections.mysql.username', 'stale_user');
+            config()->set('database.connections.mysql.password', 'stale_password');
+            config()->set('workflows.storage.connection', null);
+
+            RuntimeConfiguration::hydrate();
+
+            $this->assertSame('sqlite', config('database.default'));
+            $this->assertSame('waterline_workflow', config('workflows.storage.connection'));
+            $this->assertSame('mysql', config('database.connections.waterline_workflow.driver'));
+            $this->assertSame('workflow-mysql', config('database.connections.waterline_workflow.host'));
+            $this->assertSame('3307', config('database.connections.waterline_workflow.port'));
+            $this->assertSame('published_worker_versioning', config('database.connections.waterline_workflow.database'));
+            $this->assertSame('workflow_user', config('database.connections.waterline_workflow.username'));
+            $this->assertSame('', config('database.connections.waterline_workflow.password'));
+
+            $this->assertSame('workflow-mysql', $_ENV['DW_WV_WATERLINE_DB_HOST'] ?? null);
+        });
+    }
+
     public function testAutoEngineSourceUsesV2RepositoryWhenWorkflowOperatorSurfaceIsAvailable(): void
     {
         config()->set('waterline.engine_source', 'auto');

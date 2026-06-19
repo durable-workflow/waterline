@@ -78,12 +78,14 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
             'APP_DEBUG' => 'false',
             'APP_KEY' => 'base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI=',
             'DB_CONNECTION' => 'host',
-            'DW_STORAGE_CONNECTION' => 'server_storage',
+            'WATERLINE_WORKFLOW_STORAGE_CONNECTION' => 'server_storage',
+            'WATERLINE_WORKFLOW_DB_CONNECTION' => 'sqlite',
+            'WATERLINE_WORKFLOW_DB_DATABASE' => $this->serverDatabase,
             'QUEUE_CONNECTION' => 'sync',
             'CACHE_STORE' => 'array',
             'SESSION_DRIVER' => 'array',
             'WATERLINE_ALLOW_UNAUTHENTICATED' => 'true',
-            'WATERLINE_ENGINE_SOURCE' => 'v2',
+            'WATERLINE_ENGINE_SOURCE' => 'auto',
             'WATERLINE_HEALTH_TASK_DISPATCH_MODE' => 'poll',
             'WATERLINE_NAMESPACE' => 'worker-versioning-conformance',
             'DW_V2_TASK_DISPATCH_MODE' => 'poll',
@@ -135,11 +137,22 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
 
         $this->assertSame(200, $healthResponse->getStatusCode(), json_encode($health));
         $this->assertSame('worker-versioning-conformance', $health['namespace'] ?? null);
+        $this->assertSame('auto', $health['engine_source']['configured'] ?? null);
         $this->assertSame(true, $health['engine_source']['uses_v2'] ?? null);
-        $this->assertSame('host', $health['engine_source']['storage_connection']['database_default'] ?? null);
+        $this->assertSame('host', $health['engine_source']['storage_connection']['default_connection'] ?? null);
         $this->assertSame('server_storage', $health['engine_source']['storage_connection']['configured'] ?? null);
         $this->assertSame('server_storage', $health['engine_source']['storage_connection']['effective_connection'] ?? null);
         $this->assertSame(true, $health['engine_source']['storage_connection']['core_tables_available'] ?? null);
+        $this->assertSame('available', $health['engine_source']['storage_connection']['core_table_status'] ?? null);
+        $this->assertSame([], $health['engine_source']['storage_connection']['missing_core_tables'] ?? null);
+        $this->assertStorageConnectionDiagnosticsRedacted(
+            $health['engine_source']['storage_connection'] ?? [],
+            [$this->hostDatabase, $this->serverDatabase],
+        );
+        $serverConnection = collect($health['engine_source']['storage_connection']['connections'] ?? [])
+            ->firstWhere('name', 'server_storage');
+        $this->assertIsArray($serverConnection);
+        $this->assertSame('available', $serverConnection['core_table_status'] ?? null);
         $this->assertSame(true, $health['queue_visibility']['available'] ?? null);
 
         $queue = collect($health['queue_visibility']['task_queues'] ?? [])
@@ -212,6 +225,31 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
         $this->assertArrayNotHasKey('error', $savedView);
     }
 
+    /**
+     * @param array<string, mixed> $storageConnection
+     * @param list<string|null> $sensitiveValues
+     */
+    private function assertStorageConnectionDiagnosticsRedacted(array $storageConnection, array $sensitiveValues): void
+    {
+        foreach ($storageConnection['connections'] ?? [] as $connection) {
+            $this->assertIsArray($connection);
+            $this->assertArrayNotHasKey('database', $connection);
+            $this->assertArrayNotHasKey('host', $connection);
+            $this->assertArrayNotHasKey('port', $connection);
+        }
+
+        $encoded = json_encode($storageConnection, JSON_UNESCAPED_SLASHES);
+        $this->assertIsString($encoded);
+
+        foreach ($sensitiveValues as $value) {
+            if (! is_string($value) || $value === '') {
+                continue;
+            }
+
+            $this->assertStringNotContainsString($value, $encoded);
+        }
+    }
+
     private function freshApplication(): Application
     {
         $app = new Application($this->temporaryDirectory);
@@ -275,7 +313,6 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
                 'default' => 'host',
                 'connections' => [
                     'host' => $this->sqliteConnection($this->hostDatabase),
-                    'server_storage' => $this->sqliteConnection($this->serverDatabase),
                 ],
                 'migrations' => 'migrations',
             ],

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Waterline\Support;
 
+use Illuminate\Support\Facades\DB;
+use Throwable;
+
 final class RuntimeConfiguration
 {
     private const SERVE_ENVIRONMENT_KEYS = [
@@ -21,8 +24,41 @@ final class RuntimeConfiguration
         'DB_PORT',
         'DB_SOCKET',
         'DB_USERNAME',
+        'DW_WATERLINE_DB_CONNECTION',
+        'DW_WATERLINE_DB_DATABASE',
+        'DW_WATERLINE_DB_DRIVER',
+        'DW_WATERLINE_DB_HOST',
+        'DW_WATERLINE_DB_PASSWORD',
+        'DW_WATERLINE_DB_PORT',
+        'DW_WATERLINE_DB_SOCKET',
+        'DW_WATERLINE_DB_USERNAME',
+        'DW_WV_WATERLINE_DB_CONNECTION',
+        'DW_WV_WATERLINE_DB_DATABASE',
+        'DW_WV_WATERLINE_DB_DRIVER',
+        'DW_WV_WATERLINE_DB_HOST',
+        'DW_WV_WATERLINE_DB_PASSWORD',
+        'DW_WV_WATERLINE_DB_PORT',
+        'DW_WV_WATERLINE_DB_SOCKET',
+        'DW_WV_WATERLINE_DB_USERNAME',
         'DW_STORAGE_CONNECTION',
         'DW_V2_TASK_DISPATCH_MODE',
+        'WATERLINE_WORKFLOW_DB_CONNECTION',
+        'WATERLINE_WORKFLOW_DB_DATABASE',
+        'WATERLINE_WORKFLOW_DB_DRIVER',
+        'WATERLINE_WORKFLOW_DB_HOST',
+        'WATERLINE_WORKFLOW_DB_PASSWORD',
+        'WATERLINE_WORKFLOW_DB_PORT',
+        'WATERLINE_WORKFLOW_DB_SOCKET',
+        'WATERLINE_WORKFLOW_DB_USERNAME',
+        'WATERLINE_WORKFLOW_STORAGE_CONNECTION',
+        'WORKFLOW_DB_CONNECTION',
+        'WORKFLOW_DB_DATABASE',
+        'WORKFLOW_DB_DRIVER',
+        'WORKFLOW_DB_HOST',
+        'WORKFLOW_DB_PASSWORD',
+        'WORKFLOW_DB_PORT',
+        'WORKFLOW_DB_SOCKET',
+        'WORKFLOW_DB_USERNAME',
         'WORKFLOW_STORAGE_CONNECTION',
         'WORKFLOW_V2_TASK_DISPATCH_MODE',
         'QUEUE_CONNECTION',
@@ -57,9 +93,10 @@ final class RuntimeConfiguration
     private static function hydrateWorkflowRuntimeConfig(): void
     {
         self::setStringConfigFromEnvironmentAny(
-            ['DW_STORAGE_CONNECTION', 'WORKFLOW_STORAGE_CONNECTION'],
+            ['DW_STORAGE_CONNECTION', 'WORKFLOW_STORAGE_CONNECTION', 'WATERLINE_WORKFLOW_STORAGE_CONNECTION'],
             'workflows.storage.connection',
         );
+        self::hydrateWorkflowStorageDatabaseConnection();
         self::setStringConfigFromEnvironmentAny(
             ['DW_V2_TASK_DISPATCH_MODE', 'WORKFLOW_V2_TASK_DISPATCH_MODE'],
             'workflows.v2.task_dispatch_mode',
@@ -92,6 +129,7 @@ final class RuntimeConfiguration
 
     private static function hydrateDatabaseConnectionConfig(string $connection): void
     {
+        $before = config('database.connections.'.$connection);
         $prefix = 'database.connections.'.$connection.'.';
 
         self::setStringConfigFromEnvironment('DB_HOST', $prefix.'host');
@@ -100,6 +138,187 @@ final class RuntimeConfiguration
         self::setStringConfigFromEnvironment('DB_USERNAME', $prefix.'username');
         self::setStringConfigFromEnvironment('DB_SOCKET', $prefix.'unix_socket');
         self::setStringConfigFromEnvironment('DB_PASSWORD', $prefix.'password', allowEmpty: true);
+
+        if (config('database.connections.'.$connection) !== $before) {
+            self::purgeDatabaseConnection($connection);
+        }
+    }
+
+    private static function hydrateWorkflowStorageDatabaseConnection(): void
+    {
+        if (! self::hasWorkflowDatabaseEnvironment()) {
+            return;
+        }
+
+        $connection = self::environmentValueAny(['WATERLINE_WORKFLOW_STORAGE_CONNECTION', 'WORKFLOW_STORAGE_CONNECTION', 'DW_STORAGE_CONNECTION'])
+            ?? self::stringConfig('workflows.storage.connection')
+            ?? 'waterline_workflow';
+        $driver = self::environmentValueAny([
+            'WATERLINE_WORKFLOW_DB_DRIVER',
+            'WATERLINE_WORKFLOW_DB_CONNECTION',
+            'WORKFLOW_DB_DRIVER',
+            'WORKFLOW_DB_CONNECTION',
+            'DW_WV_WATERLINE_DB_DRIVER',
+            'DW_WV_WATERLINE_DB_CONNECTION',
+            'DW_WATERLINE_DB_DRIVER',
+            'DW_WATERLINE_DB_CONNECTION',
+        ]) ?? 'mysql';
+
+        $connection = trim($connection);
+        $driver = strtolower(trim($driver));
+        if ($connection === '' || $driver === '') {
+            return;
+        }
+
+        $before = config('database.connections.'.$connection);
+        config()->set('database.connections.'.$connection, self::workflowStorageConnectionConfig($driver));
+        config()->set('workflows.storage.connection', $connection);
+
+        if (config('database.connections.'.$connection) !== $before) {
+            self::purgeDatabaseConnection($connection);
+        }
+    }
+
+    private static function hasWorkflowDatabaseEnvironment(): bool
+    {
+        foreach ([
+            'WATERLINE_WORKFLOW_DB_CONNECTION',
+            'WATERLINE_WORKFLOW_DB_DATABASE',
+            'WATERLINE_WORKFLOW_DB_DRIVER',
+            'WATERLINE_WORKFLOW_DB_HOST',
+            'WATERLINE_WORKFLOW_DB_PASSWORD',
+            'WATERLINE_WORKFLOW_DB_PORT',
+            'WATERLINE_WORKFLOW_DB_SOCKET',
+            'WATERLINE_WORKFLOW_DB_USERNAME',
+            'WORKFLOW_DB_CONNECTION',
+            'WORKFLOW_DB_DATABASE',
+            'WORKFLOW_DB_DRIVER',
+            'WORKFLOW_DB_HOST',
+            'WORKFLOW_DB_PASSWORD',
+            'WORKFLOW_DB_PORT',
+            'WORKFLOW_DB_SOCKET',
+            'WORKFLOW_DB_USERNAME',
+            'DW_WV_WATERLINE_DB_CONNECTION',
+            'DW_WV_WATERLINE_DB_DATABASE',
+            'DW_WV_WATERLINE_DB_DRIVER',
+            'DW_WV_WATERLINE_DB_HOST',
+            'DW_WV_WATERLINE_DB_PASSWORD',
+            'DW_WV_WATERLINE_DB_PORT',
+            'DW_WV_WATERLINE_DB_SOCKET',
+            'DW_WV_WATERLINE_DB_USERNAME',
+            'DW_WATERLINE_DB_CONNECTION',
+            'DW_WATERLINE_DB_DATABASE',
+            'DW_WATERLINE_DB_DRIVER',
+            'DW_WATERLINE_DB_HOST',
+            'DW_WATERLINE_DB_PASSWORD',
+            'DW_WATERLINE_DB_PORT',
+            'DW_WATERLINE_DB_SOCKET',
+            'DW_WATERLINE_DB_USERNAME',
+        ] as $key) {
+            if (self::environmentValue($key, allowEmpty: $key === 'WATERLINE_WORKFLOW_DB_PASSWORD'
+                || $key === 'WORKFLOW_DB_PASSWORD'
+                || $key === 'DW_WV_WATERLINE_DB_PASSWORD'
+                || $key === 'DW_WATERLINE_DB_PASSWORD') !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private static function workflowStorageConnectionConfig(string $driver): array
+    {
+        $base = config('database.connections.'.$driver);
+        $base = is_array($base) ? $base : [];
+        $config = array_merge($base, ['driver' => $driver]);
+
+        if ($driver === 'sqlite') {
+            $config['database'] = self::environmentValueAny([
+                'WATERLINE_WORKFLOW_DB_DATABASE',
+                'WORKFLOW_DB_DATABASE',
+                'DW_WV_WATERLINE_DB_DATABASE',
+                'DW_WATERLINE_DB_DATABASE',
+            ]) ?? ($config['database'] ?? database_path('database.sqlite'));
+            $config['prefix'] = $config['prefix'] ?? '';
+            $config['foreign_key_constraints'] = $config['foreign_key_constraints'] ?? false;
+
+            return $config;
+        }
+
+        self::setConnectionConfigValue($config, 'host', [
+            'WATERLINE_WORKFLOW_DB_HOST',
+            'WORKFLOW_DB_HOST',
+            'DW_WV_WATERLINE_DB_HOST',
+            'DW_WATERLINE_DB_HOST',
+        ]);
+        self::setConnectionConfigValue($config, 'port', [
+            'WATERLINE_WORKFLOW_DB_PORT',
+            'WORKFLOW_DB_PORT',
+            'DW_WV_WATERLINE_DB_PORT',
+            'DW_WATERLINE_DB_PORT',
+        ]);
+        self::setConnectionConfigValue($config, 'database', [
+            'WATERLINE_WORKFLOW_DB_DATABASE',
+            'WORKFLOW_DB_DATABASE',
+            'DW_WV_WATERLINE_DB_DATABASE',
+            'DW_WATERLINE_DB_DATABASE',
+        ]);
+        self::setConnectionConfigValue($config, 'username', [
+            'WATERLINE_WORKFLOW_DB_USERNAME',
+            'WORKFLOW_DB_USERNAME',
+            'DW_WV_WATERLINE_DB_USERNAME',
+            'DW_WATERLINE_DB_USERNAME',
+        ]);
+        self::setConnectionConfigValue($config, 'unix_socket', [
+            'WATERLINE_WORKFLOW_DB_SOCKET',
+            'WORKFLOW_DB_SOCKET',
+            'DW_WV_WATERLINE_DB_SOCKET',
+            'DW_WATERLINE_DB_SOCKET',
+        ]);
+        self::setConnectionConfigValue($config, 'password', [
+            'WATERLINE_WORKFLOW_DB_PASSWORD',
+            'WORKFLOW_DB_PASSWORD',
+            'DW_WV_WATERLINE_DB_PASSWORD',
+            'DW_WATERLINE_DB_PASSWORD',
+        ], allowEmpty: true);
+
+        return $config;
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     * @param list<string> $environmentKeys
+     */
+    private static function setConnectionConfigValue(
+        array &$config,
+        string $key,
+        array $environmentKeys,
+        bool $allowEmpty = false,
+    ): void {
+        $value = self::environmentValueAny($environmentKeys, $allowEmpty);
+
+        if ($value !== null) {
+            $config[$key] = $value;
+        }
+    }
+
+    private static function stringConfig(string $key): ?string
+    {
+        $value = config($key);
+
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    private static function purgeDatabaseConnection(string $connection): void
+    {
+        try {
+            DB::purge($connection);
+        } catch (Throwable) {
+            // The database manager may not be bootstrapped during early package registration.
+        }
     }
 
     private static function promoteProcessEnvironmentForServe(): void
@@ -212,9 +431,9 @@ final class RuntimeConfiguration
     private static function environmentValueForKey(string $environmentKey, bool $allowEmpty): ?string
     {
         $values = [
+            getenv($environmentKey),
             $_SERVER[$environmentKey] ?? null,
             $_ENV[$environmentKey] ?? null,
-            getenv($environmentKey),
         ];
 
         foreach ($values as $value) {
