@@ -39,6 +39,7 @@ class V2StoredWorkflowResource extends JsonResource
         $detail = $this->withTimelineWindow($detail, $request);
         $detail = $this->withDurableCompensationActivities($detail);
         $detail = $this->withSelectedRunIdentity($detail);
+        $detail = $this->withSelectedRunStatus($detail);
         $detail = $this->withSelectedRunCompatibility($detail);
         $compensationVisibility = CompensationVisibility::fromActivities($detail['activities'] ?? []);
         $detail['current_compensation_marker'] = $compensationVisibility['current_marker'];
@@ -64,6 +65,29 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['workflow_run_id'] = $this->resource->id;
         $detail['run_id'] = $this->resource->id;
         $detail['selected_run_id'] = $this->resource->id;
+
+        return $detail;
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     * @return array<string, mixed>
+     */
+    private function withSelectedRunStatus(array $detail): array
+    {
+        $status = $this->statusValue($this->resource->status);
+
+        if (! is_string($detail['status'] ?? null) || trim((string) $detail['status']) === '') {
+            $detail['status'] = $status;
+        }
+
+        if (! is_string($detail['status_bucket'] ?? null) || trim((string) $detail['status_bucket']) === '') {
+            $detail['status_bucket'] = $this->statusBucket($status);
+        }
+
+        if (! is_bool($detail['is_terminal'] ?? null)) {
+            $detail['is_terminal'] = $this->isTerminalStatus($status);
+        }
 
         return $detail;
     }

@@ -334,9 +334,18 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     protected function statusFlows(string $status)
     {
-        return $this->orderedRunsQuery($status)
-            ->where('status', $status)
-            ->paginate(50);
+        try {
+            $query = $this->orderedRunsQuery($status)
+                ->where('status', $status);
+
+            if (! $this->shouldMergeDurableStatusRows()) {
+                return $query->paginate(50);
+            }
+
+            return $this->statusFlowsWithDurableRows($query, $status);
+        } catch (Throwable) {
+            return $this->statusFlowsFromDurableRuns($status);
+        }
     }
 
     protected function filteredRunsQuery(?string $bucket = null)
@@ -581,7 +590,52 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         );
     }
 
+    private function statusFlowsWithDurableRows($summaryQuery, string $status): LengthAwarePaginator
+    {
+        $perPage = 50;
+        $page = LengthAwarePaginator::resolveCurrentPage();
+        $offset = max(0, ($page - 1) * $perPage);
+
+        $durable = $this->durableStatusRowsPage($status, $offset, $perPage);
+
+        if ($durable['total'] === 0) {
+            return $summaryQuery->paginate($perPage);
+        }
+
+        $summaryTotal = (int) (clone $summaryQuery)->toBase()->getCountForPagination();
+        $summaryLimit = max(0, $perPage - count($durable['items']));
+        $summaryOffset = max(0, $offset - $durable['total']);
+        $summaryItems = $summaryLimit === 0
+            ? []
+            : (clone $summaryQuery)
+                ->skip($summaryOffset)
+                ->take($summaryLimit)
+                ->get()
+                ->all();
+
+        return new LengthAwarePaginator(
+            array_merge($durable['items'], $summaryItems),
+            $summaryTotal + $durable['total'],
+            $perPage,
+            $page,
+            [
+                'path' => request()->url(),
+                'query' => request()->query(),
+            ],
+        );
+    }
+
     private function shouldMergeDurableRunningRows(): bool
+    {
+        return $this->requestHasOnlyPaginationAndSort();
+    }
+
+    private function shouldMergeDurableStatusRows(): bool
+    {
+        return $this->requestHasOnlyPaginationAndSort();
+    }
+
+    private function requestHasOnlyPaginationAndSort(): bool
     {
         $query = array_keys(request()->query());
         $nonFilterKeys = ['page', 'sort', 'sort_direction'];
@@ -633,11 +687,59 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         }
     }
 
+    /**
+     * @return array{items: list<array<string, mixed>>, total: int}
+     */
+    private function durableStatusRowsPage(string $status, int $offset, int $limit): array
+    {
+        try {
+            $query = $this->runModel::query()
+                ->where('status', $status)
+                ->whereNotIn('id', $this->statusSummaryRunIdsQuery($status));
+
+            $this->applyRunNamespaceScope($query);
+
+            $total = (int) (clone $query)->count();
+            $runs = $limit === 0
+                ? collect()
+                : $query
+                    ->orderByDesc('closed_at')
+                    ->orderByDesc('last_progress_at')
+                    ->orderByDesc('created_at')
+                    ->orderByDesc('id')
+                    ->skip($offset)
+                    ->take($limit)
+                    ->get();
+
+            return [
+                'items' => $runs
+                    ->map(fn (WorkflowRun $run): array => $this->durableRunListItem($run))
+                    ->values()
+                    ->all(),
+                'total' => $total,
+            ];
+        } catch (Throwable) {
+            return [
+                'items' => [],
+                'total' => 0,
+            ];
+        }
+    }
+
     private function runningSummaryRunIdsQuery()
     {
         $query = $this->runSummaryModel::query()
             ->select('id')
             ->where('status_bucket', 'running');
+
+        return $this->applySummaryNamespaceScope($query);
+    }
+
+    private function statusSummaryRunIdsQuery(string $status)
+    {
+        $query = $this->runSummaryModel::query()
+            ->select('id')
+            ->where('status', $status);
 
         return $this->applySummaryNamespaceScope($query);
     }
@@ -655,6 +757,47 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
             $total = (clone $query)->count();
             $runs = $query
+                ->orderByDesc('last_progress_at')
+                ->orderByDesc('created_at')
+                ->orderByDesc('id')
+                ->forPage($page, $perPage)
+                ->get();
+
+            $items = $runs
+                ->map(fn (WorkflowRun $run): array => $this->durableRunListItem($run))
+                ->values()
+                ->all();
+        } catch (Throwable) {
+            $total = 0;
+            $items = [];
+        }
+
+        return new LengthAwarePaginator(
+            $items,
+            $total,
+            $perPage,
+            $page,
+            [
+                'path' => request()->url(),
+                'query' => request()->query(),
+            ],
+        );
+    }
+
+    private function statusFlowsFromDurableRuns(string $status): LengthAwarePaginator
+    {
+        $perPage = 50;
+        $page = LengthAwarePaginator::resolveCurrentPage();
+
+        try {
+            $query = $this->runModel::query()
+                ->where('status', $status);
+
+            $this->applyRunNamespaceScope($query);
+
+            $total = (clone $query)->count();
+            $runs = $query
+                ->orderByDesc('closed_at')
                 ->orderByDesc('last_progress_at')
                 ->orderByDesc('created_at')
                 ->orderByDesc('id')

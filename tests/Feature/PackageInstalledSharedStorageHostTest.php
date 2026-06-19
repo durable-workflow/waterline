@@ -3,14 +3,19 @@
 namespace Waterline\Tests\Feature;
 
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Waterline\Models\WorkerBuildIdRollout;
+use Waterline\Models\WorkerRegistration;
 use Waterline\Tests\TestCase;
+use Workflow\V2\Enums\TaskStatus;
+use Workflow\V2\Enums\TaskType;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
+use Workflow\V2\Models\WorkflowTask;
 use function Orchestra\Testbench\artisan;
 
 class PackageInstalledSharedStorageHostTest extends TestCase
@@ -149,6 +154,101 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             ->assertJsonPath('activities.0.status', 'running');
     }
 
+    public function testPackageInstalledHostExposesWorkerVersioningVisibilityFromSharedServerStorage(): void
+    {
+        Carbon::setTestNow('2026-04-09 12:00:00');
+        $this->beforeApplicationDestroyed(static function (): void {
+            Carbon::setTestNow();
+        });
+
+        config()->set('waterline.namespace', 'worker-versioning-conformance');
+        config()->set('waterline.worker_stale_after_seconds', 120);
+
+        $this->assertFalse(
+            DB::connection('host')->getSchemaBuilder()->hasTable('workflow_runs'),
+            'The package host must observe workflow runs through the shared server storage connection.',
+        );
+        $this->assertTrue(
+            DB::connection('server_storage')->getSchemaBuilder()->hasTable('workflow_runs'),
+            'The shared server storage database must contain workflow runtime tables.',
+        );
+
+        [
+            'v1' => $v1Run,
+            'promoted' => $promotedRun,
+            'no_compatible' => $noCompatibleRun,
+        ] = $this->seedWorkerVersioningTopology();
+
+        $healthPayload = $this->getJson('/waterline/api/v2/health')
+            ->assertOk()
+            ->assertJsonPath('namespace', 'worker-versioning-conformance')
+            ->assertJsonPath('queue_visibility.available', true)
+            ->json();
+
+        $this->assertContains(
+            'build-v1',
+            collect($healthPayload['operator_metrics']['workers']['registrations'] ?? [])
+                ->pluck('build_id')
+                ->all(),
+        );
+        $this->assertContains(
+            'build-v2',
+            collect($healthPayload['operator_metrics']['workers']['registrations'] ?? [])
+                ->pluck('build_id')
+                ->all(),
+        );
+        $this->assertContains('build-v1', $healthPayload['worker_versioning']['worker_cohorts'] ?? []);
+        $this->assertContains('build-v2', $healthPayload['worker_versioning']['worker_cohorts'] ?? []);
+
+        $queue = collect($healthPayload['queue_visibility']['task_queues'] ?? [])
+            ->firstWhere('task_queue', 'worker-versioning-shared');
+        $this->assertIsArray($queue, 'Queue visibility must include the worker-versioning task queue.');
+        $this->assertSame('build-v2', $queue['rollout_state']['selected_new_start_build_id'] ?? null);
+
+        $workerBuildIds = collect($queue['workers'] ?? [])->pluck('build_id')->all();
+        $this->assertContains('build-v1', $workerBuildIds);
+        $this->assertContains('build-v2', $workerBuildIds);
+
+        $queueBuildIds = collect($queue['build_ids'] ?? []);
+        $this->assertTrue($queueBuildIds->contains(fn (array $build): bool => ($build['build_id'] ?? null) === 'build-v1'));
+        $this->assertTrue($queueBuildIds->contains(fn (array $build): bool => ($build['build_id'] ?? null) === 'build-v2'));
+        $noCompatibleBuild = $queueBuildIds->firstWhere('build_id', 'build-v3');
+        $this->assertIsArray($noCompatibleBuild, 'Queue visibility must expose pending work for a build with no active worker.');
+        $this->assertSame('no_compatible_worker', $noCompatibleBuild['pending_workflow_tasks']['status'] ?? null);
+        $this->assertSame('no_compatible_worker', $noCompatibleBuild['pending_workflow_tasks']['operator_visible_signal'] ?? null);
+        $this->assertSame(1, $noCompatibleBuild['pending_workflow_tasks']['total_count'] ?? null);
+
+        $runningPayload = $this->getJson('/waterline/api/flows/running')
+            ->assertOk()
+            ->json();
+        $noCompatibleRow = $this->listRowForRun($runningPayload, $noCompatibleRun);
+        $this->assertSame('waiting', $noCompatibleRow['status'] ?? null);
+        $this->assertSame('running', $noCompatibleRow['status_bucket'] ?? null);
+        $this->assertSame('build-v3', $noCompatibleRow['compatibility'] ?? null);
+        $this->assertSame('worker-versioning-shared', $noCompatibleRow['queue'] ?? null);
+
+        $completedPayload = $this->getJson('/waterline/api/flows/completed')
+            ->assertOk()
+            ->json();
+        $v1Row = $this->listRowForRun($completedPayload, $v1Run);
+        $this->assertSame('completed', $v1Row['status'] ?? null);
+        $this->assertSame('completed', $v1Row['status_bucket'] ?? null);
+        $this->assertSame('build-v1', $v1Row['compatibility'] ?? null);
+        $promotedRow = $this->listRowForRun($completedPayload, $promotedRun);
+        $this->assertSame('completed', $promotedRow['status'] ?? null);
+        $this->assertSame('completed', $promotedRow['status_bucket'] ?? null);
+        $this->assertSame('build-v2', $promotedRow['compatibility'] ?? null);
+
+        $this->assertSelectedRunDetail($v1Run, 'completed', 'completed', 'build-v1');
+        $this->assertSelectedRunDetail($promotedRun, 'completed', 'completed', 'build-v2');
+        $noCompatibleDetail = $this->assertSelectedRunDetail($noCompatibleRun, 'waiting', 'running', 'build-v3');
+
+        $this->assertNotNull(
+            collect($noCompatibleDetail['run_diagnostics'] ?? [])->firstWhere('code', 'no_compatible_worker_for_task'),
+            'Selected run detail must expose the no-compatible-worker operator diagnostic.',
+        );
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -246,6 +346,219 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    /**
+     * @return array{v1: WorkflowRun, promoted: WorkflowRun, no_compatible: WorkflowRun}
+     */
+    private function seedWorkerVersioningTopology(): array
+    {
+        $this->seedWorkerVersioningWorker('wv-v1-worker', 'php', '2.0.0-alpha.206', 'build-v1', 10);
+        $this->seedWorkerVersioningWorker('wv-v2-worker', 'python', '0.4.89', 'build-v2', 5);
+
+        WorkerBuildIdRollout::create([
+            'namespace' => 'worker-versioning-conformance',
+            'task_queue' => 'worker-versioning-shared',
+            'build_id' => WorkerBuildIdRollout::buildIdKey('build-v1'),
+            'drain_intent' => WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE,
+            'promoted_at' => now()->subMinutes(10),
+        ]);
+
+        WorkerBuildIdRollout::create([
+            'namespace' => 'worker-versioning-conformance',
+            'task_queue' => 'worker-versioning-shared',
+            'build_id' => WorkerBuildIdRollout::buildIdKey('build-v2'),
+            'drain_intent' => WorkerBuildIdRollout::DRAIN_INTENT_ACTIVE,
+            'promoted_at' => now()->subMinute(),
+        ]);
+
+        $v1Run = $this->seedWorkerVersioningRun(
+            'worker-versioning-v1-instance',
+            '01JWVPKGHOSTV1RUN000001',
+            'completed',
+            'build-v1',
+            now()->subMinutes(6),
+        );
+        $promotedRun = $this->seedWorkerVersioningRun(
+            'worker-versioning-v2-instance',
+            '01JWVPKGHOSTV2RUN000001',
+            'completed',
+            'build-v2',
+            now()->subMinutes(2),
+        );
+        $noCompatibleRun = $this->seedWorkerVersioningRun(
+            'worker-versioning-v3-instance',
+            '01JWVPKGHOSTV3RUN000001',
+            'waiting',
+            'build-v3',
+            null,
+        );
+
+        WorkflowTask::create([
+            'id' => '01JWVPKGHOSTTASK0000001',
+            'workflow_run_id' => $noCompatibleRun->id,
+            'namespace' => 'worker-versioning-conformance',
+            'task_type' => TaskType::Workflow->value,
+            'status' => TaskStatus::Ready->value,
+            'available_at' => now()->subMinute(),
+            'payload' => [],
+            'connection' => 'redis',
+            'queue' => 'worker-versioning-shared',
+            'compatibility' => 'build-v3',
+            'created_at' => now()->subMinute(),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        return [
+            'v1' => $v1Run,
+            'promoted' => $promotedRun,
+            'no_compatible' => $noCompatibleRun,
+        ];
+    }
+
+    private function seedWorkerVersioningWorker(
+        string $workerId,
+        string $runtime,
+        string $sdkVersion,
+        string $buildId,
+        int $heartbeatSecondsAgo,
+    ): void {
+        WorkerRegistration::create([
+            'worker_id' => $workerId,
+            'namespace' => 'worker-versioning-conformance',
+            'task_queue' => 'worker-versioning-shared',
+            'runtime' => $runtime,
+            'sdk_version' => $sdkVersion,
+            'build_id' => $buildId,
+            'supported_workflow_types' => ['workflow.worker-versioning'],
+            'workflow_definition_fingerprints' => [],
+            'supported_activity_types' => ['activity.worker-versioning'],
+            'max_concurrent_workflow_tasks' => 8,
+            'max_concurrent_activity_tasks' => 4,
+            'available_workflow_slots' => 7,
+            'available_activity_slots' => 3,
+            'process_metrics' => [],
+            'heartbeat_interval_seconds' => 60,
+            'last_heartbeat_at' => now()->subSeconds($heartbeatSecondsAgo),
+            'status' => 'active',
+        ]);
+    }
+
+    private function seedWorkerVersioningRun(
+        string $workflowId,
+        string $runId,
+        string $status,
+        string $compatibility,
+        ?Carbon $closedAt,
+    ): WorkflowRun {
+        $instance = WorkflowInstance::query()->create([
+            'id' => $workflowId,
+            'workflow_class' => 'WorkerVersioningWorkflow',
+            'workflow_type' => 'workflow.worker-versioning',
+            'namespace' => 'worker-versioning-conformance',
+            'run_count' => 1,
+            'started_at' => now()->subMinutes(12),
+        ]);
+
+        $run = WorkflowRun::query()->create([
+            'id' => $runId,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'WorkerVersioningWorkflow',
+            'workflow_type' => 'workflow.worker-versioning',
+            'namespace' => 'worker-versioning-conformance',
+            'status' => $status,
+            'closed_reason' => $closedAt === null ? null : $status,
+            'closed_at' => $closedAt,
+            'compatibility' => $compatibility,
+            'connection' => 'redis',
+            'queue' => 'worker-versioning-shared',
+            'started_at' => now()->subMinutes(12),
+            'last_progress_at' => $closedAt ?? now()->subMinute(),
+            'last_history_sequence' => $closedAt === null ? 1 : 2,
+        ]);
+
+        $instance->forceFill([
+            'current_run_id' => $run->id,
+        ])->save();
+
+        WorkflowHistoryEvent::query()->create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'sequence' => 1,
+            'event_type' => 'WorkflowStarted',
+            'payload' => [
+                'workflow_type' => 'workflow.worker-versioning',
+                'compatibility' => $compatibility,
+            ],
+            'recorded_at' => now()->subMinutes(12),
+        ]);
+
+        if ($closedAt !== null) {
+            WorkflowHistoryEvent::query()->create([
+                'id' => (string) Str::ulid(),
+                'workflow_run_id' => $run->id,
+                'sequence' => 2,
+                'event_type' => 'WorkflowCompleted',
+                'payload' => [
+                    'status' => $status,
+                    'compatibility' => $compatibility,
+                ],
+                'recorded_at' => $closedAt,
+            ]);
+        }
+
+        return $run->refresh();
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function listRowForRun(array $payload, WorkflowRun $run): array
+    {
+        $row = collect($payload['data'] ?? [])->first(
+            static fn (array $item): bool => ($item['workflow_instance_id'] ?? null) === $run->workflow_instance_id
+                && ($item['run_id'] ?? null) === $run->id,
+        );
+
+        $this->assertIsArray($row);
+
+        return $row;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function assertSelectedRunDetail(
+        WorkflowRun $run,
+        string $status,
+        string $statusBucket,
+        string $compatibility,
+    ): array {
+        $payload = $this->getJson(
+            '/waterline/api/instances/'
+            .rawurlencode($run->workflow_instance_id)
+            .'/runs/'
+            .rawurlencode($run->id)
+            .'?history_limit=all',
+        )
+            ->assertOk()
+            ->assertJsonPath('id', $run->id)
+            ->assertJsonPath('workflow_instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('workflow_run_id', $run->id)
+            ->assertJsonPath('instance_id', $run->workflow_instance_id)
+            ->assertJsonPath('run_id', $run->id)
+            ->assertJsonPath('selected_run_id', $run->id)
+            ->assertJsonPath('namespace', 'worker-versioning-conformance')
+            ->assertJsonPath('status', $status)
+            ->assertJsonPath('status_bucket', $statusBucket)
+            ->assertJsonPath('compatibility', $compatibility)
+            ->assertJsonPath('connection', 'redis')
+            ->assertJsonPath('queue', 'worker-versioning-shared')
+            ->json();
+
+        return $payload;
     }
 
     private function createServerWorkerRegistrationsTable(): void
