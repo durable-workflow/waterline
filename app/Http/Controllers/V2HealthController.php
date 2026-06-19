@@ -1190,21 +1190,58 @@ class V2HealthController extends Controller
             );
         }
 
-        try {
-            $now = now();
+        $now = now();
+        $diagnostics = [];
+        $payload = [
+            'namespace' => $namespace,
+            'task_queues' => [],
+        ];
 
-            return [
-                'available' => true,
-                ...$this->withQueueVisibilityFallback(
+        if (function_exists('mb_substr')) {
+            try {
+                $payload = StandaloneWorkerVisibility::queueSnapshot(
                     $namespace,
-                    StandaloneWorkerVisibility::queueSnapshot($namespace, WorkerRegistration::class, $now)->toArray(),
+                    WorkerRegistration::class,
                     $now,
-                ),
-            ];
-        } catch (\Throwable) {
+                )->toArray();
+            } catch (Throwable $exception) {
+                $diagnostics[] = $this->queueVisibilityDiagnostic(
+                    'workflow_package_queue_snapshot',
+                    'Waterline could not load the workflow package queue snapshot; durable table fallback was used.',
+                    $exception,
+                );
+            }
+        } else {
+            $diagnostics[] = $this->queueVisibilityDiagnostic(
+                'workflow_package_queue_snapshot',
+                'Waterline skipped the workflow package queue snapshot because the PHP mbstring extension is unavailable; durable table fallback was used.',
+            );
+        }
+
+        try {
+            $payload = $this->withQueueVisibilityFallback($namespace, $payload, $now);
+            $payload['available'] = true;
+            $payload['namespace'] = is_string($payload['namespace'] ?? null)
+                ? $payload['namespace']
+                : $namespace;
+
+            if ($diagnostics !== []) {
+                $payload['degraded_operator_surface'] = true;
+                $payload['diagnostics'] = $diagnostics;
+            }
+
+            return $payload;
+        } catch (Throwable $exception) {
+            $diagnostics[] = $this->queueVisibilityDiagnostic(
+                'waterline_durable_queue_visibility',
+                'Waterline could not load queue visibility from the current worker registration schema.',
+                $exception,
+            );
+
             return $this->emptyQueueVisibility(
                 $namespace,
                 'Queue visibility could not be loaded from the current worker registration schema.',
+                $diagnostics,
             );
         }
     }
@@ -1223,14 +1260,46 @@ class V2HealthController extends Controller
     /**
      * @return array{available: bool, namespace: string|null, task_queues: array<int, array<string, mixed>>, reason: string}
      */
-    private function emptyQueueVisibility(?string $namespace, string $reason): array
+    private function emptyQueueVisibility(?string $namespace, string $reason, array $diagnostics = []): array
     {
-        return [
+        $payload = [
             'available' => false,
             'namespace' => $namespace,
             'task_queues' => [],
             'reason' => $reason,
         ];
+
+        if ($diagnostics !== []) {
+            $payload['diagnostics'] = $diagnostics;
+            $payload['degraded_operator_surface'] = true;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @return array{component: string, message: string, exception: string|null, exception_message: string|null}
+     */
+    private function queueVisibilityDiagnostic(
+        string $component,
+        string $message,
+        ?Throwable $exception = null,
+    ): array {
+        return [
+            'component' => $component,
+            'message' => $message,
+            'exception' => $exception === null ? null : get_class($exception),
+            'exception_message' => $exception === null
+                ? null
+                : $this->truncateDiagnosticMessage($exception->getMessage()),
+        ];
+    }
+
+    private function truncateDiagnosticMessage(string $message): string
+    {
+        $message = trim($message);
+
+        return strlen($message) > 500 ? substr($message, 0, 497).'...' : $message;
     }
 
     /**
@@ -1326,6 +1395,25 @@ class V2HealthController extends Controller
             foreach ($rows as $row) {
                 if (is_string($row->task_queue ?? null) && trim((string) $row->task_queue) !== '') {
                     $names[trim((string) $row->task_queue)] = true;
+                }
+            }
+        }
+
+        if ($this->modelTableExists(new WorkflowTask())) {
+            try {
+                $rows = WorkflowTask::query()
+                    ->select('queue')
+                    ->where('namespace', $namespace)
+                    ->whereNotNull('queue')
+                    ->distinct()
+                    ->get();
+            } catch (Throwable) {
+                $rows = [];
+            }
+
+            foreach ($rows as $row) {
+                if (is_string($row->queue ?? null) && trim((string) $row->queue) !== '') {
+                    $names[trim((string) $row->queue)] = true;
                 }
             }
         }
@@ -1786,6 +1874,21 @@ class V2HealthController extends Controller
             'supported_activity_types' => is_array($worker->supported_activity_types ?? null)
                 ? array_values($worker->supported_activity_types)
                 : [],
+            'max_concurrent_workflow_tasks' => $worker->max_concurrent_workflow_tasks,
+            'max_concurrent_activity_tasks' => $worker->max_concurrent_activity_tasks,
+            'max_concurrent_worker_sessions' => $worker->max_concurrent_worker_sessions ?? null,
+            'task_slots' => [
+                'workflow_available' => $worker->available_workflow_slots ?? null,
+                'activity_available' => $worker->available_activity_slots ?? null,
+                'session_available' => $worker->available_session_slots ?? null,
+                'workflow_capacity' => $worker->max_concurrent_workflow_tasks,
+                'activity_capacity' => $worker->max_concurrent_activity_tasks,
+                'session_capacity' => $worker->max_concurrent_worker_sessions ?? null,
+            ],
+            'process_metrics' => is_array($worker->process_metrics ?? null) && $worker->process_metrics !== []
+                ? $worker->process_metrics
+                : null,
+            'heartbeat_interval_seconds' => $worker->heartbeat_interval_seconds ?? null,
         ];
     }
 

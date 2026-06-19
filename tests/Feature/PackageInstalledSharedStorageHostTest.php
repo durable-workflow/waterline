@@ -213,6 +213,13 @@ class PackageInstalledSharedStorageHostTest extends TestCase
         $workerBuildIds = collect($queue['workers'] ?? [])->pluck('build_id')->all();
         $this->assertContains('build-v1', $workerBuildIds);
         $this->assertContains('build-v2', $workerBuildIds);
+        $v2Worker = collect($queue['workers'] ?? [])->firstWhere('build_id', 'build-v2');
+        $this->assertIsArray($v2Worker, 'Queue visibility must expose the build-v2 worker.');
+        $this->assertSame(
+            'worker-versioning-conformance',
+            $v2Worker['process_metrics']['host'] ?? null,
+        );
+        $this->assertSame(7, $v2Worker['task_slots']['workflow_available'] ?? null);
 
         $queueBuildIds = collect($queue['build_ids'] ?? []);
         $this->assertTrue($queueBuildIds->contains(fn (array $build): bool => ($build['build_id'] ?? null) === 'build-v1'));
@@ -442,7 +449,12 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             'max_concurrent_activity_tasks' => 4,
             'available_workflow_slots' => 7,
             'available_activity_slots' => 3,
-            'process_metrics' => [],
+            'process_metrics' => [
+                'process_id' => $buildId === 'build-v1' ? 1001 : 1002,
+                'host' => 'worker-versioning-conformance',
+                'process_started_at' => now()->subMinutes(5)->toJSON(),
+                'process_uptime_seconds' => 300,
+            ],
             'heartbeat_interval_seconds' => 60,
             'last_heartbeat_at' => now()->subSeconds($heartbeatSecondsAgo),
             'status' => 'active',
