@@ -99,9 +99,11 @@ class WaterlineServiceProviderTest extends TestCase
         $this->withProcessEnvironmentOnly([
             'DB_CONNECTION' => 'mysql',
             'DB_HOST' => 'mysql',
+            'DB_PORT' => '3306',
             'DB_DATABASE' => 'durable_workflow',
             'DB_USERNAME' => 'workflow',
             'DB_PASSWORD' => 'workflow',
+            'DW_STORAGE_CONNECTION' => 'mysql',
             'WATERLINE_ENGINE_SOURCE' => 'v2',
             'WATERLINE_NAMESPACE' => 'worker-versioning-conformance',
             'WATERLINE_HEALTH_TASK_DISPATCH_MODE' => 'poll',
@@ -112,6 +114,14 @@ class WaterlineServiceProviderTest extends TestCase
             config()->set('waterline.namespace', null);
             config()->set('waterline.health.task_dispatch_mode', 'queue');
             config()->set('waterline.allow_unauthenticated', false);
+            config()->set('database.default', 'sqlite');
+            config()->set('database.connections.mysql.host', 'stale-host');
+            config()->set('database.connections.mysql.port', '3307');
+            config()->set('database.connections.mysql.database', 'stale_database');
+            config()->set('database.connections.mysql.username', 'stale_user');
+            config()->set('database.connections.mysql.password', 'stale_password');
+            config()->set('workflows.storage.connection', null);
+            config()->set('workflows.v2.task_dispatch_mode', 'queue');
             $_ENV['DB_CONNECTION'] = 'sqlite';
             $_SERVER['DB_CONNECTION'] = 'sqlite';
             $_ENV['WATERLINE_ENGINE_SOURCE'] = 'auto';
@@ -125,12 +135,56 @@ class WaterlineServiceProviderTest extends TestCase
             $this->assertSame('worker-versioning-conformance', config('waterline.namespace'));
             $this->assertSame('poll', config('waterline.health.task_dispatch_mode'));
             $this->assertTrue(config('waterline.allow_unauthenticated'));
+            $this->assertSame('mysql', config('database.default'));
+            $this->assertSame('mysql', config('database.connections.mysql.host'));
+            $this->assertSame('3306', config('database.connections.mysql.port'));
+            $this->assertSame('durable_workflow', config('database.connections.mysql.database'));
+            $this->assertSame('workflow', config('database.connections.mysql.username'));
+            $this->assertSame('workflow', config('database.connections.mysql.password'));
+            $this->assertSame('mysql', config('workflows.storage.connection'));
+            $this->assertSame('poll', config('workflows.v2.task_dispatch_mode'));
 
             $this->assertSame('mysql', $_ENV['DB_CONNECTION'] ?? null);
             $this->assertSame('workflow', $_ENV['DB_PASSWORD'] ?? null);
+            $this->assertSame('mysql', $_ENV['DW_STORAGE_CONNECTION'] ?? null);
             $this->assertSame('v2', $_ENV['WATERLINE_ENGINE_SOURCE'] ?? null);
             $this->assertSame('worker-versioning-conformance', $_ENV['WATERLINE_NAMESPACE'] ?? null);
             $this->assertSame('poll', $_ENV['DW_V2_TASK_DISPATCH_MODE'] ?? null);
+        });
+    }
+
+    public function testRuntimeConfigurationKeepsCachedDatabasePasswordWhenRuntimePasswordIsAbsent(): void
+    {
+        $this->withEnvironment([
+            'DB_CONNECTION' => 'mysql',
+            'DB_HOST' => 'runtime-host',
+            'DB_PASSWORD' => null,
+        ], function (): void {
+            config()->set('database.default', 'sqlite');
+            config()->set('database.connections.mysql.host', 'cached-host');
+            config()->set('database.connections.mysql.password', 'cached-password');
+
+            RuntimeConfiguration::hydrate();
+
+            $this->assertSame('mysql', config('database.default'));
+            $this->assertSame('runtime-host', config('database.connections.mysql.host'));
+            $this->assertSame('cached-password', config('database.connections.mysql.password'));
+        });
+    }
+
+    public function testRuntimeConfigurationAcceptsExplicitEmptyRuntimeDatabasePassword(): void
+    {
+        $this->withProcessEnvironmentOnly([
+            'DB_CONNECTION' => 'mysql',
+            'DB_PASSWORD' => '',
+        ], function (): void {
+            config()->set('database.default', 'sqlite');
+            config()->set('database.connections.mysql.password', 'cached-password');
+
+            RuntimeConfiguration::hydrate();
+
+            $this->assertSame('mysql', config('database.default'));
+            $this->assertSame('', config('database.connections.mysql.password'));
         });
     }
 

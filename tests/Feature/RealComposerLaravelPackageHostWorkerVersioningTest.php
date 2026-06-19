@@ -76,9 +76,9 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
         $appDirectory = $this->temporaryDirectory.'/app';
         $this->createLaravelHost($appDirectory);
         $this->installPackagesThroughComposer($appDirectory);
+        $this->cacheInstallTimeLaravelConfiguration($appDirectory);
 
         $environment = $this->hostEnvironment();
-        $this->runCommand([$this->phpBinary(), 'artisan', 'migrate', '--force', '--no-interaction'], $appDirectory, $environment, 180);
         $this->seedWorkerVersioningTopology();
 
         $port = $this->freePort();
@@ -231,6 +231,26 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
         );
     }
 
+    private function cacheInstallTimeLaravelConfiguration(string $appDirectory): void
+    {
+        @touch($appDirectory.'/database/database.sqlite');
+
+        $this->runCommand(
+            [$this->phpBinary(), 'artisan', 'config:cache', '--no-interaction'],
+            $appDirectory,
+            array_merge($this->composerEnvironment(), [
+                'DB_CONNECTION' => 'sqlite',
+                'DB_DATABASE' => $appDirectory.'/database/database.sqlite',
+                'DW_V2_TASK_DISPATCH_MODE' => 'queue',
+                'WATERLINE_ALLOW_UNAUTHENTICATED' => 'false',
+                'WATERLINE_ENGINE_SOURCE' => 'auto',
+                'WATERLINE_HEALTH_TASK_DISPATCH_MODE' => 'queue',
+                'WATERLINE_NAMESPACE' => '',
+            ]),
+            120,
+        );
+    }
+
     /**
      * @return array<string, string>
      */
@@ -267,6 +287,7 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
             'QUEUE_CONNECTION' => 'sync',
             'CACHE_DRIVER' => 'array',
             'CACHE_STORE' => 'array',
+            'SESSION_DRIVER' => 'array',
             'WATERLINE_ALLOW_UNAUTHENTICATED' => 'true',
             'WATERLINE_ENGINE_SOURCE' => 'v2',
             'WATERLINE_HEALTH_TASK_DISPATCH_MODE' => 'poll',
@@ -278,6 +299,7 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
     private function seedWorkerVersioningTopology(): void
     {
         $pdo = $this->databaseConnection((string) $this->database);
+        $this->createServerWorkflowTables($pdo);
         $this->createServerWorkerTables($pdo);
 
         $now = gmdate('Y-m-d H:i:s');
@@ -448,6 +470,111 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
     private function eventId(string $runId, int $sequence): string
     {
         return substr(str_pad($runId, 24, '0'), 0, 24).$sequence;
+    }
+
+    private function createServerWorkflowTables(PDO $pdo): void
+    {
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS workflow_instances (
+                id VARCHAR(191) NOT NULL PRIMARY KEY,
+                workflow_class VARCHAR(255) NOT NULL,
+                workflow_type VARCHAR(255) NOT NULL,
+                namespace VARCHAR(128) NULL,
+                business_key VARCHAR(191) NULL,
+                visibility_labels JSON NULL,
+                memo JSON NULL,
+                current_run_id VARCHAR(26) NULL,
+                run_count INT UNSIGNED NOT NULL DEFAULT 0,
+                started_at TIMESTAMP NULL,
+                created_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NULL,
+                KEY workflow_instances_namespace_index (namespace),
+                KEY workflow_instances_current_run_id_index (current_run_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
+
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS workflow_runs (
+                id VARCHAR(26) NOT NULL PRIMARY KEY,
+                workflow_instance_id VARCHAR(191) NOT NULL,
+                run_number INT UNSIGNED NOT NULL,
+                workflow_class VARCHAR(255) NOT NULL,
+                workflow_type VARCHAR(255) NOT NULL,
+                namespace VARCHAR(128) NULL,
+                business_key VARCHAR(191) NULL,
+                visibility_labels JSON NULL,
+                status VARCHAR(32) NOT NULL,
+                closed_reason VARCHAR(32) NULL,
+                compatibility VARCHAR(255) NULL,
+                payload_codec VARCHAR(64) NULL,
+                arguments LONGTEXT NULL,
+                output LONGTEXT NULL,
+                connection VARCHAR(255) NULL,
+                queue VARCHAR(255) NULL,
+                last_history_sequence INT UNSIGNED NOT NULL DEFAULT 0,
+                last_command_sequence INT UNSIGNED NOT NULL DEFAULT 0,
+                message_cursor_position INT UNSIGNED NOT NULL DEFAULT 0,
+                started_at TIMESTAMP NULL,
+                closed_at TIMESTAMP NULL,
+                archived_at TIMESTAMP NULL,
+                archive_command_id VARCHAR(26) NULL,
+                archive_reason VARCHAR(255) NULL,
+                last_progress_at TIMESTAMP NULL,
+                created_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NULL,
+                KEY workflow_runs_instance_index (workflow_instance_id),
+                KEY workflow_runs_namespace_index (namespace),
+                KEY workflow_runs_status_index (status),
+                KEY workflow_runs_last_progress_index (last_progress_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
+
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS workflow_history_events (
+                id VARCHAR(26) NOT NULL PRIMARY KEY,
+                workflow_run_id VARCHAR(26) NOT NULL,
+                sequence INT UNSIGNED NOT NULL,
+                event_type VARCHAR(255) NOT NULL,
+                payload JSON NULL,
+                recorded_at TIMESTAMP NULL,
+                created_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NULL,
+                KEY workflow_history_events_run_index (workflow_run_id),
+                UNIQUE KEY workflow_history_events_run_sequence_unique (workflow_run_id, sequence)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
+
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS workflow_tasks (
+                id VARCHAR(26) NOT NULL PRIMARY KEY,
+                workflow_run_id VARCHAR(26) NOT NULL,
+                namespace VARCHAR(128) NULL,
+                task_type VARCHAR(32) NOT NULL,
+                status VARCHAR(32) NOT NULL,
+                compatibility VARCHAR(255) NULL,
+                payload JSON NULL,
+                connection VARCHAR(255) NULL,
+                queue VARCHAR(255) NULL,
+                available_at TIMESTAMP NULL,
+                leased_at TIMESTAMP NULL,
+                lease_owner VARCHAR(255) NULL,
+                lease_expires_at TIMESTAMP NULL,
+                attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+                last_dispatch_attempt_at TIMESTAMP NULL,
+                last_dispatched_at TIMESTAMP NULL,
+                last_dispatch_error TEXT NULL,
+                last_claim_failed_at TIMESTAMP NULL,
+                last_claim_error TEXT NULL,
+                repair_count INT UNSIGNED NOT NULL DEFAULT 0,
+                repair_available_at TIMESTAMP NULL,
+                last_error TEXT NULL,
+                created_at TIMESTAMP NULL,
+                updated_at TIMESTAMP NULL,
+                KEY workflow_tasks_run_index (workflow_run_id),
+                KEY workflow_tasks_status_available_index (status, available_at),
+                KEY workflow_tasks_namespace_queue_index (namespace, queue)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci',
+        );
     }
 
     private function createServerWorkerTables(PDO $pdo): void
