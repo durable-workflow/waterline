@@ -7,7 +7,6 @@ namespace Waterline\Support;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Throwable;
-use Waterline\Models\WorkerRegistration;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
@@ -133,7 +132,7 @@ final class WorkflowEngineSourceResolver
         }
 
         if (! self::onlyOptionalProjectionIssues($issues)
-            && ! self::durableWorkerVersioningSurfaceAvailable()) {
+            && ! self::durableV2OperatorCoreAvailable()) {
             return $status;
         }
 
@@ -153,6 +152,7 @@ final class WorkflowEngineSourceResolver
         $status['severity'] = 'warning';
         $status['message'] = 'Waterline is using the v2 operator bridge with degraded selected-run projections; durable run and history state remain available.';
         $status['degraded_operator_surface'] = true;
+        $status['durable_operator_core_available'] = true;
         $status['readiness_contract'] = ReadinessContract::forEngineSourceStatus(
             configured: $configured,
             resolved: self::ENGINE_V2,
@@ -190,12 +190,11 @@ final class WorkflowEngineSourceResolver
         return true;
     }
 
-    private static function durableWorkerVersioningSurfaceAvailable(): bool
+    private static function durableV2OperatorCoreAvailable(): bool
     {
         return self::configuredModelTableExists('workflows.v2.instance_model', WorkflowInstance::class)
             && self::configuredModelTableExists('workflows.v2.run_model', WorkflowRun::class)
-            && self::configuredModelTableExists('workflows.v2.history_event_model', WorkflowHistoryEvent::class)
-            && self::modelTableExists(WorkerRegistration::class);
+            && self::configuredModelTableExists('workflows.v2.history_event_model', WorkflowHistoryEvent::class);
     }
 
     /**
