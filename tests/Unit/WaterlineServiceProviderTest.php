@@ -4,6 +4,7 @@ namespace Waterline\Tests\Unit;
 
 use Illuminate\Support\Facades\DB;
 use Waterline\Console\SignalsQueriesConformanceCommand;
+use Waterline\Console\WorkflowUpdatesConformanceCommand;
 use Waterline\Http\Middleware\ControlPlaneVersion;
 use Waterline\Http\Middleware\RenderApiExceptionsAsJson;
 use Waterline\Http\Middleware\UseEphemeralApiSessionWhenDatabaseTableMissing;
@@ -381,6 +382,20 @@ class WaterlineServiceProviderTest extends TestCase
         $this->assertFalse($definition->hasArgument('query'));
         $this->assertTrue($definition->hasOption('selected-run-detail-capture'));
         $this->assertTrue($definition->hasOption('selected-run-query-capture'));
+        $this->assertTrue($definition->hasOption('run-id'));
+        $this->assertTrue($definition->hasOption('workflow-run-id'));
+    }
+
+    public function testWorkflowUpdatesConformanceCommandDoesNotParseRoutePlaceholdersAsArguments(): void
+    {
+        $definition = (new WorkflowUpdatesConformanceCommand())->getDefinition();
+
+        $this->assertFalse($definition->hasArgument('instance'));
+        $this->assertFalse($definition->hasArgument('run'));
+        $this->assertFalse($definition->hasArgument('update'));
+        $this->assertTrue($definition->hasOption('selected-run-detail-capture'));
+        $this->assertTrue($definition->hasOption('selected-run-history-capture'));
+        $this->assertTrue($definition->hasOption('selected-run-history-export-capture'));
         $this->assertTrue($definition->hasOption('run-id'));
         $this->assertTrue($definition->hasOption('workflow-run-id'));
     }

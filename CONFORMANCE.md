@@ -25,6 +25,7 @@ Waterline claims one target from the suite's matrix:
 | `namespace_runtime_contract` | public namespace runtime scenario manifest at `/platform-conformance/namespace-runtime-scenarios.json` plus Waterline list, detail, health, and operator API captures | stable |
 | `saga_runtime_contract` | public saga runtime scenario manifest at `/platform-conformance/saga-runtime-scenarios.json` plus in-progress and terminal compensation detail captures | stable |
 | `worker_versioning_runtime_contract` | public worker-versioning runtime scenario manifest at `/platform-conformance/worker-versioning-runtime-scenarios.json` plus worker and run compatibility captures | stable |
+| `workflow_update_runtime_contract` | selected-run update diagnostics and history-export captures for accepted, completed, failed, and refused update paths | provisional |
 | `migration_runtime_contract` | public migration runtime scenario manifest at `/platform-conformance/migration-runtime-scenarios.json` plus Waterline operator visibility for migrated histories, schedules, worker registrations, and rollback state | stable |
 | `skew_refusal_matrix_contract` | public skew refusal scenario manifest at `/platform-conformance/skew-refusal-matrix-scenarios.json` plus Waterline render classification and version-pair evidence | stable |
 | `principal_attribution_contract` | server-published principal-attribution scenario manifest plus selected-run command and timeline principal captures | stable |
@@ -68,6 +69,36 @@ records the typed reason
 `query_results_not_materialized_in_selected_run_detail` alongside the exact
 selected-run detail capture whenever this read-only detail limitation is
 observed.
+
+Workflow update operator diagnostics are covered by a focused Waterline shard:
+
+```bash
+php artisan waterline:workflow-updates-conformance \
+  --selected-run-detail-capture=/path/to/selected-run-detail.json \
+  --selected-run-history-capture=/path/to/selected-run-history-export.json \
+  --artifact-version=server=0.2.543 \
+  --artifact-version=cli=0.1.84 \
+  --artifact-version=workflow=2.0.0-alpha.242 \
+  --artifact-version=sdk-python=0.4.93 \
+  --artifact-version=waterline=2.0.0-alpha.112 \
+  --artifact-source=server=docker_image \
+  --artifact-source=cli=official_install_script \
+  --artifact-source=workflow=packagist_package \
+  --artifact-source=sdk-python=pypi_package \
+  --artifact-source=waterline=packagist_package
+```
+
+The command accepts real captures from `GET
+/waterline/api/instances/<instance>/runs/<run>` and `GET
+/waterline/api/instances/<instance>/runs/<run>/history-export`, or it can
+capture those routes through the installed application's HTTP kernel when
+`--instance-id` and `--workflow-run-id` are supplied. It emits a
+`durable-workflow.v2.workflow-updates.waterline-operator-shard` document with
+the selected-run update paths, API captures, state counts, and an operator
+surface matrix proving that accepted, completed, failed, and refused update
+rows expose request identifiers, payload/result/error details, outcome or
+reason, and matching update history references. The shard returns typed
+findings when any required update path or history-export reference is missing.
 
 Namespace-scoped Waterline list, detail, health, and operator API
 visibility are load-bearing evidence for the stable

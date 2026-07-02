@@ -1279,7 +1279,7 @@
                                     @click="showResult(update.result, 'Update Result')"
                                 >View</button>
                                 <div
-                                    v-else-if="hasDetailValue(update.failure_message) || update.exception_replay_blocked === true || hasDetailValue(update.exception_resolution_source)"
+                                    v-else-if="update.error_available || hasDetailValue(update.failure_message) || update.exception_replay_blocked === true || hasDetailValue(update.exception_resolution_source)"
                                     class="small text-muted"
                                 >
                                     <div v-if="hasDetailValue(update.failure_message)">
