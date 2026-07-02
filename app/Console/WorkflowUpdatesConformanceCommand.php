@@ -125,8 +125,15 @@ class WorkflowUpdatesConformanceCommand extends Command
         $outputPath = $this->optionString('output');
         $artifactVersions = $this->artifactVersions();
         $artifactSources = $this->artifactSources();
+        $originalConfig = [
+            'waterline.engine_source' => config('waterline.engine_source'),
+            'waterline.allow_unauthenticated' => config('waterline.allow_unauthenticated'),
+        ];
 
         try {
+            config()->set('waterline.engine_source', 'v2');
+            config()->set('waterline.allow_unauthenticated', true);
+
             $publicEvidence = $inputPath === null ? [] : $this->readJsonFile($inputPath);
             $detailCapture = $this->providedCapture('selected_run_detail', $startedAt);
             $historyCapture = $this->providedCapture('selected_run_history_export', $startedAt);
@@ -227,6 +234,10 @@ class WorkflowUpdatesConformanceCommand extends Command
             $this->error('Waterline workflow update diagnostics command failed before the normal report completed.');
 
             return self::FAILURE;
+        } finally {
+            foreach ($originalConfig as $key => $value) {
+                config()->set($key, $value);
+            }
         }
     }
 

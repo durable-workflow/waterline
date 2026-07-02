@@ -2,8 +2,20 @@
 
 namespace Waterline\Tests\Feature;
 
+use Illuminate\Support\Str;
+use Waterline\Waterline;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
+use Workflow\V2\Contracts\HistoryExportRedactor;
+use Workflow\V2\Contracts\OperatorObservabilityRepository;
+use Workflow\V2\Enums\HistoryEventType;
+use Workflow\V2\Models\WorkflowCommand;
+use Workflow\V2\Models\WorkflowFailure;
+use Workflow\V2\Models\WorkflowHistoryEvent;
+use Workflow\V2\Models\WorkflowInstance;
+use Workflow\V2\Models\WorkflowRun;
+use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Models\WorkflowUpdate;
 
 class WorkflowUpdatesConformanceCommandTest extends TestCase
 {
@@ -65,6 +77,84 @@ class WorkflowUpdatesConformanceCommandTest extends TestCase
             $this->unlinkTemp($output);
             $this->unlinkTemp($detailCapture);
             $this->unlinkTemp($historyCapture);
+        }
+    }
+
+    public function testItSelfCapturesSelectedRunUpdateDiagnosticsInPublishedHostMode(): void
+    {
+        $output = tempnam(sys_get_temp_dir(), 'waterline-wu-output-');
+        $this->assertIsString($output);
+
+        config()->set('waterline.engine_source', 'auto');
+        config()->set('waterline.allow_unauthenticated', false);
+        Waterline::auth(fn (): bool => false);
+        $fixture = $this->seedSelectedRunUpdateDiagnostics();
+
+        $this->app->bind(OperatorObservabilityRepository::class, fn (): OperatorObservabilityRepository => new class implements OperatorObservabilityRepository {
+            public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+            {
+                throw new \RuntimeException('selected-run projection unavailable');
+            }
+
+            public function listItem(WorkflowRunSummary $summary): array
+            {
+                return [];
+            }
+
+            public function runHistoryExport(
+                WorkflowRun $run,
+                ?\Carbon\CarbonInterface $exportedAt = null,
+                HistoryExportRedactor|callable|null $redactor = null,
+            ): array {
+                throw new \RuntimeException('history export projection unavailable');
+            }
+
+            public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+
+            public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+        });
+
+        try {
+            $this->artisan('waterline:workflow-updates-conformance', [
+                '--output' => $output,
+                '--run-id' => 'operator-diagnostics-'.$fixture['run']->id,
+                '--instance-id' => $fixture['instance']->id,
+                '--workflow-run-id' => $fixture['run']->id,
+            ] + $this->publishedArtifactOptions())->assertExitCode(0);
+
+            $result = json_decode((string) file_get_contents($output), true, 512, JSON_THROW_ON_ERROR);
+            $scenarios = array_column($result['scenario_results'], null, 'scenario_id');
+            $scenario = $scenarios['operator_diagnostics_surfaces'];
+            $captures = $scenario['observed_outputs']['api_captures'];
+            $matrix = $scenario['observed_outputs']['operator_surface_matrix'];
+
+            $this->assertSame('pass', $scenario['status']);
+            $this->assertSame(200, $captures['selected_run_detail']['status']);
+            $this->assertSame(200, $captures['selected_run_history_export']['status']);
+            $this->assertSame('published_waterline_artifact_http_route', $captures['selected_run_detail']['capture_source']);
+            $this->assertSame(
+                '/waterline/api/instances/'.$fixture['instance']->id.'/runs/'.$fixture['run']->id,
+                $captures['selected_run_detail']['path'],
+            );
+            $this->assertSame(1, $matrix['state_counts']['accepted']);
+            $this->assertSame(1, $matrix['state_counts']['completed']);
+            $this->assertSame(1, $matrix['state_counts']['failed']);
+            $this->assertSame(1, $matrix['state_counts']['refused']);
+            $this->assertTrue($matrix['states']['accepted']['request_identifiers_visible']);
+            $this->assertTrue($matrix['states']['completed']['result_visible']);
+            $this->assertTrue($matrix['states']['failed']['error_visible']);
+            $this->assertTrue($matrix['states']['refused']['history_export_references_visible']);
+            $this->assertSame('auto', config('waterline.engine_source'));
+            $this->assertFalse(config('waterline.allow_unauthenticated'));
+        } finally {
+            Waterline::auth(fn (): bool => true);
+            $this->unlinkTemp($output);
         }
     }
 
@@ -254,6 +344,240 @@ class WorkflowUpdatesConformanceCommandTest extends TestCase
                 'waterline=packagist_package',
             ],
         ];
+    }
+
+    /**
+     * @return array{instance: WorkflowInstance, run: WorkflowRun}
+     */
+    private function seedSelectedRunUpdateDiagnostics(): array
+    {
+        $instance = WorkflowInstance::create([
+            'id' => 'update-conformance-instance',
+            'workflow_class' => 'App\\Workflows\\WorkflowUpdatesConformanceWorkflow',
+            'workflow_type' => 'workflow-updates.probe',
+            'run_count' => 1,
+            'started_at' => now()->subMinutes(5),
+        ]);
+
+        $run = WorkflowRun::create([
+            'id' => (string) Str::ulid(),
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'workflow_class' => 'App\\Workflows\\WorkflowUpdatesConformanceWorkflow',
+            'workflow_type' => 'workflow-updates.probe',
+            'status' => 'waiting',
+            'arguments' => Serializer::serialize(['operator-diagnostics']),
+            'connection' => 'redis',
+            'queue' => 'workflow-updates-operator-queue',
+            'started_at' => now()->subMinutes(5),
+            'last_progress_at' => now()->subMinute(),
+        ]);
+
+        $instance->update(['current_run_id' => $run->id]);
+
+        $accepted = $this->seedWorkflowUpdate($instance, $run, 1, 'accepted', 'approve', [true, 'cli-accepted']);
+        WorkflowHistoryEvent::record($run, HistoryEventType::UpdateAccepted, [
+            'workflow_command_id' => $accepted['command']->id,
+            'update_id' => $accepted['update']->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'update_name' => 'approve',
+            'arguments' => Serializer::serialize([true, 'cli-accepted']),
+        ], null, $accepted['command']);
+
+        $completed = $this->seedWorkflowUpdate($instance, $run, 2, 'completed', 'approve', [true, 'cli-completed'], [
+            'result' => ['approved' => true, 'source' => 'operator-diagnostics-cli-waterline'],
+            'outcome' => 'update_completed',
+            'closed_at' => now()->subSeconds(30),
+        ]);
+        WorkflowHistoryEvent::record($run, HistoryEventType::UpdateAccepted, [
+            'workflow_command_id' => $completed['command']->id,
+            'update_id' => $completed['update']->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'update_name' => 'approve',
+            'arguments' => Serializer::serialize([true, 'cli-completed']),
+        ], null, $completed['command']);
+        WorkflowHistoryEvent::record($run, HistoryEventType::UpdateCompleted, [
+            'workflow_command_id' => $completed['command']->id,
+            'update_id' => $completed['update']->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'update_name' => 'approve',
+            'result' => Serializer::serialize(['approved' => true, 'source' => 'operator-diagnostics-cli-waterline']),
+        ], null, $completed['command']);
+
+        $failed = $this->seedWorkflowUpdate($instance, $run, 3, 'failed', 'fail_update', ['cli failure'], [
+            'outcome' => 'update_failed',
+            'closed_at' => now()->subSeconds(20),
+        ]);
+        $failure = WorkflowFailure::create([
+            'id' => (string) Str::ulid(),
+            'workflow_run_id' => $run->id,
+            'source_kind' => 'workflow_command',
+            'source_id' => $failed['command']->id,
+            'propagation_kind' => 'update',
+            'handled' => false,
+            'exception_class' => 'DurableWorkflow\\Conformance\\WorkflowUpdateOperatorDiagnosticsFailure',
+            'message' => 'workflow update operator diagnostics failure',
+            'file' => __FILE__,
+            'line' => 1,
+            'trace_preview' => '',
+        ]);
+        $failed['update']->update(['failure_id' => $failure->id]);
+        WorkflowHistoryEvent::record($run, HistoryEventType::UpdateAccepted, [
+            'workflow_command_id' => $failed['command']->id,
+            'update_id' => $failed['update']->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'update_name' => 'fail_update',
+            'arguments' => Serializer::serialize(['cli failure']),
+        ], null, $failed['command']);
+        WorkflowHistoryEvent::record($run, HistoryEventType::UpdateCompleted, [
+            'workflow_command_id' => $failed['command']->id,
+            'update_id' => $failed['update']->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'update_name' => 'fail_update',
+            'failure_id' => $failure->id,
+            'exception_class' => 'DurableWorkflow\\Conformance\\WorkflowUpdateOperatorDiagnosticsFailure',
+            'message' => 'workflow update operator diagnostics failure',
+        ], null, $failed['command']);
+
+        $refused = $this->seedWorkflowUpdate($instance, $run, 4, 'rejected', 'missing_update', [], [
+            'outcome' => 'rejected_unknown_update',
+            'rejection_reason' => 'unknown_update',
+            'validation_errors' => ['update' => ['The requested workflow update is not declared.']],
+            'closed_at' => now()->subSeconds(10),
+        ]);
+        WorkflowHistoryEvent::record($run, HistoryEventType::UpdateRejected, [
+            'workflow_command_id' => $refused['command']->id,
+            'update_id' => $refused['update']->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'update_name' => 'missing_update',
+            'arguments' => Serializer::serialize([]),
+            'rejection_reason' => 'unknown_update',
+            'validation_errors' => ['update' => ['The requested workflow update is not declared.']],
+        ], null, $refused['command']);
+
+        WorkflowRunSummary::create([
+            'id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'run_number' => 1,
+            'is_current_run' => true,
+            'engine_source' => 'v2',
+            'class' => 'App\\Workflows\\WorkflowUpdatesConformanceWorkflow',
+            'workflow_type' => 'workflow-updates.probe',
+            'status' => 'waiting',
+            'status_bucket' => 'running',
+            'connection' => 'redis',
+            'queue' => 'workflow-updates-operator-queue',
+            'history_event_count' => 6,
+            'history_size_bytes' => 2048,
+            'started_at' => $run->started_at,
+            'created_at' => now()->subMinutes(5),
+            'updated_at' => now()->subMinute(),
+        ]);
+
+        return ['instance' => $instance, 'run' => $run];
+    }
+
+    /**
+     * @return array{command: WorkflowCommand, update: WorkflowUpdate}
+     */
+    private function seedWorkflowUpdate(
+        WorkflowInstance $instance,
+        WorkflowRun $run,
+        int $sequence,
+        string $status,
+        string $name,
+        array $arguments,
+        array $overrides = [],
+    ): array {
+        $outcome = $overrides['outcome'] ?? ($status === 'completed' ? 'update_completed' : null);
+        $rejectionReason = $overrides['rejection_reason'] ?? null;
+        $acceptedAt = now()->subSeconds(60 - $sequence);
+        $closedAt = $overrides['closed_at'] ?? null;
+        $commandStatus = $status === 'rejected' ? 'rejected' : 'accepted';
+
+        $command = WorkflowCommand::create([
+            'id' => (string) Str::ulid(),
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'command_sequence' => $sequence,
+            'command_type' => 'update',
+            'target_scope' => 'instance',
+            'source' => 'api',
+            'context' => [
+                'caller' => [
+                    'type' => 'operator',
+                    'label' => 'Operator API',
+                ],
+                'principal' => [
+                    'type' => 'service-account',
+                    'id' => 'workflow-updates-operator',
+                    'label' => 'Workflow Updates Operator',
+                ],
+                'auth' => [
+                    'status' => 'verified',
+                    'method' => 'bearer',
+                ],
+                'request' => [
+                    'method' => 'POST',
+                    'path' => '/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/updates/'.$name,
+                    'route_name' => 'waterline.instances.runs.update',
+                    'fingerprint' => 'sha256:update-'.$sequence,
+                    'request_id' => 'cli-'.$status.'-'.$sequence,
+                    'correlation_id' => 'corr-update-'.$sequence,
+                ],
+            ],
+            'status' => $commandStatus,
+            'outcome' => $outcome,
+            'rejection_reason' => $rejectionReason,
+            'workflow_class' => $run->workflow_class,
+            'workflow_type' => $run->workflow_type,
+            'payload_codec' => config('workflows.serializer'),
+            'payload' => Serializer::serialize([
+                'name' => $name,
+                'arguments' => $arguments,
+            ]),
+            'accepted_at' => $commandStatus === 'accepted' ? $acceptedAt : null,
+            'rejected_at' => $commandStatus === 'rejected' ? $closedAt : null,
+            'applied_at' => $status === 'completed' || $status === 'failed' ? $closedAt : null,
+            'created_at' => $acceptedAt,
+            'updated_at' => $closedAt ?? $acceptedAt,
+        ]);
+
+        $update = WorkflowUpdate::create([
+            'id' => (string) Str::ulid(),
+            'workflow_command_id' => $command->id,
+            'workflow_instance_id' => $instance->id,
+            'workflow_run_id' => $run->id,
+            'target_scope' => 'instance',
+            'requested_workflow_run_id' => null,
+            'resolved_workflow_run_id' => $run->id,
+            'update_name' => $name,
+            'status' => $status,
+            'outcome' => $outcome,
+            'rejection_reason' => $rejectionReason,
+            'validation_errors' => $overrides['validation_errors'] ?? [],
+            'command_sequence' => $sequence,
+            'workflow_sequence' => $status === 'accepted' || $status === 'rejected' ? null : $sequence - 1,
+            'payload_codec' => config('workflows.serializer'),
+            'arguments' => Serializer::serialize($arguments),
+            'result' => array_key_exists('result', $overrides)
+                ? Serializer::serialize($overrides['result'])
+                : null,
+            'accepted_at' => $commandStatus === 'accepted' ? $acceptedAt : null,
+            'applied_at' => $status === 'completed' || $status === 'failed' ? $closedAt : null,
+            'rejected_at' => $commandStatus === 'rejected' ? $closedAt : null,
+            'closed_at' => $closedAt,
+            'created_at' => $acceptedAt,
+            'updated_at' => $closedAt ?? $acceptedAt,
+        ]);
+
+        return ['command' => $command, 'update' => $update];
     }
 
     /**
