@@ -3,10 +3,12 @@
 namespace Waterline\Http\Resources;
 
 use BackedEnum;
+use Carbon\CarbonInterface;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Throwable;
 use Waterline\Models\WorkerRegistration;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
+use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowRun;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\CompatibilitySemantics;
@@ -42,6 +44,7 @@ class V2StoredWorkflowResource extends JsonResource
         $detail = $this->withSelectedRunIdentity($detail);
         $detail = $this->withSelectedRunStatus($detail);
         $detail = $this->withSelectedRunCompatibility($detail);
+        $detail = $this->withUpdateDiagnostics($detail);
         $compensationVisibility = CompensationVisibility::fromActivities($detail['activities'] ?? []);
         $detail['current_compensation_marker'] = $compensationVisibility['current_marker'];
         $detail['compensation_visibility'] = $compensationVisibility;
@@ -259,6 +262,8 @@ class V2StoredWorkflowResource extends JsonResource
             'history_fan_out' => 0,
             'activities_scope' => 'selected_run',
             'activities' => $activities,
+            'updates_scope' => 'selected_run',
+            'updates' => [],
             'tasks' => $this->fallbackTasks(),
             'timeline' => [],
             'timeline_total_count' => 0,
@@ -381,12 +386,27 @@ class V2StoredWorkflowResource extends JsonResource
 
         return [
             'selected_run_detail' => '/'.ltrim((string) $request->path(), '/'),
+            'selected_run_history_export' => $instanceId === null || $runId === null
+                ? null
+                : sprintf('%s/instances/%s/runs/%s/history-export', $basePath, $instanceId, $runId),
             'selected_run_query_template' => $instanceId === null || $runId === null
                 ? null
                 : sprintf('%s/instances/%s/runs/%s/queries/{query}', $basePath, $instanceId, $runId),
+            'selected_run_update_template' => $instanceId === null || $runId === null
+                ? null
+                : sprintf('%s/instances/%s/runs/%s/updates/{update}', $basePath, $instanceId, $runId),
+            'selected_run_update_lookup_template' => $instanceId === null || $runId === null
+                ? null
+                : sprintf('%s/instances/%s/runs/%s/updates/{updateId}', $basePath, $instanceId, $runId),
             'instance_query_template' => $instanceId === null
                 ? null
                 : sprintf('%s/instances/%s/queries/{query}', $basePath, $instanceId),
+            'instance_update_template' => $instanceId === null
+                ? null
+                : sprintf('%s/instances/%s/updates/{update}', $basePath, $instanceId),
+            'instance_update_lookup_template' => $instanceId === null
+                ? null
+                : sprintf('%s/instances/%s/updates/{updateId}', $basePath, $instanceId),
         ];
     }
 
@@ -469,6 +489,483 @@ class V2StoredWorkflowResource extends JsonResource
         $sequence = $entry['sequence'] ?? null;
 
         return is_numeric($sequence) ? (int) $sequence : null;
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     * @return array<string, mixed>
+     */
+    private function withUpdateDiagnostics(array $detail): array
+    {
+        $updates = $this->rowList($detail['updates'] ?? null);
+        $commandsById = $this->rowsById($detail['commands'] ?? null);
+        [$historyByUpdateId, $historyByCommandId, $allHistoryReferences] = $this->updateHistoryReferenceMaps();
+        $enriched = [];
+        $historyReferences = [];
+
+        foreach ($updates as $update) {
+            $updateId = $this->stringValue($update['id'] ?? null);
+            $commandId = $this->stringValue($update['command_id'] ?? null);
+            $command = $commandId === null ? [] : ($commandsById[$commandId] ?? []);
+            $references = $this->historyReferencesForUpdate(
+                $updateId,
+                $commandId,
+                $historyByUpdateId,
+                $historyByCommandId,
+            );
+
+            $enrichedUpdate = $this->withUpdateRowDiagnostics($update, $command, $references);
+            $enriched[] = $enrichedUpdate;
+
+            foreach ($references as $reference) {
+                $referenceId = $this->stringValue($reference['id'] ?? null)
+                    ?? implode(':', array_filter([
+                        $this->stringValue($reference['type'] ?? null),
+                        (string) ($reference['sequence'] ?? ''),
+                    ]));
+                $historyReferences[$referenceId] = $reference;
+            }
+        }
+
+        $detail['updates_scope'] = $detail['updates_scope'] ?? 'selected_run';
+        $detail['updates_projection_source'] = $allHistoryReferences === []
+            ? ($detail['updates_projection_source'] ?? 'workflow_updates')
+            : 'workflow_history_events';
+        $detail['updates'] = $enriched;
+        $detail['update_history_references'] = array_values($historyReferences);
+        $detail['update_diagnostics'] = $this->updateDiagnosticsSummary($enriched, $historyReferences);
+
+        return $detail;
+    }
+
+    /**
+     * @param array<string, mixed> $update
+     * @param array<string, mixed> $command
+     * @param list<array<string, mixed>> $historyReferences
+     * @return array<string, mixed>
+     */
+    private function withUpdateRowDiagnostics(array $update, array $command, array $historyReferences): array
+    {
+        foreach ([
+            'request_id',
+            'correlation_id',
+            'request_method',
+            'request_path',
+            'request_route_name',
+            'request_fingerprint',
+            'principal_type',
+            'principal_id',
+            'principal_label',
+            'caller_label',
+            'auth_status',
+            'auth_method',
+        ] as $field) {
+            if (! $this->hasDetailValue($update[$field] ?? null)) {
+                $update[$field] = $this->stringValue($command[$field] ?? null)
+                    ?? $this->firstHistoryValue($historyReferences, $field);
+            }
+        }
+
+        if (! $this->hasDetailValue($update['source'] ?? null)) {
+            $update['source'] = $this->stringValue($command['source'] ?? null)
+                ?? $this->firstHistoryValue($historyReferences, 'source');
+        }
+
+        $status = $this->stringValue($update['status'] ?? null);
+        $update['state'] = $status;
+        $update['state_label'] = $status === 'rejected' ? 'refused' : $status;
+        $update['refused'] = $status === 'rejected';
+        $update['reason'] = $this->stringValue($update['reason'] ?? null)
+            ?? $this->stringValue($update['rejection_reason'] ?? null)
+            ?? $this->stringValue($update['failure_message'] ?? null)
+            ?? $this->stringValue($update['outcome'] ?? null);
+
+        $payload = $this->updatePayload($update, $command);
+        $update['payload_available'] = $this->payloadAvailable($payload);
+        $update['payload'] = $payload;
+        $update['error'] = $this->updateError($update);
+        $update['error_available'] = $update['error'] !== null;
+        $update['request_identifiers'] = $this->compactDetails([
+            'request_id' => $update['request_id'] ?? null,
+            'correlation_id' => $update['correlation_id'] ?? null,
+            'request_fingerprint' => $update['request_fingerprint'] ?? null,
+            'command_id' => $update['command_id'] ?? null,
+            'update_id' => $update['id'] ?? null,
+        ]);
+        $update['history_events'] = $historyReferences;
+        $update['history_event_ids'] = array_values(array_filter(array_map(
+            fn (array $reference): ?string => $this->stringValue($reference['id'] ?? null),
+            $historyReferences,
+        )));
+        $update['history_event_sequences'] = array_values(array_filter(array_map(
+            fn (array $reference): ?int => is_int($reference['sequence'] ?? null)
+                ? $reference['sequence']
+                : null,
+            $historyReferences,
+        ), static fn (?int $sequence): bool => $sequence !== null));
+        $update['history_event_types'] = array_values(array_unique(array_filter(array_map(
+            fn (array $reference): ?string => $this->stringValue($reference['type'] ?? null),
+            $historyReferences,
+        ))));
+
+        return $update;
+    }
+
+    /**
+     * @param mixed $rows
+     * @return list<array<string, mixed>>
+     */
+    private function rowList(mixed $rows): array
+    {
+        if (! is_array($rows)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $rows,
+            static fn (mixed $row): bool => is_array($row),
+        ));
+    }
+
+    /**
+     * @param mixed $rows
+     * @return array<string, array<string, mixed>>
+     */
+    private function rowsById(mixed $rows): array
+    {
+        $indexed = [];
+
+        foreach ($this->rowList($rows) as $row) {
+            $id = $this->stringValue($row['id'] ?? null);
+
+            if ($id !== null) {
+                $indexed[$id] = $row;
+            }
+        }
+
+        return $indexed;
+    }
+
+    /**
+     * @return array{
+     *     0: array<string, list<array<string, mixed>>>,
+     *     1: array<string, list<array<string, mixed>>>,
+     *     2: list<array<string, mixed>>
+     * }
+     */
+    private function updateHistoryReferenceMaps(): array
+    {
+        try {
+            $this->resource->loadMissing(['historyEvents']);
+        } catch (Throwable) {
+            return [[], [], []];
+        }
+
+        $byUpdateId = [];
+        $byCommandId = [];
+        $all = [];
+
+        foreach ($this->resource->historyEvents ?? [] as $event) {
+            if (! $event instanceof WorkflowHistoryEvent || ! $this->isUpdateHistoryEvent($event)) {
+                continue;
+            }
+
+            $reference = $this->updateHistoryReference($event);
+            $all[] = $reference;
+            $updateId = $this->stringValue($reference['update_id'] ?? null);
+            $commandId = $this->stringValue($reference['workflow_command_id'] ?? null);
+
+            if ($updateId !== null) {
+                $byUpdateId[$updateId][] = $reference;
+            }
+
+            if ($commandId !== null) {
+                $byCommandId[$commandId][] = $reference;
+            }
+        }
+
+        return [$byUpdateId, $byCommandId, $all];
+    }
+
+    private function isUpdateHistoryEvent(WorkflowHistoryEvent $event): bool
+    {
+        return in_array($this->statusValue($event->event_type), [
+            'UpdateAccepted',
+            'UpdateRejected',
+            'UpdateApplied',
+            'UpdateCompleted',
+        ], true);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function updateHistoryReference(WorkflowHistoryEvent $event): array
+    {
+        $payload = is_array($event->payload) ? $event->payload : [];
+        $command = is_array($payload['command'] ?? null) ? $payload['command'] : [];
+        $exception = is_array($payload['exception'] ?? null) ? $payload['exception'] : [];
+        $type = $this->statusValue($event->event_type);
+        $failureId = $this->stringValue($payload['failure_id'] ?? null);
+
+        return $this->compactDetails([
+            'id' => $event->id,
+            'sequence' => is_numeric($event->sequence ?? null) ? (int) $event->sequence : null,
+            'type' => $type,
+            'event_type' => $type,
+            'recorded_at' => $this->timestampValue($event->recorded_at),
+            'workflow_command_id' => $this->stringValue($event->workflow_command_id)
+                ?? $this->stringValue($payload['workflow_command_id'] ?? null)
+                ?? $this->stringValue($command['id'] ?? null),
+            'update_id' => $this->stringValue($payload['update_id'] ?? null),
+            'update_name' => $this->stringValue($payload['update_name'] ?? null)
+                ?? $this->stringValue($command['target_name'] ?? null),
+            'outcome' => $this->stringValue($payload['outcome'] ?? null)
+                ?? $this->stringValue($command['outcome'] ?? null),
+            'rejection_reason' => $this->stringValue($payload['rejection_reason'] ?? null)
+                ?? $this->stringValue($command['rejection_reason'] ?? null),
+            'failure_id' => $failureId,
+            'message' => $this->stringValue($payload['message'] ?? null)
+                ?? $this->stringValue($exception['message'] ?? null),
+            'request_id' => $this->stringValue($command['request_id'] ?? null),
+            'correlation_id' => $this->stringValue($command['correlation_id'] ?? null),
+            'request_method' => $this->stringValue($command['request_method'] ?? null),
+            'request_path' => $this->stringValue($command['request_path'] ?? null),
+            'request_route_name' => $this->stringValue($command['request_route_name'] ?? null),
+            'request_fingerprint' => $this->stringValue($command['request_fingerprint'] ?? null),
+            'source' => $this->stringValue($command['source'] ?? null),
+            'principal_type' => $this->stringValue($command['principal_type'] ?? null),
+            'principal_id' => $this->stringValue($command['principal_id'] ?? null),
+            'principal_label' => $this->stringValue($command['principal_label'] ?? null),
+            'caller_label' => $this->stringValue($command['caller_label'] ?? null),
+            'auth_status' => $this->stringValue($command['auth_status'] ?? null),
+            'auth_method' => $this->stringValue($command['auth_method'] ?? null),
+            'arguments_available' => array_key_exists('arguments', $payload),
+            'result_available' => array_key_exists('result', $payload) && $failureId === null,
+        ]);
+    }
+
+    /**
+     * @param array<string, list<array<string, mixed>>> $historyByUpdateId
+     * @param array<string, list<array<string, mixed>>> $historyByCommandId
+     * @return list<array<string, mixed>>
+     */
+    private function historyReferencesForUpdate(
+        ?string $updateId,
+        ?string $commandId,
+        array $historyByUpdateId,
+        array $historyByCommandId,
+    ): array {
+        $references = [];
+
+        foreach ([
+            $updateId === null ? [] : ($historyByUpdateId[$updateId] ?? []),
+            $commandId === null ? [] : ($historyByCommandId[$commandId] ?? []),
+        ] as $group) {
+            foreach ($group as $reference) {
+                $key = $this->stringValue($reference['id'] ?? null)
+                    ?? implode(':', array_filter([
+                        $this->stringValue($reference['type'] ?? null),
+                        (string) ($reference['sequence'] ?? ''),
+                    ]));
+                $references[$key] = $reference;
+            }
+        }
+
+        usort($references, static function (array $left, array $right): int {
+            $leftSequence = is_int($left['sequence'] ?? null) ? $left['sequence'] : PHP_INT_MAX;
+            $rightSequence = is_int($right['sequence'] ?? null) ? $right['sequence'] : PHP_INT_MAX;
+
+            if ($leftSequence !== $rightSequence) {
+                return $leftSequence <=> $rightSequence;
+            }
+
+            return (string) ($left['id'] ?? '') <=> (string) ($right['id'] ?? '');
+        });
+
+        return array_values($references);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $historyReferences
+     */
+    private function firstHistoryValue(array $historyReferences, string $field): ?string
+    {
+        foreach ($historyReferences as $reference) {
+            $value = $this->stringValue($reference[$field] ?? null);
+
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $update
+     * @param array<string, mixed> $command
+     */
+    private function updatePayload(array $update, array $command): mixed
+    {
+        if (($command['payload_available'] ?? false) === true && array_key_exists('payload', $command)) {
+            return $command['payload'];
+        }
+
+        if (array_key_exists('payload', $update) && $this->payloadAvailable($update['payload'])) {
+            return $update['payload'];
+        }
+
+        if (($update['arguments_available'] ?? false) !== true && ! array_key_exists('arguments', $update)) {
+            return null;
+        }
+
+        return $this->compactDetails([
+            'name' => $update['name'] ?? null,
+            'arguments' => $update['arguments'] ?? null,
+        ]);
+    }
+
+    /**
+     * @param array<string, mixed> $update
+     * @return array<string, mixed>|null
+     */
+    private function updateError(array $update): ?array
+    {
+        $error = $this->compactDetails([
+            'failure_id' => $update['failure_id'] ?? null,
+            'message' => $update['failure_message'] ?? null,
+            'rejection_reason' => $update['rejection_reason'] ?? null,
+            'validation_errors' => $update['validation_errors'] ?? null,
+            'exception_type' => $update['exception_type'] ?? null,
+            'exception_class' => $update['exception_class'] ?? null,
+            'exception_resolved_class' => $update['exception_resolved_class'] ?? null,
+            'exception_resolution_source' => $update['exception_resolution_source'] ?? null,
+            'exception_resolution_error' => $update['exception_resolution_error'] ?? null,
+            'exception_replay_blocked' => ($update['exception_replay_blocked'] ?? false) === true ? true : null,
+        ]);
+
+        return $error === [] ? null : $error;
+    }
+
+    private function payloadAvailable(mixed $payload): bool
+    {
+        return ! ($payload === null || $payload === '' || $payload === []);
+    }
+
+    /**
+     * @param array<string, mixed> $values
+     * @return array<string, mixed>
+     */
+    private function compactDetails(array $values): array
+    {
+        return array_filter($values, static function (mixed $value): bool {
+            return ! ($value === null || $value === '' || $value === []);
+        });
+    }
+
+    /**
+     * @param list<array<string, mixed>> $updates
+     * @param array<string, array<string, mixed>> $historyReferences
+     * @return array<string, mixed>
+     */
+    private function updateDiagnosticsSummary(array $updates, array $historyReferences): array
+    {
+        return [
+            'surface' => 'selected_run_detail',
+            'scope' => 'selected_run',
+            'history_authority' => 'workflow_history_events',
+            'update_count' => count($updates),
+            'history_event_count' => count($historyReferences),
+            'state_counts' => $this->updateStateCounts($updates),
+            'raw_status_counts' => $this->updateRawStatusCounts($updates),
+            'request_identifier_fields' => [
+                'update_id',
+                'command_id',
+                'request_id',
+                'correlation_id',
+                'request_fingerprint',
+            ],
+            'payload_fields' => [
+                'payload',
+                'arguments',
+                'result',
+                'error',
+            ],
+            'history_reference_fields' => [
+                'history_events',
+                'history_event_ids',
+                'history_event_sequences',
+                'history_event_types',
+            ],
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $updates
+     * @return array<string, int>
+     */
+    private function updateStateCounts(array $updates): array
+    {
+        $counts = [
+            'accepted' => 0,
+            'completed' => 0,
+            'failed' => 0,
+            'refused' => 0,
+        ];
+
+        foreach ($updates as $update) {
+            $status = $this->stringValue($update['status'] ?? null);
+            $key = $status === 'rejected' ? 'refused' : $status;
+
+            if (is_string($key) && array_key_exists($key, $counts)) {
+                $counts[$key]++;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $updates
+     * @return array<string, int>
+     */
+    private function updateRawStatusCounts(array $updates): array
+    {
+        $counts = [];
+
+        foreach ($updates as $update) {
+            $status = $this->stringValue($update['status'] ?? null);
+
+            if ($status === null) {
+                continue;
+            }
+
+            $counts[$status] = ($counts[$status] ?? 0) + 1;
+        }
+
+        ksort($counts);
+
+        return $counts;
+    }
+
+    private function stringValue(mixed $value): ?string
+    {
+        return is_string($value) && trim($value) !== '' ? $value : null;
+    }
+
+    private function hasDetailValue(mixed $value): bool
+    {
+        return ! ($value === null || $value === '' || $value === []);
+    }
+
+    private function timestampValue(mixed $value): ?string
+    {
+        if ($value instanceof CarbonInterface) {
+            return $value->toJSON();
+        }
+
+        return is_string($value) && trim($value) !== '' ? $value : null;
     }
 
 }

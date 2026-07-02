@@ -1193,6 +1193,7 @@
                             <th scope="col">Update</th>
                             <th scope="col">Status</th>
                             <th scope="col">Target</th>
+                            <th scope="col">Payload</th>
                             <th scope="col">Result</th>
                             <th scope="col">Accepted</th>
                             <th scope="col">Closed</th>
@@ -1211,8 +1212,20 @@
                                 <div v-if="hasDetailValue(update.command_sequence)" class="small text-muted">
                                     command seq / #{{ update.command_sequence }}
                                 </div>
+                                <div v-if="hasDetailValue(update.request_id)" class="small text-muted">
+                                    request / {{ update.request_id }}
+                                </div>
+                                <div v-if="hasDetailValue(update.correlation_id)" class="small text-muted">
+                                    correlation / {{ update.correlation_id }}
+                                </div>
+                                <div v-if="hasDetailValue(update.request_fingerprint)" class="small text-muted">
+                                    fingerprint / {{ update.request_fingerprint }}
+                                </div>
                                 <div v-if="hasDetailValue(update.workflow_sequence)" class="small text-muted">
                                     step / {{ update.workflow_sequence }}
+                                </div>
+                                <div v-if="historyReferenceLabel(update)" class="small text-muted">
+                                    history / {{ historyReferenceLabel(update) }}
                                 </div>
                                 <div v-if="hasDetailValue(update.current_task_id)" class="small text-muted">
                                     current task / {{ update.current_task_id }}<span v-if="hasDetailValue(update.current_task_status)"> ({{ update.current_task_status }})</span>
@@ -1225,9 +1238,12 @@
                                 </div>
                             </td>
                             <td>
-                                <div>{{ update.status || '-' }}</div>
+                                <div>{{ update.state_label || update.status || '-' }}</div>
                                 <div v-if="hasDetailValue(update.outcome)" class="small text-muted">
                                     {{ update.outcome }}
+                                </div>
+                                <div v-if="hasDetailValue(update.reason)" class="small text-muted">
+                                    reason / {{ update.reason }}
                                 </div>
                                 <div v-if="hasDetailValue(update.rejection_reason)" class="small text-muted">
                                     {{ update.rejection_reason }}
@@ -1245,6 +1261,15 @@
                                 <small v-if="commandTargetDetail(update)" class="text-muted">
                                     {{ commandTargetDetail(update) }}
                                 </small>
+                            </td>
+                            <td>
+                                <button
+                                    v-if="update.payload_available"
+                                    title="View Payload"
+                                    class="btn btn-outline-primary ml-auto"
+                                    @click="showResult(update.payload, 'Update Payload')"
+                                >View</button>
+                                <span v-else>-</span>
                             </td>
                             <td>
                                 <button
@@ -1266,6 +1291,12 @@
                                     <div v-else-if="hasDetailValue(update.exception_resolution_source)">
                                         exception / {{ update.exception_resolution_source }}
                                     </div>
+                                    <button
+                                        v-if="update.error_available"
+                                        title="View Error"
+                                        class="btn btn-outline-danger btn-sm mt-2"
+                                        @click="showResult(update.error, 'Update Error')"
+                                    >Error</button>
                                 </div>
                                 <span v-else>-</span>
                             </td>
@@ -2701,6 +2732,29 @@ export default {
 
             return this.linkedTaskIds(subject)
                 .filter((taskId) => taskId !== currentTaskId)
+        },
+
+        historyReferenceLabel(subject) {
+            const references = subject && Array.isArray(subject.history_events)
+                ? subject.history_events
+                : []
+
+            return references
+                .map((reference) => {
+                    const sequence = this.hasDetailValue(reference.sequence)
+                        ? `#${reference.sequence}`
+                        : null
+                    const type = reference.type || reference.event_type || null
+                    const id = this.hasDetailValue(reference.id)
+                        ? reference.id
+                        : null
+
+                    return [sequence || id, type]
+                        .filter((part) => this.hasDetailValue(part))
+                        .join(' ')
+                })
+                .filter((label) => this.hasDetailValue(label))
+                .join(', ')
         },
 
         declaredSignalTargets() {

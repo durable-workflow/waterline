@@ -54,11 +54,42 @@ class ObserverStateEnvelopeTest extends TestCase
                         'applied_at' => '2026-05-19T01:00:03+00:00',
                     ],
                 ],
+                'updates' => [
+                    [
+                        'id' => 'update-1',
+                        'command_id' => 'command-3',
+                        'request_id' => 'req-update-1',
+                        'correlation_id' => 'corr-update-1',
+                        'request_fingerprint' => 'sha256:update-1',
+                        'command_sequence' => 3,
+                        'workflow_sequence' => 4,
+                        'name' => 'approve',
+                        'status' => 'completed',
+                        'state_label' => 'completed',
+                        'outcome' => 'update_completed',
+                        'reason' => 'update_completed',
+                        'arguments_available' => true,
+                        'arguments' => ['order-1'],
+                        'payload_available' => true,
+                        'payload' => ['name' => 'approve', 'arguments' => ['order-1']],
+                        'result_available' => true,
+                        'result' => ['approved' => true],
+                        'error_available' => false,
+                        'history_event_ids' => ['history-1', 'history-2'],
+                        'history_event_sequences' => [4, 5],
+                        'history_event_types' => ['UpdateAccepted', 'UpdateCompleted'],
+                    ],
+                ],
             ],
             [
                 'selected_run_detail' => '/waterline/api/instances/counter-workflow/runs/01JCOUNTER000000000000000001',
+                'selected_run_history_export' => '/waterline/api/instances/counter-workflow/runs/01JCOUNTER000000000000000001/history-export',
                 'selected_run_query_template' => '/waterline/api/instances/counter-workflow/runs/01JCOUNTER000000000000000001/queries/{query}',
+                'selected_run_update_template' => '/waterline/api/instances/counter-workflow/runs/01JCOUNTER000000000000000001/updates/{update}',
+                'selected_run_update_lookup_template' => '/waterline/api/instances/counter-workflow/runs/01JCOUNTER000000000000000001/updates/{updateId}',
                 'instance_query_template' => '/waterline/api/instances/counter-workflow/queries/{query}',
+                'instance_update_template' => '/waterline/api/instances/counter-workflow/updates/{update}',
+                'instance_update_lookup_template' => '/waterline/api/instances/counter-workflow/updates/{updateId}',
             ],
             CarbonImmutable::parse('2026-05-19T01:01:00Z'),
         );
@@ -74,6 +105,16 @@ class ObserverStateEnvelopeTest extends TestCase
         $this->assertSame(['increment'], $detail['observer_state']['signals']['names']);
         $this->assertSame([3], $detail['observer_state']['signals']['items'][0]['arguments']);
         $this->assertSame([5], $detail['observer_state']['signals']['items'][1]['arguments']);
+        $this->assertSame(1, $detail['observer_state']['updates']['count']);
+        $this->assertSame(1, $detail['observer_state']['updates']['state_counts']['completed']);
+        $this->assertSame(['approve'], $detail['observer_state']['updates']['names']);
+        $this->assertSame('req-update-1', $detail['observer_state']['updates']['items'][0]['request_id']);
+        $this->assertSame(['approved' => true], $detail['observer_state']['updates']['items'][0]['result']);
+        $this->assertSame(['UpdateAccepted', 'UpdateCompleted'], $detail['observer_state']['updates']['items'][0]['history_event_types']);
+        $this->assertSame(
+            '/waterline/api/instances/counter-workflow/runs/01JCOUNTER000000000000000001/updates/{update}',
+            $detail['observer_state']['updates']['update_action_path_template'],
+        );
         $this->assertSame(['current'], $detail['observer_state']['queries']['declared']);
         $this->assertFalse($detail['observer_state']['queries']['live_results_materialized']);
         $this->assertSame(

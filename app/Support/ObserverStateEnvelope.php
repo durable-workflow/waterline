@@ -32,6 +32,7 @@ class ObserverStateEnvelope
     public static function fromRunDetail(array $detail, array $paths = [], ?CarbonInterface $capturedAt = null): array
     {
         $signals = self::listValue($detail['signals'] ?? null);
+        $updates = self::listValue($detail['updates'] ?? null);
         $declaredQueries = self::stringList($detail['declared_queries'] ?? null);
 
         return [
@@ -40,8 +41,13 @@ class ObserverStateEnvelope
             'captured_at' => ($capturedAt ?? now())->toIso8601String(),
             'paths' => [
                 'selected_run_detail' => self::stringOrNull($paths['selected_run_detail'] ?? null),
+                'selected_run_history_export' => self::stringOrNull($paths['selected_run_history_export'] ?? null),
                 'selected_run_query_template' => self::stringOrNull($paths['selected_run_query_template'] ?? null),
+                'selected_run_update_template' => self::stringOrNull($paths['selected_run_update_template'] ?? null),
+                'selected_run_update_lookup_template' => self::stringOrNull($paths['selected_run_update_lookup_template'] ?? null),
                 'instance_query_template' => self::stringOrNull($paths['instance_query_template'] ?? null),
+                'instance_update_template' => self::stringOrNull($paths['instance_update_template'] ?? null),
+                'instance_update_lookup_template' => self::stringOrNull($paths['instance_update_lookup_template'] ?? null),
             ],
             'selected_run' => [
                 'instance_id' => self::stringOrNull($detail['instance_id'] ?? null),
@@ -57,6 +63,16 @@ class ObserverStateEnvelope
                 'accepted_count' => self::acceptedSignalCount($signals),
                 'names' => self::signalNames($signals),
                 'items' => self::signalItems($signals),
+            ],
+            'updates' => [
+                'count' => count($updates),
+                'state_counts' => self::updateStateCounts($updates),
+                'names' => self::updateNames($updates),
+                'items' => self::updateItems($updates),
+                'diagnostics' => self::mapValue($detail['update_diagnostics'] ?? null),
+                'update_action_path_template' => self::stringOrNull($paths['selected_run_update_template'] ?? null),
+                'update_lookup_path_template' => self::stringOrNull($paths['selected_run_update_lookup_template'] ?? null),
+                'history_export_path' => self::stringOrNull($paths['selected_run_history_export'] ?? null),
             ],
             'queries' => [
                 'declared' => $declaredQueries,
@@ -134,6 +150,95 @@ class ObserverStateEnvelope
     }
 
     /**
+     * @param list<array<string, mixed>> $updates
+     *
+     * @return array<string, int>
+     */
+    private static function updateStateCounts(array $updates): array
+    {
+        $counts = [
+            'accepted' => 0,
+            'completed' => 0,
+            'failed' => 0,
+            'refused' => 0,
+        ];
+
+        foreach ($updates as $update) {
+            $status = self::stringOrNull($update['status'] ?? null);
+            $key = $status === 'rejected' ? 'refused' : $status;
+
+            if (is_string($key) && array_key_exists($key, $counts)) {
+                $counts[$key]++;
+            }
+        }
+
+        return $counts;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $updates
+     *
+     * @return list<string>
+     */
+    private static function updateNames(array $updates): array
+    {
+        $names = [];
+
+        foreach ($updates as $update) {
+            $name = self::stringOrNull($update['name'] ?? null);
+
+            if ($name !== null) {
+                $names[$name] = true;
+            }
+        }
+
+        $names = array_keys($names);
+        sort($names);
+
+        return $names;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $updates
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function updateItems(array $updates): array
+    {
+        return array_values(array_map(static function (array $update): array {
+            $status = self::stringOrNull($update['status'] ?? null);
+
+            return [
+                'id' => self::stringOrNull($update['id'] ?? null),
+                'command_id' => self::stringOrNull($update['command_id'] ?? null),
+                'request_id' => self::stringOrNull($update['request_id'] ?? null),
+                'correlation_id' => self::stringOrNull($update['correlation_id'] ?? null),
+                'request_fingerprint' => self::stringOrNull($update['request_fingerprint'] ?? null),
+                'command_sequence' => self::intOrNull($update['command_sequence'] ?? null),
+                'workflow_sequence' => self::intOrNull($update['workflow_sequence'] ?? null),
+                'name' => self::stringOrNull($update['name'] ?? null),
+                'status' => $status,
+                'state_label' => self::stringOrNull($update['state_label'] ?? null)
+                    ?? ($status === 'rejected' ? 'refused' : $status),
+                'outcome' => self::stringOrNull($update['outcome'] ?? null),
+                'reason' => self::stringOrNull($update['reason'] ?? null),
+                'rejection_reason' => self::stringOrNull($update['rejection_reason'] ?? null),
+                'arguments_available' => ($update['arguments_available'] ?? false) === true,
+                'arguments' => $update['arguments'] ?? null,
+                'payload_available' => ($update['payload_available'] ?? false) === true,
+                'payload' => $update['payload'] ?? null,
+                'result_available' => ($update['result_available'] ?? false) === true,
+                'result' => $update['result'] ?? null,
+                'error_available' => ($update['error_available'] ?? false) === true,
+                'error' => $update['error'] ?? null,
+                'history_event_ids' => self::stringList($update['history_event_ids'] ?? null),
+                'history_event_sequences' => self::intList($update['history_event_sequences'] ?? null),
+                'history_event_types' => self::stringList($update['history_event_types'] ?? null),
+            ];
+        }, $updates));
+    }
+
+    /**
      * @param mixed $targets
      * @param list<string> $declaredQueries
      *
@@ -182,6 +287,14 @@ class ObserverStateEnvelope
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    private static function mapValue(mixed $value): array
+    {
+        return is_array($value) ? $value : [];
+    }
+
+    /**
      * @return list<string>
      */
     private static function stringList(mixed $value): array
@@ -191,6 +304,21 @@ class ObserverStateEnvelope
         }
 
         return array_values(array_filter($value, static fn (mixed $item): bool => is_string($item) && $item !== ''));
+    }
+
+    /**
+     * @return list<int>
+     */
+    private static function intList(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_map(
+            static fn (mixed $item): int => (int) $item,
+            array_filter($value, static fn (mixed $item): bool => is_int($item) || is_numeric($item)),
+        ));
     }
 
     private static function stringOrNull(mixed $value): ?string
