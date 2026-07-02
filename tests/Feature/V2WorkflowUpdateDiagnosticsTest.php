@@ -205,6 +205,52 @@ class V2WorkflowUpdateDiagnosticsTest extends TestCase
             ->assertJsonPath('updates.3.history_event_types', ['UpdateRejected'])
             ->assertJsonPath('observer_state.updates.items.3.state_label', 'refused')
             ->assertJsonPath('observer_state.updates.items.3.error.rejection_reason', 'invalid_operator_payload');
+
+        $this->getJson('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
+            ->assertOk()
+            ->assertJsonPath('update_diagnostics.surface', 'selected_run_history_export')
+            ->assertJsonPath('update_diagnostics.state_counts.accepted', 1)
+            ->assertJsonPath('update_diagnostics.state_counts.completed', 1)
+            ->assertJsonPath('update_diagnostics.state_counts.failed', 1)
+            ->assertJsonPath('update_diagnostics.state_counts.refused', 1)
+            ->assertJsonPath('updates.0.arguments', Serializer::serialize(['order-1']))
+            ->assertJsonPath('updates.1.arguments', Serializer::serialize(['order-2', true]))
+            ->assertJsonPath('updates.1.result', Serializer::serialize(['approved' => true, 'source' => 'operator']))
+            ->assertJsonPath('updates.0.id', $accepted['update']->id)
+            ->assertJsonPath('update_diagnostics.items.0.id', $accepted['update']->id)
+            ->assertJsonPath('update_diagnostics.items.0.request_id', 'req-update-1')
+            ->assertJsonPath('update_diagnostics.items.0.payload.name', 'queue-approval')
+            ->assertJsonPath('update_diagnostics.items.0.payload.arguments', ['order-1'])
+            ->assertJsonPath('update_diagnostics.items.0.history_event_types', ['UpdateAccepted'])
+            ->assertJsonPath('update_diagnostics.items.1.result_available', true)
+            ->assertJsonPath('update_diagnostics.items.1.result', ['approved' => true, 'source' => 'operator'])
+            ->assertJsonPath('update_diagnostics.items.1.history_event_types', ['UpdateAccepted', 'UpdateCompleted'])
+            ->assertJsonPath('update_diagnostics.items.2.error.failure_id', $failure->id)
+            ->assertJsonPath('update_diagnostics.items.2.error.message', 'inventory unavailable')
+            ->assertJsonPath('update_diagnostics.items.2.history_event_types', ['UpdateAccepted', 'UpdateCompleted'])
+            ->assertJsonPath('update_diagnostics.items.3.state_label', 'refused')
+            ->assertJsonPath('update_diagnostics.items.3.error.rejection_reason', 'invalid_operator_payload')
+            ->assertJsonPath('update_diagnostics.items.3.history_event_types', ['UpdateRejected']);
+
+        $this->getJson('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/updates/'.$refused['update']->id)
+            ->assertOk()
+            ->assertJsonPath('update_diagnostics.surface', 'selected_run_update_lookup')
+            ->assertJsonPath('update.id', $refused['update']->id)
+            ->assertJsonPath('status', 'rejected')
+            ->assertJsonPath('state_label', 'refused')
+            ->assertJsonPath('request_id', 'req-update-4')
+            ->assertJsonPath('payload.name', 'cancel-order')
+            ->assertJsonPath('payload.arguments', ['order-4'])
+            ->assertJsonPath('error.rejection_reason', 'invalid_operator_payload')
+            ->assertJsonPath('history_event_types', ['UpdateRejected']);
+
+        $this->getJson('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/updates/'.$accepted['update']->id)
+            ->assertStatus(202)
+            ->assertJsonPath('update_diagnostics.surface', 'selected_run_update_lookup')
+            ->assertJsonPath('update.id', $accepted['update']->id)
+            ->assertJsonPath('status', 'accepted')
+            ->assertJsonPath('request_id', 'req-update-1')
+            ->assertJsonPath('history_event_types', ['UpdateAccepted']);
     }
 
     /**

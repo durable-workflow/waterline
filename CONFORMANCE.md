@@ -76,11 +76,11 @@ Workflow update operator diagnostics are covered by a focused Waterline shard:
 php artisan waterline:workflow-updates-conformance \
   --selected-run-detail-capture=/path/to/selected-run-detail.json \
   --selected-run-history-capture=/path/to/selected-run-history-export.json \
-  --artifact-version=server=0.2.543 \
+  --artifact-version=server=0.2.544 \
   --artifact-version=cli=0.1.84 \
   --artifact-version=workflow=2.0.0-alpha.242 \
   --artifact-version=sdk-python=0.4.93 \
-  --artifact-version=waterline=2.0.0-alpha.112 \
+  --artifact-version=waterline=2.0.0-alpha.113 \
   --artifact-source=server=docker_image \
   --artifact-source=cli=official_install_script \
   --artifact-source=workflow=packagist_package \

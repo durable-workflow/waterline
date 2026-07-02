@@ -336,7 +336,10 @@ class WorkflowUpdatesConformanceCommand extends Command
             }
         }
 
-        $updates = $this->updateRowsFromDetail($detailJson);
+        $updates = $this->mergeUpdateRows(
+            $this->updateRowsFromDetail($detailJson),
+            $this->updateRowsFromHistoryExport($historyJson),
+        );
         $historyEvents = $this->historyEventsFromExport($historyJson);
         $matrix = $this->operatorSurfaceMatrix($updates, $historyEvents);
 
@@ -543,14 +546,149 @@ class WorkflowUpdatesConformanceCommand extends Command
      * @param array<string, mixed> $json
      * @return list<array<string, mixed>>
      */
+    private function updateRowsFromHistoryExport(array $json): array
+    {
+        $commandsById = $this->rowsById($json['commands'] ?? data_get($json, 'data.commands'));
+
+        foreach ([
+            data_get($json, 'update_diagnostics.items'),
+            data_get($json, 'data.update_diagnostics.items'),
+            $json['updates'] ?? null,
+            data_get($json, 'data.updates'),
+        ] as $candidate) {
+            $rows = array_map(
+                fn (array $row): array => $this->withCommandUpdateFields($row, $commandsById),
+                $this->listOfMaps($candidate),
+            );
+
+            if ($rows !== []) {
+                return $rows;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $primary
+     * @param list<array<string, mixed>> $fallback
+     * @return list<array<string, mixed>>
+     */
+    private function mergeUpdateRows(array $primary, array $fallback): array
+    {
+        $merged = [];
+
+        foreach ([$fallback, $primary] as $rows) {
+            foreach ($rows as $index => $row) {
+                $key = $this->updateRowKey($row) ?? 'row:'.$index.':'.count($merged);
+                $merged[$key] = array_merge($merged[$key] ?? [], $row);
+            }
+        }
+
+        return array_values($merged);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function updateRowKey(array $row): ?string
+    {
+        foreach (['id', 'update_id'] as $field) {
+            $value = $this->stringValue($row[$field] ?? null);
+
+            if ($value !== null) {
+                return 'update:'.$value;
+            }
+        }
+
+        foreach (['command_id', 'workflow_command_id'] as $field) {
+            $value = $this->stringValue($row[$field] ?? null);
+
+            if ($value !== null) {
+                return 'command:'.$value;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $update
+     * @param array<string, array<string, mixed>> $commandsById
+     * @return array<string, mixed>
+     */
+    private function withCommandUpdateFields(array $update, array $commandsById): array
+    {
+        $commandId = $this->stringValue($update['command_id'] ?? $update['workflow_command_id'] ?? null);
+        $command = $commandId === null ? [] : ($commandsById[$commandId] ?? []);
+
+        foreach ([
+            'request_id',
+            'correlation_id',
+            'request_method',
+            'request_path',
+            'request_route_name',
+            'request_fingerprint',
+            'principal_type',
+            'principal_id',
+            'principal_label',
+            'caller_label',
+            'auth_status',
+            'auth_method',
+        ] as $field) {
+            if (! $this->hasDetailValue($update[$field] ?? null)) {
+                $update[$field] = $this->stringValue($command[$field] ?? null);
+            }
+        }
+
+        if (! $this->hasDetailValue($update['payload'] ?? null)
+            && (($update['arguments_available'] ?? false) === true || array_key_exists('arguments', $update))) {
+            $update['payload_available'] = true;
+            $update['payload'] = $this->compactDetails([
+                'name' => $update['name'] ?? $update['update_name'] ?? null,
+                'arguments' => $update['arguments'] ?? null,
+            ]);
+        }
+
+        if (! $this->hasDetailValue($update['reason'] ?? null)) {
+            $update['reason'] = $this->stringValue($update['rejection_reason'] ?? null)
+                ?? $this->stringValue($update['failure_message'] ?? null)
+                ?? $this->stringValue($update['outcome'] ?? null);
+        }
+
+        if (! $this->hasDetailValue($update['error'] ?? null)) {
+            $error = $this->compactDetails([
+                'failure_id' => $update['failure_id'] ?? null,
+                'message' => $update['failure_message'] ?? null,
+                'rejection_reason' => $update['rejection_reason'] ?? null,
+                'validation_errors' => $update['validation_errors'] ?? null,
+                'exception_type' => $update['exception_type'] ?? null,
+                'exception_class' => $update['exception_class'] ?? null,
+            ]);
+
+            if ($error !== []) {
+                $update['error'] = $error;
+                $update['error_available'] = true;
+            }
+        }
+
+        return $update;
+    }
+
+    /**
+     * @param array<string, mixed> $json
+     * @return list<array<string, mixed>>
+     */
     private function historyEventsFromExport(array $json): array
     {
         $events = [];
 
         foreach ([
             $json['history_events'] ?? null,
+            $json['update_history_references'] ?? null,
             $json['timeline'] ?? null,
             data_get($json, 'data.history_events'),
+            data_get($json, 'data.update_history_references'),
             data_get($json, 'data.timeline'),
         ] as $candidate) {
             foreach ($this->listOfMaps($candidate) as $event) {
@@ -605,8 +743,11 @@ class WorkflowUpdatesConformanceCommand extends Command
                 'sequence' => is_numeric($event['sequence'] ?? null) ? (int) $event['sequence'] : null,
                 'type' => $this->historyEventType($event),
                 'update_id' => $this->stringValue($event['update_id'] ?? null)
-                    ?? $this->stringValue($payload['update_id'] ?? null),
+                    ?? $this->stringValue($event['workflow_update_id'] ?? null)
+                    ?? $this->stringValue($payload['update_id'] ?? null)
+                    ?? $this->stringValue($payload['workflow_update_id'] ?? null),
                 'workflow_command_id' => $this->stringValue($event['workflow_command_id'] ?? null)
+                    ?? $this->stringValue($event['command_id'] ?? null)
                     ?? $this->stringValue($payload['workflow_command_id'] ?? null),
                 'update_name' => $this->stringValue($event['update_name'] ?? null)
                     ?? $this->stringValue($payload['update_name'] ?? null),
@@ -649,7 +790,9 @@ class WorkflowUpdatesConformanceCommand extends Command
 
         foreach ([
             $event['update_id'] ?? null,
+            $event['workflow_update_id'] ?? null,
             $payload['update_id'] ?? null,
+            $payload['workflow_update_id'] ?? null,
         ] as $candidate) {
             if ($updateId !== null && $this->stringValue($candidate) === $updateId) {
                 return true;
@@ -662,6 +805,7 @@ class WorkflowUpdatesConformanceCommand extends Command
             $payload['workflow_command_id'] ?? null,
             $payload['command_id'] ?? null,
             data_get($payload, 'command.id'),
+            data_get($event, 'command.id'),
         ] as $candidate) {
             if ($commandId !== null && $this->stringValue($candidate) === $commandId) {
                 return true;
@@ -783,10 +927,18 @@ class WorkflowUpdatesConformanceCommand extends Command
      */
     private function hasRequestIdentifiers(array $update): bool
     {
-        return $this->stringValue($update['request_id'] ?? null) !== null
+        $identifiers = is_array($update['request_identifiers'] ?? null) ? $update['request_identifiers'] : [];
+        $requestId = $this->stringValue($update['request_id'] ?? null)
+            ?? $this->stringValue($identifiers['request_id'] ?? null);
+        $updateId = $this->stringValue($update['id'] ?? $update['update_id'] ?? null)
+            ?? $this->stringValue($identifiers['update_id'] ?? null);
+        $commandId = $this->stringValue($update['command_id'] ?? $update['workflow_command_id'] ?? null)
+            ?? $this->stringValue($identifiers['command_id'] ?? null);
+
+        return $requestId !== null
             && (
-                $this->stringValue($update['id'] ?? $update['update_id'] ?? null) !== null
-                || $this->stringValue($update['command_id'] ?? $update['workflow_command_id'] ?? null) !== null
+                $updateId !== null
+                || $commandId !== null
             );
     }
 
@@ -795,16 +947,17 @@ class WorkflowUpdatesConformanceCommand extends Command
      */
     private function hasPayloadDetails(array $update): bool
     {
-        if (($update['payload_available'] ?? false) === true && $this->hasDetailValue($update['payload'] ?? null)) {
+        if (($update['payload_available'] ?? false) === true
+            && $this->hasVisiblePayloadValue($update['payload'] ?? null)) {
             return true;
         }
 
         if (($update['arguments_available'] ?? false) === true && array_key_exists('arguments', $update)) {
-            return true;
+            return $this->hasVisiblePayloadValue($update['arguments']);
         }
 
-        return $this->hasDetailValue($update['payload'] ?? null)
-            || $this->hasDetailValue($update['arguments'] ?? null);
+        return $this->hasVisiblePayloadValue($update['payload'] ?? null)
+            || $this->hasVisiblePayloadValue($update['arguments'] ?? null);
     }
 
     /**
@@ -813,10 +966,10 @@ class WorkflowUpdatesConformanceCommand extends Command
     private function hasResultDetails(array $update): bool
     {
         if (($update['result_available'] ?? false) === true && array_key_exists('result', $update)) {
-            return true;
+            return $this->hasVisiblePayloadValue($update['result']);
         }
 
-        return $this->hasDetailValue($update['result'] ?? null);
+        return $this->hasVisiblePayloadValue($update['result'] ?? null);
     }
 
     /**
@@ -831,7 +984,10 @@ class WorkflowUpdatesConformanceCommand extends Command
         return $this->hasDetailValue($update['error'] ?? null)
             || $this->stringValue($update['reason'] ?? null) !== null
             || $this->stringValue($update['failure_message'] ?? null) !== null
+            || $this->stringValue($update['failure_id'] ?? null) !== null
             || $this->stringValue($update['rejection_reason'] ?? null) !== null
+            || $this->stringValue($update['exception_type'] ?? null) !== null
+            || $this->stringValue($update['exception_class'] ?? null) !== null
             || $this->hasDetailValue($update['validation_errors'] ?? null);
     }
 
@@ -848,6 +1004,58 @@ class WorkflowUpdatesConformanceCommand extends Command
             || $this->stringValue($update['reason'] ?? null) !== null
             || $this->stringValue($update['failure_message'] ?? null) !== null
             || $this->stringValue($update['rejection_reason'] ?? null) !== null;
+    }
+
+    private function hasVisiblePayloadValue(mixed $value): bool
+    {
+        if (! $this->hasDetailValue($value)) {
+            return false;
+        }
+
+        if (is_string($value)) {
+            return ! $this->isLikelyEncodedPayloadBlob($value);
+        }
+
+        if (is_array($value)
+            && ($value['decode_status'] ?? null) === 'unavailable'
+            && isset($value['sha256'])) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function isLikelyEncodedPayloadBlob(string $value): bool
+    {
+        $trimmed = trim($value);
+
+        if ($trimmed === '') {
+            return false;
+        }
+
+        if (preg_match('/^(?:a|O|s|i|d|b|C):\d+[:;]/', $trimmed) === 1 || $trimmed === 'N;') {
+            return true;
+        }
+
+        if (in_array($trimmed[0], ['{', '[', '"'], true)) {
+            json_decode($trimmed, true);
+
+            if (json_last_error() === JSON_ERROR_NONE) {
+                return true;
+            }
+        }
+
+        if (str_starts_with($trimmed, 'base64:')) {
+            return true;
+        }
+
+        if (strlen($trimmed) >= 16 && preg_match('/^[A-Za-z0-9+\/]+={0,2}$/', $trimmed) === 1) {
+            $decoded = base64_decode($trimmed, true);
+
+            return is_string($decoded) && $decoded !== '' && ($decoded[0] === "\x00" || $decoded[0] === "\x01");
+        }
+
+        return false;
     }
 
     /**
@@ -1650,6 +1858,25 @@ class WorkflowUpdatesConformanceCommand extends Command
     }
 
     /**
+     * @param mixed $rows
+     * @return array<string, array<string, mixed>>
+     */
+    private function rowsById(mixed $rows): array
+    {
+        $indexed = [];
+
+        foreach ($this->listOfMaps($rows) as $row) {
+            $id = $this->stringValue($row['id'] ?? null);
+
+            if ($id !== null) {
+                $indexed[$id] = $row;
+            }
+        }
+
+        return $indexed;
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     private function listOfMaps(mixed $value): array
@@ -1694,7 +1921,11 @@ class WorkflowUpdatesConformanceCommand extends Command
             ?? implode(':', array_filter([
                 $this->historyEventType($event) ?? 'event',
                 (string) ($event['sequence'] ?? ''),
-                $this->stringValue(data_get($event, 'payload.update_id') ?? null) ?? '',
+                $this->stringValue($event['update_id'] ?? null)
+                    ?? $this->stringValue($event['workflow_update_id'] ?? null)
+                    ?? $this->stringValue(data_get($event, 'payload.update_id') ?? null)
+                    ?? $this->stringValue(data_get($event, 'payload.workflow_update_id') ?? null)
+                    ?? '',
             ]));
     }
 

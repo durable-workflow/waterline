@@ -3,6 +3,7 @@
 namespace Waterline\Tests\Feature;
 
 use Waterline\Tests\TestCase;
+use Workflow\Serializers\Serializer;
 
 class WorkflowUpdatesConformanceCommandTest extends TestCase
 {
@@ -115,6 +116,123 @@ class WorkflowUpdatesConformanceCommandTest extends TestCase
         }
     }
 
+    public function testItDoesNotCountRawSerializedPayloadBlobsAsVisibleDiagnostics(): void
+    {
+        $output = tempnam(sys_get_temp_dir(), 'waterline-wu-output-');
+        $detailCapture = tempnam(sys_get_temp_dir(), 'waterline-wu-detail-');
+        $historyCapture = tempnam(sys_get_temp_dir(), 'waterline-wu-history-');
+        $this->assertIsString($output);
+        $this->assertIsString($detailCapture);
+        $this->assertIsString($historyCapture);
+
+        $detail = $this->selectedRunDetailCapture();
+        $detail['json']['updates'][0]['payload'] = json_encode(
+            ['name' => 'queue-approval', 'arguments' => ['order-1']],
+            JSON_THROW_ON_ERROR,
+        );
+        unset($detail['json']['updates'][0]['arguments']);
+
+        file_put_contents(
+            $detailCapture,
+            json_encode($detail, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+        );
+        file_put_contents(
+            $historyCapture,
+            json_encode($this->selectedRunHistoryCapture(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+        );
+
+        try {
+            $this->artisan('waterline:workflow-updates-conformance', [
+                '--output' => $output,
+                '--selected-run-detail-capture' => $detailCapture,
+                '--selected-run-history-capture' => $historyCapture,
+            ] + $this->publishedArtifactOptions())->assertExitCode(1);
+
+            $result = json_decode((string) file_get_contents($output), true, 512, JSON_THROW_ON_ERROR);
+            $scenarios = array_column($result['scenario_results'], null, 'scenario_id');
+            $scenario = $scenarios['operator_diagnostics_surfaces'];
+            $findings = array_column($scenario['linked_findings'], null, 'id');
+
+            $this->assertSame('fail', $scenario['status']);
+            $this->assertArrayHasKey('waterline_selected_run_update_accepted_diagnostics_incomplete', $findings);
+            $this->assertContains(
+                'payload_visible',
+                $findings['waterline_selected_run_update_accepted_diagnostics_incomplete']['evidence']['missing_fields'],
+            );
+        } finally {
+            $this->unlinkTemp($output);
+            $this->unlinkTemp($detailCapture);
+            $this->unlinkTemp($historyCapture);
+        }
+    }
+
+    public function testItAcceptsPublishedCompatibleHistoryExportUpdateRows(): void
+    {
+        $output = tempnam(sys_get_temp_dir(), 'waterline-wu-output-');
+        $detailCapture = tempnam(sys_get_temp_dir(), 'waterline-wu-detail-');
+        $historyCapture = tempnam(sys_get_temp_dir(), 'waterline-wu-history-');
+        $this->assertIsString($output);
+        $this->assertIsString($detailCapture);
+        $this->assertIsString($historyCapture);
+
+        $detail = $this->selectedRunDetailCapture();
+        foreach ($detail['json']['updates'] as &$update) {
+            unset(
+                $update['payload_available'],
+                $update['payload'],
+                $update['result_available'],
+                $update['result'],
+                $update['error_available'],
+                $update['error'],
+                $update['request_id'],
+                $update['correlation_id'],
+            );
+        }
+        unset($update);
+
+        $history = $this->selectedRunHistoryCapture();
+        $history['json']['commands'] = $this->historyExportCommands();
+        $history['json']['updates'] = $this->historyExportUpdates();
+        $history['json']['update_diagnostics'] = [
+            'surface' => 'selected_run_history_export',
+            'scope' => 'selected_run',
+            'items' => $this->historyExportUpdateDiagnosticItems(),
+        ];
+
+        file_put_contents(
+            $detailCapture,
+            json_encode($detail, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+        );
+        file_put_contents(
+            $historyCapture,
+            json_encode($history, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+        );
+
+        try {
+            $this->artisan('waterline:workflow-updates-conformance', [
+                '--output' => $output,
+                '--selected-run-detail-capture' => $detailCapture,
+                '--selected-run-history-capture' => $historyCapture,
+            ] + $this->publishedArtifactOptions())->assertExitCode(0);
+
+            $result = json_decode((string) file_get_contents($output), true, 512, JSON_THROW_ON_ERROR);
+            $scenarios = array_column($result['scenario_results'], null, 'scenario_id');
+            $matrix = $scenarios['operator_diagnostics_surfaces']['observed_outputs']['operator_surface_matrix'];
+
+            $this->assertSame('pass', $scenarios['operator_diagnostics_surfaces']['status']);
+            $this->assertTrue($matrix['states']['completed']['request_identifiers_visible']);
+            $this->assertTrue($matrix['states']['completed']['payload_visible']);
+            $this->assertTrue($matrix['states']['completed']['result_visible']);
+            $this->assertTrue($matrix['states']['failed']['error_visible']);
+            $this->assertTrue($matrix['states']['refused']['error_visible']);
+            $this->assertSame(['UpdateAccepted', 'UpdateCompleted'], $matrix['states']['completed']['history_export_event_types']);
+        } finally {
+            $this->unlinkTemp($output);
+            $this->unlinkTemp($detailCapture);
+            $this->unlinkTemp($historyCapture);
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -122,11 +240,11 @@ class WorkflowUpdatesConformanceCommandTest extends TestCase
     {
         return [
             '--artifact-version' => [
-                'server=0.2.543',
+                'server=0.2.544',
                 'cli=0.1.84',
                 'sdk-python=0.4.93',
                 'workflow=2.0.0-alpha.242',
-                'waterline=2.0.0-alpha.112',
+                'waterline=2.0.0-alpha.113',
             ],
             '--artifact-source' => [
                 'server=docker_image',
@@ -287,6 +405,157 @@ class WorkflowUpdatesConformanceCommandTest extends TestCase
                         'rejection_reason' => 'invalid_operator_payload',
                     ]),
                 ],
+            ],
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function historyExportCommands(): array
+    {
+        return [
+            $this->historyExportCommand('command-accepted', 'req-accepted', 'corr-accepted', 'queue-approval'),
+            $this->historyExportCommand('command-completed', 'req-completed', 'corr-completed', 'approve-order'),
+            $this->historyExportCommand('command-failed', 'req-failed', 'corr-failed', 'ship-order'),
+            $this->historyExportCommand('command-refused', 'req-refused', 'corr-refused', 'cancel-order'),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function historyExportCommand(string $id, string $requestId, string $correlationId, string $name): array
+    {
+        return [
+            'id' => $id,
+            'type' => 'update',
+            'target_name' => $name,
+            'request_id' => $requestId,
+            'correlation_id' => $correlationId,
+            'request_method' => 'POST',
+            'request_path' => '/waterline/api/instances/update-instance/runs/update-run-001/updates/'.$name,
+            'request_route_name' => 'waterline.instances.runs.update',
+            'request_fingerprint' => 'sha256:'.$id,
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function historyExportUpdates(): array
+    {
+        return array_values(array_map(function (array $update): array {
+            $raw = $update;
+            unset(
+                $raw['arguments_available'],
+                $raw['error'],
+                $raw['error_available'],
+                $raw['failure_message'],
+                $raw['history_event_ids'],
+                $raw['history_event_sequences'],
+                $raw['history_event_types'],
+                $raw['payload'],
+                $raw['payload_available'],
+                $raw['reason'],
+                $raw['request_identifiers'],
+                $raw['result_available'],
+                $raw['state_label']
+            );
+
+            $raw['payload_codec'] = config('workflows.serializer');
+
+            if (array_key_exists('arguments', $raw)) {
+                $raw['arguments'] = Serializer::serialize($raw['arguments']);
+            }
+
+            if (array_key_exists('result', $raw)) {
+                $raw['result'] = Serializer::serialize($raw['result']);
+            }
+
+            return $raw;
+        }, $this->historyExportUpdateDiagnosticItems()));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function historyExportUpdateDiagnosticItems(): array
+    {
+        return [
+            [
+                'id' => 'update-accepted',
+                'command_id' => 'command-accepted',
+                'name' => 'queue-approval',
+                'status' => 'accepted',
+                'state_label' => 'accepted',
+                'arguments_available' => true,
+                'arguments' => ['order-1'],
+                'payload_available' => true,
+                'payload' => ['name' => 'queue-approval', 'arguments' => ['order-1']],
+                'history_event_ids' => ['history-accepted'],
+                'history_event_sequences' => [10],
+                'history_event_types' => ['UpdateAccepted'],
+            ],
+            [
+                'id' => 'update-completed',
+                'command_id' => 'command-completed',
+                'name' => 'approve-order',
+                'status' => 'completed',
+                'state_label' => 'completed',
+                'outcome' => 'update_completed',
+                'arguments_available' => true,
+                'arguments' => ['order-2'],
+                'payload_available' => true,
+                'payload' => ['name' => 'approve-order', 'arguments' => ['order-2']],
+                'result_available' => true,
+                'result' => ['approved' => true],
+                'history_event_ids' => ['history-completed-accepted', 'history-completed'],
+                'history_event_sequences' => [20, 21],
+                'history_event_types' => ['UpdateAccepted', 'UpdateCompleted'],
+            ],
+            [
+                'id' => 'update-failed',
+                'command_id' => 'command-failed',
+                'name' => 'ship-order',
+                'status' => 'failed',
+                'state_label' => 'failed',
+                'outcome' => 'update_failed',
+                'reason' => 'inventory unavailable',
+                'failure_id' => 'failure-update',
+                'failure_message' => 'inventory unavailable',
+                'arguments_available' => true,
+                'arguments' => ['order-3'],
+                'payload_available' => true,
+                'payload' => ['name' => 'ship-order', 'arguments' => ['order-3']],
+                'error_available' => true,
+                'error' => ['failure_id' => 'failure-update', 'message' => 'inventory unavailable'],
+                'history_event_ids' => ['history-failed-accepted', 'history-failed'],
+                'history_event_sequences' => [30, 31],
+                'history_event_types' => ['UpdateAccepted', 'UpdateCompleted'],
+            ],
+            [
+                'id' => 'update-refused',
+                'command_id' => 'command-refused',
+                'name' => 'cancel-order',
+                'status' => 'rejected',
+                'state_label' => 'refused',
+                'outcome' => 'rejected_invalid_arguments',
+                'reason' => 'invalid_operator_payload',
+                'rejection_reason' => 'invalid_operator_payload',
+                'validation_errors' => ['reason' => ['The reason field is required.']],
+                'arguments_available' => true,
+                'arguments' => ['order-4'],
+                'payload_available' => true,
+                'payload' => ['name' => 'cancel-order', 'arguments' => ['order-4']],
+                'error_available' => true,
+                'error' => [
+                    'rejection_reason' => 'invalid_operator_payload',
+                    'validation_errors' => ['reason' => ['The reason field is required.']],
+                ],
+                'history_event_ids' => ['history-refused'],
+                'history_event_sequences' => [40],
+                'history_event_types' => ['UpdateRejected'],
             ],
         ];
     }

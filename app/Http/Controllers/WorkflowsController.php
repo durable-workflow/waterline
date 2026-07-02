@@ -16,6 +16,7 @@ use Workflow\V2\Contracts\HistoryExportRedactor;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Support\CommandPayloadPreview;
 use Workflow\V2\Support\CommandResponse;
 use Workflow\V2\Support\HistoryExport;
 use Workflow\V2\Support\HistoryBudget;
@@ -309,7 +310,7 @@ class WorkflowsController extends Controller
             ], 404);
         }
 
-        return $this->updateLookupResponse($result);
+        return $this->updateLookupResponse($result, $flow);
     }
 
     public function showUpdateInstance(string $instanceId, string $updateId, WorkflowRepositoryInterface $repository)
@@ -324,7 +325,7 @@ class WorkflowsController extends Controller
             ], 404);
         }
 
-        return $this->updateLookupResponse($result);
+        return $this->updateLookupResponse($result, $this->flowForUpdateResult($result));
     }
 
     public function showUpdateSelection(
@@ -343,7 +344,13 @@ class WorkflowsController extends Controller
             ], 404);
         }
 
-        return $this->updateLookupResponse($result);
+        try {
+            $flow = $repository->findFlowSelection($instanceId, $runId);
+        } catch (Throwable) {
+            $flow = null;
+        }
+
+        return $this->updateLookupResponse($result, $flow);
     }
 
     public function cancelInstance(string $instanceId, Request $request, WorkflowRepositoryInterface $repository)
@@ -1003,6 +1010,7 @@ class WorkflowsController extends Controller
         }
 
         $export['namespace'] = $namespace;
+        $export = $this->withHistoryExportUpdateDiagnostics($export);
         $export = $this->withOperatorScope($export);
 
         return $export;
@@ -1247,6 +1255,16 @@ class WorkflowsController extends Controller
         return null;
     }
 
+    private function stringValue(mixed $value): ?string
+    {
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    private function hasDetailValue(mixed $value): bool
+    {
+        return ! ($value === null || $value === '' || $value === []);
+    }
+
     private function commandResponse($result)
     {
         $status = $result instanceof UpdateResult && $result->updateStatus() === 'accepted'
@@ -1259,12 +1277,529 @@ class WorkflowsController extends Controller
         );
     }
 
-    private function updateLookupResponse(UpdateResult $result)
+    private function updateLookupResponse(UpdateResult $result, ?WorkflowRun $flow = null)
     {
+        $payload = CommandResponse::payload($result);
+
+        if ($flow instanceof WorkflowRun) {
+            $diagnostic = $this->selectedRunUpdateDiagnostic(
+                $flow,
+                $this->stringValue($payload['update_id'] ?? null),
+            );
+
+            if ($diagnostic !== null) {
+                $payload = array_merge($payload, $diagnostic, [
+                    'update_id' => $payload['update_id'] ?? $diagnostic['id'] ?? null,
+                    'update_status' => $payload['update_status'] ?? $diagnostic['status'] ?? null,
+                    'command_response' => CommandResponse::payload($result),
+                    'update' => $diagnostic,
+                    'update_diagnostics' => [
+                        'surface' => 'selected_run_update_lookup',
+                        'scope' => 'selected_run',
+                        'state' => $diagnostic['state_label'] ?? $diagnostic['status'] ?? null,
+                        'request_identifier_fields' => [
+                            'update_id',
+                            'command_id',
+                            'request_id',
+                            'correlation_id',
+                            'request_fingerprint',
+                        ],
+                        'payload_fields' => [
+                            'payload',
+                            'arguments',
+                            'result',
+                            'error',
+                        ],
+                        'history_reference_fields' => [
+                            'history_events',
+                            'history_event_ids',
+                            'history_event_sequences',
+                            'history_event_types',
+                        ],
+                    ],
+                ]);
+            }
+        }
+
         return response()->json(
-            $this->withOperatorScope(CommandResponse::payload($result)),
+            $this->withOperatorScope($payload),
             $result->updateStatus() === 'accepted' ? 202 : 200,
         );
+    }
+
+    private function flowForUpdateResult(UpdateResult $result): ?WorkflowRun
+    {
+        $runId = $this->stringValue($result->runId());
+
+        if ($runId === null) {
+            return null;
+        }
+
+        try {
+            $run = WorkflowRun::query()->find($runId);
+
+            return $run instanceof WorkflowRun ? $run : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function selectedRunUpdateDiagnostic(WorkflowRun $flow, ?string $updateId): ?array
+    {
+        if ($updateId === null) {
+            return null;
+        }
+
+        try {
+            $detail = V2StoredWorkflowResource::make($flow)->resolve(request());
+        } catch (Throwable) {
+            return null;
+        }
+
+        $updates = is_array($detail['updates'] ?? null) ? $detail['updates'] : [];
+
+        foreach ($updates as $update) {
+            if (! is_array($update)) {
+                continue;
+            }
+
+            if (! in_array($updateId, [
+                $this->stringValue($update['id'] ?? null),
+                $this->stringValue($update['update_id'] ?? null),
+                $this->stringValue($update['command_id'] ?? null),
+                $this->stringValue($update['workflow_command_id'] ?? null),
+            ], true)) {
+                continue;
+            }
+
+            $observerState = is_array($detail['observer_state'] ?? null) ? $detail['observer_state'] : [];
+            $paths = is_array($observerState['paths'] ?? null) ? $observerState['paths'] : [];
+            $historyExportPath = $this->stringValue($paths['selected_run_history_export'] ?? null);
+
+            $update['surface'] = 'selected_run_update_lookup';
+            $update['scope'] = 'selected_run';
+            $update['selected_run_detail_path'] = $historyExportPath === null
+                ? $this->stringValue($paths['selected_run_detail'] ?? null)
+                : preg_replace('#/history-export$#', '', $historyExportPath);
+            $update['selected_run_history_export_path'] = $historyExportPath;
+            $update['selected_run_update_lookup_template'] = $this->stringValue(
+                $paths['selected_run_update_lookup_template'] ?? null,
+            );
+
+            return $update;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $export
+     * @return array<string, mixed>
+     */
+    private function withHistoryExportUpdateDiagnostics(array $export): array
+    {
+        $updates = $this->listOfMaps($export['updates'] ?? null);
+        $commands = $this->rowsById($export['commands'] ?? null);
+        [$historyByUpdateId, $historyByCommandId, $historyReferences] = $this->historyExportUpdateReferenceMaps($export);
+        $diagnosticRows = [];
+
+        foreach ($updates as $update) {
+            $updateId = $this->stringValue($update['id'] ?? $update['update_id'] ?? null);
+            $commandId = $this->stringValue($update['command_id'] ?? $update['workflow_command_id'] ?? null);
+            $command = $commandId === null ? [] : ($commands[$commandId] ?? []);
+            $references = $this->referencesForUpdate($updateId, $commandId, $historyByUpdateId, $historyByCommandId);
+
+            $diagnosticRows[] = $this->historyExportUpdateRow($update, $command, $references);
+        }
+
+        $export['update_history_references'] = $historyReferences;
+        $export['update_diagnostics'] = [
+            'surface' => 'selected_run_history_export',
+            'scope' => 'selected_run',
+            'history_authority' => 'workflow_history_events',
+            'update_count' => count($diagnosticRows),
+            'history_event_count' => count($historyReferences),
+            'state_counts' => $this->updateStateCounts($diagnosticRows),
+            'items' => $diagnosticRows,
+            'request_identifier_fields' => [
+                'update_id',
+                'command_id',
+                'request_id',
+                'correlation_id',
+                'request_fingerprint',
+            ],
+            'payload_fields' => [
+                'payload',
+                'arguments',
+                'result',
+                'error',
+            ],
+            'history_reference_fields' => [
+                'history_events',
+                'history_event_ids',
+                'history_event_sequences',
+                'history_event_types',
+            ],
+        ];
+
+        return $export;
+    }
+
+    /**
+     * @param array<string, mixed> $update
+     * @param array<string, mixed> $command
+     * @param list<array<string, mixed>> $historyReferences
+     * @return array<string, mixed>
+     */
+    private function historyExportUpdateRow(array $update, array $command, array $historyReferences): array
+    {
+        foreach ([
+            'request_id',
+            'correlation_id',
+            'request_method',
+            'request_path',
+            'request_route_name',
+            'request_fingerprint',
+            'principal_type',
+            'principal_id',
+            'principal_label',
+            'caller_label',
+            'auth_status',
+            'auth_method',
+        ] as $field) {
+            if (! $this->hasDetailValue($update[$field] ?? null)) {
+                $update[$field] = $this->stringValue($command[$field] ?? null)
+                    ?? $this->firstReferenceString($historyReferences, $field);
+            }
+        }
+
+        $status = $this->stringValue($update['status'] ?? null);
+        $update['state'] = $status;
+        $update['state_label'] = $status === 'rejected' ? 'refused' : $status;
+        $update['refused'] = $status === 'rejected';
+        $update['reason'] = $this->stringValue($update['reason'] ?? null)
+            ?? $this->stringValue($update['rejection_reason'] ?? null)
+            ?? $this->stringValue($update['failure_message'] ?? null)
+            ?? $this->stringValue($update['outcome'] ?? null);
+
+        $update = $this->withHistoryExportPayloadDetails($update, $command);
+        $payload = $this->historyExportUpdatePayload($update, $command);
+        $update['payload_available'] = $this->hasDetailValue($payload);
+        $update['payload'] = $payload;
+        $error = $this->hasDetailValue($update['error'] ?? null)
+            ? $update['error']
+            : $this->historyExportUpdateError($update);
+        $update['error'] = $error;
+        $update['error_available'] = $this->hasDetailValue($error);
+        $update['history_events'] = $historyReferences;
+        $update['history_event_ids'] = array_values(array_filter(array_map(
+            fn (array $reference): ?string => $this->stringValue($reference['id'] ?? null),
+            $historyReferences,
+        )));
+        $update['history_event_sequences'] = array_values(array_filter(array_map(
+            fn (array $reference): ?int => $this->intValue($reference['sequence'] ?? null),
+            $historyReferences,
+        ), static fn (?int $sequence): bool => $sequence !== null));
+        $update['history_event_types'] = array_values(array_unique(array_filter(array_map(
+            fn (array $reference): ?string => $this->stringValue($reference['type'] ?? null),
+            $historyReferences,
+        ))));
+        $update['request_identifiers'] = array_filter([
+            'request_id' => $update['request_id'] ?? null,
+            'correlation_id' => $update['correlation_id'] ?? null,
+            'request_fingerprint' => $update['request_fingerprint'] ?? null,
+            'command_id' => $update['command_id'] ?? null,
+            'update_id' => $update['id'] ?? $update['update_id'] ?? null,
+        ], fn (mixed $value): bool => $this->hasDetailValue($value));
+
+        return $update;
+    }
+
+    /**
+     * @param array<string, mixed> $update
+     * @param array<string, mixed> $command
+     */
+    private function historyExportUpdatePayload(array $update, array $command): mixed
+    {
+        $codec = $this->stringValue($update['payload_codec'] ?? null)
+            ?? $this->stringValue($command['payload_codec'] ?? null);
+
+        if ($this->hasDetailValue($update['payload'] ?? null)) {
+            return $this->historyExportDecodedPayload($update['payload'], $codec);
+        }
+
+        $commandPayload = $this->historyExportDecodedPayload(
+            $command['payload'] ?? null,
+            $this->stringValue($command['payload_codec'] ?? null),
+        );
+        $commandPayload = is_array($commandPayload) ? $commandPayload : [];
+        $arguments = $this->hasDetailValue($update['arguments'] ?? null)
+            ? $update['arguments']
+            : ($commandPayload['arguments'] ?? null);
+        $name = $update['name']
+            ?? $update['update_name']
+            ?? $command['target_name']
+            ?? $commandPayload['name']
+            ?? null;
+
+        if (($update['arguments_available'] ?? false) === true
+            || $this->hasDetailValue($arguments)
+            || $this->hasDetailValue($name)) {
+            $payload = array_filter([
+                'name' => $name,
+            ], fn (mixed $value): bool => $this->hasDetailValue($value));
+
+            if (($update['arguments_available'] ?? false) === true
+                || array_key_exists('arguments', $update)
+                || array_key_exists('arguments', $commandPayload)
+                || $this->hasDetailValue($arguments)) {
+                $payload['arguments'] = $arguments ?? [];
+            }
+
+            return $payload;
+        }
+
+        return $this->hasDetailValue($commandPayload) ? $commandPayload : null;
+    }
+
+    /**
+     * @param array<string, mixed> $update
+     * @param array<string, mixed> $command
+     * @return array<string, mixed>
+     */
+    private function withHistoryExportPayloadDetails(array $update, array $command): array
+    {
+        $codec = $this->stringValue($update['payload_codec'] ?? null)
+            ?? $this->stringValue($command['payload_codec'] ?? null);
+
+        foreach (['arguments', 'result'] as $field) {
+            if (! array_key_exists($field, $update)) {
+                continue;
+            }
+
+            $availableField = $field.'_available';
+            $wasAvailable = ($update[$availableField] ?? false) === true
+                || $this->hasDetailValue($update[$field]);
+            $update[$field] = $this->historyExportDecodedPayload($update[$field], $codec);
+            $update[$availableField] = $wasAvailable || $this->hasDetailValue($update[$field]);
+        }
+
+        return $update;
+    }
+
+    private function historyExportDecodedPayload(mixed $payload, ?string $codec): mixed
+    {
+        if (! $this->hasDetailValue($payload)) {
+            return null;
+        }
+
+        if (! is_string($payload)) {
+            return $payload;
+        }
+
+        $decoded = CommandPayloadPreview::previewWithCodec($payload, $codec);
+
+        if (is_string($decoded) && hash_equals($payload, $decoded)) {
+            return array_filter([
+                'decode_status' => 'unavailable',
+                'payload_codec' => $codec,
+                'byte_length' => strlen($payload),
+                'sha256' => hash('sha256', $payload),
+            ], fn (mixed $value): bool => $this->hasDetailValue($value));
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * @param array<string, mixed> $update
+     * @return array<string, mixed>|null
+     */
+    private function historyExportUpdateError(array $update): ?array
+    {
+        $error = array_filter([
+            'failure_id' => $update['failure_id'] ?? null,
+            'message' => $update['failure_message'] ?? null,
+            'rejection_reason' => $update['rejection_reason'] ?? null,
+            'validation_errors' => $update['validation_errors'] ?? null,
+            'exception_type' => $update['exception_type'] ?? null,
+            'exception_class' => $update['exception_class'] ?? null,
+            'exception_resolved_class' => $update['exception_resolved_class'] ?? null,
+            'exception_resolution_source' => $update['exception_resolution_source'] ?? null,
+            'exception_resolution_error' => $update['exception_resolution_error'] ?? null,
+            'exception_replay_blocked' => ($update['exception_replay_blocked'] ?? false) === true ? true : null,
+        ], fn (mixed $value): bool => $this->hasDetailValue($value));
+
+        return $error === [] ? null : $error;
+    }
+
+    /**
+     * @param array<string, mixed> $export
+     * @return array{
+     *     0: array<string, list<array<string, mixed>>>,
+     *     1: array<string, list<array<string, mixed>>>,
+     *     2: list<array<string, mixed>>
+     * }
+     */
+    private function historyExportUpdateReferenceMaps(array $export): array
+    {
+        $byUpdateId = [];
+        $byCommandId = [];
+        $all = [];
+
+        foreach ($this->listOfMaps($export['history_events'] ?? null) as $event) {
+            $type = $this->stringValue($event['type'] ?? $event['event_type'] ?? null);
+
+            if (! in_array($type, ['UpdateAccepted', 'UpdateRejected', 'UpdateApplied', 'UpdateCompleted'], true)) {
+                continue;
+            }
+
+            $payload = is_array($event['payload'] ?? null) ? $event['payload'] : [];
+            $reference = array_filter([
+                'id' => $event['id'] ?? null,
+                'sequence' => $this->intValue($event['sequence'] ?? null),
+                'type' => $type,
+                'event_type' => $type,
+                'recorded_at' => $event['recorded_at'] ?? null,
+                'workflow_command_id' => $event['workflow_command_id'] ?? $payload['workflow_command_id'] ?? null,
+                'update_id' => $event['update_id'] ?? $payload['update_id'] ?? null,
+                'update_name' => $event['update_name'] ?? $payload['update_name'] ?? null,
+                'outcome' => $payload['outcome'] ?? null,
+                'rejection_reason' => $payload['rejection_reason'] ?? null,
+                'failure_id' => $payload['failure_id'] ?? null,
+                'message' => $payload['message'] ?? null,
+                'request_id' => $payload['request_id'] ?? null,
+            ], fn (mixed $value): bool => $this->hasDetailValue($value));
+            $all[] = $reference;
+
+            $updateId = $this->stringValue($reference['update_id'] ?? null);
+            $commandId = $this->stringValue($reference['workflow_command_id'] ?? null);
+
+            if ($updateId !== null) {
+                $byUpdateId[$updateId][] = $reference;
+            }
+
+            if ($commandId !== null) {
+                $byCommandId[$commandId][] = $reference;
+            }
+        }
+
+        return [$byUpdateId, $byCommandId, $all];
+    }
+
+    /**
+     * @param mixed $rows
+     * @return list<array<string, mixed>>
+     */
+    private function listOfMaps(mixed $rows): array
+    {
+        if (! is_array($rows)) {
+            return [];
+        }
+
+        return array_values(array_filter($rows, static fn (mixed $row): bool => is_array($row)));
+    }
+
+    /**
+     * @param mixed $rows
+     * @return array<string, array<string, mixed>>
+     */
+    private function rowsById(mixed $rows): array
+    {
+        $indexed = [];
+
+        foreach ($this->listOfMaps($rows) as $row) {
+            $id = $this->stringValue($row['id'] ?? null);
+
+            if ($id !== null) {
+                $indexed[$id] = $row;
+            }
+        }
+
+        return $indexed;
+    }
+
+    /**
+     * @param array<string, list<array<string, mixed>>> $historyByUpdateId
+     * @param array<string, list<array<string, mixed>>> $historyByCommandId
+     * @return list<array<string, mixed>>
+     */
+    private function referencesForUpdate(
+        ?string $updateId,
+        ?string $commandId,
+        array $historyByUpdateId,
+        array $historyByCommandId,
+    ): array {
+        $references = [];
+
+        foreach ([
+            $updateId === null ? [] : ($historyByUpdateId[$updateId] ?? []),
+            $commandId === null ? [] : ($historyByCommandId[$commandId] ?? []),
+        ] as $group) {
+            foreach ($group as $reference) {
+                $key = $this->stringValue($reference['id'] ?? null)
+                    ?? implode(':', array_filter([
+                        $this->stringValue($reference['type'] ?? null),
+                        (string) ($reference['sequence'] ?? ''),
+                    ]));
+                $references[$key] = $reference;
+            }
+        }
+
+        usort($references, static function (array $left, array $right): int {
+            $leftSequence = is_int($left['sequence'] ?? null) ? $left['sequence'] : PHP_INT_MAX;
+            $rightSequence = is_int($right['sequence'] ?? null) ? $right['sequence'] : PHP_INT_MAX;
+
+            return $leftSequence === $rightSequence
+                ? (string) ($left['id'] ?? '') <=> (string) ($right['id'] ?? '')
+                : $leftSequence <=> $rightSequence;
+        });
+
+        return array_values($references);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $historyReferences
+     */
+    private function firstReferenceString(array $historyReferences, string $field): ?string
+    {
+        foreach ($historyReferences as $reference) {
+            $value = $this->stringValue($reference[$field] ?? null);
+
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $updates
+     * @return array<string, int>
+     */
+    private function updateStateCounts(array $updates): array
+    {
+        $counts = [
+            'accepted' => 0,
+            'completed' => 0,
+            'failed' => 0,
+            'refused' => 0,
+        ];
+
+        foreach ($updates as $update) {
+            $status = $this->stringValue($update['status'] ?? null);
+            $key = $status === 'rejected' ? 'refused' : $status;
+
+            if (is_string($key) && array_key_exists($key, $counts)) {
+                $counts[$key]++;
+            }
+        }
+
+        return $counts;
     }
 
     /**
