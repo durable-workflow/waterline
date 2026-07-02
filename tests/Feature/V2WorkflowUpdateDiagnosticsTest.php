@@ -5,6 +5,8 @@ namespace Waterline\Tests\Feature;
 use Illuminate\Support\Str;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
+use Workflow\V2\Contracts\HistoryExportRedactor;
+use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowFailure;
@@ -138,6 +140,7 @@ class V2WorkflowUpdateDiagnosticsTest extends TestCase
             'workflow_run_id' => $run->id,
             'update_name' => 'cancel-order',
             'arguments' => Serializer::serialize(['order-4']),
+            'rejection_reason' => 'invalid_operator_payload',
             'validation_errors' => ['reason' => ['The reason field is required.']],
         ], null, $refused['command']);
 
@@ -227,9 +230,13 @@ class V2WorkflowUpdateDiagnosticsTest extends TestCase
             ->assertJsonPath('update_diagnostics.items.1.history_event_types', ['UpdateAccepted', 'UpdateCompleted'])
             ->assertJsonPath('update_diagnostics.items.2.error.failure_id', $failure->id)
             ->assertJsonPath('update_diagnostics.items.2.error.message', 'inventory unavailable')
+            ->assertJsonPath('update_diagnostics.items.2.history_events.1.message', 'inventory unavailable')
             ->assertJsonPath('update_diagnostics.items.2.history_event_types', ['UpdateAccepted', 'UpdateCompleted'])
             ->assertJsonPath('update_diagnostics.items.3.state_label', 'refused')
             ->assertJsonPath('update_diagnostics.items.3.error.rejection_reason', 'invalid_operator_payload')
+            ->assertJsonPath('update_diagnostics.items.3.history_events.0.rejection_reason', 'invalid_operator_payload')
+            ->assertJsonPath('update_history_references.4.message', 'inventory unavailable')
+            ->assertJsonPath('update_history_references.5.rejection_reason', 'invalid_operator_payload')
             ->assertJsonPath('update_diagnostics.items.3.history_event_types', ['UpdateRejected']);
 
         $this->getJson('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/updates/'.$refused['update']->id)
@@ -251,6 +258,134 @@ class V2WorkflowUpdateDiagnosticsTest extends TestCase
             ->assertJsonPath('status', 'accepted')
             ->assertJsonPath('request_id', 'req-update-1')
             ->assertJsonPath('history_event_types', ['UpdateAccepted']);
+
+        $this->app->bind(OperatorObservabilityRepository::class, fn (): OperatorObservabilityRepository => new class implements OperatorObservabilityRepository {
+            public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+            {
+                throw new \RuntimeException('selected-run projection unavailable');
+            }
+
+            public function listItem(WorkflowRunSummary $summary): array
+            {
+                return [];
+            }
+
+            public function runHistoryExport(
+                WorkflowRun $run,
+                ?\Carbon\CarbonInterface $exportedAt = null,
+                HistoryExportRedactor|callable|null $redactor = null,
+            ): array {
+                throw new \RuntimeException('history export projection unavailable');
+            }
+
+            public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+
+            public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+        });
+
+        $this->getJson('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id)
+            ->assertOk()
+            ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable')
+            ->assertJsonPath('updates_scope', 'selected_run')
+            ->assertJsonPath('update_diagnostics.state_counts.accepted', 1)
+            ->assertJsonPath('update_diagnostics.state_counts.completed', 1)
+            ->assertJsonPath('update_diagnostics.state_counts.failed', 1)
+            ->assertJsonPath('update_diagnostics.state_counts.refused', 1)
+            ->assertJsonPath('updates.0.request_id', 'req-update-1')
+            ->assertJsonPath('updates.0.payload.name', 'queue-approval')
+            ->assertJsonPath('updates.0.payload.arguments', ['order-1'])
+            ->assertJsonPath('updates.1.result', ['approved' => true, 'source' => 'operator'])
+            ->assertJsonPath('updates.2.error.message', 'inventory unavailable')
+            ->assertJsonPath('updates.3.state_label', 'refused')
+            ->assertJsonPath('updates.3.error.rejection_reason', 'invalid_operator_payload')
+            ->assertJsonPath('observer_state.updates.count', 4);
+
+        $this->getJson('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
+            ->assertOk()
+            ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable')
+            ->assertJsonPath('update_diagnostics.surface', 'selected_run_history_export')
+            ->assertJsonPath('update_diagnostics.state_counts.accepted', 1)
+            ->assertJsonPath('update_diagnostics.state_counts.completed', 1)
+            ->assertJsonPath('update_diagnostics.state_counts.failed', 1)
+            ->assertJsonPath('update_diagnostics.state_counts.refused', 1)
+            ->assertJsonPath('update_diagnostics.items.0.request_id', 'req-update-1')
+            ->assertJsonPath('update_diagnostics.items.1.result', ['approved' => true, 'source' => 'operator'])
+            ->assertJsonPath('update_diagnostics.items.2.error.message', 'inventory unavailable')
+            ->assertJsonPath('update_diagnostics.items.3.error.rejection_reason', 'invalid_operator_payload')
+            ->assertJsonPath('update_diagnostics.items.3.history_event_types', ['UpdateRejected']);
+
+        config()->set('workflows.v2.history_export.redactor', new class() implements HistoryExportRedactor {
+            /**
+             * @param array<string, mixed> $context
+             *
+             * @return array<string, mixed>
+             */
+            public function redact(mixed $value, array $context): array
+            {
+                return [
+                    'redacted' => true,
+                    'path' => $context['path'],
+                    'category' => $context['category'],
+                    'field' => $context['field'] ?? null,
+                ];
+            }
+        });
+
+        $redacted = $this->getJson('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/history-export')
+            ->assertOk()
+            ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable')
+            ->assertJsonPath('redaction.applied', true)
+            ->assertJsonPath('updates.0.arguments.path', 'updates.0.arguments')
+            ->assertJsonPath('updates.0.payload.path', 'updates.0.payload')
+            ->assertJsonPath('updates.1.result.path', 'updates.1.result')
+            ->assertJsonPath('updates.2.error.path', 'updates.2.error')
+            ->assertJsonPath('updates.3.error.path', 'updates.3.error')
+            ->assertJsonPath('update_diagnostics.items.0.arguments.path', 'update_diagnostics.items.0.arguments')
+            ->assertJsonPath('update_diagnostics.items.0.payload.path', 'update_diagnostics.items.0.payload')
+            ->assertJsonPath('update_diagnostics.items.1.result.path', 'update_diagnostics.items.1.result')
+            ->assertJsonPath('update_diagnostics.items.2.error.path', 'update_diagnostics.items.2.error')
+            ->assertJsonPath('update_diagnostics.items.2.history_events.1.message.path', 'update_diagnostics.items.2.history_events.1.message')
+            ->assertJsonPath('update_diagnostics.items.3.error.path', 'update_diagnostics.items.3.error')
+            ->assertJsonPath('update_diagnostics.items.3.history_events.0.rejection_reason.path', 'update_diagnostics.items.3.history_events.0.rejection_reason')
+            ->assertJsonPath('update_history_references.4.message.path', 'update_history_references.4.message')
+            ->assertJsonPath('update_history_references.5.rejection_reason.path', 'update_history_references.5.rejection_reason')
+            ->assertJsonPath('update_diagnostics.items.3.history_event_types', ['UpdateRejected']);
+
+        $paths = $redacted->json('redaction.paths');
+        $this->assertContains('updates.0.arguments', $paths);
+        $this->assertContains('updates.0.payload', $paths);
+        $this->assertContains('updates.1.result', $paths);
+        $this->assertContains('updates.2.error', $paths);
+        $this->assertContains('update_diagnostics.items.0.arguments', $paths);
+        $this->assertContains('update_diagnostics.items.0.payload', $paths);
+        $this->assertContains('update_diagnostics.items.1.result', $paths);
+        $this->assertContains('update_diagnostics.items.2.error', $paths);
+        $this->assertContains('update_diagnostics.items.2.history_events.1.message', $paths);
+        $this->assertContains('update_diagnostics.items.3.history_events.0.rejection_reason', $paths);
+        $this->assertContains('update_history_references.4.message', $paths);
+        $this->assertContains('update_history_references.5.rejection_reason', $paths);
+
+        $historyReferenceJson = json_encode($redacted->json('update_history_references'), JSON_THROW_ON_ERROR);
+        $diagnosticHistoryJson = json_encode(
+            array_map(
+                static fn (array $item): array => is_array($item['history_events'] ?? null) ? $item['history_events'] : [],
+                $redacted->json('update_diagnostics.items'),
+            ),
+            JSON_THROW_ON_ERROR,
+        );
+        $this->assertStringNotContainsString('inventory unavailable', $historyReferenceJson);
+        $this->assertStringNotContainsString('invalid_operator_payload', $historyReferenceJson);
+        $this->assertStringNotContainsString('inventory unavailable', $diagnosticHistoryJson);
+        $this->assertStringNotContainsString('invalid_operator_payload', $diagnosticHistoryJson);
+        $this->assertStringNotContainsString('order-1', $redacted->getContent());
+        $this->assertStringNotContainsString('order-2', $redacted->getContent());
+        $this->assertStringNotContainsString('"approved":true', $redacted->getContent());
     }
 
     /**

@@ -7,15 +7,19 @@ use Carbon\CarbonInterface;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Throwable;
 use Waterline\Models\WorkerRegistration;
-use Workflow\V2\Contracts\OperatorObservabilityRepository;
-use Workflow\V2\Models\WorkflowHistoryEvent;
-use Workflow\V2\Models\WorkflowRun;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\CompatibilitySemantics;
 use Waterline\Support\CompensationVisibility;
 use Waterline\Support\ObserverStateEnvelope;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\RunDiagnostics;
+use Workflow\V2\Contracts\OperatorObservabilityRepository;
+use Workflow\V2\Models\WorkflowCommand;
+use Workflow\V2\Models\WorkflowFailure;
+use Workflow\V2\Models\WorkflowHistoryEvent;
+use Workflow\V2\Models\WorkflowRun;
+use Workflow\V2\Models\WorkflowUpdate;
+use Workflow\V2\Support\CommandPayloadPreview;
 
 /**
  * @mixin WorkflowRun
@@ -226,6 +230,7 @@ class V2StoredWorkflowResource extends JsonResource
     {
         $status = $this->statusValue($this->resource->status);
         $activities = CompensationVisibility::durableHistoryActivitiesForRun($this->resource);
+        $updateFallback = $this->durableUpdateFallbackRows();
 
         return [
             'id' => $this->resource->id,
@@ -263,7 +268,8 @@ class V2StoredWorkflowResource extends JsonResource
             'activities_scope' => 'selected_run',
             'activities' => $activities,
             'updates_scope' => 'selected_run',
-            'updates' => [],
+            'updates' => $updateFallback['updates'],
+            'commands' => $updateFallback['commands'],
             'tasks' => $this->fallbackTasks(),
             'timeline' => [],
             'timeline_total_count' => 0,
@@ -273,6 +279,180 @@ class V2StoredWorkflowResource extends JsonResource
                 'message' => 'Waterline rendered durable run state and activity history because selected-run projections were unavailable.',
             ],
         ];
+    }
+
+    /**
+     * @return array{updates: list<array<string, mixed>>, commands: list<array<string, mixed>>}
+     */
+    private function durableUpdateFallbackRows(): array
+    {
+        try {
+            $this->resource->loadMissing(['updates.command', 'updates.failure']);
+        } catch (Throwable) {
+            return ['updates' => [], 'commands' => []];
+        }
+
+        $updates = [];
+        $commands = [];
+
+        foreach ($this->resource->updates ?? [] as $update) {
+            if (! $update instanceof WorkflowUpdate) {
+                continue;
+            }
+
+            $command = $update->command instanceof WorkflowCommand ? $update->command : null;
+            $failure = $update->failure instanceof WorkflowFailure ? $update->failure : null;
+
+            if ($command instanceof WorkflowCommand) {
+                $commands[$command->id] = $this->durableCommandFallbackRow($command);
+            }
+
+            $updates[] = $this->durableUpdateFallbackRow($update, $command, $failure);
+        }
+
+        return [
+            'updates' => $updates,
+            'commands' => array_values($commands),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function durableCommandFallbackRow(WorkflowCommand $command): array
+    {
+        return $this->compactDetails([
+            'id' => $command->id,
+            'type' => $this->statusValue($command->command_type),
+            'status' => $this->statusValue($command->status),
+            'outcome' => $this->statusValue($command->outcome),
+            'target_name' => $this->safeModelString($command, 'targetName'),
+            'request_id' => $this->safeModelString($command, 'requestId'),
+            'correlation_id' => $this->safeModelString($command, 'correlationId'),
+            'request_method' => $this->safeModelString($command, 'requestMethod'),
+            'request_path' => $this->safeModelString($command, 'requestPath'),
+            'request_route_name' => $this->safeModelString($command, 'requestRouteName'),
+            'request_fingerprint' => $this->safeModelString($command, 'requestFingerprint'),
+            'principal_type' => $this->safeModelString($command, 'principalType'),
+            'principal_id' => $this->safeModelString($command, 'principalId'),
+            'principal_label' => $this->safeModelString($command, 'principalLabel'),
+            'caller_label' => $this->safeModelString($command, 'callerLabel'),
+            'auth_status' => $this->safeModelString($command, 'authStatus'),
+            'auth_method' => $this->safeModelString($command, 'authMethod'),
+            'source' => $this->stringValue($command->source),
+            'payload_codec' => $this->stringValue($command->payload_codec),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function durableUpdateFallbackRow(
+        WorkflowUpdate $update,
+        ?WorkflowCommand $command,
+        ?WorkflowFailure $failure,
+    ): array {
+        $argumentsAvailable = $this->payloadAvailable($update->arguments);
+        $arguments = $argumentsAvailable ? $this->decodeUpdateArguments($update) : null;
+        $resultAvailable = $this->payloadAvailable($update->result);
+        $result = $resultAvailable ? $this->decodeUpdateResult($update) : null;
+        $failureMessage = $this->stringValue($failure?->message);
+        $exceptionClass = $this->stringValue($failure?->exception_class);
+        $status = $this->statusValue($update->status);
+        $name = $this->stringValue($update->update_name)
+            ?? ($command instanceof WorkflowCommand ? $this->safeModelString($command, 'targetName') : null);
+        $validationErrors = is_array($update->validation_errors) ? $update->validation_errors : [];
+        $error = $this->compactDetails([
+            'failure_id' => $this->stringValue($update->failure_id),
+            'message' => $failureMessage,
+            'rejection_reason' => $this->stringValue($update->rejection_reason),
+            'validation_errors' => $validationErrors,
+            'exception_class' => $exceptionClass,
+        ]);
+
+        return $this->compactDetails([
+            'id' => $update->id,
+            'update_id' => $update->id,
+            'command_id' => $update->workflow_command_id,
+            'workflow_command_id' => $update->workflow_command_id,
+            'name' => $name,
+            'update_name' => $name,
+            'status' => $status,
+            'state' => $status,
+            'state_label' => $status === 'rejected' ? 'refused' : $status,
+            'refused' => $status === 'rejected' ? true : null,
+            'outcome' => $this->statusValue($update->outcome),
+            'reason' => $this->stringValue($update->rejection_reason) ?? $failureMessage,
+            'rejection_reason' => $this->stringValue($update->rejection_reason),
+            'validation_errors' => $validationErrors,
+            'failure_id' => $this->stringValue($update->failure_id),
+            'failure_message' => $failureMessage,
+            'exception_class' => $exceptionClass,
+            'request_id' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'requestId') : null,
+            'correlation_id' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'correlationId') : null,
+            'request_method' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'requestMethod') : null,
+            'request_path' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'requestPath') : null,
+            'request_route_name' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'requestRouteName') : null,
+            'request_fingerprint' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'requestFingerprint') : null,
+            'principal_type' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'principalType') : null,
+            'principal_id' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'principalId') : null,
+            'principal_label' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'principalLabel') : null,
+            'caller_label' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'callerLabel') : null,
+            'auth_status' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'authStatus') : null,
+            'auth_method' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'authMethod') : null,
+            'source' => $this->stringValue($command?->source),
+            'payload_codec' => $this->stringValue($update->payload_codec),
+            'arguments_available' => $argumentsAvailable,
+            'arguments' => $argumentsAvailable ? ($arguments ?? []) : null,
+            'payload_available' => $argumentsAvailable || $name !== null,
+            'payload' => $argumentsAvailable || $name !== null
+                ? $this->compactDetails(['name' => $name, 'arguments' => $arguments ?? []])
+                : null,
+            'result_available' => $resultAvailable,
+            'result' => $result,
+            'error_available' => $error !== [],
+            'error' => $error,
+        ]);
+    }
+
+    private function safeModelString(object $model, string $method): ?string
+    {
+        if (! method_exists($model, $method)) {
+            return null;
+        }
+
+        try {
+            return $this->stringValue($model->{$method}());
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private function decodeUpdateArguments(WorkflowUpdate $update): mixed
+    {
+        try {
+            return $update->updateArguments();
+        } catch (Throwable) {
+            return $this->decodedPayloadPreview($update->arguments, $this->stringValue($update->payload_codec));
+        }
+    }
+
+    private function decodeUpdateResult(WorkflowUpdate $update): mixed
+    {
+        try {
+            return $update->updateResult();
+        } catch (Throwable) {
+            return $this->decodedPayloadPreview($update->result, $this->stringValue($update->payload_codec));
+        }
+    }
+
+    private function decodedPayloadPreview(mixed $payload, ?string $codec): mixed
+    {
+        if (! $this->payloadAvailable($payload)) {
+            return null;
+        }
+
+        return CommandPayloadPreview::previewWithCodec($payload, $codec);
     }
 
     /**

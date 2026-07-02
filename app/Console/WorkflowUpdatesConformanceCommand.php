@@ -176,7 +176,7 @@ class WorkflowUpdatesConformanceCommand extends Command
             $result = [
                 'schema' => self::RESULT_SCHEMA,
                 'schema_version' => self::RESULT_VERSION,
-                'suite_version' => PlatformConformanceSuite::VERSION,
+                'suite_version' => $this->suiteVersion(),
                 'coverage_scope' => 'waterline-workflow-updates-operator-shard',
                 'run_id' => $this->optionString('run-id'),
                 'outcome' => $hasFailures ? 'fail' : 'non_passing',
@@ -212,10 +212,104 @@ class WorkflowUpdatesConformanceCommand extends Command
 
             return $hasFailures ? self::FAILURE : self::SUCCESS;
         } catch (Throwable $exception) {
-            $this->error($exception->getMessage());
+            try {
+                $this->writeEmergencyFailureReport(
+                    $exception,
+                    $startedAt,
+                    $artifactVersions,
+                    $artifactSources,
+                    $outputPath,
+                );
+            } catch (Throwable) {
+                // Preserve the command failure; the original exception is reported below.
+            }
+
+            $this->error('Waterline workflow update diagnostics command failed before the normal report completed.');
 
             return self::FAILURE;
         }
+    }
+
+    /**
+     * @param array<string, string> $artifactVersions
+     * @param array<string, string> $artifactSources
+     */
+    private function writeEmergencyFailureReport(
+        Throwable $exception,
+        string $startedAt,
+        array $artifactVersions,
+        array $artifactSources,
+        ?string $outputPath,
+    ): void {
+        $finishedAt = $this->timestamp();
+        $finding = $this->finding(
+            'waterline_workflow_updates_report_generation_failed',
+            'waterline_conformance_report_generation_failed',
+            'waterline',
+            'Waterline workflow update diagnostics command failed before the normal report completed.',
+            'The command emits a durable workflow update diagnostics report for every published-artifact run, including typed failures.',
+            [
+                'exception_class' => $exception::class,
+                'report_written_by' => 'emergency_failure_report',
+            ],
+        );
+        $operatorScenario = [
+            'scenario_id' => self::SCENARIO,
+            'status' => 'fail',
+            'surface' => 'selected-run update detail and history export',
+            'output_sample' => json_encode([
+                'report_generation_failed' => true,
+                'finding_id' => $finding['id'],
+            ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+            'observed_outputs' => [
+                'report_generation_failed' => true,
+                'api_captures' => [],
+                'typed_product_findings' => [$finding],
+            ],
+            'linked_findings' => [$finding],
+        ];
+        $scenarioResults = $this->scenarioResults(
+            $this->publishedArtifactScenario($artifactVersions, $artifactSources),
+            $operatorScenario,
+        );
+        $result = [
+            'schema' => self::RESULT_SCHEMA,
+            'schema_version' => self::RESULT_VERSION,
+            'suite_version' => $this->suiteVersion(),
+            'coverage_scope' => 'waterline-workflow-updates-operator-shard',
+            'run_id' => $this->optionString('run-id'),
+            'outcome' => 'fail',
+            'started_at' => $startedAt,
+            'finished_at' => $finishedAt,
+            'generated_at' => $finishedAt,
+            'artifact_versions' => $artifactVersions,
+            'artifact_sources' => $artifactSources,
+            'local_product_source_checkouts_used' => false,
+            'runtime_matrix' => [
+                'claimed_targets' => ['waterline_contract_surface'],
+                'covered_scenarios' => self::WATERLINE_SHARD_SCENARIOS,
+                'observer_paths' => [
+                    'selected_run_detail',
+                    'selected_run_history_export',
+                    'selected_run_update_action',
+                    'selected_run_update_lookup',
+                ],
+            ],
+            'scenario_results' => array_values($scenarioResults),
+            'waterline_update_diagnostics' => $operatorScenario['observed_outputs'],
+            'api_captures' => [],
+            'findings' => $this->findings($scenarioResults),
+            'finding_links' => $this->findingLinks($scenarioResults),
+        ];
+        $json = json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR).PHP_EOL;
+
+        if ($outputPath !== null) {
+            $this->writeFile($outputPath, $json);
+
+            return;
+        }
+
+        $this->line($json);
     }
 
     /**
@@ -1447,6 +1541,13 @@ class WorkflowUpdatesConformanceCommand extends Command
         return is_string($value) && $value !== '' ? $value : null;
     }
 
+    private function suiteVersion(): ?int
+    {
+        return defined(PlatformConformanceSuite::class.'::VERSION')
+            ? PlatformConformanceSuite::VERSION
+            : null;
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -1657,24 +1758,39 @@ class WorkflowUpdatesConformanceCommand extends Command
             'HTTP_ACCEPT' => 'application/json',
             'CONTENT_TYPE' => 'application/json',
         ]);
-        $response = $kernel->handle($request);
-        $body = (string) $response->getContent();
+        $response = null;
+        $body = '';
         $json = [];
 
         try {
+            $response = $kernel->handle($request);
+            $body = (string) $response->getContent();
             $decoded = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
             $json = is_array($decoded) ? $decoded : [];
         } catch (JsonException) {
             $json = [];
+        } catch (Throwable $exception) {
+            $json = [
+                'message' => 'Waterline API request failed during workflow update diagnostics capture.',
+                'error' => 'waterline_api_capture_exception',
+                'exception_class' => $exception::class,
+            ];
+            $body = json_encode($json, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
         } finally {
-            $kernel->terminate($request, $response);
+            if ($response !== null) {
+                try {
+                    $kernel->terminate($request, $response);
+                } catch (Throwable) {
+                    // Termination hooks are not part of the observer payload; keep the capture reportable.
+                }
+            }
         }
 
         return [
             'method' => strtoupper($method),
             'path' => $publicPath,
             'request_path' => $publicPath,
-            'status' => $response->getStatusCode(),
+            'status' => $response === null ? 500 : $response->getStatusCode(),
             'request_json' => null,
             'captured_at' => $capturedAt,
             'capture_source' => 'published_waterline_artifact_http_route',

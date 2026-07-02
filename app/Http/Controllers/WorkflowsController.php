@@ -14,8 +14,11 @@ use Throwable;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Contracts\HistoryExportRedactor;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
+use Workflow\V2\Models\WorkflowCommand;
+use Workflow\V2\Models\WorkflowFailure;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
+use Workflow\V2\Models\WorkflowUpdate;
 use Workflow\V2\Support\CommandPayloadPreview;
 use Workflow\V2\Support\CommandResponse;
 use Workflow\V2\Support\HistoryExport;
@@ -659,6 +662,7 @@ class WorkflowsController extends Controller
     ): array {
         $status = $this->statusValue($flow->status);
         $historyEvents = $this->durableHistoryEvents($flow);
+        $updateFallback = $this->durableUpdateFallbackRows($flow);
 
         $export = [
             'schema' => HistoryExport::SCHEMA,
@@ -722,9 +726,9 @@ class WorkflowsController extends Controller
             'timeline' => $historyEvents,
             'linked_intakes_scope' => 'selected_run',
             'linked_intakes' => [],
-            'commands' => [],
+            'commands' => $updateFallback['commands'],
             'signals' => [],
-            'updates' => [],
+            'updates' => $updateFallback['updates'],
             'tasks' => [],
             'activities' => [],
             'timers' => [],
@@ -740,6 +744,7 @@ class WorkflowsController extends Controller
             ],
         ];
 
+        $export = $this->withHistoryExportUpdateDiagnostics($export);
         $export = $this->withFallbackRedaction($export, $flow, $redactor);
         $export['integrity'] = $this->fallbackIntegrity($export);
 
@@ -766,6 +771,177 @@ class WorkflowsController extends Controller
                 ->all();
         } catch (Throwable) {
             return [];
+        }
+    }
+
+    /**
+     * @return array{updates: list<array<string, mixed>>, commands: list<array<string, mixed>>}
+     */
+    private function durableUpdateFallbackRows(WorkflowRun $flow): array
+    {
+        try {
+            $flow->loadMissing(['updates.command', 'updates.failure']);
+        } catch (Throwable) {
+            return ['updates' => [], 'commands' => []];
+        }
+
+        $updates = [];
+        $commands = [];
+
+        foreach ($flow->updates ?? [] as $update) {
+            if (! $update instanceof WorkflowUpdate) {
+                continue;
+            }
+
+            $command = $update->command instanceof WorkflowCommand ? $update->command : null;
+            $failure = $update->failure instanceof WorkflowFailure ? $update->failure : null;
+
+            if ($command instanceof WorkflowCommand) {
+                $commands[$command->id] = $this->durableCommandFallbackRow($command);
+            }
+
+            $updates[] = $this->durableUpdateFallbackRow($update, $command, $failure);
+        }
+
+        return [
+            'updates' => $updates,
+            'commands' => array_values($commands),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function durableCommandFallbackRow(WorkflowCommand $command): array
+    {
+        return $this->compactDetails([
+            'id' => $command->id,
+            'type' => $this->statusValue($command->command_type),
+            'status' => $this->statusValue($command->status),
+            'outcome' => $this->statusValue($command->outcome),
+            'target_name' => $this->safeModelString($command, 'targetName'),
+            'request_id' => $this->safeModelString($command, 'requestId'),
+            'correlation_id' => $this->safeModelString($command, 'correlationId'),
+            'request_method' => $this->safeModelString($command, 'requestMethod'),
+            'request_path' => $this->safeModelString($command, 'requestPath'),
+            'request_route_name' => $this->safeModelString($command, 'requestRouteName'),
+            'request_fingerprint' => $this->safeModelString($command, 'requestFingerprint'),
+            'principal_type' => $this->safeModelString($command, 'principalType'),
+            'principal_id' => $this->safeModelString($command, 'principalId'),
+            'principal_label' => $this->safeModelString($command, 'principalLabel'),
+            'caller_label' => $this->safeModelString($command, 'callerLabel'),
+            'auth_status' => $this->safeModelString($command, 'authStatus'),
+            'auth_method' => $this->safeModelString($command, 'authMethod'),
+            'source' => $this->stringValue($command->source),
+            'payload_codec' => $this->stringValue($command->payload_codec),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function durableUpdateFallbackRow(
+        WorkflowUpdate $update,
+        ?WorkflowCommand $command,
+        ?WorkflowFailure $failure,
+    ): array {
+        $argumentsAvailable = $this->hasDetailValue($update->arguments);
+        $arguments = $argumentsAvailable ? $this->decodeUpdateArguments($update) : null;
+        $resultAvailable = $this->hasDetailValue($update->result);
+        $result = $resultAvailable ? $this->decodeUpdateResult($update) : null;
+        $failureMessage = $this->stringValue($failure?->message);
+        $exceptionClass = $this->stringValue($failure?->exception_class);
+        $status = $this->statusValue($update->status);
+        $name = $this->stringValue($update->update_name)
+            ?? ($command instanceof WorkflowCommand ? $this->safeModelString($command, 'targetName') : null);
+        $validationErrors = is_array($update->validation_errors) ? $update->validation_errors : [];
+        $error = $this->compactDetails([
+            'failure_id' => $this->stringValue($update->failure_id),
+            'message' => $failureMessage,
+            'rejection_reason' => $this->stringValue($update->rejection_reason),
+            'validation_errors' => $validationErrors,
+            'exception_class' => $exceptionClass,
+        ]);
+
+        return $this->compactDetails([
+            'id' => $update->id,
+            'update_id' => $update->id,
+            'command_id' => $update->workflow_command_id,
+            'workflow_command_id' => $update->workflow_command_id,
+            'name' => $name,
+            'update_name' => $name,
+            'status' => $status,
+            'state' => $status,
+            'state_label' => $status === 'rejected' ? 'refused' : $status,
+            'refused' => $status === 'rejected' ? true : null,
+            'outcome' => $this->statusValue($update->outcome),
+            'reason' => $this->stringValue($update->rejection_reason) ?? $failureMessage,
+            'rejection_reason' => $this->stringValue($update->rejection_reason),
+            'validation_errors' => $validationErrors,
+            'failure_id' => $this->stringValue($update->failure_id),
+            'failure_message' => $failureMessage,
+            'exception_class' => $exceptionClass,
+            'request_id' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'requestId') : null,
+            'correlation_id' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'correlationId') : null,
+            'request_method' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'requestMethod') : null,
+            'request_path' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'requestPath') : null,
+            'request_route_name' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'requestRouteName') : null,
+            'request_fingerprint' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'requestFingerprint') : null,
+            'principal_type' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'principalType') : null,
+            'principal_id' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'principalId') : null,
+            'principal_label' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'principalLabel') : null,
+            'caller_label' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'callerLabel') : null,
+            'auth_status' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'authStatus') : null,
+            'auth_method' => $command instanceof WorkflowCommand ? $this->safeModelString($command, 'authMethod') : null,
+            'source' => $this->stringValue($command?->source),
+            'payload_codec' => $this->stringValue($update->payload_codec),
+            'arguments_available' => $argumentsAvailable,
+            'arguments' => $argumentsAvailable ? ($arguments ?? []) : null,
+            'payload_available' => $argumentsAvailable || $name !== null,
+            'payload' => $argumentsAvailable || $name !== null
+                ? $this->compactDetails(['name' => $name, 'arguments' => $arguments ?? []])
+                : null,
+            'result_available' => $resultAvailable,
+            'result' => $result,
+            'error_available' => $error !== [],
+            'error' => $error,
+        ]);
+    }
+
+    private function safeModelString(object $model, string $method): ?string
+    {
+        if (! method_exists($model, $method)) {
+            return null;
+        }
+
+        try {
+            return $this->stringValue($model->{$method}());
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    private function decodeUpdateArguments(WorkflowUpdate $update): mixed
+    {
+        try {
+            return $update->updateArguments();
+        } catch (Throwable) {
+            return $this->historyExportDecodedPayload(
+                $update->arguments,
+                $this->stringValue($update->payload_codec),
+            );
+        }
+    }
+
+    private function decodeUpdateResult(WorkflowUpdate $update): mixed
+    {
+        try {
+            return $update->updateResult();
+        } catch (Throwable) {
+            return $this->historyExportDecodedPayload(
+                $update->result,
+                $this->stringValue($update->payload_codec),
+            );
         }
     }
 
@@ -840,6 +1016,30 @@ class WorkflowsController extends Controller
             unset($event);
         }
 
+        if (isset($export['updates']) && is_array($export['updates'])) {
+            $this->redactFallbackUpdateRows($export['updates'], 'updates', $flow, $redactor, $paths);
+        }
+
+        if (isset($export['update_history_references']) && is_array($export['update_history_references'])) {
+            $this->redactFallbackUpdateHistoryReferences(
+                $export['update_history_references'],
+                'update_history_references',
+                $flow,
+                $redactor,
+                $paths,
+            );
+        }
+
+        if (isset($export['update_diagnostics']['items']) && is_array($export['update_diagnostics']['items'])) {
+            $this->redactFallbackUpdateRows(
+                $export['update_diagnostics']['items'],
+                'update_diagnostics.items',
+                $flow,
+                $redactor,
+                $paths,
+            );
+        }
+
         $export['redaction'] = [
             'applied' => true,
             'policy' => $this->fallbackRedactorName($redactor),
@@ -847,6 +1047,110 @@ class WorkflowsController extends Controller
         ];
 
         return $export;
+    }
+
+    /**
+     * @param array<int|string, mixed> $updates
+     * @param list<string> $paths
+     */
+    private function redactFallbackUpdateRows(
+        array &$updates,
+        string $pathPrefix,
+        WorkflowRun $flow,
+        HistoryExportRedactor|callable $redactor,
+        array &$paths,
+    ): void {
+        foreach ($updates as $index => &$update) {
+            if (! is_array($update)) {
+                continue;
+            }
+
+            $metadata = [
+                'update_id' => $update['id'] ?? $update['update_id'] ?? null,
+                'workflow_command_id' => $update['workflow_command_id'] ?? $update['command_id'] ?? null,
+                'update_name' => $update['update_name'] ?? $update['name'] ?? null,
+                'update_status' => $update['status'] ?? $update['state'] ?? null,
+                'update_outcome' => $update['outcome'] ?? null,
+            ];
+
+            foreach ([
+                'arguments' => 'workflow_update_arguments',
+                'payload' => 'workflow_update_payload',
+                'result' => 'workflow_update_result',
+                'error' => 'workflow_update_error',
+            ] as $field => $category) {
+                $this->redactFallbackField(
+                    $update,
+                    $field,
+                    $redactor,
+                    $this->fallbackRedactionContext($flow, "{$pathPrefix}.{$index}.{$field}", $category, array_merge(
+                        $metadata,
+                        ['field' => $field],
+                    )),
+                    $paths,
+                );
+            }
+
+            if (isset($update['history_events']) && is_array($update['history_events'])) {
+                $this->redactFallbackUpdateHistoryReferences(
+                    $update['history_events'],
+                    "{$pathPrefix}.{$index}.history_events",
+                    $flow,
+                    $redactor,
+                    $paths,
+                    $metadata,
+                );
+            }
+        }
+
+        unset($update);
+    }
+
+    /**
+     * @param array<int|string, mixed> $references
+     * @param array<string, mixed> $metadata
+     * @param list<string> $paths
+     */
+    private function redactFallbackUpdateHistoryReferences(
+        array &$references,
+        string $pathPrefix,
+        WorkflowRun $flow,
+        HistoryExportRedactor|callable $redactor,
+        array &$paths,
+        array $metadata = [],
+    ): void {
+        foreach ($references as $index => &$reference) {
+            if (! is_array($reference)) {
+                continue;
+            }
+
+            $referenceMetadata = array_merge($metadata, [
+                'history_event_id' => $reference['id'] ?? null,
+                'history_event_type' => $reference['type'] ?? $reference['event_type'] ?? null,
+                'sequence' => $reference['sequence'] ?? null,
+                'update_id' => $reference['update_id'] ?? $metadata['update_id'] ?? null,
+                'workflow_command_id' => $reference['workflow_command_id'] ?? $metadata['workflow_command_id'] ?? null,
+                'update_name' => $reference['update_name'] ?? $metadata['update_name'] ?? null,
+            ]);
+
+            foreach ([
+                'message' => 'workflow_update_history_reference',
+                'rejection_reason' => 'workflow_update_history_reference',
+            ] as $field => $category) {
+                $this->redactFallbackField(
+                    $reference,
+                    $field,
+                    $redactor,
+                    $this->fallbackRedactionContext($flow, "{$pathPrefix}.{$index}.{$field}", $category, array_merge(
+                        $referenceMetadata,
+                        ['field' => $field],
+                    )),
+                    $paths,
+                );
+            }
+        }
+
+        unset($reference);
     }
 
     /**
@@ -1010,7 +1314,11 @@ class WorkflowsController extends Controller
         }
 
         $export['namespace'] = $namespace;
-        $export = $this->withHistoryExportUpdateDiagnostics($export);
+
+        if (! isset($export['update_diagnostics']) || ! is_array($export['update_diagnostics'])) {
+            $export = $this->withHistoryExportUpdateDiagnostics($export);
+        }
+
         $export = $this->withOperatorScope($export);
 
         return $export;
@@ -1263,6 +1571,17 @@ class WorkflowsController extends Controller
     private function hasDetailValue(mixed $value): bool
     {
         return ! ($value === null || $value === '' || $value === []);
+    }
+
+    /**
+     * @param array<string, mixed> $values
+     * @return array<string, mixed>
+     */
+    private function compactDetails(array $values): array
+    {
+        return array_filter($values, static function (mixed $value): bool {
+            return ! ($value === null || $value === '' || $value === []);
+        });
     }
 
     private function commandResponse($result)
