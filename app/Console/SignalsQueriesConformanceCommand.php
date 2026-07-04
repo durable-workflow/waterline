@@ -131,7 +131,7 @@ class SignalsQueriesConformanceCommand extends Command
                 'suite_version' => PlatformConformanceSuite::VERSION,
                 'coverage_scope' => 'waterline-operator-visibility-shard',
                 'run_id' => $this->optionString('run-id'),
-                'outcome' => $hasFailures ? 'fail' : 'non_passing',
+                'outcome' => $hasFailures ? 'fail' : 'pass',
                 'started_at' => $startedAt,
                 'finished_at' => $finishedAt,
                 'generated_at' => $finishedAt,

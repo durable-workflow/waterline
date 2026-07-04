@@ -68,7 +68,7 @@ class SignalsQueriesConformanceCommandTest extends TestCase
             $observed = $scenario['observed_outputs'];
 
             $this->assertSame('durable-workflow.v2.signal-query-runtime.waterline-observer-result', $result['schema']);
-            $this->assertSame('non_passing', $result['outcome']);
+            $this->assertSame('pass', $result['outcome']);
             $this->assertSame('pass', $artifactScenario['status']);
             $this->assertSame('pass', $scenario['status']);
             $this->assertSame('counter-run-001', $observed['observer_state']['selected_run']['run_id']);
@@ -202,6 +202,7 @@ class SignalsQueriesConformanceCommandTest extends TestCase
             $scenario = $scenarios['waterline_operator_visibility'];
             $observed = $scenario['observed_outputs'];
 
+            $this->assertSame('pass', $result['outcome']);
             $this->assertSame('pass', $scenario['status']);
             $this->assertSame([], $scenario['linked_findings']);
             $this->assertTrue($observed['comparison']['counter_state_matches_public_clients']);
