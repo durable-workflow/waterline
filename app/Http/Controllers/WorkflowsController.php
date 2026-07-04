@@ -24,8 +24,10 @@ use Workflow\V2\Support\CommandResponse;
 use Workflow\V2\Support\HistoryExport;
 use Workflow\V2\Support\HistoryBudget;
 use Workflow\V2\Support\QueryResponse;
+use Workflow\V2\Support\RunCommandContract;
 use Workflow\V2\Support\RunListItemView;
 use Workflow\V2\Support\UpdateWaitPolicy;
+use Workflow\V2\Support\WorkflowExecutionGate;
 use Workflow\V2\UpdateResult;
 use Workflow\V2\WorkflowStub as V2WorkflowStub;
 use Waterline\Http\Resources\StoredWorkflowResource;
@@ -165,11 +167,14 @@ class WorkflowsController extends Controller
     ) {
         abort_unless($repository->engineSource() === 'v2', 404);
 
+        $flow = $repository->findFlowSelection($instanceId, $runId);
+
         return $this->queryResponse(
             V2WorkflowStub::loadSelection($instanceId, $runId, $this->commandNamespace()),
             $query,
             $this->commandArguments($request),
             'run',
+            $flow,
         );
     }
 
@@ -2129,9 +2134,119 @@ class WorkflowsController extends Controller
         string $query,
         array $arguments,
         string $targetScope,
+        ?WorkflowRun $selectedRun = null,
     ) {
         $response = QueryResponse::execute($workflow, $query, $arguments, $targetScope);
 
+        if ($selectedRun instanceof WorkflowRun) {
+            $response = $this->withSelectedRunQueryDefinitionLimitation(
+                $response,
+                $selectedRun,
+                $query,
+                $targetScope,
+            );
+        }
+
         return response()->json($this->withOperatorScope($response['payload']), $response['status']);
+    }
+
+    /**
+     * @param array{status: int, payload: array<string, mixed>} $response
+     * @return array{status: int, payload: array<string, mixed>}
+     */
+    private function withSelectedRunQueryDefinitionLimitation(
+        array $response,
+        WorkflowRun $run,
+        string $query,
+        string $targetScope,
+    ): array {
+        if ((int) ($response['status'] ?? 0) !== 409) {
+            return $response;
+        }
+
+        $payload = is_array($response['payload'] ?? null) ? $response['payload'] : [];
+
+        if (
+            $this->stringValue($payload['blocked_reason'] ?? null) !== null
+            || $this->stringValue($payload['reason'] ?? null) !== null
+        ) {
+            return $response;
+        }
+
+        $message = $this->stringValue($payload['message'] ?? null);
+        if ($message === null || ! str_contains($message, 'is not declared')) {
+            return $response;
+        }
+
+        $target = $this->selectedRunDeclaredQueryTarget($run, $query);
+        if ($target === null) {
+            return $response;
+        }
+
+        $reason = WorkflowExecutionGate::BLOCKED_WORKFLOW_DEFINITION_UNAVAILABLE;
+        $queryName = $target['name'];
+        $limitationMessage = sprintf(
+            'Workflow %s [%s] cannot execute query [%s] through Waterline because the durable run declares the query but the workflow definition that can execute it is not available in this Waterline process.',
+            $run->id,
+            $run->workflow_instance_id,
+            $queryName,
+        );
+
+        $response['payload'] = array_merge($payload, [
+            'query_name' => $queryName,
+            'workflow_id' => $run->workflow_instance_id,
+            'run_id' => $run->id,
+            'target_scope' => $targetScope,
+            'blocked_reason' => $reason,
+            'reason' => $reason,
+            'message' => $limitationMessage,
+            'limitation' => [
+                'type' => 'waterline_selected_run_query_action_definition_unavailable',
+                'reason' => $reason,
+                'scope' => 'selected_run',
+                'query_name' => $queryName,
+                'declared_query' => true,
+                'message' => $limitationMessage,
+            ],
+        ]);
+
+        return $response;
+    }
+
+    /**
+     * @return array{name: string, parameters: list<array<string, mixed>>, has_contract: bool}|null
+     */
+    private function selectedRunDeclaredQueryTarget(WorkflowRun $run, string $query): ?array
+    {
+        try {
+            $contract = RunCommandContract::forRun($run);
+        } catch (Throwable) {
+            return null;
+        }
+
+        $targets = is_array($contract['query_targets'] ?? null) ? $contract['query_targets'] : [];
+
+        foreach ($targets as $target) {
+            if (! is_array($target) || ($target['name'] ?? null) !== $query) {
+                continue;
+            }
+
+            return [
+                'name' => $query,
+                'parameters' => is_array($target['parameters'] ?? null) ? array_values($target['parameters']) : [],
+                'has_contract' => ($target['has_contract'] ?? false) === true,
+            ];
+        }
+
+        $queries = is_array($contract['queries'] ?? null) ? $contract['queries'] : [];
+        if (in_array($query, $queries, true)) {
+            return [
+                'name' => $query,
+                'parameters' => [],
+                'has_contract' => false,
+            ];
+        }
+
+        return null;
     }
 }
