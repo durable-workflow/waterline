@@ -2,6 +2,8 @@
 
 namespace Waterline\Tests\Unit;
 
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\DB;
 use Waterline\Console\SignalsQueriesConformanceCommand;
 use Waterline\Console\WorkflowUpdatesConformanceCommand;
@@ -21,6 +23,43 @@ use Waterline\WaterlineServiceProvider;
 
 class WaterlineServiceProviderTest extends TestCase
 {
+    public function testApiRoutesExcludeCsrfMiddlewareFromDefaultWebStack(): void
+    {
+        $route = $this->app['router']->getRoutes()->getByName('waterline.instances.runs.query');
+
+        $this->assertNotNull($route);
+        $this->assertContains('web', $route->gatherMiddleware());
+
+        foreach ($this->csrfMiddlewareClasses() as $csrfMiddleware) {
+            $this->assertContains($csrfMiddleware, $route->excludedMiddleware());
+        }
+
+        $middleware = $this->app['router']->gatherRouteMiddleware($route);
+
+        foreach ($middleware as $resolved) {
+            $name = explode(':', (string) $resolved, 2)[0];
+
+            foreach ($this->csrfMiddlewareClasses() as $csrfMiddleware) {
+                $this->assertFalse(
+                    $name === $csrfMiddleware
+                    || (class_exists($name) && class_exists($csrfMiddleware) && is_subclass_of($name, $csrfMiddleware)),
+                    sprintf('Waterline API route should not include CSRF middleware [%s].', $resolved)
+                );
+            }
+        }
+    }
+
+    /**
+     * @return list<class-string|string>
+     */
+    private function csrfMiddlewareClasses(): array
+    {
+        return [
+            VerifyCsrfToken::class,
+            PreventRequestForgery::class,
+        ];
+    }
+
     public function testProviderMergesEngineSourceIntoLegacyPublishedConfig(): void
     {
         $this->withEnvironment([

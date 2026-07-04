@@ -3,6 +3,8 @@
 namespace Waterline;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -88,6 +90,7 @@ class WaterlineServiceProvider extends ServiceProvider
         ];
 
         Route::group(array_merge($routeOptions, [
+            'excluded_middleware' => $this->apiRouteExcludedMiddleware(),
             'middleware' => $this->apiRouteMiddleware(),
         ]), function () {
             $this->loadRoutesFrom(__DIR__.'/../routes/api.php');
@@ -123,6 +126,17 @@ class WaterlineServiceProvider extends ServiceProvider
                 $this->withEphemeralSessionFallback($this->normalizeMiddleware($configured))
             )
         );
+    }
+
+    /**
+     * @return list<class-string|string>
+     */
+    private function apiRouteExcludedMiddleware(): array
+    {
+        return [
+            VerifyCsrfToken::class,
+            PreventRequestForgery::class,
+        ];
     }
 
     /**
