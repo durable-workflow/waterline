@@ -234,6 +234,8 @@ class SignalsQueriesConformanceCommand extends Command
         $runStatusMatches = $this->runStatusMatches($runStatus, $observerStatus, $observerStatusBucket);
         $typedProductFindings = [];
         $blockingFindings = [];
+        $queryActionLimitation = null;
+        $acceptedQueryActionLimitation = null;
 
         if ($instanceId === null || $runId === null) {
             $blockingFindings[] = $this->finding(
@@ -382,18 +384,29 @@ class SignalsQueriesConformanceCommand extends Command
         }
 
         if ($queryCapture !== null && (int) ($queryCapture['status'] ?? 0) !== 200) {
-            $blockingFindings[] = $this->captureFinding(
-                'waterline_selected_run_query_unavailable',
-                'waterline_observer_query_action_unavailable',
-                'Waterline selected-run query action did not return a successful JSON response.',
-                'POST selected-run query action returns HTTP 200 and the same Counter.current value observed by public clients.',
-                [
-                    'method' => 'POST',
-                    'path' => $paths['selected_run_query_action'],
-                    'json' => ['arguments' => []],
-                ],
+            $queryActionLimitation = $this->queryActionDefinitionUnavailableLimitation(
                 $queryCapture,
+                $paths,
+                $queryName,
             );
+
+            if ($queryActionLimitation !== null && $counter !== null && $observerCounter === $counter) {
+                $acceptedQueryActionLimitation = $queryActionLimitation;
+                $typedProductFindings[] = $acceptedQueryActionLimitation;
+            } else {
+                $blockingFindings[] = $this->captureFinding(
+                    'waterline_selected_run_query_unavailable',
+                    'waterline_observer_query_action_unavailable',
+                    'Waterline selected-run query action did not return a successful JSON response.',
+                    'POST selected-run query action returns HTTP 200 and the same Counter.current value observed by public clients, or records a typed external-definition limitation while observer_state derives the same counter.',
+                    [
+                        'method' => 'POST',
+                        'path' => $paths['selected_run_query_action'],
+                        'json' => ['arguments' => []],
+                    ],
+                    $queryCapture,
+                );
+            }
         } elseif ($queryCapture !== null && $queryCounter === null) {
             $blockingFindings[] = $this->captureFinding(
                 'waterline_selected_run_query_result_missing',
@@ -489,11 +502,13 @@ class SignalsQueriesConformanceCommand extends Command
 
         $typedProductFindings = array_values(array_merge($typedProductFindings, $blockingFindings));
         $status = $blockingFindings === [] ? 'pass' : 'fail';
+        $queryActionMatchesPublicClients = $queryCounter === $counter
+            || ($acceptedQueryActionLimitation !== null && $observerCounter === $counter);
         $comparison = [
             'status' => $status,
             'run_status_matches_public_clients' => $runStatusMatches,
             'counter_state_matches_public_clients' => $counter !== null
-                && $queryCounter === $counter
+                && $queryActionMatchesPublicClients
                 && $observerCounter === $counter,
             'expected_counter' => $counter,
             'observer_derived_state' => [
@@ -506,6 +521,7 @@ class SignalsQueriesConformanceCommand extends Command
                 'result' => $queryCounter,
                 'path' => $paths['selected_run_query_action'],
                 'status' => is_array($queryCapture) ? (int) ($queryCapture['status'] ?? 0) : null,
+                'accepted_limitation' => $acceptedQueryActionLimitation,
             ],
             'server_observation' => [
                 'run_id' => $runId,
@@ -1772,6 +1788,50 @@ class SignalsQueriesConformanceCommand extends Command
             'response' => $this->responseEvidence($detailCapture),
             'query_name' => $queryName,
             'query_action_path' => $paths['selected_run_query_action'],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed>|null $queryCapture
+     * @param array<string, string> $paths
+     * @return array<string, mixed>|null
+     */
+    private function queryActionDefinitionUnavailableLimitation(?array $queryCapture, array $paths, string $queryName): ?array
+    {
+        if (! is_array($queryCapture)) {
+            return null;
+        }
+
+        if ((int) ($queryCapture['status'] ?? 0) !== 409) {
+            return null;
+        }
+
+        $blockedReason = $this->firstStringData($queryCapture['json'] ?? [], [
+            'blocked_reason',
+            'reason',
+            'data.blocked_reason',
+            'data.reason',
+        ]);
+
+        if ($blockedReason !== 'workflow_definition_unavailable') {
+            return null;
+        }
+
+        return [
+            'id' => 'waterline_selected_run_query_action_definition_unavailable',
+            'type' => 'waterline_observer_api_limitation',
+            'scenario_id' => self::SCENARIO,
+            'owning_surface' => 'waterline',
+            'reason' => 'workflow_definition_unavailable',
+            'observed_behavior' => 'Selected-run query action reports that the externally hosted workflow definition is unavailable in the Waterline process.',
+            'expected_behavior' => 'Waterline records the typed query-action limitation while selected-run observer_state derives the same counter value observed by public clients.',
+            'request' => [
+                'method' => 'POST',
+                'path' => $paths['selected_run_query_action'],
+                'json' => ['arguments' => []],
+            ],
+            'response' => $this->responseEvidence($queryCapture),
+            'query_name' => $queryName,
         ];
     }
 

@@ -168,6 +168,125 @@ class SignalsQueriesConformanceCommandTest extends TestCase
         }
     }
 
+    public function testItAcceptsExternalWorkflowQueryActionDefinitionLimitationWhenObserverStateMatches(): void
+    {
+        $input = tempnam(sys_get_temp_dir(), 'waterline-sq-input-');
+        $output = tempnam(sys_get_temp_dir(), 'waterline-sq-output-');
+        $detailCapture = tempnam(sys_get_temp_dir(), 'waterline-sq-detail-');
+        $queryCapture = tempnam(sys_get_temp_dir(), 'waterline-sq-query-');
+        $this->assertIsString($input);
+        $this->assertIsString($output);
+        $this->assertIsString($detailCapture);
+        $this->assertIsString($queryCapture);
+
+        file_put_contents($input, json_encode($this->publicEvidence(), JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $detailCapture,
+            json_encode($this->selectedRunDetailCapture(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+        );
+        file_put_contents(
+            $queryCapture,
+            json_encode($this->selectedRunQueryDefinitionUnavailableCapture(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+        );
+
+        try {
+            $this->artisan('waterline:signals-queries-conformance', [
+                '--input' => $input,
+                '--output' => $output,
+                '--selected-run-detail-capture' => $detailCapture,
+                '--selected-run-query-capture' => $queryCapture,
+            ] + $this->publishedArtifactOptions())->assertExitCode(0);
+
+            $result = json_decode((string) file_get_contents($output), true, 512, JSON_THROW_ON_ERROR);
+            $scenarios = array_column($result['scenario_results'], null, 'scenario_id');
+            $scenario = $scenarios['waterline_operator_visibility'];
+            $observed = $scenario['observed_outputs'];
+
+            $this->assertSame('pass', $scenario['status']);
+            $this->assertSame([], $scenario['linked_findings']);
+            $this->assertTrue($observed['comparison']['counter_state_matches_public_clients']);
+            $this->assertNull($observed['comparison']['waterline_query_action']['result']);
+            $this->assertSame(409, $observed['comparison']['waterline_query_action']['status']);
+            $this->assertSame(
+                'workflow_definition_unavailable',
+                $observed['comparison']['waterline_query_action']['accepted_limitation']['reason'],
+            );
+        } finally {
+            if (is_string($input) && file_exists($input)) {
+                unlink($input);
+            }
+            if (is_string($output) && file_exists($output)) {
+                unlink($output);
+            }
+            if (is_string($detailCapture) && file_exists($detailCapture)) {
+                unlink($detailCapture);
+            }
+            if (is_string($queryCapture) && file_exists($queryCapture)) {
+                unlink($queryCapture);
+            }
+        }
+    }
+
+    public function testItDoesNotAcceptExternalWorkflowQueryActionDefinitionLimitationWhenObserverStateDiffers(): void
+    {
+        $input = tempnam(sys_get_temp_dir(), 'waterline-sq-input-');
+        $output = tempnam(sys_get_temp_dir(), 'waterline-sq-output-');
+        $detailCapture = tempnam(sys_get_temp_dir(), 'waterline-sq-detail-');
+        $queryCapture = tempnam(sys_get_temp_dir(), 'waterline-sq-query-');
+        $this->assertIsString($input);
+        $this->assertIsString($output);
+        $this->assertIsString($detailCapture);
+        $this->assertIsString($queryCapture);
+
+        $detail = $this->selectedRunDetailCapture();
+        $detail['json']['observer_state']['signals']['items'][9]['arguments'] = [9];
+
+        file_put_contents($input, json_encode($this->publicEvidence(), JSON_THROW_ON_ERROR));
+        file_put_contents(
+            $detailCapture,
+            json_encode($detail, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+        );
+        file_put_contents(
+            $queryCapture,
+            json_encode($this->selectedRunQueryDefinitionUnavailableCapture(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
+        );
+
+        try {
+            $this->artisan('waterline:signals-queries-conformance', [
+                '--input' => $input,
+                '--output' => $output,
+                '--selected-run-detail-capture' => $detailCapture,
+                '--selected-run-query-capture' => $queryCapture,
+            ] + $this->publishedArtifactOptions())->assertExitCode(1);
+
+            $result = json_decode((string) file_get_contents($output), true, 512, JSON_THROW_ON_ERROR);
+            $scenarios = array_column($result['scenario_results'], null, 'scenario_id');
+            $scenario = $scenarios['waterline_operator_visibility'];
+            $observed = $scenario['observed_outputs'];
+            $findingIds = array_column($scenario['linked_findings'], 'id');
+
+            $this->assertSame('fail', $scenario['status']);
+            $this->assertContains('waterline_selected_run_query_unavailable', $findingIds);
+            $this->assertContains('signal_query_waterline_observer_counter_mismatch', $findingIds);
+            $this->assertFalse($observed['comparison']['counter_state_matches_public_clients']);
+            $this->assertSame(54, $observed['comparison']['observer_derived_state']['counter']);
+            $this->assertNull($observed['comparison']['waterline_query_action']['accepted_limitation']);
+        } finally {
+            if (is_string($input) && file_exists($input)) {
+                unlink($input);
+            }
+            if (is_string($output) && file_exists($output)) {
+                unlink($output);
+            }
+            if (is_string($detailCapture) && file_exists($detailCapture)) {
+                unlink($detailCapture);
+            }
+            if (is_string($queryCapture) && file_exists($queryCapture)) {
+                unlink($queryCapture);
+            }
+        }
+    }
+
     public function testItFailsClosedWhenSelectedRunDetailDoesNotExposeObserverState(): void
     {
         $input = tempnam(sys_get_temp_dir(), 'waterline-sq-input-');
@@ -640,6 +759,28 @@ class SignalsQueriesConformanceCommandTest extends TestCase
                 'run_id' => 'counter-run-001',
                 'target_scope' => 'run',
                 'result' => 55,
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function selectedRunQueryDefinitionUnavailableCapture(): array
+    {
+        return [
+            'method' => 'POST',
+            'path' => '/waterline/api/instances/counter-instance/runs/counter-run-001/queries/current',
+            'status' => 409,
+            'captured_at' => '2026-06-02T17:55:11Z',
+            'request_json' => ['arguments' => []],
+            'json' => [
+                'query_name' => 'current',
+                'workflow_id' => 'counter-instance',
+                'run_id' => 'counter-run-001',
+                'target_scope' => 'run',
+                'blocked_reason' => 'workflow_definition_unavailable',
+                'message' => 'Workflow counter-run-001 [counter-instance] cannot execute query [current] because the workflow definition is unavailable for durable type [conformance.counter].',
             ],
         ];
     }
