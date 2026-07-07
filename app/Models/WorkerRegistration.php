@@ -22,6 +22,7 @@ class WorkerRegistration extends Model
         'build_id',
         'supported_workflow_types',
         'workflow_definition_fingerprints',
+        'workflow_command_contracts',
         'supported_activity_types',
         'max_concurrent_workflow_tasks',
         'max_concurrent_activity_tasks',
@@ -38,6 +39,7 @@ class WorkerRegistration extends Model
     protected $casts = [
         'supported_workflow_types' => 'array',
         'workflow_definition_fingerprints' => 'array',
+        'workflow_command_contracts' => 'array',
         'supported_activity_types' => 'array',
         'process_metrics' => 'array',
         'last_heartbeat_at' => 'datetime',

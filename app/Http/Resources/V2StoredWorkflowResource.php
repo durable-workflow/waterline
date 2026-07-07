@@ -13,6 +13,7 @@ use Waterline\Support\CompensationVisibility;
 use Waterline\Support\ObserverStateEnvelope;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\RunDiagnostics;
+use Waterline\Support\SelectedRunCommandContract;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowFailure;
@@ -53,6 +54,7 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['current_compensation_marker'] = $compensationVisibility['current_marker'];
         $detail['compensation_visibility'] = $compensationVisibility;
         $detail['run_diagnostics'] = $this->runDiagnostics($detail);
+        $detail = SelectedRunCommandContract::annotateRunDetail($detail, $this->resource);
         $detail = ObserverStateEnvelope::annotateRun($detail, $this->observerPaths($request, $detail));
         $detail = CompatibilitySemantics::annotateRun($detail);
         $detail['namespace'] = $this->resource->namespace;
