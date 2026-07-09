@@ -529,8 +529,8 @@ class NamespaceConformanceCommand extends Command
         $scheduleRows = is_array($schedulesJson['data'] ?? null) ? $schedulesJson['data'] : [];
         $ownListRow = $this->workflowRow($listRows, $ownRun->id);
         $ownScheduleRow = $this->scheduleRow($scheduleRows, $ownSchedule->schedule_id);
-        $ownRunMarker = (string) data_get($ownRun->search_attributes, 'tenant_marker');
-        $foreignRunMarker = (string) data_get($foreignRun->search_attributes, 'tenant_marker');
+        $ownRunMarker = $this->workflowSearchAttributeValue($ownRun, 'tenant_marker') ?? '';
+        $foreignRunMarker = $this->workflowSearchAttributeValue($foreignRun, 'tenant_marker') ?? '';
         $ownScheduleMarker = (string) data_get($ownSchedule->search_attributes, 'tenant_marker');
         $foreignScheduleMarker = (string) data_get($foreignSchedule->search_attributes, 'tenant_marker');
 
@@ -574,8 +574,15 @@ class NamespaceConformanceCommand extends Command
                 'path' => '/api/flows/'.$ownRun->id,
                 'status' => $detail['status'],
                 'operator_scope' => $this->operatorScope($detailJson),
+                'workflow_id' => data_get($detailJson, 'workflow_instance_id') ?? $ownRun->workflow_instance_id,
                 'run_id' => data_get($detailJson, 'run_id'),
                 'namespace' => data_get($detailJson, 'namespace'),
+                'user_visible_state' => [
+                    'status' => data_get($detailJson, 'status') ?? $ownRun->status,
+                    'status_bucket' => data_get($detailJson, 'status_bucket'),
+                    'closed_reason' => data_get($detailJson, 'closed_reason'),
+                    'namespace' => data_get($detailJson, 'namespace'),
+                ],
                 'search_attribute_value_visible' => data_get($detailJson, 'search_attributes.tenant_marker'),
                 'expected_search_attribute_value' => $ownRunMarker,
                 'forbidden_search_attribute_value' => $foreignRunMarker,
@@ -645,6 +652,11 @@ class NamespaceConformanceCommand extends Command
                 'operator_scope' => $this->operatorScope($scheduleDetailJson),
                 'schedule_id' => data_get($scheduleDetailJson, 'schedule_id'),
                 'namespace' => data_get($scheduleDetailJson, 'namespace'),
+                'user_visible_state' => [
+                    'status' => data_get($scheduleDetailJson, 'status') ?? $this->scheduleStatusValue($ownSchedule),
+                    'namespace' => data_get($scheduleDetailJson, 'namespace'),
+                    'next_fire_at' => data_get($scheduleDetailJson, 'next_fire_at'),
+                ],
                 'search_attribute_value_visible' => data_get($scheduleDetailJson, 'search_attributes.tenant_marker'),
                 'expected_search_attribute_value' => $ownScheduleMarker,
                 'forbidden_search_attribute_value' => $foreignScheduleMarker,
@@ -723,18 +735,12 @@ class NamespaceConformanceCommand extends Command
                     $this->workflowRow($workflowRows, $tenantARun->id),
                     'search_attributes.tenant_marker',
                 ),
-                'tenant_a_expected_search_attribute_value' => data_get(
-                    $tenantARun->search_attributes,
-                    'tenant_marker',
-                ),
+                'tenant_a_expected_search_attribute_value' => $this->workflowSearchAttributeValue($tenantARun, 'tenant_marker'),
                 'tenant_b_search_attribute_visible' => data_get(
                     $this->workflowRow($workflowRows, $tenantBRun->id),
                     'search_attributes.tenant_marker',
                 ),
-                'tenant_b_expected_search_attribute_value' => data_get(
-                    $tenantBRun->search_attributes,
-                    'tenant_marker',
-                ),
+                'tenant_b_expected_search_attribute_value' => $this->workflowSearchAttributeValue($tenantBRun, 'tenant_marker'),
             ],
             'operator_api_stats' => [
                 'path' => '/api/stats',
@@ -929,6 +935,45 @@ class NamespaceConformanceCommand extends Command
         }
 
         return [];
+    }
+
+    private function workflowSearchAttributeValue(WorkflowRun $run, string $key): ?string
+    {
+        $inline = data_get($run->search_attributes, $key);
+        if (is_scalar($inline)) {
+            return (string) $inline;
+        }
+
+        $stored = WorkflowSearchAttribute::query()
+            ->where('workflow_run_id', $run->id)
+            ->where('key', $key)
+            ->first();
+
+        if ($stored === null) {
+            return null;
+        }
+
+        $value = $stored->getValue();
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        return null;
+    }
+
+    private function scheduleStatusValue(WorkflowSchedule $schedule): ?string
+    {
+        $status = $schedule->status;
+
+        if ($status instanceof \BackedEnum) {
+            return (string) $status->value;
+        }
+
+        if (is_scalar($status)) {
+            return (string) $status;
+        }
+
+        return null;
     }
 
     /**

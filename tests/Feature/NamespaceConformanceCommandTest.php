@@ -5,6 +5,8 @@ namespace Waterline\Tests\Feature;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Waterline\Console\NamespaceConformanceCommand;
 use Waterline\Console\SearchAttributesConformanceCommand;
@@ -400,6 +402,77 @@ class NamespaceConformanceCommandTest extends TestCase
             'The command should clean up schedule fixture rows by default.',
         );
         $this->assertScheduleFixturesDeletedIncludingTrashed($visibility['fixture_ids']['schedule_ids']);
+    }
+
+    public function testCommandUsesTypedSearchAttributesWhenLegacyRunSearchAttributesColumnIsAbsent(): void
+    {
+        $droppedSearchAttributes = Schema::hasColumn('workflow_runs', 'search_attributes');
+
+        if ($droppedSearchAttributes) {
+            Schema::table('workflow_runs', static function (Blueprint $table): void {
+                $table->dropColumn('search_attributes');
+            });
+        }
+
+        try {
+            $reportPath = $this->ephemeralPath('waterline-namespace-conformance-no-inline-search-attributes');
+            $this->artisan('waterline:namespace-conformance', [
+                '--namespace-a' => 'billing',
+                '--namespace-b' => 'shipping',
+                '--shared-namespace' => 'shared',
+                '--run-id' => 'waterline-ns-no-inline-sa',
+                '--artifact-version' => [
+                    'server=0.2.238',
+                    'cli=0.1.75',
+                    'workflow=2.0.0-alpha.189',
+                    'sdk-python=0.4.84',
+                    'waterline=2.0.0-alpha.76',
+                ],
+                '--artifact-source' => [
+                    'server=docker_image',
+                    'cli=published_install_script',
+                    'workflow=published_composer_package',
+                    'sdk-python=published_pypi_package',
+                    'waterline=published_package',
+                ],
+                '--output' => $reportPath,
+            ])->assertSuccessful();
+
+            $report = $this->readJson($reportPath);
+            $scenarios = array_column($report['scenario_results'], null, 'scenario_id');
+            $visibility = $report['waterline_operator_visibility'];
+
+            $this->assertSame('pass', $scenarios['waterline_operator_namespace_visibility']['status']);
+            $this->assertSame(
+                'billing-visible',
+                $visibility['tenant_a_scoped_views']['workflow_list']['expected_search_attribute_value'],
+            );
+            $this->assertSame(
+                'billing-visible',
+                $visibility['tenant_a_scoped_views']['workflow_detail']['expected_search_attribute_value'],
+            );
+            $this->assertSame(
+                'shipping-secret',
+                $visibility['unscoped_view_authority']['workflow_list']['tenant_b_expected_search_attribute_value'],
+            );
+            $this->assertTrue(
+                $visibility['operator_surface_matrix']['tenant_scoped_surfaces']['tenant_a']['search_attribute_values_scoped'],
+            );
+            $this->assertSame(
+                'completed',
+                $visibility['tenant_a_scoped_views']['workflow_detail']['user_visible_state']['status'],
+            );
+            $this->assertSame(
+                'active',
+                $visibility['tenant_a_scoped_views']['schedule_detail']['user_visible_state']['status'],
+            );
+        } finally {
+            if ($droppedSearchAttributes) {
+                Schema::table('workflow_runs', static function (Blueprint $table): void {
+                    $table->json('search_attributes')->nullable();
+                });
+            }
+        }
     }
 
     public function testCommandFailsWhenPublishedArtifactTupleIsNotProven(): void
