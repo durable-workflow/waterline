@@ -20,6 +20,7 @@ Required exact artifact pins:
 
 Optional overrides:
   DW_SERVER_IMAGE                          Exact public tag or digest.
+  DW_WATERLINE_HOST                        Docker host address for published-port probes; defaults to 127.0.0.1.
   DW_WATERLINE_WORKER_STATUS_AUTH_TOKEN   Defaults to dev-token.
   DW_WATERLINE_WORKER_STATUS_NAMESPACE    Defaults to waterline-worker-status.
   DW_WATERLINE_WORKER_STATUS_HEARTBEAT_SECONDS  Defaults to 2.

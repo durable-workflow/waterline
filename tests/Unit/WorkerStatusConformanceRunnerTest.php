@@ -142,12 +142,35 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $this->assertStringContainsString('composer_platform_configured_php', $node);
     }
 
+    public function testPublishedWaterlineHostUsesTheValidatedExternalGatewayWithoutLeakingItIntoContainerCommands(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $runner = (string) file_get_contents($root.'/scripts/conformance/worker-status-published-artifacts.mjs');
+
+        $node = trim((string) shell_exec('command -v node 2>/dev/null'));
+        $this->assertNotSame('', $node, 'Node is required to execute the published-artifact runner regression.');
+        $command = sprintf(
+            '%s --test %s 2>&1',
+            escapeshellarg($node),
+            escapeshellarg($root.'/tests/Unit/WorkerStatusNetworkTest.mjs'),
+        );
+        exec($command, $output, $status);
+        $this->assertSame(0, $status, implode("\n", $output));
+
+        $this->assertStringContainsString('waterlineEnvironment(topology.appUrl)', $runner);
+        $this->assertStringContainsString('fetch(`${topology.externalHostUrl}/waterline/api/v2/health`', $runner);
+        $this->assertStringContainsString('networkUrl: topology.containerNetworkUrl', $runner);
+        $this->assertStringContainsString('waterlineEnvironment(waterline.networkUrl)', $runner);
+        $this->assertStringContainsString('`--waterline-url=${waterline.networkUrl}`', $runner);
+    }
+
     public function testReleaseArchiveDoesNotExcludeTheFocusedRunner(): void
     {
         $root = dirname(__DIR__, 2);
         $paths = [
             'scripts/conformance/worker-status-published-artifacts.sh',
             'scripts/conformance/worker-status-published-artifacts.mjs',
+            'scripts/conformance/worker-status-network.mjs',
             'app/Console/WorkerStatusConformanceCommand.php',
         ];
 

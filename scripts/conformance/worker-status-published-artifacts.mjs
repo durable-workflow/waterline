@@ -5,6 +5,8 @@ import path from 'node:path';
 import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 
+import { validatedPublishedHost, waterlinePublishedTopology } from './worker-status-network.mjs';
+
 const RESULT_DIR = requiredEnv('RESULT_DIR');
 const STARTED_AT = now();
 const RUN_ID = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
@@ -20,6 +22,7 @@ const NAMESPACE = env('DW_WATERLINE_WORKER_STATUS_NAMESPACE') || 'waterline-work
 const HEARTBEAT_SECONDS = positiveInt(env('DW_WATERLINE_WORKER_STATUS_HEARTBEAT_SECONDS'), 2);
 const STALE_SECONDS = positiveInt(env('DW_WATERLINE_WORKER_STATUS_STALE_SECONDS'), 7);
 const KEEP_RUN_ROOT = truthy(env('DW_WATERLINE_WORKER_STATUS_KEEP_RUN_ROOT'));
+let WATERLINE_HOST = env('DW_WATERLINE_HOST');
 const HOST_UID = typeof process.getuid === 'function' ? process.getuid() : null;
 const HOST_GID = typeof process.getgid === 'function' ? process.getgid() : null;
 const CONTAINER_USER = `${HOST_UID}:${HOST_GID}`;
@@ -170,6 +173,11 @@ function ensureExactPins() {
   const exactDigest = /^(?:(?:docker\.io|index\.docker\.io)\/)?durableworkflow\/server(?::[^@]+)?@sha256:[0-9a-f]{64}$/i.test(SERVER_IMAGE);
   if (!exactTag && !exactDigest) failures.push('DW_SERVER_IMAGE must be the exact public version tag or a digest pin');
   if (!Number.isInteger(HOST_UID) || !Number.isInteger(HOST_GID)) failures.push('the runner requires a host UID and GID');
+  try {
+    WATERLINE_HOST = validatedPublishedHost(WATERLINE_HOST);
+  } catch (error) {
+    failures.push(errorSummary(error));
+  }
   if (failures.length > 0) throw new Error(failures.join('; '));
 }
 
@@ -617,7 +625,8 @@ function verifyInstalledAppBoot(serverPhpVersion) {
 
 async function startWaterlineHost() {
   const port = await freePort();
-  const runtimeEnv = waterlineEnvironment(`http://127.0.0.1:${port}`);
+  const topology = waterlinePublishedTopology(WATERLINE_HOST, port, WATERLINE_CONTAINER);
+  const runtimeEnv = waterlineEnvironment(topology.appUrl);
   waterlineRegistered = true;
   run('docker', [
     'run', '-d', '--name', WATERLINE_CONTAINER,
@@ -636,16 +645,20 @@ async function startWaterlineHost() {
     display: 'start published Waterline Laravel package host',
     timeout: 60_000,
   });
-  const hostUrl = `http://127.0.0.1:${port}`;
   const deadline = Date.now() + 120_000;
   let last = '';
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${hostUrl}/waterline/api/v2/health`, {
+      const response = await fetch(`${topology.externalHostUrl}/waterline/api/v2/health`, {
         headers: { Accept: 'application/json', 'X-Durable-Workflow-Control-Plane-Version': '2' },
       });
       last = `${response.status}: ${await response.text()}`;
-      if (response.ok) return { hostUrl, networkUrl: `http://${WATERLINE_CONTAINER}:8000` };
+      if (response.ok) {
+        return {
+          hostUrl: topology.externalHostUrl,
+          networkUrl: topology.containerNetworkUrl,
+        };
+      }
     } catch (error) {
       last = errorSummary(error);
     }
