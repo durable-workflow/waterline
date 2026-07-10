@@ -85,6 +85,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Finish-on-v1 Migration View
+    |--------------------------------------------------------------------------
+    |
+    | While a v2 deployment drains workflows that remain on the v1
+    | compatibility engine, Waterline can merge the preserved v1 operator
+    | rows into its normal workflow lists. Legacy IDs are qualified as
+    | "v1:<id>" so they cannot collide with v2 run IDs. Namespace-scoped v2
+    | views do not merge v1 rows because the v1 schema has no namespace key.
+    |
+    */
+
+    'hybrid_migration_view' => env('WATERLINE_HYBRID_MIGRATION_VIEW', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Workflow Namespace
     |--------------------------------------------------------------------------
     |

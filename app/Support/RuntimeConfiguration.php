@@ -67,6 +67,7 @@ final class RuntimeConfiguration
         'WATERLINE_DOMAIN',
         'WATERLINE_ENGINE_SOURCE',
         'WATERLINE_HEALTH_TASK_DISPATCH_MODE',
+        'WATERLINE_HYBRID_MIGRATION_VIEW',
         'WATERLINE_NAMESPACE',
         'WATERLINE_PATH',
     ];
@@ -88,6 +89,7 @@ final class RuntimeConfiguration
         self::setStringConfigFromEnvironment('WATERLINE_ENGINE_SOURCE', 'waterline.engine_source');
         self::setStringConfigFromEnvironment('WATERLINE_NAMESPACE', 'waterline.namespace');
         self::setStringConfigFromEnvironment('WATERLINE_HEALTH_TASK_DISPATCH_MODE', 'waterline.health.task_dispatch_mode');
+        self::setBooleanConfigFromEnvironment('WATERLINE_HYBRID_MIGRATION_VIEW', 'waterline.hybrid_migration_view');
         self::setBooleanConfigFromEnvironment('WATERLINE_ALLOW_UNAUTHENTICATED', 'waterline.allow_unauthenticated');
     }
 

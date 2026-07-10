@@ -7,11 +7,19 @@
                 </router-link>
 
                 <div class="flow-row__meta">
-                    <span class="flow-row__mono">workflow {{ flow.instance_id || flow.workflow_instance_id || flow.id }}</span>
-                    <span class="flow-row__mono">run {{ flow.run_id || flow.id }}</span>
+                    <template v-if="flow.engine_source === 'v1'">
+                        <span class="flow-row__mono">legacy workflow {{ flow.legacy_id || flow.id }}</span>
+                    </template>
+                    <template v-else>
+                        <span class="flow-row__mono">workflow {{ flow.instance_id || flow.workflow_instance_id || flow.id }}</span>
+                        <span class="flow-row__mono">run {{ flow.run_id || flow.id }}</span>
+                    </template>
                 </div>
 
                 <div class="flow-row__badges">
+                    <span v-if="flow.engine_source" class="badge badge-secondary">
+                        Engine {{ flow.engine_source.toUpperCase() }}<template v-if="flow.engine_version"> {{ flow.engine_version }}</template>
+                    </span>
                     <span v-if="flow.namespace" class="badge badge-light">Namespace {{ flow.namespace }}</span>
                     <span v-if="flow.status === 'continued' || flow.closed_reason === 'continued'" class="badge badge-info">Continued</span>
                     <span v-if="showStatusBadge(flow)" :class="statusBadgeClass(flow)" class="badge">{{ statusBadgeLabel(flow) }}</span>
@@ -96,6 +104,20 @@
             },
 
             detailRoute(flow) {
+                const isLegacyFlow = flow.engine_source === 'v1'
+                    || (!flow.engine_source && !flow.instance_id && !flow.workflow_instance_id && !flow.run_id)
+
+                if (isLegacyFlow) {
+                    const bucket = this.$route.params.type || flow.status_bucket || 'running'
+
+                    return {
+                        name: bucket + '-flows-preview',
+                        params: {
+                            flowId: flow.id,
+                        },
+                    }
+                }
+
                 const instanceId = flow.instance_id || flow.workflow_instance_id || flow.id
                 const runId = flow.run_id || flow.id
 

@@ -11,7 +11,7 @@ use Waterline\Http\Middleware\ControlPlaneVersion;
 use Waterline\Http\Middleware\RenderApiExceptionsAsJson;
 use Waterline\Http\Middleware\UseEphemeralApiSessionWhenDatabaseTableMissing;
 use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
-use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
+use Waterline\Repositories\Workflow\Infrastructure\HybridWorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryMySQL;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryPostgreSQL;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLite;
@@ -211,6 +211,7 @@ class WaterlineServiceProviderTest extends TestCase
             $this->assertContains('WATERLINE_ENGINE_SOURCE', $serveCommand::$passthroughVariables);
             $this->assertContains('WATERLINE_NAMESPACE', $serveCommand::$passthroughVariables);
             $this->assertContains('WATERLINE_HEALTH_TASK_DISPATCH_MODE', $serveCommand::$passthroughVariables);
+            $this->assertContains('WATERLINE_HYBRID_MIGRATION_VIEW', $serveCommand::$passthroughVariables);
             $this->assertContains('DW_V2_TASK_DISPATCH_MODE', $serveCommand::$passthroughVariables);
             $this->assertContains('DW_WV_WATERLINE_DB_DATABASE', $serveCommand::$passthroughVariables);
             $this->assertContains('WORKFLOW_STORAGE_CONNECTION', $serveCommand::$passthroughVariables);
@@ -286,13 +287,13 @@ class WaterlineServiceProviderTest extends TestCase
         });
     }
 
-    public function testAutoEngineSourceUsesV2RepositoryWhenWorkflowOperatorSurfaceIsAvailable(): void
+    public function testAutoEngineSourceUsesHybridRepositoryWhenBothOperatorSchemasAreAvailable(): void
     {
         config()->set('waterline.engine_source', 'auto');
 
         $repository = $this->app->make(WorkflowRepositoryInterface::class);
 
-        $this->assertInstanceOf(V2WorkflowRepository::class, $repository);
+        $this->assertInstanceOf(HybridWorkflowRepository::class, $repository);
     }
 
     public function testAutoEngineSourceFallsBackToLegacyRepositoryWhenWorkflowOperatorSurfaceIsMissing(): void

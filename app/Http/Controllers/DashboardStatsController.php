@@ -3,6 +3,7 @@
 namespace Waterline\Http\Controllers;
 
 use Waterline\Support\EngineSourceReadiness;
+use Waterline\Support\HybridMigrationView;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
@@ -20,6 +21,7 @@ class DashboardStatsController extends Controller
             ...$repository->dashboardStats(),
             'operator_scope' => OperatorScope::payload(),
             'engine_source' => $engineSource,
+            'hybrid_migration_view' => HybridMigrationView::status($engineSource),
         ]);
     }
 }

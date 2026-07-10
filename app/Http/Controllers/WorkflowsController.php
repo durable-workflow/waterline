@@ -30,13 +30,16 @@ use Workflow\V2\Support\WorkflowExecutionGate;
 use Workflow\V2\UpdateResult;
 use Workflow\V2\WorkflowStub as V2WorkflowStub;
 use Waterline\Http\Resources\StoredWorkflowResource;
+use Waterline\Http\Resources\HybridStoredWorkflowResource;
 use Waterline\Http\Resources\V2StoredWorkflowResource;
+use Waterline\Repositories\Workflow\Infrastructure\HybridWorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\CompatibilitySemantics;
 use Waterline\Support\CompensationVisibility;
+use Waterline\Support\HybridMigrationView;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\SelectedRunCommandContract;
 use Waterline\Waterline;
@@ -72,8 +75,12 @@ class WorkflowsController extends Controller
     {
         $flow = $repository->findFlow($id);
 
-        return $repository->engineSource() === 'v2'
-            ? V2StoredWorkflowResource::make($flow)
+        if ($flow instanceof WorkflowRun) {
+            return V2StoredWorkflowResource::make($flow);
+        }
+
+        return $repository instanceof HybridWorkflowRepository
+            ? HybridStoredWorkflowResource::make($flow)
             : StoredWorkflowResource::make($flow);
     }
 
@@ -94,7 +101,7 @@ class WorkflowsController extends Controller
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
-        $flow = $repository->findFlow($id);
+        $flow = $this->findV2Flow($id, $repository);
 
         return $this->historyExportResponse($flow, $observability);
     }
@@ -132,7 +139,7 @@ class WorkflowsController extends Controller
     ) {
         abort_unless($repository->engineSource() === 'v2', 404);
 
-        $flow = $repository->findFlow($id);
+        $flow = $this->findV2Flow($id, $repository);
 
         return $this->queryResponse(
             V2WorkflowStub::loadRun($flow->id, $this->commandNamespace()),
@@ -184,7 +191,7 @@ class WorkflowsController extends Controller
 
         $reason = $this->commandReason($request);
 
-        $flow = $repository->findFlow($id);
+        $flow = $this->findV2Flow($id, $repository);
         $result = V2WorkflowStub::loadRun($flow->id, $this->commandNamespace())
             ->withCommandContext($this->commandContext($request))
             ->attemptCancel($reason);
@@ -203,7 +210,7 @@ class WorkflowsController extends Controller
     ) {
         abort_unless($repository->engineSource() === 'v2', 404);
 
-        $flow = $repository->findFlow($id);
+        $flow = $this->findV2Flow($id, $repository);
         $result = V2WorkflowStub::loadRun($flow->id, $this->commandNamespace())
             ->withCommandContext($this->commandContext($request))
             ->attemptSignalWithArguments($signal, $this->commandArguments($request));
@@ -250,7 +257,7 @@ class WorkflowsController extends Controller
     ) {
         abort_unless($repository->engineSource() === 'v2', 404);
 
-        $flow = $repository->findFlow($id);
+        $flow = $this->findV2Flow($id, $repository);
         $stub = $this->updateStub(
             V2WorkflowStub::loadRun($flow->id, $this->commandNamespace())
                 ->withCommandContext($this->commandContext($request)),
@@ -308,7 +315,7 @@ class WorkflowsController extends Controller
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
-        $flow = $repository->findFlow($id);
+        $flow = $this->findV2Flow($id, $repository);
 
         try {
             $result = V2WorkflowStub::loadRun($flow->id, $this->commandNamespace())->inspectUpdate($updateId);
@@ -401,7 +408,7 @@ class WorkflowsController extends Controller
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
-        $flow = $repository->findFlow($id);
+        $flow = $this->findV2Flow($id, $repository);
         $result = V2WorkflowStub::loadRun($flow->id, $this->commandNamespace())
             ->withCommandContext($this->commandContext($request))
             ->attemptRepair();
@@ -450,7 +457,7 @@ class WorkflowsController extends Controller
 
         $reason = $this->commandReason($request);
 
-        $flow = $repository->findFlow($id);
+        $flow = $this->findV2Flow($id, $repository);
         $result = V2WorkflowStub::loadRun($flow->id, $this->commandNamespace())
             ->withCommandContext($this->commandContext($request))
             ->attemptTerminate($reason);
@@ -501,7 +508,7 @@ class WorkflowsController extends Controller
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
-        $flow = $repository->findFlow($id);
+        $flow = $this->findV2Flow($id, $repository);
         $result = V2WorkflowStub::loadRun($flow->id, $this->commandNamespace())
             ->withCommandContext($this->commandContext($request))
             ->attemptArchive($this->archiveReason($request));
@@ -619,7 +626,11 @@ class WorkflowsController extends Controller
         $payload['data'] = array_map(
             fn (mixed $item): array => $item instanceof WorkflowRunSummary
                 ? $this->listItemView($item, $bucket === 'running')
-                : (is_array($item) ? $this->annotateListItem($item) : []),
+                : (is_array($item)
+                    ? (($item['engine_source'] ?? null) === 'v1'
+                        ? $item
+                        : $this->annotateListItem($item))
+                    : []),
             $result instanceof LengthAwarePaginator ? $result->items() : ($payload['data'] ?? []),
         );
 
@@ -636,7 +647,26 @@ class WorkflowsController extends Controller
         ];
         $payload['operator_scope'] = OperatorScope::payload();
 
+        if ($repository instanceof HybridWorkflowRepository) {
+            $payload['hybrid_migration_view'] = [
+                ...HybridMigrationView::status(),
+                'legacy_rows_included' => HybridMigrationView::requestIncludesLegacyRows(),
+                'identifier_collision_policy' => 'v2_bare_id_precedence',
+            ];
+        }
+
         return response()->json($payload);
+    }
+
+    private function findV2Flow(string $id, WorkflowRepositoryInterface $repository): WorkflowRun
+    {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $flow = $repository->findFlow($id);
+
+        abort_unless($flow instanceof WorkflowRun, 404);
+
+        return $flow;
     }
 
     /**

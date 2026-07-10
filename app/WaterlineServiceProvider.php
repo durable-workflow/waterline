@@ -5,24 +5,17 @@ namespace Waterline;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Throwable;
 use Waterline\Http\Middleware\ControlPlaneVersion;
 use Waterline\Http\Middleware\RenderApiExceptionsAsJson;
 use Waterline\Http\Middleware\UseEphemeralApiSessionWhenDatabaseTableMissing;
-use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
-use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
-use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryMySQL;
-use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryPostgreSQL;
-use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLite;
-use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLServer;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\RuntimeConfiguration;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Waterline\Support\WorkflowPackageApiFloor;
-use Workflow\Models\StoredWorkflow;
+use Waterline\Support\WorkflowRepositoryResolver;
 
 class WaterlineServiceProvider extends ServiceProvider
 {
@@ -271,28 +264,7 @@ class WaterlineServiceProvider extends ServiceProvider
         // implementation in register() still take precedence because bindIf()
         // defers to any pre-existing binding.
         $this->app->bindIf(WorkflowRepositoryInterface::class, static function () {
-            $engineSource = WorkflowEngineSourceResolver::status();
-
-            if (($engineSource['uses_v2'] ?? false) === true) {
-                return app(V2WorkflowRepository::class);
-            }
-
-            if (($engineSource['resolved'] ?? null) === 'v2') {
-                return new UnavailableV2WorkflowRepository($engineSource);
-            }
-
-            $drivers = [
-                'mysql' => WorkflowRepositoryMySQL::class,
-                'pgsql' => WorkflowRepositoryPostgreSQL::class,
-                'sqlite' => WorkflowRepositorySQLite::class,
-                'sqlsrv' => WorkflowRepositorySQLServer::class,
-            ];
-
-            $driver = DB::connection(
-                (new (config('workflows.stored_workflow_model', StoredWorkflow::class)))->getConnectionName()
-            )->getDriverName();
-
-            return app($drivers[$driver] ?? WorkflowRepositoryMySQL::class);
+            return WorkflowRepositoryResolver::resolve(WorkflowEngineSourceResolver::status());
         });
     }
 

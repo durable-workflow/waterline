@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 use Waterline\Models\WorkerBuildIdRollout;
 use Waterline\Models\WorkerRegistration;
+use Waterline\Support\HybridMigrationView;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Workflow\V2\Enums\TaskStatus;
@@ -22,6 +23,7 @@ class V2HealthController extends Controller
     public function show()
     {
         $engineSource = WorkflowEngineSourceResolver::status();
+        $hybridMigrationView = HybridMigrationView::status($engineSource);
         $namespace = $this->namespace();
         $routingDrains = $this->routingDrains($namespace);
 
@@ -46,6 +48,7 @@ class V2HealthController extends Controller
                     ],
                 ],
                 'engine_source' => $engineSource,
+                'hybrid_migration_view' => $hybridMigrationView,
                 'readiness_contract' => $engineSource['readiness_contract'] ?? null,
                 'readiness_issues' => $this->engineSourceReadinessIssues($engineSource),
                 'readiness_issue_codes' => $this->engineSourceReadinessIssueCodes($engineSource),
@@ -70,6 +73,7 @@ class V2HealthController extends Controller
             'message' => $engineSource['message'] ?? 'Waterline is using the v2 operator bridge.',
             'meta' => $this->engineSourceMeta($engineSource),
         ]);
+        $snapshot['checks'][] = $this->hybridMigrationViewCheck($hybridMigrationView);
         $snapshot['namespace'] = $namespace;
         $snapshot['operator_scope'] = OperatorScope::payload();
         $snapshot['queue_visibility'] = $this->queueVisibility($namespace);
@@ -80,6 +84,7 @@ class V2HealthController extends Controller
             $routingDrains,
         );
         $snapshot['engine_source'] = $engineSource;
+        $snapshot['hybrid_migration_view'] = $hybridMigrationView;
         $snapshot['readiness_contract'] = $engineSource['readiness_contract'] ?? null;
         $snapshot = $this->withWorkflowPackageApiFloorCheck($snapshot);
         $snapshot = $this->annotateWorkerRegistrations($snapshot, $namespace);
@@ -90,6 +95,26 @@ class V2HealthController extends Controller
         );
 
         return response()->json($snapshot, HealthCheck::httpStatus($snapshot));
+    }
+
+    /**
+     * @param array<string, mixed> $status
+     * @return array<string, mixed>
+     */
+    private function hybridMigrationViewCheck(array $status): array
+    {
+        $legacyPresence = $status['legacy_workflows_present'] ?? null;
+        $applicable = $legacyPresence === true
+            || (($status['legacy_schema_present'] ?? false) === true && $legacyPresence === null);
+
+        return [
+            'name' => 'hybrid_migration_view',
+            'status' => ($status['available'] ?? false) === true || ! $applicable
+                ? 'ok'
+                : 'warning',
+            'message' => $status['message'] ?? 'Finish-on-v1 migration view readiness is unknown.',
+            'meta' => $status,
+        ];
     }
 
     /**

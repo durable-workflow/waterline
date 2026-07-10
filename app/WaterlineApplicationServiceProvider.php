@@ -3,19 +3,11 @@
 namespace Waterline;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Waterline\Support\WorkflowEngineSourceResolver;
-use Waterline\Http\Resources\V2StoredWorkflowResource;
-use Waterline\Repositories\Workflow\Infrastructure\UnavailableV2WorkflowRepository;
-use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryMySQL;
-use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositoryPostgreSQL;
-use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLite;
-use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLServer;
-use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
-use Workflow\Models\StoredWorkflow;
+use Waterline\Support\WorkflowRepositoryResolver;
 
 class WaterlineApplicationServiceProvider extends ServiceProvider
 {
@@ -49,28 +41,7 @@ class WaterlineApplicationServiceProvider extends ServiceProvider
         }
 
         $this->app->bind(WorkflowRepositoryInterface::class, function () {
-            $engineSource = WorkflowEngineSourceResolver::status();
-
-            if (($engineSource['uses_v2'] ?? false) === true) {
-                return app(V2WorkflowRepository::class);
-            }
-
-            if (($engineSource['resolved'] ?? null) === 'v2') {
-                return new UnavailableV2WorkflowRepository($engineSource);
-            }
-
-            $drivers = [
-                'mysql' => WorkflowRepositoryMySQL::class,
-                'pgsql' => WorkflowRepositoryPostgreSQL::class,
-                'sqlite' => WorkflowRepositorySQLite::class,
-                'sqlsrv' => WorkflowRepositorySQLServer::class,
-            ];
-
-            $driver = DB::connection(
-                (new (config('workflows.stored_workflow_model', StoredWorkflow::class)))->getConnectionName()
-            )->getDriverName();
-
-            return app($drivers[$driver] ?? WorkflowRepositoryMySQL::class);
+            return WorkflowRepositoryResolver::resolve(WorkflowEngineSourceResolver::status());
         });
     }
 }

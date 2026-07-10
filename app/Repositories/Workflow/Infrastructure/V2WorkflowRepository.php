@@ -47,37 +47,54 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function completedFlows()
     {
-        return $this->statusFlows('completed');
+        return $this->bucketFlows('completed');
     }
 
     public function failedFlows()
     {
-        return $this->statusFlows('failed');
+        return $this->bucketFlows('failed');
     }
 
     public function cancelledFlows()
     {
-        return $this->statusFlows('cancelled');
+        return $this->bucketFlows('cancelled');
     }
 
     public function terminatedFlows()
     {
-        return $this->statusFlows('terminated');
+        return $this->bucketFlows('terminated');
     }
 
     public function runningFlows()
+    {
+        return $this->bucketFlows('running');
+    }
+
+    public function bucketFlows(string $bucket, int $perPage = 50, ?int $page = null)
+    {
+        $perPage = max(1, $perPage);
+        $page ??= LengthAwarePaginator::resolveCurrentPage();
+
+        if ($bucket !== 'running') {
+            return $this->statusFlows($bucket, $perPage, $page);
+        }
+
+        return $this->runningFlowsPage($perPage, $page);
+    }
+
+    private function runningFlowsPage(int $perPage, int $page)
     {
         try {
             $query = $this->orderedRunsQuery('running')
                 ->where('status_bucket', 'running');
 
             if (! $this->shouldMergeDurableRunningRows()) {
-                return $query->paginate(50);
+                return $query->paginate($perPage, ['*'], 'page', $page);
             }
 
-            return $this->runningFlowsWithDurableRows($query);
+            return $this->runningFlowsWithDurableRows($query, $perPage, $page);
         } catch (Throwable) {
-            return $this->runningFlowsFromDurableRuns();
+            return $this->runningFlowsFromDurableRuns($perPage, $page);
         }
     }
 
@@ -332,19 +349,21 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         return RunSummarySortKey::applyDescending($query);
     }
 
-    protected function statusFlows(string $status)
+    protected function statusFlows(string $status, int $perPage = 50, ?int $page = null)
     {
+        $page ??= LengthAwarePaginator::resolveCurrentPage();
+
         try {
             $query = $this->orderedRunsQuery($status)
                 ->where('status', $status);
 
             if (! $this->shouldMergeDurableStatusRows()) {
-                return $query->paginate(50);
+                return $query->paginate($perPage, ['*'], 'page', $page);
             }
 
-            return $this->statusFlowsWithDurableRows($query, $status);
+            return $this->statusFlowsWithDurableRows($query, $status, $perPage, $page);
         } catch (Throwable) {
-            return $this->statusFlowsFromDurableRuns($status);
+            return $this->statusFlowsFromDurableRuns($status, $perPage, $page);
         }
     }
 
@@ -555,16 +574,18 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         }
     }
 
-    private function runningFlowsWithDurableRows($summaryQuery): LengthAwarePaginator
+    private function runningFlowsWithDurableRows(
+        $summaryQuery,
+        int $perPage,
+        int $page,
+    ): LengthAwarePaginator
     {
-        $perPage = 50;
-        $page = LengthAwarePaginator::resolveCurrentPage();
         $offset = max(0, ($page - 1) * $perPage);
 
         $durable = $this->durableRunningRowsPage($offset, $perPage);
 
         if ($durable['total'] === 0) {
-            return $summaryQuery->paginate($perPage);
+            return $summaryQuery->paginate($perPage, ['*'], 'page', $page);
         }
 
         $summaryTotal = (int) (clone $summaryQuery)->toBase()->getCountForPagination();
@@ -590,16 +611,19 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         );
     }
 
-    private function statusFlowsWithDurableRows($summaryQuery, string $status): LengthAwarePaginator
+    private function statusFlowsWithDurableRows(
+        $summaryQuery,
+        string $status,
+        int $perPage,
+        int $page,
+    ): LengthAwarePaginator
     {
-        $perPage = 50;
-        $page = LengthAwarePaginator::resolveCurrentPage();
         $offset = max(0, ($page - 1) * $perPage);
 
         $durable = $this->durableStatusRowsPage($status, $offset, $perPage);
 
         if ($durable['total'] === 0) {
-            return $summaryQuery->paginate($perPage);
+            return $summaryQuery->paginate($perPage, ['*'], 'page', $page);
         }
 
         $summaryTotal = (int) (clone $summaryQuery)->toBase()->getCountForPagination();
@@ -744,10 +768,9 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         return $this->applySummaryNamespaceScope($query);
     }
 
-    private function runningFlowsFromDurableRuns(): LengthAwarePaginator
+    private function runningFlowsFromDurableRuns(int $perPage = 50, ?int $page = null): LengthAwarePaginator
     {
-        $perPage = 50;
-        $page = LengthAwarePaginator::resolveCurrentPage();
+        $page ??= LengthAwarePaginator::resolveCurrentPage();
 
         try {
             $query = $this->runModel::query()
@@ -784,10 +807,13 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         );
     }
 
-    private function statusFlowsFromDurableRuns(string $status): LengthAwarePaginator
+    private function statusFlowsFromDurableRuns(
+        string $status,
+        int $perPage = 50,
+        ?int $page = null,
+    ): LengthAwarePaginator
     {
-        $perPage = 50;
-        $page = LengthAwarePaginator::resolveCurrentPage();
+        $page ??= LengthAwarePaginator::resolveCurrentPage();
 
         try {
             $query = $this->runModel::query()

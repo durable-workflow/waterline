@@ -23,41 +23,48 @@ abstract class WorkflowRepositoryBaseSQL implements WorkflowRepositoryInterface
 
     public function completedFlows()
     {
-        return $this->orderedFlowsQuery()->whereIn('status', [
-            'completed',
-            'continued',
-        ])->paginate(50);
+        return $this->bucketFlows('completed');
     }
 
     public function failedFlows()
     {
-        return $this->orderedFlowsQuery()
-            ->whereStatus('failed')
-            ->paginate(50);
+        return $this->bucketFlows('failed');
     }
 
     public function cancelledFlows()
     {
-        return $this->orderedFlowsQuery()
-            ->whereRaw('1 = 0')
-            ->paginate(50);
+        return $this->bucketFlows('cancelled');
     }
 
     public function terminatedFlows()
     {
-        return $this->orderedFlowsQuery()
-            ->whereRaw('1 = 0')
-            ->paginate(50);
+        return $this->bucketFlows('terminated');
     }
 
     public function runningFlows()
     {
-        return $this->orderedFlowsQuery()->whereIn('status', [
-            'created',
-            'pending',
-            'running',
-            'waiting',
-        ])->paginate(50);
+        return $this->bucketFlows('running');
+    }
+
+    public function bucketFlows(
+        string $bucket,
+        int $perPage = 50,
+        ?int $page = null,
+        bool $hybridOrder = false,
+    )
+    {
+        $query = $hybridOrder
+            ? $this->hybridOrderedFlowsQuery()
+            : $this->orderedFlowsQuery();
+
+        match ($bucket) {
+            'completed' => $query->whereIn('status', ['completed', 'continued']),
+            'failed' => $query->whereStatus('failed'),
+            'running' => $query->whereIn('status', ['created', 'pending', 'running', 'waiting']),
+            default => $query->whereRaw('1 = 0'),
+        };
+
+        return $query->paginate(max(1, $perPage), ['*'], 'page', $page);
     }
 
     public function findFlow(string $id)
@@ -144,5 +151,17 @@ abstract class WorkflowRepositoryBaseSQL implements WorkflowRepositoryInterface
 
         return $this->workflowModel::query()
             ->orderBy(config('waterline.workflow_sort_column', 'id'), $direction);
+    }
+
+    protected function hybridOrderedFlowsQuery(): Builder
+    {
+        $direction = request()->query('sort_direction', request()->query('sort'));
+        $direction = is_string($direction) && strtolower(trim($direction)) === 'asc'
+            ? 'asc'
+            : 'desc';
+
+        return $this->workflowModel::query()
+            ->orderBy('updated_at', $direction)
+            ->orderBy('id', $direction);
     }
 }

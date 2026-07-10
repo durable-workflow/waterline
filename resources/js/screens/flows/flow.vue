@@ -16,6 +16,10 @@
                             </template>
                         </span>
 
+                        <span class="wl-flow-detail__headline-pill mono" v-if="hasDetailValue(flow.engine_source)">
+                            engine {{ flow.engine_source.toUpperCase() }}<template v-if="hasDetailValue(flow.engine_version)"> {{ flow.engine_version }}</template>
+                        </span>
+
                         <span class="wl-flow-detail__headline-pill mono" v-if="hasDetailValue(flow.instance_id)">
                             instance {{ flow.instance_id }}
                         </span>
@@ -111,6 +115,14 @@
                 <div class="row mb-2">
                     <div class="col-md-2"><strong>ID</strong></div>
                     <div class="col">{{ flow.id }}</div>
+                </div>
+
+                <div class="row mb-2" v-if="hasDetailValue(flow.engine_source)">
+                    <div class="col-md-2"><strong>Execution Engine</strong></div>
+                    <div class="col">
+                        {{ flow.engine_source.toUpperCase() }}<span v-if="hasDetailValue(flow.engine_version)"> {{ flow.engine_version }}</span>
+                        <span v-if="hasDetailValue(flow.execution_engine)"> / {{ flow.execution_engine }}</span>
+                    </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.instance_id)">
