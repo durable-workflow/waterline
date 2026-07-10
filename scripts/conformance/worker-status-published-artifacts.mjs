@@ -26,6 +26,7 @@ const CONTAINER_USER = `${HOST_UID}:${HOST_GID}`;
 const RUN_ROOT = fs.mkdtempSync(path.join(RESULT_DIR, 'waterline-worker-status-run.'));
 const APP_DIR = path.join(RUN_ROOT, 'app');
 const CLI_DIR = path.join(RUN_ROOT, 'cli');
+const COMPOSER_HOME_DIR = path.join(RUN_ROOT, 'composer-home');
 const COMPOSE_FILE = path.join(RUN_ROOT, 'docker-compose.yml');
 const PROJECT = `dw-waterline-status-${SUFFIX}`;
 const NETWORK = `${PROJECT}_default`;
@@ -276,6 +277,24 @@ function imageMetadata(reference) {
   };
 }
 
+function detectPhpRuntime(image, label) {
+  const detectedAt = now();
+  const result = run('docker', [
+    'run', '--rm',
+    '--entrypoint', 'php',
+    image,
+    '-r', 'fwrite(STDOUT, PHP_VERSION);',
+  ], {
+    display: `detect PHP runtime in ${label}`,
+    timeout: 60_000,
+  });
+  const version = String(result.stdout).trim();
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+    throw new Error(`could not detect an exact PHP runtime version in ${label}: ${version || 'empty output'}`);
+  }
+  return { image, version, detected_at: detectedAt };
+}
+
 async function startServer() {
   const port = await freePort();
   writeComposeFile(port);
@@ -289,6 +308,7 @@ async function startServer() {
     if (tagged.id !== requested.id) throw new Error(`digest pin does not match public version tag ${versionTag}`);
   }
   ARTIFACT_SOURCES.server = `docker://${requested.digest}`;
+  const phpRuntime = detectPhpRuntime(SERVER_IMAGE, 'the exact published server image');
   run('docker', ['compose', '-p', PROJECT, '-f', COMPOSE_FILE, 'up', '-d', '--wait', 'server'], {
     env: composeEnvironment(),
     display: 'docker compose up -d --wait server',
@@ -317,9 +337,14 @@ async function startServer() {
     running_container_id: containerId,
     running_configured_reference: container.Config.Image,
     running_image_id: container.Image,
+    php_runtime: phpRuntime,
     exact_published_image_verified: true,
   };
-  return { hostUrl: `http://127.0.0.1:${port}`, networkUrl: 'http://server:8080' };
+  return {
+    hostUrl: `http://127.0.0.1:${port}`,
+    networkUrl: 'http://server:8080',
+    phpVersion: phpRuntime.version,
+  };
 }
 
 function composer(args, options = {}) {
@@ -327,7 +352,7 @@ function composer(args, options = {}) {
     'run', '--rm',
     '--user', CONTAINER_USER,
     '--env', 'HOME=/tmp',
-    '--env', 'COMPOSER_HOME=/tmp/composer',
+    '--env', 'COMPOSER_HOME=/work/composer-home',
     '--env', 'COMPOSER_MEMORY_LIMIT=-1',
     '-v', `${RUN_ROOT}:/work`,
     '-w', options.workdir ?? '/work',
@@ -339,16 +364,73 @@ function composer(args, options = {}) {
   });
 }
 
-function installPackages() {
-  composer(['create-project', '--no-interaction', '--no-progress', '--prefer-dist', 'laravel/laravel:^12.0', 'app'], { timeout: 900_000 });
+function installPackages(serverPhpVersion) {
+  const composerPhpRuntime = detectPhpRuntime(COMPOSER_IMAGE, 'the Composer installer image');
+  fs.mkdirSync(COMPOSER_HOME_DIR, { recursive: true });
+  sourceHygiene = {
+    checked_at: null,
+    composer_preferred_install: null,
+    relevant_packages: null,
+    configured_repositories: null,
+    local_path_repository_present: null,
+    local_checkout_markers: null,
+    local_product_source_checkouts_used: null,
+    php_runtime_alignment: {
+      server_image: SERVER_IMAGE,
+      server_detected_php: serverPhpVersion,
+      composer_image: COMPOSER_IMAGE,
+      composer_detected_php: composerPhpRuntime.version,
+      composer_global_platform_configured_php: null,
+      composer_platform_configured_php: null,
+      platform_matches_server: false,
+      detected_before_dependency_resolution: true,
+    },
+    dependency_resolution_completed: false,
+    server_runtime_boot: { passed: false, status: 'pending' },
+    passed: false,
+  };
+  packageInstall = {
+    installer_runtime: COMPOSER_IMAGE,
+    install_mode: 'composer create-project --no-install --no-scripts plus exact prefer-dist requirements and update',
+    php_runtime_alignment: { ...sourceHygiene.php_runtime_alignment },
+    laravel_host_package: null,
+    packages: null,
+    server_runtime_boot: { passed: false, status: 'pending' },
+  };
+
+  // Pin project discovery as well as dependency resolution. The persisted,
+  // disposable Composer home makes this global setting available to the
+  // create-project container before an application composer.json exists.
+  composer(['config', '--global', 'platform.php', serverPhpVersion]);
+  const composerGlobalConfig = JSON.parse(fs.readFileSync(path.join(COMPOSER_HOME_DIR, 'config.json'), 'utf8'));
+  const configuredGlobalPlatformPhp = String(composerGlobalConfig.config?.platform?.php ?? '');
+  sourceHygiene.php_runtime_alignment.composer_global_platform_configured_php = configuredGlobalPlatformPhp;
+  packageInstall.php_runtime_alignment.composer_global_platform_configured_php = configuredGlobalPlatformPhp;
+  if (configuredGlobalPlatformPhp !== serverPhpVersion) {
+    throw new Error(`Composer global platform PHP ${configuredGlobalPlatformPhp || 'is not configured'}; expected exact server runtime ${serverPhpVersion}`);
+  }
+
+  // Download the Laravel host skeleton without resolving its dependencies under
+  // the Composer image's PHP or dispatching skeleton hooks that require vendor
+  // dependencies. All dependency resolution and script execution happens after
+  // the exact server runtime has been configured as Composer's platform PHP.
+  composer(['create-project', '--no-install', '--no-scripts', '--no-interaction', '--no-progress', '--prefer-dist', 'laravel/laravel:^12.0', 'app'], { timeout: 900_000 });
   composer(['config', 'minimum-stability', 'dev'], { workdir: '/work/app' });
   composer(['config', 'prefer-stable', 'true'], { workdir: '/work/app' });
   composer(['config', 'preferred-install', 'dist'], { workdir: '/work/app' });
   composer(['config', 'allow-plugins.php-http/discovery', 'true'], { workdir: '/work/app' });
+  composer(['config', 'platform.php', serverPhpVersion], { workdir: '/work/app' });
+  sourceHygiene.php_runtime_alignment.composer_platform_configured_php = serverPhpVersion;
+  sourceHygiene.php_runtime_alignment.platform_matches_server = true;
+  packageInstall.php_runtime_alignment.composer_platform_configured_php = serverPhpVersion;
+  packageInstall.php_runtime_alignment.platform_matches_server = true;
   composer([
-    'require', '--no-interaction', '--no-progress', '--prefer-dist', '--with-all-dependencies',
+    'require', '--no-update', '--no-interaction',
     `durable-workflow/workflow:${WORKFLOW_VERSION}`,
     `durable-workflow/waterline:${WATERLINE_VERSION}`,
+  ], { workdir: '/work/app' });
+  composer([
+    'update', '--no-interaction', '--no-progress', '--prefer-dist', '--with-all-dependencies',
   ], { workdir: '/work/app', timeout: 900_000 });
 
   const composerJson = JSON.parse(fs.readFileSync(path.join(APP_DIR, 'composer.json'), 'utf8'));
@@ -370,27 +452,38 @@ function installPackages() {
   if (relevant['durable-workflow/waterline'].version !== WATERLINE_VERSION) {
     throw new Error('installed Waterline package does not match the exact requested version');
   }
+  const configuredPlatformPhp = String(composerJson.config?.platform?.php ?? '');
+  sourceHygiene.php_runtime_alignment.composer_platform_configured_php = configuredPlatformPhp;
+  sourceHygiene.php_runtime_alignment.platform_matches_server = configuredPlatformPhp === serverPhpVersion;
+  packageInstall.php_runtime_alignment = { ...sourceHygiene.php_runtime_alignment };
+  if (configuredPlatformPhp !== serverPhpVersion) {
+    throw new Error(`Composer platform PHP ${configuredPlatformPhp || 'is not configured'}; expected exact server runtime ${serverPhpVersion}`);
+  }
   const configuredRepositories = composerJson.repositories ?? [];
   const localPathRepository = JSON.stringify(configuredRepositories).toLowerCase().includes('"type":"path"');
   const checkoutMarkers = ['file://', 'path repository', '"type":"path"', '../repos/'];
   const scanned = `${JSON.stringify(composerJson)}\n${composerLockText}`.toLowerCase();
   const matchedMarkers = checkoutMarkers.filter((marker) => scanned.includes(marker));
+  const publishedPackageSourcesPassed = !localPathRepository && matchedMarkers.length === 0
+    && Boolean(relevant['durable-workflow/workflow'].dist)
+    && Boolean(relevant['durable-workflow/waterline'].dist);
   sourceHygiene = {
+    ...sourceHygiene,
     checked_at: now(),
     composer_preferred_install: composerJson.config?.['preferred-install'] ?? 'dist',
     relevant_packages: relevant,
     configured_repositories: configuredRepositories,
     local_path_repository_present: localPathRepository,
     local_checkout_markers: matchedMarkers,
-    local_product_source_checkouts_used: sourceHygiene?.local_product_source_checkouts_used ?? null,
-    passed: !localPathRepository && matchedMarkers.length === 0
-      && Boolean(relevant['durable-workflow/workflow'].dist)
-      && Boolean(relevant['durable-workflow/waterline'].dist),
+    local_product_source_checkouts_used: false,
+    published_package_sources_passed: publishedPackageSourcesPassed,
+    dependency_resolution_completed: true,
+    passed: false,
   };
-  if (!sourceHygiene.passed) throw new Error('published package source hygiene checks failed');
+  if (!publishedPackageSourcesPassed) throw new Error('published package source hygiene checks failed');
   packageInstall = {
+    ...packageInstall,
     installer_runtime: COMPOSER_IMAGE,
-    install_mode: 'composer create-project plus exact prefer-dist requirements',
     laravel_host_package: packages.find((candidate) => candidate.name === 'laravel/framework')?.version ?? null,
     packages: relevant,
   };
@@ -479,6 +572,47 @@ function waterlineEnvironment(waterlineHostUrl = 'http://waterline:8000') {
 
 function dockerEnvironmentArgs(values) {
   return Object.keys(values).flatMap((name) => ['--env', name]);
+}
+
+function verifyInstalledAppBoot(serverPhpVersion) {
+  const runtimeEnv = waterlineEnvironment();
+  const result = run('docker', [
+    'run', '--rm',
+    '--user', CONTAINER_USER,
+    '--network', NETWORK,
+    ...dockerEnvironmentArgs(runtimeEnv),
+    '-v', `${APP_DIR}:/app`,
+    '-w', '/app',
+    '--entrypoint', 'php',
+    SERVER_IMAGE,
+    'artisan', '--version',
+  ], {
+    env: { ...process.env, ...runtimeEnv },
+    allowFailure: true,
+    display: 'boot installed Laravel host in exact published server image',
+    timeout: 60_000,
+  });
+  const verification = {
+    server_image: SERVER_IMAGE,
+    detected_php: serverPhpVersion,
+    configured_composer_platform_php: sourceHygiene?.php_runtime_alignment?.composer_platform_configured_php ?? null,
+    command: 'php artisan --version',
+    exit_code: result.status,
+    stdout: String(result.stdout).trim(),
+    stderr: String(result.stderr).trim(),
+    verified_at: now(),
+    passed: result.status === 0,
+  };
+  serverInstall.installed_app_boot = verification;
+  packageInstall.server_runtime_boot = verification;
+  sourceHygiene.server_runtime_boot = verification;
+  sourceHygiene.passed = sourceHygiene.published_package_sources_passed === true
+    && sourceHygiene.php_runtime_alignment.platform_matches_server === true
+    && verification.passed;
+  writeJson('source-hygiene.json', sourceHygiene);
+  if (!verification.passed) {
+    throw new Error(`installed Waterline host cannot boot under server PHP ${serverPhpVersion}: ${verification.stderr || verification.stdout || 'empty output'}`);
+  }
 }
 
 async function startWaterlineHost() {
@@ -684,7 +818,8 @@ try {
   }
   const server = await startServer();
   installCli();
-  installPackages();
+  installPackages(server.phpVersion);
+  verifyInstalledAppBoot(server.phpVersion);
   const waterline = await startWaterlineHost();
   runPublishedCommand(server, waterline);
 } catch (error) {
@@ -722,14 +857,12 @@ try {
 
   const result = finalResult();
   fs.writeFileSync(RESULT_PATH, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
-  if (!sourceHygiene) {
-    writeJson('source-hygiene.json', {
-      checked_at: result.finished_at,
-      passed: false,
-      local_product_source_checkouts_used: null,
-      reason: 'published Composer installation did not complete',
-    });
-  }
+  writeJson('source-hygiene.json', sourceHygiene ?? {
+    checked_at: result.finished_at,
+    passed: false,
+    local_product_source_checkouts_used: null,
+    reason: 'published Composer installation did not complete',
+  });
   writeJson('run-metadata.json', {
     schema: 'durable-workflow.v2.waterline-worker-status-run-metadata',
     version: 1,

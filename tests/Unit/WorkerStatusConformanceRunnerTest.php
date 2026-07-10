@@ -97,6 +97,51 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $this->assertStringNotContainsString('fixture_response', $node);
     }
 
+    public function testComposerImagePhpCannotSilentlySelectDependenciesForAnotherServerRuntime(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $node = (string) file_get_contents($root.'/scripts/conformance/worker-status-published-artifacts.mjs');
+
+        $serverDetection = strpos($node, "detectPhpRuntime(SERVER_IMAGE, 'the exact published server image')");
+        $globalPlatformPin = strpos($node, "composer(['config', '--global', 'platform.php', serverPhpVersion]");
+        $skeletonDownload = strpos($node, "composer(['create-project', '--no-install', '--no-scripts'");
+        $platformPin = strpos($node, "composer(['config', 'platform.php', serverPhpVersion]");
+        $productRequirement = strpos($node, "'require', '--no-update', '--no-interaction'");
+        $dependencyResolution = strpos($node, "'update', '--no-interaction', '--no-progress', '--prefer-dist'");
+        $serverBoot = strpos($node, 'verifyInstalledAppBoot(server.phpVersion)');
+        $publishedCommand = strpos($node, "\n  runPublishedCommand(server, waterline);");
+
+        foreach (compact(
+            'serverDetection',
+            'globalPlatformPin',
+            'skeletonDownload',
+            'platformPin',
+            'productRequirement',
+            'dependencyResolution',
+            'serverBoot',
+            'publishedCommand',
+        ) as $step => $position) {
+            $this->assertNotFalse($position, sprintf('Missing runtime compatibility step: %s.', $step));
+        }
+
+        $this->assertLessThan($globalPlatformPin, $serverDetection);
+        $this->assertLessThan($skeletonDownload, $globalPlatformPin);
+        $this->assertLessThan($platformPin, $skeletonDownload);
+        $this->assertLessThan($productRequirement, $platformPin);
+        $this->assertLessThan($dependencyResolution, $productRequirement);
+        $this->assertLessThan($publishedCommand, $serverBoot);
+        $this->assertStringContainsString('configuredGlobalPlatformPhp !== serverPhpVersion', $node);
+        $this->assertStringContainsString('configuredPlatformPhp !== serverPhpVersion', $node);
+        $this->assertStringNotContainsString(
+            "composer(['create-project', '--no-install', '--no-interaction'",
+            $node,
+            'Laravel project hooks must not run before vendor dependencies have been installed.',
+        );
+        $this->assertStringContainsString("'artisan', '--version'", $node);
+        $this->assertStringContainsString('composer_detected_php', $node);
+        $this->assertStringContainsString('composer_platform_configured_php', $node);
+    }
+
     public function testReleaseArchiveDoesNotExcludeTheFocusedRunner(): void
     {
         $root = dirname(__DIR__, 2);
