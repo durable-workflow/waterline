@@ -131,6 +131,7 @@ search-attribute cell:
 
 ```bash
 php artisan waterline:search-attributes-conformance \
+  --run-id=conformance-run-id \
   --artifact-version=server=0.2.238 \
   --artifact-version=cli=0.1.75 \
   --artifact-version=workflow=2.0.0-alpha.189 \
@@ -150,9 +151,12 @@ application, keyword-list membership filtering, and scoped namespace
 isolation through package HTTP routes. It emits a
 `durable-workflow.v2.search-attribute-runtime.result` document with the
 expected and actual workflow counts for search-attribute list filters,
-the typed selected-run search attributes, saved filter state before and
-after retrieval, API response captures, and an operator surface matrix for
-the focused Waterline cell. It is a shard, not a full
+the selected workflow-instance and run identity, the typed selected-run
+search attributes, saved filter state before and after retrieval, API
+response captures, the conformance run id, and an operator surface matrix
+for the focused Waterline cell. When these focused checks and the published
+artifact metadata checks pass, the shard reports `outcome=pass` so a host
+runner can merge it into the full runtime ledger. It is a shard, not a full
 search-attribute runtime run: schema definition, workflow-side upserts,
 range queries, type-safety probes, cross-language checks, indexing
 latency, and adversarial parser checks remain the responsibility of the

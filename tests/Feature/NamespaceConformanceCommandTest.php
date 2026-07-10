@@ -137,7 +137,12 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertSame('durable-workflow.v2.search-attribute-runtime.result', $report['schema']);
         $this->assertSame(PlatformConformanceSuite::VERSION, $report['suite_version']);
         $this->assertSame('waterline-search-attribute-operator-shard', $report['coverage_scope']);
-        $this->assertSame('non_passing', $report['outcome']);
+        $this->assertSame('pass', $report['outcome']);
+        $this->assertSame('waterline-sa-test', $report['run_id']);
+        $this->assertFalse($report['local_product_source_checkouts_used']);
+        $this->assertNotEmpty($report['started_at']);
+        $this->assertNotEmpty($report['finished_at']);
+        $this->assertSame($report['finished_at'], $report['generated_at']);
         $this->assertSame('2.0.0-alpha.76', $report['artifact_versions']['waterline']);
         $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow']);
         $this->assertSame('2.0.0-alpha.189', $report['artifact_versions']['workflow-php']);
@@ -149,6 +154,14 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertSame('pass', $scenarios['published_artifact_install_only']['status']);
         $this->assertSame('pass', $scenarios['waterline_operator_visibility']['status']);
         $this->assertSame('pass', $scenarios['result_record_and_product_finding_routing']['status']);
+        $this->assertTrue(
+            $scenarios['result_record_and_product_finding_routing']['observed_outputs']['run_id_recorded'],
+        );
+        $this->assertSame(
+            'waterline-sa-test',
+            $scenarios['result_record_and_product_finding_routing']['observed_outputs']['run_id'],
+        );
+        $this->assertSame('waterline-sa-test', $visibility['conformance_run_id']);
         $this->assertTrue($matrix['workflow_list_search_attribute_filter']);
         $this->assertTrue($matrix['keyword_list_search_attribute_filter']);
         $this->assertTrue($matrix['selected_run_search_attributes']);
@@ -164,6 +177,15 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertTrue($visibility['keyword_list_filter']['matched']);
         $this->assertSame('urgent', $visibility['keyword_list_filter']['visibility_filter_echo']['tags']);
         $this->assertTrue($visibility['selected_run_detail']['expected_attributes_visible']);
+        $this->assertTrue($visibility['selected_run_detail']['identity_matched']);
+        $this->assertSame(
+            $visibility['selected_run_detail']['expected_workflow_instance_id'],
+            $visibility['selected_run_detail']['actual_workflow_instance_id'],
+        );
+        $this->assertSame(
+            $visibility['selected_run_detail']['expected_run_id'],
+            $visibility['selected_run_detail']['run_id'],
+        );
         $this->assertSame('cust-7', $visibility['selected_run_detail']['actual_search_attributes']['customer_id']);
         $this->assertSame(7500, $visibility['selected_run_detail']['actual_search_attributes']['order_total_cents']);
         $this->assertSame('gold', $visibility['selected_run_detail']['actual_search_attributes']['priority_tier']);
@@ -635,6 +657,15 @@ class NamespaceConformanceCommandTest extends TestCase
         data_set($missingDetailAttributes, 'selected_run_detail.expected_attributes_visible', false);
         data_set($missingDetailAttributes, 'operator_surface_matrix.selected_run_search_attributes', false);
         $this->assertFalse($passes($missingDetailAttributes));
+
+        $wrongSelectedRun = $visibility;
+        data_set($wrongSelectedRun, 'selected_run_detail.identity_matched', false);
+        data_set($wrongSelectedRun, 'operator_surface_matrix.selected_run_search_attributes', false);
+        $this->assertFalse($passes($wrongSelectedRun));
+
+        $missingConformanceRunId = $visibility;
+        $missingConformanceRunId['conformance_run_id'] = '';
+        $this->assertFalse($passes($missingConformanceRunId));
 
         $missingSavedViewRoundTrip = $visibility;
         data_set($missingSavedViewRoundTrip, 'saved_filter_state.filter_preserved_on_retrieval', false);

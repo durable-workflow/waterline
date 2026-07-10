@@ -26,7 +26,7 @@ class SearchAttributesConformanceCommand extends Command
     protected $signature = 'waterline:search-attributes-conformance
         {--namespace-a=sa-test : First namespace to inspect through scoped Waterline views}
         {--namespace-b=sa-test-b : Second namespace used to prove scoped isolation}
-        {--run-id= : Stable suffix for generated fixture IDs}
+        {--run-id= : Conformance run id recorded in evidence and used to derive fixture IDs}
         {--artifact-version=* : Repeatable actor=version option for the published artifact tuple}
         {--artifact-source=* : Repeatable actor=source option proving the published artifact install channel}
         {--keep-fixtures : Keep generated Waterline fixture rows after the run}
@@ -112,7 +112,7 @@ class SearchAttributesConformanceCommand extends Command
         $artifactSources = $this->artifactSources();
         $namespaces = $this->namespaces();
         $runId = $this->runId();
-        $fixtureIds = $this->fixtureIds($runId, $namespaces);
+        $fixtureIds = $this->fixtureIds($this->fixtureRunId($runId), $namespaces);
 
         $originalConfig = [
             'waterline.engine_source' => config('waterline.engine_source'),
@@ -132,6 +132,7 @@ class SearchAttributesConformanceCommand extends Command
 
             $fixtures = $this->createFixtures($fixtureIds, $namespaces);
             $evidence = $this->inspectSearchAttributeVisibility($kernel, $fixtures, $namespaces);
+            $evidence['conformance_run_id'] = $runId;
             $evidence['fixture_ids'] = $fixtureIds;
             $evidence['operator_surface_matrix'] = $this->operatorSurfaceMatrix($evidence);
 
@@ -180,7 +181,7 @@ class SearchAttributesConformanceCommand extends Command
         $scenarioResults = $this->scenarioResults(
             $this->publishedArtifactScenario($artifactVersions, $artifactSources),
             $waterlineScenario,
-            $this->resultRecordScenario($artifactVersions, $startedAt, $finishedAt),
+            $this->resultRecordScenario($artifactVersions, $runId, $startedAt, $finishedAt),
         );
         $hasFailures = self::hasScenarioFailures($scenarioResults);
         $report = [
@@ -188,12 +189,14 @@ class SearchAttributesConformanceCommand extends Command
             'schema_version' => self::RESULT_VERSION,
             'suite_version' => PlatformConformanceSuite::VERSION,
             'coverage_scope' => 'waterline-search-attribute-operator-shard',
-            'outcome' => $hasFailures ? 'fail' : 'non_passing',
+            'outcome' => $hasFailures ? 'fail' : 'pass',
+            'run_id' => $runId,
             'started_at' => $startedAt,
             'finished_at' => $finishedAt,
             'generated_at' => $finishedAt,
             'artifact_versions' => $artifactVersions,
             'artifact_sources' => $artifactSources,
+            'local_product_source_checkouts_used' => false,
             'namespace_topology' => [
                 'namespaces' => array_values($namespaces),
             ],
@@ -231,9 +234,12 @@ class SearchAttributesConformanceCommand extends Command
 
     private function runId(): string
     {
-        $configured = $this->stringOption('run-id');
-        $value = $configured !== null ? $configured : strtolower((string) Str::ulid());
-        $value = strtolower(preg_replace('/[^a-z0-9-]+/', '-', $value) ?? '');
+        return $this->stringOption('run-id') ?? strtolower((string) Str::ulid());
+    }
+
+    private function fixtureRunId(string $runId): string
+    {
+        $value = strtolower(preg_replace('/[^a-z0-9-]+/', '-', $runId) ?? '');
         $value = trim($value, '-');
 
         return $value !== '' ? Str::limit($value, 32, '') : strtolower((string) Str::ulid());
@@ -624,7 +630,13 @@ class SearchAttributesConformanceCommand extends Command
             'selected_run_detail' => [
                 'path' => '/api/flows/'.$runs['tenant_a_primary']->id,
                 'status' => $detail['status'],
+                'expected_workflow_instance_id' => $runs['tenant_a_primary']->workflow_instance_id,
+                'actual_workflow_instance_id' => data_get($detail['json'], 'workflow_instance_id'),
+                'expected_run_id' => $runs['tenant_a_primary']->id,
                 'run_id' => data_get($detail['json'], 'run_id'),
+                'identity_matched' => data_get($detail['json'], 'workflow_instance_id')
+                    === $runs['tenant_a_primary']->workflow_instance_id
+                    && data_get($detail['json'], 'run_id') === $runs['tenant_a_primary']->id,
                 'namespace' => data_get($detail['json'], 'namespace'),
                 'expected_search_attributes' => $expectedAttributes,
                 'actual_search_attributes' => $detailAttributes,
@@ -677,7 +689,8 @@ class SearchAttributesConformanceCommand extends Command
             'workflow_list_search_attribute_filter' => data_get($evidence, 'workflow_list_filter.matched') === true
                 && data_get($evidence, 'workflow_list_filter.foreign_run_absent') === true,
             'keyword_list_search_attribute_filter' => data_get($evidence, 'keyword_list_filter.matched') === true,
-            'selected_run_search_attributes' => data_get($evidence, 'selected_run_detail.expected_attributes_visible') === true,
+            'selected_run_search_attributes' => data_get($evidence, 'selected_run_detail.identity_matched') === true
+                && data_get($evidence, 'selected_run_detail.expected_attributes_visible') === true,
             'saved_filter_round_trip' => data_get($evidence, 'saved_filter_state.filter_preserved_on_retrieval') === true
                 && data_get($evidence, 'saved_filter_state.filter_preserved_on_list_retrieval') === true
                 && data_get($evidence, 'saved_filter_state.applied_filter_matched') === true,
@@ -692,6 +705,11 @@ class SearchAttributesConformanceCommand extends Command
      */
     private function waterlineEvidencePassed(array $evidence): bool
     {
+        if (! is_string($evidence['conformance_run_id'] ?? null)
+            || trim((string) $evidence['conformance_run_id']) === '') {
+            return false;
+        }
+
         $matrix = $evidence['operator_surface_matrix'] ?? [];
         if (! is_array($matrix) || in_array(false, $matrix, true)) {
             return false;
@@ -1034,9 +1052,15 @@ class SearchAttributesConformanceCommand extends Command
      * @param array<string, string> $artifactVersions
      * @return array<string, mixed>
      */
-    private function resultRecordScenario(array $artifactVersions, string $startedAt, string $finishedAt): array
+    private function resultRecordScenario(
+        array $artifactVersions,
+        string $runId,
+        string $startedAt,
+        string $finishedAt,
+    ): array
     {
         $passed = $artifactVersions !== []
+            && $runId !== ''
             && $startedAt !== ''
             && $finishedAt !== '';
 
@@ -1045,6 +1069,8 @@ class SearchAttributesConformanceCommand extends Command
             'status' => $passed ? 'pass' : 'fail',
             'observed_outputs' => [
                 'artifact_versions_recorded' => $artifactVersions !== [],
+                'run_id_recorded' => $runId !== '',
+                'run_id' => $runId,
                 'timestamps_recorded' => $startedAt !== '' && $finishedAt !== '',
                 'outcome_recorded' => true,
                 'finding_links_recorded' => true,
