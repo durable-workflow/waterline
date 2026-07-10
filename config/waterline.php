@@ -116,6 +116,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Worker Registration Freshness
+    |--------------------------------------------------------------------------
+    |
+    | Keep the Workers operator surface on the same stale-registration window
+    | as the standalone server. Published observer hosts can set this to the
+    | server's DW_WORKER_STALE_AFTER_SECONDS value when using shared storage.
+    |
+    */
+
+    'worker_stale_after_seconds' => env('WATERLINE_WORKER_STALE_AFTER_SECONDS'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Health Snapshot Task Dispatch Mode
     |--------------------------------------------------------------------------
     |

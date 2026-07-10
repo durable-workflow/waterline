@@ -1,0 +1,752 @@
+import fs from 'node:fs';
+import net from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import process from 'node:process';
+import { spawnSync } from 'node:child_process';
+
+const RESULT_DIR = requiredEnv('RESULT_DIR');
+const STARTED_AT = now();
+const RUN_ID = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+const SUFFIX = RUN_ID.replace(/[^a-zA-Z0-9]/g, '').slice(-12).toLowerCase();
+const SERVER_VERSION = env('DW_SERVER_VERSION');
+const CLI_VERSION = normalizeVersion(env('DW_CLI_VERSION'));
+const WORKFLOW_VERSION = normalizeVersion(env('DW_WORKFLOW_PHP_VERSION'));
+const WATERLINE_VERSION = normalizeVersion(env('DW_WATERLINE_VERSION'));
+const SERVER_IMAGE = env('DW_SERVER_IMAGE') || `durableworkflow/server:${SERVER_VERSION}`;
+const COMPOSER_IMAGE = env('DW_WATERLINE_WORKER_STATUS_COMPOSER_IMAGE') || 'composer:2';
+const TOKEN = env('DW_WATERLINE_WORKER_STATUS_AUTH_TOKEN') || 'dev-token';
+const NAMESPACE = env('DW_WATERLINE_WORKER_STATUS_NAMESPACE') || 'waterline-worker-status';
+const HEARTBEAT_SECONDS = positiveInt(env('DW_WATERLINE_WORKER_STATUS_HEARTBEAT_SECONDS'), 2);
+const STALE_SECONDS = positiveInt(env('DW_WATERLINE_WORKER_STATUS_STALE_SECONDS'), 7);
+const KEEP_RUN_ROOT = truthy(env('DW_WATERLINE_WORKER_STATUS_KEEP_RUN_ROOT'));
+const HOST_UID = typeof process.getuid === 'function' ? process.getuid() : null;
+const HOST_GID = typeof process.getgid === 'function' ? process.getgid() : null;
+const CONTAINER_USER = `${HOST_UID}:${HOST_GID}`;
+const RUN_ROOT = fs.mkdtempSync(path.join(RESULT_DIR, 'waterline-worker-status-run.'));
+const APP_DIR = path.join(RUN_ROOT, 'app');
+const CLI_DIR = path.join(RUN_ROOT, 'cli');
+const COMPOSE_FILE = path.join(RUN_ROOT, 'docker-compose.yml');
+const PROJECT = `dw-waterline-status-${SUFFIX}`;
+const NETWORK = `${PROJECT}_default`;
+const WATERLINE_CONTAINER = `dw-waterline-status-ui-${SUFFIX}`;
+const TASK_QUEUE = `waterline-status-${SUFFIX}`;
+const EVIDENCE_PATH = path.join(RESULT_DIR, 'waterline-worker-status-evidence.json');
+const RESULT_PATH = path.join(RESULT_DIR, 'waterline-worker-status-result.json');
+const ARTIFACT_VERSIONS = {
+  server: SERVER_VERSION,
+  cli: CLI_VERSION,
+  workflow: WORKFLOW_VERSION,
+  waterline: WATERLINE_VERSION,
+};
+const ARTIFACT_SOURCES = {
+  server: `docker://${SERVER_IMAGE}`,
+  cli: 'github_release',
+  workflow: `packagist://durable-workflow/workflow@${WORKFLOW_VERSION}`,
+  waterline: `packagist://durable-workflow/waterline@${WATERLINE_VERSION}`,
+};
+
+const logFile = path.join(RESULT_DIR, 'waterline-worker-status-runner.log');
+const cleanupResults = [];
+const cleanupFailures = [];
+let composeRegistered = false;
+let waterlineRegistered = false;
+let publishedCommandStarted = false;
+let productEvidence = null;
+let sourceHygiene = null;
+let serverInstall = null;
+let cliInstall = null;
+let packageInstall = null;
+let runnerError = null;
+
+function env(name) {
+  return String(process.env[name] ?? '').trim();
+}
+
+function requiredEnv(name) {
+  const value = env(name);
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+function now() {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+function normalizeVersion(value) {
+  return value.startsWith('v') ? value.slice(1) : value;
+}
+
+function truthy(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+}
+
+function positiveInt(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function errorSummary(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function log(message) {
+  fs.appendFileSync(logFile, `[${now()}] ${message}\n`, 'utf8');
+}
+
+function writeJson(fileName, value) {
+  fs.writeFileSync(path.join(RESULT_DIR, fileName), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function parseJson(text) {
+  const trimmed = String(text ?? '').trim();
+  if (!trimmed) return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    for (const line of trimmed.split(/\r?\n/).reverse()) {
+      try {
+        return JSON.parse(line);
+      } catch {
+        // Look for a final structured line after installer progress.
+      }
+    }
+  }
+  return null;
+}
+
+function commandExists(command) {
+  const result = spawnSync('sh', ['-c', 'command -v "$1" >/dev/null 2>&1', 'sh', command]);
+  return result.status === 0;
+}
+
+function run(command, args, options = {}) {
+  const display = options.display ?? [command, ...args].map((part) => path.basename(String(part))).join(' ');
+  log(`command: ${display}`);
+  const result = spawnSync(command, args, {
+    cwd: options.cwd ?? RUN_ROOT,
+    env: options.env ?? process.env,
+    encoding: 'utf8',
+    maxBuffer: 30 * 1024 * 1024,
+    timeout: options.timeout ?? 180_000,
+  });
+  const record = {
+    status: result.status,
+    signal: result.signal,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+  };
+  if (!options.allowFailure && result.status !== 0) {
+    throw new Error(`${display} failed (${result.status}): ${(result.stderr || result.stdout || '').trim()}`);
+  }
+  return record;
+}
+
+async function freePort() {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  await new Promise((resolve) => server.close(resolve));
+  if (!port) throw new Error('could not allocate an observer port');
+  return port;
+}
+
+function ensureExactPins() {
+  const failures = [];
+  if (!/^\d+\.\d+\.\d+$/.test(SERVER_VERSION)) failures.push('DW_SERVER_VERSION must be an exact patch release');
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(CLI_VERSION)) failures.push('DW_CLI_VERSION must be exact');
+  if (!/^2\.0\.0-alpha\.\d+$/.test(WORKFLOW_VERSION)) failures.push('DW_WORKFLOW_PHP_VERSION must be an exact 2.0 alpha release');
+  if (!/^2\.0\.0-alpha\.\d+$/.test(WATERLINE_VERSION)) failures.push('DW_WATERLINE_VERSION must be an exact 2.0 alpha release');
+  const exactTag = new RegExp(`^(?:(?:docker\\.io|index\\.docker\\.io)/)?durableworkflow/server:${escapeRegex(SERVER_VERSION)}$`).test(SERVER_IMAGE);
+  const exactDigest = /^(?:(?:docker\.io|index\.docker\.io)\/)?durableworkflow\/server(?::[^@]+)?@sha256:[0-9a-f]{64}$/i.test(SERVER_IMAGE);
+  if (!exactTag && !exactDigest) failures.push('DW_SERVER_IMAGE must be the exact public version tag or a digest pin');
+  if (!Number.isInteger(HOST_UID) || !Number.isInteger(HOST_GID)) failures.push('the runner requires a host UID and GID');
+  if (failures.length > 0) throw new Error(failures.join('; '));
+}
+
+function composeEnvironment() {
+  return {
+    ...process.env,
+    DW_SERVER_IMAGE: SERVER_IMAGE,
+    DW_AUTH_TOKEN: TOKEN,
+    DW_WORKER_HEARTBEAT_INTERVAL_SECONDS: String(HEARTBEAT_SECONDS),
+    DW_WORKER_STALE_AFTER_SECONDS: String(STALE_SECONDS),
+  };
+}
+
+function writeComposeFile(port) {
+  fs.writeFileSync(COMPOSE_FILE, `name: ${PROJECT}
+x-server-environment: &server-environment
+  APP_ENV: local
+  APP_DEBUG: "false"
+  DB_CONNECTION: mysql
+  DB_HOST: mysql
+  DB_PORT: "3306"
+  DB_DATABASE: durable_workflow
+  DB_USERNAME: workflow
+  DB_PASSWORD: workflow
+  REDIS_HOST: redis
+  QUEUE_CONNECTION: redis
+  CACHE_STORE: redis
+  DW_AUTH_DRIVER: token
+  DW_AUTH_TOKEN: \${DW_AUTH_TOKEN}
+  DW_AUTH_BACKWARD_COMPATIBLE: "true"
+  DW_WORKER_HEARTBEAT_INTERVAL_SECONDS: \${DW_WORKER_HEARTBEAT_INTERVAL_SECONDS}
+  DW_WORKER_STALE_AFTER_SECONDS: \${DW_WORKER_STALE_AFTER_SECONDS}
+  DW_WORKER_POLL_TIMEOUT: "1"
+services:
+  bootstrap:
+    image: \${DW_SERVER_IMAGE}
+    command: ["server-bootstrap"]
+    environment: *server-environment
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+  server:
+    image: \${DW_SERVER_IMAGE}
+    ports:
+      - "${port}:8080"
+    environment:
+      <<: *server-environment
+      DW_SERVER_TOPOLOGY_SHAPE: standalone_server
+      DW_SERVER_PROCESS_CLASS: server_http_node
+    depends_on:
+      bootstrap:
+        condition: service_completed_successfully
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/ready"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: durable_workflow
+      MYSQL_USER: workflow
+      MYSQL_PASSWORD: workflow
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  mysql_data:
+`, 'utf8');
+}
+
+function imageMetadata(reference) {
+  const inspect = run('docker', ['image', 'inspect', reference], {
+    display: `docker image inspect ${reference}`,
+    timeout: 60_000,
+  });
+  const image = parseJson(inspect.stdout)?.[0];
+  if (!image?.Id || !String(image.Id).startsWith('sha256:')) {
+    throw new Error(`could not resolve pulled server image ${reference}`);
+  }
+  const publicDigest = (image.RepoDigests ?? []).find((digest) =>
+    /^(?:(?:docker\.io|index\.docker\.io)\/)?durableworkflow\/server@sha256:[0-9a-f]{64}$/i.test(String(digest)));
+  if (!publicDigest) throw new Error(`server image ${reference} has no public durableworkflow/server digest`);
+  return {
+    id: image.Id,
+    digest: String(publicDigest).replace(/^(?:docker\.io|index\.docker\.io)\//i, ''),
+  };
+}
+
+async function startServer() {
+  const port = await freePort();
+  writeComposeFile(port);
+  composeRegistered = true;
+  run('docker', ['pull', SERVER_IMAGE], { display: `docker pull ${SERVER_IMAGE}`, timeout: 300_000 });
+  const requested = imageMetadata(SERVER_IMAGE);
+  const versionTag = `durableworkflow/server:${SERVER_VERSION}`;
+  if (SERVER_IMAGE.includes('@sha256:')) {
+    run('docker', ['pull', versionTag], { display: `docker pull ${versionTag}`, timeout: 300_000 });
+    const tagged = imageMetadata(versionTag);
+    if (tagged.id !== requested.id) throw new Error(`digest pin does not match public version tag ${versionTag}`);
+  }
+  ARTIFACT_SOURCES.server = `docker://${requested.digest}`;
+  run('docker', ['compose', '-p', PROJECT, '-f', COMPOSE_FILE, 'up', '-d', '--wait', 'server'], {
+    env: composeEnvironment(),
+    display: 'docker compose up -d --wait server',
+    timeout: 420_000,
+  });
+  const containerResult = run('docker', ['compose', '-p', PROJECT, '-f', COMPOSE_FILE, 'ps', '-q', 'server'], {
+    env: composeEnvironment(),
+    display: 'docker compose ps -q server',
+  });
+  const containerId = String(containerResult.stdout).trim();
+  if (!containerId) throw new Error('published server container did not start');
+  const containerInspect = run('docker', [
+    'container', 'inspect', '--format',
+    '{"Image":{{json .Image}},"Config":{"Image":{{json .Config.Image}}}}',
+    containerId,
+  ], { display: 'docker container inspect published server image fields' });
+  const container = parseJson(containerInspect.stdout);
+  if (container?.Image !== requested.id || container?.Config?.Image !== SERVER_IMAGE) {
+    throw new Error('running server container does not match the requested exact published image');
+  }
+  serverInstall = {
+    requested_reference: SERVER_IMAGE,
+    public_version_tag: versionTag,
+    resolved_public_digest: requested.digest,
+    resolved_image_id: requested.id,
+    running_container_id: containerId,
+    running_configured_reference: container.Config.Image,
+    running_image_id: container.Image,
+    exact_published_image_verified: true,
+  };
+  return { hostUrl: `http://127.0.0.1:${port}`, networkUrl: 'http://server:8080' };
+}
+
+function composer(args, options = {}) {
+  return run('docker', [
+    'run', '--rm',
+    '--user', CONTAINER_USER,
+    '--env', 'HOME=/tmp',
+    '--env', 'COMPOSER_HOME=/tmp/composer',
+    '--env', 'COMPOSER_MEMORY_LIMIT=-1',
+    '-v', `${RUN_ROOT}:/work`,
+    '-w', options.workdir ?? '/work',
+    COMPOSER_IMAGE,
+    ...args,
+  ], {
+    display: `composer ${args[0] ?? ''}`,
+    timeout: options.timeout ?? 600_000,
+  });
+}
+
+function installPackages() {
+  composer(['create-project', '--no-interaction', '--no-progress', '--prefer-dist', 'laravel/laravel:^12.0', 'app'], { timeout: 900_000 });
+  composer(['config', 'minimum-stability', 'dev'], { workdir: '/work/app' });
+  composer(['config', 'prefer-stable', 'true'], { workdir: '/work/app' });
+  composer(['config', 'preferred-install', 'dist'], { workdir: '/work/app' });
+  composer(['config', 'allow-plugins.php-http/discovery', 'true'], { workdir: '/work/app' });
+  composer([
+    'require', '--no-interaction', '--no-progress', '--prefer-dist', '--with-all-dependencies',
+    `durable-workflow/workflow:${WORKFLOW_VERSION}`,
+    `durable-workflow/waterline:${WATERLINE_VERSION}`,
+  ], { workdir: '/work/app', timeout: 900_000 });
+
+  const composerJson = JSON.parse(fs.readFileSync(path.join(APP_DIR, 'composer.json'), 'utf8'));
+  const composerLockText = fs.readFileSync(path.join(APP_DIR, 'composer.lock'), 'utf8');
+  const composerLock = JSON.parse(composerLockText);
+  const packages = [...(composerLock.packages ?? []), ...(composerLock['packages-dev'] ?? [])];
+  const relevant = Object.fromEntries(['durable-workflow/workflow', 'durable-workflow/waterline'].map((name) => {
+    const entry = packages.find((candidate) => candidate.name === name);
+    if (!entry) throw new Error(`composer.lock does not contain ${name}`);
+    return [name, {
+      version: normalizeVersion(String(entry.version ?? '')),
+      dist: entry.dist ?? null,
+      source: entry.source ?? null,
+    }];
+  }));
+  if (relevant['durable-workflow/workflow'].version !== WORKFLOW_VERSION) {
+    throw new Error('installed Workflow PHP package does not match the exact requested version');
+  }
+  if (relevant['durable-workflow/waterline'].version !== WATERLINE_VERSION) {
+    throw new Error('installed Waterline package does not match the exact requested version');
+  }
+  const configuredRepositories = composerJson.repositories ?? [];
+  const localPathRepository = JSON.stringify(configuredRepositories).toLowerCase().includes('"type":"path"');
+  const checkoutMarkers = ['file://', 'path repository', '"type":"path"', '../repos/'];
+  const scanned = `${JSON.stringify(composerJson)}\n${composerLockText}`.toLowerCase();
+  const matchedMarkers = checkoutMarkers.filter((marker) => scanned.includes(marker));
+  sourceHygiene = {
+    checked_at: now(),
+    composer_preferred_install: composerJson.config?.['preferred-install'] ?? 'dist',
+    relevant_packages: relevant,
+    configured_repositories: configuredRepositories,
+    local_path_repository_present: localPathRepository,
+    local_checkout_markers: matchedMarkers,
+    local_product_source_checkouts_used: sourceHygiene?.local_product_source_checkouts_used ?? null,
+    passed: !localPathRepository && matchedMarkers.length === 0
+      && Boolean(relevant['durable-workflow/workflow'].dist)
+      && Boolean(relevant['durable-workflow/waterline'].dist),
+  };
+  if (!sourceHygiene.passed) throw new Error('published package source hygiene checks failed');
+  packageInstall = {
+    installer_runtime: COMPOSER_IMAGE,
+    install_mode: 'composer create-project plus exact prefer-dist requirements',
+    laravel_host_package: packages.find((candidate) => candidate.name === 'laravel/framework')?.version ?? null,
+    packages: relevant,
+  };
+  writeJson('source-hygiene.json', sourceHygiene);
+}
+
+function parseCliVersionOutput(output) {
+  const match = String(output ?? '').trim().match(/(?:^|\s)v?(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)(?=$|\s|\))/);
+  return match ? normalizeVersion(match[1]) : '';
+}
+
+function installCli() {
+  fs.mkdirSync(path.join(CLI_DIR, 'bin'), { recursive: true });
+  const installer = path.join(CLI_DIR, 'install.sh');
+  let sourceUrl = '';
+  for (const tag of [CLI_VERSION, `v${CLI_VERSION}`]) {
+    const url = `https://github.com/durable-workflow/cli/releases/download/${tag}/install.sh`;
+    const download = run('curl', ['--fail', '--location', '--silent', '--show-error', url, '--output', installer], {
+      allowFailure: true,
+      display: `download official dw ${CLI_VERSION} installer`,
+      timeout: 90_000,
+    });
+    if (download.status === 0) {
+      sourceUrl = url;
+      break;
+    }
+  }
+  if (!sourceUrl) throw new Error(`could not download official dw ${CLI_VERSION} installer`);
+  fs.chmodSync(installer, 0o755);
+  run('sh', [installer], {
+    env: {
+      ...process.env,
+      VERSION: CLI_VERSION,
+      DURABLE_WORKFLOW_INSTALL_DIR: path.join(CLI_DIR, 'bin'),
+      DURABLE_WORKFLOW_INSTALL_VERIFY_ATTESTATIONS: '0',
+    },
+    display: `install official dw ${CLI_VERSION}`,
+    timeout: 180_000,
+  });
+  const binary = path.join(CLI_DIR, 'bin', os.platform() === 'win32' ? 'dw.exe' : 'dw');
+  const version = run(binary, ['--version'], { display: 'dw --version', timeout: 30_000 });
+  const output = String(version.stdout || version.stderr).trim();
+  const installedVersion = parseCliVersionOutput(output);
+  if (installedVersion !== CLI_VERSION) {
+    throw new Error(`published CLI mismatch: expected ${CLI_VERSION}, got ${output || 'empty'}`);
+  }
+  ARTIFACT_SOURCES.cli = sourceUrl;
+  cliInstall = {
+    requested_version: CLI_VERSION,
+    detected_version: installedVersion,
+    version_output: output,
+    source_url: sourceUrl,
+    binary: path.basename(binary),
+  };
+}
+
+function waterlineEnvironment(waterlineHostUrl = 'http://waterline:8000') {
+  return {
+    APP_ENV: 'local',
+    APP_DEBUG: 'false',
+    APP_KEY: 'base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI=',
+    APP_URL: waterlineHostUrl,
+    DB_CONNECTION: 'mysql',
+    DB_HOST: 'mysql',
+    DB_PORT: '3306',
+    DB_DATABASE: 'durable_workflow',
+    DB_USERNAME: 'workflow',
+    DB_PASSWORD: 'workflow',
+    DW_WV_WATERLINE_DB_DRIVER: 'mysql',
+    DW_WV_WATERLINE_DB_HOST: 'mysql',
+    DW_WV_WATERLINE_DB_PORT: '3306',
+    DW_WV_WATERLINE_DB_DATABASE: 'durable_workflow',
+    DW_WV_WATERLINE_DB_USERNAME: 'workflow',
+    DW_WV_WATERLINE_DB_PASSWORD: 'workflow',
+    DW_V2_TASK_DISPATCH_MODE: 'poll',
+    QUEUE_CONNECTION: 'sync',
+    CACHE_STORE: 'array',
+    SESSION_DRIVER: 'array',
+    WATERLINE_ALLOW_UNAUTHENTICATED: 'true',
+    WATERLINE_ENGINE_SOURCE: 'v2',
+    WATERLINE_HEALTH_TASK_DISPATCH_MODE: 'poll',
+    WATERLINE_NAMESPACE: NAMESPACE,
+    WATERLINE_WORKER_STALE_AFTER_SECONDS: String(STALE_SECONDS),
+  };
+}
+
+function dockerEnvironmentArgs(values) {
+  return Object.keys(values).flatMap((name) => ['--env', name]);
+}
+
+async function startWaterlineHost() {
+  const port = await freePort();
+  const runtimeEnv = waterlineEnvironment(`http://127.0.0.1:${port}`);
+  waterlineRegistered = true;
+  run('docker', [
+    'run', '-d', '--name', WATERLINE_CONTAINER,
+    '--user', CONTAINER_USER,
+    '--network', NETWORK,
+    '-p', `${port}:8000`,
+    ...dockerEnvironmentArgs(runtimeEnv),
+    '-v', `${APP_DIR}:/app`,
+    '-w', '/app',
+    '--entrypoint', 'php',
+    SERVER_IMAGE,
+    '-d', 'variables_order=EGPCS',
+    'artisan', 'serve', '--host=0.0.0.0', '--port=8000',
+  ], {
+    env: { ...process.env, ...runtimeEnv },
+    display: 'start published Waterline Laravel package host',
+    timeout: 60_000,
+  });
+  const hostUrl = `http://127.0.0.1:${port}`;
+  const deadline = Date.now() + 120_000;
+  let last = '';
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(`${hostUrl}/waterline/api/v2/health`, {
+        headers: { Accept: 'application/json', 'X-Durable-Workflow-Control-Plane-Version': '2' },
+      });
+      last = `${response.status}: ${await response.text()}`;
+      if (response.ok) return { hostUrl, networkUrl: `http://${WATERLINE_CONTAINER}:8000` };
+    } catch (error) {
+      last = errorSummary(error);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  const logs = run('docker', ['logs', WATERLINE_CONTAINER], { allowFailure: true, display: 'docker logs Waterline host' });
+  throw new Error(`published Waterline host did not become ready: ${last}\n${logs.stdout}${logs.stderr}`);
+}
+
+function runPublishedCommand(server, waterline) {
+  const runtimeEnv = {
+    ...waterlineEnvironment(waterline.networkUrl),
+    DURABLE_WORKFLOW_AUTH_TOKEN: TOKEN,
+  };
+  publishedCommandStarted = true;
+  const result = run('docker', [
+    'run', '--rm',
+    '--user', CONTAINER_USER,
+    '--network', NETWORK,
+    ...dockerEnvironmentArgs(runtimeEnv),
+    '-v', `${APP_DIR}:/app`,
+    '-v', `${path.join(CLI_DIR, 'bin')}:/cli:ro`,
+    '-v', `${RESULT_DIR}:/results`,
+    '-w', '/app',
+    '--entrypoint', 'php',
+    SERVER_IMAGE,
+    'artisan', 'waterline:worker-status-conformance',
+    `--server-url=${server.networkUrl}`,
+    `--waterline-url=${waterline.networkUrl}`,
+    `--namespace=${NAMESPACE}`,
+    `--task-queue=${TASK_QUEUE}`,
+    `--run-id=${RUN_ID}`,
+    '--cli-bin=/cli/dw',
+    `--server-version=${SERVER_VERSION}`,
+    `--cli-version=${CLI_VERSION}`,
+    `--workflow-version=${WORKFLOW_VERSION}`,
+    `--waterline-version=${WATERLINE_VERSION}`,
+    `--server-source=${ARTIFACT_SOURCES.server}`,
+    `--cli-source=${ARTIFACT_SOURCES.cli}`,
+    `--workflow-source=${ARTIFACT_SOURCES.workflow}`,
+    `--waterline-source=${ARTIFACT_SOURCES.waterline}`,
+    `--heartbeat-interval=${HEARTBEAT_SECONDS}`,
+    `--stale-after=${STALE_SECONDS}`,
+    '--output=/results/waterline-worker-status-evidence.json',
+  ], {
+    env: { ...process.env, ...runtimeEnv },
+    allowFailure: true,
+    display: 'php artisan waterline:worker-status-conformance [published endpoints and exact pins]',
+    timeout: (STALE_SECONDS + 180) * 1_000,
+  });
+  if (fs.existsSync(EVIDENCE_PATH)) {
+    productEvidence = JSON.parse(fs.readFileSync(EVIDENCE_PATH, 'utf8'));
+  }
+  if (result.status !== 0) {
+    const message = productEvidence?.findings?.[0]?.message
+      ?? (result.stderr || result.stdout || '').trim();
+    throw new Error(`published Waterline worker-status command failed (${result.status}): ${message}`);
+  }
+  if (!productEvidence || productEvidence.outcome !== 'pass' || productEvidence.runner_blocked !== false) {
+    throw new Error('published command exited successfully without passing non-runner-blocked evidence');
+  }
+}
+
+function cleanupWaterline() {
+  if (!waterlineRegistered) return { resource: 'waterline_host', status: 'not_started' };
+  const removal = run('docker', ['rm', '-f', WATERLINE_CONTAINER], {
+    allowFailure: true,
+    display: 'docker rm -f Waterline host',
+    timeout: 30_000,
+  });
+  const inspect = run('docker', ['container', 'inspect', WATERLINE_CONTAINER], {
+    allowFailure: true,
+    display: 'verify Waterline host removal',
+    timeout: 30_000,
+  });
+  if (inspect.status === 0) throw new Error(`Waterline host container remains after cleanup: ${removal.stderr}`);
+  return { resource: 'waterline_host', name: WATERLINE_CONTAINER, status: 'removed' };
+}
+
+function cleanupCompose() {
+  if (!composeRegistered) return { resource: 'compose_project', status: 'not_started' };
+  const down = run('docker', ['compose', '-p', PROJECT, '-f', COMPOSE_FILE, 'down', '-v', '--remove-orphans'], {
+    env: composeEnvironment(),
+    allowFailure: true,
+    display: 'docker compose down -v --remove-orphans',
+    timeout: 180_000,
+  });
+  if (down.status !== 0) throw new Error(`compose cleanup failed: ${(down.stderr || down.stdout).trim()}`);
+  const containers = run('docker', [
+    'ps', '-aq', '--filter', `label=com.docker.compose.project=${PROJECT}`,
+  ], { display: 'verify compose container cleanup' });
+  const volumes = run('docker', [
+    'volume', 'ls', '--filter', `label=com.docker.compose.project=${PROJECT}`, '--format', '{{.Name}}',
+  ], { display: 'verify compose volume cleanup' });
+  if (String(containers.stdout).trim() || String(volumes.stdout).trim()) {
+    throw new Error(`compose cleanup left resources: containers=${containers.stdout.trim()} volumes=${volumes.stdout.trim()}`);
+  }
+  return { resource: 'compose_project', name: PROJECT, status: 'removed_with_volumes' };
+}
+
+function removeDirectory(directory) {
+  fs.rmSync(directory, { recursive: true, force: true });
+}
+
+function finalResult() {
+  const cleanupPassed = cleanupFailures.length === 0;
+  const productPassed = productEvidence?.outcome === 'pass' && productEvidence?.runner_blocked === false;
+  let outcome = 'non_passing_runner_blocked';
+  let runnerBlocked = true;
+  let classification = 'waterline-worker-status-runner-blocked';
+  if (productPassed && cleanupPassed && !runnerError) {
+    outcome = 'pass';
+    runnerBlocked = false;
+    classification = 'published-waterline-worker-status-proven';
+  } else if (productEvidence && productEvidence.runner_blocked === false && productEvidence.outcome !== 'pass') {
+    outcome = 'fail';
+    runnerBlocked = false;
+    classification = productEvidence.classification ?? 'published-waterline-worker-status-product-failure';
+  }
+  if (!cleanupPassed) {
+    outcome = 'non_passing_runner_blocked';
+    runnerBlocked = true;
+    classification = 'waterline-worker-status-cleanup-blocked';
+  }
+  return {
+    schema: 'durable-workflow.v2.waterline-worker-status-run-result',
+    version: 1,
+    scenario_id: 'waterline_worker_status_visibility',
+    conformance_run_id: RUN_ID,
+    started_at: STARTED_AT,
+    finished_at: now(),
+    outcome,
+    runner_blocked: runnerBlocked,
+    classification,
+    artifact_versions: ARTIFACT_VERSIONS,
+    artifact_sources: ARTIFACT_SOURCES,
+    topology: {
+      namespace: NAMESPACE,
+      task_queue: TASK_QUEUE,
+      heartbeat_interval_seconds: HEARTBEAT_SECONDS,
+      stale_after_seconds: STALE_SECONDS,
+    },
+    installs: {
+      server: serverInstall,
+      cli: cliInstall,
+      composer_packages: packageInstall,
+    },
+    source_hygiene: sourceHygiene,
+    local_product_source_checkouts_used: false,
+    product_evidence_file: productEvidence ? path.basename(EVIDENCE_PATH) : null,
+    product_evidence: productEvidence,
+    cleanup: { results: cleanupResults, failures: cleanupFailures },
+    runner_error: runnerError,
+  };
+}
+
+writeJson('pins.json', {
+  schema: 'durable-workflow.v2.waterline-worker-status-pins',
+  version: 1,
+  conformance_run_id: RUN_ID,
+  resolved_at: STARTED_AT,
+  artifact_versions: ARTIFACT_VERSIONS,
+  artifact_sources: ARTIFACT_SOURCES,
+});
+
+try {
+  ensureExactPins();
+  for (const command of ['docker', 'curl']) {
+    if (!commandExists(command)) throw new Error(`required command not found: ${command}`);
+  }
+  const server = await startServer();
+  installCli();
+  installPackages();
+  const waterline = await startWaterlineHost();
+  runPublishedCommand(server, waterline);
+} catch (error) {
+  runnerError = {
+    message: errorSummary(error),
+    observed_at: now(),
+    published_command_started: publishedCommandStarted,
+  };
+  log(`failure: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+  process.exitCode = 1;
+} finally {
+  try {
+    cleanupResults.push(cleanupWaterline());
+  } catch (error) {
+    cleanupFailures.push({ resource: 'waterline_host', error: errorSummary(error) });
+    process.exitCode = 1;
+  }
+  try {
+    cleanupResults.push(cleanupCompose());
+  } catch (error) {
+    cleanupFailures.push({ resource: 'compose_project', error: errorSummary(error) });
+    process.exitCode = 1;
+  }
+  if (!KEEP_RUN_ROOT) {
+    try {
+      removeDirectory(RUN_ROOT);
+      cleanupResults.push({ resource: 'run_root', status: 'removed' });
+    } catch (error) {
+      cleanupFailures.push({ resource: 'run_root', error: errorSummary(error) });
+      process.exitCode = 1;
+    }
+  } else {
+    cleanupResults.push({ resource: 'run_root', status: 'retained_by_request' });
+  }
+
+  const result = finalResult();
+  fs.writeFileSync(RESULT_PATH, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+  if (!sourceHygiene) {
+    writeJson('source-hygiene.json', {
+      checked_at: result.finished_at,
+      passed: false,
+      local_product_source_checkouts_used: null,
+      reason: 'published Composer installation did not complete',
+    });
+  }
+  writeJson('run-metadata.json', {
+    schema: 'durable-workflow.v2.waterline-worker-status-run-metadata',
+    version: 1,
+    conformance_run_id: RUN_ID,
+    started_at: STARTED_AT,
+    finished_at: result.finished_at,
+    outcome: result.outcome,
+    runner_blocked: result.runner_blocked,
+    cleanup: result.cleanup,
+  });
+  writeJson('pins.json', {
+    schema: 'durable-workflow.v2.waterline-worker-status-pins',
+    version: 1,
+    conformance_run_id: RUN_ID,
+    resolved_at: result.finished_at,
+    artifact_versions: ARTIFACT_VERSIONS,
+    artifact_sources: ARTIFACT_SOURCES,
+  });
+  if (result.outcome !== 'pass') process.exitCode = 1;
+}

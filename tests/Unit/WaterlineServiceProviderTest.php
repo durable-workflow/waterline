@@ -6,6 +6,7 @@ use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Support\Facades\DB;
 use Waterline\Console\SignalsQueriesConformanceCommand;
+use Waterline\Console\WorkerStatusConformanceCommand;
 use Waterline\Console\WorkflowUpdatesConformanceCommand;
 use Waterline\Http\Middleware\ControlPlaneVersion;
 use Waterline\Http\Middleware\RenderApiExceptionsAsJson;
@@ -212,11 +213,38 @@ class WaterlineServiceProviderTest extends TestCase
             $this->assertContains('WATERLINE_NAMESPACE', $serveCommand::$passthroughVariables);
             $this->assertContains('WATERLINE_HEALTH_TASK_DISPATCH_MODE', $serveCommand::$passthroughVariables);
             $this->assertContains('WATERLINE_HYBRID_MIGRATION_VIEW', $serveCommand::$passthroughVariables);
+            $this->assertContains('WATERLINE_WORKER_STALE_AFTER_SECONDS', $serveCommand::$passthroughVariables);
             $this->assertContains('DW_V2_TASK_DISPATCH_MODE', $serveCommand::$passthroughVariables);
             $this->assertContains('DW_WV_WATERLINE_DB_DATABASE', $serveCommand::$passthroughVariables);
             $this->assertContains('WORKFLOW_STORAGE_CONNECTION', $serveCommand::$passthroughVariables);
         } finally {
             $serveCommand::$passthroughVariables = $previous;
+        }
+    }
+
+    public function testRuntimeConfigurationHydratesPublishedWorkerStatusStaleWindow(): void
+    {
+        $this->withEnvironment([
+            'WATERLINE_WORKER_STALE_AFTER_SECONDS' => '9',
+        ], function (): void {
+            config()->set('waterline.worker_stale_after_seconds', null);
+
+            RuntimeConfiguration::hydrate();
+
+            $this->assertSame(9, config('waterline.worker_stale_after_seconds'));
+        });
+    }
+
+    public function testWorkerStatusConformanceCommandDoesNotAcceptProjectionOrFixtureInputs(): void
+    {
+        $definition = (new WorkerStatusConformanceCommand())->getDefinition();
+
+        foreach (['plan', 'fixture', 'projection', 'server-json', 'waterline-json', 'cli-json'] as $option) {
+            $this->assertFalse($definition->hasOption($option));
+        }
+
+        foreach (['server-url', 'waterline-url', 'cli-bin', 'workflow-version', 'waterline-version'] as $option) {
+            $this->assertTrue($definition->hasOption($option));
         }
     }
 

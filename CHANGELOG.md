@@ -11,3 +11,10 @@ operator-visible command and timeline principal attribution alongside the
 namespace and search-attribute Waterline shards. Migration runtime and
 skew refusal matrix evidence remain load-bearing Waterline release
 categories.
+
+The package now exports a focused published-artifact worker-status runner.
+It compares live Waterline list and task-queue worker projections with the
+standalone server API and CLI through two heartbeats, real workflow work, and
+a bounded stale transition. Published observer hosts can align Waterline's
+freshness classification with the server through
+`WATERLINE_WORKER_STALE_AFTER_SECONDS`.

@@ -70,6 +70,7 @@ final class RuntimeConfiguration
         'WATERLINE_HYBRID_MIGRATION_VIEW',
         'WATERLINE_NAMESPACE',
         'WATERLINE_PATH',
+        'WATERLINE_WORKER_STALE_AFTER_SECONDS',
     ];
 
     public static function hydrate(): void
@@ -88,6 +89,10 @@ final class RuntimeConfiguration
         self::setStringConfigFromEnvironment('WATERLINE_PATH', 'waterline.path');
         self::setStringConfigFromEnvironment('WATERLINE_ENGINE_SOURCE', 'waterline.engine_source');
         self::setStringConfigFromEnvironment('WATERLINE_NAMESPACE', 'waterline.namespace');
+        self::setPositiveIntegerConfigFromEnvironment(
+            'WATERLINE_WORKER_STALE_AFTER_SECONDS',
+            'waterline.worker_stale_after_seconds',
+        );
         self::setStringConfigFromEnvironment('WATERLINE_HEALTH_TASK_DISPATCH_MODE', 'waterline.health.task_dispatch_mode');
         self::setBooleanConfigFromEnvironment('WATERLINE_HYBRID_MIGRATION_VIEW', 'waterline.hybrid_migration_view');
         self::setBooleanConfigFromEnvironment('WATERLINE_ALLOW_UNAUTHENTICATED', 'waterline.allow_unauthenticated');
@@ -104,6 +109,15 @@ final class RuntimeConfiguration
             ['DW_V2_TASK_DISPATCH_MODE', 'WORKFLOW_V2_TASK_DISPATCH_MODE'],
             'workflows.v2.task_dispatch_mode',
         );
+    }
+
+    private static function setPositiveIntegerConfigFromEnvironment(string $environmentKey, string $configKey): void
+    {
+        $value = self::environmentValue($environmentKey);
+
+        if ($value !== null && ctype_digit($value) && (int) $value > 0) {
+            config()->set($configKey, (int) $value);
+        }
     }
 
     private static function hydrateLaravelRuntimeConfig(): void
