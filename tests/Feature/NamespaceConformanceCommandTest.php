@@ -104,6 +104,8 @@ class NamespaceConformanceCommandTest extends TestCase
 
     public function testSearchAttributesCommandEmitsWaterlineOperatorVisibilityShard(): void
     {
+        config()->set('waterline.namespace', 'preexisting-host-namespace');
+
         $commandOptions = [
             '--namespace-a' => 'billing',
             '--namespace-b' => 'shipping',
@@ -195,6 +197,9 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertTrue($visibility['saved_filter_state']['filter_preserved_on_retrieval']);
         $this->assertTrue($visibility['saved_filter_state']['filter_preserved_on_list_retrieval']);
         $this->assertTrue($visibility['saved_filter_state']['applied_filter_matched']);
+        $this->assertSame('namespace:billing', $visibility['saved_filter_state']['stored_scope']);
+        $this->assertSame('namespace:billing', $visibility['saved_filter_state']['retrieved_scope']);
+        $this->assertSame('namespace:billing', $visibility['saved_filter_state']['listed_scope']);
         $this->assertSame(2, $visibility['saved_filter_state']['applied_actual_count']);
         $this->assertSame('cust-7', $visibility['saved_filter_state']['applied_filter_echo']['customer_id']);
         foreach ($visibility['fixture_ids']['saved_view_ids'] as $savedViewId) {
@@ -233,6 +238,7 @@ class NamespaceConformanceCommandTest extends TestCase
             SavedWorkflowView::query()->whereIn('id', $visibility['fixture_ids']['saved_view_ids'])->count(),
             'The command should clean up saved view fixture rows by default.',
         );
+        $this->assertSame('preexisting-host-namespace', config('waterline.namespace'));
     }
 
     public function testSearchAttributesCommandRoutesWaterlineFindingsWithOperatorDiagnostics(): void

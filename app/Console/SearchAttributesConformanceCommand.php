@@ -125,6 +125,7 @@ class SearchAttributesConformanceCommand extends Command
             config()->set('waterline.engine_source', 'v2');
             config()->set('waterline.allow_unauthenticated', true);
             config()->set('waterline.saved_views.enabled', true);
+            config()->set('waterline.namespace', $namespaces['a']);
 
             if (! (bool) $this->option('keep-fixtures')) {
                 $this->cleanupFixtures($fixtureIds);
@@ -645,6 +646,9 @@ class SearchAttributesConformanceCommand extends Command
             ],
             'saved_filter_state' => [
                 'saved_view_id' => $savedView->id,
+                'stored_scope' => $savedView->scope,
+                'retrieved_scope' => data_get($savedViewShow['json'], 'scope'),
+                'listed_scope' => is_array($savedListRow) ? ($savedListRow['scope'] ?? null) : null,
                 'stored_filters' => $savedView->filters,
                 'retrieved_filters' => $savedViewFilters,
                 'listed_filters' => is_array($savedListRow) ? ($savedListRow['filters'] ?? null) : null,
