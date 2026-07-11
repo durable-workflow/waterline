@@ -8,6 +8,7 @@ runner_log_path=""
 started_at=""
 current_result_valid=0
 runner_log_fresh=0
+runner_pid=""
 
 utc_now() {
   date -u +'%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf '%s' 'unknown'
@@ -24,9 +25,16 @@ initialize_result_files() {
     return 0
   fi
 
-  # A shared result directory may be reused across invocations. Clear both
-  # canonical files before either Node or the shell fallback can publish data.
-  rm -f -- "$result_path" "$runner_log_path" 2>/dev/null || return 1
+  # A shared result directory may be reused across invocations. Clear every
+  # canonical output before either Node or the shell fallback can publish data.
+  rm -f -- \
+    "$result_path" \
+    "$runner_log_path" \
+    "$result_dir/waterline-worker-status-evidence.json" \
+    "$result_dir/source-hygiene.json" \
+    "$result_dir/run-metadata.json" \
+    "$result_dir/pins.json" \
+    2>/dev/null || return 1
   runner_log_fresh=1
 }
 
@@ -221,6 +229,13 @@ on_exit() {
   exit "$status"
 }
 
+forward_signal() {
+  local signal="$1"
+  if [[ -n "$runner_pid" ]] && kill -0 "$runner_pid" 2>/dev/null; then
+    kill -s "$signal" "$runner_pid" 2>/dev/null || true
+  fi
+}
+
 usage() {
   cat <<'USAGE'
 Usage: worker-status-published-artifacts.sh [--result-dir DIR|--result-dir=DIR]
@@ -245,6 +260,8 @@ Optional overrides:
   DW_WATERLINE_WORKER_STATUS_NAMESPACE    Defaults to waterline-worker-status.
   DW_WATERLINE_WORKER_STATUS_HEARTBEAT_SECONDS  Defaults to 2.
   DW_WATERLINE_WORKER_STATUS_STALE_SECONDS      Defaults to 7.
+  DW_WATERLINE_WORKER_STATUS_READINESS_ATTEMPT_SECONDS  Defaults to 5.
+  DW_WATERLINE_WORKER_STATUS_READINESS_DEADLINE_SECONDS Defaults to 120.
   DW_WATERLINE_WORKER_STATUS_COMPOSER_IMAGE     Defaults to composer:2.
   DW_WATERLINE_WORKER_STATUS_KEEP_RUN_ROOT      Set to 1 to retain scratch files.
 USAGE
@@ -291,11 +308,27 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 runner_status=0
-if RESULT_DIR="$result_dir" node "$script_dir/worker-status-published-artifacts.mjs"; then
-  runner_status=0
-else
-  runner_status=$?
-fi
+trap 'forward_signal INT' INT
+trap 'forward_signal TERM' TERM
+RESULT_DIR="$result_dir" node "$script_dir/worker-status-published-artifacts.mjs" &
+runner_pid=$!
+while true; do
+  if wait "$runner_pid"; then
+    runner_status=0
+    break
+  else
+    runner_status=$?
+    # A trapped signal interrupts Bash's wait before the Node process has
+    # finished its structured result and cleanup path. Keep waiting after the
+    # signal has been forwarded.
+    if kill -0 "$runner_pid" 2>/dev/null; then
+      continue
+    fi
+    break
+  fi
+done
+runner_pid=""
+trap - INT TERM
 
 if [[ -s "$result_path" ]] && node -e '
   const fs = require("node:fs");

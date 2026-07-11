@@ -87,6 +87,9 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             'local_product_source_checkouts_used: false',
             'waterline:worker-status-conformance',
             "'down', '-v', '--remove-orphans'",
+            "'network', 'ls'",
+            'waitForHttpReadiness',
+            'createInterruptionMonitor',
         ] as $needle) {
             $this->assertStringContainsString($needle, $node.$shell);
         }
@@ -171,6 +174,7 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             'scripts/conformance/worker-status-published-artifacts.sh',
             'scripts/conformance/worker-status-published-artifacts.mjs',
             'scripts/conformance/worker-status-network.mjs',
+            'scripts/conformance/worker-status-runner-lifecycle.mjs',
             'app/Console/WorkerStatusConformanceCommand.php',
         ];
 
@@ -185,6 +189,21 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         }
     }
 
+    public function testReadinessTimeoutsRetryAndReachDeterministicCleanup(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $node = trim((string) shell_exec('command -v node 2>/dev/null'));
+        $this->assertNotSame('', $node, 'Node is required to execute the runner lifecycle regression.');
+        $command = sprintf(
+            '%s --test %s 2>&1',
+            escapeshellarg($node),
+            escapeshellarg($root.'/tests/Unit/WorkerStatusRunnerLifecycleTest.mjs'),
+        );
+        exec($command, $output, $status);
+
+        $this->assertSame(0, $status, implode("\n", $output));
+    }
+
     public function testShellFallbackWritesFreshEvidenceForArgumentFailures(): void
     {
         $root = dirname(__DIR__, 2);
@@ -192,9 +211,13 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         mkdir($resultDirectory, 0777, true);
         $resultPath = $resultDirectory.'/waterline-worker-status-result.json';
         $runnerLogPath = $resultDirectory.'/waterline-worker-status-runner.log';
+        $staleEvidencePath = $resultDirectory.'/waterline-worker-status-evidence.json';
+        $staleHygienePath = $resultDirectory.'/source-hygiene.json';
         $staleDiagnostic = 'stale diagnostic from a previous invocation';
         file_put_contents($resultPath, '{"artifact_versions":{"server":"stale"}}');
         file_put_contents($runnerLogPath, $staleDiagnostic);
+        file_put_contents($staleEvidencePath, '{"outcome":"pass","runner_blocked":false}');
+        file_put_contents($staleHygienePath, '{"passed":true}');
 
         try {
             [$status, $output] = $this->runShellRunner(
@@ -214,6 +237,8 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             $this->assertSame('shell_exit_fallback', $result['runner_error']['evidence_origin']);
             $this->assertStringNotContainsString($staleDiagnostic, $result['runner_error']['message']);
             $this->assertFileDoesNotExist($runnerLogPath);
+            $this->assertFileDoesNotExist($staleEvidencePath);
+            $this->assertFileDoesNotExist($staleHygienePath);
             $this->assertTrue($result['runner_blocked']);
         } finally {
             $this->removeTestDirectory($resultDirectory);

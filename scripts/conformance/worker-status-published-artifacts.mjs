@@ -6,6 +6,12 @@ import process from 'node:process';
 import { spawnSync } from 'node:child_process';
 
 import { validatedPublishedHost, waterlinePublishedTopology } from './worker-status-network.mjs';
+import {
+  boundedDiagnostic,
+  createInterruptionMonitor,
+  runWithCleanup,
+  waitForHttpReadiness,
+} from './worker-status-runner-lifecycle.mjs';
 
 const RESULT_DIR = requiredEnv('RESULT_DIR');
 const STARTED_AT = now();
@@ -21,6 +27,8 @@ const TOKEN = env('DW_WATERLINE_WORKER_STATUS_AUTH_TOKEN') || 'dev-token';
 const NAMESPACE = env('DW_WATERLINE_WORKER_STATUS_NAMESPACE') || 'waterline-worker-status';
 const HEARTBEAT_SECONDS = positiveInt(env('DW_WATERLINE_WORKER_STATUS_HEARTBEAT_SECONDS'), 2);
 const STALE_SECONDS = positiveInt(env('DW_WATERLINE_WORKER_STATUS_STALE_SECONDS'), 7);
+const READINESS_ATTEMPT_SECONDS = positiveInt(env('DW_WATERLINE_WORKER_STATUS_READINESS_ATTEMPT_SECONDS'), 5);
+const READINESS_DEADLINE_SECONDS = positiveInt(env('DW_WATERLINE_WORKER_STATUS_READINESS_DEADLINE_SECONDS'), 120);
 const KEEP_RUN_ROOT = truthy(env('DW_WATERLINE_WORKER_STATUS_KEEP_RUN_ROOT'));
 let WATERLINE_HOST = env('DW_WATERLINE_HOST');
 const HOST_UID = typeof process.getuid === 'function' ? process.getuid() : null;
@@ -62,6 +70,7 @@ let serverInstall = null;
 let cliInstall = null;
 let packageInstall = null;
 let runnerError = null;
+const interruption = createInterruptionMonitor();
 
 function env(name) {
   return String(process.env[name] ?? '').trim();
@@ -95,7 +104,7 @@ function escapeRegex(value) {
 }
 
 function errorSummary(error) {
-  return error instanceof Error ? error.message : String(error);
+  return boundedDiagnostic(error instanceof Error ? error.message : String(error));
 }
 
 function log(message) {
@@ -145,7 +154,9 @@ function run(command, args, options = {}) {
     stderr: result.stderr ?? '',
   };
   if (!options.allowFailure && result.status !== 0) {
-    throw new Error(`${display} failed (${result.status}): ${(result.stderr || result.stdout || '').trim()}`);
+    throw new Error(errorSummary(
+      `${display} failed (${result.status}): ${(result.stderr || result.stdout || '').trim()}`,
+    ));
   }
   return record;
 }
@@ -645,27 +656,29 @@ async function startWaterlineHost() {
     display: 'start published Waterline Laravel package host',
     timeout: 60_000,
   });
-  const deadline = Date.now() + 120_000;
-  let last = '';
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`${topology.externalHostUrl}/waterline/api/v2/health`, {
-        headers: { Accept: 'application/json', 'X-Durable-Workflow-Control-Plane-Version': '2' },
-      });
-      last = `${response.status}: ${await response.text()}`;
-      if (response.ok) {
-        return {
-          hostUrl: topology.externalHostUrl,
-          networkUrl: topology.containerNetworkUrl,
-        };
-      }
-    } catch (error) {
-      last = errorSummary(error);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  try {
+    await waitForHttpReadiness({
+      url: `${topology.externalHostUrl}/waterline/api/v2/health`,
+      headers: { Accept: 'application/json', 'X-Durable-Workflow-Control-Plane-Version': '2' },
+      attemptTimeoutMilliseconds: READINESS_ATTEMPT_SECONDS * 1_000,
+      overallTimeoutMilliseconds: READINESS_DEADLINE_SECONDS * 1_000,
+      retryDelayMilliseconds: 1_000,
+      signal: interruption.signal,
+    });
+  } catch (error) {
+    if (interruption.signal.aborted) throw error;
+    const logs = run('docker', ['logs', WATERLINE_CONTAINER], {
+      allowFailure: true,
+      display: 'docker logs Waterline host',
+      timeout: 30_000,
+    });
+    throw new Error(errorSummary(`${errorSummary(error)}\n${logs.stdout}${logs.stderr}`));
   }
-  const logs = run('docker', ['logs', WATERLINE_CONTAINER], { allowFailure: true, display: 'docker logs Waterline host' });
-  throw new Error(`published Waterline host did not become ready: ${last}\n${logs.stdout}${logs.stderr}`);
+
+  return {
+    hostUrl: topology.externalHostUrl,
+    networkUrl: topology.containerNetworkUrl,
+  };
 }
 
 function runPublishedCommand(server, waterline) {
@@ -735,6 +748,9 @@ function cleanupWaterline() {
     timeout: 30_000,
   });
   if (inspect.status === 0) throw new Error(`Waterline host container remains after cleanup: ${removal.stderr}`);
+  if (removal.status !== 0 && !/no such (?:object|container)/i.test(String(inspect.stderr))) {
+    throw new Error(`Waterline host cleanup could not be verified: ${(inspect.stderr || removal.stderr).trim()}`);
+  }
   return { resource: 'waterline_host', name: WATERLINE_CONTAINER, status: 'removed' };
 }
 
@@ -746,17 +762,69 @@ function cleanupCompose() {
     display: 'docker compose down -v --remove-orphans',
     timeout: 180_000,
   });
-  if (down.status !== 0) throw new Error(`compose cleanup failed: ${(down.stderr || down.stdout).trim()}`);
-  const containers = run('docker', [
-    'ps', '-aq', '--filter', `label=com.docker.compose.project=${PROJECT}`,
-  ], { display: 'verify compose container cleanup' });
-  const volumes = run('docker', [
-    'volume', 'ls', '--filter', `label=com.docker.compose.project=${PROJECT}`, '--format', '{{.Name}}',
-  ], { display: 'verify compose volume cleanup' });
-  if (String(containers.stdout).trim() || String(volumes.stdout).trim()) {
-    throw new Error(`compose cleanup left resources: containers=${containers.stdout.trim()} volumes=${volumes.stdout.trim()}`);
+  const resourceTypes = [
+    {
+      name: 'containers',
+      list: ['ps', '-aq', '--filter', `label=com.docker.compose.project=${PROJECT}`],
+      remove: (name) => ['rm', '-f', name],
+    },
+    {
+      name: 'volumes',
+      list: ['volume', 'ls', '--filter', `label=com.docker.compose.project=${PROJECT}`, '--format', '{{.Name}}'],
+      remove: (name) => ['volume', 'rm', '-f', name],
+    },
+    {
+      name: 'networks',
+      list: ['network', 'ls', '--filter', `label=com.docker.compose.project=${PROJECT}`, '--format', '{{.Name}}'],
+      remove: (name) => ['network', 'rm', name],
+    },
+  ];
+  const removedByFallback = { containers: [], volumes: [], networks: [] };
+  const failures = [];
+
+  for (const resource of resourceTypes) {
+    const listed = run('docker', resource.list, {
+      allowFailure: true,
+      display: `list labeled compose ${resource.name}`,
+      timeout: 30_000,
+    });
+    if (listed.status !== 0) {
+      failures.push(`${resource.name} listing failed: ${(listed.stderr || listed.stdout).trim()}`);
+      continue;
+    }
+    for (const name of String(listed.stdout).split(/\r?\n/).map((value) => value.trim()).filter(Boolean)) {
+      const removal = run('docker', resource.remove(name), {
+        allowFailure: true,
+        display: `remove labeled compose ${resource.name}`,
+        timeout: 30_000,
+      });
+      if (removal.status === 0) removedByFallback[resource.name].push(name);
+      else failures.push(`${resource.name} ${name} removal failed: ${(removal.stderr || removal.stdout).trim()}`);
+    }
   }
-  return { resource: 'compose_project', name: PROJECT, status: 'removed_with_volumes' };
+
+  const remaining = {};
+  for (const resource of resourceTypes) {
+    const listed = run('docker', resource.list, {
+      allowFailure: true,
+      display: `verify labeled compose ${resource.name} cleanup`,
+      timeout: 30_000,
+    });
+    if (listed.status !== 0) failures.push(`${resource.name} cleanup verification failed`);
+    remaining[resource.name] = String(listed.stdout).trim();
+  }
+  if (Object.values(remaining).some(Boolean)) {
+    failures.push(`compose cleanup left labeled resources: ${JSON.stringify(remaining)}`);
+  }
+  if (failures.length > 0) throw new Error(failures.join('; '));
+
+  return {
+    resource: 'compose_project',
+    name: PROJECT,
+    status: down.status === 0 ? 'removed_with_volumes_and_network' : 'removed_with_labeled_fallback',
+    compose_down_exit_code: down.status,
+    fallback_removed: removedByFallback,
+  };
 }
 
 function removeDirectory(directory) {
@@ -773,7 +841,12 @@ function finalResult() {
     outcome = 'pass';
     runnerBlocked = false;
     classification = 'published-waterline-worker-status-proven';
-  } else if (productEvidence && productEvidence.runner_blocked === false && productEvidence.outcome !== 'pass') {
+  } else if (
+    !runnerError?.interrupted_by
+    && productEvidence
+    && productEvidence.runner_blocked === false
+    && productEvidence.outcome !== 'pass'
+  ) {
     outcome = 'fail';
     runnerBlocked = false;
     classification = productEvidence.classification ?? 'published-waterline-worker-status-product-failure';
@@ -800,6 +873,8 @@ function finalResult() {
       task_queue: TASK_QUEUE,
       heartbeat_interval_seconds: HEARTBEAT_SECONDS,
       stale_after_seconds: STALE_SECONDS,
+      readiness_attempt_timeout_seconds: READINESS_ATTEMPT_SECONDS,
+      readiness_deadline_seconds: READINESS_DEADLINE_SECONDS,
     },
     installs: {
       server: serverInstall,
@@ -815,35 +890,53 @@ function finalResult() {
   };
 }
 
-writeJson('pins.json', {
-  schema: 'durable-workflow.v2.waterline-worker-status-pins',
-  version: 1,
-  conformance_run_id: RUN_ID,
-  resolved_at: STARTED_AT,
-  artifact_versions: ARTIFACT_VERSIONS,
-  artifact_sources: ARTIFACT_SOURCES,
-});
-
-try {
-  ensureExactPins();
-  for (const command of ['docker', 'curl']) {
-    if (!commandExists(command)) throw new Error(`required command not found: ${command}`);
+await runWithCleanup(async () => {
+  try {
+    if (interruption.signal.aborted) throw interruption.signal.reason;
+    fs.rmSync(EVIDENCE_PATH, { force: true });
+    writeJson('pins.json', {
+      schema: 'durable-workflow.v2.waterline-worker-status-pins',
+      version: 1,
+      conformance_run_id: RUN_ID,
+      resolved_at: STARTED_AT,
+      artifact_versions: ARTIFACT_VERSIONS,
+      artifact_sources: ARTIFACT_SOURCES,
+    });
+    ensureExactPins();
+    for (const command of ['docker', 'curl']) {
+      if (!commandExists(command)) throw new Error(`required command not found: ${command}`);
+    }
+    const server = await startServer();
+    installCli();
+    installPackages(server.phpVersion);
+    verifyInstalledAppBoot(server.phpVersion);
+    const waterline = await startWaterlineHost();
+    runPublishedCommand(server, waterline);
+    if (interruption.signal.aborted) throw interruption.signal.reason;
+  } catch (error) {
+    runnerError = {
+      message: errorSummary(error),
+      observed_at: now(),
+      published_command_started: publishedCommandStarted,
+      interrupted_by: interruption.interruptedBy(),
+    };
+    log(`failure: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    process.exitCode = interruption.interruptedBy() === 'SIGINT'
+      ? 130
+      : interruption.interruptedBy() === 'SIGTERM' ? 143 : 1;
   }
-  const server = await startServer();
-  installCli();
-  installPackages(server.phpVersion);
-  verifyInstalledAppBoot(server.phpVersion);
-  const waterline = await startWaterlineHost();
-  runPublishedCommand(server, waterline);
-} catch (error) {
-  runnerError = {
-    message: errorSummary(error),
-    observed_at: now(),
-    published_command_started: publishedCommandStarted,
-  };
-  log(`failure: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
-  process.exitCode = 1;
-} finally {
+}, async () => {
+  const interruptedBy = interruption.interruptedBy();
+  if (interruptedBy && !runnerError) {
+    runnerError = {
+      message: errorSummary(interruption.signal.reason),
+      observed_at: now(),
+      published_command_started: publishedCommandStarted,
+      interrupted_by: interruptedBy,
+    };
+    process.exitCode = interruptedBy === 'SIGINT' ? 130 : 143;
+  }
+
   try {
     cleanupResults.push(cleanupWaterline());
   } catch (error) {
@@ -894,5 +987,6 @@ try {
     artifact_versions: ARTIFACT_VERSIONS,
     artifact_sources: ARTIFACT_SOURCES,
   });
-  if (result.outcome !== 'pass') process.exitCode = 1;
-}
+  if (result.outcome !== 'pass' && !process.exitCode) process.exitCode = 1;
+  interruption.dispose();
+});
