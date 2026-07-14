@@ -10,6 +10,7 @@ use Waterline\Models\WorkerRegistration;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\CompatibilitySemantics;
 use Waterline\Support\CompensationVisibility;
+use Waterline\Support\DurableCommandAttribution;
 use Waterline\Support\ObserverStateEnvelope;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\RunDiagnostics;
@@ -44,6 +45,7 @@ class V2StoredWorkflowResource extends JsonResource
             $detail = $this->fallbackRunDetail();
         }
 
+        $detail = DurableCommandAttribution::annotateRunDetail($detail, $this->resource);
         $detail = $this->withTimelineWindow($detail, $request);
         $detail = $this->withDurableCompensationActivities($detail);
         $detail = $this->withSelectedRunIdentity($detail);
