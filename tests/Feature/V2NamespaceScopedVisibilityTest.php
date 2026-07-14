@@ -6,6 +6,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Mockery\MockInterface;
 use RuntimeException;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Tests\TestCase;
@@ -51,10 +52,16 @@ class V2NamespaceScopedVisibilityTest extends TestCase
         config()->set('waterline.engine_source', 'v2');
         config()->set('waterline.namespace', 'billing');
 
+        $billingAttributes = [
+            'tenant_marker' => 'billing-visible',
+            'order_total_cents' => 7500,
+            'is_priority' => true,
+            'tags' => ['urgent', 'oversized'],
+        ];
         $billingRun = $this->createCompletedRun(
             'waterline-search-attributes-billing',
             'billing',
-            ['tenant_marker' => 'billing-visible'],
+            $billingAttributes,
         );
         $shippingRun = $this->createCompletedRun(
             'waterline-search-attributes-shipping',
@@ -68,6 +75,10 @@ class V2NamespaceScopedVisibilityTest extends TestCase
             ->assertJsonPath('data.0.id', $billingRun->id)
             ->assertJsonPath('data.0.namespace', 'billing')
             ->assertJsonPath('data.0.search_attributes.tenant_marker', 'billing-visible')
+            ->assertJsonPath('data.0.search_attributes.order_total_cents', 7500)
+            ->assertJsonPath('data.0.search_attributes.is_priority', true)
+            ->assertJsonPath('data.0.search_attributes.tags.0', 'urgent')
+            ->assertJsonPath('data.0.search_attributes.tags.1', 'oversized')
             ->assertJsonPath('operator_scope.namespace', 'billing')
             ->assertJsonPath('visibility_filters.applied.namespace', 'billing');
 
@@ -77,11 +88,73 @@ class V2NamespaceScopedVisibilityTest extends TestCase
         );
         $this->assertStringNotContainsString('shipping-secret', json_encode($listResponse->json(), JSON_THROW_ON_ERROR));
 
+        $this->mock(OperatorObservabilityRepository::class, static function (MockInterface $mock): void {
+            $mock->shouldReceive('runDetail')
+                ->once()
+                ->andReturnUsing(static fn (WorkflowRun $run): array => [
+                    'id' => $run->id,
+                    'instance_id' => $run->workflow_instance_id,
+                    'run_id' => $run->id,
+                    'status' => 'completed',
+                    'status_bucket' => 'completed',
+                    'timeline' => [],
+                ]);
+        });
+
         $detailResponse = $this->get('/waterline/api/flows/'.$billingRun->id)
             ->assertOk()
             ->assertJsonPath('run_id', $billingRun->id)
             ->assertJsonPath('namespace', 'billing')
             ->assertJsonPath('search_attributes.tenant_marker', 'billing-visible')
+            ->assertJsonPath('search_attributes.order_total_cents', 7500)
+            ->assertJsonPath('search_attributes.is_priority', true)
+            ->assertJsonPath('search_attributes.tags.0', 'urgent')
+            ->assertJsonPath('search_attributes.tags.1', 'oversized')
+            ->assertJsonPath('operator_scope.namespace', 'billing');
+
+        $this->assertStringNotContainsString('shipping-secret', json_encode($detailResponse->json(), JSON_THROW_ON_ERROR));
+
+        $this->get('/waterline/api/flows/'.$shippingRun->id)
+            ->assertNotFound();
+    }
+
+    public function testDetailFallbackIncludesOnlySelectedRunTypedSearchAttributes(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+
+        $billingRun = $this->createCompletedRun(
+            'waterline-fallback-search-attributes-billing',
+            'billing',
+            [
+                'tenant_marker' => 'billing-visible',
+                'order_total_cents' => 7500,
+                'is_priority' => true,
+                'tags' => ['urgent', 'oversized'],
+            ],
+        );
+        $shippingRun = $this->createCompletedRun(
+            'waterline-fallback-search-attributes-shipping',
+            'shipping',
+            ['tenant_marker' => 'shipping-secret'],
+        );
+
+        $this->mock(OperatorObservabilityRepository::class, static function (MockInterface $mock): void {
+            $mock->shouldReceive('runDetail')
+                ->once()
+                ->andThrow(new RuntimeException('Selected-run projection unavailable.'));
+        });
+
+        $detailResponse = $this->get('/waterline/api/flows/'.$billingRun->id)
+            ->assertOk()
+            ->assertJsonPath('run_id', $billingRun->id)
+            ->assertJsonPath('namespace', 'billing')
+            ->assertJsonPath('search_attributes.tenant_marker', 'billing-visible')
+            ->assertJsonPath('search_attributes.order_total_cents', 7500)
+            ->assertJsonPath('search_attributes.is_priority', true)
+            ->assertJsonPath('search_attributes.tags.0', 'urgent')
+            ->assertJsonPath('search_attributes.tags.1', 'oversized')
+            ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable')
             ->assertJsonPath('operator_scope.namespace', 'billing');
 
         $this->assertStringNotContainsString('shipping-secret', json_encode($detailResponse->json(), JSON_THROW_ON_ERROR));

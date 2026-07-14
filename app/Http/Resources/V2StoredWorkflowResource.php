@@ -49,6 +49,7 @@ class V2StoredWorkflowResource extends JsonResource
         $detail = $this->withSelectedRunIdentity($detail);
         $detail = $this->withSelectedRunStatus($detail);
         $detail = $this->withSelectedRunCompatibility($detail);
+        $detail = $this->withSelectedRunSearchAttributes($detail);
         $detail = $this->withUpdateDiagnostics($detail);
         $compensationVisibility = CompensationVisibility::fromActivities($detail['activities'] ?? []);
         $detail['current_compensation_marker'] = $compensationVisibility['current_marker'];
@@ -119,6 +120,31 @@ class V2StoredWorkflowResource extends JsonResource
         }
 
         return $detail;
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     * @return array<string, mixed>
+     */
+    private function withSelectedRunSearchAttributes(array $detail): array
+    {
+        if (! is_array($detail['search_attributes'] ?? null)) {
+            $detail['search_attributes'] = $this->selectedRunSearchAttributes();
+        }
+
+        return $detail;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function selectedRunSearchAttributes(): array
+    {
+        try {
+            return $this->resource->typedSearchAttributes();
+        } catch (Throwable) {
+            return [];
+        }
     }
 
     /**
@@ -255,6 +281,7 @@ class V2StoredWorkflowResource extends JsonResource
             'visibility_labels' => is_array($this->resource->visibility_labels)
                 ? $this->resource->visibility_labels
                 : [],
+            'search_attributes' => $this->selectedRunSearchAttributes(),
             'status' => $status,
             'status_bucket' => $this->statusBucket($status),
             'is_terminal' => $this->isTerminalStatus($status),
