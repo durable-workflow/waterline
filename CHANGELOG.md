@@ -19,4 +19,7 @@ a bounded stale transition. Published-port readiness requests have per-attempt
 timeouts and retries, and all outcomes remove the package host plus labeled
 Compose containers, volumes, networks, and scratch state. Published observer
 hosts can align Waterline's freshness classification with the server through
-`WATERLINE_WORKER_STALE_AFTER_SECONDS`.
+`WATERLINE_WORKER_STALE_AFTER_SECONDS`. Standalone worker execution now uses
+the exact published PHP SDK package while Workflow remains the embedded engine;
+normal and early-failure evidence retain the canonical PHP SDK version and
+Packagist provenance.

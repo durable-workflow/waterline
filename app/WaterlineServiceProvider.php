@@ -236,6 +236,7 @@ class WaterlineServiceProvider extends ServiceProvider
                 Console\SignalsQueriesConformanceCommand::class,
                 Console\WorkflowUpdatesConformanceCommand::class,
                 Console\WorkerStatusConformanceCommand::class,
+                Console\WorkerStatusSdkWorkerCommand::class,
             ]);
         }
     }

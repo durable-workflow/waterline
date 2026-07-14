@@ -159,7 +159,7 @@ bounded_diagnostic() {
 synthesize_result() {
   local status="$1"
   local finished_at diagnostic temporary_path
-  local server_version cli_version workflow_version waterline_version server_image
+  local server_version cli_version sdk_php_version workflow_version waterline_version server_image
 
   ensure_result_dir || {
     printf '%s\n' 'unable to create a directory for structured worker-status evidence' >&2
@@ -170,9 +170,11 @@ synthesize_result() {
   diagnostic="$(bounded_diagnostic "$status")"
   server_version="${DW_SERVER_VERSION:-}"
   cli_version="${DW_CLI_VERSION:-}"
+  sdk_php_version="${DW_PHP_SDK_VERSION:-}"
   workflow_version="${DW_WORKFLOW_PHP_VERSION:-}"
   waterline_version="${DW_WATERLINE_VERSION:-}"
   cli_version="${cli_version#v}"
+  sdk_php_version="${sdk_php_version#v}"
   workflow_version="${workflow_version#v}"
   waterline_version="${waterline_version#v}"
   server_image="${DW_SERVER_IMAGE:-durableworkflow/server:${server_version}}"
@@ -192,12 +194,14 @@ synthesize_result() {
   "artifact_versions": {
     "server": "$(json_escape "$server_version")",
     "cli": "$(json_escape "$cli_version")",
+    "sdk-php": "$(json_escape "$sdk_php_version")",
     "workflow": "$(json_escape "$workflow_version")",
     "waterline": "$(json_escape "$waterline_version")"
   },
   "artifact_sources": {
     "server": "$(json_escape "docker://${server_image}")",
     "cli": "github_release",
+    "sdk-php": "$(json_escape "packagist://durable-workflow/sdk@${sdk_php_version}")",
     "workflow": "$(json_escape "packagist://durable-workflow/workflow@${workflow_version}")",
     "waterline": "$(json_escape "packagist://durable-workflow/waterline@${waterline_version}")"
   },
@@ -250,6 +254,7 @@ Runs the focused published-artifact Waterline worker-status cell and writes:
 Required exact artifact pins:
   DW_SERVER_VERSION
   DW_CLI_VERSION
+  DW_PHP_SDK_VERSION
   DW_WORKFLOW_PHP_VERSION
   DW_WATERLINE_VERSION
 

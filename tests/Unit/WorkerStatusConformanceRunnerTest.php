@@ -78,9 +78,11 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         foreach ([
             'DW_SERVER_VERSION',
             'DW_CLI_VERSION',
+            'DW_PHP_SDK_VERSION',
             'DW_WORKFLOW_PHP_VERSION',
             'DW_WATERLINE_VERSION',
             'durableworkflow/server:${SERVER_VERSION}',
+            'durable-workflow/sdk:${SDK_PHP_VERSION}',
             'durable-workflow/workflow:${WORKFLOW_VERSION}',
             'durable-workflow/waterline:${WATERLINE_VERSION}',
             "'--prefer-dist'",
@@ -95,9 +97,28 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         }
 
         $this->assertStringNotContainsString('DW_WATERLINE_WORKER_STATUS_PLAN', $node);
+        $this->assertStringNotContainsString('DW_SDK_PHP_VERSION', $node.$shell);
         $this->assertStringNotContainsString('REPO_ROOT', $node);
         $this->assertStringNotContainsString("'type': 'path'", $node);
         $this->assertStringNotContainsString('fixture_response', $node);
+    }
+
+    public function testPublishedWorkerExecutionUsesThePhpSdkPackageBoundary(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $manifest = json_decode((string) file_get_contents($root.'/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+        $runner = (string) file_get_contents($root.'/app/Console/WorkerStatusConformanceCommand.php');
+        $worker = (string) file_get_contents($root.'/app/Console/WorkerStatusSdkWorkerCommand.php');
+
+        $this->assertSame('^0.1', $manifest['require']['durable-workflow/sdk'] ?? null);
+        $this->assertStringContainsString('use DurableWorkflow\\Client as SdkClient;', $runner);
+        $this->assertStringContainsString('use DurableWorkflow\\Worker;', $worker);
+        $this->assertStringContainsString('$worker->run(', $worker);
+        $this->assertStringContainsString("'heartbeat_loop_implementation_owner' => 'durable-workflow/sdk'", $runner);
+        $this->assertStringNotContainsString('heartbeatWorker(', $runner.$worker);
+        $this->assertStringNotContainsString('registerWorker(', $runner.$worker);
+        $this->assertStringNotContainsString('Workflow\\V2\\Worker\\', $runner.$worker);
+        $this->assertStringNotContainsString('class_alias', $runner.$worker);
     }
 
     public function testComposerImagePhpCannotSilentlySelectDependenciesForAnotherServerRuntime(): void
@@ -176,6 +197,7 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             'scripts/conformance/worker-status-network.mjs',
             'scripts/conformance/worker-status-runner-lifecycle.mjs',
             'app/Console/WorkerStatusConformanceCommand.php',
+            'app/Console/WorkerStatusSdkWorkerCommand.php',
         ];
 
         foreach ($paths as $path) {
@@ -231,8 +253,13 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             $this->assertSame('durable-workflow.v2.waterline-worker-status-run-result', $result['schema']);
             $this->assertSame('0.2.626', $result['artifact_versions']['server']);
             $this->assertSame('0.1.86', $result['artifact_versions']['cli']);
+            $this->assertSame('0.1.2', $result['artifact_versions']['sdk-php']);
             $this->assertSame('2.0.0-alpha.259', $result['artifact_versions']['workflow']);
             $this->assertSame('2.0.0-alpha.128', $result['artifact_versions']['waterline']);
+            $this->assertSame(
+                'packagist://durable-workflow/sdk@0.1.2',
+                $result['artifact_sources']['sdk-php'],
+            );
             $this->assertSame(2, $result['runner_error']['exit_code']);
             $this->assertSame('shell_exit_fallback', $result['runner_error']['evidence_origin']);
             $this->assertStringNotContainsString($staleDiagnostic, $result['runner_error']['message']);
@@ -292,8 +319,13 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
 
                 $this->assertSame('0.2.626', $result['artifact_versions']['server']);
                 $this->assertSame('0.1.86', $result['artifact_versions']['cli']);
+                $this->assertSame('0.1.2', $result['artifact_versions']['sdk-php']);
                 $this->assertSame('2.0.0-alpha.259', $result['artifact_versions']['workflow']);
                 $this->assertSame('2.0.0-alpha.128', $result['artifact_versions']['waterline']);
+                $this->assertSame(
+                    'packagist://durable-workflow/sdk@0.1.2',
+                    $result['artifact_sources']['sdk-php'],
+                );
                 $this->assertSame(13, $result['runner_error']['exit_code']);
                 $this->assertStringContainsString(
                     "quoted \"diagnostic\" at C:\\runner\\work\nsecond line",
@@ -385,6 +417,7 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $environment += [
             'DW_SERVER_VERSION' => '0.2.626',
             'DW_CLI_VERSION' => '0.1.86',
+            'DW_PHP_SDK_VERSION' => '0.1.2',
             'DW_WORKFLOW_PHP_VERSION' => '2.0.0-alpha.259',
             'DW_WATERLINE_VERSION' => '2.0.0-alpha.128',
         ];

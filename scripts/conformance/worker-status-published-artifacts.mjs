@@ -19,6 +19,7 @@ const RUN_ID = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 const SUFFIX = RUN_ID.replace(/[^a-zA-Z0-9]/g, '').slice(-12).toLowerCase();
 const SERVER_VERSION = env('DW_SERVER_VERSION');
 const CLI_VERSION = normalizeVersion(env('DW_CLI_VERSION'));
+const SDK_PHP_VERSION = normalizeVersion(env('DW_PHP_SDK_VERSION'));
 const WORKFLOW_VERSION = normalizeVersion(env('DW_WORKFLOW_PHP_VERSION'));
 const WATERLINE_VERSION = normalizeVersion(env('DW_WATERLINE_VERSION'));
 const SERVER_IMAGE = env('DW_SERVER_IMAGE') || `durableworkflow/server:${SERVER_VERSION}`;
@@ -48,12 +49,14 @@ const RESULT_PATH = path.join(RESULT_DIR, 'waterline-worker-status-result.json')
 const ARTIFACT_VERSIONS = {
   server: SERVER_VERSION,
   cli: CLI_VERSION,
+  'sdk-php': SDK_PHP_VERSION,
   workflow: WORKFLOW_VERSION,
   waterline: WATERLINE_VERSION,
 };
 const ARTIFACT_SOURCES = {
   server: `docker://${SERVER_IMAGE}`,
   cli: 'github_release',
+  'sdk-php': `packagist://durable-workflow/sdk@${SDK_PHP_VERSION}`,
   workflow: `packagist://durable-workflow/workflow@${WORKFLOW_VERSION}`,
   waterline: `packagist://durable-workflow/waterline@${WATERLINE_VERSION}`,
 };
@@ -178,6 +181,7 @@ function ensureExactPins() {
   const failures = [];
   if (!/^\d+\.\d+\.\d+$/.test(SERVER_VERSION)) failures.push('DW_SERVER_VERSION must be an exact patch release');
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(CLI_VERSION)) failures.push('DW_CLI_VERSION must be exact');
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(SDK_PHP_VERSION)) failures.push('DW_PHP_SDK_VERSION must be exact');
   if (!/^2\.0\.0-alpha\.\d+$/.test(WORKFLOW_VERSION)) failures.push('DW_WORKFLOW_PHP_VERSION must be an exact 2.0 alpha release');
   if (!/^2\.0\.0-alpha\.\d+$/.test(WATERLINE_VERSION)) failures.push('DW_WATERLINE_VERSION must be an exact 2.0 alpha release');
   const exactTag = new RegExp(`^(?:(?:docker\\.io|index\\.docker\\.io)/)?durableworkflow/server:${escapeRegex(SERVER_VERSION)}$`).test(SERVER_IMAGE);
@@ -445,6 +449,7 @@ function installPackages(serverPhpVersion) {
   packageInstall.php_runtime_alignment.platform_matches_server = true;
   composer([
     'require', '--no-update', '--no-interaction',
+    `durable-workflow/sdk:${SDK_PHP_VERSION}`,
     `durable-workflow/workflow:${WORKFLOW_VERSION}`,
     `durable-workflow/waterline:${WATERLINE_VERSION}`,
   ], { workdir: '/work/app' });
@@ -456,7 +461,7 @@ function installPackages(serverPhpVersion) {
   const composerLockText = fs.readFileSync(path.join(APP_DIR, 'composer.lock'), 'utf8');
   const composerLock = JSON.parse(composerLockText);
   const packages = [...(composerLock.packages ?? []), ...(composerLock['packages-dev'] ?? [])];
-  const relevant = Object.fromEntries(['durable-workflow/workflow', 'durable-workflow/waterline'].map((name) => {
+  const relevant = Object.fromEntries(['durable-workflow/sdk', 'durable-workflow/workflow', 'durable-workflow/waterline'].map((name) => {
     const entry = packages.find((candidate) => candidate.name === name);
     if (!entry) throw new Error(`composer.lock does not contain ${name}`);
     return [name, {
@@ -465,6 +470,9 @@ function installPackages(serverPhpVersion) {
       source: entry.source ?? null,
     }];
   }));
+  if (relevant['durable-workflow/sdk'].version !== SDK_PHP_VERSION) {
+    throw new Error('installed PHP SDK package does not match the exact requested version');
+  }
   if (relevant['durable-workflow/workflow'].version !== WORKFLOW_VERSION) {
     throw new Error('installed Workflow PHP package does not match the exact requested version');
   }
@@ -484,8 +492,7 @@ function installPackages(serverPhpVersion) {
   const scanned = `${JSON.stringify(composerJson)}\n${composerLockText}`.toLowerCase();
   const matchedMarkers = checkoutMarkers.filter((marker) => scanned.includes(marker));
   const publishedPackageSourcesPassed = !localPathRepository && matchedMarkers.length === 0
-    && Boolean(relevant['durable-workflow/workflow'].dist)
-    && Boolean(relevant['durable-workflow/waterline'].dist);
+    && Object.values(relevant).every((entry) => Boolean(entry.dist));
   sourceHygiene = {
     ...sourceHygiene,
     checked_at: now(),
@@ -707,10 +714,12 @@ function runPublishedCommand(server, waterline) {
     '--cli-bin=/cli/dw',
     `--server-version=${SERVER_VERSION}`,
     `--cli-version=${CLI_VERSION}`,
+    `--sdk-php-version=${SDK_PHP_VERSION}`,
     `--workflow-version=${WORKFLOW_VERSION}`,
     `--waterline-version=${WATERLINE_VERSION}`,
     `--server-source=${ARTIFACT_SOURCES.server}`,
     `--cli-source=${ARTIFACT_SOURCES.cli}`,
+    `--sdk-php-source=${ARTIFACT_SOURCES['sdk-php']}`,
     `--workflow-source=${ARTIFACT_SOURCES.workflow}`,
     `--waterline-source=${ARTIFACT_SOURCES.waterline}`,
     `--heartbeat-interval=${HEARTBEAT_SECONDS}`,

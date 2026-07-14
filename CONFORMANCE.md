@@ -51,6 +51,7 @@ in-process projection tests used during development. A release host runs:
 ```bash
 DW_SERVER_VERSION=<exact-version> \
 DW_CLI_VERSION=<exact-version> \
+DW_PHP_SDK_VERSION=<exact-version> \
 DW_WORKFLOW_PHP_VERSION=<exact-2.0-alpha> \
 DW_WATERLINE_VERSION=<exact-2.0-alpha> \
 scripts/conformance/worker-status-published-artifacts.sh \
@@ -58,23 +59,24 @@ scripts/conformance/worker-status-published-artifacts.sh \
 ```
 
 The release-exported runner creates a disposable Laravel host, installs the
-exact Workflow PHP and Waterline Packagist distributions with Composer's
-`prefer-dist` mode, starts the exact public server image, and installs the
-exact CLI release. The installed
-`waterline:worker-status-conformance` command drives the published Workflow
-PHP worker driver through successive heartbeats, real workflow work, and a
-stale transition while a fresh peer keeps polling. Its live captures compare
-Waterline's worker list and task-queue detail projections with server worker
-API and CLI observations. The result records pins and provenance, run and
-worker identities, timestamps, task slots, process and compatibility
-metadata, routing exclusion, source hygiene, and cleanup.
+exact PHP SDK, Workflow PHP, and Waterline Packagist distributions with
+Composer's `prefer-dist` mode, starts the exact public server image, and
+installs the exact CLI release. The installed
+`waterline:worker-status-conformance` command drives a published PHP SDK
+managed worker through successive heartbeats, real workflow work, and a stale
+transition while a fresh peer keeps polling. Workflow remains the embedded
+Laravel engine. The live captures compare Waterline's worker list and
+task-queue detail projections with server worker API and CLI observations.
+The result records pins and provenance, run and worker identities, timestamps,
+task slots, process and compatibility metadata, routing exclusion, source
+hygiene, and cleanup.
 
 Neither the shell handoff nor the Artisan command accepts fixture, plan, or
 caller-supplied projection JSON. Only response envelopes captured by the
 runner's HTTP client and commands executed by the installed CLI can satisfy
 the authority gate. SDK heartbeat-loop implementation remains owned by each
-SDK; this Waterline cell invokes the installed Workflow PHP driver and does
-not duplicate PHP, Python, or Rust heartbeat-loop implementations.
+SDK; this Waterline cell invokes the installed PHP SDK worker and does not
+duplicate PHP, Python, or Rust heartbeat-loop implementations.
 
 The published package also exposes
 `waterline:signals-queries-conformance`. Host conformance runners pass the

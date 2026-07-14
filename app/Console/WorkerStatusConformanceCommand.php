@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Waterline\Console;
 
 use Composer\InstalledVersions;
+use DurableWorkflow\Client as SdkClient;
+use DurableWorkflow\Version as SdkVersion;
 use Illuminate\Console\Command;
 use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Response;
@@ -12,23 +14,6 @@ use RuntimeException;
 use Symfony\Component\Process\Process;
 use Throwable;
 use Waterline\Support\WorkerStatusObservationGate;
-use Workflow\V2\Attributes\Type;
-use Workflow\V2\Client\ControlPlaneClient;
-use Workflow\V2\Support\TypeRegistry;
-use Workflow\V2\Support\WorkflowDefinition;
-use Workflow\V2\Worker\StandaloneWorkflowWorker;
-use Workflow\V2\Worker\WorkerProtocolClient;
-use Workflow\V2\Workflow;
-
-#[Type('conformance.waterline.worker-status')]
-final class WorkerStatusConformanceWorkflow extends Workflow
-{
-    /** @return array{completed: true, surface: string} */
-    public function handle(): array
-    {
-        return ['completed' => true, 'surface' => 'waterline-worker-status'];
-    }
-}
 
 final class WorkerStatusConformanceCommand extends Command
 {
@@ -42,10 +27,12 @@ final class WorkerStatusConformanceCommand extends Command
         {--cli-bin= : Path to the exact published dw executable}
         {--server-version= : Exact published standalone server version}
         {--cli-version= : Exact published CLI version}
+        {--sdk-php-version= : Exact installed durable-workflow/sdk version}
         {--workflow-version= : Exact installed durable-workflow/workflow version}
         {--waterline-version= : Exact installed durable-workflow/waterline version}
         {--server-source= : Published server image provenance}
         {--cli-source= : Published CLI installer provenance}
+        {--sdk-php-source= : Published PHP SDK package provenance}
         {--workflow-source= : Published Workflow PHP package provenance}
         {--waterline-source= : Published Waterline package provenance}
         {--heartbeat-interval=2 : Server-advertised worker heartbeat interval in seconds}
@@ -60,7 +47,7 @@ final class WorkerStatusConformanceCommand extends Command
     private array $observations = [];
 
     /** @var list<array<string, mixed>> */
-    private array $workerTicks = [];
+    private array $workerProcesses = [];
 
     private bool $publishedExecutionStarted = false;
 
@@ -105,6 +92,7 @@ final class WorkerStatusConformanceCommand extends Command
             $this->report['stale_transition'] = $context['stale_transition'];
             $this->report['routing_exclusion'] = $context['routing_exclusion'];
             $this->report['topology'] = $context['topology'];
+            $this->report['worker_processes'] = $this->workerProcesses;
             $this->report['runner_blocked'] = false;
 
             if ($failed !== []) {
@@ -135,11 +123,12 @@ final class WorkerStatusConformanceCommand extends Command
                 ? 'published-worker-status-product-execution-failed'
                 : 'waterline-worker-status-runner-blocked';
             $this->report['observations'] = $this->observations;
+            $this->report['worker_processes'] = $this->workerProcesses;
             $this->report['findings'] = [[
                 'finding_type' => $this->publishedExecutionStarted
                     ? 'product_behavior_failure'
                     : 'conformance_runner_blocked',
-                'owning_surface' => $this->publishedExecutionStarted ? 'server-or-workflow' : 'runner',
+                'owning_surface' => $this->publishedExecutionStarted ? 'server-or-php-sdk' : 'runner',
                 'message' => $exception->getMessage(),
                 'exception' => $exception::class,
             ]];
@@ -165,7 +154,8 @@ final class WorkerStatusConformanceCommand extends Command
         $staleWorkerId = 'waterline-stale-'.strtolower($suffix);
         $freshWorkerId = 'waterline-fresh-'.strtolower($suffix);
         $buildId = 'waterline-compat-'.strtolower($suffix);
-        $workflowType = TypeRegistry::for(WorkerStatusConformanceWorkflow::class);
+        $workflowType = 'conformance.waterline.worker-status';
+        $activityType = 'conformance.waterline.worker-status.activity';
 
         $this->assertPublishedArtifacts($cliBin);
         $composerInstall = $this->composerPackageInstallEvidence();
@@ -179,221 +169,359 @@ final class WorkerStatusConformanceCommand extends Command
         $this->captureWaterline('waterline.readiness', $waterlineUrl);
         $this->publishedExecutionStarted = true;
 
-        $staleClient = new WorkerProtocolClient($this->http, $serverUrl, $token, $namespace, defaultRequestTimeoutSeconds: 10);
-        $freshClient = new WorkerProtocolClient($this->http, $serverUrl, $token, $namespace, defaultRequestTimeoutSeconds: 10);
-        $control = new ControlPlaneClient($this->http, $serverUrl, $token, $namespace, defaultRequestTimeoutSeconds: 10);
-        $classes = [$workflowType => WorkerStatusConformanceWorkflow::class];
-        $staleWorker = new StandaloneWorkflowWorker($staleClient, $classes);
-        $freshWorker = new StandaloneWorkflowWorker($freshClient, $classes);
-        $sdkVersion = $this->requiredOption('workflow-version');
-        $fingerprint = WorkflowDefinition::fingerprint(WorkerStatusConformanceWorkflow::class);
-        $contract = WorkflowDefinition::commandContract(WorkerStatusConformanceWorkflow::class);
+        $control = new SdkClient($serverUrl, token: $token, namespace: $namespace);
+        $staleProcess = null;
+        $freshProcess = null;
+        $staleStopped = false;
 
-        $staleRegistration = $staleClient->registerWorker(
-            workerId: $staleWorkerId,
-            taskQueue: $taskQueue,
-            supportedWorkflowTypes: [$workflowType],
-            supportedActivityTypes: ['conformance.waterline.worker-status.activity'],
-            runtime: 'php',
-            sdkVersion: $sdkVersion,
-            buildId: $buildId,
-            maxConcurrentWorkflowTasks: 2,
-            maxConcurrentActivityTasks: 1,
-            workflowDefinitionFingerprints: $fingerprint === null ? null : [$workflowType => $fingerprint],
-            workflowCommandContracts: [$workflowType => $contract],
-        );
-        $staleHeartbeats = $this->successiveHeartbeats(
-            $staleWorker,
-            $staleWorkerId,
-            $taskQueue,
-            $serverUrl,
-            $token,
-            $namespace,
-            $heartbeatInterval,
-            'stale',
-        );
+        try {
+            $staleProcess = $this->startSdkWorker(
+                'stale',
+                $serverUrl,
+                $token,
+                $namespace,
+                $taskQueue,
+                $staleWorkerId,
+                $workflowType,
+                $activityType,
+                $buildId,
+                $heartbeatInterval,
+            );
+            $staleHeartbeats = $this->successiveHeartbeats(
+                $staleProcess,
+                $staleWorkerId,
+                $serverUrl,
+                $token,
+                $namespace,
+                $heartbeatInterval,
+                'stale',
+            );
+            $staleRegistration = data_get(
+                $this->captureServer(
+                    'server.stale.registration',
+                    $serverUrl,
+                    '/api/workers/'.rawurlencode($staleWorkerId),
+                    $token,
+                    $namespace,
+                ),
+                'body',
+                [],
+            );
 
-        $initialWorkflowId = 'waterline-worker-status-initial-'.strtolower($suffix);
-        $initialStart = $control->startWorkflow($workflowType, $initialWorkflowId, [], ['task_queue' => $taskQueue]);
-        $initialTick = $this->tick($staleWorker, $taskQueue, $staleWorkerId, 'stale.initial-work');
-        $initialDetail = $control->describeWorkflow($initialWorkflowId);
+            $initialWorkflowId = 'waterline-worker-status-initial-'.strtolower($suffix);
+            $initialHandle = $control->startWorkflow($workflowType, $initialWorkflowId, $taskQueue);
+            $initialStart = [
+                'workflow_id' => $initialHandle->workflowId,
+                'run_id' => $initialHandle->selectedRunId,
+                'workflow_type' => $initialHandle->workflowType,
+                'started_at' => $this->now(),
+            ];
+            $initialDetail = $this->waitForWorkflowCompletion(
+                $control,
+                $initialWorkflowId,
+                $staleProcess,
+                'stale',
+            );
 
-        $freshRegistration = $freshClient->registerWorker(
-            workerId: $freshWorkerId,
-            taskQueue: $taskQueue,
-            supportedWorkflowTypes: [$workflowType],
-            supportedActivityTypes: ['conformance.waterline.worker-status.activity'],
-            runtime: 'php',
-            sdkVersion: $sdkVersion,
-            buildId: $buildId,
-            maxConcurrentWorkflowTasks: 2,
-            maxConcurrentActivityTasks: 1,
-            workflowDefinitionFingerprints: $fingerprint === null ? null : [$workflowType => $fingerprint],
-            workflowCommandContracts: [$workflowType => $contract],
-        );
-        $freshHeartbeats = $this->successiveHeartbeats(
-            $freshWorker,
-            $freshWorkerId,
-            $taskQueue,
-            $serverUrl,
-            $token,
-            $namespace,
-            $heartbeatInterval,
-            'fresh',
-        );
-        $this->tick($staleWorker, $taskQueue, $staleWorkerId, 'stale.before-visibility-keepalive');
+            $freshProcess = $this->startSdkWorker(
+                'fresh',
+                $serverUrl,
+                $token,
+                $namespace,
+                $taskQueue,
+                $freshWorkerId,
+                $workflowType,
+                $activityType,
+                $buildId,
+                $heartbeatInterval,
+            );
+            $freshHeartbeats = $this->successiveHeartbeats(
+                $freshProcess,
+                $freshWorkerId,
+                $serverUrl,
+                $token,
+                $namespace,
+                $heartbeatInterval,
+                'fresh',
+            );
+            $freshRegistration = data_get(
+                $this->captureServer(
+                    'server.fresh.registration',
+                    $serverUrl,
+                    '/api/workers/'.rawurlencode($freshWorkerId),
+                    $token,
+                    $namespace,
+                ),
+                'body',
+                [],
+            );
 
-        $before = $this->capturePhase(
-            'before',
-            $serverUrl,
-            $waterlineUrl,
-            $token,
-            $namespace,
-            $taskQueue,
-            $staleWorkerId,
-            $freshWorkerId,
-            $cliBin,
-        );
+            $before = $this->capturePhase(
+                'before',
+                $serverUrl,
+                $waterlineUrl,
+                $token,
+                $namespace,
+                $taskQueue,
+                $staleWorkerId,
+                $freshWorkerId,
+                $cliBin,
+            );
 
-        $stoppedAt = $this->now();
-        $staleTransition = $this->waitForStaleTransition(
-            $serverUrl,
-            $waterlineUrl,
-            $token,
-            $namespace,
-            $taskQueue,
-            $staleWorkerId,
-            $freshWorkerId,
-            $freshWorker,
-            $heartbeatInterval,
-            $staleAfter,
-            $stoppedAt,
-        );
+            $this->stopSdkWorker($staleProcess, 'stale', 'stale-transition');
+            $staleStopped = true;
+            $stoppedAt = $this->now();
+            $staleTransition = $this->waitForStaleTransition(
+                $serverUrl,
+                $waterlineUrl,
+                $token,
+                $namespace,
+                $taskQueue,
+                $staleWorkerId,
+                $heartbeatInterval,
+                $staleAfter,
+                $stoppedAt,
+            );
 
-        $afterWorkflowId = 'waterline-worker-status-after-stale-'.strtolower($suffix);
-        $afterStart = $control->startWorkflow($workflowType, $afterWorkflowId, [], ['task_queue' => $taskQueue]);
-        $staleTasks = $staleClient->pollWorkflowTasks(
-            queue: $taskQueue,
-            timeoutSeconds: 0,
-            workerId: $staleWorkerId,
-        );
-        $stalePoll = $staleClient->lastWorkflowTaskPoll();
-        $afterTick = $this->tick($freshWorker, $taskQueue, $freshWorkerId, 'fresh.after-stale-work');
-        $afterDetail = $control->describeWorkflow($afterWorkflowId);
+            $afterWorkflowId = 'waterline-worker-status-after-stale-'.strtolower($suffix);
+            $afterHandle = $control->startWorkflow($workflowType, $afterWorkflowId, $taskQueue);
+            $afterStart = [
+                'workflow_id' => $afterHandle->workflowId,
+                'run_id' => $afterHandle->selectedRunId,
+                'workflow_type' => $afterHandle->workflowType,
+                'started_at' => $this->now(),
+            ];
+            $staleTask = $control->pollWorkflowTask($staleWorkerId, $taskQueue, 0);
+            $stalePollCapture = $this->captureStaleWorkerPoll(
+                $serverUrl,
+                $token,
+                $namespace,
+                $taskQueue,
+                $staleWorkerId,
+            );
+            $stalePoll = [
+                'sdk_client' => SdkClient::class,
+                'sdk_task_claimed' => $staleTask !== null,
+                'poll_status' => data_get($stalePollCapture, 'body.poll_status'),
+                'authority' => $stalePollCapture,
+            ];
+            $afterDetail = $this->waitForWorkflowCompletion(
+                $control,
+                $afterWorkflowId,
+                $freshProcess,
+                'fresh',
+            );
 
-        $after = $this->capturePhase(
-            'after',
-            $serverUrl,
-            $waterlineUrl,
-            $token,
-            $namespace,
-            $taskQueue,
-            $staleWorkerId,
-            $freshWorkerId,
-            $cliBin,
-        );
+            $after = $this->capturePhase(
+                'after',
+                $serverUrl,
+                $waterlineUrl,
+                $token,
+                $namespace,
+                $taskQueue,
+                $staleWorkerId,
+                $freshWorkerId,
+                $cliBin,
+            );
 
-        return [
-            'topology' => [
-                'namespace' => $namespace,
-                'task_queue' => $taskQueue,
-                'stale_worker_id' => $staleWorkerId,
-                'fresh_worker_id' => $freshWorkerId,
-                'workflow_type' => $workflowType,
-                'compatibility' => $buildId,
-                'initial_workflow_id' => $initialWorkflowId,
-                'after_stale_workflow_id' => $afterWorkflowId,
-            ],
-            'heartbeat_interval' => $heartbeatInterval,
-            'stale_after' => $staleAfter,
-            'before' => $before,
-            'after' => $after,
-            'stale_transition' => $staleTransition,
-            'routing_exclusion' => [
-                'stale_worker_poll' => $stalePoll,
-                'stale_worker_tasks_claimed' => count($staleTasks),
-                'fresh_worker_after_stale_workflow' => $afterDetail,
-            ],
-            'worker_execution' => [
-                'driver' => StandaloneWorkflowWorker::class,
-                'heartbeat_loop_implementation_owner' => 'durable-workflow/workflow',
-                'stale_registration' => $staleRegistration,
-                'fresh_registration' => $freshRegistration,
-                'stale_heartbeat_timestamps' => $staleHeartbeats,
-                'fresh_heartbeat_timestamps' => $freshHeartbeats,
-                'ticks' => $this->workerTicks,
-                'initial_workflow' => [
-                    'start' => $initialStart,
-                    'tick' => $initialTick,
-                    'detail' => $initialDetail,
+            return [
+                'topology' => [
+                    'namespace' => $namespace,
+                    'task_queue' => $taskQueue,
+                    'stale_worker_id' => $staleWorkerId,
+                    'fresh_worker_id' => $freshWorkerId,
+                    'workflow_type' => $workflowType,
+                    'compatibility' => $buildId,
+                    'initial_workflow_id' => $initialWorkflowId,
+                    'after_stale_workflow_id' => $afterWorkflowId,
                 ],
-                'after_stale_workflow' => [
-                    'start' => $afterStart,
-                    'tick' => $afterTick,
-                    'detail' => $afterDetail,
+                'heartbeat_interval' => $heartbeatInterval,
+                'stale_after' => $staleAfter,
+                'before' => $before,
+                'after' => $after,
+                'stale_transition' => $staleTransition,
+                'routing_exclusion' => [
+                    'stale_worker_poll' => $stalePoll,
+                    'stale_worker_tasks_claimed' => $staleTask === null ? 0 : 1,
+                    'fresh_worker_after_stale_workflow' => $afterDetail,
                 ],
-            ],
-        ];
+                'worker_execution' => [
+                    'driver' => \DurableWorkflow\Worker::class,
+                    'client' => SdkClient::class,
+                    'heartbeat_loop_implementation_owner' => 'durable-workflow/sdk',
+                    'stale_registration' => $staleRegistration,
+                    'fresh_registration' => $freshRegistration,
+                    'stale_heartbeat_timestamps' => $staleHeartbeats,
+                    'fresh_heartbeat_timestamps' => $freshHeartbeats,
+                    'initial_workflow' => [
+                        'start' => $initialStart,
+                        'detail' => $initialDetail,
+                    ],
+                    'after_stale_workflow' => [
+                        'start' => $afterStart,
+                        'detail' => $afterDetail,
+                    ],
+                ],
+            ];
+        } finally {
+            if ($staleProcess instanceof Process && ! $staleStopped) {
+                $this->stopSdkWorker($staleProcess, 'stale', 'cleanup');
+            }
+            if ($freshProcess instanceof Process) {
+                $this->stopSdkWorker($freshProcess, 'fresh', 'cleanup');
+            }
+        }
     }
 
     /**
      * @return list<string>
      */
     private function successiveHeartbeats(
-        StandaloneWorkflowWorker $worker,
+        Process $worker,
         string $workerId,
-        string $taskQueue,
         string $serverUrl,
         string $token,
         string $namespace,
         int $interval,
         string $label,
     ): array {
+        $deadline = microtime(true) + max(20, ($interval * 5) + 10);
+        $registrationTimestamp = null;
         $timestamps = [];
 
-        for ($index = 1; $index <= 2; $index++) {
-            $this->tick($worker, $taskQueue, $workerId, $label.'.heartbeat-'.$index);
-            $capture = $this->captureServer(
-                'server.'.$label.'.heartbeat-'.$index,
+        while (microtime(true) < $deadline) {
+            $this->assertSdkWorkerRunning($worker, $label);
+            $capture = $this->probeWorkerDetail(
+                'server.'.$label.'.heartbeat-probe',
                 $serverUrl,
-                '/api/workers/'.rawurlencode($workerId),
+                $workerId,
                 $token,
                 $namespace,
             );
             $timestamp = data_get($capture, 'body.last_heartbeat_at');
-            if (is_string($timestamp)) {
+            if (is_string($timestamp) && $registrationTimestamp === null) {
+                $registrationTimestamp = $timestamp;
+            } elseif (is_string($timestamp)
+                && $timestamp !== $registrationTimestamp
+                && ! in_array($timestamp, $timestamps, true)) {
                 $timestamps[] = $timestamp;
             }
-            if ($index < 2) {
-                sleep($interval + 1);
+            if (count($timestamps) >= 2) {
+                return $timestamps;
             }
+            usleep(250_000);
         }
 
-        return array_values(array_unique($timestamps));
+        throw new RuntimeException(sprintf(
+            'PHP SDK %s worker did not emit two observable heartbeats within the bounded interval.',
+            $label,
+        ));
+    }
+
+    private function startSdkWorker(
+        string $label,
+        string $serverUrl,
+        string $token,
+        string $namespace,
+        string $taskQueue,
+        string $workerId,
+        string $workflowType,
+        string $activityType,
+        string $buildId,
+        int $heartbeatInterval,
+    ): Process
+    {
+        $command = [
+            PHP_BINARY,
+            base_path('artisan'),
+            'waterline:worker-status-sdk-worker',
+            '--server-url='.$serverUrl,
+            '--worker-id='.$workerId,
+            '--namespace='.$namespace,
+            '--task-queue='.$taskQueue,
+            '--workflow-type='.$workflowType,
+            '--activity-type='.$activityType,
+            '--build-id='.$buildId,
+            '--heartbeat-interval='.$heartbeatInterval,
+            '--poll-timeout=1',
+        ];
+        $process = new Process($command, base_path(), [
+            'DURABLE_WORKFLOW_AUTH_TOKEN' => $token,
+        ]);
+        $process->setTimeout(null);
+        $process->start();
+        $this->workerProcesses[] = [
+            'label' => $label,
+            'event' => 'started',
+            'worker_id' => $workerId,
+            'process_id' => $process->getPid(),
+            'observed_at' => $this->now(),
+            'driver' => \DurableWorkflow\Worker::class,
+        ];
+
+        return $process;
+    }
+
+    private function stopSdkWorker(Process $process, string $label, string $reason): void
+    {
+        $wasRunning = $process->isRunning();
+        $exitCode = $wasRunning ? $process->stop(5) : $process->getExitCode();
+        $this->workerProcesses[] = [
+            'label' => $label,
+            'event' => 'stopped',
+            'reason' => $reason,
+            'was_running' => $wasRunning,
+            'exit_code' => $exitCode,
+            'observed_at' => $this->now(),
+            'stderr' => trim($process->getErrorOutput()),
+        ];
+    }
+
+    private function assertSdkWorkerRunning(Process $process, string $label): void
+    {
+        if ($process->isRunning()) {
+            return;
+        }
+
+        throw new RuntimeException(sprintf(
+            'PHP SDK %s worker exited before conformance completed (exit %s): %s',
+            $label,
+            (string) $process->getExitCode(),
+            trim($process->getErrorOutput() ?: $process->getOutput()),
+        ));
     }
 
     /** @return array<string, mixed> */
-    private function tick(StandaloneWorkflowWorker $worker, string $taskQueue, string $workerId, string $label): array
-    {
-        $result = $worker->tickWithHeartbeat(
-            queue: $taskQueue,
-            workerId: $workerId,
-            queryPollTimeoutSeconds: 0,
-            workflowPollTimeoutSeconds: 1,
-            taskSlots: ['workflow_available' => 2, 'activity_available' => 1],
-            processMetrics: [
-                'process_id' => getmypid(),
-                'memory_bytes' => memory_get_usage(true),
-                'host' => gethostname(),
-            ],
-        );
-        $this->workerTicks[] = [
-            'label' => $label,
-            'observed_at' => $this->now(),
-            'result' => $result,
-        ];
+    private function waitForWorkflowCompletion(
+        SdkClient $client,
+        string $workflowId,
+        Process $worker,
+        string $label,
+    ): array {
+        $deadline = microtime(true) + 30;
+        $last = [];
 
-        return $result;
+        while (microtime(true) < $deadline) {
+            $this->assertSdkWorkerRunning($worker, $label);
+            $execution = $client->describeWorkflow($workflowId);
+            $last = $execution->raw + [
+                'workflow_id' => $execution->workflowId,
+                'run_id' => $execution->runId,
+                'workflow_type' => $execution->workflowType,
+                'status' => $execution->status,
+            ];
+            if ($this->completed($last)) {
+                return $last;
+            }
+            usleep(250_000);
+        }
+
+        throw new RuntimeException(sprintf(
+            'PHP SDK %s worker did not complete workflow %s within 30 seconds (last status: %s).',
+            $label,
+            $workflowId,
+            (string) ($last['status'] ?? 'unknown'),
+        ));
     }
 
     /** @return array<string, mixed> */
@@ -481,8 +609,6 @@ final class WorkerStatusConformanceCommand extends Command
         string $namespace,
         string $taskQueue,
         string $staleWorkerId,
-        string $freshWorkerId,
-        StandaloneWorkflowWorker $freshWorker,
         int $heartbeatInterval,
         int $staleAfter,
         string $stoppedAt,
@@ -492,7 +618,6 @@ final class WorkerStatusConformanceCommand extends Command
         $lastWaterline = [];
 
         while (microtime(true) < $deadline) {
-            $this->tick($freshWorker, $taskQueue, $freshWorkerId, 'fresh.keepalive');
             $lastServer = $this->captureServer(
                 'server.stale-transition-probe',
                 $serverUrl,
@@ -609,14 +734,13 @@ final class WorkerStatusConformanceCommand extends Command
         $checks = WorkerStatusObservationGate::checks($this->observations);
 
         return array_merge($checks, [
-            'exact_published_package_versions' => $this->installedPackageVersion('durable-workflow/workflow') === $this->requiredOption('workflow-version')
+            'exact_published_package_versions' => $this->installedPackageVersion('durable-workflow/sdk') === $this->requiredOption('sdk-php-version')
+                && $this->installedPackageVersion('durable-workflow/workflow') === $this->requiredOption('workflow-version')
                 && $this->installedPackageVersion('durable-workflow/waterline') === $this->requiredOption('waterline-version'),
             'no_local_product_source_checkout' => ($this->report['local_product_source_checkouts_used'] ?? null) === false,
             'stale_worker_emitted_two_heartbeats' => count($context['worker_execution']['stale_heartbeat_timestamps']) >= 2,
             'fresh_worker_emitted_two_heartbeats' => count($context['worker_execution']['fresh_heartbeat_timestamps']) >= 2,
-            'real_workflow_work_executed' => ($context['worker_execution']['initial_workflow']['tick']['processed'] ?? false) === true
-                && $this->completed($context['worker_execution']['initial_workflow']['detail'])
-                && ($context['worker_execution']['after_stale_workflow']['tick']['processed'] ?? false) === true
+            'real_workflow_work_executed' => $this->completed($context['worker_execution']['initial_workflow']['detail'])
                 && $this->completed($context['worker_execution']['after_stale_workflow']['detail']),
             'waterline_namespace_and_task_queue_visible' => ($beforeWaterline['list']['namespace'] ?? null) === $topology['namespace']
                 && ($beforeWaterline['list']['task_queue'] ?? null) === $taskQueue,
@@ -626,7 +750,7 @@ final class WorkerStatusConformanceCommand extends Command
                 && array_key_exists('workflow_available', $beforeWaterline['list']['task_slots']),
             'waterline_process_metrics_visible' => is_array($beforeWaterline['list']['process_metrics'] ?? null)
                 && array_key_exists('process_id', $beforeWaterline['list']['process_metrics']),
-            'waterline_protocol_or_compatibility_visible' => ($beforeWaterline['list']['sdk_version'] ?? null) === $this->requiredOption('workflow-version')
+            'waterline_protocol_or_compatibility_visible' => ($beforeWaterline['list']['sdk_version'] ?? null) === 'durable-workflow-php/'.SdkVersion::SDK
                 && ($beforeWaterline['list']['build_id'] ?? null) === $topology['compatibility'],
             'waterline_list_detail_agree_before_stale' => $this->projectionsAgree($beforeWaterline['list'], $beforeWaterline['detail']),
             'waterline_list_agrees_with_server_before_stale' => $this->projectionsAgree($beforeWaterline['list'], $beforeServer),
@@ -794,6 +918,58 @@ final class WorkerStatusConformanceCommand extends Command
     }
 
     /** @return array<string, mixed> */
+    private function probeWorkerDetail(
+        string $name,
+        string $baseUrl,
+        string $workerId,
+        string $token,
+        string $namespace,
+    ): array {
+        $url = $baseUrl.'/api/workers/'.rawurlencode($workerId);
+        $response = $this->http->acceptJson()
+            ->withToken($token)
+            ->withHeaders([
+                'X-Namespace' => $namespace,
+                'X-Durable-Workflow-Control-Plane-Version' => '2',
+            ])
+            ->timeout(15)
+            ->get($url);
+
+        if ($response->status() === 404) {
+            return [];
+        }
+
+        return $this->recordHttp($name, $url, $response);
+    }
+
+    /** @return array<string, mixed> */
+    private function captureStaleWorkerPoll(
+        string $baseUrl,
+        string $token,
+        string $namespace,
+        string $taskQueue,
+        string $workerId,
+    ): array {
+        $url = $baseUrl.'/api/worker/workflow-tasks/poll';
+        $response = $this->http->acceptJson()
+            ->asJson()
+            ->withToken($token)
+            ->withHeaders([
+                'X-Namespace' => $namespace,
+                'X-Durable-Workflow-Protocol-Version' => SdkVersion::WORKER_PROTOCOL,
+            ])
+            ->timeout(15)
+            ->post($url, [
+                'worker_id' => $workerId,
+                'task_queue' => $taskQueue,
+                'poll_request_id' => 'waterline-stale-proof-'.bin2hex(random_bytes(8)),
+                'timeout_seconds' => 0,
+            ]);
+
+        return $this->recordHttp('server.stale-worker-poll-refusal', $url, $response, 'POST');
+    }
+
+    /** @return array<string, mixed> */
     private function captureServer(
         string $name,
         string $baseUrl,
@@ -828,7 +1004,7 @@ final class WorkerStatusConformanceCommand extends Command
     }
 
     /** @return array<string, mixed> */
-    private function recordHttp(string $name, string $url, Response $response): array
+    private function recordHttp(string $name, string $url, Response $response, string $method = 'GET'): array
     {
         $body = $response->json();
         $capture = [
@@ -837,7 +1013,7 @@ final class WorkerStatusConformanceCommand extends Command
                 'captured_by' => WorkerStatusObservationGate::CAPTURED_BY,
             ],
             'observed_at' => $this->now(),
-            'method' => 'GET',
+            'method' => $method,
             'url' => $url,
             'status_code' => $response->status(),
             'body' => is_array($body) ? $body : ['raw' => $response->body()],
@@ -845,7 +1021,7 @@ final class WorkerStatusConformanceCommand extends Command
         $this->observations[$name] = $capture;
 
         if (! $response->successful()) {
-            throw new RuntimeException(sprintf('GET %s returned HTTP %d', $url, $response->status()));
+            throw new RuntimeException(sprintf('%s %s returned HTTP %d', $method, $url, $response->status()));
         }
 
         return $capture;
@@ -942,10 +1118,16 @@ final class WorkerStatusConformanceCommand extends Command
         if (! preg_match('/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/', $versions['cli'])) {
             $failures[] = 'cli-version must be exact';
         }
+        if (! preg_match('/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/', $versions['sdk-php'])) {
+            $failures[] = 'sdk-php-version must be exact';
+        }
         foreach (['workflow', 'waterline'] as $package) {
             if (! preg_match('/^2\.0\.0-alpha\.\d+$/', $versions[$package])) {
                 $failures[] = $package.'-version must be an exact 2.0 alpha release';
             }
+        }
+        if ($this->installedPackageVersion('durable-workflow/sdk') !== $versions['sdk-php']) {
+            $failures[] = 'installed PHP SDK package does not match sdk-php-version';
         }
         if ($this->installedPackageVersion('durable-workflow/workflow') !== $versions['workflow']) {
             $failures[] = 'installed Workflow PHP package does not match workflow-version';
@@ -966,6 +1148,9 @@ final class WorkerStatusConformanceCommand extends Command
         }
         if (! str_starts_with($sources['cli'], 'https://github.com/durable-workflow/cli/releases/download/')) {
             $failures[] = 'cli-source must identify the official release installer';
+        }
+        if ($sources['sdk-php'] !== 'packagist://durable-workflow/sdk@'.$versions['sdk-php']) {
+            $failures[] = 'sdk-php-source must identify the exact Packagist package';
         }
         if ($sources['workflow'] !== 'packagist://durable-workflow/workflow@'.$versions['workflow']) {
             $failures[] = 'workflow-source must identify the exact Packagist package';
@@ -1006,6 +1191,7 @@ final class WorkerStatusConformanceCommand extends Command
             is_array($composerLock['packages-dev'] ?? null) ? $composerLock['packages-dev'] : [],
         );
         $expected = [
+            'durable-workflow/sdk' => $this->requiredOption('sdk-php-version'),
             'durable-workflow/workflow' => $this->requiredOption('workflow-version'),
             'durable-workflow/waterline' => $this->requiredOption('waterline-version'),
         ];
@@ -1043,22 +1229,23 @@ final class WorkerStatusConformanceCommand extends Command
         ];
     }
 
-    /** @return array{server: string, cli: string, workflow: string, waterline: string} */
+    /** @return array<string, string> */
     private function artifactOptions(string $suffix): array
     {
         return [
             'server' => $this->requiredOption('server-'.$suffix),
             'cli' => $this->requiredOption('cli-'.$suffix),
+            'sdk-php' => $this->requiredOption('sdk-php-'.$suffix),
             'workflow' => $this->requiredOption('workflow-'.$suffix),
             'waterline' => $this->requiredOption('waterline-'.$suffix),
         ];
     }
 
-    /** @return array{server: string|null, cli: string|null, workflow: string|null, waterline: string|null} */
+    /** @return array<string, string|null> */
     private function artifactOptionValues(string $suffix): array
     {
         $values = [];
-        foreach (['server', 'cli', 'workflow', 'waterline'] as $artifact) {
+        foreach (['server', 'cli', 'sdk-php', 'workflow', 'waterline'] as $artifact) {
             $value = $this->option($artifact.'-'.$suffix);
             $values[$artifact] = is_string($value) && trim($value) !== '' ? trim($value) : null;
         }
@@ -1138,7 +1325,7 @@ final class WorkerStatusConformanceCommand extends Command
     {
         $owner = str_starts_with($check, 'waterline_') ? 'waterline'
             : (str_contains($check, '_cli') ? 'cli'
-                : (str_contains($check, 'stale_worker') || str_contains($check, 'transition') ? 'server' : 'workflow'));
+                : (str_contains($check, 'stale_worker') || str_contains($check, 'transition') ? 'server' : 'sdk-php'));
 
         return [
             'finding_type' => 'published_projection_mismatch',
