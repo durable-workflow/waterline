@@ -706,18 +706,14 @@ final class WorkflowEngineSourceResolver
             $connections[] = $effective;
         }
 
+        $configured = self::stringOrNull(config('workflows.storage.connection'));
+        if ($configured !== null) {
+            $connections[] = $configured;
+        }
+
         $default = self::stringOrNull(config('database.default'));
         if ($default !== null) {
             $connections[] = $default;
-        }
-
-        $configuredConnections = config('database.connections');
-        if (is_array($configuredConnections)) {
-            foreach (array_keys($configuredConnections) as $connection) {
-                if (is_string($connection) && trim($connection) !== '') {
-                    $connections[] = trim($connection);
-                }
-            }
         }
 
         return array_values(array_unique($connections));

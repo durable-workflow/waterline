@@ -207,7 +207,13 @@ jobs:
         DB_HOST: 127.0.0.1
       run: |
         status=0
-        timeout --foreground --signal=TERM --kill-after=30s 15m composer "${{ matrix.composer-script }}" || status=$?
+        if [ "${{ matrix.database }}" = mysql ]; then
+          timeout --foreground --signal=TERM --kill-after=30s 15m \
+            composer "${{ matrix.composer-script }}" -- --stop-on-error --stop-on-failure || status=$?
+        else
+          timeout --foreground --signal=TERM --kill-after=30s 15m \
+            composer "${{ matrix.composer-script }}" || status=$?
+        fi
         if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
           echo "::error::${{ matrix.database }} test suite exceeded its 15-minute limit"
           exit 1

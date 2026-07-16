@@ -203,17 +203,15 @@ class PackageInstalledSharedStorageHostTest extends TestCase
             'no_compatible' => $noCompatibleRun,
         ] = $this->seedWorkerVersioningTopology();
 
-        config()->set('workflows.storage.connection', null);
         $this->assertSame('host', config('database.default'));
-        $this->assertNull(config('workflows.storage.connection'));
+        $this->assertSame('server_storage', config('workflows.storage.connection'));
 
         $healthPayload = $this->getJson('/waterline/api/v2/health')
             ->assertOk()
             ->assertJsonPath('namespace', 'worker-versioning-conformance')
             ->assertJsonPath('engine_source.uses_v2', true)
             ->assertJsonPath('engine_source.degraded_operator_surface', true)
-            ->assertJsonPath('engine_source.storage_connection.repair.applied', true)
-            ->assertJsonPath('engine_source.storage_connection.repair.selected_connection', 'server_storage')
+            ->assertJsonPath('engine_source.storage_connection.repair.applied', false)
             ->assertJsonPath('engine_source.storage_connection.default_connection', 'host')
             ->assertJsonPath('engine_source.storage_connection.effective_connection', 'server_storage')
             ->assertJsonPath('engine_source.storage_connection.core_table_status', 'available')

@@ -197,16 +197,21 @@ final class V2HybridMigrationViewTest extends TestCase
         $uuid = '6f9619ff-8b86-d011-b42d-00c04fc964ff';
         $stringId = 'customer-order-alpha';
         $numericStringId = '00123';
+        $collisionId = '01J00000000000000000000000';
         $uuidLegacy = $this->stringIdLegacyWorkflow($uuid, 'LegacyUuidWorkflow');
         $stringLegacy = $this->stringIdLegacyWorkflow($stringId, 'LegacyStringWorkflow');
         $numericStringLegacy = $this->stringIdLegacyWorkflow(
             $numericStringId,
             'LegacyNumericStringWorkflow',
         );
+        $collisionLegacy = $this->stringIdLegacyWorkflow(
+            $collisionId,
+            'LegacyCollisionWorkflow',
+        );
         $v2Collision = $this->v2Workflow(
-            $uuid,
-            'migration-v2-uuid-collision',
-            'V2UuidCollisionWorkflow',
+            $collisionId,
+            'migration-v2-string-collision',
+            'V2StringCollisionWorkflow',
             'completed',
         );
 
@@ -226,13 +231,25 @@ final class V2HybridMigrationViewTest extends TestCase
                 'id' => 'v1:'.$numericStringLegacy->id,
                 'legacy_id' => $numericStringId,
                 'engine_source' => 'v1',
+            ])
+            ->assertJsonFragment([
+                'id' => 'v1:'.$collisionLegacy->id,
+                'legacy_id' => $collisionId,
+                'engine_source' => 'v1',
             ]);
 
-        // A bare string/UUID identifier continues to resolve against v2 first.
-        $this->get('/waterline/api/flows/'.$uuid)
+        // A bare collision-safe identifier continues to resolve against v2 first.
+        $this->get('/waterline/api/flows/'.$collisionId)
             ->assertOk()
             ->assertJsonPath('id', $v2Collision->id)
             ->assertJsonPath('engine_source', 'v2');
+
+        $this->get('/waterline/api/flows/v1:'.$collisionId)
+            ->assertOk()
+            ->assertJsonPath('id', 'v1:'.$collisionId)
+            ->assertJsonPath('legacy_id', $collisionId)
+            ->assertJsonPath('engine_source', 'v1')
+            ->assertJsonPath('class', 'LegacyCollisionWorkflow');
 
         $this->get('/waterline/api/flows/v1:'.$uuid)
             ->assertOk()

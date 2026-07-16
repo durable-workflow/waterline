@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Waterline\Tests\Unit\Support;
 
+use Illuminate\Support\Facades\DB;
+use PDO;
 use ReflectionMethod;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Waterline\Tests\TestCase;
@@ -45,5 +47,32 @@ class WorkflowEngineSourceResolverTest extends TestCase
         $this->assertSame('warning', $resolved['severity'] ?? null);
         $this->assertTrue($resolved['degraded_operator_surface'] ?? false);
         $this->assertTrue($resolved['durable_operator_core_available'] ?? false);
+    }
+
+    public function testEngineResolutionDoesNotProbeUnrelatedHostConnections(): void
+    {
+        config()->set('database.connections.unrelated_wrong_protocol', [
+            'driver' => 'mysql',
+            'host' => '127.0.0.1',
+            'port' => 5432,
+            'database' => 'unrelated',
+            'username' => 'unrelated',
+            'password' => 'unrelated',
+            'options' => [PDO::ATTR_TIMEOUT => 1],
+        ]);
+        config()->set('workflows.storage.connection', null);
+        DB::purge('unrelated_wrong_protocol');
+
+        $startedAt = microtime(true);
+        $status = WorkflowEngineSourceResolver::status('auto');
+        $duration = microtime(true) - $startedAt;
+
+        $inspectedConnections = collect($status['storage_connection']['connections'] ?? [])
+            ->pluck('name')
+            ->all();
+
+        $this->assertLessThan(1.0, $duration, 'Package boot must not wait on unrelated database connections.');
+        $this->assertNotContains('unrelated_wrong_protocol', $inspectedConnections);
+        $this->assertSame([config('database.default')], $inspectedConnections);
     }
 }

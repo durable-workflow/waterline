@@ -286,6 +286,14 @@ class WaterlineServiceProviderTest extends TestCase
     public function testRuntimeConfigurationBuildsWorkflowStorageConnectionFromWaterlineDatabaseEnvironment(): void
     {
         $this->withProcessEnvironmentOnly([
+            'DATABASE_URL' => null,
+            'DB_CONNECTION' => 'sqlite',
+            'DB_DATABASE' => null,
+            'DB_HOST' => null,
+            'DB_PASSWORD' => null,
+            'DB_PORT' => null,
+            'DB_SOCKET' => null,
+            'DB_USERNAME' => null,
             'DW_WV_WATERLINE_DB_HOST' => 'workflow-mysql',
             'DW_WV_WATERLINE_DB_PORT' => '3307',
             'DW_WV_WATERLINE_DB_DATABASE' => 'published_worker_versioning',
@@ -481,6 +489,8 @@ class WaterlineServiceProviderTest extends TestCase
     private function withEnvironment(array $values, callable $callback): void
     {
         $previous = [];
+        $databaseConfig = config('database');
+        $workflowStorageConnection = config('workflows.storage.connection');
 
         foreach ($values as $key => $value) {
             $previous[$key] = [
@@ -525,12 +535,16 @@ class WaterlineServiceProviderTest extends TestCase
                     unset($_SERVER[$key]);
                 }
             }
+
+            $this->restoreDatabaseConfiguration($databaseConfig, $workflowStorageConnection);
         }
     }
 
     private function withProcessEnvironmentOnly(array $values, callable $callback): void
     {
         $previous = [];
+        $databaseConfig = config('database');
+        $workflowStorageConnection = config('workflows.storage.connection');
 
         foreach ($values as $key => $value) {
             $previous[$key] = [
@@ -541,7 +555,11 @@ class WaterlineServiceProviderTest extends TestCase
                 'server' => $_SERVER[$key] ?? null,
             ];
 
-            putenv($key.'='.$value);
+            if ($value === null) {
+                putenv($key);
+            } else {
+                putenv($key.'='.$value);
+            }
             unset($_ENV[$key], $_SERVER[$key]);
         }
 
@@ -566,6 +584,29 @@ class WaterlineServiceProviderTest extends TestCase
                 } else {
                     unset($_SERVER[$key]);
                 }
+            }
+
+            $this->restoreDatabaseConfiguration($databaseConfig, $workflowStorageConnection);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $databaseConfig
+     */
+    private function restoreDatabaseConfiguration(array $databaseConfig, mixed $workflowStorageConnection): void
+    {
+        $currentConnections = config('database.connections');
+        $connectionNames = array_unique(array_merge(
+            array_keys(is_array($currentConnections) ? $currentConnections : []),
+            array_keys(is_array($databaseConfig['connections'] ?? null) ? $databaseConfig['connections'] : []),
+        ));
+
+        config()->set('database', $databaseConfig);
+        config()->set('workflows.storage.connection', $workflowStorageConnection);
+
+        foreach ($connectionNames as $connectionName) {
+            if (is_string($connectionName)) {
+                DB::purge($connectionName);
             }
         }
     }

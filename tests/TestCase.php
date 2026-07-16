@@ -4,7 +4,6 @@ namespace Waterline\Tests;
 
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use function Orchestra\Testbench\artisan;
@@ -68,17 +67,9 @@ abstract class TestCase extends BaseTestCase
             artisan($this, 'migrate:fresh');
         }
 
-        $databaseConnection = DB::connection();
-        $databaseConnectionName = $databaseConnection->getName();
-        $databaseDriver = $databaseConnection->getDriverName();
-
-        $this->beforeApplicationDestroyed(function () use ($databaseConnectionName, $databaseDriver): void {
-            if ($databaseDriver === 'sqlite') {
-                return;
-            }
-
-            artisan($this, 'migrate:rollback', ['--database' => $databaseConnectionName]);
-        });
+        // The next database-backed test owns isolation with migrate:fresh.
+        // Rolling every migration back during teardown duplicates destructive
+        // DDL and transaction-log work without changing the next test's state.
     }
 
     protected function requiresDatabaseMigrations(): bool
