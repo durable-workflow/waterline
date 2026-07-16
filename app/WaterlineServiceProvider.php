@@ -2,12 +2,15 @@
 
 namespace Waterline;
 
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Throwable;
+use WeakMap;
 use Waterline\Http\Middleware\ControlPlaneVersion;
 use Waterline\Http\Middleware\RenderApiExceptionsAsJson;
 use Waterline\Http\Middleware\UseEphemeralApiSessionWhenDatabaseTableMissing;
@@ -20,6 +23,11 @@ use Waterline\Support\WorkflowRepositoryResolver;
 class WaterlineServiceProvider extends ServiceProvider
 {
     private const WORKFLOW_PACKAGE_API_FLOOR_CONFIG = 'waterline.workflow_package_api_floor';
+
+    /**
+     * @var WeakMap<object, true>|null
+     */
+    private static ?WeakMap $exceptionHandlersWithApiRenderer = null;
 
     /**
      * Bootstrap any application services.
@@ -250,6 +258,7 @@ class WaterlineServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/waterline.php', 'waterline');
         RuntimeConfiguration::hydrate();
+        $this->registerApiExceptionRenderer();
 
         if (! defined('WATERLINE_PATH')) {
             define('WATERLINE_PATH', realpath(__DIR__.'/../'));
@@ -268,6 +277,42 @@ class WaterlineServiceProvider extends ServiceProvider
         $this->app->bindIf(WorkflowRepositoryInterface::class, static function () {
             return WorkflowRepositoryResolver::resolve(WorkflowEngineSourceResolver::status());
         });
+    }
+
+    private function registerApiExceptionRenderer(): void
+    {
+        $this->callAfterResolving(ExceptionHandler::class, function ($handler): void {
+            if (! is_object($handler) || ! method_exists($handler, 'renderable')) {
+                return;
+            }
+
+            self::$exceptionHandlersWithApiRenderer ??= new WeakMap();
+
+            if (isset(self::$exceptionHandlersWithApiRenderer[$handler])) {
+                return;
+            }
+
+            self::$exceptionHandlersWithApiRenderer[$handler] = true;
+
+            $handler->renderable(function (Throwable $exception, Request $request) {
+                if (! $this->isWaterlineApiRequest($request)) {
+                    return null;
+                }
+
+                return $this->app
+                    ->make(RenderApiExceptionsAsJson::class)
+                    ->renderException($request, $exception);
+            });
+        });
+    }
+
+    private function isWaterlineApiRequest(Request $request): bool
+    {
+        $waterlinePath = trim((string) config('waterline.path', 'waterline'), '/');
+        $apiPath = $waterlinePath === '' ? 'api' : $waterlinePath.'/api';
+        $requestPath = trim($request->path(), '/');
+
+        return $requestPath === $apiPath || str_starts_with($requestPath, $apiPath.'/');
     }
 
 }

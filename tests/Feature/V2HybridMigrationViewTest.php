@@ -14,6 +14,10 @@ use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Tests\TestCase;
 use Workflow\Models\StoredWorkflow;
+use Workflow\Models\StoredWorkflowException;
+use Workflow\Models\StoredWorkflowLog;
+use Workflow\Models\StoredWorkflowSignal;
+use Workflow\Models\StoredWorkflowTimer;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
@@ -183,16 +187,16 @@ final class V2HybridMigrationViewTest extends TestCase
 
     public function testQualifiedStringAndUuidLegacyIdsPreserveBareV2Precedence(): void
     {
-        Schema::create('string_workflows', static function (Blueprint $table): void {
-            $table->string('id')->primary();
-            $table->text('class');
-            $table->text('arguments')->nullable();
-            $table->text('output')->nullable();
-            $table->string('status')->default('pending')->index();
-            $table->timestamps(6);
-        });
+        $this->createStringIdLegacySchema();
 
-        config()->set('workflows.stored_workflow_model', StringIdStoredWorkflow::class);
+        config()->set([
+            'workflows.stored_workflow_model' => StringIdStoredWorkflow::class,
+            'workflows.stored_workflow_exception_model' => StringIdStoredWorkflowException::class,
+            'workflows.stored_workflow_log_model' => StringIdStoredWorkflowLog::class,
+            'workflows.stored_workflow_signal_model' => StringIdStoredWorkflowSignal::class,
+            'workflows.stored_workflow_timer_model' => StringIdStoredWorkflowTimer::class,
+            'workflows.workflow_relationships_table' => 'string_workflow_relationships',
+        ]);
 
         $uuid = '6f9619ff-8b86-d011-b42d-00c04fc964ff';
         $stringId = 'customer-order-alpha';
@@ -317,6 +321,61 @@ final class V2HybridMigrationViewTest extends TestCase
         ]);
     }
 
+    private function createStringIdLegacySchema(): void
+    {
+        Schema::create('string_workflows', static function (Blueprint $table): void {
+            $table->string('id')->primary();
+            $table->text('class');
+            $table->text('arguments')->nullable();
+            $table->text('output')->nullable();
+            $table->string('status')->default('pending')->index();
+            $table->timestamps(6);
+        });
+
+        Schema::create('string_workflow_logs', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('stored_workflow_id')->index();
+            $table->unsignedBigInteger('index');
+            $table->timestamp('now', 6);
+            $table->text('class');
+            $table->text('result')->nullable();
+            $table->timestamp('created_at', 6)->nullable();
+            $table->unique(['stored_workflow_id', 'index']);
+        });
+
+        Schema::create('string_workflow_signals', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('stored_workflow_id')->index();
+            $table->text('method');
+            $table->text('arguments')->nullable();
+            $table->timestamp('created_at', 6)->nullable();
+        });
+
+        Schema::create('string_workflow_timers', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('stored_workflow_id')->index();
+            $table->integer('index');
+            $table->timestamp('stop_at', 6);
+            $table->timestamp('created_at', 6)->nullable();
+        });
+
+        Schema::create('string_workflow_exceptions', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('stored_workflow_id')->index();
+            $table->text('class');
+            $table->text('exception');
+            $table->timestamp('created_at', 6)->nullable();
+        });
+
+        Schema::create('string_workflow_relationships', static function (Blueprint $table): void {
+            $table->id();
+            $table->string('parent_workflow_id')->nullable()->index();
+            $table->unsignedBigInteger('parent_index');
+            $table->timestamp('parent_now', 6);
+            $table->string('child_workflow_id')->nullable()->index();
+        });
+    }
+
     private function v2Workflow(
         string $runId,
         string $instanceId,
@@ -410,4 +469,24 @@ final class StringIdStoredWorkflow extends StoredWorkflow
             'stored_workflow_id',
         )->orderBy('id');
     }
+}
+
+final class StringIdStoredWorkflowLog extends StoredWorkflowLog
+{
+    protected $table = 'string_workflow_logs';
+}
+
+final class StringIdStoredWorkflowSignal extends StoredWorkflowSignal
+{
+    protected $table = 'string_workflow_signals';
+}
+
+final class StringIdStoredWorkflowTimer extends StoredWorkflowTimer
+{
+    protected $table = 'string_workflow_timers';
+}
+
+final class StringIdStoredWorkflowException extends StoredWorkflowException
+{
+    protected $table = 'string_workflow_exceptions';
 }

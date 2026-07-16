@@ -24,17 +24,30 @@ class RenderApiExceptionsAsJson
 
         try {
             return $next($request);
-        } catch (ValidationException $exception) {
-            return $this->validationExceptionResponse($exception);
-        } catch (AuthenticationException $exception) {
-            return $this->authenticationExceptionResponse($exception);
-        } catch (AuthorizationException $exception) {
-            return $this->authorizationExceptionResponse($exception);
-        } catch (HttpResponseException $exception) {
-            return $this->responseExceptionResponse($exception);
         } catch (Throwable $exception) {
-            return $this->jsonExceptionResponse($exception);
+            return $this->renderException($request, $exception);
         }
+    }
+
+    public function renderException(Request $request, Throwable $exception): Response
+    {
+        if ($exception instanceof ValidationException) {
+            return $this->validationExceptionResponse($exception);
+        }
+
+        if ($exception instanceof AuthenticationException) {
+            return $this->authenticationExceptionResponse($exception);
+        }
+
+        if ($exception instanceof AuthorizationException) {
+            return $this->authorizationExceptionResponse($exception);
+        }
+
+        if ($exception instanceof HttpResponseException) {
+            return $this->responseExceptionResponse($exception);
+        }
+
+        return $this->jsonExceptionResponse($exception);
     }
 
     private function validationExceptionResponse(ValidationException $exception): Response

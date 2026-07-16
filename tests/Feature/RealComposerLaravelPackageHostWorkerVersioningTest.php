@@ -170,7 +170,7 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
 
         $missing = $this->requestJson(
             'GET',
-            $baseUrl.'/waterline/api/instances/missing-workflow/runs/missing-run',
+            $baseUrl.'/waterline/api/instances/missing-workflow/runs/01JWVMISSINGRUN00000000001',
             expectedStatus: 404,
         );
         $this->assertSame('not_found', $missing['error'] ?? null);
