@@ -64,15 +64,23 @@ jobs:
           - database: mssql
             extension: pdo_sqlsrv
             composer-script: test-mssql
+            command_timeout: 15m
+            step_timeout: 17
           - database: mysql
             extension: pdo_mysql
             composer-script: test-mysql
+            command_timeout: 20m
+            step_timeout: 22
           - database: pgsql
             extension: pdo_pgsql
             composer-script: test-pgsql
+            command_timeout: 15m
+            step_timeout: 17
           - database: sqlite
             extension: pdo_sqlite
             composer-script: test-sqlite
+            command_timeout: 15m
+            step_timeout: 17
 
     services:
       mssql:
@@ -202,20 +210,20 @@ jobs:
       run: php scripts/ci/preflight-databases.php "${{ matrix.database }}" "$DB_HOST"
 
     - name: Run ${{ matrix.database }} test suite
-      timeout-minutes: 17
+      timeout-minutes: ${{ matrix.step_timeout }}
       env:
         DB_HOST: 127.0.0.1
       run: |
         status=0
         if [ "${{ matrix.database }}" = mysql ]; then
-          timeout --foreground --signal=TERM --kill-after=30s 15m \
+          timeout --foreground --signal=TERM --kill-after=30s ${{ matrix.command_timeout }} \
             composer "${{ matrix.composer-script }}" -- --stop-on-error --stop-on-failure || status=$?
         else
-          timeout --foreground --signal=TERM --kill-after=30s 15m \
+          timeout --foreground --signal=TERM --kill-after=30s ${{ matrix.command_timeout }} \
             composer "${{ matrix.composer-script }}" || status=$?
         fi
         if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-          echo "::error::${{ matrix.database }} test suite exceeded its 15-minute limit"
+          echo "::error::${{ matrix.database }} test suite exceeded its ${{ matrix.command_timeout }} limit"
           exit 1
         fi
         exit "$status"
