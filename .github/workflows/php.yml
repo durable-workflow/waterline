@@ -47,6 +47,13 @@ jobs:
     - name: Audit qualification dependencies
       run: composer audit --no-interaction
 
+    - name: Validate release recovery tooling
+      run: |
+        python -m py_compile \
+          scripts/ci/component-release-recovery.py \
+          scripts/ci/test-component-release-recovery.py
+        python scripts/ci/test-component-release-recovery.py
+
     - name: Build Laravel 12 Workbench scaffold
       run: composer build
 

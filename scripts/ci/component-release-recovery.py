@@ -7,6 +7,7 @@ import argparse
 import contextlib
 import datetime as dt
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -35,6 +36,14 @@ PLAN_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,55}$")
 VERSION_PATTERN = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$")
 ALPHA_VERSION_PATTERN = re.compile(r"^2\.0\.0-alpha\.[1-9][0-9]*$")
 BETA_VERSION_PATTERN = re.compile(r"^2\.0\.0-beta\.[1-9][0-9]*$")
+
+# SHA-256 of durable-workflow/sdk-rust's .github/workflows/release-plan-recovery.yml
+# at commit 31e87f4aa13a7fd255fd277a62c43c96ee1532ab (Git blob
+# a41b4b6a99f8a105c6d0c0f52944b4f298be79d6), after only CRLF-to-LF
+# normalization. The exact source identity is the fail-closed trust boundary for
+# the protected Rust publication workflow; shell-pattern checks cannot prove its
+# executable control flow.
+SDK_RUST_RECOVERY_WORKFLOW_SHA256 = "8938ed8a7b029c492c08b3243c649adbed013ac3cd3dec57f9e23f396e46d079"
 
 
 @dataclass(frozen=True)
@@ -290,6 +299,16 @@ def discover_plan(client: PublicClient, requested_tag: str | None) -> tuple[str,
 
 def verify_recovery_workflow_source(name: str, source: str) -> None:
     component = COMPONENTS[name]
+    if name == "sdk-rust":
+        normalized_source = source.replace("\r\n", "\n").encode("utf-8")
+        source_sha256 = hashlib.sha256(normalized_source).hexdigest()
+        if not hmac.compare_digest(source_sha256, SDK_RUST_RECOVERY_WORKFLOW_SHA256):
+            raise RecoveryError(
+                f"{component.repository} recovery workflow does not match the approved protected publication source",
+                "default-branch-preflight",
+            )
+        return
+
     if not re.search(r"(?m)^  schedule:\s*$", source) or not re.search(
         r"(?m)^  workflow_dispatch:\s*$", source
     ):
