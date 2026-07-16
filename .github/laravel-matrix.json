@@ -1,0 +1,59 @@
+{
+    "include": [
+        {
+            "label": "Laravel 9",
+            "boundary": "lowest",
+            "laravel": "9.52.21",
+            "testbench": "7.56.0",
+            "workbench": "7.19.0",
+            "php": "8.1",
+            "phpunit": "9.6.35",
+            "scaffold": "testbench",
+            "resolution": "legacy"
+        },
+        {
+            "label": "Laravel 10",
+            "boundary": "intermediate",
+            "laravel": "10.50.1",
+            "testbench": "8.37.0",
+            "workbench": "8.19.0",
+            "php": "8.1",
+            "phpunit": "10.5.64",
+            "scaffold": "testbench",
+            "resolution": "legacy"
+        },
+        {
+            "label": "Laravel 11",
+            "boundary": "intermediate",
+            "laravel": "11.55.0",
+            "testbench": "9.17.0",
+            "workbench": "9.15.0",
+            "php": "8.2",
+            "phpunit": "10.5.64",
+            "scaffold": "testbench",
+            "resolution": "legacy"
+        },
+        {
+            "label": "Laravel 12",
+            "boundary": "intermediate",
+            "laravel": "12.64.0",
+            "testbench": "10.11.0",
+            "workbench": "10.1.0",
+            "php": "8.2",
+            "phpunit": "11.5.56",
+            "scaffold": "testbench",
+            "resolution": "strict"
+        },
+        {
+            "label": "Laravel 13",
+            "boundary": "highest",
+            "laravel": "13.20.0",
+            "testbench": "11.1.0",
+            "workbench": "11.1.0",
+            "php": "8.3",
+            "phpunit": "12.5.31",
+            "scaffold": "testbench",
+            "resolution": "strict"
+        }
+    ]
+}

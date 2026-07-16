@@ -50,6 +50,121 @@ jobs:
     - name: Build Laravel 12 Workbench scaffold
       run: composer build
 
+  laravel-matrix:
+    name: Resolve Laravel dependency matrix
+    needs: build
+    if: ${{ github.server_url == 'https://github.com' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install matrix validator PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.3'
+        coverage: none
+
+    - name: Validate and export dependency matrix
+      id: matrix
+      run: |
+        php scripts/ci/laravel-matrix.php self-test
+        php scripts/ci/laravel-matrix.php export >> "$GITHUB_OUTPUT"
+
+  laravel-compatibility:
+    name: ${{ matrix.label }} compatibility
+    needs: [build, laravel-matrix]
+    if: ${{ github.server_url == 'https://github.com' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.laravel-matrix.outputs.matrix) }}
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 10
+
+    - name: Install PHP ${{ matrix.php }}
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: ${{ matrix.php }}
+        extensions: pdo_sqlite
+        coverage: none
+      env:
+        fail-fast: true
+
+    - name: Validate ${{ matrix.label }} dependency contract
+      run: >-
+        php scripts/ci/laravel-matrix.php validate
+        --laravel=${{ matrix.laravel }}
+        --testbench=${{ matrix.testbench }}
+        --workbench=${{ matrix.workbench }}
+        --php=${{ matrix.php }}
+        --phpunit=${{ matrix.phpunit }}
+        --scaffold=${{ matrix.scaffold }}
+        --resolution=${{ matrix.resolution }}
+
+    - name: Cache ${{ matrix.label }} Composer packages
+      uses: actions/cache@v5
+      with:
+        path: vendor
+        key: >-
+          ${{ runner.os }}-laravel-${{ matrix.laravel }}-php-${{ matrix.php }}-testbench-${{ matrix.testbench }}-workbench-${{ matrix.workbench }}-phpunit-${{ matrix.phpunit }}-${{ hashFiles('composer.json') }}
+
+    - name: Pin ${{ matrix.label }} qualification dependencies
+      run: |
+        composer require --dev --no-update \
+          "laravel/framework:${{ matrix.laravel }}" \
+          "orchestra/testbench:${{ matrix.testbench }}" \
+          "orchestra/workbench:${{ matrix.workbench }}" \
+          "phpunit/phpunit:${{ matrix.phpunit }}"
+
+    - name: Resolve isolated legacy compatibility graph
+      if: ${{ matrix.resolution == 'legacy' }}
+      env:
+        COMPOSER_MEMORY_LIMIT: -1
+      run: >-
+        composer update
+        --with-all-dependencies
+        --prefer-dist
+        --no-progress
+        --no-interaction
+        --no-security-blocking
+
+    - name: Resolve isolated current compatibility graph
+      if: ${{ matrix.resolution == 'strict' }}
+      env:
+        COMPOSER_MEMORY_LIMIT: -1
+      run: >-
+        composer update
+        --with-all-dependencies
+        --prefer-dist
+        --no-progress
+        --no-interaction
+
+    - name: Verify installed ${{ matrix.label }} dependency graph
+      run: >-
+        php scripts/ci/laravel-matrix.php assert-installed
+        --laravel=${{ matrix.laravel }}
+        --testbench=${{ matrix.testbench }}
+        --workbench=${{ matrix.workbench }}
+        --php=${{ matrix.php }}
+        --phpunit=${{ matrix.phpunit }}
+        --scaffold=${{ matrix.scaffold }}
+        --resolution=${{ matrix.resolution }}
+
+    - name: Build ${{ matrix.label }} Workbench scaffold
+      run: composer build
+
+    - name: Run ${{ matrix.label }} SQLite qualification
+      run: composer test-sqlite
+
   qualification:
     name: Complete database qualification (${{ matrix.database }})
     needs: build
