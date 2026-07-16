@@ -10,6 +10,11 @@ use Waterline\Tests\TestCase;
 
 class UserPreferencesControllerTest extends TestCase
 {
+    protected function supportsSqlServerDatabaseQualification(): bool
+    {
+        return true;
+    }
+
     public function testPreferencesCanBePersistedForOperatorSurface(): void
     {
         config()->set('waterline.preferences.scope', 'ops');

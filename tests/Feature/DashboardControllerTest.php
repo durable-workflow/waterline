@@ -8,6 +8,11 @@ class DashboardControllerTest extends TestCase
 {
     private const PACKAGE_MANIFEST = __DIR__.'/../../public/mix-manifest.json';
 
+    protected function requiresDatabaseMigrations(): bool
+    {
+        return false;
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

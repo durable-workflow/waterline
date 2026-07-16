@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use function Orchestra\Testbench\artisan;
-use function Orchestra\Testbench\default_skeleton_path;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 use PDO;
 use Waterline\Waterline;
@@ -20,6 +19,12 @@ abstract class TestCase extends BaseTestCase
 
     protected function setUp(): void
     {
+        if ($this->shouldSkipSqlServerDatabaseCoverage()) {
+            $this->markTestSkipped(
+                'SQL Server qualification is scoped to legacy repository coverage until workflow v2 supports SQL Server execution paths.'
+            );
+        }
+
         parent::setUp();
 
         Carbon::setTestNow('2022-01-01');
@@ -29,12 +34,6 @@ abstract class TestCase extends BaseTestCase
         });
 
         Waterline::$principalUsing = null;
-
-        if ($this->shouldSkipSqlServerV2FeatureCoverage()) {
-            $this->markTestSkipped(
-                'Waterline v2 feature coverage runs on MySQL, PostgreSQL, and SQLite; SQL Server is scoped to legacy repository coverage until workflow v2 supports SQL Server execution paths.'
-            );
-        }
     }
 
     protected function getEnvironmentSetUp($app)
@@ -45,6 +44,10 @@ abstract class TestCase extends BaseTestCase
 
     protected function defineDatabaseMigrations()
     {
+        if (! $this->requiresDatabaseMigrations()) {
+            return;
+        }
+
         $this->app->bind('db.connector.sqlsrv', function () {
             return new class extends \Illuminate\Database\Connectors\SqlServerConnector
             {
@@ -56,16 +59,36 @@ abstract class TestCase extends BaseTestCase
             };
         });
 
-        $this->loadMigrationsFrom(default_skeleton_path('migrations'));
-        artisan($this, 'migrate:fresh');
+        if ($this->isSqlServerQualification()) {
+            artisan($this, 'migrate:fresh', [
+                '--path' => $this->sqlServerMigrationPaths(),
+                '--realpath' => true,
+            ]);
+        } else {
+            artisan($this, 'migrate:fresh');
+        }
 
-        $this->beforeApplicationDestroyed(function (): void {
-            if (DB::connection()->getDriverName() === 'sqlite') {
+        $databaseConnection = DB::connection();
+        $databaseConnectionName = $databaseConnection->getName();
+        $databaseDriver = $databaseConnection->getDriverName();
+
+        $this->beforeApplicationDestroyed(function () use ($databaseConnectionName, $databaseDriver): void {
+            if ($databaseDriver === 'sqlite') {
                 return;
             }
 
-            artisan($this, 'migrate:rollback');
+            artisan($this, 'migrate:rollback', ['--database' => $databaseConnectionName]);
         });
+    }
+
+    protected function requiresDatabaseMigrations(): bool
+    {
+        return true;
+    }
+
+    protected function supportsSqlServerDatabaseQualification(): bool
+    {
+        return false;
     }
 
     protected function getPackageProviders($app)
@@ -91,13 +114,32 @@ abstract class TestCase extends BaseTestCase
         ];
     }
 
-    private function shouldSkipSqlServerV2FeatureCoverage(): bool
+    private function shouldSkipSqlServerDatabaseCoverage(): bool
     {
-        if (! str_starts_with(static::class, 'Waterline\\Tests\\Feature\\V2')) {
-            return false;
-        }
+        return $this->isSqlServerQualification()
+            && $this->requiresDatabaseMigrations()
+            && ! $this->supportsSqlServerDatabaseQualification();
+    }
 
-        return DB::connection()->getDriverName() === 'sqlsrv';
+    private function isSqlServerQualification(): bool
+    {
+        return ($_ENV['DB_CONNECTION'] ?? getenv('DB_CONNECTION')) === 'sqlsrv';
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function sqlServerMigrationPaths(): array
+    {
+        $workflowMigrations = glob(
+            dirname(__DIR__).'/vendor/durable-workflow/workflow/src/migrations/2022_*.php'
+        );
+        $waterlineMigrations = glob(dirname(__DIR__).'/database/migrations/*.php');
+
+        return array_values(array_merge(
+            $workflowMigrations === false ? [] : $workflowMigrations,
+            $waterlineMigrations === false ? [] : $waterlineMigrations,
+        ));
     }
 
     protected function ensureLegacyVisibilityColumnsPresent(): void

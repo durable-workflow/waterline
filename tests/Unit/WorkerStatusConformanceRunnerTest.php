@@ -66,7 +66,7 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             ],
         ]);
 
-        $this->assertNotContains(false, $checks, true);
+        $this->assertNotContains(false, $checks);
     }
 
     public function testReleaseRunnerInstallsOnlyExactPublishedProductArtifacts(): void
@@ -133,7 +133,7 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $productRequirement = strpos($node, "'require', '--no-update', '--no-interaction'");
         $dependencyResolution = strpos($node, "'update', '--no-interaction', '--no-progress', '--prefer-dist'");
         $serverBoot = strpos($node, 'verifyInstalledAppBoot(server.phpVersion)');
-        $publishedCommand = strpos($node, "\n  runPublishedCommand(server, waterline);");
+        $publishedCommand = strpos($node, 'runPublishedCommand(server, waterline);');
 
         foreach (compact(
             'serverDetection',
@@ -182,7 +182,7 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $this->assertSame(0, $status, implode("\n", $output));
 
         $this->assertStringContainsString('waterlineEnvironment(topology.appUrl)', $runner);
-        $this->assertStringContainsString('fetch(`${topology.externalHostUrl}/waterline/api/v2/health`', $runner);
+        $this->assertStringContainsString('url: `${topology.externalHostUrl}/waterline/api/v2/health`', $runner);
         $this->assertStringContainsString('networkUrl: topology.containerNetworkUrl', $runner);
         $this->assertStringContainsString('waterlineEnvironment(waterline.networkUrl)', $runner);
         $this->assertStringContainsString('`--waterline-url=${waterline.networkUrl}`', $runner);

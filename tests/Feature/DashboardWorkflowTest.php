@@ -11,6 +11,11 @@ use Workflow\Serializers\Serializer;
 
 class DashboardWorkflowTest extends TestCase
 {
+    protected function supportsSqlServerDatabaseQualification(): bool
+    {
+        return true;
+    }
+
     public function testIndexNone()
     {
         $storedWorkflow = StoredWorkflow::create([

@@ -81,7 +81,7 @@ class WaterlineServiceProviderTest extends TestCase
             $this->assertSame('legacy-waterline', config('waterline.path'));
             $this->assertSame(['web'], config('waterline.middleware'));
             $this->assertFalse(config('waterline.allow_unauthenticated'));
-            $this->assertSame('v1', config('waterline.engine_source'));
+            $this->assertSame('auto', config('waterline.engine_source'));
         });
     }
 

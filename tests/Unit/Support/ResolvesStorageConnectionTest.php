@@ -9,6 +9,11 @@ use Waterline\Traits\ResolvesStorageConnection;
 
 class ResolvesStorageConnectionTest extends TestCase
 {
+    protected function requiresDatabaseMigrations(): bool
+    {
+        return false;
+    }
+
     public function testObserverModelsUseWaterlineLocalStorageConnectionResolver(): void
     {
         foreach ([WorkerRegistration::class, WorkerBuildIdRollout::class] as $model) {

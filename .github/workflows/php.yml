@@ -51,15 +51,32 @@ jobs:
       run: composer build
 
   qualification:
-    name: Complete database qualification
+    name: Complete database qualification (${{ matrix.database }})
     needs: build
     if: ${{ github.server_url == 'https://github.com' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 80
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - database: mssql
+            extension: pdo_sqlsrv
+            composer-script: test-mssql
+          - database: mysql
+            extension: pdo_mysql
+            composer-script: test-mysql
+          - database: pgsql
+            extension: pdo_pgsql
+            composer-script: test-pgsql
+          - database: sqlite
+            extension: pdo_sqlite
+            composer-script: test-sqlite
 
     services:
       mssql:
-        image: mcr.microsoft.com/mssql/server:2022-latest
+        image: ${{ matrix.database == 'mssql' && 'mcr.microsoft.com/mssql/server:2022-latest' || '' }}
         env:
           ACCEPT_EULA: Y
           MSSQL_PID: Express
@@ -68,7 +85,7 @@ jobs:
           - 1433:1433
 
       mysql:
-        image: mysql
+        image: ${{ matrix.database == 'mysql' && 'mysql' || '' }}
         env:
           MYSQL_ROOT_PASSWORD: password
           MYSQL_USER: testing
@@ -78,7 +95,7 @@ jobs:
           - 3306:3306
 
       postgres:
-        image: postgres
+        image: ${{ matrix.database == 'pgsql' && 'postgres' || '' }}
         env:
           POSTGRES_USER: testing
           POSTGRES_PASSWORD: password
@@ -97,6 +114,7 @@ jobs:
         fetch-depth: 10
 
     - name: Install mssql-tools
+      if: ${{ matrix.database == 'mssql' }}
       run: |
         sudo apt-get update
         sudo apt-get install -y curl gnupg2
@@ -109,7 +127,7 @@ jobs:
       uses: shivammathur/setup-php@v2
       with:
         php-version: '8.2'
-        extensions: pdo_mysql, pdo_pgsql, pdo_sqlite, pdo_sqlsrv
+        extensions: ${{ matrix.extension }}
         coverage: none
       env:
         fail-fast: true
@@ -129,6 +147,7 @@ jobs:
       run: composer install --prefer-dist --no-progress --no-interaction
 
     - name: Wait for SQL Server and create databases
+      if: ${{ matrix.database == 'mssql' }}
       shell: bash
       run: |
         set -euo pipefail
@@ -172,48 +191,19 @@ jobs:
           -Q "IF DB_ID(N'testing') IS NULL CREATE DATABASE [testing];"
 
     - name: Verify database drivers and connections
-      run: php scripts/ci/preflight-databases.php "$DB_HOST"
+      env:
+        DB_HOST: 127.0.0.1
+      run: php scripts/ci/preflight-databases.php "${{ matrix.database }}" "$DB_HOST"
 
-    - name: Run MSSQL test suite
+    - name: Run ${{ matrix.database }} test suite
       timeout-minutes: 17
+      env:
+        DB_HOST: 127.0.0.1
       run: |
         status=0
-        timeout --foreground --signal=TERM --kill-after=30s 15m composer test-mssql || status=$?
+        timeout --foreground --signal=TERM --kill-after=30s 15m composer "${{ matrix.composer-script }}" || status=$?
         if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-          echo "::error::MSSQL test suite exceeded its 15-minute limit"
-          exit 1
-        fi
-        exit "$status"
-
-    - name: Run MySQL test suite
-      timeout-minutes: 17
-      run: |
-        status=0
-        timeout --foreground --signal=TERM --kill-after=30s 15m composer test-mysql || status=$?
-        if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-          echo "::error::MySQL test suite exceeded its 15-minute limit"
-          exit 1
-        fi
-        exit "$status"
-
-    - name: Run PostgreSQL test suite
-      timeout-minutes: 17
-      run: |
-        status=0
-        timeout --foreground --signal=TERM --kill-after=30s 15m composer test-pgsql || status=$?
-        if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-          echo "::error::PostgreSQL test suite exceeded its 15-minute limit"
-          exit 1
-        fi
-        exit "$status"
-
-    - name: Run SQLite test suite
-      timeout-minutes: 17
-      run: |
-        status=0
-        timeout --foreground --signal=TERM --kill-after=30s 15m composer test-sqlite || status=$?
-        if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-          echo "::error::SQLite test suite exceeded its 15-minute limit"
+          echo "::error::${{ matrix.database }} test suite exceeded its 15-minute limit"
           exit 1
         fi
         exit "$status"

@@ -7,6 +7,11 @@ use Workflow\Models\StoredWorkflow;
 
 class DashboardStatsControllerTest extends TestCase
 {
+    protected function supportsSqlServerDatabaseQualification(): bool
+    {
+        return true;
+    }
+
     public function testIndexNone()
     {
         $response = $this
