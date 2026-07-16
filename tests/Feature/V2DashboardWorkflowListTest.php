@@ -6,6 +6,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Waterline\Models\SavedWorkflowView;
 use Waterline\Tests\TestCase;
 use Workflow\V2\Enums\RunStatus;
@@ -152,10 +153,12 @@ class V2DashboardWorkflowListTest extends TestCase
 
         $startedAt = Carbon::parse('2022-01-01 12:05:00');
         $createdAt = Carbon::parse('2022-01-01 12:00:00');
+        $runningRunId = (string) Str::ulid();
+        $completedRunId = (string) Str::ulid();
 
         $runningRun = $this->createSparseSummaryRun(
             instanceId: 'worker-versioning-running-instance',
-            runId: 'worker-versioning-running-run',
+            runId: $runningRunId,
             status: 'waiting',
             statusBucket: 'running',
             compatibility: 'build-v1',
@@ -165,7 +168,7 @@ class V2DashboardWorkflowListTest extends TestCase
 
         $completedRun = $this->createSparseSummaryRun(
             instanceId: 'worker-versioning-completed-instance',
-            runId: 'worker-versioning-completed-run',
+            runId: $completedRunId,
             status: 'completed',
             statusBucket: 'completed',
             compatibility: 'build-v2',

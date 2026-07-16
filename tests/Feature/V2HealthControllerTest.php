@@ -523,8 +523,9 @@ class V2HealthControllerTest extends TestCase
             'namespace' => 'worker-versioning-conformance',
             'run_count' => 1,
         ]);
+        $noCompatibleRunId = (string) Str::ulid();
         $noCompatibleRun = WorkflowRun::create([
-            'id' => 'worker-versioning-no-compatible-run',
+            'id' => $noCompatibleRunId,
             'workflow_instance_id' => $noCompatibleInstance->id,
             'run_number' => 1,
             'workflow_class' => 'WorkflowClass',

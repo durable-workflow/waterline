@@ -80,6 +80,7 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
             'APP_DEBUG' => 'false',
             'APP_KEY' => 'base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI=',
             'DB_CONNECTION' => 'host',
+            'DB_DATABASE' => $this->hostDatabase,
             'WATERLINE_WORKFLOW_STORAGE_CONNECTION' => 'server_storage',
             'WATERLINE_WORKFLOW_DB_CONNECTION' => 'sqlite',
             'WATERLINE_WORKFLOW_DB_DATABASE' => $this->serverDatabase,

@@ -83,9 +83,11 @@ jobs:
           MSSQL_SA_PASSWORD: P@ssword
         ports:
           - 1433:1433
+        options: >-
+          --tmpfs /var/opt/mssql/data:rw,uid=10001,gid=0,mode=0770,size=2g
 
       mysql:
-        image: ${{ matrix.database == 'mysql' && 'mysql' || '' }}
+        image: ${{ matrix.database == 'mysql' && 'mysql:8.4' || '' }}
         env:
           MYSQL_ROOT_PASSWORD: password
           MYSQL_USER: testing
@@ -93,18 +95,22 @@ jobs:
           MYSQL_DATABASE: testing
         ports:
           - 3306:3306
+        options: >-
+          --tmpfs /var/lib/mysql:rw,noexec,nosuid,size=2g
 
       postgres:
-        image: ${{ matrix.database == 'pgsql' && 'postgres' || '' }}
+        image: ${{ matrix.database == 'pgsql' && 'postgres:17' || '' }}
         env:
           POSTGRES_USER: testing
           POSTGRES_PASSWORD: password
           POSTGRES_DB: testing
         ports:
           - 5432:5432
+        options: >-
+          --tmpfs /var/lib/postgresql/data:rw,noexec,nosuid,size=2g
 
       redis:
-        image: redis
+        image: redis:7-alpine
         ports:
           - 6379:6379
 
