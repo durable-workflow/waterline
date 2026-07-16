@@ -153,12 +153,32 @@ final class V2HybridMigrationViewTest extends TestCase
         $this->legacyWorkflow('LegacyWaitingWorkflow', 'waiting');
         config()->set('waterline.namespace', 'tenant-a');
 
-        $this->get('/waterline/api/v2/health')
+        $health = $this->get('/waterline/api/v2/health')
             ->assertOk()
+            ->assertJsonPath('status', 'warning')
+            ->assertJsonPath('healthy', true)
             ->assertJsonPath('hybrid_migration_view.available', false)
             ->assertJsonPath('hybrid_migration_view.active', false)
             ->assertJsonPath('hybrid_migration_view.reason', 'namespace_scoped_view')
-            ->assertJsonPath('hybrid_migration_view.legacy_workflows_present', true);
+            ->assertJsonPath('hybrid_migration_view.legacy_workflows_present', true)
+            ->assertJsonPath('categories.correctness.status', 'warning')
+            ->json();
+
+        $categorizedChecks = collect($health['checks'] ?? [])
+            ->filter(static fn (array $check): bool => isset($check['category']));
+        $migrationCheck = $categorizedChecks->firstWhere('name', 'hybrid_migration_view');
+
+        $this->assertIsArray($migrationCheck);
+        $this->assertSame('correctness', $migrationCheck['category'] ?? null);
+        $this->assertSame('warning', $migrationCheck['status'] ?? null);
+        $this->assertSame(
+            $categorizedChecks->where('category', 'correctness')->count(),
+            $health['categories']['correctness']['check_count'] ?? null,
+        );
+        $this->assertSame(
+            $categorizedChecks->where('category', 'acceleration')->count(),
+            $health['categories']['acceleration']['check_count'] ?? null,
+        );
     }
 
     public function testQualifiedStringAndUuidLegacyIdsPreserveBareV2Precedence(): void
@@ -341,4 +361,36 @@ final class StringIdStoredWorkflow extends StoredWorkflow
     public $incrementing = false;
 
     protected $keyType = 'string';
+
+    public function logs(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(
+            config('workflows.stored_workflow_log_model', \Workflow\Models\StoredWorkflowLog::class),
+            'stored_workflow_id',
+        )->orderBy('id');
+    }
+
+    public function signals(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(
+            config('workflows.stored_workflow_signal_model', \Workflow\Models\StoredWorkflowSignal::class),
+            'stored_workflow_id',
+        )->orderBy('id');
+    }
+
+    public function timers(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(
+            config('workflows.stored_workflow_timer_model', \Workflow\Models\StoredWorkflowTimer::class),
+            'stored_workflow_id',
+        )->orderBy('id');
+    }
+
+    public function exceptions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(
+            config('workflows.stored_workflow_exception_model', \Workflow\Models\StoredWorkflowException::class),
+            'stored_workflow_id',
+        )->orderBy('id');
+    }
 }

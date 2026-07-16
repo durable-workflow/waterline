@@ -4,6 +4,7 @@ namespace Waterline\Support;
 
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
+use Throwable;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Models\WorkflowFailure;
 use Workflow\V2\Models\WorkflowHistoryEvent;
@@ -68,13 +69,7 @@ class RunDiagnostics
      */
     public function forRun(WorkflowRun $run, array $detail, ?CarbonInterface $now = null): array
     {
-        $run->loadMissing([
-            'activityExecutions.attempts',
-            'failures',
-            'historyEvents',
-            'summary',
-            'tasks',
-        ]);
+        $this->loadAvailableRunRelations($run);
 
         $now ??= now();
         $diagnostics = [];
@@ -88,6 +83,22 @@ class RunDiagnostics
         $diagnostics = array_merge($diagnostics, $this->noCompatibleWorkerForTasks($detail));
 
         return $this->sortDiagnostics($diagnostics);
+    }
+
+    private function loadAvailableRunRelations(WorkflowRun $run): void
+    {
+        foreach ([
+            'activityExecutions.attempts' => 'activityExecutions',
+            'failures' => 'failures',
+            'historyEvents' => 'historyEvents',
+            'tasks' => 'tasks',
+        ] as $relation => $rootRelation) {
+            try {
+                $run->loadMissing([$relation]);
+            } catch (Throwable) {
+                $run->setRelation($rootRelation, collect());
+            }
+        }
     }
 
     /**

@@ -59,6 +59,8 @@ class V2HealthController extends Controller
                 $routingDrains,
             );
 
+            $payload = $this->withFinalHealthSummary($payload);
+
             return response()->json($payload, 503);
         }
 
@@ -88,6 +90,7 @@ class V2HealthController extends Controller
         $snapshot['readiness_contract'] = $engineSource['readiness_contract'] ?? null;
         $snapshot = $this->withWorkflowPackageApiFloorCheck($snapshot);
         $snapshot = $this->annotateWorkerRegistrations($snapshot, $namespace);
+        $snapshot = $this->withFinalHealthSummary($snapshot);
         $snapshot['coordination_alerts'] = $this->coordinationAlerts(
             $snapshot['checks'],
             $snapshot['queue_visibility'],
@@ -112,9 +115,62 @@ class V2HealthController extends Controller
             'status' => ($status['available'] ?? false) === true || ! $applicable
                 ? 'ok'
                 : 'warning',
+            'category' => HealthCheck::CATEGORY_CORRECTNESS,
             'message' => $status['message'] ?? 'Finish-on-v1 migration view readiness is unknown.',
             'meta' => $status,
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $snapshot
+     * @return array<string, mixed>
+     */
+    private function withFinalHealthSummary(array $snapshot): array
+    {
+        $checks = array_values(array_filter(
+            is_array($snapshot['checks'] ?? null) ? $snapshot['checks'] : [],
+            'is_array',
+        ));
+        $categorized = [
+            HealthCheck::CATEGORY_CORRECTNESS => [],
+            HealthCheck::CATEGORY_ACCELERATION => [],
+        ];
+
+        foreach ($checks as $check) {
+            $category = $check['category'] ?? null;
+
+            if (is_string($category) && array_key_exists($category, $categorized)) {
+                $categorized[$category][] = $check;
+            }
+        }
+
+        $snapshot['checks'] = $checks;
+        $snapshot['status'] = $this->healthStatus($checks);
+        $snapshot['healthy'] = $snapshot['status'] !== 'error';
+        $snapshot['categories'] = [];
+
+        foreach ($categorized as $category => $categoryChecks) {
+            $snapshot['categories'][$category] = [
+                'status' => $this->healthStatus($categoryChecks),
+                'check_count' => count($categoryChecks),
+            ];
+        }
+
+        return $snapshot;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $checks
+     */
+    private function healthStatus(array $checks): string
+    {
+        $statuses = array_column($checks, 'status');
+
+        if (in_array('error', $statuses, true)) {
+            return 'error';
+        }
+
+        return in_array('warning', $statuses, true) ? 'warning' : 'ok';
     }
 
     /**
@@ -179,22 +235,6 @@ class V2HealthController extends Controller
         $checks = is_array($snapshot['checks'] ?? null) ? array_values($snapshot['checks']) : [];
         array_splice($checks, min(1, count($checks)), 0, [$check]);
         $snapshot['checks'] = $checks;
-
-        if (($snapshot['status'] ?? null) !== 'error') {
-            $snapshot['status'] = 'warning';
-            $snapshot['healthy'] = true;
-        }
-
-        $categories = is_array($snapshot['categories'] ?? null) ? $snapshot['categories'] : [];
-        $correctness = is_array($categories['correctness'] ?? null)
-            ? $categories['correctness']
-            : ['status' => 'ok', 'check_count' => 0];
-        $correctness['check_count'] = $this->integerValue($correctness['check_count'] ?? 0) + 1;
-        if (($correctness['status'] ?? null) !== 'error') {
-            $correctness['status'] = 'warning';
-        }
-        $categories['correctness'] = $correctness;
-        $snapshot['categories'] = $categories;
 
         return $snapshot;
     }

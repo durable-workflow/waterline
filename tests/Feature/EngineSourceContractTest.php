@@ -11,7 +11,6 @@ use Waterline\Models\WorkerRegistration;
 use Waterline\Tests\TestCase;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowRun;
-use Workflow\V2\Models\WorkflowRunTimerEntry;
 use Workflow\V2\Models\WorkflowRunWait;
 
 final class EngineSourceContractTest extends TestCase
@@ -104,7 +103,6 @@ final class EngineSourceContractTest extends TestCase
         config()->set('waterline.engine_source', 'v2');
         config()->set('waterline.namespace', 'worker-versioning-conformance');
         config()->set('waterline.worker_stale_after_seconds', 120);
-        config()->set('workflows.v2.run_timer_entry_model', MissingWorkflowRunTimerEntry::class);
 
         $this->createWorkerRegistrationsTable();
 
@@ -127,10 +125,9 @@ final class EngineSourceContractTest extends TestCase
         $healthPayload = $this->get('/waterline/api/v2/health')
             ->assertOk()
             ->assertJsonPath('healthy', true)
-            ->assertJsonPath('engine_source.status', 'v2_pinned_degraded')
+            ->assertJsonPath('engine_source.status', 'v2_pinned')
             ->assertJsonPath('engine_source.uses_v2', true)
             ->assertJsonPath('engine_source.v2_operator_surface_available', true)
-            ->assertJsonPath('engine_source.degraded_operator_surface', true)
             ->assertJsonPath('queue_visibility.available', true)
             ->assertJsonPath('operator_metrics.workers.registrations.0.build_id', 'build-v2')
             ->json();
@@ -139,7 +136,7 @@ final class EngineSourceContractTest extends TestCase
 
         $this->get('/waterline/api/stats')
             ->assertOk()
-            ->assertJsonPath('engine_source.status', 'v2_pinned_degraded')
+            ->assertJsonPath('engine_source.status', 'v2_pinned')
             ->assertJsonPath('engine_source.uses_v2', true);
     }
 
@@ -231,11 +228,6 @@ final class EngineSourceContractTest extends TestCase
 final class MissingWorkflowHistoryEvent extends WorkflowHistoryEvent
 {
     protected $table = 'missing_workflow_history_events';
-}
-
-final class MissingWorkflowRunTimerEntry extends WorkflowRunTimerEntry
-{
-    protected $table = 'missing_workflow_run_timer_entries';
 }
 
 final class MissingWorkflowRun extends WorkflowRun

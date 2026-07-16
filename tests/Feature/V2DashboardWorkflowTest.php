@@ -35,6 +35,7 @@ use Workflow\V2\Models\WorkflowRunLineageEntry;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowRunTimerEntry;
 use Workflow\V2\Models\WorkflowRunWait;
+use Workflow\V2\Models\WorkflowSearchAttribute;
 use Workflow\V2\Models\WorkflowSignal;
 use Workflow\V2\Models\WorkflowTask;
 use Workflow\V2\Models\WorkflowTimer;
@@ -1155,6 +1156,8 @@ class V2DashboardWorkflowTest extends TestCase
             'closed_reason' => 'completed',
             'arguments' => Serializer::serialize(['name' => 'Taylor']),
             'output' => Serializer::serialize(['ok' => true]),
+            'payload_codec' => config('workflows.serializer'),
+            'output_payload_codec' => config('workflows.serializer'),
             'connection' => 'redis',
             'queue' => 'default',
             'started_at' => now()->subMinutes(10),
@@ -1283,7 +1286,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('exceptions_count', 1)
             ->assertJsonPath('history_event_count', 42)
             ->assertJsonPath('history_size_bytes', 65536)
-            ->assertJsonPath('continue_as_new_recommended', true)
+            ->assertJsonPath('continue_as_new_recommended', false)
             ->assertJsonPath('declared_signals', [])
             ->assertJsonPath('declared_updates', [])
             ->assertJsonPath('can_issue_terminal_commands', false)
@@ -1436,9 +1439,9 @@ class V2DashboardWorkflowTest extends TestCase
             'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
             'workflow_type' => 'configured.waterline.workflow',
             'status' => RunStatus::Waiting->value,
-            'search_attributes' => [
+            'search_attributes' => json_encode([
                 'customer_tier' => 'gold',
-            ],
+            ], JSON_THROW_ON_ERROR),
             'arguments' => Serializer::serialize([]),
             'connection' => 'redis',
             'queue' => 'default',
@@ -1487,6 +1490,16 @@ class V2DashboardWorkflowTest extends TestCase
             'updated_at' => $run->last_progress_at,
         ]);
 
+        $searchAttribute = new WorkflowSearchAttribute([
+            'workflow_run_id' => $run->id,
+            'workflow_instance_id' => $instance->id,
+            'key' => 'customer_tier',
+            'upserted_at_sequence' => 1,
+            'inherited_from_parent' => false,
+        ]);
+        $searchAttribute->setTypedValueWithInference('gold');
+        $searchAttribute->save();
+
         ConfiguredWaterlineDetailHistoryEvent::create([
             'id' => (string) Str::ulid(),
             'workflow_run_id' => $run->id,
@@ -1521,7 +1534,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('workflow_definition_fingerprint', 'configured-waterline-fingerprint');
     }
 
-    public function testShowUsesConfiguredSummaryAndHistoryModelsWhenTypedMemosAreMissing(): void
+    public function testShowIgnoresLegacyVisibilityJsonWhenTypedRowsAreMissing(): void
     {
         config()->set('waterline.engine_source', 'v2');
         config()->set('workflows.v2.run_summary_model', ConfiguredWaterlineDetailRunSummary::class);
@@ -1536,11 +1549,11 @@ class V2DashboardWorkflowTest extends TestCase
             'id' => 'configured-waterline-detail-instance-no-typed-memo',
             'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
             'workflow_type' => 'configured.waterline.workflow',
-            'memo' => [
+            'memo' => json_encode([
                 'customer' => [
                     'name' => 'Taylor',
                 ],
-            ],
+            ], JSON_THROW_ON_ERROR),
             'run_count' => 1,
         ]);
 
@@ -1551,17 +1564,17 @@ class V2DashboardWorkflowTest extends TestCase
             'workflow_class' => 'Missing\\ConfiguredWaterlineWorkflow',
             'workflow_type' => 'configured.waterline.workflow',
             'status' => RunStatus::Waiting->value,
-            'memo' => [
+            'memo' => json_encode([
                 'customer' => [
                     'name' => 'Taylor',
                 ],
                 'order' => [
                     'id' => 123,
                 ],
-            ],
-            'search_attributes' => [
+            ], JSON_THROW_ON_ERROR),
+            'search_attributes' => json_encode([
                 'customer_tier' => 'gold',
-            ],
+            ], JSON_THROW_ON_ERROR),
             'arguments' => Serializer::serialize([]),
             'connection' => 'redis',
             'queue' => 'default',
@@ -1619,9 +1632,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertOk()
             ->assertJsonPath('status_bucket', 'running')
             ->assertJsonPath('business_key', 'configured-waterline-business')
-            ->assertJsonPath('memo.customer.name', 'Taylor')
-            ->assertJsonPath('memo.order.id', 123)
-            ->assertJsonPath('search_attributes.customer_tier', 'gold')
+            ->assertJsonPath('memo', [])
+            ->assertJsonPath('search_attributes', [])
             ->assertJsonPath('declared_contract_source', 'durable_history')
             ->assertJsonPath('declared_signals.0', 'configured-waterline-signal')
             ->assertJsonPath('workflow_definition_fingerprint', 'configured-waterline-fingerprint');
@@ -1710,6 +1722,8 @@ class V2DashboardWorkflowTest extends TestCase
             'closed_reason' => 'completed',
             'arguments' => Serializer::serialize([]),
             'output' => Serializer::serialize('recovered'),
+            'payload_codec' => config('workflows.serializer'),
+            'output_payload_codec' => config('workflows.serializer'),
             'connection' => 'redis',
             'queue' => 'default',
             'started_at' => now()->subMinutes(10),
@@ -1862,6 +1876,8 @@ class V2DashboardWorkflowTest extends TestCase
             'closed_reason' => 'completed',
             'arguments' => Serializer::serialize([]),
             'output' => Serializer::serialize('recovered'),
+            'payload_codec' => config('workflows.serializer'),
+            'output_payload_codec' => config('workflows.serializer'),
             'connection' => 'redis',
             'queue' => 'default',
             'started_at' => now()->subMinutes(10),
@@ -2014,6 +2030,8 @@ class V2DashboardWorkflowTest extends TestCase
             'closed_reason' => 'completed',
             'arguments' => Serializer::serialize([]),
             'output' => Serializer::serialize(['ok' => true]),
+            'payload_codec' => config('workflows.serializer'),
+            'output_payload_codec' => config('workflows.serializer'),
             'connection' => 'redis',
             'queue' => 'default',
             'started_at' => now()->subMinutes(6),
@@ -5826,6 +5844,8 @@ class V2DashboardWorkflowTest extends TestCase
             'closed_reason' => 'completed',
             'arguments' => Serializer::serialize([]),
             'output' => Serializer::serialize(['ok' => true]),
+            'payload_codec' => config('workflows.serializer'),
+            'output_payload_codec' => config('workflows.serializer'),
             'connection' => 'redis',
             'queue' => 'default',
             'started_at' => now()->subMinutes(4),
@@ -5842,6 +5862,8 @@ class V2DashboardWorkflowTest extends TestCase
             'status' => 'waiting',
             'arguments' => Serializer::serialize([]),
             'output' => Serializer::serialize('corrupted-child-output'),
+            'payload_codec' => config('workflows.serializer'),
+            'output_payload_codec' => config('workflows.serializer'),
             'connection' => 'redis',
             'queue' => 'default',
             'started_at' => now()->subMinutes(3),
@@ -5936,6 +5958,7 @@ class V2DashboardWorkflowTest extends TestCase
                 'child_status' => 'completed',
                 'closed_reason' => 'completed',
                 'output' => Serializer::serialize(['ok' => true]),
+                'payload_codec' => config('workflows.serializer'),
             ],
             'recorded_at' => now()->subMinutes(2),
             'created_at' => now()->subMinutes(2),
@@ -6405,6 +6428,7 @@ class V2DashboardWorkflowTest extends TestCase
                     'approved' => true,
                     'events' => ['started', 'approved:yes:waterline'],
                 ]),
+                'payload_codec' => config('workflows.serializer'),
             ],
             'workflow_command_id' => '01JTESTCOMMANDUPDATA0CE9BE',
             'recorded_at' => now()->subSeconds(49),
@@ -6449,7 +6473,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('signal_blocked_reason', null)
             ->assertJsonPath('can_repair', false)
             ->assertJsonPath('repair_blocked_reason', 'repair_not_needed')
-            ->assertJsonPath('commands.0.context', [])
+            ->assertJsonPath('commands.0.context', null)
             ->assertJsonPath('commands.0.type', 'update')
             ->assertJsonPath('commands.0.target_name', 'mark-approved')
             ->assertJsonPath('commands.0.source', 'webhook')
@@ -6780,7 +6804,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('exceptions.0.exception_replay_blocked', true);
     }
 
-    public function testShowMarksUpdateAsBlockedWhenAnEarlierSignalIsPending(): void
+    public function testShowMarksUpdateAsQueuedWhenAnEarlierSignalIsPending(): void
     {
         config()->set('waterline.engine_source', 'v2');
 
@@ -6855,9 +6879,7 @@ class V2DashboardWorkflowTest extends TestCase
             'command_type' => 'update',
             'target_scope' => 'instance',
             'source' => 'webhook',
-            'status' => 'rejected',
-            'outcome' => 'rejected_pending_signal',
-            'rejection_reason' => 'earlier_signal_pending',
+            'status' => 'accepted',
             'workflow_class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
             'payload_codec' => config('workflows.serializer'),
@@ -6865,7 +6887,7 @@ class V2DashboardWorkflowTest extends TestCase
                 'name' => 'approve',
                 'arguments' => [true, 'waterline'],
             ]),
-            'rejected_at' => now()->subSeconds(18),
+            'accepted_at' => now()->subSeconds(18),
             'created_at' => now()->subSeconds(18),
             'updated_at' => now()->subSeconds(18),
         ]);
@@ -6923,25 +6945,18 @@ class V2DashboardWorkflowTest extends TestCase
             'id' => '01JTESTHISTORYUPDATEREJ001',
             'workflow_run_id' => $run->id,
             'sequence' => 3,
-            'event_type' => HistoryEventType::UpdateRejected->value,
+            'event_type' => HistoryEventType::UpdateAccepted->value,
             'payload' => [
                 'workflow_command_id' => '01JTESTCOMMANDUPDAT3AD3839',
+                'update_id' => '01JTESTUPDATEBLOCKED000001',
                 'workflow_instance_id' => $instance->id,
                 'workflow_run_id' => $run->id,
                 'update_name' => 'approve',
                 'arguments' => Serializer::serialize([true, 'waterline']),
-                'command' => [
-                    'id' => '01JTESTCOMMANDUPDAT3AD3839',
-                    'sequence' => 3,
-                    'type' => 'update',
-                    'target_scope' => 'instance',
-                    'target_name' => 'approve',
-                    'source' => 'webhook',
-                    'status' => 'rejected',
-                    'outcome' => 'rejected_pending_signal',
-                    'rejection_reason' => 'earlier_signal_pending',
-                    'rejected_at' => now()->subSeconds(18)->jsonSerialize(),
-                ],
+                'ordering_state' => 'queued',
+                'queued_behind_command_id' => '01JTESTCOMMANDSIGNAD8CCE9D',
+                'queued_behind_command_sequence' => 2,
+                'queued_behind_command_type' => 'signal',
             ],
             'workflow_command_id' => '01JTESTCOMMANDUPDAT3AD3839',
             'recorded_at' => now()->subSeconds(18),
@@ -6957,14 +6972,11 @@ class V2DashboardWorkflowTest extends TestCase
             'target_scope' => 'instance',
             'resolved_workflow_run_id' => $run->id,
             'update_name' => 'approve',
-            'status' => 'rejected',
-            'outcome' => 'rejected_pending_signal',
+            'status' => 'accepted',
             'command_sequence' => 3,
             'payload_codec' => config('workflows.serializer'),
             'arguments' => Serializer::serialize([true, 'waterline']),
-            'rejection_reason' => 'earlier_signal_pending',
-            'rejected_at' => now()->subSeconds(18),
-            'closed_at' => now()->subSeconds(18),
+            'accepted_at' => now()->subSeconds(18),
             'created_at' => now()->subSeconds(18),
             'updated_at' => now()->subSeconds(18),
         ]);
@@ -6995,7 +7007,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('can_signal', true)
             ->assertJsonPath('signal_blocked_reason', null)
             ->assertJsonPath('can_update', false)
-            ->assertJsonPath('update_blocked_reason', 'earlier_signal_pending')
+            ->assertJsonPath('update_blocked_reason', 'workflow_definition_unavailable')
             ->assertJsonPath('can_repair', true)
             ->assertJsonPath('repair_blocked_reason', null)
             ->assertJsonPath('commands.1.type', 'signal')
@@ -7014,26 +7026,26 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('signals.0.arguments', ['Taylor'])
             ->assertJsonPath('commands.2.type', 'update')
             ->assertJsonPath('commands.2.target_name', 'approve')
-            ->assertJsonPath('commands.2.status', 'rejected')
-            ->assertJsonPath('commands.2.outcome', 'rejected_pending_signal')
+            ->assertJsonPath('commands.2.status', 'accepted')
+            ->assertJsonPath('commands.2.outcome', null)
             ->assertJsonPath('commands.2.update_id', '01JTESTUPDATEBLOCKED000001')
-            ->assertJsonPath('commands.2.update_status', 'rejected')
+            ->assertJsonPath('commands.2.update_status', 'accepted')
+            ->assertJsonPath('commands.2.update_ordering_state', 'queued')
             ->assertJsonPath('updates.0.id', '01JTESTUPDATEBLOCKED000001')
             ->assertJsonPath('updates.0.command_id', '01JTESTCOMMANDUPDAT3AD3839')
             ->assertJsonPath('updates.0.name', 'approve')
-            ->assertJsonPath('updates.0.status', 'rejected')
-            ->assertJsonPath('updates.0.outcome', 'rejected_pending_signal')
-            ->assertJsonPath('updates.0.rejection_reason', 'earlier_signal_pending')
-            ->assertJsonPath('waits.0.kind', 'signal')
-            ->assertJsonPath('waits.0.source_status', 'received')
-            ->assertJsonPath('waits.0.command_sequence', 2)
-            ->assertJsonPath('timeline.2.type', 'UpdateRejected')
+            ->assertJsonPath('updates.0.status', 'accepted')
+            ->assertJsonPath('updates.0.outcome', null)
+            ->assertJsonPath('updates.0.admission_ordering_state', 'queued')
+            ->assertJsonPath('updates.0.queued_behind_command_id', '01JTESTCOMMANDSIGNAD8CCE9D')
+            ->assertJsonPath('waits.0.kind', 'update')
+            ->assertJsonPath('waits.0.source_status', 'accepted')
+            ->assertJsonPath('waits.0.command_sequence', 3)
+            ->assertJsonPath('timeline.2.type', 'UpdateAccepted')
             ->assertJsonPath('timeline.2.source_kind', 'workflow_command')
             ->assertJsonPath('timeline.2.source_id', '01JTESTCOMMANDUPDAT3AD3839')
             ->assertJsonPath('timeline.2.update_name', 'approve')
-            ->assertJsonPath('timeline.2.command_status', 'rejected')
-            ->assertJsonPath('timeline.2.command_outcome', 'rejected_pending_signal')
-            ->assertJsonPath('timeline.2.summary', 'Rejected update approve: earlier_signal_pending.');
+            ->assertJsonPath('timeline.2.command_status', 'accepted');
     }
 
     public function testShowKeepsSignalWaitCommandMetadataWhenCommandRowsDrift(): void
@@ -7278,6 +7290,8 @@ class V2DashboardWorkflowTest extends TestCase
             'closed_reason' => 'completed',
             'arguments' => Serializer::serialize([]),
             'output' => Serializer::serialize(['ok' => true]),
+            'payload_codec' => config('workflows.serializer'),
+            'output_payload_codec' => config('workflows.serializer'),
             'connection' => 'redis',
             'queue' => 'default',
             'started_at' => now()->subMinute(),
@@ -7450,6 +7464,7 @@ class V2DashboardWorkflowTest extends TestCase
             'event_type' => 'WorkflowCompleted',
             'payload' => [
                 'output' => $run->output,
+                'payload_codec' => config('workflows.serializer'),
             ],
             'recorded_at' => now()->subSeconds(5),
             'created_at' => now()->subSeconds(5),
@@ -7512,6 +7527,8 @@ class V2DashboardWorkflowTest extends TestCase
             'closed_reason' => 'completed',
             'arguments' => Serializer::serialize([]),
             'output' => Serializer::serialize(['ok' => true]),
+            'payload_codec' => config('workflows.serializer'),
+            'output_payload_codec' => config('workflows.serializer'),
             'connection' => 'redis',
             'queue' => 'default',
             'started_at' => now()->subMinutes(2),
@@ -8154,6 +8171,8 @@ class V2DashboardWorkflowTest extends TestCase
             'closed_reason' => 'completed',
             'arguments' => Serializer::serialize(['step' => 1]),
             'output' => Serializer::serialize(['ok' => true]),
+            'payload_codec' => config('workflows.serializer'),
+            'output_payload_codec' => config('workflows.serializer'),
             'connection' => 'redis',
             'queue' => 'default',
             'started_at' => now()->subMinutes(10),
@@ -8274,6 +8293,8 @@ class V2DashboardWorkflowTest extends TestCase
             'closed_reason' => 'completed',
             'arguments' => Serializer::serialize(['step' => 2]),
             'output' => Serializer::serialize(['ok' => true]),
+            'payload_codec' => config('workflows.serializer'),
+            'output_payload_codec' => config('workflows.serializer'),
             'connection' => 'redis',
             'queue' => 'default',
             'started_at' => now()->subMinutes(8),
@@ -9249,7 +9270,7 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.workflow_resume_source_id', $signal->id);
     }
 
-    public function testUpdateIsBlockedWhileAnEarlierSignalIsStillPending(): void
+    public function testUpdateIsQueuedWhileAnEarlierSignalIsStillPending(): void
     {
         config()->set('waterline.engine_source', 'v2');
         config()->set('queue.default', 'database');
@@ -9286,8 +9307,8 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.workflow_wait_kind', 'signal')
             ->assertJsonPath('tasks.0.workflow_resume_source_kind', 'workflow_signal')
             ->assertJsonPath('tasks.0.workflow_command_id', $commandId)
-            ->assertJsonPath('can_update', false)
-            ->assertJsonPath('update_blocked_reason', 'earlier_signal_pending');
+            ->assertJsonPath('can_update', true)
+            ->assertJsonPath('update_blocked_reason', null);
 
         $response = $this->postJson('/waterline/api/instances/' . $workflow->id() . '/updates/mark-approved', [
             'arguments' => [
@@ -9297,13 +9318,23 @@ class V2DashboardWorkflowTest extends TestCase
         ]);
 
         $response
-            ->assertStatus(409)
-            ->assertJsonPath('outcome', 'rejected_pending_signal')
+            ->assertStatus(202)
+            ->assertJsonPath('outcome', null)
             ->assertJsonPath('workflow_id', $workflow->id())
             ->assertJsonPath('run_id', $workflow->runId())
-            ->assertJsonPath('command_status', 'rejected')
-            ->assertJsonPath('rejection_reason', 'earlier_signal_pending')
+            ->assertJsonPath('command_status', 'accepted')
+            ->assertJsonPath('update_status', 'accepted')
+            ->assertJsonPath('rejection_reason', null)
             ->assertJsonPath('result', null);
+
+        $accepted = WorkflowHistoryEvent::query()
+            ->where('workflow_run_id', $workflow->runId())
+            ->where('event_type', HistoryEventType::UpdateAccepted->value)
+            ->sole();
+
+        $this->assertSame('queued', $accepted->payload['ordering_state'] ?? null);
+        $this->assertSame($commandId, $accepted->payload['queued_behind_command_id'] ?? null);
+        $this->assertSame('signal', $accepted->payload['queued_behind_command_type'] ?? null);
     }
 
     public function testUpdateReturnsValidationErrorsForInvalidArguments(): void

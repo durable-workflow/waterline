@@ -198,10 +198,31 @@ class V2ServicesControllerTest extends TestCase
             ->assertJsonPath('scope', 'owned')
             ->assertJsonCount(0, 'data');
 
+        $this->getJson('/waterline/api/v2/services/calls?scope=target')
+            ->assertOk()
+            ->assertJsonPath('scope', 'target')
+            ->assertJsonCount(0, 'data');
+
         $this->getJson('/waterline/api/v2/services/calls?scope=caller')
             ->assertOk()
             ->assertJsonPath('scope', 'caller')
             ->assertJsonPath('data.0.id', $crossCall->id);
+
+        config()->set('waterline.namespace', 'shipping');
+
+        $this->getJson('/waterline/api/v2/services/calls?scope=target')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $crossCall->id);
+
+        $this->getJson('/waterline/api/v2/services/calls?scope=owned')
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $crossCall->id);
+
+        config()->set('waterline.namespace', 'finance');
+
+        $this->getJson('/waterline/api/v2/services/calls')
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
     }
 
     public function testServiceCallsIndexFiltersByStatusAndExposesBuckets(): void
@@ -355,12 +376,12 @@ class V2ServicesControllerTest extends TestCase
     {
         config()->set('waterline.namespace', 'billing');
 
-        $endpoint = $this->createEndpoint('billing', 'invoices');
-        $service = $this->createService($endpoint, 'billing', 'inbox');
-        $operation = $this->createOperation($endpoint, $service, 'billing', 'create');
+        $endpoint = $this->createEndpoint('shipping', 'invoices');
+        $service = $this->createService($endpoint, 'shipping', 'inbox');
+        $operation = $this->createOperation($endpoint, $service, 'shipping', 'create');
 
         $call = $this->createServiceCall($endpoint, $service, $operation, [
-            'namespace' => 'billing',
+            'namespace' => 'shipping',
             'caller_namespace' => 'billing',
             'caller_workflow_instance_id' => 'inst-billing-1',
             'caller_workflow_run_id' => 'run-billing-1',
@@ -469,10 +490,15 @@ class V2ServicesControllerTest extends TestCase
         WorkflowServiceOperation $operation,
         array $overrides,
     ): WorkflowServiceCall {
+        $namespace = $overrides['namespace'] ?? $operation->namespace;
+
         $defaults = [
             'workflow_service_endpoint_id' => $endpoint->id,
             'workflow_service_id' => $service->id,
             'workflow_service_operation_id' => $operation->id,
+            'namespace' => $namespace,
+            'caller_namespace' => $namespace,
+            'target_namespace' => $namespace,
             'endpoint_name' => $endpoint->endpoint_name,
             'service_name' => $service->service_name,
             'operation_name' => $operation->operation_name,

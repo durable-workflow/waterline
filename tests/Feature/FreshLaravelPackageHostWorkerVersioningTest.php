@@ -13,8 +13,10 @@ use Illuminate\Encryption\EncryptionServiceProvider;
 use Illuminate\Events\EventServiceProvider;
 use Illuminate\Filesystem\FilesystemServiceProvider;
 use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Providers\FoundationServiceProvider;
 use Illuminate\Http\Request;
 use Illuminate\Log\LogServiceProvider;
+use Illuminate\Pagination\PaginationServiceProvider;
 use Illuminate\Queue\QueueServiceProvider;
 use Illuminate\Session\SessionServiceProvider;
 use Illuminate\Support\Carbon;
@@ -256,9 +258,11 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
         $app->useStoragePath($this->temporaryDirectory.'/storage');
 
         Container::setInstance($app);
+        Facade::clearResolvedInstances();
         Facade::setFacadeApplication($app);
 
         $app->instance('config', new ConfigRepository($this->baseConfig()));
+        $app->instance('request', Request::create('/', 'GET'));
 
         foreach ([
             EventServiceProvider::class,
@@ -267,6 +271,7 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
             DatabaseServiceProvider::class,
             CacheServiceProvider::class,
             QueueServiceProvider::class,
+            PaginationServiceProvider::class,
             BusServiceProvider::class,
             CookieServiceProvider::class,
             EncryptionServiceProvider::class,
@@ -274,6 +279,7 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
             ViewServiceProvider::class,
             TranslationServiceProvider::class,
             ValidationServiceProvider::class,
+            FoundationServiceProvider::class,
             WorkflowServiceProvider::class,
             WaterlineServiceProvider::class,
         ] as $provider) {
@@ -675,6 +681,7 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
             'HTTP_X_DURABLE_WORKFLOW_CONTROL_PLANE_VERSION' => '2',
         ], $method === 'GET' ? null : json_encode($payload));
 
+        $this->app->instance('request', $request);
         $response = $this->app['router']->dispatch($request);
         $payload = json_decode((string) $response->getContent(), true);
 

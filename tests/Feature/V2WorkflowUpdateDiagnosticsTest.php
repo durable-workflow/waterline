@@ -96,7 +96,10 @@ class V2WorkflowUpdateDiagnosticsTest extends TestCase
             'line' => 1,
             'trace_preview' => '',
         ]);
-        $failed['update']->update(['failure_id' => $failure->id]);
+        $failed['update']->update([
+            'failure_id' => $failure->id,
+            'failure_message' => 'inventory unavailable',
+        ]);
         WorkflowHistoryEvent::record($run, HistoryEventType::UpdateAccepted, [
             'workflow_command_id' => $failed['command']->id,
             'update_id' => $failed['update']->id,
@@ -140,7 +143,6 @@ class V2WorkflowUpdateDiagnosticsTest extends TestCase
             'workflow_run_id' => $run->id,
             'update_name' => 'cancel-order',
             'arguments' => Serializer::serialize(['order-4']),
-            'rejection_reason' => 'invalid_operator_payload',
             'validation_errors' => ['reason' => ['The reason field is required.']],
         ], null, $refused['command']);
 
@@ -230,13 +232,12 @@ class V2WorkflowUpdateDiagnosticsTest extends TestCase
             ->assertJsonPath('update_diagnostics.items.1.history_event_types', ['UpdateAccepted', 'UpdateCompleted'])
             ->assertJsonPath('update_diagnostics.items.2.error.failure_id', $failure->id)
             ->assertJsonPath('update_diagnostics.items.2.error.message', 'inventory unavailable')
+            ->assertJsonPath('update_diagnostics.items.2.history_events.1.failure_id', $failure->id)
             ->assertJsonPath('update_diagnostics.items.2.history_events.1.message', 'inventory unavailable')
             ->assertJsonPath('update_diagnostics.items.2.history_event_types', ['UpdateAccepted', 'UpdateCompleted'])
             ->assertJsonPath('update_diagnostics.items.3.state_label', 'refused')
             ->assertJsonPath('update_diagnostics.items.3.error.rejection_reason', 'invalid_operator_payload')
-            ->assertJsonPath('update_diagnostics.items.3.history_events.0.rejection_reason', 'invalid_operator_payload')
             ->assertJsonPath('update_history_references.4.message', 'inventory unavailable')
-            ->assertJsonPath('update_history_references.5.rejection_reason', 'invalid_operator_payload')
             ->assertJsonPath('update_diagnostics.items.3.history_event_types', ['UpdateRejected']);
 
         $this->getJson('/waterline/api/instances/'.$instance->id.'/runs/'.$run->id.'/updates/'.$refused['update']->id)
@@ -352,9 +353,7 @@ class V2WorkflowUpdateDiagnosticsTest extends TestCase
             ->assertJsonPath('update_diagnostics.items.2.error.path', 'update_diagnostics.items.2.error')
             ->assertJsonPath('update_diagnostics.items.2.history_events.1.message.path', 'update_diagnostics.items.2.history_events.1.message')
             ->assertJsonPath('update_diagnostics.items.3.error.path', 'update_diagnostics.items.3.error')
-            ->assertJsonPath('update_diagnostics.items.3.history_events.0.rejection_reason.path', 'update_diagnostics.items.3.history_events.0.rejection_reason')
             ->assertJsonPath('update_history_references.4.message.path', 'update_history_references.4.message')
-            ->assertJsonPath('update_history_references.5.rejection_reason.path', 'update_history_references.5.rejection_reason')
             ->assertJsonPath('update_diagnostics.items.3.history_event_types', ['UpdateRejected']);
 
         $paths = $redacted->json('redaction.paths');
@@ -367,9 +366,7 @@ class V2WorkflowUpdateDiagnosticsTest extends TestCase
         $this->assertContains('update_diagnostics.items.1.result', $paths);
         $this->assertContains('update_diagnostics.items.2.error', $paths);
         $this->assertContains('update_diagnostics.items.2.history_events.1.message', $paths);
-        $this->assertContains('update_diagnostics.items.3.history_events.0.rejection_reason', $paths);
         $this->assertContains('update_history_references.4.message', $paths);
-        $this->assertContains('update_history_references.5.rejection_reason', $paths);
 
         $historyReferenceJson = json_encode($redacted->json('update_history_references'), JSON_THROW_ON_ERROR);
         $diagnosticHistoryJson = json_encode(

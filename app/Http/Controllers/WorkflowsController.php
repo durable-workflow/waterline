@@ -1757,6 +1757,7 @@ class WorkflowsController extends Controller
     {
         $updates = $this->listOfMaps($export['updates'] ?? null);
         $commands = $this->rowsById($export['commands'] ?? null);
+        $failures = $this->rowsById($export['failures'] ?? null);
         [$historyByUpdateId, $historyByCommandId, $historyReferences] = $this->historyExportUpdateReferenceMaps($export);
         $diagnosticRows = [];
 
@@ -1766,7 +1767,7 @@ class WorkflowsController extends Controller
             $command = $commandId === null ? [] : ($commands[$commandId] ?? []);
             $references = $this->referencesForUpdate($updateId, $commandId, $historyByUpdateId, $historyByCommandId);
 
-            $diagnosticRows[] = $this->historyExportUpdateRow($update, $command, $references);
+            $diagnosticRows[] = $this->historyExportUpdateRow($update, $command, $references, $failures);
         }
 
         $export['update_history_references'] = $historyReferences;
@@ -1806,10 +1807,15 @@ class WorkflowsController extends Controller
      * @param array<string, mixed> $update
      * @param array<string, mixed> $command
      * @param list<array<string, mixed>> $historyReferences
+     * @param array<string, array<string, mixed>> $failures
      * @return array<string, mixed>
      */
-    private function historyExportUpdateRow(array $update, array $command, array $historyReferences): array
-    {
+    private function historyExportUpdateRow(
+        array $update,
+        array $command,
+        array $historyReferences,
+        array $failures,
+    ): array {
         foreach ([
             'request_id',
             'correlation_id',
@@ -1843,9 +1849,7 @@ class WorkflowsController extends Controller
         $payload = $this->historyExportUpdatePayload($update, $command);
         $update['payload_available'] = $this->hasDetailValue($payload);
         $update['payload'] = $payload;
-        $error = $this->hasDetailValue($update['error'] ?? null)
-            ? $update['error']
-            : $this->historyExportUpdateError($update);
+        $error = $this->historyExportUpdateError($update, $historyReferences, $failures);
         $update['error'] = $error;
         $update['error_available'] = $this->hasDetailValue($error);
         $update['history_events'] = $historyReferences;
@@ -1970,22 +1974,40 @@ class WorkflowsController extends Controller
 
     /**
      * @param array<string, mixed> $update
+     * @param list<array<string, mixed>> $historyReferences
+     * @param array<string, array<string, mixed>> $failures
      * @return array<string, mixed>|null
      */
-    private function historyExportUpdateError(array $update): ?array
-    {
-        $error = array_filter([
-            'failure_id' => $update['failure_id'] ?? null,
-            'message' => $update['failure_message'] ?? null,
+    private function historyExportUpdateError(
+        array $update,
+        array $historyReferences,
+        array $failures,
+    ): ?array {
+        $error = is_array($update['error'] ?? null) ? $update['error'] : [];
+        $failureId = $this->firstReferenceString($historyReferences, 'failure_id')
+            ?? $this->stringValue($update['failure_id'] ?? null)
+            ?? $this->stringValue($error['failure_id'] ?? null);
+        $failure = $failureId === null ? [] : ($failures[$failureId] ?? []);
+        $message = $this->firstReferenceValue($historyReferences, 'message')
+            ?? ($this->hasDetailValue($failure['message'] ?? null) ? $failure['message'] : null)
+            ?? ($this->hasDetailValue($error['message'] ?? null) ? $error['message'] : null)
+            ?? ($this->hasDetailValue($update['failure_message'] ?? null) ? $update['failure_message'] : null);
+
+        $details = array_filter([
+            'failure_id' => $failureId,
+            'message' => $message,
             'rejection_reason' => $update['rejection_reason'] ?? null,
             'validation_errors' => $update['validation_errors'] ?? null,
-            'exception_type' => $update['exception_type'] ?? null,
-            'exception_class' => $update['exception_class'] ?? null,
-            'exception_resolved_class' => $update['exception_resolved_class'] ?? null,
-            'exception_resolution_source' => $update['exception_resolution_source'] ?? null,
-            'exception_resolution_error' => $update['exception_resolution_error'] ?? null,
-            'exception_replay_blocked' => ($update['exception_replay_blocked'] ?? false) === true ? true : null,
+            'exception_type' => $failure['exception_type'] ?? $update['exception_type'] ?? null,
+            'exception_class' => $failure['exception_class'] ?? $update['exception_class'] ?? null,
+            'exception_resolved_class' => $failure['exception_resolved_class'] ?? $update['exception_resolved_class'] ?? null,
+            'exception_resolution_source' => $failure['exception_resolution_source'] ?? $update['exception_resolution_source'] ?? null,
+            'exception_resolution_error' => $failure['exception_resolution_error'] ?? $update['exception_resolution_error'] ?? null,
+            'exception_replay_blocked' => ($failure['exception_replay_blocked'] ?? $update['exception_replay_blocked'] ?? false) === true
+                ? true
+                : null,
         ], fn (mixed $value): bool => $this->hasDetailValue($value));
+        $error = array_merge($error, $details);
 
         return $error === [] ? null : $error;
     }
@@ -2124,6 +2146,22 @@ class WorkflowsController extends Controller
             $value = $this->stringValue($reference[$field] ?? null);
 
             if ($value !== null) {
+                return $value;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $historyReferences
+     */
+    private function firstReferenceValue(array $historyReferences, string $field): mixed
+    {
+        foreach ($historyReferences as $reference) {
+            $value = $reference[$field] ?? null;
+
+            if ($this->hasDetailValue($value)) {
                 return $value;
             }
         }

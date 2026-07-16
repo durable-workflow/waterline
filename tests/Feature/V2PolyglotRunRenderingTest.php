@@ -231,6 +231,7 @@ class V2PolyglotRunRenderingTest extends TestCase
             'closed_reason' => 'completed',
             'namespace' => $namespace,
             'payload_codec' => $payloadCodec,
+            'output_payload_codec' => $payloadCodec,
             'arguments' => Serializer::serializeWithCodec($payloadCodec, $arguments),
             'output' => Serializer::serializeWithCodec($payloadCodec, $output),
             'connection' => 'redis',

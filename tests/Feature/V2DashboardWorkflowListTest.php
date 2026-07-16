@@ -53,7 +53,7 @@ class V2DashboardWorkflowListTest extends TestCase
 
         $instance->update(['current_run_id' => $run->id]);
 
-        ConfiguredWaterlineListRunSummary::create([
+        $summary = ConfiguredWaterlineListRunSummary::create([
             'id' => $run->id,
             'workflow_instance_id' => $instance->id,
             'run_number' => 1,
@@ -62,9 +62,6 @@ class V2DashboardWorkflowListTest extends TestCase
             'class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
             'business_key' => 'configured-list-business',
-            'search_attributes' => [
-                'customer_tier' => 'gold',
-            ],
             'status' => RunStatus::Waiting->value,
             'status_bucket' => 'running',
             'started_at' => $startedAt,
@@ -74,6 +71,7 @@ class V2DashboardWorkflowListTest extends TestCase
             'created_at' => $createdAt,
             'updated_at' => $createdAt,
         ]);
+        $this->createSearchAttribute($summary, 'customer_tier', 'gold');
 
         $this->get('/waterline/api/flows/running')
             ->assertOk()
@@ -88,7 +86,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonMissingPath('data.0.config_marker');
     }
 
-    public function testRunningFlowsPreserveLegacySearchAttributesFromRunWhenDefaultSummarySchemaOmitsThem(): void
+    public function testRunningFlowsUseTypedSearchAttributesWhenDefaultSummarySchemaOmitsThem(): void
     {
         config()->set('waterline.engine_source', 'v2');
 
@@ -112,9 +110,6 @@ class V2DashboardWorkflowListTest extends TestCase
             'workflow_class' => 'WorkflowClass',
             'workflow_type' => 'workflow.test',
             'business_key' => 'default-summary-business',
-            'search_attributes' => [
-                'customer_tier' => 'gold',
-            ],
             'status' => RunStatus::Waiting->value,
             'started_at' => $startedAt,
             'last_progress_at' => $startedAt,
@@ -124,7 +119,7 @@ class V2DashboardWorkflowListTest extends TestCase
 
         $instance->update(['current_run_id' => $run->id]);
 
-        WorkflowRunSummary::create([
+        $summary = WorkflowRunSummary::create([
             'id' => $run->id,
             'workflow_instance_id' => $instance->id,
             'run_number' => 1,
@@ -141,6 +136,7 @@ class V2DashboardWorkflowListTest extends TestCase
             'created_at' => $createdAt,
             'updated_at' => $createdAt,
         ]);
+        $this->createSearchAttribute($summary, 'customer_tier', 'gold');
 
         $this->get('/waterline/api/flows/running')
             ->assertOk()
@@ -227,6 +223,9 @@ class V2DashboardWorkflowListTest extends TestCase
         $droppedNamespace = Schema::hasColumn('workflow_runs', 'namespace');
 
         if ($droppedNamespace) {
+            Schema::table('workflow_runs', static function (Blueprint $table): void {
+                $table->dropIndex(['namespace']);
+            });
             Schema::table('workflow_runs', static function (Blueprint $table): void {
                 $table->dropColumn('namespace');
             });

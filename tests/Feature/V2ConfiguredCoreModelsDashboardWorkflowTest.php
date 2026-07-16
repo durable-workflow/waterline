@@ -97,6 +97,7 @@ final class V2ConfiguredCoreModelsDashboardWorkflowTest extends TestCase
             $table->string('closed_reason')->nullable();
             $table->string('compatibility')->nullable();
             $table->string('payload_codec')->nullable();
+            $table->string('output_payload_codec')->nullable();
             $table->longText('arguments')->nullable();
             $table->longText('output')->nullable();
             $table->string('connection')->nullable();
@@ -144,6 +145,10 @@ final class V2ConfiguredCoreModelsDashboardWorkflowTest extends TestCase
             $table->unsignedInteger('repair_count')->default(0);
             $table->timestamp('repair_available_at', 6)->nullable();
             $table->text('last_error')->nullable();
+            $table->string('sticky_worker_id')->nullable()->index();
+            $table->timestamp('sticky_until', 6)->nullable()->index();
+            $table->string('sticky_replay_mode')->nullable()->index();
+            $table->timestamp('sticky_claimed_at', 6)->nullable()->index();
             $table->timestamps(6);
 
             $table->index(['status', 'available_at']);

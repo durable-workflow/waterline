@@ -457,7 +457,6 @@ class WorkflowUpdatesConformanceCommandTest extends TestCase
             'workflow_run_id' => $run->id,
             'update_name' => 'missing_update',
             'arguments' => Serializer::serialize([]),
-            'rejection_reason' => 'unknown_update',
             'validation_errors' => ['update' => ['The requested workflow update is not declared.']],
         ], null, $refused['command']);
 

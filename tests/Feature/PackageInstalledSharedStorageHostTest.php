@@ -21,14 +21,31 @@ use function Orchestra\Testbench\artisan;
 
 class PackageInstalledSharedStorageHostTest extends TestCase
 {
+    /**
+     * @var array<string, mixed>
+     */
+    private array $previousDatabaseConnectionEnvironment = [];
+
     private ?string $temporaryDirectory = null;
 
     private ?string $hostDatabase = null;
 
     private ?string $serverDatabase = null;
 
+    protected function setUp(): void
+    {
+        try {
+            parent::setUp();
+        } catch (\Throwable $exception) {
+            $this->restoreDatabaseConnectionEnvironment();
+
+            throw $exception;
+        }
+    }
+
     protected function getEnvironmentSetUp($app)
     {
+        $this->scopeDatabaseConnectionEnvironmentToHost();
         parent::getEnvironmentSetUp($app);
 
         $this->temporaryDirectory = sys_get_temp_dir()
@@ -64,6 +81,7 @@ class PackageInstalledSharedStorageHostTest extends TestCase
     protected function defineDatabaseMigrations()
     {
         artisan($this, 'migrate:fresh');
+        Schema::connection('host')->dropIfExists('sessions');
 
         $this->createServerWorkerRegistrationsTable();
         $this->createServerWorkerBuildIdRolloutsTable();
@@ -71,16 +89,20 @@ class PackageInstalledSharedStorageHostTest extends TestCase
 
     protected function tearDown(): void
     {
-        parent::tearDown();
+        try {
+            parent::tearDown();
+        } finally {
+            $this->restoreDatabaseConnectionEnvironment();
 
-        foreach ([$this->hostDatabase, $this->serverDatabase] as $path) {
-            if (is_string($path) && is_file($path)) {
-                @unlink($path);
+            foreach ([$this->hostDatabase, $this->serverDatabase] as $path) {
+                if (is_string($path) && is_file($path)) {
+                    @unlink($path);
+                }
             }
-        }
 
-        if (is_string($this->temporaryDirectory) && is_dir($this->temporaryDirectory)) {
-            @rmdir($this->temporaryDirectory);
+            if (is_string($this->temporaryDirectory) && is_dir($this->temporaryDirectory)) {
+                @rmdir($this->temporaryDirectory);
+            }
         }
     }
 
@@ -332,6 +354,54 @@ class PackageInstalledSharedStorageHostTest extends TestCase
         $engineSourceIssuesJson = json_encode($status['issues'] ?? [], JSON_UNESCAPED_SLASHES);
         $this->assertIsString($engineSourceIssuesJson);
         $this->assertStringNotContainsString($unavailableDatabase, $engineSourceIssuesJson);
+    }
+
+    private function scopeDatabaseConnectionEnvironmentToHost(): void
+    {
+        if ($this->previousDatabaseConnectionEnvironment !== []) {
+            return;
+        }
+
+        $this->previousDatabaseConnectionEnvironment = [
+            'getenv' => getenv('DB_CONNECTION'),
+            'env_exists' => array_key_exists('DB_CONNECTION', $_ENV),
+            'env' => $_ENV['DB_CONNECTION'] ?? null,
+            'server_exists' => array_key_exists('DB_CONNECTION', $_SERVER),
+            'server' => $_SERVER['DB_CONNECTION'] ?? null,
+        ];
+
+        putenv('DB_CONNECTION=host');
+        $_ENV['DB_CONNECTION'] = 'host';
+        $_SERVER['DB_CONNECTION'] = 'host';
+    }
+
+    private function restoreDatabaseConnectionEnvironment(): void
+    {
+        if ($this->previousDatabaseConnectionEnvironment === []) {
+            return;
+        }
+
+        $previous = $this->previousDatabaseConnectionEnvironment;
+
+        if ($previous['getenv'] === false) {
+            putenv('DB_CONNECTION');
+        } else {
+            putenv('DB_CONNECTION='.$previous['getenv']);
+        }
+
+        if ($previous['env_exists']) {
+            $_ENV['DB_CONNECTION'] = $previous['env'];
+        } else {
+            unset($_ENV['DB_CONNECTION']);
+        }
+
+        if ($previous['server_exists']) {
+            $_SERVER['DB_CONNECTION'] = $previous['server'];
+        } else {
+            unset($_SERVER['DB_CONNECTION']);
+        }
+
+        $this->previousDatabaseConnectionEnvironment = [];
     }
 
     /**

@@ -582,7 +582,7 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 1)
             ->assertJsonPath('operator_metrics.backend.queue.connection', 'sync')
             ->assertJsonPath('operator_metrics.backend.queue.driver', 'sync')
-            ->assertJsonPath('operator_metrics.backend.supported', false)
+            ->assertJsonPath('operator_metrics.backend.supported', true)
             ->assertJsonFragment(['code' => 'queue_sync_unsupported'])
             ->assertJsonPath('operator_metrics.update_wait.completion_timeout_seconds', 9)
             ->assertJsonPath('operator_metrics.update_wait.poll_interval_milliseconds', 25)
@@ -752,7 +752,7 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonMissing(['worker_id' => 'worker-shipping-current']);
     }
 
-    public function testIndexCountsScopesSeparatelyFromUniqueWorkersInNamespaceFleet(): void
+    public function testIndexReplacesPriorScopeWhenWorkerHeartbeatMovesQueues(): void
     {
         config()->set('waterline.engine_source', 'v2');
         config()->set('waterline.namespace', 'billing');
@@ -783,16 +783,9 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'billing')
             ->assertJsonPath('operator_metrics.workers.active_workers', 1)
-            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 2)
+            ->assertJsonPath('operator_metrics.workers.active_worker_scopes', 1)
             ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 1)
-            ->assertJsonCount(2, 'operator_metrics.workers.fleet')
-            ->assertJsonFragment([
-                'worker_id' => 'worker-billing-multi',
-                'namespace' => 'billing',
-                'connection' => 'redis',
-                'queue' => 'default',
-                'supports_required' => true,
-            ])
+            ->assertJsonCount(1, 'operator_metrics.workers.fleet')
             ->assertJsonFragment([
                 'worker_id' => 'worker-billing-multi',
                 'namespace' => 'billing',

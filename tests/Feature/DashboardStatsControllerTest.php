@@ -7,6 +7,13 @@ use Workflow\Models\StoredWorkflow;
 
 class DashboardStatsControllerTest extends TestCase
 {
+    protected function getEnvironmentSetUp($app)
+    {
+        parent::getEnvironmentSetUp($app);
+
+        $app['config']->set('waterline.engine_source', 'v1');
+    }
+
     protected function supportsSqlServerDatabaseQualification(): bool
     {
         return true;
