@@ -1,20 +1,69 @@
 name: build
 
 on:
+  push:
+    branches: [v2]
+  pull_request:
+    branches: [v2]
   workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.server_url }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 10
+
+    - name: Install PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.2'
+        extensions: pdo_sqlite
+        coverage: none
+      env:
+        fail-fast: true
+
+    - name: Validate Composer manifest
+      run: composer validate --strict
+
+    - name: Cache Composer packages
+      uses: actions/cache@v3
+      with:
+        path: vendor
+        key: ${{ runner.os }}-php-8.2-${{ hashFiles('composer.json') }}
+        restore-keys: |
+          ${{ runner.os }}-php-8.2-
+
+    - name: Install maintained qualification dependencies
+      run: composer install --prefer-dist --no-progress --no-interaction
+
+    - name: Audit qualification dependencies
+      run: composer audit --no-interaction
+
+    - name: Build Laravel 12 Workbench scaffold
+      run: composer build
+
+  qualification:
+    name: Complete database qualification
+    needs: build
+    if: ${{ github.server_url == 'https://github.com' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
 
     services:
       mssql:
         image: mcr.microsoft.com/mssql/server:2022-latest
         env:
-            ACCEPT_EULA: Y
-            MSSQL_PID: Express
-            MSSQL_SA_PASSWORD: P@ssword
+          ACCEPT_EULA: Y
+          MSSQL_PID: Express
+          MSSQL_SA_PASSWORD: P@ssword
         ports:
           - 1433:1433
 
@@ -26,7 +75,7 @@ jobs:
           MYSQL_PASSWORD: password
           MYSQL_DATABASE: testing
         ports:
-        - 3306:3306
+          - 3306:3306
 
       postgres:
         image: postgres
@@ -35,17 +84,17 @@ jobs:
           POSTGRES_PASSWORD: password
           POSTGRES_DB: testing
         ports:
-        - 5432:5432
+          - 5432:5432
 
       redis:
         image: redis
         ports:
-        - 6379:6379
+          - 6379:6379
 
     steps:
     - uses: actions/checkout@v3
       with:
-          fetch-depth: 10
+        fetch-depth: 10
 
     - name: Install mssql-tools
       run: |
@@ -55,29 +104,116 @@ jobs:
         curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
         sudo apt-get update
         sudo ACCEPT_EULA=Y apt-get install -y mssql-tools unixodbc-dev
-        echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc
-        source ~/.bashrc
 
-    - name: Validate composer.json and composer.lock
+    - name: Install PHP database drivers
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.2'
+        extensions: pdo_mysql, pdo_pgsql, pdo_sqlite, pdo_sqlsrv
+        coverage: none
+      env:
+        fail-fast: true
+
+    - name: Validate Composer manifest
       run: composer validate --strict
 
-    - name: Cache Composer packages
-      id: composer-cache
+    - name: Restore Composer packages
       uses: actions/cache@v3
       with:
         path: vendor
-        key: ${{ runner.os }}-php-${{ hashFiles('**/composer.lock') }}
+        key: ${{ runner.os }}-php-8.2-${{ hashFiles('composer.json') }}
         restore-keys: |
-          ${{ runner.os }}-php-
+          ${{ runner.os }}-php-8.2-
 
     - name: Install dependencies
-      run: composer install --prefer-dist --no-progress
+      run: composer install --prefer-dist --no-progress --no-interaction
 
-    - name: Create databases
+    - name: Wait for SQL Server and create databases
+      shell: bash
       run: |
-        /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "P@ssword" -Q "CREATE DATABASE testing;"
+        set -euo pipefail
 
-    - name: Run test suite
-      run: composer test
-      env:
-        DB_HOST: 127.0.0.1
+        sqlcmd=/opt/mssql-tools/bin/sqlcmd
+        sql_server_host=
+        sql_server_ready=false
+        probe_output=
+        candidates=(127.0.0.1 host.docker.internal)
+        declare -A probe_outputs=()
+
+        for attempt in $(seq 1 30); do
+          for candidate in "${candidates[@]}"; do
+            if probe_output=$("$sqlcmd" -S "$candidate" -U sa -P "P@ssword" -l 3 -b -Q "SELECT 1;" 2>&1); then
+              sql_server_host=$candidate
+              sql_server_ready=true
+              break 2
+            fi
+
+            probe_outputs["$candidate"]=$probe_output
+            echo "SQL Server probe ${attempt}/30 failed via ${candidate}"
+          done
+
+          sleep 2
+        done
+
+        if [ "$sql_server_ready" != true ]; then
+          echo "::error::SQL Server did not accept connections via: ${candidates[*]}"
+          for candidate in "${candidates[@]}"; do
+            echo "Last diagnostic via ${candidate}:"
+            printf '%s\n' "${probe_outputs[$candidate]:-(no diagnostic output)}"
+          done
+          exit 1
+        fi
+
+        echo "Using ${sql_server_host} for host-mapped database services"
+        echo "DB_HOST=${sql_server_host}" >> "$GITHUB_ENV"
+        echo "DB_TRUST_SERVER_CERTIFICATE=true" >> "$GITHUB_ENV"
+
+        "$sqlcmd" -S "$sql_server_host" -U sa -P "P@ssword" -l 3 -b \
+          -Q "IF DB_ID(N'testing') IS NULL CREATE DATABASE [testing];"
+
+    - name: Verify database drivers and connections
+      run: php scripts/ci/preflight-databases.php "$DB_HOST"
+
+    - name: Run MSSQL test suite
+      timeout-minutes: 17
+      run: |
+        status=0
+        timeout --foreground --signal=TERM --kill-after=30s 15m composer test-mssql || status=$?
+        if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+          echo "::error::MSSQL test suite exceeded its 15-minute limit"
+          exit 1
+        fi
+        exit "$status"
+
+    - name: Run MySQL test suite
+      timeout-minutes: 17
+      run: |
+        status=0
+        timeout --foreground --signal=TERM --kill-after=30s 15m composer test-mysql || status=$?
+        if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+          echo "::error::MySQL test suite exceeded its 15-minute limit"
+          exit 1
+        fi
+        exit "$status"
+
+    - name: Run PostgreSQL test suite
+      timeout-minutes: 17
+      run: |
+        status=0
+        timeout --foreground --signal=TERM --kill-after=30s 15m composer test-pgsql || status=$?
+        if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+          echo "::error::PostgreSQL test suite exceeded its 15-minute limit"
+          exit 1
+        fi
+        exit "$status"
+
+    - name: Run SQLite test suite
+      timeout-minutes: 17
+      run: |
+        status=0
+        timeout --foreground --signal=TERM --kill-after=30s 15m composer test-sqlite || status=$?
+        if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+          echo "::error::SQLite test suite exceeded its 15-minute limit"
+          exit 1
+        fi
+        exit "$status"

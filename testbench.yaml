@@ -1,26 +1,38 @@
-laravel: workbench
+laravel: '@testbench'
 
 providers:
   - Waterline\WaterlineApplicationServiceProvider
   - Workbench\App\Providers\WorkbenchServiceProvider
 
 env:
-  - APP_KEY=base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI=
-  - APP_URL=http://localhost:8000
-  - ASSET_URL=http://localhost:8000
-  - DB_CONNECTION=sqlite
-  - QUEUE_CONNECTION=database
+  APP_KEY: 'base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI='
+  APP_URL: 'http://localhost:8000'
+  ASSET_URL: 'http://localhost:8000'
+  DB_CONNECTION: 'sqlite'
+  QUEUE_CONNECTION: 'database'
 
 seeders: false
 
-install:
-  - laravel-workflow/laravel-workflow
-
-discovers:
-  web: ./routes/web.php
-  config: ./config/waterline.php
-
-sync:
-  - config/waterline.php
-  - resources/views
-  - routes/web.php
+workbench:
+  start: '/'
+  install: true
+  health: false
+  discovers:
+    config: false
+    factories: true
+    web: true
+    api: true
+    commands: true
+    components: false
+    views: false
+  build:
+    - asset-publish
+    - create-sqlite-db
+    - db-wipe
+    - migrate-fresh
+  assets:
+    - laravel-assets
+  sync:
+    - from: storage
+      to: workbench/storage
+      reverse: true
