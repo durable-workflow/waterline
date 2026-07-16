@@ -926,7 +926,10 @@ class V2NamespaceScopedVisibilityTest extends TestCase
                     $sql = strtolower((string) ($query['query'] ?? ''));
 
                     return str_starts_with(ltrim($sql), 'select')
-                        && str_contains($sql, 'workflow_history_events');
+                        && preg_match(
+                            '/\b(?:from|join)\s+["`\[]?workflow_history_events(?:["`\]]|\b)/',
+                            $sql,
+                        ) === 1;
                 },
             ));
         } finally {

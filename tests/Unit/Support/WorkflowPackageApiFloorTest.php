@@ -10,6 +10,7 @@ use Workflow\V2\CommandContext;
 use Workflow\V2\Enums\ServiceCallOutcome;
 use Workflow\V2\Support\HealthCheck;
 use Workflow\V2\Support\OperatorMetrics;
+use Workflow\V2\Support\RunActivityView;
 use Workflow\V2\Support\ScheduleManager;
 use Workflow\V2\Support\ServiceCatalog;
 
@@ -114,6 +115,26 @@ class WorkflowPackageApiFloorTest extends TestCase
     {
         $this->assertTrue(class_exists(ServiceCallOutcome::class));
         $this->assertArrayHasKey('policy', ServiceCallOutcome::buckets());
+    }
+
+    public function test_run_activity_view_accepts_durable_history_control(): void
+    {
+        $reflection = new ReflectionClass(RunActivityView::class);
+        $reflectionMethod = $reflection->getMethod('activitiesForRun');
+
+        $this->assertTrue($reflectionMethod->isPublic(), 'activitiesForRun is not public');
+        $this->assertTrue($reflectionMethod->isStatic(), 'activitiesForRun is not static');
+
+        $parameterNames = array_map(
+            static fn ($parameter): string => $parameter->getName(),
+            $reflectionMethod->getParameters(),
+        );
+
+        $this->assertContains(
+            'useDurableHistory',
+            $parameterNames,
+            'activitiesForRun does not declare a $useDurableHistory parameter',
+        );
     }
 
     public function test_find_missing_reports_missing_command_context_class(): void

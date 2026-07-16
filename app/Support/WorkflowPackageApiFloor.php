@@ -20,12 +20,14 @@ use RuntimeException;
  * Inside the v2 band, however, Waterline now depends on specific schedule
  * mutation signatures, the namespace-scoped v2 health snapshot, and the
  * service catalog/operator observability helpers, including selected-run
- * query contract diagnostics. Older v2 installs that predate those contracts
- * fail schedule mutation routes with unknown-named parameters, silently lose
- * namespace scoping, cannot render the service call outcome filters Waterline
- * exposes, or cannot explain selected-run query limitations. The package
- * provider records this diagnostic at boot so read-only observer routes can
- * still register while health reports the pairing clearly.
+ * query contract diagnostics and projection-only activity reads. Older v2
+ * installs that predate those contracts fail schedule mutation routes with
+ * unknown-named parameters, silently lose namespace scoping, cannot render
+ * the service call outcome filters Waterline exposes, cannot explain
+ * selected-run query limitations, or cannot keep summary-backed list rows off
+ * durable activity history. The package provider records this diagnostic at
+ * boot so read-only observer routes can still register while health reports
+ * the pairing clearly.
  */
 final class WorkflowPackageApiFloor
 {
@@ -60,6 +62,7 @@ final class WorkflowPackageApiFloor
         [\Workflow\V2\Support\HealthCheck::class, 'snapshot', 'namespace'],
         [\Workflow\V2\Support\OperatorMetrics::class, 'snapshot', 'namespace'],
         [\Workflow\V2\Support\ServiceCatalog::class, 'serviceCallsQuery', 'outcome'],
+        [\Workflow\V2\Support\RunActivityView::class, 'activitiesForRun', 'useDurableHistory'],
     ];
 
     public const COMMAND_CONTEXT_CLASS = \Workflow\V2\CommandContext::class;
@@ -110,7 +113,8 @@ final class WorkflowPackageApiFloor
             "Installed durable-workflow/workflow package is older than the API floor Waterline requires. "
             ."Missing: %s. Upgrade the workflow package to a v2 snapshot that includes CommandContext "
             .'plus the context-accepting schedule mutation, namespace-scoped health snapshot, '
-            .'service catalog outcome-filter signatures, and selected-run query contract diagnostics.',
+            .'service catalog outcome-filter signatures, selected-run query contract diagnostics, '
+            .'and projection-only activity reads.',
             implode(', ', $missing),
         ));
     }

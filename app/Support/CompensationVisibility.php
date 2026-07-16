@@ -45,12 +45,15 @@ final class CompensationVisibility
     public static function activitiesForRun(WorkflowRun $run, bool $useDurableHistoryFallback = false): array
     {
         try {
-            $activities = RunActivityView::activitiesForRun($run);
+            $activities = RunActivityView::activitiesForRun(
+                $run,
+                useDurableHistory: $useDurableHistoryFallback,
+            );
 
             if ($activities !== [] || ! $useDurableHistoryFallback) {
                 return $activities;
             }
-        } catch (Throwable) {
+        } catch (\Exception) {
             if (! $useDurableHistoryFallback) {
                 return [];
             }
@@ -80,7 +83,7 @@ final class CompensationVisibility
             return self::empty();
         }
 
-        $activities = self::activitiesForRun($run);
+        $activities = self::activitiesForRun($run, $useDurableHistoryFallback);
         $visibility = self::fromActivities($activities);
         $projectionIsSufficient = $activities !== []
             && (! $forceDurableHistoryWhenMarkerMissing || is_string($visibility['current_marker'] ?? null));
