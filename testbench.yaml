@@ -4,6 +4,9 @@ providers:
   - Waterline\WaterlineApplicationServiceProvider
   - Workbench\App\Providers\WorkbenchServiceProvider
 
+migrations:
+  - workbench/database/migrations
+
 env:
   APP_KEY: 'base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI='
   APP_URL: 'http://localhost:8000'

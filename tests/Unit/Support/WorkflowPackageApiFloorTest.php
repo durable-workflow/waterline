@@ -2,6 +2,7 @@
 
 namespace Waterline\Tests\Unit\Support;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionClass;
 use RuntimeException;
 use Waterline\Support\WorkflowPackageApiFloor;
@@ -42,6 +43,7 @@ class WorkflowPackageApiFloorTest extends TestCase
     /**
      * @dataProvider contextAcceptingScheduleMethodProvider
      */
+    #[DataProvider('contextAcceptingScheduleMethodProvider')]
     public function test_schedule_manager_method_accepts_context_parameter(string $method): void
     {
         $reflection = new ReflectionClass(ScheduleManager::class);
