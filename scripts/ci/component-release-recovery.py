@@ -42,7 +42,7 @@ BETA_VERSION_PATTERN = re.compile(r"^2\.0\.0-beta\.[1-9][0-9]*$")
 # CRLF-to-LF normalization. The exact source identity is the fail-closed trust
 # boundary for the protected Waterline publication workflow; shell-pattern
 # checks cannot prove its executable control flow.
-WATERLINE_RECOVERY_WORKFLOW_SHA256 = "a383d4c0b9ea6cb69c38fe1d6cecd4314c91b04551fd2091cded4b319578ac7d"
+WATERLINE_RECOVERY_WORKFLOW_SHA256 = "d923d0d7d0b1fa09be3f7297abc6a5f54e37f85c6c28f10034fdb23520b90b3d"
 
 # SHA-256 of durable-workflow/sdk-rust's .github/workflows/release-plan-recovery.yml
 # at commit 31e87f4aa13a7fd255fd277a62c43c96ee1532ab (Git blob
@@ -50,7 +50,7 @@ WATERLINE_RECOVERY_WORKFLOW_SHA256 = "a383d4c0b9ea6cb69c38fe1d6cecd4314c91b04551
 # normalization. The exact source identity is the fail-closed trust boundary for
 # the protected Rust publication workflow; shell-pattern checks cannot prove its
 # executable control flow.
-SDK_RUST_RECOVERY_WORKFLOW_SHA256 = "8938ed8a7b029c492c08b3243c649adbed013ac3cd3dec57f9e23f396e46d079"
+SDK_RUST_RECOVERY_WORKFLOW_SHA256 = "d04219e3ffcc1c12a7a223efc832abee56c371b9dc60a7ef5a44a156b2ab4f64"
 
 
 @dataclass(frozen=True)
