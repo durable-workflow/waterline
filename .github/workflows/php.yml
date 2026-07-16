@@ -342,3 +342,23 @@ jobs:
           exit 1
         fi
         exit "$status"
+
+  target-branch-qualification:
+    name: Target branch qualification
+    if: ${{ always() && github.server_url == 'https://github.com' }}
+    needs: [build, laravel-matrix, laravel-compatibility, qualification]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+    - name: Require every supported framework and database cell
+      env:
+        BUILD_RESULT: ${{ needs.build.result }}
+        MATRIX_RESULT: ${{ needs.laravel-matrix.result }}
+        LARAVEL_RESULT: ${{ needs.laravel-compatibility.result }}
+        DATABASE_RESULT: ${{ needs.qualification.result }}
+      run: |
+        test "$BUILD_RESULT" = success
+        test "$MATRIX_RESULT" = success
+        test "$LARAVEL_RESULT" = success
+        test "$DATABASE_RESULT" = success
