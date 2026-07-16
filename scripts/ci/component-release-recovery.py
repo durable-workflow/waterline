@@ -37,6 +37,13 @@ VERSION_PATTERN = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z][0-9A-Za
 ALPHA_VERSION_PATTERN = re.compile(r"^2\.0\.0-alpha\.[1-9][0-9]*$")
 BETA_VERSION_PATTERN = re.compile(r"^2\.0\.0-beta\.[1-9][0-9]*$")
 
+# SHA-256 of durable-workflow/waterline's .github/workflows/release-plan-recovery.yml
+# (Git blob 404ed25ac3ee0a0436d4c6dbad676b1c7979d210), after only
+# CRLF-to-LF normalization. The exact source identity is the fail-closed trust
+# boundary for the protected Waterline publication workflow; shell-pattern
+# checks cannot prove its executable control flow.
+WATERLINE_RECOVERY_WORKFLOW_SHA256 = "a383d4c0b9ea6cb69c38fe1d6cecd4314c91b04551fd2091cded4b319578ac7d"
+
 # SHA-256 of durable-workflow/sdk-rust's .github/workflows/release-plan-recovery.yml
 # at commit 31e87f4aa13a7fd255fd277a62c43c96ee1532ab (Git blob
 # a41b4b6a99f8a105c6d0c0f52944b4f298be79d6), after only CRLF-to-LF
@@ -299,6 +306,15 @@ def discover_plan(client: PublicClient, requested_tag: str | None) -> tuple[str,
 
 def verify_recovery_workflow_source(name: str, source: str) -> None:
     component = COMPONENTS[name]
+    if name == "waterline":
+        normalized_source = source.replace("\r\n", "\n").encode("utf-8")
+        source_sha256 = hashlib.sha256(normalized_source).hexdigest()
+        if not hmac.compare_digest(source_sha256, WATERLINE_RECOVERY_WORKFLOW_SHA256):
+            raise RecoveryError(
+                f"{component.repository} recovery workflow does not match the approved protected publication source",
+                "default-branch-preflight",
+            )
+        return
     if name == "sdk-rust":
         normalized_source = source.replace("\r\n", "\n").encode("utf-8")
         source_sha256 = hashlib.sha256(normalized_source).hexdigest()
@@ -471,9 +487,20 @@ def verify_github_release(client: PublicClient, name: str, version: str) -> dict
         release = client.json(f"https://api.github.com/repos/{component.repository}/releases/tags/{encoded}")
     except NotFound as error:
         raise NotFound(f"GitHub Release {component.repository}@{version} is absent", "github-release") from error
-    if release.get("draft") or release.get("tag_name") != version:
+    prerelease_required = name == "waterline" and (
+        ALPHA_VERSION_PATTERN.fullmatch(version) is not None or BETA_VERSION_PATTERN.fullmatch(version) is not None
+    )
+    if (
+        release.get("draft")
+        or release.get("tag_name") != version
+        or (prerelease_required and release.get("prerelease") is not True)
+    ):
         raise RecoveryError(f"GitHub Release {component.repository}@{version} is not public", "github-release")
-    return {"id": release.get("id"), "url": release.get("html_url")}
+    return {
+        "id": release.get("id"),
+        "url": release.get("html_url"),
+        "prerelease": release.get("prerelease") is True,
+    }
 
 
 def verify_composer(client: PublicClient, component: Component, version: str, commit: str) -> dict[str, Any]:

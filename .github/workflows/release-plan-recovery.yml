@@ -15,18 +15,23 @@ on:
 
 permissions:
   attestations: read
-  contents: write
+  contents: read
 
 concurrency:
   group: release-plan-recovery-waterline-${{ inputs.plan_tag || 'latest' }}
   cancel-in-progress: false
 
 jobs:
-  recover:
-    name: Recover exact Waterline release
+  discover:
+    name: Discover exact Waterline release
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: packagist
+    timeout-minutes: 10
+    outputs:
+      action: ${{ steps.recovery.outputs.action }}
+      plan: ${{ steps.recovery.outputs.plan }}
+      plan_tag: ${{ steps.recovery.outputs.plan_tag }}
+      version: ${{ steps.recovery.outputs.version }}
+      commit: ${{ steps.recovery.outputs.commit }}
     steps:
       - uses: actions/checkout@v6
 
@@ -50,48 +55,6 @@ jobs:
           fi
           python scripts/ci/component-release-recovery.py "${arguments[@]}"
 
-      - name: Create the exact source tag
-        if: steps.recovery.outputs.action == 'publish'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.recovery.outputs.version }}
-          RELEASE_COMMIT: ${{ steps.recovery.outputs.commit }}
-        run: |
-          set -euo pipefail
-          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-              -f ref="refs/tags/$RELEASE_TAG" -f sha="$RELEASE_COMMIT" >/dev/null
-          fi
-
-      - name: Wait for Packagist source identity
-        if: steps.recovery.outputs.action == 'publish'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          python scripts/ci/component-release-recovery.py verify \
-            --component waterline --plan release-plan.json --registry-only \
-            --attempts 30 --sleep 20 --evidence registry-publication-evidence.json
-
-      - name: Create the source GitHub Release
-        if: steps.recovery.outputs.action == 'publish'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ steps.recovery.outputs.version }}
-        run: |
-          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --verify-tag --prerelease --generate-notes \
-              --title "$RELEASE_TAG"
-          fi
-
-      - name: Verify completed public release
-        if: steps.recovery.outputs.action == 'publish'
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          python scripts/ci/component-release-recovery.py verify \
-            --component waterline --plan release-plan.json \
-            --attempts 3 --sleep 5 --evidence release-completion-evidence.json
-
       - name: Retain recovery evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -100,6 +63,72 @@ jobs:
           path: |
             release-plan.json
             release-recovery-evidence.json
+          if-no-files-found: warn
+
+  publish:
+    name: Recover exact Waterline release
+    needs: discover
+    if: needs.discover.outputs.action == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release-plan-publication
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ssh-key: ${{ secrets.RELEASE_PLAN_DEPLOY_KEY }}
+
+      - name: Restore the immutable release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: waterline-release-recovery-${{ needs.discover.outputs.plan }}
+          path: recovery-input
+
+      - name: Create or verify the exact planned source tag
+        env:
+          PLAN_TAG: ${{ needs.discover.outputs.plan_tag }}
+          RELEASE_TAG: ${{ needs.discover.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.discover.outputs.commit }}
+        run: |
+          python scripts/ci/publish-planned-tag.py \
+            --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --plan-tag "$PLAN_TAG" \
+            --evidence release-tag-publication-evidence.json
+
+      - name: Wait for Packagist source identity
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/ci/component-release-recovery.py verify \
+            --component waterline --plan recovery-input/release-plan.json --registry-only \
+            --attempts 30 --sleep 20 --evidence registry-publication-evidence.json
+
+      - name: Create or verify the source GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.discover.outputs.version }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --prerelease --generate-notes \
+              --title "$RELEASE_TAG"
+          fi
+
+      - name: Verify completed public release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/ci/component-release-recovery.py verify \
+            --component waterline --plan recovery-input/release-plan.json \
+            --attempts 3 --sleep 5 --evidence release-completion-evidence.json
+
+      - name: Retain publication evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: waterline-release-publication-${{ needs.discover.outputs.plan }}
+          path: |
+            release-tag-publication-evidence.json
             registry-publication-evidence.json
             release-completion-evidence.json
           if-no-files-found: warn

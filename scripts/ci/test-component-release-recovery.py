@@ -16,6 +16,10 @@ recovery = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = recovery
 SPEC.loader.exec_module(recovery)
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+WATERLINE_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "release-plan-recovery.yml"
+WATERLINE_WORKFLOW_BYTES = WATERLINE_WORKFLOW_PATH.read_bytes()
+WATERLINE_WORKFLOW = WATERLINE_WORKFLOW_BYTES.decode("utf-8")
 RUST_WORKFLOW_PATH = Path(__file__).with_name("fixtures") / "sdk-rust-release-plan-recovery.yml"
 RUST_WORKFLOW_BYTES = RUST_WORKFLOW_PATH.read_bytes()
 RUST_WORKFLOW = RUST_WORKFLOW_BYTES.decode("utf-8")
@@ -40,6 +44,12 @@ jobs:
 
 
 class RecoveryWorkflowVerificationTest(unittest.TestCase):
+    def waterline_mutation(self, old: str, new: str, *, count: int = 1) -> str:
+        self.assertIn(old, WATERLINE_WORKFLOW)
+        changed = WATERLINE_WORKFLOW.replace(old, new, count)
+        self.assertNotEqual(changed, WATERLINE_WORKFLOW)
+        return changed
+
     def mutation(self, old: str, new: str, *, count: int = 1) -> str:
         self.assertIn(old, RUST_WORKFLOW)
         changed = RUST_WORKFLOW.replace(old, new, count)
@@ -51,6 +61,120 @@ class RecoveryWorkflowVerificationTest(unittest.TestCase):
         with self.assertRaises(recovery.RecoveryError) as caught:
             recovery.verify_recovery_workflow_source("sdk-rust", source)
         self.assertEqual(caught.exception.phase, "default-branch-preflight")
+
+    def assert_waterline_rejected(self, source: str) -> None:
+        self.assertNotEqual(source, WATERLINE_WORKFLOW)
+        with self.assertRaises(recovery.RecoveryError) as caught:
+            recovery.verify_recovery_workflow_source("waterline", source)
+        self.assertEqual(caught.exception.phase, "default-branch-preflight")
+
+    def test_accepts_only_the_canonical_protected_waterline_workflow_identity(self) -> None:
+        self.assertEqual(
+            hashlib.sha256(WATERLINE_WORKFLOW_BYTES).hexdigest(),
+            recovery.WATERLINE_RECOVERY_WORKFLOW_SHA256,
+        )
+        recovery.verify_recovery_workflow_source("waterline", WATERLINE_WORKFLOW)
+        recovery.verify_recovery_workflow_source("waterline", WATERLINE_WORKFLOW.replace("\n", "\r\n"))
+
+    def test_rejects_waterline_protection_and_authority_mutations(self) -> None:
+        variants = {
+            "unprotected environment": self.waterline_mutation(
+                "    environment: release-plan-publication",
+                "    environment: unprotected",
+            ),
+            "wrong deploy key": self.waterline_mutation("RELEASE_PLAN_DEPLOY_KEY", "OTHER_DEPLOY_KEY"),
+            "broad discovery token": self.waterline_mutation(
+                "permissions:\n  attestations: read\n  contents: read",
+                "permissions:\n  attestations: read\n  contents: write",
+            ),
+            "repository-token tag creation": self.waterline_mutation(
+                "          python scripts/ci/publish-planned-tag.py \\",
+                "          gh api --method POST repos/$GITHUB_REPOSITORY/git/refs\n"
+                "          python scripts/ci/publish-planned-tag.py \\",
+            ),
+            "publication bypass": self.waterline_mutation(
+                "    if: needs.discover.outputs.action == 'publish'",
+                "    if: always()",
+            ),
+        }
+        for label, source in variants.items():
+            with self.subTest(label=label):
+                self.assert_waterline_rejected(source)
+
+    def test_rejects_waterline_plan_and_source_binding_mutations(self) -> None:
+        variants = {
+            "mutable plan artifact": self.waterline_mutation(
+                "name: waterline-release-recovery-${{ needs.discover.outputs.plan }}",
+                "name: waterline-release-recovery-${{ github.run_id }}",
+            ),
+            "wrong plan binding": self.waterline_mutation(
+                "          PLAN_TAG: ${{ needs.discover.outputs.plan_tag }}",
+                "          PLAN_TAG: ${{ github.ref_name }}",
+            ),
+            "wrong release tag binding": self.waterline_mutation(
+                "          RELEASE_TAG: ${{ needs.discover.outputs.version }}",
+                "          RELEASE_TAG: ${{ github.ref_name }}",
+            ),
+            "wrong commit binding": self.waterline_mutation(
+                "          RELEASE_COMMIT: ${{ needs.discover.outputs.commit }}",
+                "          RELEASE_COMMIT: ${{ github.sha }}",
+            ),
+            "wrong publisher argument": self.waterline_mutation(
+                '--commit "$RELEASE_COMMIT"',
+                '--commit "$GITHUB_SHA"',
+            ),
+            "publisher moved after registry wait": self.waterline_mutation(
+                "      - name: Create or verify the exact planned source tag",
+                "      - name: Wait for Packagist before creating the exact planned source tag",
+            ),
+        }
+        for label, source in variants.items():
+            with self.subTest(label=label):
+                self.assert_waterline_rejected(source)
+
+    def test_rejects_incomplete_or_nonblocking_waterline_public_verification(self) -> None:
+        variants = {
+            "registry verification skipped": self.waterline_mutation(
+                "      - name: Wait for Packagist source identity\n",
+                "      - name: Wait for Packagist source identity\n        if: false\n",
+            ),
+            "registry verification ignored": self.waterline_mutation(
+                "--attempts 30 --sleep 20 --evidence registry-publication-evidence.json",
+                "--attempts 30 --sleep 20 --evidence registry-publication-evidence.json || true",
+            ),
+            "GitHub release omitted": self.waterline_mutation("--prerelease", "--draft"),
+            "completion verification nonblocking": self.waterline_mutation(
+                "      - name: Verify completed public release\n",
+                "      - name: Verify completed public release\n        continue-on-error: true\n",
+            ),
+            "registry-only completion": self.waterline_mutation(
+                "--attempts 3 --sleep 5 --evidence release-completion-evidence.json",
+                "--registry-only --attempts 3 --sleep 5 --evidence release-completion-evidence.json",
+            ),
+        }
+        for label, source in variants.items():
+            with self.subTest(label=label):
+                self.assert_waterline_rejected(source)
+
+    def test_requires_the_planned_waterline_github_release_to_be_a_prerelease(self) -> None:
+        class ReleaseClient:
+            def __init__(self, prerelease: bool) -> None:
+                self.prerelease = prerelease
+
+            def json(self, _url: str) -> dict[str, object]:
+                return {
+                    "id": 136,
+                    "html_url": "https://github.com/durable-workflow/waterline/releases/tag/2.0.0-alpha.136",
+                    "tag_name": "2.0.0-alpha.136",
+                    "draft": False,
+                    "prerelease": self.prerelease,
+                }
+
+        verified = recovery.verify_github_release(ReleaseClient(True), "waterline", "2.0.0-alpha.136")
+        self.assertTrue(verified["prerelease"])
+        with self.assertRaises(recovery.RecoveryError) as caught:
+            recovery.verify_github_release(ReleaseClient(False), "waterline", "2.0.0-alpha.136")
+        self.assertEqual(caught.exception.phase, "github-release")
 
     def test_accepts_only_the_canonical_public_rust_workflow_identity(self) -> None:
         self.assertEqual(

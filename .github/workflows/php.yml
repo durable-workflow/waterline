@@ -51,8 +51,11 @@ jobs:
       run: |
         python -m py_compile \
           scripts/ci/component-release-recovery.py \
-          scripts/ci/test-component-release-recovery.py
+          scripts/ci/publish-planned-tag.py \
+          scripts/ci/test-component-release-recovery.py \
+          scripts/ci/test-publish-planned-tag.py
         python scripts/ci/test-component-release-recovery.py
+        python scripts/ci/test-publish-planned-tag.py
 
     - name: Build Laravel 12 Workbench scaffold
       run: composer build
