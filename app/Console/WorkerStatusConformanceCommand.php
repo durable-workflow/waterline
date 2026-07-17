@@ -6,6 +6,7 @@ namespace Waterline\Console;
 
 use Composer\InstalledVersions;
 use DurableWorkflow\Client as SdkClient;
+use DurableWorkflow\SdkIdentity;
 use DurableWorkflow\Version as SdkVersion;
 use Illuminate\Console\Command;
 use Illuminate\Http\Client\Factory as HttpFactory;
@@ -62,6 +63,8 @@ final class WorkerStatusConformanceCommand extends Command
         $runId = is_string($runOption) && trim($runOption) !== ''
             ? trim($runOption)
             : 'missing-run-id';
+        $artifactVersions = $this->artifactOptionValues('version');
+        $artifactSources = $this->artifactOptionValues('source');
 
         $this->report = [
             'schema' => 'durable-workflow.v2.waterline-worker-status-evidence',
@@ -72,8 +75,12 @@ final class WorkerStatusConformanceCommand extends Command
             'finished_at' => null,
             'outcome' => 'non_passing_runner_blocked',
             'runner_blocked' => true,
-            'artifact_versions' => $this->artifactOptionValues('version'),
-            'artifact_sources' => $this->artifactOptionValues('source'),
+            'artifact_versions' => $artifactVersions,
+            'artifact_sources' => $artifactSources,
+            'php_sdk_contract' => $this->phpSdkContract(
+                $artifactVersions['sdk-php'],
+                $artifactSources['sdk-php'],
+            ),
             'local_product_source_checkouts_used' => null,
             'topology' => [],
             'checks' => [],
@@ -750,7 +757,7 @@ final class WorkerStatusConformanceCommand extends Command
                 && array_key_exists('workflow_available', $beforeWaterline['list']['task_slots']),
             'waterline_process_metrics_visible' => is_array($beforeWaterline['list']['process_metrics'] ?? null)
                 && array_key_exists('process_id', $beforeWaterline['list']['process_metrics']),
-            'waterline_protocol_or_compatibility_visible' => ($beforeWaterline['list']['sdk_version'] ?? null) === 'durable-workflow-php/'.SdkVersion::SDK
+            'waterline_protocol_or_compatibility_visible' => ($beforeWaterline['list']['sdk_version'] ?? null) === SdkIdentity::registration()
                 && ($beforeWaterline['list']['build_id'] ?? null) === $topology['compatibility'],
             'waterline_list_detail_agree_before_stale' => $this->projectionsAgree($beforeWaterline['list'], $beforeWaterline['detail']),
             'waterline_list_agrees_with_server_before_stale' => $this->projectionsAgree($beforeWaterline['list'], $beforeServer),
@@ -1129,6 +1136,9 @@ final class WorkerStatusConformanceCommand extends Command
         if ($this->installedPackageVersion('durable-workflow/sdk') !== $versions['sdk-php']) {
             $failures[] = 'installed PHP SDK package does not match sdk-php-version';
         }
+        if (SdkIdentity::version() !== $versions['sdk-php']) {
+            $failures[] = 'PHP SDK runtime identity does not match sdk-php-version';
+        }
         if ($this->installedPackageVersion('durable-workflow/workflow') !== $versions['workflow']) {
             $failures[] = 'installed Workflow PHP package does not match workflow-version';
         }
@@ -1258,6 +1268,19 @@ final class WorkerStatusConformanceCommand extends Command
         $version = InstalledVersions::getPrettyVersion($package) ?? '';
 
         return str_starts_with($version, 'v') ? substr($version, 1) : $version;
+    }
+
+    /** @return array<string, string|null> */
+    private function phpSdkContract(?string $artifactVersion, ?string $artifactSource): array
+    {
+        return [
+            'package' => SdkIdentity::PACKAGE,
+            'installed_version' => SdkIdentity::version(),
+            'registration_identity' => SdkIdentity::registration(),
+            'worker_protocol_version' => SdkVersion::WORKER_PROTOCOL,
+            'artifact_version' => $artifactVersion,
+            'artifact_source' => $artifactSource,
+        ];
     }
 
     /** @param array<string, mixed> $detail */

@@ -110,8 +110,12 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $runner = (string) file_get_contents($root.'/app/Console/WorkerStatusConformanceCommand.php');
         $worker = (string) file_get_contents($root.'/app/Console/WorkerStatusSdkWorkerCommand.php');
 
-        $this->assertSame('^0.1', $manifest['require']['durable-workflow/sdk'] ?? null);
+        $this->assertSame('^0.1.7', $manifest['require']['durable-workflow/sdk'] ?? null);
         $this->assertStringContainsString('use DurableWorkflow\\Client as SdkClient;', $runner);
+        $this->assertStringContainsString('use DurableWorkflow\\SdkIdentity;', $runner);
+        $this->assertStringContainsString('SdkIdentity::registration()', $runner);
+        $this->assertStringContainsString("'php_sdk_contract' =>", $runner);
+        $this->assertStringNotContainsString('SdkVersion::SDK', $runner);
         $this->assertStringContainsString('use DurableWorkflow\\Worker;', $worker);
         $this->assertStringContainsString('$worker->run(', $worker);
         $this->assertStringContainsString("'heartbeat_loop_implementation_owner' => 'durable-workflow/sdk'", $runner);
@@ -119,6 +123,22 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $this->assertStringNotContainsString('registerWorker(', $runner.$worker);
         $this->assertStringNotContainsString('Workflow\\V2\\Worker\\', $runner.$worker);
         $this->assertStringNotContainsString('class_alias', $runner.$worker);
+
+        $sdkVersion = \DurableWorkflow\SdkIdentity::version();
+        $sdkSource = 'packagist://durable-workflow/sdk@'.$sdkVersion;
+        $contract = new \ReflectionMethod(
+            \Waterline\Console\WorkerStatusConformanceCommand::class,
+            'phpSdkContract',
+        );
+
+        $this->assertSame([
+            'package' => 'durable-workflow/sdk',
+            'installed_version' => $sdkVersion,
+            'registration_identity' => 'durable-workflow-php/'.$sdkVersion,
+            'worker_protocol_version' => \DurableWorkflow\Version::WORKER_PROTOCOL,
+            'artifact_version' => $sdkVersion,
+            'artifact_source' => $sdkSource,
+        ], $contract->invoke(new \Waterline\Console\WorkerStatusConformanceCommand(), $sdkVersion, $sdkSource));
     }
 
     public function testComposerImagePhpCannotSilentlySelectDependenciesForAnotherServerRuntime(): void

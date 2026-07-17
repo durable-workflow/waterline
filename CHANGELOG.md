@@ -22,4 +22,5 @@ hosts can align Waterline's freshness classification with the server through
 `WATERLINE_WORKER_STALE_AFTER_SECONDS`. Standalone worker execution now uses
 the exact published PHP SDK package while Workflow remains the embedded engine;
 normal and early-failure evidence retain the canonical PHP SDK version and
-Packagist provenance.
+Packagist provenance. Worker-status projections now derive the advertised PHP
+SDK identity and worker protocol from the installed SDK runtime contract.
