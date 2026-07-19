@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+Release-plan recovery now consumes immutable, exact-version release-note
+preparation authority before publishing a newly recorded plan.
+
 Waterline keeps the Durable Workflow 2.0 conformance claim aligned to
 platform conformance suite version 17 and the current published artifact
 tuple: server 0.2.238, CLI 0.1.75, Workflow 2.0.0-alpha.189, Python SDK
