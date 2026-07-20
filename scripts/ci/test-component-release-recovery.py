@@ -12,6 +12,8 @@ import urllib.error
 from pathlib import Path
 from unittest import mock
 
+from cli_release_verifier_contract import CliRecoveryWorkflowSourceTest, CliReleaseAuthorityTest
+
 SCRIPT = Path(__file__).with_name("component-release-recovery.py")
 SPEC = importlib.util.spec_from_file_location("component_release_recovery", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
