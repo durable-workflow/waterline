@@ -55,21 +55,21 @@ SOURCE_CHANGELOGS = {"workflow", "waterline", "sdk-php", "sdk-python"}
 # SHA-256 of durable-workflow/cli's protected release recovery workflow.
 # Exact source identity is required because source-pattern matching cannot
 # prove that tag creation remains inside the protected repository authority.
-CLI_RELEASE_RECOVERY_SHA256 = "29fde398856e0db8c43c14dc3c3544fcb21ad9c79db71661db1637e8f89c588a"
+CLI_RELEASE_RECOVERY_SHA256 = "adb0f4d27fd4f933227de5bd04e1fbe438f14c9f7ca85c300d47cc304a669b00"
 
 # SHA-256 of durable-workflow/waterline's prepared-plan recovery workflow,
 # after only
 # CRLF-to-LF normalization. The exact source identity is the fail-closed trust
 # boundary for the protected Waterline publication workflow; shell-pattern
 # checks cannot prove its executable control flow.
-WATERLINE_RECOVERY_WORKFLOW_SHA256 = "9e4c568db4b9de3407437803b531b320afe6fceda5cd3493875cacecca8edc15"
+WATERLINE_RECOVERY_WORKFLOW_SHA256 = "2b51f86a78623ded0d3e093d09f7a468f29c4e3a889020cc55a6d453f2bb4169"
 
 # SHA-256 of durable-workflow/sdk-rust's prepared-plan recovery workflow,
 # after only CRLF-to-LF
 # normalization. The exact source identity is the fail-closed trust boundary for
 # the protected Rust publication workflow; shell-pattern checks cannot prove its
 # executable control flow.
-SDK_RUST_RECOVERY_WORKFLOW_SHA256 = "0055b197f7ef3f826275bd5514a33891a9cbf10f5d74b9fefa1647f5eefe868a"
+SDK_RUST_RECOVERY_WORKFLOW_SHA256 = "58684e7002d4674f2a6e819bb3c4aea18279bf17a4c8e90abc1d777d63034b0f"
 
 
 @dataclass(frozen=True)

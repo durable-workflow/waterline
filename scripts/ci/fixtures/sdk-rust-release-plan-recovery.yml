@@ -70,7 +70,9 @@ jobs:
   publish:
     name: Publish exact Rust SDK release
     needs: discover
-    if: needs.discover.outputs.action == 'publish'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      needs.discover.outputs.action == 'publish'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: release-plan-publication

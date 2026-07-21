@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
-      contents: write
+      contents: read
 
     services:
       mysql:
@@ -72,6 +72,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           path: waterline
+          persist-credentials: false
           ref: ${{ github.event.inputs.waterline_ref || 'v2' }}
 
       - name: Checkout sample-app
@@ -79,6 +80,7 @@ jobs:
         with:
           repository: durable-workflow/sample-app
           path: sample-app
+          persist-credentials: false
           ref: ${{ github.event.inputs.sample_app_ref || 'main' }}
 
       - name: Checkout workflow
@@ -86,6 +88,7 @@ jobs:
         with:
           repository: durable-workflow/workflow
           path: workflow
+          persist-credentials: false
           ref: ${{ github.event.inputs.workflow_ref || 'v2' }}
 
       - name: Set up PHP 8.4
@@ -696,34 +699,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
-          name: waterline-screenshots
+          name: waterline-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
           path: sample-app/screenshots/
           if-no-files-found: error
           retention-days: 30
-
-      - name: Update README screenshot assets
-        if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_readme_assets != 'false' && (github.event.inputs.waterline_ref == '' || github.event.inputs.waterline_ref == 'v2')) }}
-        working-directory: waterline
-        run: |
-          mkdir -p docs/screenshots
-          cp ../sample-app/screenshots/dashboard.png docs/screenshots/dashboard.png
-          cp ../sample-app/screenshots/running.png docs/screenshots/running.png
-          cp ../sample-app/screenshots/completed.png docs/screenshots/completed.png
-          cp ../sample-app/screenshots/failed.png docs/screenshots/failed.png
-          cp ../sample-app/screenshots/workflow-detail.png docs/screenshots/workflow-detail.png
-          cp ../sample-app/screenshots/workers.png docs/screenshots/workers.png
-          cp ../sample-app/screenshots/schedules.png docs/screenshots/schedules.png
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/screenshots
-          if git diff --cached --quiet; then
-            echo "No screenshot asset changes to publish."
-          else
-            git commit -m "Update Waterline screenshots"
-            git pull --rebase origin v2
-            git push origin HEAD:v2
-          fi
 
       - name: Add screenshot summary
         if: always()
@@ -731,7 +710,7 @@ jobs:
           {
             echo "## Waterline screenshots"
             echo
-            echo "The full PNG set is uploaded as the \`waterline-screenshots\` artifact."
+            echo "The full PNG set is uploaded as the run-attempt-bound screenshot artifact."
             echo
             if [ -d "${SCREENSHOT_DIR}" ]; then
               find "${SCREENSHOT_DIR}" -maxdepth 1 -type f -name "*.png" -printf "- %f (%s bytes)\n" | sort
@@ -762,3 +741,79 @@ jobs:
         run: |
           [ -f web.pid ] && kill "$(cat web.pid)" 2>/dev/null || true
           [ -f worker.pid ] && kill "$(cat worker.pid)" 2>/dev/null || true
+
+  publish:
+    name: Publish protected screenshot assets
+    needs: screenshots
+    if: >-
+      github.ref == 'refs/heads/v2' &&
+      (github.event_name == 'schedule' ||
+       (github.event_name == 'workflow_dispatch' &&
+        inputs.publish_readme_assets != false &&
+        (inputs.waterline_ref == '' || inputs.waterline_ref == 'v2') &&
+        (inputs.sample_app_ref == '' || inputs.sample_app_ref == 'main') &&
+        (inputs.workflow_ref == '' || inputs.workflow_ref == 'v2')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the protected Waterline branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
+          ref: v2
+
+      - name: Restore the exact generated screenshots
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          name: waterline-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          path: published-screenshots
+
+      - name: Validate and publish inert PNG assets
+        run: |
+          set -euo pipefail
+          expected=(
+            dashboard.png
+            running.png
+            completed.png
+            failed.png
+            workflow-detail.png
+            workers.png
+            schedules.png
+          )
+          mapfile -d '' entries < <(
+            find published-screenshots -mindepth 1 -maxdepth 1 -print0
+          )
+          if [ "${#entries[@]}" -ne "${#expected[@]}" ]; then
+            printf 'screenshot artifact must contain exactly %s files\n' "${#expected[@]}" >&2
+            exit 1
+          fi
+          for name in "${expected[@]}"; do
+            source="published-screenshots/$name"
+            if [ ! -f "$source" ] || [ -L "$source" ]; then
+              printf 'missing or unsafe screenshot asset: %s\n' "$name" >&2
+              exit 1
+            fi
+            signature="$(od -An -tx1 -N8 "$source" | tr -d ' \n')"
+            size="$(stat -c '%s' "$source")"
+            if [ "$signature" != 89504e470d0a1a0a ] || [ "$size" -lt 10240 ] || [ "$size" -gt 2097152 ]; then
+              printf 'invalid PNG screenshot asset: %s\n' "$name" >&2
+              exit 1
+            fi
+          done
+
+          mkdir -p docs/screenshots
+          for name in "${expected[@]}"; do
+            cp "published-screenshots/$name" "docs/screenshots/$name"
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots
+          if git diff --cached --quiet; then
+            echo "No screenshot asset changes to publish."
+          else
+            git commit -m "Update Waterline screenshots"
+            git pull --rebase origin v2
+            git push origin HEAD:v2
+          fi

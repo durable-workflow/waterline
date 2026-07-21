@@ -12,7 +12,10 @@ import urllib.error
 from pathlib import Path
 from unittest import mock
 
-from cli_release_verifier_contract import CliRecoveryWorkflowSourceTest, CliReleaseAuthorityTest
+from cli_release_verifier_contract import (  # noqa: F401
+    CliRecoveryWorkflowSourceTest,
+    CliReleaseAuthorityTest,
+)
 
 SCRIPT = Path(__file__).with_name("component-release-recovery.py")
 SPEC = importlib.util.spec_from_file_location("component_release_recovery", SCRIPT)
@@ -25,6 +28,10 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 WATERLINE_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "release-plan-recovery.yml"
 WATERLINE_WORKFLOW_BYTES = WATERLINE_WORKFLOW_PATH.read_bytes()
 WATERLINE_WORKFLOW = WATERLINE_WORKFLOW_BYTES.decode("utf-8")
+SCREENSHOTS_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "screenshots.yml"
+)
+SCREENSHOTS_WORKFLOW = SCREENSHOTS_WORKFLOW_PATH.read_text(encoding="utf-8")
 RUST_WORKFLOW_PATH = Path(__file__).with_name("fixtures") / "sdk-rust-release-plan-recovery.yml"
 RUST_WORKFLOW_BYTES = RUST_WORKFLOW_PATH.read_bytes()
 RUST_WORKFLOW = RUST_WORKFLOW_BYTES.decode("utf-8")
@@ -344,8 +351,24 @@ class RecoveryWorkflowVerificationTest(unittest.TestCase):
                 "          python scripts/ci/publish-planned-tag.py \\",
             ),
             "publication bypass": self.waterline_mutation(
-                "    if: needs.discover.outputs.action == 'publish'",
+                "    if: >-\n"
+                "      github.ref == 'refs/heads/v2' &&\n"
+                "      needs.discover.outputs.action == 'publish'",
                 "    if: always()",
+            ),
+            "missing protected ref": self.waterline_mutation(
+                "    if: >-\n"
+                "      github.ref == 'refs/heads/v2' &&\n"
+                "      needs.discover.outputs.action == 'publish'",
+                "    if: needs.discover.outputs.action == 'publish'",
+            ),
+            "wrong protected ref": self.waterline_mutation(
+                "github.ref == 'refs/heads/v2' &&",
+                "github.ref == 'refs/heads/main' &&",
+            ),
+            "protected ref OR bypass": self.waterline_mutation(
+                "github.ref == 'refs/heads/v2' &&",
+                "github.ref == 'refs/heads/v2' ||",
             ),
         }
         for label, source in variants.items():
@@ -620,6 +643,62 @@ class RecoveryWorkflowVerificationTest(unittest.TestCase):
         )
         with self.assertRaises(recovery.RecoveryError):
             recovery.verify_recovery_workflow_source("server", without_exact_ref)
+
+
+class PrivilegedWorkflowBoundaryTest(unittest.TestCase):
+    def test_native_publishers_gate_the_exact_v2_ref_before_authority(self) -> None:
+        publishers = {
+            "release recovery": WATERLINE_WORKFLOW.split("\n  publish:\n", 1)[1],
+            "screenshots": SCREENSHOTS_WORKFLOW.split("\n  publish:\n", 1)[1],
+        }
+        exact_guard = "    if: >-\n      github.ref == 'refs/heads/v2' &&"
+        authority_markers = {
+            "release recovery": (
+                "    environment: release-plan-publication",
+                "    permissions:\n      contents: write",
+                "    steps:",
+            ),
+            "screenshots": (
+                "    permissions:\n      contents: write",
+                "    steps:",
+            ),
+        }
+
+        for name, publisher in publishers.items():
+            with self.subTest(name=name):
+                guard_at = publisher.index(exact_guard)
+                self.assertEqual(publisher.count("github.ref == 'refs/heads/v2'"), 1)
+                for marker in authority_markers[name]:
+                    self.assertLess(guard_at, publisher.index(marker))
+
+    def test_screenshot_generator_is_read_only_and_drops_checkout_credentials(self) -> None:
+        generator = SCREENSHOTS_WORKFLOW.split("\n  publish:\n", 1)[0]
+
+        self.assertIn("    permissions:\n      contents: read", generator)
+        self.assertNotIn("contents: write", generator)
+        self.assertNotIn("${{ secrets.", generator)
+        self.assertEqual(generator.count("          persist-credentials: false"), 3)
+
+    def test_screenshot_publisher_accepts_only_protected_source_inputs(self) -> None:
+        publisher = SCREENSHOTS_WORKFLOW.split("\n  publish:\n", 1)[1]
+
+        self.assertIn(
+            "    if: >-\n"
+            "      github.ref == 'refs/heads/v2' &&\n"
+            "      (github.event_name == 'schedule' ||\n"
+            "       (github.event_name == 'workflow_dispatch' &&\n"
+            "        inputs.publish_readme_assets != false &&\n"
+            "        (inputs.waterline_ref == '' || inputs.waterline_ref == 'v2') &&\n"
+            "        (inputs.sample_app_ref == '' || inputs.sample_app_ref == 'main') &&\n"
+            "        (inputs.workflow_ref == '' || inputs.workflow_ref == 'v2')))\n"
+            "    runs-on: ubuntu-latest",
+            publisher,
+        )
+        self.assertIn("          ref: v2", publisher)
+        self.assertIn(
+            "name: waterline-screenshots-${{ github.run_id }}-${{ github.run_attempt }}",
+            publisher,
+        )
 
 
 if __name__ == "__main__":
