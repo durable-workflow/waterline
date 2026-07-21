@@ -103,6 +103,55 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $this->assertStringNotContainsString('fixture_response', $node);
     }
 
+    public function testCommandAndPublishedRunnerAcceptOnlyExactCurrent2xPrereleases(): void
+    {
+        $validator = new \ReflectionMethod(
+            \Waterline\Console\WorkerStatusConformanceCommand::class,
+            'isExact2xPrerelease',
+        );
+
+        foreach ([
+            '2.0.0-alpha.1',
+            '2.0.0-beta.1',
+            '2.0.0-rc.1',
+        ] as $version) {
+            $this->assertTrue($validator->invoke(null, $version), $version);
+        }
+
+        foreach ([
+            '',
+            '*',
+            '^2.0.0-beta.1',
+            '2.0.x-dev',
+            'dev-v2',
+            '2.0.0',
+            '2.0.1-beta.1',
+            '1.0.0-rc.1',
+            '2.0.0-preview.1',
+            '2.0.0-beta',
+            '2.0.0-beta.01',
+            '2.0.0-beta.1 || 2.0.0',
+        ] as $version) {
+            $this->assertFalse($validator->invoke(null, $version), $version);
+        }
+
+        $root = dirname(__DIR__, 2);
+        $node = trim((string) shell_exec('command -v node 2>/dev/null'));
+        $this->assertNotSame('', $node, 'Node is required to validate published runner version pins.');
+        exec(sprintf(
+            '%s --test %s 2>&1',
+            escapeshellarg($node),
+            escapeshellarg($root.'/tests/Unit/WorkerStatusVersionTest.mjs'),
+        ), $output, $status);
+
+        $this->assertSame(0, $status, implode("\n", $output));
+
+        $runtimeSources = (string) file_get_contents($root.'/app/Console/WorkerStatusConformanceCommand.php')
+            .(string) file_get_contents($root.'/scripts/conformance/worker-status-published-artifacts.mjs');
+        $this->assertStringContainsString('must be an exact 2.0 prerelease', $runtimeSources);
+        $this->assertStringNotContainsString('must be an exact 2.0 alpha release', $runtimeSources);
+    }
+
     public function testPublishedWorkerExecutionUsesThePhpSdkPackageBoundary(): void
     {
         $root = dirname(__DIR__, 2);
@@ -216,6 +265,7 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             'scripts/conformance/worker-status-published-artifacts.mjs',
             'scripts/conformance/worker-status-network.mjs',
             'scripts/conformance/worker-status-runner-lifecycle.mjs',
+            'scripts/conformance/worker-status-version.mjs',
             'app/Console/WorkerStatusConformanceCommand.php',
             'app/Console/WorkerStatusSdkWorkerCommand.php',
         ];

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+Published worker-status validation now accepts exact numeric 2.0 alpha, beta,
+and release-candidate package versions while continuing to reject ranges,
+branch aliases, unpinned values, and stable releases.
+
 Release-plan recovery now consumes immutable, exact-version release-note
 preparation authority before publishing a newly recorded plan.
 

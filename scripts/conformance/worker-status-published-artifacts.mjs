@@ -12,6 +12,7 @@ import {
   runWithCleanup,
   waitForHttpReadiness,
 } from './worker-status-runner-lifecycle.mjs';
+import { isExact2xPrerelease } from './worker-status-version.mjs';
 
 const RESULT_DIR = requiredEnv('RESULT_DIR');
 const STARTED_AT = now();
@@ -182,8 +183,8 @@ function ensureExactPins() {
   if (!/^\d+\.\d+\.\d+$/.test(SERVER_VERSION)) failures.push('DW_SERVER_VERSION must be an exact patch release');
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(CLI_VERSION)) failures.push('DW_CLI_VERSION must be exact');
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(SDK_PHP_VERSION)) failures.push('DW_PHP_SDK_VERSION must be exact');
-  if (!/^2\.0\.0-alpha\.\d+$/.test(WORKFLOW_VERSION)) failures.push('DW_WORKFLOW_PHP_VERSION must be an exact 2.0 alpha release');
-  if (!/^2\.0\.0-alpha\.\d+$/.test(WATERLINE_VERSION)) failures.push('DW_WATERLINE_VERSION must be an exact 2.0 alpha release');
+  if (!isExact2xPrerelease(WORKFLOW_VERSION)) failures.push('DW_WORKFLOW_PHP_VERSION must be an exact 2.0 prerelease');
+  if (!isExact2xPrerelease(WATERLINE_VERSION)) failures.push('DW_WATERLINE_VERSION must be an exact 2.0 prerelease');
   const exactTag = new RegExp(`^(?:(?:docker\\.io|index\\.docker\\.io)/)?durableworkflow/server:${escapeRegex(SERVER_VERSION)}$`).test(SERVER_IMAGE);
   const exactDigest = /^(?:(?:docker\.io|index\.docker\.io)\/)?durableworkflow\/server(?::[^@]+)?@sha256:[0-9a-f]{64}$/i.test(SERVER_IMAGE);
   if (!exactTag && !exactDigest) failures.push('DW_SERVER_IMAGE must be the exact public version tag or a digest pin');

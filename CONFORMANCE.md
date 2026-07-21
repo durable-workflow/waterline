@@ -52,8 +52,8 @@ in-process projection tests used during development. A release host runs:
 DW_SERVER_VERSION=<exact-version> \
 DW_CLI_VERSION=<exact-version> \
 DW_PHP_SDK_VERSION=<exact-version> \
-DW_WORKFLOW_PHP_VERSION=<exact-2.0-alpha> \
-DW_WATERLINE_VERSION=<exact-2.0-alpha> \
+DW_WORKFLOW_PHP_VERSION=<exact-2.0-prerelease> \
+DW_WATERLINE_VERSION=<exact-2.0-prerelease> \
 scripts/conformance/worker-status-published-artifacts.sh \
   --result-dir=/path/to/results
 ```

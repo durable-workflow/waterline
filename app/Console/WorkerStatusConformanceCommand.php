@@ -1129,8 +1129,8 @@ final class WorkerStatusConformanceCommand extends Command
             $failures[] = 'sdk-php-version must be exact';
         }
         foreach (['workflow', 'waterline'] as $package) {
-            if (! preg_match('/^2\.0\.0-alpha\.\d+$/', $versions[$package])) {
-                $failures[] = $package.'-version must be an exact 2.0 alpha release';
+            if (! self::isExact2xPrerelease($versions[$package])) {
+                $failures[] = $package.'-version must be an exact 2.0 prerelease';
             }
         }
         if ($this->installedPackageVersion('durable-workflow/sdk') !== $versions['sdk-php']) {
@@ -1172,6 +1172,11 @@ final class WorkerStatusConformanceCommand extends Command
         if ($failures !== []) {
             throw new RuntimeException(implode('; ', $failures));
         }
+    }
+
+    private static function isExact2xPrerelease(string $version): bool
+    {
+        return preg_match('/\A2\.0\.0-(?:alpha|beta|rc)\.(?:0|[1-9]\d*)\z/', $version) === 1;
     }
 
     /** @return array<string, mixed> */
