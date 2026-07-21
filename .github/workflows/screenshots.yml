@@ -24,7 +24,7 @@ on:
     - cron: "0 6 * * 1"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: screenshots-${{ github.ref_name }}
@@ -34,6 +34,8 @@ jobs:
   screenshots:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    permissions:
+      contents: write
 
     services:
       mysql:
@@ -67,27 +69,27 @@ jobs:
 
     steps:
       - name: Checkout waterline
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           path: waterline
           ref: ${{ github.event.inputs.waterline_ref || 'v2' }}
 
       - name: Checkout sample-app
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: durable-workflow/sample-app
           path: sample-app
           ref: ${{ github.event.inputs.sample_app_ref || 'main' }}
 
       - name: Checkout workflow
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           repository: durable-workflow/workflow
           path: workflow
           ref: ${{ github.event.inputs.workflow_ref || 'v2' }}
 
       - name: Set up PHP 8.4
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
         with:
           php-version: "8.4"
           extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, redis, bcmath
@@ -95,7 +97,7 @@ jobs:
           tools: composer:v2
 
       - name: Set up Node 22
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
         with:
           node-version: "22"
 
@@ -692,7 +694,7 @@ jobs:
 
       - name: Upload screenshots
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: waterline-screenshots
           path: sample-app/screenshots/
@@ -748,7 +750,7 @@ jobs:
 
       - name: Upload failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           name: screenshots-diagnostics
           path: diagnostics/

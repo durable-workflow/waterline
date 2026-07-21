@@ -202,10 +202,10 @@ jobs:
     name: Integration Test (Waterline ↔ Server)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4
 
       - name: Start integration stack
         run: |
@@ -219,7 +219,7 @@ jobs:
           timeout 60 sh -c 'until curl -f http://localhost:8081/api/health; do sleep 2; done'
 
       - name: Set up PHP
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
         with:
           php-version: '8.2'
           extensions: mysql, redis
