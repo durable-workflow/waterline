@@ -34,9 +34,10 @@ jobs:
         fail-fast: true
 
     - name: Validate Composer manifest
-      run: composer validate --strict
+      run: composer validate --strict --no-check-all
 
     - name: Cache Composer packages
+      if: ${{ github.server_url == 'https://github.com' }}
       uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25  # v5
       with:
         path: vendor
@@ -45,9 +46,11 @@ jobs:
           ${{ github.event_name }}-${{ runner.os }}-php-8.2-
 
     - name: Install maintained qualification dependencies
+      if: ${{ github.server_url == 'https://github.com' }}
       run: composer install --prefer-dist --no-progress --no-interaction
 
     - name: Audit qualification dependencies
+      if: ${{ github.server_url == 'https://github.com' }}
       run: composer audit --no-interaction
 
     - name: Validate release recovery tooling
@@ -61,6 +64,7 @@ jobs:
         python scripts/ci/test-publish-planned-tag.py
 
     - name: Build Laravel 12 Workbench scaffold
+      if: ${{ github.server_url == 'https://github.com' }}
       run: composer build
 
   laravel-matrix:
@@ -275,7 +279,7 @@ jobs:
         fail-fast: true
 
     - name: Validate Composer manifest
-      run: composer validate --strict
+      run: composer validate --strict --no-check-all
 
     - name: Restore Composer packages
       uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25  # v5

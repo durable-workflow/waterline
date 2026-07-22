@@ -12,7 +12,7 @@ import {
   runWithCleanup,
   waitForHttpReadiness,
 } from './worker-status-runner-lifecycle.mjs';
-import { isExact2xPrerelease } from './worker-status-version.mjs';
+import { isExact2xPrerelease, isExactSemverRelease } from './worker-status-version.mjs';
 
 const RESULT_DIR = requiredEnv('RESULT_DIR');
 const STARTED_AT = now();
@@ -180,7 +180,7 @@ async function freePort() {
 
 function ensureExactPins() {
   const failures = [];
-  if (!/^\d+\.\d+\.\d+$/.test(SERVER_VERSION)) failures.push('DW_SERVER_VERSION must be an exact patch release');
+  if (!isExactSemverRelease(SERVER_VERSION)) failures.push('DW_SERVER_VERSION must be an exact SemVer release');
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(CLI_VERSION)) failures.push('DW_CLI_VERSION must be exact');
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(SDK_PHP_VERSION)) failures.push('DW_PHP_SDK_VERSION must be exact');
   if (!isExact2xPrerelease(WORKFLOW_VERSION)) failures.push('DW_WORKFLOW_PHP_VERSION must be an exact 2.0 prerelease');
