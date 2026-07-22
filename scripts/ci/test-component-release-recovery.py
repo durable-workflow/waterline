@@ -342,22 +342,25 @@ class RecoveryWorkflowVerificationTest(unittest.TestCase):
     def assert_rust_rejected(self, source: str) -> None:
         self.assertNotEqual(source, RUST_WORKFLOW)
         with self.assertRaises(recovery.RecoveryError) as caught:
-            recovery.verify_recovery_workflow_source("sdk-rust", source)
+            recovery.verify_recovery_workflow_source(
+                "sdk-rust", source, hashlib.sha256(RUST_WORKFLOW_BYTES).hexdigest()
+            )
         self.assertEqual(caught.exception.phase, "default-branch-preflight")
 
     def assert_waterline_rejected(self, source: str) -> None:
         self.assertNotEqual(source, WATERLINE_WORKFLOW)
         with self.assertRaises(recovery.RecoveryError) as caught:
-            recovery.verify_recovery_workflow_source("waterline", source)
+            recovery.verify_recovery_workflow_source(
+                "waterline", source, hashlib.sha256(WATERLINE_WORKFLOW_BYTES).hexdigest()
+            )
         self.assertEqual(caught.exception.phase, "default-branch-preflight")
 
     def test_accepts_only_the_canonical_protected_waterline_workflow_identity(self) -> None:
-        self.assertEqual(
-            hashlib.sha256(WATERLINE_WORKFLOW_BYTES).hexdigest(),
-            recovery.WATERLINE_RECOVERY_WORKFLOW_SHA256,
+        digest = hashlib.sha256(WATERLINE_WORKFLOW_BYTES).hexdigest()
+        recovery.verify_recovery_workflow_source("waterline", WATERLINE_WORKFLOW, digest)
+        recovery.verify_recovery_workflow_source(
+            "waterline", WATERLINE_WORKFLOW.replace("\n", "\r\n"), digest
         )
-        recovery.verify_recovery_workflow_source("waterline", WATERLINE_WORKFLOW)
-        recovery.verify_recovery_workflow_source("waterline", WATERLINE_WORKFLOW.replace("\n", "\r\n"))
 
     def test_rejects_waterline_protection_and_authority_mutations(self) -> None:
         variants = {
@@ -484,12 +487,11 @@ class RecoveryWorkflowVerificationTest(unittest.TestCase):
         self.assertEqual(caught.exception.phase, "github-release")
 
     def test_accepts_only_the_canonical_public_rust_workflow_identity(self) -> None:
-        self.assertEqual(
-            hashlib.sha256(RUST_WORKFLOW_BYTES).hexdigest(),
-            recovery.SDK_RUST_RECOVERY_WORKFLOW_SHA256,
+        digest = hashlib.sha256(RUST_WORKFLOW_BYTES).hexdigest()
+        recovery.verify_recovery_workflow_source("sdk-rust", RUST_WORKFLOW, digest)
+        recovery.verify_recovery_workflow_source(
+            "sdk-rust", RUST_WORKFLOW.replace("\n", "\r\n"), digest
         )
-        recovery.verify_recovery_workflow_source("sdk-rust", RUST_WORKFLOW)
-        recovery.verify_recovery_workflow_source("sdk-rust", RUST_WORKFLOW.replace("\n", "\r\n"))
 
     def test_rejects_one_byte_and_line_mutations(self) -> None:
         variants = {
@@ -669,13 +671,14 @@ class RecoveryWorkflowVerificationTest(unittest.TestCase):
                 self.assert_rust_rejected(source)
 
     def test_preserves_strict_contents_api_path_for_other_components(self) -> None:
-        recovery.verify_recovery_workflow_source("server", SERVER_WORKFLOW)
+        expected_sha256 = hashlib.sha256(SERVER_WORKFLOW.encode("utf-8")).hexdigest()
+        recovery.verify_recovery_workflow_source("server", SERVER_WORKFLOW, expected_sha256)
         without_exact_ref = SERVER_WORKFLOW.replace(
             '-f ref="refs/tags/$RELEASE_TAG"',
             '-f ref="refs/tags/latest"',
         )
         with self.assertRaises(recovery.RecoveryError):
-            recovery.verify_recovery_workflow_source("server", without_exact_ref)
+            recovery.verify_recovery_workflow_source("server", without_exact_ref, expected_sha256)
 
 
 class PrivilegedWorkflowBoundaryTest(unittest.TestCase):

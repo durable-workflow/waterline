@@ -9,7 +9,6 @@ import datetime as dt
 import email.utils
 import errno
 import hashlib
-import hmac
 import http.client
 import json
 import os
@@ -28,6 +27,14 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from recovery_workflow_authority import (
+    SOURCE_IDENTITY as RECOVERY_WORKFLOW_AUTHORITY_SOURCE,
+    RecoveryWorkflowAuthorityError,
+    authority_url,
+    decode_authority,
+    verify_workflow_source,
+)
 
 SCHEMA = "durable-workflow.release-plan/v1"
 PREPARATION_SCHEMA = "durable-workflow.release-preparation/v1"
@@ -55,26 +62,6 @@ SOURCE_PRODUCT_TRAINS = {
     "workflow": ("durable-workflow/workflow", "composer.json"),
     "waterline": ("durable-workflow/waterline", "composer.json"),
 }
-
-# SHA-256 of durable-workflow/cli's protected release recovery workflow.
-# Exact source identity is required because source-pattern matching cannot
-# prove that tag creation remains inside the protected repository authority.
-CLI_RELEASE_RECOVERY_SHA256 = "adb0f4d27fd4f933227de5bd04e1fbe438f14c9f7ca85c300d47cc304a669b00"
-
-# SHA-256 of durable-workflow/waterline's prepared-plan recovery workflow,
-# after only
-# CRLF-to-LF normalization. The exact source identity is the fail-closed trust
-# boundary for the protected Waterline publication workflow; shell-pattern
-# checks cannot prove its executable control flow.
-WATERLINE_RECOVERY_WORKFLOW_SHA256 = "70709457d17c017a2368058f543c88863425f9c0805027e1926e7f2520840379"
-
-# SHA-256 of durable-workflow/sdk-rust's prepared-plan recovery workflow,
-# after only CRLF-to-LF
-# normalization. The exact source identity is the fail-closed trust boundary for
-# the protected Rust publication workflow; shell-pattern checks cannot prove its
-# executable control flow.
-SDK_RUST_RECOVERY_WORKFLOW_SHA256 = "58684e7002d4674f2a6e819bb3c4aea18279bf17a4c8e90abc1d777d63034b0f"
-
 
 @dataclass(frozen=True)
 class Component:
@@ -664,77 +651,23 @@ def discover_plan(
     return tag, commit, plan, preparation
 
 
-def verify_recovery_workflow_source(name: str, source: str) -> None:
-    component = COMPONENTS[name]
-    if name == "cli":
-        normalized_source = source.replace("\r\n", "\n").encode("utf-8")
-        source_sha256 = hashlib.sha256(normalized_source).hexdigest()
-        if not hmac.compare_digest(source_sha256, CLI_RELEASE_RECOVERY_SHA256):
-            raise RecoveryError(
-                f"{component.repository} release recovery workflow does not match the approved "
-                "protected publication source identity",
-                "default-branch-preflight",
-            )
-        return
-    if name == "waterline":
-        normalized_source = source.replace("\r\n", "\n").encode("utf-8")
-        source_sha256 = hashlib.sha256(normalized_source).hexdigest()
-        if not hmac.compare_digest(source_sha256, WATERLINE_RECOVERY_WORKFLOW_SHA256):
-            raise RecoveryError(
-                f"{component.repository} recovery workflow does not match the approved protected publication source",
-                "default-branch-preflight",
-            )
-        return
-    if name == "sdk-rust":
-        normalized_source = source.replace("\r\n", "\n").encode("utf-8")
-        source_sha256 = hashlib.sha256(normalized_source).hexdigest()
-        if not hmac.compare_digest(source_sha256, SDK_RUST_RECOVERY_WORKFLOW_SHA256):
-            raise RecoveryError(
-                f"{component.repository} recovery workflow does not match the approved protected publication source",
-                "default-branch-preflight",
-            )
-        return
+def load_recovery_workflow_authority(client: PublicClient) -> dict[str, dict[str, str]]:
+    identities = {
+        name: (component.repository, component.default_branch)
+        for name, component in COMPONENTS.items()
+    }
+    try:
+        raw = client.bytes(authority_url(), accept="application/vnd.github.raw+json")
+        return decode_authority(raw, identities)
+    except RecoveryWorkflowAuthorityError as error:
+        raise RecoveryError(str(error), "default-branch-preflight") from error
 
-    if (
-        not re.search(r"(?m)^  schedule:\s*$", source)
-        or not re.search(r"(?m)^  workflow_dispatch:\s*$", source)
-        or "--preparation-output" not in source
-    ):
-        raise RecoveryError(
-            f"{component.repository} recovery workflow lacks scheduled/manual prepared-plan discovery",
-            "default-branch-preflight",
-        )
-    if component.release_workflow is None:
-        return
 
-    dispatch = re.search(
-        rf'gh\s+workflow\s+run\s+{re.escape(component.release_workflow)}\s+--ref\s+"\$RELEASE_TAG"',
-        source,
-    )
-    tag_ref_at = source.find('-f ref="refs/tags/$RELEASE_TAG"')
-    tag_commit_at = source.find('-f sha="$RELEASE_COMMIT"', tag_ref_at)
-    selector_at = source.find("select-publication-run")
-    if (
-        dispatch is None
-        or tag_ref_at < 0
-        or tag_commit_at < 0
-        or selector_at < tag_commit_at
-        or selector_at > dispatch.start()
-        or "databaseId,displayTitle,headBranch,headSha,status,conclusion" not in source
-        or '--release-tag "$RELEASE_TAG"' not in source
-        or '--release-commit "$RELEASE_COMMIT"' not in source
-    ):
-        raise RecoveryError(
-            f"{component.repository} publication must create or verify the declared source tag "
-            "before dispatching in its exact tag context",
-            "default-branch-preflight",
-        )
-    release_input = f'-f {component.release_tag_input}="$RELEASE_TAG"'
-    if source.find(release_input, dispatch.start()) < 0:
-        raise RecoveryError(
-            f"{component.repository} publication must retain the declared release tag input",
-            "default-branch-preflight",
-        )
+def verify_recovery_workflow_source(name: str, source: str, expected_sha256: str) -> str:
+    try:
+        return verify_workflow_source(name, source, expected_sha256)
+    except RecoveryWorkflowAuthorityError as error:
+        raise RecoveryError(str(error), "default-branch-preflight") from error
 
 
 def select_publication_run(
@@ -787,6 +720,7 @@ def verify_plan_authority(
     foundation = read_record(client, FOUNDATION_TAG, FOUNDATION_COMMIT, "candidate.json")
     if foundation.get("candidate") != "beta-continuity-foundation":
         raise RecoveryError("immutable candidate foundation has an unexpected identity", "plan-preflight")
+    authority = load_recovery_workflow_authority(client)
     branches: dict[str, str] = {}
     recovery_workflows: dict[str, dict[str, Any]] = {}
     for name, component in COMPONENTS.items():
@@ -798,11 +732,12 @@ def verify_plan_authority(
                 "default-branch-preflight",
             )
         branches[name] = str(actual)
-        expected_path = ".github/workflows/release-plan-recovery.yml"
+        expected = authority[name]
+        expected_path = expected["path"]
         workflow = client.json(
             f"https://api.github.com/repos/{component.repository}/actions/workflows/release-plan-recovery.yml"
         )
-        if workflow.get("path") != expected_path or workflow.get("state") != "active":
+        if workflow.get("path") != expected_path or workflow.get("state") != expected["state"]:
             raise RecoveryError(
                 f"{component.repository} does not expose an active {expected_path} on its default branch",
                 "default-branch-preflight",
@@ -812,10 +747,12 @@ def verify_plan_authority(
             f"?ref={component.default_branch}",
             accept="application/vnd.github.raw+json",
         ).decode("utf-8")
-        verify_recovery_workflow_source(name, source)
+        source_sha256 = verify_recovery_workflow_source(name, source, expected["sha256"])
         recovery_workflows[name] = {
+            "authority": RECOVERY_WORKFLOW_AUTHORITY_SOURCE,
             "default_branch": component.default_branch,
             "path": expected_path,
+            "sha256": source_sha256,
             "state": workflow["state"],
             "workflow_id": workflow.get("id"),
             "url": workflow.get("html_url"),
