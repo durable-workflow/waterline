@@ -720,10 +720,56 @@ class PrivilegedWorkflowBoundaryTest(unittest.TestCase):
             publisher,
         )
         self.assertIn("          ref: v2", publisher)
-        self.assertIn(
-            "name: waterline-screenshots-${{ github.run_id }}-${{ github.run_attempt }}",
-            publisher,
+
+
+class ScreenshotArtifactIdentityTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.generator, self.publisher = SCREENSHOTS_WORKFLOW.split(
+            "\n  publish:\n", 1
         )
+        self.upload = self.generator.split("      - name: Upload screenshots\n", 1)[1]
+        self.upload = self.upload.split("\n      - name:", 1)[0]
+        self.restore = self.publisher.split(
+            "      - name: Restore the exact generated screenshots\n", 1
+        )[1]
+        self.restore = self.restore.split("\n      - name:", 1)[0]
+
+    def test_selective_publisher_retry_uses_the_retained_producer_artifact(
+        self,
+    ) -> None:
+        self.assertIn(
+            "    outputs:\n"
+            "      screenshot_artifact_id: "
+            "${{ steps.upload_screenshots.outputs.artifact-id }}",
+            self.generator,
+        )
+        self.assertIn("        id: upload_screenshots", self.upload)
+        self.assertIn(
+            "          artifact-ids: "
+            "${{ needs.screenshots.outputs.screenshot_artifact_id }}\n"
+            "          path: published-screenshots\n"
+            "          merge-multiple: true",
+            self.restore,
+        )
+        self.assertNotIn("github.run_attempt", self.restore)
+        self.assertNotIn("github-token:", self.restore)
+        self.assertNotIn("run-id:", self.restore)
+
+    def test_full_rerun_uploads_a_fresh_attempt_qualified_artifact(self) -> None:
+        template = (
+            "waterline-screenshots-${{ github.run_id }}-${{ github.run_attempt }}"
+        )
+
+        self.assertIn(f"          name: {template}", self.upload)
+        first_attempt = template.replace("${{ github.run_id }}", "1234").replace(
+            "${{ github.run_attempt }}", "1"
+        )
+        full_rerun = template.replace("${{ github.run_id }}", "1234").replace(
+            "${{ github.run_attempt }}", "2"
+        )
+        self.assertEqual("waterline-screenshots-1234-1", first_attempt)
+        self.assertEqual("waterline-screenshots-1234-2", full_rerun)
+        self.assertNotEqual(first_attempt, full_rerun)
 
 
 if __name__ == "__main__":

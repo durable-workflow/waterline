@@ -32,6 +32,8 @@ concurrency:
 
 jobs:
   screenshots:
+    outputs:
+      screenshot_artifact_id: ${{ steps.upload_screenshots.outputs.artifact-id }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -696,6 +698,7 @@ jobs:
           node waterline-screenshots.mjs
 
       - name: Upload screenshots
+        id: upload_screenshots
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
@@ -767,8 +770,9 @@ jobs:
       - name: Restore the exact generated screenshots
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
-          name: waterline-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          artifact-ids: ${{ needs.screenshots.outputs.screenshot_artifact_id }}
           path: published-screenshots
+          merge-multiple: true
 
       - name: Validate and publish inert PNG assets
         run: |
