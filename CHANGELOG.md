@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+Waterline joins the synchronized Durable Workflow `2.0.0-beta.3` product
+train. The operator, embedded engine, standalone server, CLI, and official SDKs
+now share one supported beta baseline. Earlier prereleases remain historical
+and receive no compatibility shim.
+
 Published worker-status validation now accepts exact numeric 2.0 alpha, beta,
 and release-candidate package versions while continuing to reject ranges,
 branch aliases, unpinned values, and stable releases.
@@ -10,9 +15,7 @@ Release-plan recovery now consumes immutable, exact-version release-note
 preparation authority before publishing a newly recorded plan.
 
 Waterline keeps the Durable Workflow 2.0 conformance claim aligned to
-platform conformance suite version 17 and the current published artifact
-tuple: server 0.2.238, CLI 0.1.75, Workflow 2.0.0-alpha.189, Python SDK
-0.4.84, and Waterline 2.0.0-alpha.76. The focused
+platform conformance suite version 17. The focused
 `waterline:principal-attribution-conformance` shard now documents
 operator-visible command and timeline principal attribution alongside the
 namespace and search-attribute Waterline shards. Migration runtime and

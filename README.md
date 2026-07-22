@@ -14,13 +14,13 @@ This UI is installable via [Composer](https://getcomposer.org).
 
 ```bash
 composer require \
-    durable-workflow/waterline:^2.0.0-alpha@alpha \
-    durable-workflow/workflow:^2.0.0-alpha@alpha
+    durable-workflow/waterline:2.0.0-beta.3@beta \
+    durable-workflow/workflow:2.0.0-beta.3@beta
 
 php artisan waterline:install
 ```
 
-The `@alpha` stability flags are required while Waterline and its Durable
+The `@beta` stability flags are required while Waterline and its Durable
 Workflow runtime dependency are on the 2.0 prerelease channel. Composer only
 honors prerelease stability allowances from the root project, so default-stable
 applications must allow both packages explicitly. Drop the flags after `2.0.0`
@@ -81,13 +81,13 @@ values in `effective_preferences` without mutating the stored preferences.
 ## Upgrading Waterline
 
 When upgrading into or within the 2.0 prerelease channel, keep both root
-package requirements on the Durable Workflow alpha channel and publish the
-latest assets.
+package requirements on the supported Durable Workflow beta train and publish
+the latest assets.
 
 ```bash
 composer require --with-all-dependencies \
-    durable-workflow/waterline:^2.0.0-alpha@alpha \
-    durable-workflow/workflow:^2.0.0-alpha@alpha
+    durable-workflow/waterline:2.0.0-beta.3@beta \
+    durable-workflow/workflow:2.0.0-beta.3@beta
 
 php artisan waterline:publish
 ```

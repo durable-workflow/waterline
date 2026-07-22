@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import io
+import json
 import sys
 import unittest
 import urllib.error
@@ -225,6 +226,30 @@ class ReleasePreparationRecoveryTest(unittest.TestCase):
             "channel": "alpha",
             "components": {"workflow": {"version": "2.0.0-alpha.1", "commit": "a" * 40}},
         }
+
+    def test_source_product_train_is_bound_to_the_planned_identity(self) -> None:
+        identity = {"version": "2.0.0-beta.3", "commit": "a" * 40}
+        client = mock.Mock()
+        client.bytes.return_value = json.dumps(
+            {
+                "name": "durable-workflow/waterline",
+                "extra": {"durable-workflow": {"product-train": identity["version"]}},
+            }
+        ).encode()
+
+        evidence = recovery.source_product_train_evidence(client, "waterline", identity)
+
+        self.assertEqual(identity["version"], evidence["product_train"])
+        self.assertEqual(identity["commit"], evidence["source_commit"])
+        client.bytes.assert_called_once_with(
+            "https://api.github.com/repos/durable-workflow/waterline/contents/composer.json?ref="
+            + identity["commit"],
+            accept="application/vnd.github.raw+json",
+        )
+
+        client.bytes.return_value = client.bytes.return_value.replace(b"beta.3", b"beta.2")
+        with self.assertRaisesRegex(recovery.RecoveryError, "not planned version 2.0.0-beta.3"):
+            recovery.source_product_train_evidence(client, "waterline", identity)
 
     def test_discovery_rejects_missing_preparation_for_an_incomplete_release(self) -> None:
         candidate = self.candidate()

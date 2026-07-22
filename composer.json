@@ -14,8 +14,8 @@
     "require": {
         "php": "^8.0.2",
         "illuminate/support": "^9.0|^10.0|^11.0|^12.0|^13.0",
-        "durable-workflow/sdk": "^0.1.7",
-        "durable-workflow/workflow": "^2.0.0-alpha"
+        "durable-workflow/sdk": ">=2.0.0-beta.3 <2.0.0-beta.4",
+        "durable-workflow/workflow": ">=2.0.0-beta.3 <2.0.0-beta.4"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
@@ -71,6 +71,9 @@
         "prepare": "@php vendor/bin/testbench package:discover --ansi"
     },
     "extra": {
+        "durable-workflow": {
+            "product-train": "2.0.0-beta.3"
+        },
         "laravel": {
             "providers": [
                 "Waterline\\WaterlineServiceProvider"
