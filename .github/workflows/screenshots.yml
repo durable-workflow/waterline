@@ -33,7 +33,10 @@ concurrency:
 jobs:
   screenshots:
     outputs:
-      screenshot_artifact_id: ${{ steps.upload_screenshots.outputs.artifact-id }}
+      artifact-digest: ${{ steps.privileged-handoff.outputs.artifact-digest }}
+      artifact-id: ${{ steps.privileged-handoff.outputs.artifact-id }}
+      source-run-attempt: ${{ github.run_attempt }}
+      source-run-id: ${{ github.run_id }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -745,6 +748,17 @@ jobs:
           [ -f web.pid ] && kill "$(cat web.pid)" 2>/dev/null || true
           [ -f worker.pid ] && kill "$(cat worker.pid)" 2>/dev/null || true
 
+      - name: Package the privileged screenshot handoff as one immutable file
+        run: tar -cf screenshot-handoff.tar -C sample-app/screenshots .
+
+      - name: Bind the privileged screenshot handoff identity and digest
+        id: privileged-handoff
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          archive: false
+          if-no-files-found: error
+          path: screenshot-handoff.tar
+
   publish:
     name: Publish protected screenshot assets
     needs: screenshots
@@ -759,20 +773,77 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      actions: read
       contents: write
     steps:
       - name: Check out the protected Waterline branch
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
           fetch-depth: 0
-          ref: v2
+          persist-credentials: false
+          ref: ${{ github.sha }}
 
       - name: Restore the exact generated screenshots
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
-          artifact-ids: ${{ needs.screenshots.outputs.screenshot_artifact_id }}
-          path: published-screenshots
-          merge-multiple: true
+          artifact-ids: ${{ needs.screenshots.outputs.artifact-id }}
+          digest-mismatch: error
+          github-token: ${{ github.token }}
+          path: isolated-screenshot-handoff
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.screenshots.outputs.source-run-id }}
+
+      - name: Validate the exact producer artifact before use
+        env:
+          ARTIFACT_DIRECTORY: isolated-screenshot-handoff
+          EXPECTED_ARTIFACT_DIGEST: ${{ needs.screenshots.outputs.artifact-digest }}
+          EXPECTED_ARTIFACT_ID: ${{ needs.screenshots.outputs.artifact-id }}
+          EXPECTED_SOURCE_RUN_ATTEMPT: ${{ needs.screenshots.outputs.source-run-attempt }}
+          EXPECTED_SOURCE_RUN_ID: ${{ needs.screenshots.outputs.source-run-id }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            printf 'producer artifact digest is not an exact SHA-256 digest\n' >&2
+            exit 1
+          fi
+          for identity in "$EXPECTED_ARTIFACT_ID" "$EXPECTED_SOURCE_RUN_ID" "$EXPECTED_SOURCE_RUN_ATTEMPT"; do
+            if [[ ! "$identity" =~ ^[1-9][0-9]*$ ]]; then
+              printf 'producer artifact identity is invalid\n' >&2
+              exit 1
+            fi
+          done
+          if [[ ! "$ARTIFACT_DIRECTORY" =~ ^isolated-[a-z0-9][a-z0-9._-]*$ ]]; then
+            printf 'artifact validation directory is unsafe\n' >&2
+            exit 1
+          fi
+          mapfile -d '' entries < <(
+            /usr/bin/find "$ARTIFACT_DIRECTORY" -mindepth 1 -maxdepth 1 -print0
+          )
+          if [ "${#entries[@]}" -ne 1 ] || [ ! -f "${entries[0]}" ] || [ -L "${entries[0]}" ]; then
+            printf 'artifact handoff must contain exactly one regular file\n' >&2
+            exit 1
+          fi
+          observed_digest="$(/usr/bin/sha256sum "${entries[0]}")"
+          observed_digest="${observed_digest%% *}"
+          if [ "$observed_digest" != "$EXPECTED_ARTIFACT_DIGEST" ]; then
+            printf 'artifact digest mismatch: expected %s, got %s\n' \
+              "$EXPECTED_ARTIFACT_DIGEST" "$observed_digest" >&2
+            exit 1
+          fi
+          printf 'validated artifact %s from run %s attempt %s\n' \
+            "$EXPECTED_ARTIFACT_ID" "$EXPECTED_SOURCE_RUN_ID" "$EXPECTED_SOURCE_RUN_ATTEMPT"
+
+      - name: Configure protected screenshot publication credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          clean: false
+          fetch-depth: 0
+          ref: v2
+
+      - name: Extract the validated screenshot handoff
+        run: |
+          mkdir published-screenshots
+          tar -xf isolated-screenshot-handoff/screenshot-handoff.tar -C published-screenshots
 
       - name: Validate and publish inert PNG assets
         run: |

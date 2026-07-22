@@ -402,9 +402,17 @@ class RecoveryWorkflowVerificationTest(unittest.TestCase):
 
     def test_rejects_waterline_plan_and_source_binding_mutations(self) -> None:
         variants = {
-            "mutable plan artifact": self.waterline_mutation(
-                "name: waterline-release-recovery-${{ needs.discover.outputs.plan }}",
-                "name: waterline-release-recovery-${{ github.run_id }}",
+            "wrong privileged artifact digest binding": self.waterline_mutation(
+                "artifact-digest: ${{ steps.privileged-handoff.outputs.artifact-digest }}",
+                "artifact-digest: ${{ steps.privileged-handoff.outputs.artifact-id }}",
+            ),
+            "download can ignore digest mismatch": self.waterline_mutation(
+                "          digest-mismatch: error",
+                "          digest-mismatch: warn",
+            ),
+            "wrong producer run identity": self.waterline_mutation(
+                "          run-id: ${{ needs.discover.outputs.source-run-id }}",
+                "          run-id: ${{ github.run_attempt }}",
             ),
             "wrong plan binding": self.waterline_mutation(
                 "          PLAN_TAG: ${{ needs.discover.outputs.plan_tag }}",
@@ -680,11 +688,11 @@ class PrivilegedWorkflowBoundaryTest(unittest.TestCase):
         authority_markers = {
             "release recovery": (
                 "    environment: release-plan-publication",
-                "    permissions:\n      contents: write",
+                "    permissions:\n      actions: read\n      contents: write",
                 "    steps:",
             ),
             "screenshots": (
-                "    permissions:\n      contents: write",
+                "    permissions:\n      actions: read\n      contents: write",
                 "    steps:",
             ),
         }
@@ -695,6 +703,33 @@ class PrivilegedWorkflowBoundaryTest(unittest.TestCase):
                 self.assertEqual(publisher.count("github.ref == 'refs/heads/v2'"), 1)
                 for marker in authority_markers[name]:
                     self.assertLess(guard_at, publisher.index(marker))
+
+    def test_native_publishers_validate_handoffs_before_privileged_use(self) -> None:
+        boundaries = {
+            "release recovery": (
+                WATERLINE_WORKFLOW.split("\n  publish:\n", 1)[1],
+                "      - name: Configure repository publication credential",
+                "      - name: Extract the validated release recovery handoff",
+                "      - name: Create or verify the exact planned source tag",
+            ),
+            "screenshots": (
+                SCREENSHOTS_WORKFLOW.split("\n  publish:\n", 1)[1],
+                "      - name: Configure protected screenshot publication credentials",
+                "      - name: Extract the validated screenshot handoff",
+                "      - name: Validate and publish inert PNG assets",
+            ),
+        }
+
+        for name, (publisher, credential, extraction, consumer) in boundaries.items():
+            with self.subTest(name=name):
+                download_at = publisher.index("uses: actions/download-artifact@")
+                validation_at = publisher.index(
+                    "      - name: Validate the exact producer artifact before use"
+                )
+                self.assertLess(download_at, validation_at)
+                self.assertLess(validation_at, publisher.index(credential))
+                self.assertLess(validation_at, publisher.index(extraction))
+                self.assertLess(validation_at, publisher.index(consumer))
 
     def test_screenshot_generator_is_read_only_and_drops_checkout_credentials(self) -> None:
         generator = SCREENSHOTS_WORKFLOW.split("\n  publish:\n", 1)[0]
@@ -727,40 +762,68 @@ class ScreenshotArtifactIdentityTest(unittest.TestCase):
         self.generator, self.publisher = SCREENSHOTS_WORKFLOW.split(
             "\n  publish:\n", 1
         )
-        self.upload = self.generator.split("      - name: Upload screenshots\n", 1)[1]
-        self.upload = self.upload.split("\n      - name:", 1)[0]
+        self.retained_upload = self.generator.split(
+            "      - name: Upload screenshots\n", 1
+        )[1]
+        self.retained_upload = self.retained_upload.split("\n      - name:", 1)[0]
+        self.bound_upload = self.generator.split(
+            "      - name: Bind the privileged screenshot handoff identity and digest\n",
+            1,
+        )[1]
         self.restore = self.publisher.split(
             "      - name: Restore the exact generated screenshots\n", 1
         )[1]
         self.restore = self.restore.split("\n      - name:", 1)[0]
+        self.validator = self.publisher.split(
+            "      - name: Validate the exact producer artifact before use\n", 1
+        )[1]
+        self.validator = self.validator.split("\n      - name:", 1)[0]
 
     def test_selective_publisher_retry_uses_the_retained_producer_artifact(
         self,
     ) -> None:
         self.assertIn(
             "    outputs:\n"
-            "      screenshot_artifact_id: "
-            "${{ steps.upload_screenshots.outputs.artifact-id }}",
+            "      artifact-digest: ${{ steps.privileged-handoff.outputs.artifact-digest }}\n"
+            "      artifact-id: ${{ steps.privileged-handoff.outputs.artifact-id }}\n"
+            "      source-run-attempt: ${{ github.run_attempt }}\n"
+            "      source-run-id: ${{ github.run_id }}",
             self.generator,
         )
-        self.assertIn("        id: upload_screenshots", self.upload)
+        self.assertIn("        id: upload_screenshots", self.retained_upload)
+        self.assertIn("        id: privileged-handoff", self.bound_upload)
+        self.assertIn("          archive: false", self.bound_upload)
+        self.assertIn("          if-no-files-found: error", self.bound_upload)
+        self.assertIn("          path: screenshot-handoff.tar", self.bound_upload)
         self.assertIn(
-            "          artifact-ids: "
-            "${{ needs.screenshots.outputs.screenshot_artifact_id }}\n"
-            "          path: published-screenshots\n"
-            "          merge-multiple: true",
+            "          artifact-ids: ${{ needs.screenshots.outputs.artifact-id }}\n"
+            "          digest-mismatch: error\n"
+            "          github-token: ${{ github.token }}\n"
+            "          path: isolated-screenshot-handoff\n"
+            "          repository: ${{ github.repository }}\n"
+            "          run-id: ${{ needs.screenshots.outputs.source-run-id }}",
             self.restore,
         )
         self.assertNotIn("github.run_attempt", self.restore)
-        self.assertNotIn("github-token:", self.restore)
-        self.assertNotIn("run-id:", self.restore)
+        self.assertIn(
+            "          EXPECTED_ARTIFACT_DIGEST: "
+            "${{ needs.screenshots.outputs.artifact-digest }}\n"
+            "          EXPECTED_ARTIFACT_ID: "
+            "${{ needs.screenshots.outputs.artifact-id }}\n"
+            "          EXPECTED_SOURCE_RUN_ATTEMPT: "
+            "${{ needs.screenshots.outputs.source-run-attempt }}\n"
+            "          EXPECTED_SOURCE_RUN_ID: "
+            "${{ needs.screenshots.outputs.source-run-id }}",
+            self.validator,
+        )
+        self.assertIn('/usr/bin/sha256sum "${entries[0]}"', self.validator)
 
     def test_full_rerun_uploads_a_fresh_attempt_qualified_artifact(self) -> None:
         template = (
             "waterline-screenshots-${{ github.run_id }}-${{ github.run_attempt }}"
         )
 
-        self.assertIn(f"          name: {template}", self.upload)
+        self.assertIn(f"          name: {template}", self.retained_upload)
         first_attempt = template.replace("${{ github.run_id }}", "1234").replace(
             "${{ github.run_attempt }}", "1"
         )

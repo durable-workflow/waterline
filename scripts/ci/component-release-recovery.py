@@ -66,7 +66,7 @@ CLI_RELEASE_RECOVERY_SHA256 = "adb0f4d27fd4f933227de5bd04e1fbe438f14c9f7ca85c300
 # CRLF-to-LF normalization. The exact source identity is the fail-closed trust
 # boundary for the protected Waterline publication workflow; shell-pattern
 # checks cannot prove its executable control flow.
-WATERLINE_RECOVERY_WORKFLOW_SHA256 = "2b51f86a78623ded0d3e093d09f7a468f29c4e3a889020cc55a6d453f2bb4169"
+WATERLINE_RECOVERY_WORKFLOW_SHA256 = "70709457d17c017a2368058f543c88863425f9c0805027e1926e7f2520840379"
 
 # SHA-256 of durable-workflow/sdk-rust's prepared-plan recovery workflow,
 # after only CRLF-to-LF
