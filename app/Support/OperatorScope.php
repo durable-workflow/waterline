@@ -10,6 +10,10 @@ final class OperatorScope
 {
     public static function namespace(): ?string
     {
+        if (BackendConfiguration::serviceMode()) {
+            return BackendConfiguration::namespace();
+        }
+
         $namespace = config('waterline.namespace');
 
         return is_string($namespace) && trim($namespace) !== '' ? trim($namespace) : null;

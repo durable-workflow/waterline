@@ -16,6 +16,8 @@ use Waterline\Http\Middleware\RenderApiExceptionsAsJson;
 use Waterline\Http\Middleware\UseEphemeralApiSessionWhenDatabaseTableMissing;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\RuntimeConfiguration;
+use Waterline\Support\BackendConfiguration;
+use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Waterline\Support\WorkflowPackageApiFloor;
 use Waterline\Support\WorkflowRepositoryResolver;
@@ -37,7 +39,9 @@ class WaterlineServiceProvider extends ServiceProvider
     public function boot()
     {
         RuntimeConfiguration::hydrate();
-        $this->recordWorkflowPackageApiFloor();
+        if (! BackendConfiguration::serviceMode()) {
+            $this->recordWorkflowPackageApiFloor();
+        }
 
         $this->registerRoutes();
         $this->registerResources();
@@ -234,7 +238,7 @@ class WaterlineServiceProvider extends ServiceProvider
      */
     protected function registerCommands()
     {
-        if ($this->app->runningInConsole()) {
+        if ($this->app->runningInConsole() && ! BackendConfiguration::serviceMode()) {
             $this->commands([
                 Console\InstallCommand::class,
                 Console\NamespaceConformanceCommand::class,
@@ -264,8 +268,14 @@ class WaterlineServiceProvider extends ServiceProvider
             define('WATERLINE_PATH', realpath(__DIR__.'/../'));
         }
 
-        if (! class_exists('Workflow\Models\Model')) {
+        if (! BackendConfiguration::serviceMode() && ! class_exists('Workflow\Models\Model')) {
             class_alias(config('workflows.base_model', Model::class), 'Workflow\Models\Model');
+        }
+
+        if (BackendConfiguration::serviceMode()) {
+            $this->app->singleton(RemoteBackend::class, static fn (): RemoteBackend => RemoteBackend::fromConfig());
+
+            return;
         }
 
         // Bind the default WorkflowRepositoryInterface resolver so Waterline

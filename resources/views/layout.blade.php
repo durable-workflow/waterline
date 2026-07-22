@@ -55,6 +55,11 @@
                     <span class="wl-topbar__scope-value">{{ $operatorScope['label'] ?? 'Cluster-wide' }}</span>
                 </div>
 
+                <div class="wl-topbar__scope" title="{{ $backend['transport'] ?? '' }}">
+                    <span class="wl-topbar__scope-label">Backend</span>
+                    <span class="wl-topbar__scope-value">{{ $backend['label'] ?? 'Embedded Laravel' }}</span>
+                </div>
+
                 <button class="wl-topbar__button" :class="{ 'is-active': autoLoadsNewEntries }" v-on:click.prevent="autoLoadNewEntries" title="Auto refresh entries">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon">
                         <path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"></path>
@@ -100,12 +105,14 @@
                         <span>Schedules</span>
                     </router-link>
 
+                    @if (($backend['capabilities']['services'] ?? false) === true)
                     <router-link active-class="active" to="/services" class="wl-sidebar__link">
                         <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                             <path d="M3 2h6a2 2 0 0 1 2 2v1h6a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-6v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2v13h6V4H3zm8 3v7h6V7h-6zM4 6h4v2H4V6zm0 4h4v2H4v-2zm8-1h4v2h-4V9z"></path>
                         </svg>
                         <span>Services</span>
                     </router-link>
+                    @endif
                 </nav>
 
                 <div class="wl-sidebar__label">Runs</div>
@@ -148,6 +155,17 @@
             </aside>
 
             <main id="main-content" class="wl-main" tabindex="-1">
+                @if (($backend['mode'] ?? 'embedded') === 'service')
+                    <div class="alert {{ ($backend['authentication'] ?? 'missing') === 'configured' ? 'alert-info' : 'alert-danger' }}">
+                        Standalone service backend · namespace <strong>{{ $backend['namespace'] ?? 'default' }}</strong>
+                        · {{ ($backend['access_mode'] ?? 'read_only') === 'read_only' ? 'read-only' : 'operator commands enabled' }}
+                        · server authentication {{ $backend['authentication'] ?? 'missing' }}.
+                        @if (($backend['authentication'] ?? 'missing') !== 'configured')
+                            Set <code>WATERLINE_SERVER_TOKEN</code> before exposing this installation.
+                        @endif
+                    </div>
+                @endif
+
                 @if (! $assetsAreCurrent)
                     <div class="alert alert-warning">
                         The published Waterline assets are not up-to-date with the installed version. To update, run:<br/><code>php artisan waterline:publish</code>

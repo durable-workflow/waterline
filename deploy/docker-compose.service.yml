@@ -1,0 +1,22 @@
+services:
+  waterline:
+    image: ${WATERLINE_IMAGE:-durableworkflow/waterline:2.0.0-beta.5}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WATERLINE_PORT:-8080}:8080"
+    environment:
+      APP_URL: ${WATERLINE_APP_URL:-http://localhost:8080}
+      WATERLINE_SERVER_ENDPOINT: >-
+        ${DURABLE_WORKFLOW_SERVER_ENDPOINT:?set the standalone server endpoint}
+      WATERLINE_SERVER_TOKEN: >-
+        ${DURABLE_WORKFLOW_SERVER_TOKEN:?set a server control-plane token}
+      WATERLINE_NAMESPACE: ${DURABLE_WORKFLOW_NAMESPACE:-default}
+      WATERLINE_ACCESS_MODE: ${WATERLINE_ACCESS_MODE:-read_only}
+      WATERLINE_ALLOW_UNAUTHENTICATED: ${WATERLINE_ALLOW_UNAUTHENTICATED:-false}
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /data/waterline.sqlite
+    volumes:
+      - waterline-data:/data
+
+volumes:
+  waterline-data:

@@ -186,8 +186,8 @@ To mark Phase 0 complete, this integration test must:
 
 - ✅ Start durableworkflow/server container successfully
 - ✅ Create workflow data via server API
-- ✅ Query workflow runs from server database
-- ✅ Query workflow history from server database
+- ✅ Query workflow runs from shared storage in the embedded adapter cell
+- ✅ Query workflow history from shared storage in the embedded adapter cell
 - ✅ Render workflow run detail view
 - ✅ List workflow runs via Waterline controllers
 - ✅ Pass in CI/CD pipeline

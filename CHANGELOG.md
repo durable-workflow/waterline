@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Waterline joins the synchronized Durable Workflow `2.0.0-beta.4` product
+Waterline joins the synchronized Durable Workflow `2.0.0-beta.5` product
 train. The operator, embedded engine, standalone server, CLI, and official SDKs
 now share one supported beta baseline. Earlier prereleases remain historical
 and receive no compatibility shim.

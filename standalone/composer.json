@@ -1,0 +1,25 @@
+{
+    "name": "durable-workflow/waterline-service",
+    "description": "Self-contained Laravel host for Waterline service mode.",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "durable-workflow/sdk": "2.0.0-beta.5",
+        "laravel/framework": "^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Waterline\\": "waterline/app/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "prefer-stable": true
+}

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Waterline\Http\Middleware;
 
 use Closure;
+use DurableWorkflow\Exception\ServerException;
+use DurableWorkflow\Exception\TransportException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -105,12 +107,38 @@ class RenderApiExceptionsAsJson
 
     private function jsonExceptionResponse(Throwable $exception): JsonResponse
     {
+        if ($exception instanceof ServerException || $exception instanceof TransportException) {
+            return $this->remoteExceptionResponse($exception);
+        }
+
         $status = $this->statusCode($exception);
 
         return response()->json([
             'message' => $this->message($exception, $status),
             'error' => $this->errorCode($exception, $status),
         ], $status, $this->headers($exception));
+    }
+
+    private function remoteExceptionResponse(ServerException|TransportException $exception): JsonResponse
+    {
+        $status = $exception->status ?? 0;
+        $status = $status >= 400 && $status <= 599 ? $status : 502;
+        $details = $exception instanceof ServerException ? $exception->details : $exception->response;
+        $reason = $exception instanceof ServerException ? $exception->reason : null;
+
+        return response()->json(array_filter([
+            'message' => trim($exception->getMessage()) !== ''
+                ? $exception->getMessage()
+                : 'Waterline could not reach the standalone workflow server.',
+            'error' => match ($status) {
+                401 => 'remote_authentication_failed',
+                403 => 'remote_authorization_failed',
+                default => 'remote_transport_failure',
+            },
+            'reason' => $reason ?? (is_array($details) ? ($details['reason'] ?? null) : null),
+            'remote_status' => $status,
+            'remote_details' => $details,
+        ], static fn (mixed $value): bool => $value !== null), $status);
     }
 
     private function statusCode(Throwable $exception): int

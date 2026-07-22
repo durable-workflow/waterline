@@ -71,6 +71,26 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Backend Mode
+    |--------------------------------------------------------------------------
+    |
+    | Embedded mode uses the optional durable-workflow/workflow integration in
+    | the host Laravel application. Service mode uses only the published PHP SDK
+    | and standalone server HTTP contracts; it never opens the server database.
+    |
+    */
+
+    'backend' => env('WATERLINE_BACKEND', 'embedded'),
+
+    'service' => [
+        'endpoint' => env('WATERLINE_SERVER_ENDPOINT'),
+        'token' => env('WATERLINE_SERVER_TOKEN'),
+        'namespace' => env('WATERLINE_NAMESPACE', 'default'),
+        'access_mode' => env('WATERLINE_ACCESS_MODE', 'read_only'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Workflow Engine Source
     |--------------------------------------------------------------------------
     |
@@ -104,9 +124,9 @@ return [
     |--------------------------------------------------------------------------
     |
     | When set, Waterline restricts all v2 workflow visibility and operations
-    | to the specified namespace. This enables namespace-scoped observation
-    | in service-mode deployments where multiple namespaces share one database.
-    | When null, Waterline runs in cluster-wide operator scope and can observe
+    | to the specified namespace. Service mode sends this scope through the PHP
+    | SDK on every server request; embedded mode applies it to local storage.
+    | When null, embedded Waterline runs in cluster-wide operator scope and can observe
     | every namespace in the shared store; expose that mode only behind an
     | authorization boundary intended for fleet administrators.
     |
@@ -119,9 +139,9 @@ return [
     | Worker Registration Freshness
     |--------------------------------------------------------------------------
     |
-    | Keep the Workers operator surface on the same stale-registration window
-    | as the standalone server. Published observer hosts can set this to the
-    | server's DW_WORKER_STALE_AFTER_SECONDS value when using shared storage.
+    | Keep the embedded Workers operator surface on the same stale-registration
+    | window as its runtime. Service mode reads server-classified worker status
+    | through the PHP SDK and ignores this local projection setting.
     |
     */
 
@@ -132,8 +152,8 @@ return [
     | Health Snapshot Task Dispatch Mode
     |--------------------------------------------------------------------------
     |
-    | Waterline is commonly deployed as a read-only observer pointed at a
-    | server-owned workflow database. In that topology the Waterline host
+    | An embedded Waterline host can be deployed as a read-only observer over
+    | application-owned workflow storage. In that topology the Waterline host
     | process does not dispatch workflow tasks itself, so its local Laravel
     | queue driver should not make the observer health endpoint fail. The
     | default poll mode keeps backend readiness focused on database visibility.

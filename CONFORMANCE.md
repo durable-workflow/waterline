@@ -8,6 +8,17 @@ document is the per-repo claim: it lists the conformance targets
 Waterline claims, the categories it covers, and the release gate that
 blocks publication when conformance is broken.
 
+## Dual-backend release evidence
+
+The embedded published-artifact cells install the Waterline Composer package
+with the matching Workflow package and exercise the in-process Laravel
+operator bridge. The service-image cell builds and, for release tags, pulls the
+versioned `durableworkflow/waterline` image, starts it without host PHP or
+Composer, and observes a standalone HTTP server through the published PHP SDK.
+It verifies namespace and bearer-token forwarding, workflow list and selected
+run history semantics, and local read-only refusal before any remote mutation.
+Neither cell substitutes for the other before beta exit.
+
 ## Claimed targets
 
 Waterline claims one target from the suite's matrix:

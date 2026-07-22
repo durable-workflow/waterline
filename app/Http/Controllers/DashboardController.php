@@ -5,6 +5,8 @@ namespace Waterline\Http\Controllers;
 use Illuminate\Support\Facades\App;
 use RuntimeException;
 use Waterline\Support\OperatorScope;
+use Waterline\Support\BackendConfiguration;
+use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Waterline;
 
 class DashboardController extends Controller
@@ -12,6 +14,9 @@ class DashboardController extends Controller
     public function index()
     {
         $operatorScope = OperatorScope::payload();
+        $backend = BackendConfiguration::serviceMode()
+            ? app(RemoteBackend::class)->status()
+            : BackendConfiguration::payload();
         $cssFile = 'app-dark.css';
 
         return view('waterline::layout', [
@@ -21,8 +26,10 @@ class DashboardController extends Controller
             'waterlineScriptVariables' => [
                 'path' => config('waterline.path', 'waterline'),
                 'operator_scope' => $operatorScope,
+                'backend' => $backend,
             ],
             'operatorScope' => $operatorScope,
+            'backend' => $backend,
             'environmentBanner' => $this->environmentBanner(),
             'isDownForMaintenance' => App::isDownForMaintenance(),
         ]);

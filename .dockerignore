@@ -1,0 +1,12 @@
+.git
+.github
+.devcontainer
+node_modules
+vendor
+workbench
+docs/screenshots
+tests
+standalone/bootstrap/cache
+standalone/storage
+standalone/vendor
+*.log

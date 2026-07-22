@@ -8,7 +8,17 @@ use PHPUnit\Framework\TestCase;
 
 final class InstallationContractTest extends TestCase
 {
-    public function testDocumentedComposerCommandsRequireTheEntireExactBetaTrain(): void
+    public function testServiceImageSmokeEntryPointIsExecutable(): void
+    {
+        $root = dirname(__DIR__, 2);
+
+        $this->assertTrue(
+            is_executable($root.'/scripts/ci/service-mode-image-smoke.sh'),
+            'The service-image smoke entry point must be executable by CI.',
+        );
+    }
+
+    public function testManifestSeparatesRemoteRuntimeFromOptionalEmbeddedIntegration(): void
     {
         $root = dirname(__DIR__, 2);
         $manifest = json_decode(
@@ -19,9 +29,11 @@ final class InstallationContractTest extends TestCase
         );
         $train = $manifest['extra']['durable-workflow']['product-train'] ?? null;
 
-        $this->assertSame('2.0.0-beta.4', $train);
-        $this->assertSame($train, $manifest['require']['durable-workflow/workflow'] ?? null);
+        $this->assertSame('2.0.0-beta.5', $train);
         $this->assertSame($train, $manifest['require']['durable-workflow/sdk'] ?? null);
+        $this->assertArrayNotHasKey('durable-workflow/workflow', $manifest['require'] ?? []);
+        $this->assertSame($train, $manifest['require-dev']['durable-workflow/workflow'] ?? null);
+        $this->assertArrayHasKey('durable-workflow/workflow', $manifest['suggest'] ?? []);
 
         $expectedPins = [
             'durable-workflow/waterline:'.$train.'@beta',
@@ -37,5 +49,27 @@ final class InstallationContractTest extends TestCase
                 $this->assertStringContainsString($pin, $command);
             }
         }
+    }
+
+    public function testStandaloneLockContainsOnlyTheRemoteRuntimePackages(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $lock = json_decode(
+            (string) file_get_contents($root.'/standalone/composer.lock'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $packages = [];
+
+        foreach ($lock['packages'] ?? [] as $package) {
+            if (is_array($package) && is_string($package['name'] ?? null)) {
+                $packages[$package['name']] = $package['version'] ?? null;
+            }
+        }
+
+        $this->assertSame('2.0.0-beta.5', $packages['durable-workflow/sdk'] ?? null);
+        $this->assertArrayNotHasKey('durable-workflow/waterline', $packages);
+        $this->assertArrayNotHasKey('durable-workflow/workflow', $packages);
     }
 }

@@ -10,13 +10,26 @@ application-owned read models projected at domain milestones, with
 
 ## Installation
 
+Waterline uses one UI and operator behavior contract with two backend modes:
+
+- Embedded mode is the Composer package inside a Laravel application and adds
+  the optional `durable-workflow/workflow` integration.
+- Service mode is the self-contained `durableworkflow/waterline` image. It
+  needs no host PHP installation and connects to a standalone server through
+  the published PHP SDK, never through the server database.
+
+See [Waterline service mode](SERVICE_MODE.md) for the image, deployment inputs,
+authorization modes, persistence boundary, and Docker Compose example.
+
+### Embedded Laravel
+
 This UI is installable via [Composer](https://getcomposer.org).
 
 ```bash
 composer require \
-    durable-workflow/waterline:2.0.0-beta.4@beta \
-    durable-workflow/workflow:2.0.0-beta.4@beta \
-    durable-workflow/sdk:2.0.0-beta.4@beta
+    durable-workflow/waterline:2.0.0-beta.5@beta \
+    durable-workflow/workflow:2.0.0-beta.5@beta \
+    durable-workflow/sdk:2.0.0-beta.5@beta
 
 php artisan waterline:install
 ```
@@ -87,9 +100,9 @@ the latest assets.
 
 ```bash
 composer require --with-all-dependencies \
-    durable-workflow/waterline:2.0.0-beta.4@beta \
-    durable-workflow/workflow:2.0.0-beta.4@beta \
-    durable-workflow/sdk:2.0.0-beta.4@beta
+    durable-workflow/waterline:2.0.0-beta.5@beta \
+    durable-workflow/workflow:2.0.0-beta.5@beta \
+    durable-workflow/sdk:2.0.0-beta.5@beta
 
 php artisan waterline:publish
 ```
