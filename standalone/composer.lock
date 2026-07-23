@@ -509,12 +509,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/durable-workflow/sdk-php.git",
-                "reference": "d19e2a38c42dbb74cc3b15dcf25743da93adc0b1"
+                "reference": "c7f5775c522e4d48733512adbcf7eec4b6fe73d4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/d19e2a38c42dbb74cc3b15dcf25743da93adc0b1",
-                "reference": "d19e2a38c42dbb74cc3b15dcf25743da93adc0b1",
+                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/c7f5775c522e4d48733512adbcf7eec4b6fe73d4",
+                "reference": "c7f5775c522e4d48733512adbcf7eec4b6fe73d4",
                 "shasum": ""
             },
             "require": {
@@ -575,7 +575,7 @@
                 "issues": "https://github.com/durable-workflow/sdk-php/issues",
                 "source": "https://github.com/durable-workflow/sdk-php"
             },
-            "time": "2026-07-23T16:10:20+00:00"
+            "time": "2026-07-23T16:39:53+00:00"
         },
         {
             "name": "egulias/email-validator",
