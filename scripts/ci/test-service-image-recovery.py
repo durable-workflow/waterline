@@ -25,7 +25,7 @@ SPEC.loader.exec_module(recovery)
 PLAN_COMMIT = "a" * 40
 SOURCE_COMMIT = "b" * 40
 WORKFLOW_COMMIT = "c" * 40
-VERSION = "2.0.0-beta.7"
+VERSION = "2.0.0-beta.10"
 PLAN_TAG = "release-plan/beta.7"
 
 
@@ -35,13 +35,13 @@ def raw_json(value: Any) -> bytes:
 
 def plan() -> dict[str, Any]:
     versions = {
-        "workflow": "2.0.0-beta.6",
+        "workflow": "2.0.0-beta.10",
         "waterline": VERSION,
-        "server": "2.0.0-beta.6",
-        "cli": "2.0.0-beta.6",
-        "sdk-php": "2.0.0-beta.6",
-        "sdk-python": "2.0.0-beta.6",
-        "sdk-rust": "2.0.0-beta.6",
+        "server": "2.0.0-beta.10",
+        "cli": "2.0.0-beta.10",
+        "sdk-php": "2.0.0-beta.10",
+        "sdk-python": "2.0.0-beta.10",
+        "sdk-rust": "2.0.0-beta.10",
     }
     commits = {
         "workflow": "1" * 40,

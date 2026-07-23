@@ -2,18 +2,17 @@
 
 ## Unreleased
 
-Waterline advances to `2.0.0-beta.7` while continuing to consume the published
-Durable Workflow SDK and Workflow `2.0.0-beta.6` dependency baseline. This
-keeps the Waterline package and service image installable without requiring
-unpublished peer packages.
+Waterline and its Workflow and PHP SDK dependencies advance together to the
+synchronized Durable Workflow `2.0.0-beta.10` product train.
 
 The packaged service now rejects process-local SQLite memory databases before
 running migrations. Service mode supports file-backed SQLite, MySQL, and
 PostgreSQL persistence across its separate migration and HTTP server processes.
 
-Published worker-status validation now accepts exact numeric 2.0 alpha, beta,
-and release-candidate package versions while continuing to reject ranges,
-branch aliases, unpinned values, and stable releases.
+Published worker-status validation now accepts exact SemVer Server release
+identities, including stable releases. Workflow and Waterline package identities
+remain restricted to exact numeric 2.0 alpha, beta, and release-candidate
+versions; ranges, branch aliases, and unpinned values are rejected.
 
 Release-plan recovery now consumes immutable, exact-version release-note
 preparation authority before publishing a newly recorded plan.

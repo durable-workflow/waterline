@@ -103,9 +103,13 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $this->assertStringNotContainsString('fixture_response', $node);
     }
 
-    public function testCommandAndPublishedRunnerAcceptOnlyExactCurrent2xPrereleases(): void
+    public function testCommandAndPublishedRunnerEnforceServerAndPackageVersionContracts(): void
     {
-        $validator = new \ReflectionMethod(
+        $serverValidator = new \ReflectionMethod(
+            \Waterline\Console\WorkerStatusConformanceCommand::class,
+            'isExactSemverRelease',
+        );
+        $packageValidator = new \ReflectionMethod(
             \Waterline\Console\WorkerStatusConformanceCommand::class,
             'isExact2xPrerelease',
         );
@@ -114,8 +118,37 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             '2.0.0-alpha.1',
             '2.0.0-beta.1',
             '2.0.0-rc.1',
+            '2.0.0',
+            '1.13.4',
         ] as $version) {
-            $this->assertTrue($validator->invoke(null, $version), $version);
+            $this->assertTrue($serverValidator->invoke(null, $version), $version);
+        }
+
+        foreach ([
+            '',
+            '*',
+            '^2.0.0-beta.1',
+            '2.0.x-dev',
+            'dev-v2',
+            'latest',
+            '2.0.0-latest',
+            '2.0.0-snapshot.4',
+            '2.0',
+            '2.0.x',
+            '2.0.0-beta.01',
+            '2.0.0-beta..1',
+            'v2.0.0-beta.1',
+            '2.0.0-beta.1 || 2.0.0',
+        ] as $version) {
+            $this->assertFalse($serverValidator->invoke(null, $version), $version);
+        }
+
+        foreach ([
+            '2.0.0-alpha.1',
+            '2.0.0-beta.1',
+            '2.0.0-rc.1',
+        ] as $version) {
+            $this->assertTrue($packageValidator->invoke(null, $version), $version);
         }
 
         foreach ([
@@ -132,7 +165,7 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             '2.0.0-beta.01',
             '2.0.0-beta.1 || 2.0.0',
         ] as $version) {
-            $this->assertFalse($validator->invoke(null, $version), $version);
+            $this->assertFalse($packageValidator->invoke(null, $version), $version);
         }
 
         $root = dirname(__DIR__, 2);
@@ -148,6 +181,7 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
 
         $runtimeSources = (string) file_get_contents($root.'/app/Console/WorkerStatusConformanceCommand.php')
             .(string) file_get_contents($root.'/scripts/conformance/worker-status-published-artifacts.mjs');
+        $this->assertStringContainsString('must be an exact SemVer release', $runtimeSources);
         $this->assertStringContainsString('must be an exact 2.0 prerelease', $runtimeSources);
         $this->assertStringNotContainsString('must be an exact 2.0 alpha release', $runtimeSources);
     }
@@ -159,9 +193,9 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $runner = (string) file_get_contents($root.'/app/Console/WorkerStatusConformanceCommand.php');
         $worker = (string) file_get_contents($root.'/app/Console/WorkerStatusSdkWorkerCommand.php');
 
-        $this->assertSame('2.0.0-beta.7', $manifest['extra']['durable-workflow']['product-train'] ?? null);
-        $this->assertSame('2.0.0-beta.6', $manifest['require-dev']['durable-workflow/workflow'] ?? null);
-        $this->assertSame('2.0.0-beta.6', $manifest['require']['durable-workflow/sdk'] ?? null);
+        $this->assertSame('2.0.0-beta.10', $manifest['extra']['durable-workflow']['product-train'] ?? null);
+        $this->assertSame('2.0.0-beta.10', $manifest['require-dev']['durable-workflow/workflow'] ?? null);
+        $this->assertSame('2.0.0-beta.10', $manifest['require']['durable-workflow/sdk'] ?? null);
         $this->assertStringContainsString('use DurableWorkflow\\Client as SdkClient;', $runner);
         $this->assertStringContainsString('use DurableWorkflow\\SdkIdentity;', $runner);
         $this->assertStringContainsString('SdkIdentity::registration()', $runner);

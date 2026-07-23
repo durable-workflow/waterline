@@ -1119,8 +1119,8 @@ final class WorkerStatusConformanceCommand extends Command
         $sources = $this->artifactOptions('source');
         $failures = [];
 
-        if (! preg_match('/^\d+\.\d+\.\d+$/', $versions['server'])) {
-            $failures[] = 'server-version must be an exact patch release';
+        if (! self::isExactSemverRelease($versions['server'])) {
+            $failures[] = 'server-version must be an exact SemVer release';
         }
         if (! preg_match('/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/', $versions['cli'])) {
             $failures[] = 'cli-version must be exact';
@@ -1177,6 +1177,29 @@ final class WorkerStatusConformanceCommand extends Command
     private static function isExact2xPrerelease(string $version): bool
     {
         return preg_match('/\A2\.0\.0-(?:alpha|beta|rc)\.(?:0|[1-9]\d*)\z/', $version) === 1;
+    }
+
+    private static function isExactSemverRelease(string $version): bool
+    {
+        $coreIdentifier = '(?:0|[1-9]\d*)';
+        $prereleaseIdentifier = '(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)';
+        $pattern = '/\A'.$coreIdentifier.'\.'.$coreIdentifier.'\.'.$coreIdentifier
+            .'(?:-(?<prerelease>'.$prereleaseIdentifier.'(?:\.'.$prereleaseIdentifier.')*))?\z/';
+
+        if (preg_match($pattern, $version, $matches) !== 1) {
+            return false;
+        }
+
+        $rollingIdentifiers = [
+            'latest', 'current', 'head', 'main', 'master', 'dev', 'snapshot', 'unresolved', 'placeholder',
+        ];
+        foreach (explode('.', $matches['prerelease'] ?? '') as $identifier) {
+            if (in_array(strtolower($identifier), $rollingIdentifiers, true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /** @return array<string, mixed> */
