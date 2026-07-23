@@ -422,6 +422,24 @@ class ServiceImageRecoveryWorkflowTest(unittest.TestCase):
         self.assertNotIn("ref: ${{ needs.discover.outputs.version }}", self.workflow)
         self.assertNotIn("publish-planned-tag.py", self.workflow)
 
+    def test_scheduled_recovery_uses_shared_implicit_plan_discovery(self) -> None:
+        discovery = self.workflow.split(
+            "      - name: Resolve the immutable public release plan\n",
+            1,
+        )[1].split("      - name:", 1)[0]
+        schedule_branch = discovery.split(
+            '          if [ "$GITHUB_EVENT_NAME" = schedule ]; then\n',
+            1,
+        )[1].split("          elif ", 1)[0]
+
+        self.assertIn("            resolve\n", discovery)
+        self.assertIn(
+            '          python scripts/ci/component-release-recovery.py "${arguments[@]}"',
+            discovery,
+        )
+        self.assertIn("arguments+=(--allow-empty)", schedule_branch)
+        self.assertNotIn("--plan-tag", schedule_branch)
+
     def test_public_decision_and_handoff_validation_precede_credentials(self) -> None:
         publisher = self.workflow.split("\n  publish:\n", 1)[1]
         rehearsal = self.workflow.index(
