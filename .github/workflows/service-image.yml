@@ -2,11 +2,8 @@
 name: Service image
 
 on:
-  pull_request:
   push:
-    branches: [v2]
     tags: ['2.*']
-  workflow_dispatch:
 
 permissions:
   contents: read

@@ -30,4 +30,19 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringContainsString('WATERLINE_VERSION=${{ github.ref_name }}', $workflow);
         $this->assertStringContainsString('SOURCE_COMMIT=${{ steps.source.outputs.commit }}', $workflow);
     }
+
+    public function testPublisherIsOnlyReachableFromAnImmutableVersionTagPush(): void
+    {
+        $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/service-image.yml');
+
+        $this->assertStringContainsString("tags: ['2.*']", $workflow);
+        $this->assertStringNotContainsString('pull_request:', $workflow);
+        $this->assertStringNotContainsString('workflow_dispatch:', $workflow);
+        $this->assertStringNotContainsString('branches: [v2]', $workflow);
+        $this->assertStringContainsString("if: startsWith(github.ref, 'refs/tags/2.')", $workflow);
+        $this->assertStringContainsString('environment: release-plan-publication', $workflow);
+        $this->assertStringContainsString('platforms: linux/amd64,linux/arm64', $workflow);
+        $this->assertStringContainsString("SERVICE_IMAGE_SKIP_BUILD: '1'", $workflow);
+        $this->assertStringContainsString('WATERLINE_IMAGE: durableworkflow/waterline:${{ github.ref_name }}', $workflow);
+    }
 }

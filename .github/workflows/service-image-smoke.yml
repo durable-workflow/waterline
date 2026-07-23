@@ -1,0 +1,19 @@
+name: Service image smoke
+
+on:
+  pull_request:
+  push:
+    branches: [v2]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Self-contained service image smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      - name: Exercise service mode through the PHP SDK
+        run: scripts/ci/service-mode-image-smoke.sh
