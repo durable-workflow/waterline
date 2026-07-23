@@ -159,9 +159,9 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $runner = (string) file_get_contents($root.'/app/Console/WorkerStatusConformanceCommand.php');
         $worker = (string) file_get_contents($root.'/app/Console/WorkerStatusSdkWorkerCommand.php');
 
-        $this->assertSame('2.0.0-beta.5', $manifest['extra']['durable-workflow']['product-train'] ?? null);
-        $this->assertSame('2.0.0-beta.5', $manifest['require-dev']['durable-workflow/workflow'] ?? null);
-        $this->assertSame('2.0.0-beta.5', $manifest['require']['durable-workflow/sdk'] ?? null);
+        $this->assertSame('2.0.0-beta.6', $manifest['extra']['durable-workflow']['product-train'] ?? null);
+        $this->assertSame('2.0.0-beta.6', $manifest['require-dev']['durable-workflow/workflow'] ?? null);
+        $this->assertSame('2.0.0-beta.6', $manifest['require']['durable-workflow/sdk'] ?? null);
         $this->assertStringContainsString('use DurableWorkflow\\Client as SdkClient;', $runner);
         $this->assertStringContainsString('use DurableWorkflow\\SdkIdentity;', $runner);
         $this->assertStringContainsString('SdkIdentity::registration()', $runner);

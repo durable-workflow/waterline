@@ -29,7 +29,7 @@ final class InstallationContractTest extends TestCase
         );
         $train = $manifest['extra']['durable-workflow']['product-train'] ?? null;
 
-        $this->assertSame('2.0.0-beta.5', $train);
+        $this->assertSame('2.0.0-beta.6', $train);
         $this->assertSame($train, $manifest['require']['durable-workflow/sdk'] ?? null);
         $this->assertArrayNotHasKey('durable-workflow/workflow', $manifest['require'] ?? []);
         $this->assertSame($train, $manifest['require-dev']['durable-workflow/workflow'] ?? null);
@@ -68,7 +68,7 @@ final class InstallationContractTest extends TestCase
             }
         }
 
-        $this->assertSame('2.0.0-beta.5', $packages['durable-workflow/sdk'] ?? null);
+        $this->assertSame('2.0.0-beta.6', $packages['durable-workflow/sdk'] ?? null);
         $this->assertArrayNotHasKey('durable-workflow/waterline', $packages);
         $this->assertArrayNotHasKey('durable-workflow/workflow', $packages);
     }

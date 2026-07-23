@@ -19,13 +19,32 @@ docker run --rm -p 8080:8080 \
   -e WATERLINE_NAMESPACE=orders \
   -e WATERLINE_ACCESS_MODE=read_only \
   -e WATERLINE_ALLOW_UNAUTHENTICATED=true \
-  durableworkflow/waterline:2.0.0-beta.5
+  durableworkflow/waterline:2.0.0-beta.6
 ```
 
 Open `http://localhost:8080/waterline`. Bind the port to a private interface or
 put an authenticating reverse proxy in front of it when
 `WATERLINE_ALLOW_UNAUTHENTICATED=true` is used. The banner always identifies
 the backend, namespace, server-auth configuration, and read-only/operator mode.
+
+### Bounded startup and health
+
+With the image already pulled, a clean container using the default SQLite
+volume must reach `GET /up` within 30 seconds. The entrypoint prepares volume
+ownership, then drops to the unprivileged `www-data` user before applying the
+migrations already packaged in the image and binding the HTTP port. It also
+generates an in-memory application key when one was not supplied. It does not
+invoke Composer, install packages, or contact a package registry at runtime.
+
+Migration execution defaults to a 20-second limit. Set
+`WATERLINE_MIGRATION_TIMEOUT_SECONDS` to an integer from 1 through 60 when an
+external database needs a different bounded allowance. Invalid configuration,
+volume permissions, migration errors, and migration timeouts stop the
+container with a non-zero status and a `waterline-service: startup failed`
+message. Docker reports health as `starting` until `/up` succeeds; a bounded
+initialization failure instead leaves an `exited` container and its exit code,
+while a running service that later stops answering `/up` becomes `unhealthy`
+within 30 seconds.
 
 ## Deployment inputs
 
@@ -40,6 +59,7 @@ the backend, namespace, server-auth configuration, and read-only/operator mode.
 | `APP_URL` / `APP_KEY` | Public URL and optional persistent Laravel application key | generated at container start |
 | `DATABASE_URL` | Waterline-owned MySQL or PostgreSQL persistence URL | none |
 | `DB_CONNECTION` / `DB_*` | Waterline-owned persistence connection settings | SQLite at `/data/waterline.sqlite` |
+| `WATERLINE_MIGRATION_TIMEOUT_SECONDS` | Bounded startup migration allowance (1-60 seconds) | `20` |
 
 Waterline persistence stores saved views, display preferences, and Laravel
 runtime state only. It is never configured with, and never reads, the
@@ -66,9 +86,9 @@ the optional Workflow integration:
 
 ```bash
 composer require \
-  durable-workflow/waterline:2.0.0-beta.5@beta \
-  durable-workflow/workflow:2.0.0-beta.5@beta \
-  durable-workflow/sdk:2.0.0-beta.5@beta
+  durable-workflow/waterline:2.0.0-beta.6@beta \
+  durable-workflow/workflow:2.0.0-beta.6@beta \
+  durable-workflow/sdk:2.0.0-beta.6@beta
 
 php artisan waterline:install
 ```

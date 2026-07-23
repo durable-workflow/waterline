@@ -17,7 +17,7 @@ ARG SOURCE_COMMIT=0000000000000000000000000000000000000000
 LABEL org.opencontainers.image.revision="$SOURCE_COMMIT" \
     dev.durable-workflow.release.tag="$WATERLINE_VERSION"
 
-RUN apk add --no-cache libpq libzip oniguruma sqlite-libs \
+RUN apk add --no-cache libpq libzip oniguruma sqlite-libs su-exec \
     && apk add --no-cache --virtual .build-deps libpq-dev libzip-dev oniguruma-dev sqlite-dev \
     && docker-php-ext-install mbstring pdo_mysql pdo_pgsql pdo_sqlite zip \
     && apk del .build-deps
@@ -47,9 +47,9 @@ ENV APP_ENV=production \
 
 VOLUME ["/data"]
 EXPOSE 8080
-USER www-data
+STOPSIGNAL SIGTERM
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=5 \
+HEALTHCHECK --interval=5s --timeout=2s --start-period=5s --retries=5 \
     CMD php -r '$c=@file_get_contents("http://127.0.0.1:".(getenv("PORT")?:"8080")."/up"); exit($c===false?1:0);'
 
 ENTRYPOINT ["/app/entrypoint.sh"]

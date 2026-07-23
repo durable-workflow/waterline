@@ -16,8 +16,10 @@ operator bridge. The service-image cell builds and, for release tags, pulls the
 versioned `durableworkflow/waterline` image, starts it without host PHP or
 Composer, and observes a standalone HTTP server through the published PHP SDK.
 It verifies namespace and bearer-token forwarding, workflow list and selected
-run history semantics, and local read-only refusal before any remote mutation.
-Neither cell substitutes for the other before beta exit.
+run history semantics, live selected-run query and signal actions, and the
+image's release/revision identity. Package feature tests separately retain the
+local read-only refusal contract. Neither cell substitutes for the other before
+beta exit.
 
 ## Claimed targets
 

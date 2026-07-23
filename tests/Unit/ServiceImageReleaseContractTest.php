@@ -13,8 +13,33 @@ final class ServiceImageReleaseContractTest extends TestCase
         $dockerfile = (string) file_get_contents(dirname(__DIR__, 2).'/Dockerfile');
 
         $this->assertMatchesRegularExpression('/apk add --no-cache [^\n]*\bsqlite-libs\b/', $dockerfile);
+        $this->assertMatchesRegularExpression('/apk add --no-cache [^\n]*\bsu-exec\b/', $dockerfile);
         $this->assertMatchesRegularExpression('/apk add --no-cache --virtual \.build-deps [^\n]*\bsqlite-dev\b/', $dockerfile);
         $this->assertStringContainsString('docker-php-ext-install mbstring pdo_mysql pdo_pgsql pdo_sqlite zip', $dockerfile);
+    }
+
+    public function testEntrypointUsesBoundedOfflineInitializationAndDropsPrivileges(): void
+    {
+        $entrypoint = (string) file_get_contents(dirname(__DIR__, 2).'/standalone/entrypoint.sh');
+
+        $this->assertStringContainsString('WATERLINE_MIGRATION_TIMEOUT_SECONDS', $entrypoint);
+        $this->assertStringContainsString('timeout -s TERM -k 5', $entrypoint);
+        $this->assertStringContainsString('su-exec www-data php artisan migrate', $entrypoint);
+        $this->assertStringContainsString('exec su-exec www-data php -d variables_order=EGPCS -S', $entrypoint);
+        $this->assertStringNotContainsString('composer ', strtolower($entrypoint));
+        $this->assertStringNotContainsString('apk ', strtolower($entrypoint));
+        $this->assertStringNotContainsString('curl ', strtolower($entrypoint));
+        $this->assertStringNotContainsString('wget ', strtolower($entrypoint));
+    }
+
+    public function testSmokeCoversSelectedRunQueryAndSignalThroughAnIsolatedNetwork(): void
+    {
+        $smoke = (string) file_get_contents(dirname(__DIR__, 2).'/scripts/ci/service-mode-image-smoke.sh');
+
+        $this->assertStringContainsString('docker network create', $smoke);
+        $this->assertStringContainsString('/queries/current', $smoke);
+        $this->assertStringContainsString('/signals/approve', $smoke);
+        $this->assertStringContainsString('WATERLINE_ACCESS_MODE=operator', $smoke);
     }
 
     public function testPublishedImageBindsReleaseVersionAndSourceCommitLabels(): void

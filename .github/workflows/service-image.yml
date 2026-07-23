@@ -50,4 +50,6 @@ jobs:
         env:
           SERVICE_IMAGE_SKIP_BUILD: '1'
           WATERLINE_IMAGE: durableworkflow/waterline:${{ github.ref_name }}
+          EXPECTED_WATERLINE_VERSION: ${{ github.ref_name }}
+          EXPECTED_SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
         run: scripts/ci/service-mode-image-smoke.sh

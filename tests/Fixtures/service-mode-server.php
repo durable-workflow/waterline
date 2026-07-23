@@ -17,6 +17,8 @@ $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 $query = [];
 parse_str((string) parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_QUERY), $query);
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+$requestBody = json_decode((string) file_get_contents('php://input'), true);
+error_log($method.' '.$path);
 $payload = match (true) {
     $method === 'GET' && $path === '/api/workflows' => [
         'workflows' => [[
@@ -65,6 +67,18 @@ $payload = match (true) {
         ]],
     ],
     $method === 'GET' && $path === '/api/workflows/smoke-order/runs/smoke-run/debug' => ['tasks' => []],
+    $method === 'POST' && $path === '/api/workflows/smoke-order/runs/smoke-run/query/current' => [
+        'result' => [
+            'state' => 'awaiting_approval',
+            'selected_run_id' => 'smoke-run',
+        ],
+    ],
+    $method === 'POST' && $path === '/api/workflows/smoke-order/runs/smoke-run/signal/approve' => [
+        'command_status' => 'accepted',
+        'signal_name' => 'approve',
+        'selected_run_id' => 'smoke-run',
+        'input_received' => is_array($requestBody['input'] ?? null),
+    ],
     $method === 'GET' && $path === '/api/system/health' => ['health' => ['status' => 'healthy', 'checks' => []]],
     $method === 'GET' && $path === '/api/system/operator-metrics' => ['operator_metrics' => ['runs' => ['total' => 1, 'running' => 1]]],
     $method === 'GET' && $path === '/api/system/operator-dashboard' => ['dashboard' => [
