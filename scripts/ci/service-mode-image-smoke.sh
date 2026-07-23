@@ -3,9 +3,11 @@ set -eu
 
 image="${WATERLINE_IMAGE:-waterline-service-smoke:local}"
 container="waterline-service-smoke-${GITHUB_RUN_ID:-local}-$$"
+memory_database_container="${container}-memory-database"
 server_container="${container}-server"
 network="${container}-network"
 data_volume="${container}-data"
+memory_database_log="$(mktemp)"
 response_body="$(mktemp)"
 waterline_url=''
 last_request=''
@@ -40,6 +42,7 @@ dump_diagnostics() {
     fi
 
     dump_container_state "$container"
+    dump_container_state "$memory_database_container"
     dump_container_state "$server_container"
 }
 
@@ -51,13 +54,13 @@ cleanup() {
         dump_diagnostics
     fi
 
-    docker rm -f "$container" "$server_container" >/dev/null 2>&1 || true
+    docker rm -f "$container" "$memory_database_container" "$server_container" >/dev/null 2>&1 || true
     docker volume rm -f "$data_volume" >/dev/null 2>&1 || true
     if [ "$runner_attached" -eq 1 ]; then
         docker network disconnect "$network" "$HOSTNAME" >/dev/null 2>&1 || true
     fi
     docker network rm "$network" >/dev/null 2>&1 || true
-    rm -f "$response_body"
+    rm -f "$memory_database_log" "$response_body"
 
     exit "$status"
 }
@@ -122,6 +125,29 @@ if [ -n "$expected_source_commit" ] && [ "$image_revision" != "$expected_source_
 fi
 if [ -n "$expected_waterline_version" ] && [ "$image_release" != "$expected_waterline_version" ]; then
     echo "Service image release label [$image_release] does not match [$expected_waterline_version]." >&2
+    exit 1
+fi
+
+if docker run --name "$memory_database_container" \
+    -e APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
+    -e DB_CONNECTION=sqlite \
+    -e DB_DATABASE=:memory: \
+    -e WATERLINE_SERVER_ENDPOINT=http://workflow.example.test \
+    "$image" >"$memory_database_log" 2>&1; then
+    echo "Service image accepted process-local SQLite memory configuration." >&2
+    exit 1
+fi
+
+memory_database_status="$(docker inspect --format '{{.State.Status}}' "$memory_database_container")"
+memory_database_exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$memory_database_container")"
+if [ "$memory_database_status" != 'exited' ] || [ "$memory_database_exit_code" -eq 0 ]; then
+    echo "Service image did not exit with a deterministic startup failure for DB_DATABASE=:memory:." >&2
+    exit 1
+fi
+if ! grep -F 'waterline-service: startup failed:' "$memory_database_log" >/dev/null \
+    || ! grep -F 'DB_DATABASE=:memory:' "$memory_database_log" >/dev/null \
+    || ! grep -F 'file-backed SQLite' "$memory_database_log" >/dev/null; then
+    echo "Service image did not explain the supported SQLite persistence model." >&2
     exit 1
 fi
 
@@ -277,5 +303,6 @@ server_requests="$(docker logs "$server_container" 2>&1)"
 printf '%s\n' "$server_requests" | grep -F 'POST /api/workflows/smoke-order/runs/smoke-run/query/current' >/dev/null
 printf '%s\n' "$server_requests" | grep -F 'POST /api/workflows/smoke-order/runs/smoke-run/signal/approve' >/dev/null
 
-printf 'Service image %s (%s) reached /up in %ss and passed selected-run, query, and signal checks.\n' \
-    "$image_release" "$image_revision" "$startup_elapsed"
+summary="Service image $image_release ($image_revision) rejected DB_DATABASE=:memory:,"\
+" reached /up in ${startup_elapsed}s, and passed selected-run, query, and signal checks."
+printf '%s\n' "$summary"

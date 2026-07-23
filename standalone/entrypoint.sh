@@ -46,21 +46,24 @@ fi
 
 if [ "${DB_CONNECTION:-sqlite}" = "sqlite" ]; then
     database="${DB_DATABASE:-/data/waterline.sqlite}"
-    if [ "$database" != ':memory:' ]; then
-        database_directory="$(dirname "$database")"
-        mkdir -p "$database_directory" || fail "could not create SQLite directory [$database_directory]"
-        touch "$database" || fail "could not create SQLite database [$database]"
+    if [ "$database" = ':memory:' ]; then
+        fail "DB_DATABASE=:memory: is process-local and is not supported by the packaged service;" \
+            "use a file-backed SQLite database such as /data/waterline.sqlite or configure MySQL or PostgreSQL"
+    fi
 
-        if [ "$(id -u)" -eq 0 ]; then
-            chown www-data:www-data "$database_directory" \
-                || fail "could not grant www-data access to SQLite directory [$database_directory]"
-            for sqlite_file in "$database" "$database-wal" "$database-shm"; do
-                if [ -e "$sqlite_file" ]; then
-                    chown www-data:www-data "$sqlite_file" \
-                        || fail "could not grant www-data access to SQLite file [$sqlite_file]"
-                fi
-            done
-        fi
+    database_directory="$(dirname "$database")"
+    mkdir -p "$database_directory" || fail "could not create SQLite directory [$database_directory]"
+    touch "$database" || fail "could not create SQLite database [$database]"
+
+    if [ "$(id -u)" -eq 0 ]; then
+        chown www-data:www-data "$database_directory" \
+            || fail "could not grant www-data access to SQLite directory [$database_directory]"
+        for sqlite_file in "$database" "$database-wal" "$database-shm"; do
+            if [ -e "$sqlite_file" ]; then
+                chown www-data:www-data "$sqlite_file" \
+                    || fail "could not grant www-data access to SQLite file [$sqlite_file]"
+            fi
+        done
     fi
 fi
 

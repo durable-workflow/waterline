@@ -25,8 +25,8 @@ SPEC.loader.exec_module(recovery)
 PLAN_COMMIT = "a" * 40
 SOURCE_COMMIT = "b" * 40
 WORKFLOW_COMMIT = "c" * 40
-VERSION = "2.0.0-beta.6"
-PLAN_TAG = "release-plan/beta.6"
+VERSION = "2.0.0-beta.7"
+PLAN_TAG = "release-plan/beta.7"
 
 
 def raw_json(value: Any) -> bytes:
@@ -54,7 +54,7 @@ def plan() -> dict[str, Any]:
     }
     return {
         "schema": recovery.PLAN_SCHEMA,
-        "plan": "beta.6",
+        "plan": "beta.7",
         "channel": "beta",
         "foundation": recovery.FOUNDATION,
         "components": {
@@ -62,7 +62,7 @@ def plan() -> dict[str, Any]:
             for name in sorted(recovery.COMPONENTS)
         },
         "beta_authorization": {
-            "tag": "beta-authorization/beta.6",
+            "tag": "beta-authorization/beta.7",
             "commit": "8" * 40,
         },
     }
@@ -74,7 +74,7 @@ def source_recovery_evidence(release_plan: dict[str, Any]) -> dict[str, Any]:
         "schema": recovery.RECOVERY_SCHEMA,
         "component": "waterline",
         "release_plan_tag": PLAN_TAG,
-        "plan": "beta.6",
+        "plan": "beta.7",
         "channel": "beta",
         "plan_record_commit": PLAN_COMMIT,
         "phase": "complete",
@@ -85,7 +85,7 @@ def source_recovery_evidence(release_plan: dict[str, Any]) -> dict[str, Any]:
             "version": VERSION,
             "commit": SOURCE_COMMIT,
             "distribution": {"kind": "composer"},
-            "github_release": {"id": 6},
+            "github_release": {"id": 7},
         },
     }
 

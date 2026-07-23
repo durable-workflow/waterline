@@ -27,7 +27,7 @@ This UI is installable via [Composer](https://getcomposer.org).
 
 ```bash
 composer require \
-    durable-workflow/waterline:2.0.0-beta.6@beta \
+    durable-workflow/waterline:2.0.0-beta.7@beta \
     durable-workflow/workflow:2.0.0-beta.6@beta \
     durable-workflow/sdk:2.0.0-beta.6@beta
 
@@ -94,13 +94,13 @@ values in `effective_preferences` without mutating the stored preferences.
 
 ## Upgrading Waterline
 
-When upgrading into or within the 2.0 prerelease channel, keep all three root
-package requirements on the supported Durable Workflow beta train and publish
-the latest assets.
+When upgrading into or within the 2.0 prerelease channel, keep Waterline and
+its runtime dependencies on the supported versions shown below and publish the
+latest assets.
 
 ```bash
 composer require --with-all-dependencies \
-    durable-workflow/waterline:2.0.0-beta.6@beta \
+    durable-workflow/waterline:2.0.0-beta.7@beta \
     durable-workflow/workflow:2.0.0-beta.6@beta \
     durable-workflow/sdk:2.0.0-beta.6@beta
 

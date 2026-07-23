@@ -27,18 +27,19 @@ final class InstallationContractTest extends TestCase
             512,
             JSON_THROW_ON_ERROR,
         );
-        $train = $manifest['extra']['durable-workflow']['product-train'] ?? null;
+        $releaseVersion = $manifest['extra']['durable-workflow']['product-train'] ?? null;
+        $dependencyVersion = '2.0.0-beta.6';
 
-        $this->assertSame('2.0.0-beta.6', $train);
-        $this->assertSame($train, $manifest['require']['durable-workflow/sdk'] ?? null);
+        $this->assertSame('2.0.0-beta.7', $releaseVersion);
+        $this->assertSame($dependencyVersion, $manifest['require']['durable-workflow/sdk'] ?? null);
         $this->assertArrayNotHasKey('durable-workflow/workflow', $manifest['require'] ?? []);
-        $this->assertSame($train, $manifest['require-dev']['durable-workflow/workflow'] ?? null);
+        $this->assertSame($dependencyVersion, $manifest['require-dev']['durable-workflow/workflow'] ?? null);
         $this->assertArrayHasKey('durable-workflow/workflow', $manifest['suggest'] ?? []);
 
         $expectedPins = [
-            'durable-workflow/waterline:'.$train.'@beta',
-            'durable-workflow/workflow:'.$train.'@beta',
-            'durable-workflow/sdk:'.$train.'@beta',
+            'durable-workflow/waterline:'.$releaseVersion.'@beta',
+            'durable-workflow/workflow:'.$dependencyVersion.'@beta',
+            'durable-workflow/sdk:'.$dependencyVersion.'@beta',
         ];
         $readme = (string) file_get_contents($root.'/README.md');
         preg_match_all('/```bash\n(composer require .*?)\n```/s', $readme, $matches);

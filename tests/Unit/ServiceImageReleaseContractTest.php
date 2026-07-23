@@ -32,11 +32,47 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringNotContainsString('wget ', strtolower($entrypoint));
     }
 
+    public function testEntrypointRejectsProcessLocalSqliteMemoryDatabase(): void
+    {
+        $entrypoint = dirname(__DIR__, 2).'/standalone/entrypoint.sh';
+        $process = proc_open(
+            [$entrypoint],
+            [
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ],
+            $pipes,
+            dirname($entrypoint),
+            [
+                'APP_KEY' => 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=',
+                'DB_CONNECTION' => 'sqlite',
+                'DB_DATABASE' => ':memory:',
+                'LC_ALL' => 'C',
+                'PATH' => (string) getenv('PATH'),
+                'WATERLINE_BACKEND' => 'service',
+                'WATERLINE_SERVER_ENDPOINT' => 'http://workflow.example.test',
+            ],
+        );
+
+        $this->assertIsResource($process);
+        $stdout = stream_get_contents($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        $this->assertSame(1, proc_close($process));
+        $this->assertSame('', $stdout);
+        $this->assertStringContainsString('waterline-service: startup failed:', $stderr);
+        $this->assertStringContainsString('DB_DATABASE=:memory:', $stderr);
+        $this->assertStringContainsString('file-backed SQLite', $stderr);
+    }
+
     public function testSmokeCoversSelectedRunQueryAndSignalThroughAnIsolatedNetwork(): void
     {
         $smoke = (string) file_get_contents(dirname(__DIR__, 2).'/scripts/ci/service-mode-image-smoke.sh');
 
         $this->assertStringContainsString('docker network create', $smoke);
+        $this->assertStringContainsString('DB_DATABASE=:memory:', $smoke);
         $this->assertStringContainsString('/queries/current', $smoke);
         $this->assertStringContainsString('/signals/approve', $smoke);
         $this->assertStringContainsString('WATERLINE_ACCESS_MODE=operator', $smoke);

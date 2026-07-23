@@ -2,10 +2,14 @@
 
 ## Unreleased
 
-Waterline joins the synchronized Durable Workflow `2.0.0-beta.6` product
-train. The operator, embedded engine, standalone server, CLI, and official SDKs
-now share one supported beta baseline. Earlier prereleases remain historical
-and receive no compatibility shim.
+Waterline advances to `2.0.0-beta.7` while continuing to consume the published
+Durable Workflow SDK and Workflow `2.0.0-beta.6` dependency baseline. This
+keeps the Waterline package and service image installable without requiring
+unpublished peer packages.
+
+The packaged service now rejects process-local SQLite memory databases before
+running migrations. Service mode supports file-backed SQLite, MySQL, and
+PostgreSQL persistence across its separate migration and HTTP server processes.
 
 Published worker-status validation now accepts exact numeric 2.0 alpha, beta,
 and release-candidate package versions while continuing to reject ranges,

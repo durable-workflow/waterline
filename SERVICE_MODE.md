@@ -19,7 +19,7 @@ docker run --rm -p 8080:8080 \
   -e WATERLINE_NAMESPACE=orders \
   -e WATERLINE_ACCESS_MODE=read_only \
   -e WATERLINE_ALLOW_UNAUTHENTICATED=true \
-  durableworkflow/waterline:2.0.0-beta.6
+  durableworkflow/waterline:2.0.0-beta.7
 ```
 
 Open `http://localhost:8080/waterline`. Bind the port to a private interface or
@@ -64,8 +64,12 @@ within 30 seconds.
 Waterline persistence stores saved views, display preferences, and Laravel
 runtime state only. It is never configured with, and never reads, the
 standalone server database. Mount `/data` when using the default SQLite
-configuration. For MySQL or PostgreSQL, set `DATABASE_URL` or the ordinary
-`DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, and `DB_PASSWORD` inputs.
+configuration. Service-mode SQLite databases must be file-backed so the
+entrypoint migration process and the HTTP service process access the same
+schema. The process-local `DB_DATABASE=:memory:` setting is rejected during
+startup; use a mounted SQLite file such as `/data/waterline.sqlite` instead.
+For MySQL or PostgreSQL, set `DATABASE_URL` or the ordinary `DB_HOST`,
+`DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, and `DB_PASSWORD` inputs.
 
 The server token controls the backend role. Worker, queue, workflow, and
 schedule observation require the server's operator role. Server health and
@@ -86,7 +90,7 @@ the optional Workflow integration:
 
 ```bash
 composer require \
-  durable-workflow/waterline:2.0.0-beta.6@beta \
+  durable-workflow/waterline:2.0.0-beta.7@beta \
   durable-workflow/workflow:2.0.0-beta.6@beta \
   durable-workflow/sdk:2.0.0-beta.6@beta
 
