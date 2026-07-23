@@ -1,0 +1,358 @@
+#!/usr/bin/env python3
+"""Classify Waterline changes and enforce the selected qualification route."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
+from typing import Iterable, Mapping, Sequence
+
+
+COMPLETE = "complete"
+RELEASE = "release"
+QUALIFICATION_CLASSES = frozenset({COMPLETE, RELEASE})
+SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+
+# This is deliberately an exact allowlist. A new path receives complete
+# qualification until it is reviewed and intentionally added here.
+RELEASE_ONLY_PATHS = frozenset(
+    {
+        ".github/workflows/release-docs-audit.yml",
+        ".github/workflows/release-plan-recovery.yml",
+        ".github/workflows/service-image-recovery.yml",
+        ".github/workflows/service-image-smoke.yml",
+        ".github/workflows/service-image.yml",
+        "scripts/ci/check-docs-release-audit.sh",
+        "scripts/ci/check-packagist-release.sh",
+        "scripts/ci/cli-release-plan-recovery.fixture.yml",
+        "scripts/ci/cli_release_verifier_contract.py",
+        "scripts/ci/component-release-recovery.py",
+        "scripts/ci/fixtures/sdk-rust-release-plan-recovery.yml",
+        "scripts/ci/publish-planned-tag.py",
+        "scripts/ci/recovery_workflow_authority.py",
+        "scripts/ci/service-image-recovery.py",
+        "scripts/ci/service-mode-image-smoke.sh",
+        "scripts/ci/test-component-release-recovery.py",
+        "scripts/ci/test-publish-planned-tag.py",
+        "scripts/ci/test-service-image-recovery.py",
+    }
+)
+
+
+@dataclass(frozen=True)
+class Classification:
+    name: str
+    reason: str
+    changed_paths: tuple[str, ...] = ()
+
+
+def normalize_paths(paths: Iterable[str]) -> tuple[str, ...] | None:
+    normalized: set[str] = set()
+
+    for path in paths:
+        if (
+            not isinstance(path, str)
+            or not path
+            or "\0" in path
+            or "\n" in path
+            or "\r" in path
+        ):
+            return None
+
+        candidate = PurePosixPath(path)
+        if (
+            candidate.is_absolute()
+            or ".." in candidate.parts
+            or candidate.as_posix() != path
+        ):
+            return None
+
+        normalized.add(path)
+
+    return tuple(sorted(normalized))
+
+
+def classify_paths(paths: Iterable[str]) -> Classification:
+    normalized = normalize_paths(paths)
+    if normalized is None:
+        return Classification(COMPLETE, "unsafe-changed-path")
+    if not normalized:
+        return Classification(COMPLETE, "no-changed-paths")
+    if all(path in RELEASE_ONLY_PATHS for path in normalized):
+        return Classification(RELEASE, "release-paths-only", normalized)
+
+    return Classification(COMPLETE, "complete-path-present", normalized)
+
+
+def git_changed_paths(repository: Path, base: str, head: str) -> Classification:
+    if (
+        not SHA_PATTERN.fullmatch(base)
+        or not SHA_PATTERN.fullmatch(head)
+        or set(base) == {"0"}
+    ):
+        return Classification(COMPLETE, "unavailable-git-range")
+
+    for revision in (base, head):
+        verified = subprocess.run(
+            ["git", "cat-file", "-e", f"{revision}^{{commit}}"],
+            cwd=repository,
+            check=False,
+            capture_output=True,
+        )
+        if verified.returncode != 0:
+            return Classification(COMPLETE, "unavailable-git-range")
+
+    changed = subprocess.run(
+        [
+            "git",
+            "diff",
+            "--name-only",
+            "--no-renames",
+            "--diff-filter=ACDMRT",
+            "-z",
+            base,
+            head,
+        ],
+        cwd=repository,
+        check=False,
+        capture_output=True,
+    )
+    if changed.returncode != 0:
+        return Classification(COMPLETE, "unavailable-git-range")
+
+    try:
+        paths = [
+            item.decode("utf-8", errors="strict")
+            for item in changed.stdout.split(b"\0")
+            if item
+        ]
+    except UnicodeDecodeError:
+        return Classification(COMPLETE, "unsafe-changed-path")
+
+    return classify_paths(paths)
+
+
+def classify_event(
+    repository: Path,
+    event_name: str,
+    base: str,
+    head: str,
+) -> Classification:
+    if event_name not in {"pull_request", "push"}:
+        return Classification(COMPLETE, "non-change-event")
+
+    return git_changed_paths(repository, base, head)
+
+
+def expected_results(classification: str) -> Mapping[str, str]:
+    if classification == COMPLETE:
+        matrix_result = "success"
+    elif classification == RELEASE:
+        matrix_result = "skipped"
+    else:
+        raise ValueError(f"unknown qualification class: {classification}")
+
+    return {
+        "classification": "success",
+        "release-contracts": "success",
+        "build": matrix_result,
+        "laravel-matrix": matrix_result,
+        "laravel-compatibility": matrix_result,
+        "database": matrix_result,
+    }
+
+
+def evaluate_results(
+    classification: str,
+    observed: Mapping[str, str],
+) -> tuple[str, ...]:
+    try:
+        expected = expected_results(classification)
+    except ValueError:
+        return ("qualification-class:invalid",)
+
+    failures = [
+        f"{job}:expected-{result}:observed-{observed.get(job, 'missing')}"
+        for job, result in expected.items()
+        if observed.get(job) != result
+    ]
+    return tuple(failures)
+
+
+def load_benchmark(path: Path) -> dict[str, object]:
+    benchmark = json.loads(path.read_text())
+    if (
+        benchmark.get("schema")
+        != "durable-workflow.waterline.qualification-benchmark/v1"
+    ):
+        raise ValueError("qualification benchmark has an unsupported schema")
+
+    baseline = benchmark.get("baseline")
+    improved = benchmark.get("improved_release_path")
+    if not isinstance(baseline, dict) or not isinstance(improved, dict):
+        raise ValueError("qualification benchmark is incomplete")
+
+    baseline_seconds = baseline.get("elapsed_seconds")
+    improved_seconds = improved.get("projected_elapsed_seconds")
+    saved_seconds = improved.get("projected_saved_seconds")
+    reduction_basis_points = improved.get("projected_reduction_basis_points")
+    components = improved.get("projection_components_seconds")
+    if (
+        not isinstance(baseline_seconds, int)
+        or not isinstance(improved_seconds, int)
+        or not isinstance(saved_seconds, int)
+        or not isinstance(reduction_basis_points, int)
+        or not isinstance(components, dict)
+        or not all(isinstance(value, int) for value in components.values())
+        or sum(components.values()) != improved_seconds
+        or baseline_seconds <= improved_seconds
+        or saved_seconds != baseline_seconds - improved_seconds
+        or reduction_basis_points != round(saved_seconds / baseline_seconds * 10_000)
+    ):
+        raise ValueError("qualification benchmark timing is inconsistent")
+
+    return benchmark
+
+
+def write_github_output(path: str, values: Mapping[str, str | int]) -> None:
+    if not path:
+        return
+    with Path(path).open("a", encoding="utf-8") as output:
+        for key, value in values.items():
+            output.write(f"{key}={value}\n")
+
+
+def append_summary(path: str, lines: Sequence[str]) -> None:
+    if not path:
+        return
+    with Path(path).open("a", encoding="utf-8") as summary:
+        summary.write("\n".join(lines))
+        summary.write("\n")
+
+
+def classify_command(arguments: argparse.Namespace) -> int:
+    result = classify_event(
+        Path(arguments.repository).resolve(),
+        arguments.event_name,
+        arguments.base,
+        arguments.head,
+    )
+    values: dict[str, str | int] = {
+        "qualification-class": result.name,
+        "qualification-reason": result.reason,
+        "changed-path-count": len(result.changed_paths),
+    }
+    write_github_output(arguments.github_output, values)
+    append_summary(
+        arguments.github_step_summary,
+        (
+            "## Target-branch qualification",
+            "",
+            f"- Selected class: `{result.name}`",
+            f"- Classification basis: `{result.reason}`",
+            f"- Changed paths considered: {len(result.changed_paths)}",
+        ),
+    )
+    for key, value in values.items():
+        print(f"{key}={value}")
+    return 0
+
+
+def gate_command(arguments: argparse.Namespace) -> int:
+    observed = {
+        "classification": arguments.classification_result,
+        "release-contracts": arguments.release_contracts_result,
+        "build": arguments.build_result,
+        "laravel-matrix": arguments.laravel_matrix_result,
+        "laravel-compatibility": arguments.laravel_compatibility_result,
+        "database": arguments.database_result,
+    }
+    failures = evaluate_results(arguments.classification, observed)
+
+    try:
+        benchmark = load_benchmark(Path(arguments.benchmark))
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        failures += (f"benchmark:{type(error).__name__}",)
+        benchmark = {}
+
+    elapsed_seconds = max(0, int(time.time()) - arguments.started_at)
+    baseline = benchmark.get("baseline", {})
+    improved = benchmark.get("improved_release_path", {})
+    baseline_seconds = baseline.get("elapsed_seconds", "unavailable")
+    projected_seconds = improved.get("projected_elapsed_seconds", "unavailable")
+
+    append_summary(
+        arguments.github_step_summary,
+        (
+            "## Target-branch qualification result",
+            "",
+            f"- Selected class: `{arguments.classification}`",
+            f"- Current build-workflow elapsed time: {elapsed_seconds}s",
+            f"- Recorded complete-path baseline: {baseline_seconds}s",
+            f"- Recorded release-path projection: {projected_seconds}s",
+            f"- Gate result: `{'failure' if failures else 'success'}`",
+        ),
+    )
+    print(f"qualification-class={arguments.classification}")
+    print(f"qualification-elapsed-seconds={elapsed_seconds}")
+
+    if failures:
+        for failure in failures:
+            print(f"qualification gate rejected {failure}", file=sys.stderr)
+        return 1
+
+    return 0
+
+
+def parser() -> argparse.ArgumentParser:
+    command_parser = argparse.ArgumentParser()
+    commands = command_parser.add_subparsers(dest="command", required=True)
+
+    classify = commands.add_parser("classify")
+    classify.add_argument("--repository", default=".")
+    classify.add_argument("--event-name", required=True)
+    classify.add_argument("--base", default="")
+    classify.add_argument("--head", required=True)
+    classify.add_argument(
+        "--github-output",
+        default=os.environ.get("GITHUB_OUTPUT", ""),
+    )
+    classify.add_argument(
+        "--github-step-summary",
+        default=os.environ.get("GITHUB_STEP_SUMMARY", ""),
+    )
+    classify.set_defaults(handler=classify_command)
+
+    gate = commands.add_parser("gate")
+    gate.add_argument("--classification", required=True)
+    gate.add_argument("--classification-result", required=True)
+    gate.add_argument("--release-contracts-result", required=True)
+    gate.add_argument("--build-result", required=True)
+    gate.add_argument("--laravel-matrix-result", required=True)
+    gate.add_argument("--laravel-compatibility-result", required=True)
+    gate.add_argument("--database-result", required=True)
+    gate.add_argument("--started-at", required=True, type=int)
+    gate.add_argument("--benchmark", required=True)
+    gate.add_argument(
+        "--github-step-summary",
+        default=os.environ.get("GITHUB_STEP_SUMMARY", ""),
+    )
+    gate.set_defaults(handler=gate_command)
+
+    return command_parser
+
+
+def main() -> int:
+    arguments = parser().parse_args()
+    return arguments.handler(arguments)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

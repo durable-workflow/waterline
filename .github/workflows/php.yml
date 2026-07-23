@@ -15,7 +15,86 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  classify:
+    name: Classify target-branch qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      qualification-class: ${{ steps.classify.outputs.qualification-class }}
+      qualification-reason: ${{ steps.classify.outputs.qualification-reason }}
+      started-at: ${{ steps.clock.outputs.started-at }}
+
+    steps:
+    - name: Start qualification clock
+      id: clock
+      run: echo "started-at=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+
+    - name: Classify changed paths
+      id: classify
+      env:
+        BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      run: >-
+        python scripts/ci/qualification_policy.py classify
+        --event-name="$GITHUB_EVENT_NAME"
+        --base="$BASE_SHA"
+        --head="$HEAD_SHA"
+
+    - name: Install isolated workflow policy parser
+      run: |
+        python -m venv "$RUNNER_TEMP/workflow-policy"
+        "$RUNNER_TEMP/workflow-policy/bin/python" -m pip install \
+          --disable-pip-version-check \
+          --no-cache-dir \
+          --no-deps \
+          --only-binary=:all: \
+          --requirement scripts/ci/workflow-requirements.txt
+
+    - name: Validate workflow syntax and trust policy
+      run: >-
+        "$RUNNER_TEMP/workflow-policy/bin/python"
+        scripts/ci/workflow_trust_policy.py
+
+    - name: Verify qualification policy behavior
+      run: >-
+        "$RUNNER_TEMP/workflow-policy/bin/python"
+        scripts/ci/test-qualification-policy.py
+
+    - name: Scan the public boundary
+      run: scripts/check-public-boundary.sh
+
+  release-contracts:
+    name: Release and recovery contracts
+    needs: classify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        persist-credentials: false
+
+    - name: Validate release and recovery tooling
+      run: |
+        python -m py_compile \
+          scripts/ci/component-release-recovery.py \
+          scripts/ci/publish-planned-tag.py \
+          scripts/ci/service-image-recovery.py \
+          scripts/ci/test-component-release-recovery.py \
+          scripts/ci/test-publish-planned-tag.py \
+          scripts/ci/test-service-image-recovery.py
+        python scripts/ci/test-component-release-recovery.py
+        python scripts/ci/test-publish-planned-tag.py
+        python scripts/ci/test-service-image-recovery.py
+
   build:
+    needs: classify
+    if: ${{ needs.classify.outputs.qualification-class == 'complete' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
 
@@ -23,6 +102,7 @@ jobs:
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       with:
         fetch-depth: 10
+        persist-credentials: false
 
     - name: Install PHP
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
@@ -53,19 +133,6 @@ jobs:
       if: ${{ github.server_url == 'https://github.com' }}
       run: composer audit --no-interaction
 
-    - name: Validate release recovery tooling
-      run: |
-        python -m py_compile \
-          scripts/ci/component-release-recovery.py \
-          scripts/ci/publish-planned-tag.py \
-          scripts/ci/service-image-recovery.py \
-          scripts/ci/test-component-release-recovery.py \
-          scripts/ci/test-publish-planned-tag.py \
-          scripts/ci/test-service-image-recovery.py
-        python scripts/ci/test-component-release-recovery.py
-        python scripts/ci/test-publish-planned-tag.py
-        python scripts/ci/test-service-image-recovery.py
-
     - name: Build Laravel 12 Workbench scaffold
       if: ${{ github.server_url == 'https://github.com' }}
       run: composer build
@@ -81,6 +148,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        persist-credentials: false
 
     - name: Install matrix validator PHP
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
@@ -109,6 +178,7 @@ jobs:
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       with:
         fetch-depth: 10
+        persist-credentials: false
 
     - name: Install PHP ${{ matrix.php }}
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
@@ -261,6 +331,7 @@ jobs:
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       with:
         fetch-depth: 10
+        persist-credentials: false
 
     - name: Install mssql-tools
       if: ${{ matrix.database == 'mssql' }}
@@ -366,19 +437,39 @@ jobs:
   target-branch-qualification:
     name: Target branch qualification
     if: ${{ always() && github.server_url == 'https://github.com' }}
-    needs: [build, laravel-matrix, laravel-compatibility, qualification]
+    needs:
+      - classify
+      - release-contracts
+      - build
+      - laravel-matrix
+      - laravel-compatibility
+      - qualification
     runs-on: ubuntu-latest
     timeout-minutes: 2
 
     steps:
-    - name: Require every supported framework and database cell
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        persist-credentials: false
+
+    - name: Enforce selected qualification class
       env:
+        QUALIFICATION_CLASS: ${{ needs.classify.outputs.qualification-class }}
+        CLASSIFICATION_RESULT: ${{ needs.classify.result }}
+        RELEASE_CONTRACTS_RESULT: ${{ needs.release-contracts.result }}
         BUILD_RESULT: ${{ needs.build.result }}
         MATRIX_RESULT: ${{ needs.laravel-matrix.result }}
         LARAVEL_RESULT: ${{ needs.laravel-compatibility.result }}
         DATABASE_RESULT: ${{ needs.qualification.result }}
-      run: |
-        test "$BUILD_RESULT" = success
-        test "$MATRIX_RESULT" = success
-        test "$LARAVEL_RESULT" = success
-        test "$DATABASE_RESULT" = success
+        QUALIFICATION_STARTED_AT: ${{ needs.classify.outputs.started-at }}
+      run: >-
+        python scripts/ci/qualification_policy.py gate
+        --classification="$QUALIFICATION_CLASS"
+        --classification-result="$CLASSIFICATION_RESULT"
+        --release-contracts-result="$RELEASE_CONTRACTS_RESULT"
+        --build-result="$BUILD_RESULT"
+        --laravel-matrix-result="$MATRIX_RESULT"
+        --laravel-compatibility-result="$LARAVEL_RESULT"
+        --database-result="$DATABASE_RESULT"
+        --started-at="$QUALIFICATION_STARTED_AT"
+        --benchmark=.github/qualification-benchmark.json

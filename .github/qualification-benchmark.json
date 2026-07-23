@@ -1,0 +1,31 @@
+{
+  "schema": "durable-workflow.waterline.qualification-benchmark/v1",
+  "baseline": {
+    "workflow": "build",
+    "run_id": 29967158994,
+    "head_sha": "37559889cd109d0d2509d1356765b17b4b7cbb96",
+    "event": "push",
+    "started_at": "2026-07-22T23:46:52Z",
+    "completed_at": "2026-07-23T00:04:45Z",
+    "elapsed_seconds": 1073,
+    "pre_matrix_job_elapsed_seconds": 21,
+    "run_to_pre_matrix_completion_seconds": 23,
+    "slowest_matrix_job": "qualification-mysql",
+    "slowest_matrix_job_elapsed_seconds": 1040,
+    "matrix_to_required_check_start_seconds": 2,
+    "required_check_elapsed_seconds": 4
+  },
+  "improved_release_path": {
+    "measurement": "baseline-critical-path-projection",
+    "projected_elapsed_seconds": 29,
+    "projection_components_seconds": {
+      "run_to_pre_matrix_completion": 23,
+      "job_handoff": 2,
+      "required_check": 4
+    },
+    "projected_saved_seconds": 1044,
+    "projected_reduction_basis_points": 9730,
+    "excluded_matrix_job_count": 10,
+    "live_elapsed_report": "target-branch-qualification-job-summary"
+  }
+}
