@@ -1,0 +1,326 @@
+# yamllint disable rule:line-length
+name: Service image recovery
+
+run-name: Recover Waterline service image from ${{ inputs.plan_tag || 'latest public release plan' }}
+
+on:
+  schedule:
+    - cron: '41 * * * *'
+  workflow_dispatch:
+    inputs:
+      plan_tag:
+        description: Immutable release-plan tag; empty selects the newest public plan
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: service-image-recovery-waterline-${{ inputs.plan_tag || 'latest' }}
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Require protected v2 workflow source
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Reject unprotected recovery requests
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUEST_REPOSITORY: ${{ github.repository }}
+          REQUEST_REF: ${{ github.ref }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          set -euo pipefail
+          test "$SERVER_URL" = https://github.com
+          test "$REQUEST_REPOSITORY" = durable-workflow/waterline
+          test "$REQUEST_REF" = refs/heads/v2
+          case "$EVENT_NAME" in
+            schedule|workflow_dispatch) ;;
+            *) exit 1 ;;
+          esac
+
+  discover:
+    name: Verify plan and rehearse public image recovery
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      action: ${{ steps.image.outputs.action }}
+      artifact-digest: ${{ steps.privileged-handoff.outputs.artifact-digest }}
+      artifact-id: ${{ steps.privileged-handoff.outputs.artifact-id }}
+      commit: ${{ steps.image.outputs.commit }}
+      image: ${{ steps.image.outputs.image }}
+      plan: ${{ steps.release.outputs.plan }}
+      plan_commit: ${{ steps.release.outputs.plan_record_commit }}
+      plan_tag: ${{ steps.release.outputs.plan_tag }}
+      source-run-attempt: ${{ github.run_attempt }}
+      source-run-id: ${{ github.run_id }}
+      version: ${{ steps.image.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Resolve the immutable public release plan
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REQUESTED_PLAN_TAG: ${{ inputs.plan_tag }}
+        run: |
+          arguments=(
+            resolve
+            --component waterline
+            --plan-output release-plan.json
+            --preparation-output release-preparation.json
+            --evidence release-recovery-evidence.json
+            --github-output "$GITHUB_OUTPUT"
+          )
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            arguments+=(--allow-empty)
+          elif [ -n "$REQUESTED_PLAN_TAG" ]; then
+            arguments+=(--plan-tag "$REQUESTED_PLAN_TAG")
+          fi
+          python scripts/ci/component-release-recovery.py "${arguments[@]}"
+
+      - name: Rehearse the publication-credential-free public recovery decision
+        id: image
+        if: steps.release.outputs.action == 'skip'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PLAN_COMMIT: ${{ steps.release.outputs.plan_record_commit }}
+          PLAN_TAG: ${{ steps.release.outputs.plan_tag }}
+        run: |
+          python scripts/ci/service-image-recovery.py \
+            --plan release-plan.json \
+            --recovery-evidence release-recovery-evidence.json \
+            --plan-tag "$PLAN_TAG" \
+            --plan-commit "$PLAN_COMMIT" \
+            --github-server-url "$GITHUB_SERVER_URL" \
+            --github-repository "$GITHUB_REPOSITORY" \
+            --github-ref "$GITHUB_REF" \
+            --github-sha "$GITHUB_SHA" \
+            --github-event-name "$GITHUB_EVENT_NAME" \
+            --evidence service-image-recovery-evidence.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Retain public recovery rehearsal evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: waterline-service-image-rehearsal-${{ steps.release.outputs.plan || github.run_id }}
+          path: |
+            release-plan.json
+            release-recovery-evidence.json
+            service-image-recovery-evidence.json
+          if-no-files-found: warn
+
+      - name: Package the privileged image publication handoff
+        if: steps.image.outputs.action == 'publish'
+        run: |
+          tar -cf service-image-recovery-handoff.tar \
+            release-plan.json \
+            release-recovery-evidence.json \
+            service-image-recovery-evidence.json
+
+      - name: Bind the privileged publication handoff identity and digest
+        id: privileged-handoff
+        if: steps.image.outputs.action == 'publish'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          archive: false
+          if-no-files-found: error
+          path: service-image-recovery-handoff.tar
+
+  publish:
+    name: Republish exact planned service image
+    needs: discover
+    if: >-
+      github.repository == 'durable-workflow/waterline' &&
+      github.server_url == 'https://github.com' &&
+      github.ref == 'refs/heads/v2' &&
+      needs.discover.outputs.action == 'publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: release-plan-publication
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Restore the immutable image recovery handoff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          artifact-ids: ${{ needs.discover.outputs.artifact-id }}
+          digest-mismatch: error
+          github-token: ${{ github.token }}
+          path: isolated-image-recovery
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.discover.outputs.source-run-id }}
+
+      - name: Validate the exact producer artifact before use
+        env:
+          ARTIFACT_DIRECTORY: isolated-image-recovery
+          EXPECTED_ARTIFACT_DIGEST: ${{ needs.discover.outputs.artifact-digest }}
+          EXPECTED_ARTIFACT_ID: ${{ needs.discover.outputs.artifact-id }}
+          EXPECTED_SOURCE_RUN_ATTEMPT: ${{ needs.discover.outputs.source-run-attempt }}
+          EXPECTED_SOURCE_RUN_ID: ${{ needs.discover.outputs.source-run-id }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            printf 'producer artifact digest is not an exact SHA-256 digest\n' >&2
+            exit 1
+          fi
+          for identity in "$EXPECTED_ARTIFACT_ID" "$EXPECTED_SOURCE_RUN_ID" "$EXPECTED_SOURCE_RUN_ATTEMPT"; do
+            if [[ ! "$identity" =~ ^[1-9][0-9]*$ ]]; then
+              printf 'producer artifact identity is invalid\n' >&2
+              exit 1
+            fi
+          done
+          mapfile -d '' entries < <(
+            /usr/bin/find "$ARTIFACT_DIRECTORY" -mindepth 1 -maxdepth 1 -print0
+          )
+          if [ "${#entries[@]}" -ne 1 ] || [ ! -f "${entries[0]}" ] || [ -L "${entries[0]}" ]; then
+            printf 'artifact handoff must contain exactly one regular file\n' >&2
+            exit 1
+          fi
+          observed_digest="$(/usr/bin/sha256sum "${entries[0]}")"
+          observed_digest="${observed_digest%% *}"
+          if [ "$observed_digest" != "$EXPECTED_ARTIFACT_DIGEST" ]; then
+            printf 'artifact digest mismatch: expected %s, got %s\n' \
+              "$EXPECTED_ARTIFACT_DIGEST" "$observed_digest" >&2
+            exit 1
+          fi
+          printf 'validated artifact %s from run %s attempt %s\n' \
+            "$EXPECTED_ARTIFACT_ID" "$EXPECTED_SOURCE_RUN_ID" "$EXPECTED_SOURCE_RUN_ATTEMPT"
+
+      - name: Extract only the validated recovery records
+        run: |
+          set -euo pipefail
+          expected="$(
+            printf '%s\n' \
+              release-plan.json \
+              release-recovery-evidence.json \
+              service-image-recovery-evidence.json
+          )"
+          observed="$(tar -tf isolated-image-recovery/service-image-recovery-handoff.tar | sort)"
+          if [ "$observed" != "$expected" ]; then
+            printf 'image recovery handoff has unexpected members\n' >&2
+            exit 1
+          fi
+          mkdir recovery-input
+          tar -xf isolated-image-recovery/service-image-recovery-handoff.tar -C recovery-input
+
+      - name: Revalidate protected source and immutable public inputs
+        id: revalidate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PLAN_COMMIT: ${{ needs.discover.outputs.plan_commit }}
+          PLAN_TAG: ${{ needs.discover.outputs.plan_tag }}
+        run: |
+          python scripts/ci/service-image-recovery.py \
+            --plan recovery-input/release-plan.json \
+            --recovery-evidence recovery-input/release-recovery-evidence.json \
+            --plan-tag "$PLAN_TAG" \
+            --plan-commit "$PLAN_COMMIT" \
+            --github-server-url "$GITHUB_SERVER_URL" \
+            --github-repository "$GITHUB_REPOSITORY" \
+            --github-ref "$GITHUB_REF" \
+            --github-sha "$GITHUB_SHA" \
+            --github-event-name "$GITHUB_EVENT_NAME" \
+            --evidence service-image-prepublication-evidence.json \
+            --github-output "$GITHUB_OUTPUT"
+          test "$(sed -n 's/^action=//p' "$GITHUB_OUTPUT")" = publish
+
+      - name: Check out the exact planned source without running its workflow code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 1
+          path: release-source
+          persist-credentials: false
+          ref: ${{ needs.discover.outputs.commit }}
+
+      - name: Verify the isolated build source
+        env:
+          EXPECTED_COMMIT: ${{ needs.discover.outputs.commit }}
+          EXPECTED_IMAGE: ${{ needs.discover.outputs.image }}
+          EXPECTED_VERSION: ${{ needs.discover.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(git -C release-source rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          test "$EXPECTED_VERSION" = "${{ steps.revalidate.outputs.version }}"
+          test "$EXPECTED_COMMIT" = "${{ steps.revalidate.outputs.commit }}"
+          test "$EXPECTED_IMAGE" = "${{ steps.revalidate.outputs.image }}"
+
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4
+
+      - name: Configure least-privilege Docker Hub publication credential
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Republish the immutable planned image tag
+        id: publish
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7
+        with:
+          context: release-source
+          build-args: |
+            WATERLINE_VERSION=${{ needs.discover.outputs.version }}
+            SOURCE_COMMIT=${{ needs.discover.outputs.commit }}
+          platforms: linux/amd64,linux/arm64
+          pull: true
+          push: true
+          tags: ${{ needs.discover.outputs.image }}
+
+      - name: Verify the recovered public manifest and labels
+        id: verify
+        env:
+          EXPECTED_BUILD_DIGEST: ${{ steps.publish.outputs.digest }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PLAN_COMMIT: ${{ needs.discover.outputs.plan_commit }}
+          PLAN_TAG: ${{ needs.discover.outputs.plan_tag }}
+        run: |
+          python scripts/ci/service-image-recovery.py \
+            --plan recovery-input/release-plan.json \
+            --recovery-evidence recovery-input/release-recovery-evidence.json \
+            --plan-tag "$PLAN_TAG" \
+            --plan-commit "$PLAN_COMMIT" \
+            --github-server-url "$GITHUB_SERVER_URL" \
+            --github-repository "$GITHUB_REPOSITORY" \
+            --github-ref "$GITHUB_REF" \
+            --github-sha "$GITHUB_SHA" \
+            --github-event-name "$GITHUB_EVENT_NAME" \
+            --require-present \
+            --attempts 30 \
+            --sleep 10 \
+            --evidence service-image-publication-evidence.json \
+            --github-output "$GITHUB_OUTPUT"
+          test "$(sed -n 's/^action=//p' "$GITHUB_OUTPUT")" = noop
+          test "$(sed -n 's/^digest=//p' "$GITHUB_OUTPUT")" = "$EXPECTED_BUILD_DIGEST"
+
+      - name: Smoke the recovered published service image
+        env:
+          SERVICE_IMAGE_SKIP_BUILD: '1'
+          WATERLINE_IMAGE: ${{ needs.discover.outputs.image }}
+          EXPECTED_WATERLINE_VERSION: ${{ needs.discover.outputs.version }}
+          EXPECTED_SOURCE_COMMIT: ${{ needs.discover.outputs.commit }}
+        run: scripts/ci/service-mode-image-smoke.sh
+
+      - name: Retain image recovery publication evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: waterline-service-image-publication-${{ needs.discover.outputs.plan }}
+          path: |
+            service-image-prepublication-evidence.json
+            service-image-publication-evidence.json
+          if-no-files-found: warn
