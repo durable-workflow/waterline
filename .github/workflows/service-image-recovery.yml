@@ -120,16 +120,20 @@ jobs:
           if-no-files-found: warn
 
       - name: Package the privileged image publication handoff
-        if: steps.image.outputs.action == 'publish'
+        env:
+          HANDOFF_ACTION: ${{ steps.image.outputs.action }}
         run: |
-          tar -cf service-image-recovery-handoff.tar \
-            release-plan.json \
-            release-recovery-evidence.json \
-            service-image-recovery-evidence.json
+          if [ "$HANDOFF_ACTION" = publish ]; then
+            tar -cf service-image-recovery-handoff.tar \
+              release-plan.json \
+              release-recovery-evidence.json \
+              service-image-recovery-evidence.json
+          else
+            tar -cf service-image-recovery-handoff.tar --files-from /dev/null
+          fi
 
       - name: Bind the privileged publication handoff identity and digest
         id: privileged-handoff
-        if: steps.image.outputs.action == 'publish'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           archive: false
@@ -153,6 +157,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
+          fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.sha }}
 
@@ -185,6 +190,10 @@ jobs:
               exit 1
             fi
           done
+          if [[ ! "$ARTIFACT_DIRECTORY" =~ ^isolated-[a-z0-9][a-z0-9._-]*$ ]]; then
+            printf 'artifact validation directory is unsafe\n' >&2
+            exit 1
+          fi
           mapfile -d '' entries < <(
             /usr/bin/find "$ARTIFACT_DIRECTORY" -mindepth 1 -maxdepth 1 -print0
           )

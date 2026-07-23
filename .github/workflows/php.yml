@@ -79,18 +79,39 @@ jobs:
       with:
         persist-credentials: false
 
-    - name: Validate release and recovery tooling
+    - name: Check out the shared target qualification policy
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        repository: durable-workflow/.github
+        ref: main
+        path: .target-qualification
+        persist-credentials: false
+
+    - name: Install the isolated recovery policy parser
       run: |
-        python -m py_compile \
+        python -m venv "$RUNNER_TEMP/recovery-policy"
+        "$RUNNER_TEMP/recovery-policy/bin/python" -m pip install \
+          --disable-pip-version-check \
+          --no-cache-dir \
+          --no-deps \
+          --only-binary=:all: \
+          --requirement scripts/ci/workflow-requirements.txt
+
+    - name: Validate release and recovery tooling
+      env:
+        SHARED_TARGET_QUALIFICATION_ROOT: ${{ github.workspace }}/.target-qualification
+      run: |
+        policy_python="$RUNNER_TEMP/recovery-policy/bin/python"
+        "$policy_python" -m py_compile \
           scripts/ci/component-release-recovery.py \
           scripts/ci/publish-planned-tag.py \
           scripts/ci/service-image-recovery.py \
           scripts/ci/test-component-release-recovery.py \
           scripts/ci/test-publish-planned-tag.py \
           scripts/ci/test-service-image-recovery.py
-        python scripts/ci/test-component-release-recovery.py
-        python scripts/ci/test-publish-planned-tag.py
-        python scripts/ci/test-service-image-recovery.py
+        "$policy_python" scripts/ci/test-component-release-recovery.py
+        "$policy_python" scripts/ci/test-publish-planned-tag.py
+        "$policy_python" scripts/ci/test-service-image-recovery.py
 
   build:
     needs: classify

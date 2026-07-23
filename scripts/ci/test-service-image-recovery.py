@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import tempfile
 import unittest
 import urllib.parse
@@ -470,6 +471,110 @@ class ServiceImageRecoveryWorkflowTest(unittest.TestCase):
             self.workflow,
         )
         self.assertIn("run: scripts/ci/service-mode-image-smoke.sh", self.workflow)
+
+
+def shared_qualification_root() -> Path | None:
+    configured = os.environ.get("SHARED_TARGET_QUALIFICATION_ROOT")
+    if not configured:
+        return None
+
+    candidate = Path(configured)
+    if not (candidate / "scripts" / "qualification_policy.py").is_file():
+        raise RuntimeError(
+            "configured shared target qualification policy is unavailable"
+        )
+    return candidate
+
+
+SHARED_QUALIFICATION_ROOT = shared_qualification_root()
+
+
+@unittest.skipUnless(
+    SHARED_QUALIFICATION_ROOT,
+    "shared target qualification policy is not available",
+)
+class SharedTargetQualificationTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        assert SHARED_QUALIFICATION_ROOT is not None
+        specification = importlib.util.spec_from_file_location(
+            "shared_target_qualification_policy",
+            SHARED_QUALIFICATION_ROOT / "scripts" / "qualification_policy.py",
+        )
+        if specification is None or specification.loader is None:
+            raise RuntimeError("unable to load the shared target qualification policy")
+        cls.qualification = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(cls.qualification)
+        cls.policy = cls.qualification.load_policy(
+            SHARED_QUALIFICATION_ROOT / "qualification" / "policy.json"
+        )
+        cls.workflow = WORKFLOW.read_text()
+
+    def scan(self, source: str) -> dict[str, dict[str, object]]:
+        return self.qualification.scan_workflow_sources(
+            self.policy,
+            "waterline",
+            {".github/workflows/service-image-recovery.yml": source},
+        )
+
+    def replace_once(self, original: str, replacement: str) -> str:
+        self.assertEqual(1, self.workflow.count(original))
+        return self.workflow.replace(original, replacement, 1)
+
+    def test_checked_in_recovery_workflow_satisfies_shared_policy(self) -> None:
+        evidence = self.scan(self.workflow)
+
+        self.assertEqual(
+            ["publish"],
+            evidence[".github/workflows/service-image-recovery.yml"]["privileged_jobs"],
+        )
+
+    def test_weakening_any_artifact_handoff_binding_is_rejected(self) -> None:
+        cases = {
+            "artifact ID": self.replace_once(
+                "artifact-id: ${{ steps.privileged-handoff.outputs.artifact-id }}",
+                "artifact-id: ${{ steps.privileged-handoff.outputs.artifact-digest }}",
+            ),
+            "run ID": self.replace_once(
+                "run-id: ${{ needs.discover.outputs.source-run-id }}",
+                "run-id: ${{ needs.discover.outputs.source-run-attempt }}",
+            ),
+            "run attempt": self.replace_once(
+                "EXPECTED_SOURCE_RUN_ATTEMPT: ${{ needs.discover.outputs.source-run-attempt }}",
+                "EXPECTED_SOURCE_RUN_ATTEMPT: ${{ needs.discover.outputs.source-run-id }}",
+            ),
+            "digest": self.replace_once(
+                "EXPECTED_ARTIFACT_DIGEST: ${{ needs.discover.outputs.artifact-digest }}",
+                "EXPECTED_ARTIFACT_DIGEST: ${{ needs.discover.outputs.artifact-id }}",
+            ),
+            "safe directory": self.replace_once(
+                """          if [[ ! "$ARTIFACT_DIRECTORY" =~ ^isolated-[a-z0-9][a-z0-9._-]*$ ]]; then
+            printf 'artifact validation directory is unsafe\\n' >&2
+            exit 1
+          fi
+""",
+                "",
+            ),
+            "reviewed checkout": self.replace_once(
+                "          fetch-depth: 0\n",
+                "          fetch-depth: 1\n",
+            ),
+            "validation order": self.replace_once(
+                "      - name: Validate the exact producer artifact before use\n",
+                "      - run: tar -tf isolated-image-recovery/service-image-recovery-handoff.tar\n"
+                "      - name: Validate the exact producer artifact before use\n",
+            ),
+        }
+
+        for name, candidate in cases.items():
+            with (
+                self.subTest(name=name),
+                self.assertRaisesRegex(
+                    self.qualification.PolicyError,
+                    "exact producer, immutable artifact identity, and pre-use digest validation",
+                ),
+            ):
+                self.scan(candidate)
 
 
 if __name__ == "__main__":
