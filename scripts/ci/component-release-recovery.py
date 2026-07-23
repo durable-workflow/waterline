@@ -63,6 +63,7 @@ GITHUB_READ_RETRY_BASE_SECONDS = 2.0
 GITHUB_READ_RETRY_MAX_SECONDS = 120.0
 GITHUB_READ_REQUEST_TIMEOUT_SECONDS = 30.0
 GITHUB_READ_DEADLINE_SECONDS = 600.0
+IMPLICIT_AUTHORITY_MAX_ATTEMPTS = 3
 INFRASTRUCTURE_EXIT_CODE = 75
 
 SOURCE_CHANGELOGS = {"workflow", "waterline", "sdk-php", "sdk-python"}
@@ -1674,9 +1675,12 @@ def accepted_continuity_supersession(
     return dict(superseded)
 
 
-def select_implicit_plan_authority(client: PublicClient) -> dict[str, Any]:
+def classify_implicit_plan_authority(
+    client: PublicClient,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     authorities: list[dict[str, Any]] = []
-    for tag in list_release_plan_tags(client):
+    tags = list_release_plan_tags(client)
+    for tag in tags:
         commit = resolve_tag(client, CONTROL_REPOSITORY, tag)
         if commit is None:
             raise RecoveryError(f"release plan tag {tag} is absent", "plan-discovery")
@@ -1801,14 +1805,57 @@ def select_implicit_plan_authority(client: PublicClient) -> dict[str, Any]:
             f"latest release plan {selected['tag']} is superseded and cannot be recovered",
             "plan-discovery",
         )
-    return selected
+    return selected, authorities
+
+
+def implicit_plan_authority_converged(
+    client: PublicClient,
+    authority_snapshot: list[dict[str, Any]],
+) -> bool:
+    _selected, current_snapshot = classify_implicit_plan_authority(client)
+    return current_snapshot == authority_snapshot
+
+
+def select_implicit_plan_authority(client: PublicClient) -> dict[str, Any]:
+    for _attempt in range(IMPLICIT_AUTHORITY_MAX_ATTEMPTS):
+        selected, authority_snapshot = classify_implicit_plan_authority(client)
+        if implicit_plan_authority_converged(client, authority_snapshot):
+            return {**selected, "authority_snapshot": authority_snapshot}
+    raise RecoveryError(
+        "release plan registry or lifecycle authority did not converge "
+        f"after {IMPLICIT_AUTHORITY_MAX_ATTEMPTS} attempts",
+        "plan-discovery",
+    )
+
+
+def revalidate_implicit_plan_authority(
+    client: PublicClient,
+    implicit_authority: dict[str, Any],
+) -> None:
+    authority_snapshot = implicit_authority.get("authority_snapshot")
+    if not isinstance(authority_snapshot, list) or not implicit_plan_authority_converged(
+        client,
+        authority_snapshot,
+    ):
+        raise RecoveryError(
+            "implicit release plan authority changed during component preflight; "
+            "refusing a stale recovery action",
+            "plan-discovery",
+        )
 
 
 def discover_plan(
     client: PublicClient, requested_tag: str | None, component_name: str
-) -> tuple[str, str, dict[str, Any], dict[str, Any] | None]:
+) -> tuple[
+    str,
+    str,
+    dict[str, Any],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+]:
     if component_name not in COMPONENTS:
         raise RecoveryError(f"unknown release component: {component_name}", "plan-discovery")
+    implicit_authority = None
     if requested_tag:
         tag = requested_tag
         if not tag.startswith(PLAN_TAG_PREFIX):
@@ -1825,6 +1872,7 @@ def discover_plan(
         plan, preparation = read_plan_authority(client, tag, commit)
     else:
         selected = select_implicit_plan_authority(client)
+        implicit_authority = selected
         tag = selected["tag"]
         commit = selected["commit"]
         plan = selected["plan"]
@@ -1845,7 +1893,7 @@ def discover_plan(
                 "only completed legacy releases may recover without it",
                 "plan-discovery",
             ) from error
-    return tag, commit, plan, preparation
+    return tag, commit, plan, preparation, implicit_authority
 
 def load_recovery_workflow_authority(
     client: PublicClient,
@@ -2425,6 +2473,7 @@ def resolve_component(
     record_commit: str,
     plan: dict[str, Any],
     preparation: dict[str, Any] | None,
+    implicit_authority: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     if component_name not in COMPONENTS:
         raise RecoveryError(f"unknown release component: {component_name}")
@@ -2475,6 +2524,8 @@ def resolve_component(
     source_train = None
     if action == "publish" and plan["channel"] == "beta" and component_name in SOURCE_PRODUCT_TRAINS:
         source_train = source_product_train_evidence(client, component_name, identity)
+    if implicit_authority is not None:
+        revalidate_implicit_plan_authority(client, implicit_authority)
     state = base_state(component_name, tag, plan)
     state.update(
         {
@@ -2597,12 +2648,18 @@ def main() -> int:
             record_commit: str | None = None
             plan: dict[str, Any] | None = None
             try:
-                tag, record_commit, plan, preparation = discover_plan(client, args.plan_tag, args.component)
+                tag, record_commit, plan, preparation, implicit_authority = discover_plan(
+                    client,
+                    args.plan_tag,
+                    args.component,
+                )
                 args.plan_output.write_bytes(canonical_json(plan))
                 if preparation is not None:
                     args.preparation_output.write_bytes(canonical_json(preparation))
                 continuity_pause = scheduled_continuity_pause(client, plan) if args.plan_tag is None else None
                 if continuity_pause is not None:
+                    assert implicit_authority is not None
+                    revalidate_implicit_plan_authority(client, implicit_authority)
                     paused = base_state(args.component, tag, plan)
                     paused.update(
                         {
@@ -2634,6 +2691,7 @@ def main() -> int:
                     record_commit,
                     plan,
                     preparation,
+                    implicit_authority,
                 )
                 args.evidence.write_bytes(canonical_json(state))
                 write_output(args.github_output, outputs)
