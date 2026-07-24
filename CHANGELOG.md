@@ -16,6 +16,8 @@ versions; ranges, branch aliases, and unpinned values are rejected.
 
 Release-plan recovery now consumes immutable, exact-version release-note
 preparation authority before publishing a newly recorded plan.
+Explicit recovery also rejects terminally superseded plans before and after
+publication preflight while keeping completed-plan verification idempotent.
 
 Waterline keeps the Durable Workflow 2.0 conformance claim aligned to
 platform conformance suite version 17. The focused

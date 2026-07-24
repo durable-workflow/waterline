@@ -832,7 +832,9 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
         publication_preflight.assert_called_once()
         classify.assert_called_once()
 
-    def test_explicit_plan_tag_still_returns_publish_without_implicit_revalidation(self) -> None:
+    def test_explicit_actionable_plan_returns_publish_with_lifecycle_revalidation(
+        self,
+    ) -> None:
         candidate = lifecycle_plan(self.recovery)
         candidate_preparation = {
             "components": {
@@ -849,6 +851,21 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
         publication_preflight = mock.Mock(
             side_effect=self.recovery.NotFound("not published")
         )
+        explicit_authority = {
+            "selection": "explicit",
+            "tag": "release-plan/manual",
+            "commit": "a" * 40,
+            "recorded_at": dt.datetime(2026, 7, 23, tzinfo=dt.UTC),
+            "plan": candidate,
+            "preparation": candidate_preparation,
+            "lifecycle": "actionable",
+            "successor": None,
+        }
+        current_authority = {
+            key: value
+            for key, value in explicit_authority.items()
+            if key != "selection"
+        }
 
         with (
             mock.patch.object(self.recovery, "verify_plan_authority", return_value=({}, {})),
@@ -858,24 +875,35 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
                 self.recovery,
                 "classify_implicit_plan_authority",
             ) as classify,
+            mock.patch.object(
+                self.recovery,
+                "classify_plan_authorities",
+                return_value=[current_authority],
+            ) as classify_explicit,
             mock.patch.dict(
                 self.recovery.VERIFIERS,
                 {component.distribution: publication_preflight},
             ),
         ):
-            state, outputs = self.recovery.resolve_component(
-                mock.Mock(),
-                "workflow",
-                "release-plan/manual",
-                "a" * 40,
-                candidate,
-                candidate_preparation,
-            )
+            for lifecycle in ("actionable", "interrupted"):
+                with self.subTest(explicit_lifecycle=lifecycle):
+                    explicit_authority["lifecycle"] = lifecycle
+                    current_authority["lifecycle"] = lifecycle
+                    state, outputs = self.recovery.resolve_component(
+                        mock.Mock(),
+                        "workflow",
+                        "release-plan/manual",
+                        "a" * 40,
+                        candidate,
+                        candidate_preparation,
+                        explicit_authority,
+                    )
+                    self.assertEqual("publish", outputs["action"])
+                    self.assertEqual("publication", state["phase"])
 
-        self.assertEqual("publish", outputs["action"])
-        self.assertEqual("publication", state["phase"])
-        publication_preflight.assert_called_once()
+        self.assertEqual(2, publication_preflight.call_count)
         classify.assert_not_called()
+        self.assertEqual(2, classify_explicit.call_count)
 
     def test_concurrent_terminal_supersession_retries_before_returning_action(self) -> None:
         older = {"plan": "older-plan"}
@@ -1427,6 +1455,107 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
                 None,
             )
 
+    def test_explicit_terminal_plan_is_rejected_before_preflight(self) -> None:
+        failed = lifecycle_plan(self.recovery)
+        failed["plan"] = "failed-plan"
+        successor = json.loads(json.dumps(failed))
+        successor["plan"] = "successor-plan"
+        tag = f"release-plan/{failed['plan']}"
+        commit = "a" * 40
+        authority = {
+            "tag": tag,
+            "commit": commit,
+            "recorded_at": dt.datetime(2026, 7, 23, tzinfo=dt.UTC),
+            "plan": failed,
+            "preparation": None,
+            "lifecycle": "superseded",
+            "successor": {
+                "tag": f"release-plan/{successor['plan']}",
+                "sha256": self.recovery.manifest_digest(successor),
+                "plan": successor,
+            },
+        }
+        with (
+            mock.patch.object(
+                self.recovery, "classify_plan_authorities", return_value=[authority]
+            ),
+            self.assertRaisesRegex(
+                self.recovery.RecoveryError,
+                "terminally superseded and cannot be recovered",
+            ),
+        ):
+            self.recovery.select_explicit_plan_authority(
+                mock.Mock(), tag, commit, failed, None
+            )
+
+    def test_explicit_terminal_transition_during_preflight_cannot_publish(self) -> None:
+        candidate = lifecycle_plan(self.recovery)
+        preparation = {
+            "components": {
+                "workflow": {
+                    "release_notes": {
+                        "release_date": "2026-07-23",
+                        "sha256": "c" * 64,
+                        "source": {},
+                    }
+                }
+            }
+        }
+        tag = f"release-plan/{candidate['plan']}"
+        commit = "a" * 40
+        component = self.recovery.COMPONENTS["workflow"]
+        authority = {
+            "selection": "explicit",
+            "tag": tag,
+            "commit": commit,
+            "recorded_at": dt.datetime(2026, 7, 23, tzinfo=dt.UTC),
+            "plan": candidate,
+            "preparation": preparation,
+            "lifecycle": "actionable",
+            "successor": None,
+        }
+        superseded = {
+            **authority,
+            "lifecycle": "superseded",
+            "successor": {
+                "tag": "release-plan/successor",
+                "sha256": "d" * 64,
+                "plan": {"plan": "successor"},
+            },
+        }
+        superseded.pop("selection")
+        publication_preflight = mock.Mock(
+            side_effect=self.recovery.NotFound("not published")
+        )
+        with (
+            mock.patch.object(
+                self.recovery, "verify_plan_authority", return_value=({}, {})
+            ),
+            mock.patch.object(self.recovery, "validate_release_preparation"),
+            mock.patch.object(self.recovery, "resolve_tag", return_value=None),
+            mock.patch.object(
+                self.recovery, "classify_plan_authorities", return_value=[superseded]
+            ),
+            mock.patch.dict(
+                self.recovery.VERIFIERS,
+                {component.distribution: publication_preflight},
+            ),
+            self.assertRaisesRegex(
+                self.recovery.RecoveryError,
+                "became terminally superseded during component preflight",
+            ),
+        ):
+            self.recovery.resolve_component(
+                mock.Mock(),
+                "workflow",
+                tag,
+                commit,
+                candidate,
+                preparation,
+                authority,
+            )
+        self.assertEqual(1, publication_preflight.call_count)
+
 
 class ReleasePreparationRecoveryTest(unittest.TestCase):
     def candidate(self) -> dict[str, object]:
@@ -1481,6 +1610,11 @@ class ReleasePreparationRecoveryTest(unittest.TestCase):
             mock.patch.object(recovery, "resolve_tag", return_value=record_commit),
             mock.patch.object(
                 recovery,
+                "select_explicit_plan_authority",
+                return_value={"selection": "explicit"},
+            ),
+            mock.patch.object(
+                recovery,
                 "read_record",
                 side_effect=[candidate, recovery.NotFound("missing preparation")],
             ),
@@ -1512,14 +1646,30 @@ class ReleasePreparationRecoveryTest(unittest.TestCase):
                 None,
             )
 
-    def test_completed_legacy_release_still_resolves_to_skip(self) -> None:
+    def test_explicit_completed_release_still_resolves_to_skip(self) -> None:
         candidate = self.candidate()
         identity = candidate["components"]["workflow"]
         public_evidence = {"version": identity["version"], "commit": identity["commit"]}
+        authority = {
+            "selection": "explicit",
+            "tag": "release-plan/missing-preparation",
+            "commit": "b" * 40,
+            "plan": candidate,
+            "preparation": None,
+            "lifecycle": "completed",
+            "successor": None,
+        }
         with (
             mock.patch.object(recovery, "verify_plan_authority", return_value=({}, {})),
             mock.patch.object(recovery, "resolve_tag", return_value=identity["commit"]),
             mock.patch.object(recovery, "verify_component", return_value=public_evidence),
+            mock.patch.object(
+                recovery,
+                "classify_plan_authorities",
+                return_value=[
+                    {key: value for key, value in authority.items() if key != "selection"}
+                ],
+            ),
         ):
             state, outputs = recovery.resolve_component(
                 mock.Mock(),
@@ -1528,6 +1678,7 @@ class ReleasePreparationRecoveryTest(unittest.TestCase):
                 "b" * 40,
                 candidate,
                 None,
+                authority,
             )
 
         self.assertEqual("skip", outputs["action"])
