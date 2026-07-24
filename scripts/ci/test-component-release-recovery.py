@@ -9,6 +9,7 @@ import importlib.util
 import io
 import json
 import sys
+import tempfile
 import unittest
 import urllib.error
 from pathlib import Path
@@ -303,6 +304,184 @@ def captured_github_authority(module, record: dict[str, object]) -> list[object]
             }
         ],
     ]
+
+
+class ExplicitTerminalLifecycleRegistry:
+    component_name = "waterline"
+
+    def __init__(
+        self,
+        module,
+        shape: str,
+        *,
+        visible_from_round: int,
+    ) -> None:
+        self.module = module
+        self.shape = shape
+        self.visible_from_round = visible_from_round
+        self.classification_round = 0
+        self.failed = lifecycle_plan(module)
+        self.failed["plan"] = "failed-plan"
+        self.successor = json.loads(json.dumps(self.failed))
+        self.successor["plan"] = "successor-plan"
+        self.successor["components"]["workflow"]["version"] = "2.0.0-alpha.2"
+        self.failed_tag = f"{module.PLAN_TAG_PREFIX}{self.failed['plan']}"
+        self.successor_tag = f"{module.PLAN_TAG_PREFIX}{self.successor['plan']}"
+        self.failed_commit = "a" * 40
+        self.successor_commit = "b" * 40
+        self.failure_commit = "c" * 40
+        self.interruption_commit = "d" * 40
+        self.acceptance_commit = "e" * 40
+        self.tags = [self.failed_tag, self.successor_tag]
+        self.commits = {
+            self.failed_tag: self.failed_commit,
+            self.successor_tag: self.successor_commit,
+        }
+        self.recorded_at = {
+            self.failed_commit: dt.datetime(2026, 7, 20, tzinfo=dt.UTC),
+            self.successor_commit: dt.datetime(2026, 7, 21, tzinfo=dt.UTC),
+        }
+        self.preparation = {
+            "components": {
+                self.component_name: {
+                    "release_notes": {
+                        "release_date": "2026-07-23",
+                        "sha256": "c" * 64,
+                        "source": {},
+                    }
+                }
+            }
+        }
+        self.failure_tag = f"{module.FAILURE_TAG_PREFIX}{self.failed['plan']}"
+        self.failure = supersession_record(
+            module,
+            self.failed,
+            self.successor,
+            self.failed_commit,
+        )
+        self.interruption_tag = (
+            f"{module.CONTINUITY_TAG_PREFIX}{self.failed['plan']}/interrupted"
+        )
+        failed_digest = module.manifest_digest(self.failed)
+        self.interruption_evidence = {
+            "schema": module.CONTINUITY_EVIDENCE_SCHEMA,
+            "phase": "interrupted",
+            "outcome": "intentionally-interrupted",
+            "release_plan": {
+                "tag": self.failed_tag,
+                "sha256": failed_digest,
+            },
+            "plan_record": {
+                "tag": self.failed_tag,
+                "commit": self.failed_commit,
+                "sha256": failed_digest,
+            },
+        }
+        self.acceptance_tag = (
+            f"{module.CONTINUITY_TAG_PREFIX}{self.successor['plan']}/accepted"
+        )
+        successor_digest = module.manifest_digest(self.successor)
+        self.acceptance_evidence = {
+            "schema": module.CONTINUITY_EVIDENCE_SCHEMA,
+            "phase": "accepted",
+            "outcome": "accepted",
+            "release_plan": {
+                "tag": self.successor_tag,
+                "sha256": successor_digest,
+            },
+            "candidate_identity": {
+                "components": self.successor["components"],
+                "plan_sha256": successor_digest,
+            },
+            "superseded_interruption": {
+                "tag": self.interruption_tag,
+                "commit": self.interruption_commit,
+                "evidence_sha256": module.manifest_digest(self.interruption_evidence),
+                "plan_sha256": failed_digest,
+                "reason": module.CONTINUITY_SUPERSESSION_REASON,
+            },
+        }
+        self.authority_responses = captured_github_authority(module, self.failure)
+        self.client = mock.Mock()
+        self.client.json.side_effect = self.public_json
+        self.artifact_verifier = mock.Mock(
+            side_effect=module.NotFound("component artifact is absent")
+        )
+        self.dependency_verifier = mock.Mock(return_value={"status": "verified"})
+
+    def terminal_visible(self) -> bool:
+        return self.classification_round >= self.visible_from_round
+
+    def public_json(self, url: str, **_kwargs):
+        if "/releases/tags/" in url:
+            return {"tag_name": self.failed_tag, "draft": False, "assets": []}
+        if self.authority_responses:
+            return self.authority_responses.pop(0)
+        raise AssertionError(f"unexpected public JSON request: {url}")
+
+    def list_release_plan_tags(self, _client) -> list[str]:
+        self.classification_round += 1
+        return self.tags
+
+    def resolve_tag(self, _client, repository: str, tag: str) -> str | None:
+        if repository == self.module.CONTROL_REPOSITORY:
+            if tag in self.commits:
+                return self.commits[tag]
+            if (
+                self.shape == "terminal-failure"
+                and tag == self.failure_tag
+                and self.terminal_visible()
+            ):
+                return self.failure_commit
+            if self.shape == "accepted-continuity":
+                if tag == self.interruption_tag:
+                    return self.interruption_commit
+                if tag == self.acceptance_tag and self.terminal_visible():
+                    return self.acceptance_commit
+            return None
+        if repository == self.module.COMPONENTS[self.component_name].repository:
+            return None
+        raise AssertionError(f"unexpected tag repository: {repository}@{tag}")
+
+    def read_plan_authority(
+        self,
+        _client,
+        tag: str,
+        commit: str,
+    ) -> tuple[dict[str, object], dict[str, object]]:
+        if self.commits.get(tag) != commit:
+            raise AssertionError(f"unexpected plan authority: {tag}@{commit}")
+        plan = self.failed if tag == self.failed_tag else self.successor
+        return plan, self.preparation
+
+    def read_record(
+        self,
+        _client,
+        tag: str,
+        _commit: str,
+        filename: str,
+    ) -> dict[str, object]:
+        records = {
+            (self.failure_tag, "release-plan-failure.json"): self.failure,
+            (self.failure_tag, "successor-release-plan.json"): self.successor,
+            (self.interruption_tag, "continuity-evidence.json"): (
+                self.interruption_evidence
+            ),
+            (self.interruption_tag, "release-plan.json"): self.failed,
+            (self.acceptance_tag, "continuity-evidence.json"): (
+                self.acceptance_evidence
+            ),
+            (self.acceptance_tag, "release-plan.json"): self.successor,
+        }
+        try:
+            return records[(tag, filename)]
+        except KeyError as error:
+            raise AssertionError(
+                f"unexpected immutable record: {tag}/{filename}"
+            ) from error
+
+    def immutable_plan_recorded_at(self, _client, commit: str) -> dt.datetime:
+        return self.recorded_at[commit]
 
 
 def qualification_run(
@@ -1455,106 +1634,144 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
                 None,
             )
 
-    def test_explicit_terminal_plan_is_rejected_before_preflight(self) -> None:
-        failed = lifecycle_plan(self.recovery)
-        failed["plan"] = "failed-plan"
-        successor = json.loads(json.dumps(failed))
-        successor["plan"] = "successor-plan"
-        tag = f"release-plan/{failed['plan']}"
-        commit = "a" * 40
-        authority = {
-            "tag": tag,
-            "commit": commit,
-            "recorded_at": dt.datetime(2026, 7, 23, tzinfo=dt.UTC),
-            "plan": failed,
-            "preparation": None,
-            "lifecycle": "superseded",
-            "successor": {
-                "tag": f"release-plan/{successor['plan']}",
-                "sha256": self.recovery.manifest_digest(successor),
-                "plan": successor,
-            },
-        }
-        with (
-            mock.patch.object(
-                self.recovery, "classify_plan_authorities", return_value=[authority]
-            ),
-            self.assertRaisesRegex(
-                self.recovery.RecoveryError,
-                "terminally superseded and cannot be recovered",
-            ),
-        ):
-            self.recovery.select_explicit_plan_authority(
-                mock.Mock(), tag, commit, failed, None
-            )
+    def assert_explicit_terminal_record_cannot_publish(self, shape: str) -> None:
+        for visible_from_round, expected_artifact_checks in ((1, 0), (2, 1)):
+            with self.subTest(
+                shape=shape,
+                visible_from_round=visible_from_round,
+            ):
+                registry = ExplicitTerminalLifecycleRegistry(
+                    self.recovery,
+                    shape,
+                    visible_from_round=visible_from_round,
+                )
+                component = self.recovery.COMPONENTS[registry.component_name]
+                handoff = mock.Mock()
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    plan_output = root / "release-plan.json"
+                    preparation_output = root / "release-preparation.json"
+                    evidence_output = root / "recovery-evidence.json"
+                    github_output = root / "github-output"
+                    argv = [
+                        str(SCRIPT),
+                        "resolve",
+                        "--component",
+                        registry.component_name,
+                        "--plan-tag",
+                        registry.failed_tag,
+                        "--plan-output",
+                        str(plan_output),
+                        "--preparation-output",
+                        str(preparation_output),
+                        "--evidence",
+                        str(evidence_output),
+                        "--github-output",
+                        str(github_output),
+                    ]
+                    with (
+                        mock.patch.object(self.recovery.sys, "argv", argv),
+                        mock.patch.object(
+                            self.recovery,
+                            "PublicClient",
+                            return_value=registry.client,
+                        ),
+                        mock.patch.object(
+                            self.recovery,
+                            "list_release_plan_tags",
+                            side_effect=registry.list_release_plan_tags,
+                        ),
+                        mock.patch.object(
+                            self.recovery,
+                            "resolve_tag",
+                            side_effect=registry.resolve_tag,
+                        ),
+                        mock.patch.object(
+                            self.recovery,
+                            "read_plan_authority",
+                            side_effect=registry.read_plan_authority,
+                        ),
+                        mock.patch.object(
+                            self.recovery,
+                            "read_record",
+                            side_effect=registry.read_record,
+                        ),
+                        mock.patch.object(
+                            self.recovery,
+                            "immutable_plan_recorded_at",
+                            side_effect=registry.immutable_plan_recorded_at,
+                        ),
+                        mock.patch.object(self.recovery, "validate_release_mirrors"),
+                        mock.patch.object(
+                            self.recovery,
+                            "verify_plan_authority",
+                            return_value=({}, {}),
+                        ),
+                        mock.patch.object(
+                            self.recovery,
+                            "validate_release_preparation",
+                        ),
+                        mock.patch.object(
+                            self.recovery,
+                            "verify_component",
+                            registry.dependency_verifier,
+                        ),
+                        mock.patch.dict(
+                            self.recovery.VERIFIERS,
+                            {component.distribution: registry.artifact_verifier},
+                        ),
+                        mock.patch.object(
+                            self.recovery,
+                            "write_output",
+                            handoff,
+                        ),
+                        mock.patch.object(
+                            self.recovery.sys,
+                            "stderr",
+                            io.StringIO(),
+                        ),
+                    ):
+                        exit_code = self.recovery.main()
 
-    def test_explicit_terminal_transition_during_preflight_cannot_publish(self) -> None:
-        candidate = lifecycle_plan(self.recovery)
-        preparation = {
-            "components": {
-                "workflow": {
-                    "release_notes": {
-                        "release_date": "2026-07-23",
-                        "sha256": "c" * 64,
-                        "source": {},
-                    }
-                }
-            }
-        }
-        tag = f"release-plan/{candidate['plan']}"
-        commit = "a" * 40
-        component = self.recovery.COMPONENTS["workflow"]
-        authority = {
-            "selection": "explicit",
-            "tag": tag,
-            "commit": commit,
-            "recorded_at": dt.datetime(2026, 7, 23, tzinfo=dt.UTC),
-            "plan": candidate,
-            "preparation": preparation,
-            "lifecycle": "actionable",
-            "successor": None,
-        }
-        superseded = {
-            **authority,
-            "lifecycle": "superseded",
-            "successor": {
-                "tag": "release-plan/successor",
-                "sha256": "d" * 64,
-                "plan": {"plan": "successor"},
-            },
-        }
-        superseded.pop("selection")
-        publication_preflight = mock.Mock(
-            side_effect=self.recovery.NotFound("not published")
-        )
-        with (
-            mock.patch.object(
-                self.recovery, "verify_plan_authority", return_value=({}, {})
-            ),
-            mock.patch.object(self.recovery, "validate_release_preparation"),
-            mock.patch.object(self.recovery, "resolve_tag", return_value=None),
-            mock.patch.object(
-                self.recovery, "classify_plan_authorities", return_value=[superseded]
-            ),
-            mock.patch.dict(
-                self.recovery.VERIFIERS,
-                {component.distribution: publication_preflight},
-            ),
-            self.assertRaisesRegex(
-                self.recovery.RecoveryError,
-                "became terminally superseded during component preflight",
-            ),
-        ):
-            self.recovery.resolve_component(
-                mock.Mock(),
-                "workflow",
-                tag,
-                commit,
-                candidate,
-                preparation,
-                authority,
-            )
-        self.assertEqual(1, publication_preflight.call_count)
+                    evidence = json.loads(evidence_output.read_bytes())
+                    self.assertEqual(1, exit_code)
+                    self.assertEqual(registry.component_name, evidence["component"])
+                    self.assertEqual("plan-discovery", evidence["phase"])
+                    self.assertEqual("failed", evidence["outcome"])
+                    self.assertIn(
+                        "terminally superseded",
+                        evidence["reason"],
+                    )
+                    self.assertEqual(
+                        expected_artifact_checks,
+                        registry.artifact_verifier.call_count,
+                    )
+                    if expected_artifact_checks:
+                        identity = registry.failed["components"][
+                            registry.component_name
+                        ]
+                        registry.artifact_verifier.assert_called_once_with(
+                            registry.client,
+                            component,
+                            identity["version"],
+                            identity["commit"],
+                        )
+                    self.assertEqual(
+                        0 if visible_from_round == 1 else 2,
+                        registry.dependency_verifier.call_count,
+                    )
+                    self.assertFalse(github_output.exists())
+                    handoff.assert_not_called()
+
+    def test_terminal_failure_record_blocks_explicit_absent_artifact_handoff(
+        self,
+    ) -> None:
+        self.assert_explicit_terminal_record_cannot_publish("terminal-failure")
+
+    def test_accepted_continuity_supersession_blocks_explicit_absent_artifact_handoff(
+        self,
+    ) -> None:
+        self.assert_explicit_terminal_record_cannot_publish("accepted-continuity")
 
 
 class ReleasePreparationRecoveryTest(unittest.TestCase):
@@ -2042,6 +2259,31 @@ class RecoveryWorkflowVerificationTest(unittest.TestCase):
 
 
 class PrivilegedWorkflowBoundaryTest(unittest.TestCase):
+    def test_release_discovery_cannot_reach_publication_authority_without_publish_output(
+        self,
+    ) -> None:
+        discovery, publisher = WATERLINE_WORKFLOW.split("\n  publish:\n", 1)
+        action_guard = (
+            "    if: >-\n"
+            "      github.ref == 'refs/heads/v2' &&\n"
+            "      needs.discover.outputs.action == 'publish'"
+        )
+
+        self.assertNotIn("contents: write", discovery)
+        self.assertNotIn("${{ secrets.", discovery)
+        self.assertNotIn("gh workflow run", discovery)
+        guard_at = publisher.index(action_guard)
+        self.assertLess(
+            guard_at,
+            publisher.index("    environment: release-plan-publication"),
+        )
+        self.assertLess(
+            guard_at,
+            publisher.index(
+                "      - name: Configure repository publication credential"
+            ),
+        )
+
     def test_native_publishers_gate_the_exact_v2_ref_before_authority(self) -> None:
         publishers = {
             "release recovery": WATERLINE_WORKFLOW.split("\n  publish:\n", 1)[1],
