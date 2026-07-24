@@ -649,6 +649,75 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
         self.assertEqual(tags[1], selected["tag"])
         self.assertEqual("completed", selected["lifecycle"])
 
+    def test_final_implicit_boundary_rejects_continuity_pause_activated_after_initial_read(
+        self,
+    ) -> None:
+        candidate = lifecycle_plan(self.recovery)
+        candidate_preparation = {
+            "components": {
+                "workflow": {
+                    "release_notes": {
+                        "release_date": "2026-07-23",
+                        "sha256": "c" * 64,
+                        "source": {},
+                    }
+                }
+            }
+        }
+        component = self.recovery.COMPONENTS["workflow"]
+        selected = {"tag": "release-plan/current", "lifecycle": "actionable"}
+        authority = {"authority_snapshot": [selected]}
+        continuity = mock.Mock(
+            side_effect=[
+                None,
+                {
+                    "accepted_tag": f"beta-continuity/{candidate['plan']}/accepted",
+                    "accepted_commit": "b" * 40,
+                    "resumed_tag": f"beta-continuity/{candidate['plan']}/resumed",
+                },
+            ]
+        )
+        publication_preflight = mock.Mock(
+            side_effect=self.recovery.NotFound("not published")
+        )
+
+        with (
+            mock.patch.object(self.recovery, "verify_plan_authority", return_value=({}, {})),
+            mock.patch.object(self.recovery, "validate_release_preparation"),
+            mock.patch.object(self.recovery, "resolve_tag", return_value=None),
+            mock.patch.object(
+                self.recovery,
+                "classify_implicit_plan_authority",
+                return_value=(selected, [selected]),
+            ),
+            mock.patch.object(
+                self.recovery,
+                "scheduled_continuity_pause",
+                continuity,
+            ),
+            mock.patch.dict(
+                self.recovery.VERIFIERS,
+                {component.distribution: publication_preflight},
+            ),
+        ):
+            self.assertIsNone(continuity(mock.Mock(), candidate))
+            with self.assertRaisesRegex(
+                self.recovery.RecoveryError,
+                "continuity pause authority changed during component preflight",
+            ):
+                self.recovery.resolve_component(
+                    mock.Mock(),
+                    "workflow",
+                    selected["tag"],
+                    "a" * 40,
+                    candidate,
+                    candidate_preparation,
+                    authority,
+                )
+
+        self.assertEqual(2, continuity.call_count)
+        self.assertEqual(1, publication_preflight.call_count)
+
     def test_final_boundary_rejects_late_supersession_before_publish(self) -> None:
         candidate = lifecycle_plan(self.recovery)
         candidate_preparation = {

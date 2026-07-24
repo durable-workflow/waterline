@@ -2710,6 +2710,12 @@ def resolve_component(
         source_train = source_product_train_evidence(client, component_name, identity)
     if implicit_authority is not None:
         revalidate_implicit_plan_authority(client, implicit_authority)
+        if scheduled_continuity_pause(client, plan) is not None:
+            raise RecoveryError(
+                "continuity pause authority changed during component preflight; "
+                "refusing a stale recovery action",
+                "continuity-gate",
+            )
     state = base_state(component_name, tag, plan)
     state.update(
         {
