@@ -217,10 +217,14 @@ jobs:
           use Illuminate\Contracts\Console\Kernel;
           use Illuminate\Support\Facades\DB;
           use Illuminate\Support\Facades\Hash;
+          use Illuminate\Support\Str;
           use Workflow\V2\Enums\DuplicateStartPolicy;
           use Workflow\V2\Enums\ScheduleOverlapPolicy;
+          use Workflow\V2\Models\WorkflowInstance;
+          use Workflow\V2\Models\WorkflowRun;
           use Workflow\V2\Models\WorkflowRunSummary;
           use Workflow\V2\StartOptions;
+          use Workflow\V2\Support\RunSummarySortKey;
           use Workflow\V2\Support\ScheduleManager;
           use Workflow\V2\WorkflowStub;
 
@@ -319,6 +323,66 @@ jobs:
               );
           }
 
+          function createTerminalWorkflowListRow(string $status, string $runStamp, int $offsetMinutes): void
+          {
+              $startedAt = now()->subMinutes($offsetMinutes + 5);
+              $closedAt = now()->subMinutes($offsetMinutes);
+              $instanceId = sprintf('demo-%s-%s', $runStamp, $status);
+              $runId = (string) Str::ulid();
+
+              $instance = WorkflowInstance::query()->create([
+                  'id' => $instanceId,
+                  'workflow_class' => SimpleWorkflow::class,
+                  'workflow_type' => 'workflow.demo.simple',
+                  'business_key' => sprintf('%s workflow example', ucfirst($status)),
+                  'run_count' => 1,
+              ]);
+
+              $run = WorkflowRun::query()->create([
+                  'id' => $runId,
+                  'workflow_instance_id' => $instance->id,
+                  'run_number' => 1,
+                  'workflow_class' => SimpleWorkflow::class,
+                  'workflow_type' => 'workflow.demo.simple',
+                  'business_key' => $instance->business_key,
+                  'status' => $status,
+                  'closed_reason' => $status,
+                  'started_at' => $startedAt,
+                  'closed_at' => $closedAt,
+                  'last_progress_at' => $closedAt,
+                  'created_at' => $startedAt,
+                  'updated_at' => $closedAt,
+              ]);
+
+              $instance->update(['current_run_id' => $run->id]);
+
+              WorkflowRunSummary::query()->create([
+                  'id' => $run->id,
+                  'workflow_instance_id' => $instance->id,
+                  'run_number' => 1,
+                  'is_current_run' => true,
+                  'engine_source' => 'v2',
+                  'class' => SimpleWorkflow::class,
+                  'workflow_type' => 'workflow.demo.simple',
+                  'business_key' => $instance->business_key,
+                  'status' => $status,
+                  'status_bucket' => 'failed',
+                  'closed_reason' => $status,
+                  'started_at' => $startedAt,
+                  'closed_at' => $closedAt,
+                  'duration_ms' => $closedAt->diffInMilliseconds($startedAt),
+                  'sort_timestamp' => $startedAt,
+                  'sort_key' => RunSummarySortKey::key($startedAt, $startedAt, $closedAt, $run->id),
+                  'created_at' => $startedAt,
+                  'updated_at' => $closedAt,
+              ]);
+
+              echo "created {$status} list row run={$run->id}\n";
+          }
+
+          createTerminalWorkflowListRow('cancelled', $runStamp, 2);
+          createTerminalWorkflowListRow('terminated', $runStamp, 1);
+
           ScheduleManager::create(
               scheduleId: 'daily-waterline-demo-closeout',
               workflowClass: SimpleWorkflow::class,
@@ -365,6 +429,8 @@ jobs:
 
           $completed = (int) ($summaryCounts['completed'] ?? 0);
           $failed = (int) ($summaryCounts['failed'] ?? 0);
+          $cancelled = (int) ($summaryCounts['cancelled'] ?? 0);
+          $terminated = (int) ($summaryCounts['terminated'] ?? 0);
           $runningBucket = WorkflowRunSummary::query()->where('status_bucket', 'running')->count();
           $historyEvents = DB::table('workflow_history_events')->count();
           $activities = DB::table('activity_executions')->count();
@@ -382,6 +448,14 @@ jobs:
 
           if ($failed < 1) {
               throw new RuntimeException("Expected at least 1 failed workflow run, found {$failed}.");
+          }
+
+          if ($cancelled < 1) {
+              throw new RuntimeException("Expected at least 1 cancelled workflow run, found {$cancelled}.");
+          }
+
+          if ($terminated < 1) {
+              throw new RuntimeException("Expected at least 1 terminated workflow run, found {$terminated}.");
           }
 
           if ($runningBucket < 1) {
@@ -423,9 +497,11 @@ jobs:
 
           const pages = [
             { name: 'dashboard.png', url: '/waterline' },
-            { name: 'running.png', url: '/waterline/running' },
-            { name: 'completed.png', url: '/waterline/completed' },
-            { name: 'failed.png', url: '/waterline/failed' },
+            { name: 'running.png', url: '/waterline/running', workflowList: 'running' },
+            { name: 'completed.png', url: '/waterline/completed', workflowList: 'completed' },
+            { name: 'failed.png', url: '/waterline/failed', workflowList: 'failed' },
+            { name: 'cancelled.png', url: '/waterline/cancelled', workflowList: 'cancelled' },
+            { name: 'terminated.png', url: '/waterline/terminated', workflowList: 'terminated' },
             { name: 'workers.png', url: '/waterline/workers' },
             { name: 'schedules.png', url: '/waterline/schedules' },
           ];
@@ -542,9 +618,152 @@ jobs:
             });
           }
 
-          async function capture(page, name, url) {
+          async function assertWorkflowList(page, type) {
+            const lodashType = await page.evaluate(() => typeof window._);
+
+            if (lodashType !== 'undefined') {
+              throw new Error(`Unexpected Lodash global on the ${type} workflow list`);
+            }
+
+            const rows = page.locator('tbody tr.flow-row');
+            await rows.first().waitFor({ state: 'visible', timeout: 15000 });
+
+            const rowCount = await rows.count();
+            if (rowCount < 1) {
+              throw new Error(`Expected a returned row on the ${type} workflow list`);
+            }
+
+            console.log(`WORKFLOW_LIST ${type} ROWS ${rowCount} LODASH ${lodashType}`);
+          }
+
+          async function verifyWorkflowListRefresh(page) {
+            await page.goto(`${BASE}/waterline/running`, { waitUntil: 'networkidle', timeout: 30000 });
+            await waitForWaterline(page);
+            await assertWorkflowList(page, 'running-refresh');
+
+            const firstRowLink = page.locator('tbody tr.flow-row a').first();
+            const firstRowHref = await firstRowLink.getAttribute('href');
+            const firstRunId = firstRowHref ? firstRowHref.split('/').pop() : null;
+            const autoRefreshButton = page.getByTitle('Auto refresh entries', { exact: true });
+            const requestPattern = '**/waterline/api/flows/running?**';
+
+            if (!firstRunId) {
+              throw new Error('Cannot identify the current first workflow row');
+            }
+
+            async function setAutoRefresh(enabled) {
+              const active = await autoRefreshButton.evaluate(element => element.classList.contains('is-active'));
+
+              if (active !== enabled) {
+                await autoRefreshButton.click();
+              }
+
+              await page.waitForFunction((expected) => {
+                const button = document.querySelector('[title="Auto refresh entries"]');
+
+                return button && button.classList.contains('is-active') === expected;
+              }, enabled);
+            }
+
+            async function runHeldRefresh(transformResponse) {
+              let releaseResponse;
+              let requestStartedResolve;
+              let requestStartedReject;
+
+              const responseRelease = new Promise(resolve => {
+                releaseResponse = resolve;
+              });
+              const requestStarted = new Promise((resolve, reject) => {
+                requestStartedResolve = resolve;
+                requestStartedReject = reject;
+              });
+              const holdRefreshResponse = async route => {
+                try {
+                  const response = await route.fetch();
+                  const json = await response.json();
+                  const rows = Array.isArray(json.data) ? json.data : [];
+                  const currentIndex = rows.findIndex(row => (row.run_id || row.id) === firstRunId);
+
+                  if (currentIndex === -1) {
+                    throw new Error('The current first workflow row left the running collection');
+                  }
+
+                  const [currentFirst] = rows.splice(currentIndex, 1);
+                  json.data = transformResponse(currentFirst, rows);
+                  requestStartedResolve();
+                  await responseRelease;
+                  await route.fulfill({ response, json });
+                } catch (error) {
+                  requestStartedReject(error);
+                  throw error;
+                }
+              };
+
+              await page.route(requestPattern, holdRefreshResponse);
+
+              try {
+                await setAutoRefresh(true);
+                await Promise.race([
+                  requestStarted,
+                  new Promise((resolve, reject) => {
+                    setTimeout(() => reject(new Error('Timed out waiting for an auto-refresh request')), 10000);
+                  }),
+                ]);
+                await setAutoRefresh(false);
+
+                const refreshResponse = page.waitForResponse(response => (
+                  response.url().includes('/waterline/api/flows/running?')
+                  && response.request().method() === 'GET'
+                ));
+
+                releaseResponse();
+                await refreshResponse;
+                await page.waitForTimeout(500);
+              } finally {
+                releaseResponse();
+                await page.unroute(requestPattern, holdRefreshResponse);
+              }
+            }
+
+            await setAutoRefresh(false);
+            await runHeldRefresh((currentFirst, rows) => [currentFirst, ...rows]);
+
+            if (await page.getByText('New runs are waiting.', { exact: true }).count()) {
+              throw new Error('An unchanged first workflow row was detected as new');
+            }
+
+            const syntheticRunId = '01JSCREENSHOTNEWENTRY00001';
+            await runHeldRefresh((currentFirst, rows) => [
+              {
+                ...currentFirst,
+                id: syntheticRunId,
+                run_id: syntheticRunId,
+                sort_key: `${currentFirst.sort_key || currentFirst.id}:new`,
+              },
+              currentFirst,
+              ...rows,
+            ]);
+
+            await page.getByText('New runs are waiting.', { exact: true }).waitFor({
+              state: 'visible',
+              timeout: 10000,
+            });
+
+            if (await firstRowLink.getAttribute('href') !== firstRowHref) {
+              throw new Error('New-entry detection replaced the current first workflow row');
+            }
+
+            console.log('WORKFLOW_LIST_REFRESH stable=same changed=detected');
+          }
+
+          async function capture(page, name, url, workflowList = null) {
             await page.goto(`${BASE}${url}`, { waitUntil: 'networkidle', timeout: 30000 });
             await waitForWaterline(page);
+
+            if (workflowList) {
+              await assertWorkflowList(page, workflowList);
+            }
+
             await page.screenshot({ path: path.join(OUTPUT, name), fullPage: true });
             console.log(`${name} ${page.url()}`);
           }
@@ -555,75 +774,15 @@ jobs:
             deviceScaleFactor: 1,
           });
 
-          await context.addInitScript(() => {
-            const request = async (method, url, config = {}) => {
-              const target = new URL(url, window.location.origin);
-              const headers = {
-                'X-Requested-With': 'XMLHttpRequest',
-                ...(config.headers || {}),
-              };
-
-              for (const [key, value] of Object.entries(config.params || {})) {
-                if (value !== undefined && value !== null && value !== '') {
-                  target.searchParams.set(key, value);
-                }
-              }
-
-              const options = { method, credentials: 'same-origin', headers };
-
-              if (config.data !== undefined) {
-                headers['Content-Type'] = headers['Content-Type'] || 'application/json';
-                options.body = typeof config.data === 'string' ? config.data : JSON.stringify(config.data);
-              }
-
-              const response = await fetch(target.href, options);
-              const text = await response.text();
-              const contentType = response.headers.get('content-type') || '';
-              const data = contentType.includes('application/json') && text ? JSON.parse(text) : text;
-              const payload = {
-                data,
-                status: response.status,
-                statusText: response.statusText,
-                headers: response.headers,
-                config,
-              };
-
-              if (!response.ok) {
-                const error = new Error((data && data.message) || response.statusText || 'Request failed');
-                error.response = payload;
-                throw error;
-              }
-
-              return payload;
-            };
-
-            window.axios = window.axios || {
-              defaults: { headers: { common: {} } },
-              create() {
-                return this;
-              },
-              get(url, config) {
-                return request('GET', url, config);
-              },
-              post(url, data, config = {}) {
-                return request('POST', url, { ...config, data });
-              },
-              request(config = {}) {
-                return request(config.method || 'GET', config.url, config);
-              },
-            };
-
-            window._ = window._ || {
-              first(value) {
-                return Array.isArray(value) ? value[0] : undefined;
-              },
-            };
-          });
-
           const page = await context.newPage();
           await installApiGuards(page);
+          const pageErrors = [];
 
           page.on('pageerror', error => {
+            pageErrors.push({
+              message: error.message,
+              url: page.url(),
+            });
             console.log(`PAGEERROR ${error.message.slice(0, 300)}`);
           });
 
@@ -635,8 +794,10 @@ jobs:
             await maybeLogin(page);
 
             for (const item of pages) {
-              await capture(page, item.name, item.url);
+              await capture(page, item.name, item.url, item.workflowList);
             }
+
+            await verifyWorkflowListRefresh(page);
 
             await page.goto(`${BASE}/waterline/completed`, { waitUntil: 'networkidle', timeout: 30000 });
             await waitForWaterline(page);
@@ -666,12 +827,19 @@ jobs:
             'running.png',
             'completed.png',
             'failed.png',
+            'cancelled.png',
+            'terminated.png',
             'workflow-detail.png',
             'workers.png',
             'schedules.png',
           ];
 
-          let failed = false;
+          let failed = pageErrors.length > 0;
+
+          for (const error of pageErrors) {
+            console.log(`UNCAUGHT_PAGE_ERROR ${error.url} ${error.message}`.slice(0, 1000));
+          }
+
           for (const file of expected) {
             const fullPath = path.join(OUTPUT, file);
             if (!fs.existsSync(fullPath)) {
@@ -853,6 +1021,8 @@ jobs:
             running.png
             completed.png
             failed.png
+            cancelled.png
+            terminated.png
             workflow-detail.png
             workers.png
             schedules.png

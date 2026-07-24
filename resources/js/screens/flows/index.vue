@@ -199,8 +199,8 @@
                             ? response.data.visibility_filters.definition
                             : this.filterDefinition
 
-                        const incomingFirst = _.first(response.data.data);
-                        const currentFirst = _.first(this.flows);
+                        const incomingFirst = response.data.data[0];
+                        const currentFirst = this.flows[0];
 
                         if (!this.$root.autoLoadsNewEntries && refreshing && this.flows.length && incomingFirst
                             && this.flowCursor(incomingFirst) !== this.flowCursor(currentFirst)) {
