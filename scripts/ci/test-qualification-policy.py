@@ -67,20 +67,23 @@ class ChangeClassificationTest(unittest.TestCase):
         self.assertEqual(qualification.RELEASE, result.name)
         self.assertEqual("release-paths-only", result.reason)
 
-    def test_runtime_and_matrix_inputs_select_complete_qualification(self) -> None:
-        complete_paths = (
-            "app/Support/RuntimeConfiguration.php",
-            "composer.json",
-            "standalone/composer.json",
-            "database/migrations/2026_04_09_000000_create_waterline_saved_views_table.php",
-            "Dockerfile",
-            ".github/laravel-matrix.json",
-            "phpunit-mysql.xml",
-            "tests/Feature/ServiceModeBackendTest.php",
-        )
+    def test_behavioral_inputs_select_complete_qualification(self) -> None:
+        complete_paths = {
+            "php-source": "app/Support/RuntimeConfiguration.php",
+            "dependency": "composer.json",
+            "standalone-dependency": "standalone/composer.json",
+            "migration": "database/migrations/2026_04_09_000000_create_waterline_saved_views_table.php",
+            "database": "phpunit-mssql.xml",
+            "runtime": "Dockerfile",
+            "sqlserver-runtime": "scripts/ci/install-sqlserver-odbc.sh",
+            "dependency-matrix": ".github/laravel-matrix.json",
+            "workflow": ".github/workflows/php.yml",
+            "classifier": "scripts/ci/qualification_policy.py",
+            "test-source": "tests/Feature/ServiceModeBackendTest.php",
+        }
 
-        for path in complete_paths:
-            with self.subTest(path=path):
+        for surface, path in complete_paths.items():
+            with self.subTest(surface=surface, path=path):
                 result = qualification.classify_paths([path])
                 self.assertEqual(qualification.COMPLETE, result.name)
                 self.assertEqual("complete-path-present", result.reason)
@@ -248,6 +251,82 @@ class QualificationGateTest(unittest.TestCase):
             improved["projected_elapsed_seconds"],
             sum(improved["projection_components_seconds"].values()),
         )
+
+
+class DatabaseQualificationWorkflowContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.workflow = yaml.load(
+            (ROOT / ".github" / "workflows" / "php.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        if not isinstance(cls.workflow, dict):
+            raise RuntimeError("build workflow must be a mapping")
+
+    def qualification_job(self) -> dict:
+        job = self.workflow["jobs"]["qualification"]
+        self.assertIsInstance(job, dict)
+        return job
+
+    def named_step(self, name: str) -> dict:
+        steps = self.qualification_job()["steps"]
+        matches = [
+            step
+            for step in steps
+            if isinstance(step, dict) and step.get("name") == name
+        ]
+        self.assertEqual(1, len(matches), f"expected one workflow step named {name}")
+        return matches[0]
+
+    def test_sql_server_cell_installs_only_the_required_odbc_runtime(self) -> None:
+        rows = self.qualification_job()["strategy"]["matrix"]["include"]
+        sql_server_rows = [
+            row
+            for row in rows
+            if isinstance(row, dict) and row.get("database") == "mssql"
+        ]
+        self.assertEqual(1, len(sql_server_rows))
+        self.assertEqual("pdo_sqlsrv", sql_server_rows[0].get("extension"))
+        self.assertEqual("test-mssql", sql_server_rows[0].get("composer-script"))
+
+        step = self.named_step("Install SQL Server ODBC runtime")
+        self.assertEqual("${{ matrix.database == 'mssql' }}", step.get("if"))
+        self.assertEqual("scripts/ci/install-sqlserver-odbc.sh", step.get("run"))
+
+        setup = (ROOT / step["run"]).read_text()
+        install_commands = [
+            line.strip() for line in setup.splitlines() if "apt-get install" in line
+        ]
+        self.assertEqual(
+            [
+                "sudo ACCEPT_EULA=Y apt-get install --yes --no-install-recommends msodbcsql18 unixodbc"
+            ],
+            install_commands,
+        )
+        self.assertIn(
+            'odbcinst -q -d -n "ODBC Driver 18 for SQL Server"',
+            setup,
+        )
+        self.assertIn("GITHUB_STEP_SUMMARY", setup)
+        for command_line_package in ("mssql-tools", "mssql-tools18", "sqlcmd"):
+            with self.subTest(command_line_package=command_line_package):
+                self.assertNotIn(command_line_package, install_commands[0])
+
+    def test_sql_server_database_creation_and_probe_remain_pdo_only(self) -> None:
+        step = self.named_step("Prepare and verify database connections")
+        self.assertEqual(
+            'php scripts/ci/preflight-databases.php "${{ matrix.database }}" "$DB_HOST"',
+            step.get("run"),
+        )
+
+        preflight = (ROOT / "scripts" / "ci" / "preflight-databases.php").read_text()
+        self.assertNotIn("sqlcmd", preflight)
+        self.assertIn("$adminConnection = new PDO(", preflight)
+        self.assertIn(
+            "IF DB_ID(N'testing') IS NULL CREATE DATABASE [testing];", preflight
+        )
+        self.assertIn("$connection = new PDO(", preflight)
+        self.assertGreaterEqual(preflight.count("->query('SELECT 1')"), 2)
 
 
 class WorkflowTrustPolicyTest(unittest.TestCase):
