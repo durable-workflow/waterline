@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
@@ -24,6 +25,8 @@ const SDK_PHP_VERSION = normalizeVersion(env('DW_PHP_SDK_VERSION'));
 const WORKFLOW_VERSION = normalizeVersion(env('DW_WORKFLOW_PHP_VERSION'));
 const WATERLINE_VERSION = normalizeVersion(env('DW_WATERLINE_VERSION'));
 const SERVER_IMAGE = env('DW_SERVER_IMAGE') || `durableworkflow/server:${SERVER_VERSION}`;
+const SHARED_SERVER_STATE_FILE = env('DW_WATERLINE_WORKER_STATUS_SHARED_SERVER_STATE');
+const USE_SHARED_SERVER = SHARED_SERVER_STATE_FILE !== '';
 const COMPOSER_IMAGE = env('DW_WATERLINE_WORKER_STATUS_COMPOSER_IMAGE') || 'composer:2';
 const TOKEN = env('DW_WATERLINE_WORKER_STATUS_AUTH_TOKEN') || 'dev-token';
 const NAMESPACE = env('DW_WATERLINE_WORKER_STATUS_NAMESPACE') || 'waterline-worker-status';
@@ -42,7 +45,7 @@ const CLI_DIR = path.join(RUN_ROOT, 'cli');
 const COMPOSER_HOME_DIR = path.join(RUN_ROOT, 'composer-home');
 const COMPOSE_FILE = path.join(RUN_ROOT, 'docker-compose.yml');
 const PROJECT = `dw-waterline-status-${SUFFIX}`;
-const NETWORK = `${PROJECT}_default`;
+let NETWORK = `${PROJECT}_default`;
 const WATERLINE_CONTAINER = `dw-waterline-status-ui-${SUFFIX}`;
 const TASK_QUEUE = `waterline-status-${SUFFIX}`;
 const EVIDENCE_PATH = path.join(RESULT_DIR, 'waterline-worker-status-evidence.json');
@@ -71,6 +74,7 @@ let publishedCommandStarted = false;
 let productEvidence = null;
 let sourceHygiene = null;
 let serverInstall = null;
+let sharedServerState = null;
 let cliInstall = null;
 let packageInstall = null;
 let runnerError = null;
@@ -320,6 +324,7 @@ function detectPhpRuntime(image, label) {
 }
 
 async function startServer() {
+  if (USE_SHARED_SERVER) return attachSharedServer();
   const port = await freePort();
   writeComposeFile(port);
   composeRegistered = true;
@@ -353,6 +358,26 @@ async function startServer() {
   if (container?.Image !== requested.id || container?.Config?.Image !== SERVER_IMAGE) {
     throw new Error('running server container does not match the requested exact published image');
   }
+  const bootstrapContainerId = String(run('docker', [
+    'compose', '-p', PROJECT, '-f', COMPOSE_FILE, 'ps', '-a', '-q', 'bootstrap',
+  ], {
+    env: composeEnvironment(),
+    display: 'docker compose ps -a -q bootstrap',
+    timeout: 30_000,
+  }).stdout).trim();
+  const bootstrap = bootstrapContainerId
+    ? parseJson(run('docker', [
+      'container', 'inspect', '--format',
+      '{"Config":{"Cmd":{{json .Config.Cmd}}},"State":{{json .State}}}',
+      bootstrapContainerId,
+    ], { display: 'inspect clean bootstrap completion', timeout: 30_000 }).stdout)
+    : null;
+  if (bootstrap?.State?.Status !== 'exited'
+    || bootstrap?.State?.ExitCode !== 0
+    || !Array.isArray(bootstrap?.Config?.Cmd)
+    || !bootstrap.Config.Cmd.includes('server-bootstrap')) {
+    throw new Error('focused clean published-server bootstrap and migrations did not complete successfully');
+  }
   serverInstall = {
     requested_reference: SERVER_IMAGE,
     public_version_tag: versionTag,
@@ -363,10 +388,130 @@ async function startServer() {
     running_image_id: container.Image,
     php_runtime: phpRuntime,
     exact_published_image_verified: true,
+    bootstrap: {
+      mode: 'focused_cell_clean_bootstrap',
+      reused: false,
+      lifecycle_owner: 'waterline-focused-cell',
+      compose_project: PROJECT,
+      bootstrap_container_id: bootstrapContainerId,
+      configured_command: bootstrap.Config.Cmd,
+      container_status: bootstrap.State.Status,
+      exit_code: bootstrap.State.ExitCode,
+      migrations_completed: true,
+    },
   };
   return {
     hostUrl: `http://127.0.0.1:${port}`,
     networkUrl: 'http://server:8080',
+    phpVersion: phpRuntime.version,
+  };
+}
+
+async function attachSharedServer() {
+  const statePath = path.resolve(SHARED_SERVER_STATE_FILE);
+  if (!fs.existsSync(statePath)) {
+    throw new Error(`shared heartbeat server state not found: ${statePath}`);
+  }
+  const stateBytes = fs.readFileSync(statePath);
+  const state = JSON.parse(stateBytes.toString('utf8'));
+  const isolation = state?.cell_isolation?.waterline;
+  const failures = [];
+  if (state?.schema !== 'durable-workflow.v2.heartbeat-runtime.shared-server-bootstrap'
+    || state?.version !== 1) {
+    failures.push('shared heartbeat server state has an unsupported schema');
+  }
+  if (state?.server?.version !== SERVER_VERSION
+    || state?.server?.requested_reference !== SERVER_IMAGE
+    || state?.server?.exact_published_image_verified !== true) {
+    failures.push('shared heartbeat server state does not bind the selected exact server image');
+  }
+  if (state?.clean_bootstrap?.status !== 'pass'
+    || state?.clean_bootstrap?.migrations_completed !== true
+    || state?.clean_bootstrap?.fresh_compose_project !== true) {
+    failures.push('shared heartbeat server state does not prove clean bootstrap and migrations');
+  }
+  if (state?.lifecycle?.owner !== 'heartbeat-wave-runner'
+    || state?.lifecycle?.cleanup_required !== true
+    || state?.lifecycle?.cleanup_status !== 'pending') {
+    failures.push('shared heartbeat server lifecycle is not owned by an active wave');
+  }
+  if (!isolation || isolation.namespace !== NAMESPACE
+    || !TASK_QUEUE.startsWith(isolation.task_queue_prefix ?? '\0')) {
+    failures.push('shared heartbeat server did not prescribe isolated Waterline cell identities');
+  }
+  let hostUrl = null;
+  try {
+    const parsed = new URL(state?.endpoint?.host_url ?? '');
+    if (parsed.protocol !== 'http:'
+      || !['127.0.0.1', 'localhost'].includes(parsed.hostname)
+      || parsed.pathname !== '/') {
+      failures.push('shared heartbeat server endpoint must be a loopback HTTP origin');
+    }
+    hostUrl = parsed.origin;
+  } catch {
+    failures.push('shared heartbeat server endpoint is invalid');
+  }
+  if (!state?.compose?.network || state?.endpoint?.container_url !== 'http://server:8080') {
+    failures.push('shared heartbeat server state has no private compose network handoff');
+  }
+  if (failures.length > 0) throw new Error(failures.join('; '));
+
+  const image = parseJson(run('docker', ['image', 'inspect', SERVER_IMAGE], {
+    display: 'inspect shared published server image',
+    timeout: 60_000,
+  }).stdout)?.[0];
+  const container = parseJson(run('docker', [
+    'container', 'inspect', '--format',
+    '{"Image":{{json .Image}},"Config":{"Image":{{json .Config.Image}}}}',
+    state.server.running_container_id,
+  ], {
+    display: 'inspect shared published server container',
+    timeout: 60_000,
+  }).stdout);
+  if (image?.Id !== state.server.resolved_image_id
+    || container?.Image !== state.server.resolved_image_id
+    || container?.Config?.Image !== SERVER_IMAGE) {
+    throw new Error('running shared server no longer matches its exact published-image receipt');
+  }
+  const publicDigest = String(state.server.resolved_public_digest ?? '');
+  if (!/^durableworkflow\/server@sha256:[0-9a-f]{64}$/i.test(publicDigest)) {
+    throw new Error('shared heartbeat server receipt has no canonical public image digest');
+  }
+  const phpRuntime = detectPhpRuntime(SERVER_IMAGE, 'the exact shared published server image');
+  NETWORK = state.compose.network;
+  ARTIFACT_SOURCES.server = `docker://${publicDigest}`;
+  sharedServerState = state;
+  serverInstall = {
+    requested_reference: SERVER_IMAGE,
+    public_version_tag: state.server.public_version_tag,
+    resolved_public_digest: publicDigest,
+    resolved_image_id: state.server.resolved_image_id,
+    running_container_id: state.server.running_container_id,
+    running_configured_reference: container.Config.Image,
+    running_image_id: container.Image,
+    php_runtime: phpRuntime,
+    exact_published_image_verified: true,
+    bootstrap: {
+      ...state.clean_bootstrap,
+      mode: 'shared_wave_clean_bootstrap',
+      reused: true,
+      wave_run_id: state.wave_run_id,
+      lifecycle_owner: state.lifecycle.owner,
+      cleanup_status_at_handoff: state.lifecycle.cleanup_status,
+    },
+    shared_bootstrap_receipt_sha256: crypto.createHash('sha256').update(stateBytes).digest('hex'),
+  };
+  await waitForHttpReadiness({
+    url: `${hostUrl}/api/ready`,
+    headers: { Accept: 'application/json', Authorization: `Bearer ${TOKEN}` },
+    attemptTimeoutMilliseconds: READINESS_ATTEMPT_SECONDS * 1_000,
+    overallTimeoutMilliseconds: 30_000,
+    retryDelayMilliseconds: 500,
+    signal: interruption.signal,
+  });
+  return {
+    hostUrl,
+    networkUrl: state.endpoint.container_url,
     phpVersion: phpRuntime.version,
   };
 }
@@ -765,6 +910,14 @@ function cleanupWaterline() {
 }
 
 function cleanupCompose() {
+  if (USE_SHARED_SERVER) {
+    return {
+      resource: 'shared_server',
+      name: sharedServerState?.compose?.project ?? null,
+      status: 'retained_for_wave_cleanup',
+      lifecycle_owner: sharedServerState?.lifecycle?.owner ?? null,
+    };
+  }
   if (!composeRegistered) return { resource: 'compose_project', status: 'not_started' };
   const down = run('docker', ['compose', '-p', PROJECT, '-f', COMPOSE_FILE, 'down', '-v', '--remove-orphans'], {
     env: composeEnvironment(),
@@ -885,6 +1038,12 @@ function finalResult() {
       stale_after_seconds: STALE_SECONDS,
       readiness_attempt_timeout_seconds: READINESS_ATTEMPT_SECONDS,
       readiness_deadline_seconds: READINESS_DEADLINE_SECONDS,
+      shared_wave_run_id: sharedServerState?.wave_run_id ?? null,
+      isolation: {
+        prescribed_namespace: sharedServerState?.cell_isolation?.waterline?.namespace ?? null,
+        task_queue_prefix: sharedServerState?.cell_isolation?.waterline?.task_queue_prefix ?? null,
+        worker_id_prefix: sharedServerState?.cell_isolation?.waterline?.worker_id_prefix ?? null,
+      },
     },
     installs: {
       server: serverInstall,

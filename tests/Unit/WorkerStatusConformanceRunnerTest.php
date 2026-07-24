@@ -103,6 +103,35 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $this->assertStringNotContainsString('fixture_response', $node);
     }
 
+    public function testReleaseRunnerCanJoinTheVerifiedSharedHeartbeatWave(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $node = (string) file_get_contents($root.'/scripts/conformance/worker-status-published-artifacts.mjs');
+        $shell = (string) file_get_contents($root.'/scripts/conformance/worker-status-published-artifacts.sh');
+
+        $this->assertStringContainsString(
+            "const SHARED_SERVER_STATE_FILE = env('DW_WATERLINE_WORKER_STATUS_SHARED_SERVER_STATE');",
+            $node,
+        );
+        $this->assertStringContainsString('if (USE_SHARED_SERVER) return attachSharedServer();', $node);
+        $this->assertStringContainsString(
+            "state?.clean_bootstrap?.migrations_completed !== true",
+            $node,
+        );
+        $this->assertStringContainsString(
+            "state?.lifecycle?.cleanup_status !== 'pending'",
+            $node,
+        );
+        $this->assertStringContainsString('running shared server no longer matches', $node);
+        $this->assertStringContainsString("mode: 'shared_wave_clean_bootstrap'", $node);
+        $this->assertStringContainsString("mode: 'focused_cell_clean_bootstrap'", $node);
+        $this->assertStringContainsString("status: 'retained_for_wave_cleanup'", $node);
+        $this->assertStringContainsString(
+            'DW_WATERLINE_WORKER_STATUS_SHARED_SERVER_STATE',
+            $shell,
+        );
+    }
+
     public function testCommandAndPublishedRunnerEnforceServerAndPackageVersionContracts(): void
     {
         $serverValidator = new \ReflectionMethod(

@@ -263,6 +263,9 @@ Optional overrides:
   DW_WATERLINE_HOST                        Docker host address for published-port probes; defaults to 127.0.0.1.
   DW_WATERLINE_WORKER_STATUS_AUTH_TOKEN   Defaults to dev-token.
   DW_WATERLINE_WORKER_STATUS_NAMESPACE    Defaults to waterline-worker-status.
+  DW_WATERLINE_WORKER_STATUS_SHARED_SERVER_STATE
+                                               Reuse a verified heartbeat-wave
+                                               bootstrap receipt and namespace.
   DW_WATERLINE_WORKER_STATUS_HEARTBEAT_SECONDS  Defaults to 2.
   DW_WATERLINE_WORKER_STATUS_STALE_SECONDS      Defaults to 7.
   DW_WATERLINE_WORKER_STATUS_READINESS_ATTEMPT_SECONDS  Defaults to 5.
