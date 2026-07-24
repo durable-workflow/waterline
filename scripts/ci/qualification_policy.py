@@ -39,9 +39,12 @@ RELEASE_ONLY_PATHS = frozenset(
         "scripts/ci/recovery_workflow_authority.py",
         "scripts/ci/service-image-recovery.py",
         "scripts/ci/service-mode-image-smoke.sh",
+        "scripts/ci/standalone_lock_contract.py",
         "scripts/ci/test-component-release-recovery.py",
         "scripts/ci/test-publish-planned-tag.py",
         "scripts/ci/test-service-image-recovery.py",
+        "scripts/ci/test-standalone-lock-contract.py",
+        "standalone/composer.lock",
     }
 )
 

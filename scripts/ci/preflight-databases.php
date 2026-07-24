@@ -14,6 +14,10 @@ $databases = [
     'mssql' => [
         'name' => 'MSSQL',
         'extension' => 'pdo_sqlsrv',
+        'admin_dsn' => sprintf(
+            'sqlsrv:Server=%s,1433;Database=master;LoginTimeout=3;TrustServerCertificate=1',
+            $host,
+        ),
         'dsn' => sprintf(
             'sqlsrv:Server=%s,1433;Database=testing;LoginTimeout=3;TrustServerCertificate=1',
             $host,
@@ -65,6 +69,19 @@ $lastError = 'no connection attempt was made';
 
 do {
     try {
+        if ($databaseName === 'mssql') {
+            $adminConnection = new PDO(
+                $database['admin_dsn'],
+                $database['username'],
+                $database['password'],
+                $database['options'] + [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
+            );
+            $adminConnection->query('SELECT 1')->fetchColumn();
+            $adminConnection->exec(
+                "IF DB_ID(N'testing') IS NULL CREATE DATABASE [testing];",
+            );
+        }
+
         $connection = new PDO(
             $database['dsn'],
             $database['username'],

@@ -55,10 +55,23 @@ class ChangeClassificationTest(unittest.TestCase):
 
         self.assertEqual(qualification.RELEASE, result.name)
 
+    def test_standalone_lock_repair_selects_release_qualification(self) -> None:
+        result = qualification.classify_paths(
+            [
+                "standalone/composer.lock",
+                "scripts/ci/standalone_lock_contract.py",
+                "scripts/ci/test-standalone-lock-contract.py",
+            ]
+        )
+
+        self.assertEqual(qualification.RELEASE, result.name)
+        self.assertEqual("release-paths-only", result.reason)
+
     def test_runtime_and_matrix_inputs_select_complete_qualification(self) -> None:
         complete_paths = (
             "app/Support/RuntimeConfiguration.php",
             "composer.json",
+            "standalone/composer.json",
             "database/migrations/2026_04_09_000000_create_waterline_saved_views_table.php",
             "Dockerfile",
             ".github/laravel-matrix.json",
@@ -73,14 +86,22 @@ class ChangeClassificationTest(unittest.TestCase):
                 self.assertEqual("complete-path-present", result.reason)
 
     def test_mixed_change_selects_complete_qualification(self) -> None:
-        result = qualification.classify_paths(
-            [
-                "scripts/ci/component-release-recovery.py",
-                "config/waterline.php",
-            ]
-        )
+        for complete_path in (
+            "config/waterline.php",
+            "standalone/composer.json",
+            "Dockerfile",
+        ):
+            with self.subTest(complete_path=complete_path):
+                result = qualification.classify_paths(
+                    [
+                        "standalone/composer.lock",
+                        "scripts/ci/standalone_lock_contract.py",
+                        complete_path,
+                    ]
+                )
 
-        self.assertEqual(qualification.COMPLETE, result.name)
+                self.assertEqual(qualification.COMPLETE, result.name)
+                self.assertEqual("complete-path-present", result.reason)
 
     def test_classifier_and_build_workflow_cannot_select_release(self) -> None:
         for path in (

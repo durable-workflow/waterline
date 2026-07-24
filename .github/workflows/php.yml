@@ -394,16 +394,6 @@ jobs:
         fetch-depth: 10
         persist-credentials: false
 
-    - name: Install mssql-tools
-      if: ${{ matrix.database == 'mssql' }}
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y curl gnupg2
-        curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-        curl https://packages.microsoft.com/config/ubuntu/20.04/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
-        sudo apt-get update
-        sudo ACCEPT_EULA=Y apt-get install -y mssql-tools unixodbc-dev
-
     - name: Install PHP database drivers
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
       with:
@@ -427,51 +417,7 @@ jobs:
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress --no-interaction
 
-    - name: Wait for SQL Server and create databases
-      if: ${{ matrix.database == 'mssql' }}
-      shell: bash
-      run: |
-        set -euo pipefail
-
-        sqlcmd=/opt/mssql-tools/bin/sqlcmd
-        sql_server_host=
-        sql_server_ready=false
-        probe_output=
-        candidates=(127.0.0.1 host.docker.internal)
-        declare -A probe_outputs=()
-
-        for attempt in $(seq 1 30); do
-          for candidate in "${candidates[@]}"; do
-            if probe_output=$("$sqlcmd" -S "$candidate" -U sa -P "P@ssword" -l 3 -b -Q "SELECT 1;" 2>&1); then
-              sql_server_host=$candidate
-              sql_server_ready=true
-              break 2
-            fi
-
-            probe_outputs["$candidate"]=$probe_output
-            echo "SQL Server probe ${attempt}/30 failed via ${candidate}"
-          done
-
-          sleep 2
-        done
-
-        if [ "$sql_server_ready" != true ]; then
-          echo "::error::SQL Server did not accept connections via: ${candidates[*]}"
-          for candidate in "${candidates[@]}"; do
-            echo "Last diagnostic via ${candidate}:"
-            printf '%s\n' "${probe_outputs[$candidate]:-(no diagnostic output)}"
-          done
-          exit 1
-        fi
-
-        echo "Using ${sql_server_host} for host-mapped database services"
-        echo "DB_HOST=${sql_server_host}" >> "$GITHUB_ENV"
-        echo "DB_TRUST_SERVER_CERTIFICATE=true" >> "$GITHUB_ENV"
-
-        "$sqlcmd" -S "$sql_server_host" -U sa -P "P@ssword" -l 3 -b \
-          -Q "IF DB_ID(N'testing') IS NULL CREATE DATABASE [testing];"
-
-    - name: Verify database drivers and connections
+    - name: Prepare and verify database connections
       env:
         DB_HOST: 127.0.0.1
       run: php scripts/ci/preflight-databases.php "${{ matrix.database }}" "$DB_HOST"
