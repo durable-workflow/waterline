@@ -776,8 +776,10 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
         cls.recovery = load_recovery_for_retry_tests()
 
     def test_updated_older_release_cannot_override_newer_immutable_plan(self) -> None:
-        older = {"plan": "older-alpha"}
-        newer = {"plan": "newer-beta"}
+        older = lifecycle_plan(self.recovery)
+        older["plan"] = "older-alpha"
+        newer = lifecycle_plan(self.recovery, "beta")
+        newer["plan"] = "newer-beta"
         tags = ["release-plan/older-alpha", "release-plan/newer-beta"]
         commits = {tags[0]: "a" * 40, tags[1]: "b" * 40}
         recorded = {
@@ -806,9 +808,9 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
                 self.recovery,
                 "direct_plan_lifecycle",
                 side_effect=[
+                    ("actionable", None),
                     ("completed", None),
-                    ("completed", None),
-                    ("completed", None),
+                    ("actionable", None),
                     ("completed", None),
                 ],
             ),
@@ -822,11 +824,121 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
                 "accepted_continuity_supersession",
                 return_value=None,
             ),
+            self.assertRaisesRegex(
+                self.recovery.RecoveryError,
+                "no public release plan is available",
+            ),
         ):
-            selected = self.recovery.select_implicit_plan_authority(mock.Mock())
+            self.recovery.select_implicit_plan_authority(mock.Mock())
 
-        self.assertEqual(tags[1], selected["tag"])
-        self.assertEqual("completed", selected["lifecycle"])
+    def test_equal_versions_with_different_source_commits_are_conflicting(self) -> None:
+        first = lifecycle_plan(self.recovery, "beta")
+        first["plan"] = "first-beta-authority"
+        second = json.loads(json.dumps(first))
+        second["plan"] = "conflicting-beta-authority"
+        second["components"]["workflow"]["commit"] = "f" * 40
+        authorities = [
+            {"tag": f"release-plan/{first['plan']}", "plan": first},
+            {"tag": f"release-plan/{second['plan']}", "plan": second},
+        ]
+
+        with self.assertRaisesRegex(
+            self.recovery.RecoveryError,
+            "conflicting current product trains",
+        ):
+            self.recovery.current_product_train_authorities(authorities)
+
+    def test_validated_source_manifest_supersession_selects_successor(self) -> None:
+        predecessor = lifecycle_plan(self.recovery, "beta")
+        predecessor["plan"] = "source-manifest-predecessor"
+        successor = json.loads(json.dumps(predecessor))
+        successor["plan"] = "source-manifest-successor"
+        successor["components"]["workflow"]["commit"] = "f" * 40
+        successor_tag = f"release-plan/{successor['plan']}"
+        successor_authority = {
+            "tag": successor_tag,
+            "plan": successor,
+            "lifecycle": "actionable",
+            "successor": None,
+        }
+        authorities = [
+            {
+                "tag": f"release-plan/{predecessor['plan']}",
+                "plan": predecessor,
+                "lifecycle": "superseded",
+                "successor": {
+                    "tag": successor_tag,
+                    "sha256": self.recovery.manifest_digest(successor),
+                    "plan": successor,
+                },
+            },
+            successor_authority,
+        ]
+
+        self.assertEqual(
+            [successor_authority],
+            self.recovery.current_product_train_authorities(authorities),
+        )
+
+    def test_scheduled_recovery_without_actionable_plan_is_a_truthful_no_op(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            evidence = root / "release-recovery-evidence.json"
+            github_output = root / "github-output"
+            arguments = [
+                "component-release-recovery.py",
+                "resolve",
+                "--component",
+                "workflow",
+                "--plan-output",
+                str(root / "release-plan.json"),
+                "--preparation-output",
+                str(root / "release-preparation.json"),
+                "--evidence",
+                str(evidence),
+                "--github-output",
+                str(github_output),
+                "--allow-empty",
+            ]
+
+            with (
+                mock.patch.object(sys, "argv", arguments),
+                mock.patch.object(
+                    self.recovery,
+                    "discover_plan",
+                    side_effect=self.recovery.RecoveryError(
+                        "no public release plan is available",
+                        "plan-discovery",
+                    ),
+                ),
+                mock.patch.object(self.recovery, "resolve_component") as recover_component,
+            ):
+                self.assertEqual(0, self.recovery.main())
+
+            recover_component.assert_not_called()
+            state = json.loads(evidence.read_text())
+            self.assertEqual("plan-discovery", state["phase"])
+            self.assertEqual("idle", state["outcome"])
+            self.assertEqual("action=none\n", github_output.read_text())
+
+    def test_explicit_completed_plan_is_not_recovered(self) -> None:
+        candidate = lifecycle_plan(self.recovery, "beta")
+        tag = f"release-plan/{candidate['plan']}"
+        commit = "a" * 40
+        authority = {
+            "tag": tag,
+            "commit": commit,
+            "recorded_at": dt.datetime(2026, 7, 24, tzinfo=dt.UTC),
+            "plan": candidate,
+            "preparation": None,
+            "lifecycle": "completed",
+            "successor": None,
+        }
+        with (
+            mock.patch.object(self.recovery, "classify_plan_authorities", return_value=[authority]),
+            self.assertRaisesRegex(self.recovery.RecoveryError, "is completed and cannot be recovered"),
+        ):
+            self.recovery.select_explicit_plan_authority(mock.Mock(), tag, commit, candidate, None)
 
     def test_final_implicit_boundary_rejects_continuity_pause_activated_after_initial_read(
         self,
@@ -1085,8 +1197,10 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
         self.assertEqual(2, classify_explicit.call_count)
 
     def test_concurrent_terminal_supersession_retries_before_returning_action(self) -> None:
-        older = {"plan": "older-plan"}
-        successor = {"plan": "successor-plan"}
+        older = lifecycle_plan(self.recovery)
+        older["plan"] = "older-plan"
+        successor = lifecycle_plan(self.recovery)
+        successor["plan"] = "successor-plan"
         older_tag = "release-plan/older-plan"
         successor_tag = "release-plan/successor-plan"
         commits = {older_tag: "a" * 40, successor_tag: "b" * 40}

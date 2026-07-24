@@ -1977,23 +1977,117 @@ def classify_plan_authorities(client: PublicClient) -> list[dict[str, Any]]:
     return authorities
 
 
+def semver_precedence(version: str) -> tuple[int, int, int, int, tuple[tuple[int, int | str], ...]]:
+    without_build = version.split("+", 1)[0]
+    core, separator, prerelease = without_build.partition("-")
+    major, minor, patch = (int(part) for part in core.split("."))
+    identifiers = tuple(
+        (0, int(part)) if part.isdigit() else (1, part)
+        for part in prerelease.split(".")
+    )
+    return major, minor, patch, 1 if not separator else 0, identifiers
+
+
+def current_product_train_authorities(
+    authorities: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Select one maximal SemVer train after resolving validated supersession edges."""
+
+    def immutable_identity(
+        authority: dict[str, Any],
+    ) -> tuple[tuple[str, str], ...]:
+        return tuple(
+            (
+                authority["plan"]["components"][name]["version"],
+                authority["plan"]["components"][name]["commit"],
+            )
+            for name in COMPONENTS
+        )
+
+    version_precedence = {
+        authority["tag"]: {
+            name: semver_precedence(identity["version"])
+            for name, identity in authority["plan"]["components"].items()
+        }
+        for authority in authorities
+    }
+
+    def dominates(candidate: dict[str, Any], other: dict[str, Any]) -> bool:
+        return all(
+            version_precedence[candidate["tag"]][name] >= version_precedence[other["tag"]][name]
+            for name in COMPONENTS
+        ) and any(
+            version_precedence[candidate["tag"]][name] > version_precedence[other["tag"]][name]
+            for name in COMPONENTS
+        )
+
+    maximal = [
+        authority
+        for authority in authorities
+        if not any(
+            other is not authority and dominates(other, authority)
+            for other in authorities
+        )
+    ]
+    by_tag = {authority["tag"]: authority for authority in authorities}
+    maximal_tags = {authority["tag"] for authority in maximal}
+    resolved_predecessors: set[str] = set()
+    for authority in maximal:
+        successor_identity = authority.get("successor")
+        if authority.get("lifecycle") != "superseded" or not isinstance(successor_identity, dict):
+            continue
+        successor = by_tag.get(successor_identity.get("tag"))
+        if successor is None or successor["tag"] not in maximal_tags:
+            continue
+        expected_successor_identity = {
+            "tag": successor["tag"],
+            "sha256": manifest_digest(successor["plan"]),
+            "plan": successor["plan"],
+        }
+        if successor_identity == expected_successor_identity:
+            resolved_predecessors.add(authority["tag"])
+
+    unresolved_maximal = [
+        authority
+        for authority in maximal
+        if authority["tag"] not in resolved_predecessors
+    ]
+    current_identities = {
+        immutable_identity(authority)
+        for authority in unresolved_maximal
+    }
+    if len(current_identities) != 1:
+        raise RecoveryError(
+            "release plan authority has conflicting current product trains",
+            "plan-discovery",
+        )
+    selected_identity = next(iter(current_identities))
+    return [
+        authority
+        for authority in authorities
+        if immutable_identity(authority) == selected_identity
+    ]
+
+
 def classify_implicit_plan_authority(
     client: PublicClient,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     authorities = classify_plan_authorities(client)
-    nonterminal_older = [item for item in authorities[:-1] if item["lifecycle"] in {"actionable", "interrupted"}]
+    current_train = current_product_train_authorities(authorities)
+    nonterminal_older = [
+        item
+        for item in current_train[:-1]
+        if item["lifecycle"] in {"actionable", "interrupted"}
+    ]
     if nonterminal_older:
         raise RecoveryError(
             f"release plan authority is ambiguous: {nonterminal_older[0]['tag']} remains "
-            f"{nonterminal_older[0]['lifecycle']} before {authorities[-1]['tag']}",
+            f"{nonterminal_older[0]['lifecycle']} before {current_train[-1]['tag']}",
             "plan-discovery",
         )
-    selected = authorities[-1]
-    if selected["lifecycle"] == "superseded":
-        raise RecoveryError(
-            f"latest release plan {selected['tag']} is superseded and cannot be recovered",
-            "plan-discovery",
-        )
+    selected = current_train[-1]
+    if selected["lifecycle"] in {"completed", "superseded"}:
+        selected = None
     return selected, authorities
 
 
@@ -2009,6 +2103,11 @@ def select_implicit_plan_authority(client: PublicClient) -> dict[str, Any]:
     for _attempt in range(IMPLICIT_AUTHORITY_MAX_ATTEMPTS):
         selected, authority_snapshot = classify_implicit_plan_authority(client)
         if implicit_plan_authority_converged(client, authority_snapshot):
+            if selected is None:
+                raise RecoveryError(
+                    "no public release plan is available",
+                    "plan-discovery",
+                )
             return {**selected, "authority_snapshot": authority_snapshot}
     raise RecoveryError(
         "release plan registry or lifecycle authority did not converge "
@@ -2060,9 +2159,14 @@ def select_explicit_plan_authority(
             f"explicit release plan {tag} changed while its lifecycle was classified",
             "plan-discovery",
         )
-    if authority["lifecycle"] == "superseded":
+    if authority["lifecycle"] not in {"actionable", "interrupted"}:
+        lifecycle = (
+            "terminally superseded"
+            if authority["lifecycle"] == "superseded"
+            else authority["lifecycle"]
+        )
         raise RecoveryError(
-            f"explicit release plan {tag} is terminally superseded and cannot be recovered",
+            f"explicit release plan {tag} is {lifecycle} and cannot be recovered",
             "plan-discovery",
         )
     return {**authority, "selection": "explicit"}
