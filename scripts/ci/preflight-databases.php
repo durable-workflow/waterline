@@ -3,6 +3,10 @@
 
 declare(strict_types=1);
 
+use DurableWorkflow\Waterline\CI\SqlServerQualificationTls;
+
+require_once __DIR__.'/SqlServerQualificationTls.php';
+
 if ($argc !== 3 || trim($argv[1]) === '' || trim($argv[2]) === '') {
     fwrite(STDERR, "Usage: preflight-databases.php <database> <database-host>\n");
     exit(2);
@@ -10,18 +14,18 @@ if ($argc !== 3 || trim($argv[1]) === '' || trim($argv[2]) === '') {
 
 $databaseName = strtolower(trim($argv[1]));
 $host = trim($argv[2]);
+$sqlServerDsn = static fn (string $database): string => sprintf(
+    'sqlsrv:Server=%s,1433;Database=%s;LoginTimeout=3;%s',
+    $host,
+    $database,
+    SqlServerQualificationTls::odbcDsnAttributes(),
+);
 $databases = [
     'mssql' => [
         'name' => 'MSSQL',
         'extension' => 'pdo_sqlsrv',
-        'admin_dsn' => sprintf(
-            'sqlsrv:Server=%s,1433;Database=master;LoginTimeout=3;TrustServerCertificate=1',
-            $host,
-        ),
-        'dsn' => sprintf(
-            'sqlsrv:Server=%s,1433;Database=testing;LoginTimeout=3;TrustServerCertificate=1',
-            $host,
-        ),
+        'admin_dsn' => $sqlServerDsn('master'),
+        'dsn' => $sqlServerDsn('testing'),
         'username' => 'sa',
         'password' => 'P@ssword',
         'options' => [],

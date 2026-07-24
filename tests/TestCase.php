@@ -2,6 +2,7 @@
 
 namespace Waterline\Tests;
 
+use DurableWorkflow\Waterline\CI\SqlServerQualificationTls;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Schema;
@@ -39,6 +40,14 @@ abstract class TestCase extends BaseTestCase
     {
         $app['config']->set('app.debug', true);
         $app['config']->set('app.key', 'base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI=');
+
+        if ($this->isSqlServerQualification()) {
+            require_once dirname(__DIR__).'/scripts/ci/SqlServerQualificationTls.php';
+
+            foreach (SqlServerQualificationTls::laravelConfiguration() as $option => $value) {
+                $app['config']->set("database.connections.sqlsrv.{$option}", $value);
+            }
+        }
     }
 
     protected function defineDatabaseMigrations()

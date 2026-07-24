@@ -328,6 +328,17 @@ class DatabaseQualificationWorkflowContractTest(unittest.TestCase):
         self.assertIn("$connection = new PDO(", preflight)
         self.assertGreaterEqual(preflight.count("->query('SELECT 1')"), 2)
 
+    def test_sql_server_preflight_and_laravel_share_test_tls_policy(self) -> None:
+        policy_path = ROOT / "scripts" / "ci" / "SqlServerQualificationTls.php"
+        self.assertTrue(policy_path.is_file())
+        preflight = (ROOT / "scripts" / "ci" / "preflight-databases.php").read_text()
+        laravel_test_case = (ROOT / "tests" / "TestCase.php").read_text()
+        self.assertIn("SqlServerQualificationTls::odbcDsnAttributes()", preflight)
+        self.assertIn(
+            "SqlServerQualificationTls::laravelConfiguration()",
+            laravel_test_case,
+        )
+
 
 class WorkflowTrustPolicyTest(unittest.TestCase):
     def parse(self, source: str):
