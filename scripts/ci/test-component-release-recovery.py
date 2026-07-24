@@ -848,6 +848,28 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
         ):
             self.recovery.current_product_train_authorities(authorities)
 
+    def test_strict_semver_validation_precedes_authority_selection(self) -> None:
+        for malformed in ("01.0.0", "1.0.0-alpha.01", "1.0.0-alpha..1"):
+            candidate = lifecycle_plan(self.recovery, "beta")
+            candidate["components"]["server"]["version"] = malformed
+            authority = {
+                "tag": f"release-plan/{candidate['plan']}",
+                "plan": candidate,
+            }
+
+            with self.subTest(version=malformed), self.assertRaisesRegex(
+                self.recovery.RecoveryError,
+                "components.server.version is not exact SemVer",
+            ):
+                self.recovery.current_product_train_authorities([authority])
+
+        for valid in ("1.0.0-alpha.1", "1.0.0-alpha.1+build.01", "1.0.0+build.01"):
+            candidate = lifecycle_plan(self.recovery, "beta")
+            candidate["components"]["server"]["version"] = valid
+
+            with self.subTest(version=valid):
+                self.recovery.validate_plan(candidate)
+
     def test_validated_source_manifest_supersession_selects_successor(self) -> None:
         predecessor = lifecycle_plan(self.recovery, "beta")
         predecessor["plan"] = "source-manifest-predecessor"

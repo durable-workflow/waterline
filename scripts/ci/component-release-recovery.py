@@ -59,7 +59,12 @@ FOUNDATION_TAG = "beta-candidate/beta-continuity-foundation"
 FOUNDATION_COMMIT = "4995052410bd4301c5796ffba54e0b6d2f490ed1"
 COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 PLAN_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,55}$")
-VERSION_PATTERN = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$")
+VERSION_PATTERN = re.compile(
+    r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
+    r"(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+    r"(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+)
 ALPHA_VERSION_PATTERN = re.compile(r"^2\.0\.0-alpha\.[1-9][0-9]*$")
 BETA_VERSION_PATTERN = re.compile(r"^2\.0\.0-beta\.[1-9][0-9]*$")
 MARKDOWN_MEDIA_TYPE = "text/markdown"
@@ -1462,7 +1467,10 @@ def read_record(client: PublicClient, tag: str, commit: str, filename: str) -> A
 
 def read_plan_authority(client: PublicClient, tag: str, commit: str) -> tuple[dict[str, Any], dict[str, Any] | None]:
     plan = read_record(client, tag, commit, "release-plan.json")
-    validate_plan(plan)
+    try:
+        validate_plan(plan)
+    except RecoveryError as error:
+        raise RecoveryError(str(error), "plan-discovery") from error
     if tag != f"{PLAN_TAG_PREFIX}{plan['plan']}":
         raise RecoveryError("release plan tag and document identity differ", "plan-discovery")
     try:
@@ -1992,6 +2000,12 @@ def current_product_train_authorities(
     authorities: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Select one maximal SemVer train after resolving validated supersession edges."""
+
+    for authority in authorities:
+        try:
+            validate_plan(authority.get("plan"))
+        except RecoveryError as error:
+            raise RecoveryError(str(error), "plan-discovery") from error
 
     def immutable_identity(
         authority: dict[str, Any],
