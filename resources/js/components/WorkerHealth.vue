@@ -669,7 +669,7 @@ export default {
         }
     },
 
-    beforeDestroy() {
+    beforeUnmount() {
         this.stopAutoRefresh();
     },
 

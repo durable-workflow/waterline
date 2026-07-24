@@ -1,5 +1,5 @@
 <script type="text/ecmascript-6">
-    import FlowRow from './flow-row';
+    import FlowRow from './flow-row.vue';
     import Swal from 'sweetalert2';
 
     export default {
@@ -154,7 +154,7 @@
         /**
          * Clean after the component is destroyed.
          */
-        destroyed() {
+        unmounted() {
             clearInterval(this.interval);
         },
 
@@ -1745,7 +1745,7 @@
                             </td>
                         </tr>
 
-                        <tr v-for="flow in flows" :key="flow.id" :flow="flow" :columns="workflowListColumns" is="flow-row">
+                        <tr v-for="flow in flows" :key="flow.id" :flow="flow" :columns="workflowListColumns" is="vue:flow-row">
                         </tr>
                     </tbody>
                 </table>

@@ -124,8 +124,37 @@ jobs:
         "$policy_python" scripts/ci/test-standalone-lock-contract.py
         "$policy_python" scripts/ci/standalone_lock_contract.py
 
-  build:
+  frontend:
+    name: Frontend dependency and production build
     needs: classify
+    if: ${{ needs.classify.outputs.qualification-class == 'complete' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        persist-credentials: false
+
+    - name: Install Node 22
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
+      with:
+        node-version: '22'
+
+    - name: Install the locked frontend graph
+      run: npm ci
+
+    - name: Audit the frontend graph
+      run: npm audit
+
+    - name: Build production frontend assets
+      run: npm run production
+
+    - name: Verify committed frontend assets
+      run: git diff --exit-code -- public
+
+  build:
+    needs: [classify, frontend]
     if: ${{ needs.classify.outputs.qualification-class == 'complete' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12

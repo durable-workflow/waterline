@@ -1505,7 +1505,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        <template v-for="exception in flow.exceptions">
+                        <template v-for="exception in flow.exceptions" :key="exception.id">
                             <tr>
                                 <td>
                                     {{ exception.class }}

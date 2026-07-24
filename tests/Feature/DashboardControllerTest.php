@@ -117,6 +117,17 @@ class DashboardControllerTest extends TestCase
             ->assertDontSee('not up-to-date');
     }
 
+    public function testDashboardLoadsEveryFrontendEntryFromThePublishedManifest(): void
+    {
+        $manifest = json_decode((string) file_get_contents(self::PACKAGE_MANIFEST), true, flags: JSON_THROW_ON_ERROR);
+
+        $this->get('/waterline')
+            ->assertOk()
+            ->assertSee('href="'.asset('vendor/waterline/'.ltrim($manifest['/app-dark.css'], '/')).'"', false)
+            ->assertSee('href="'.asset('vendor/waterline/'.ltrim($manifest['/components.css'], '/')).'"', false)
+            ->assertSee('type="module" src="'.asset('vendor/waterline/'.ltrim($manifest['/app.js'], '/')).'"', false);
+    }
+
     public function testDashboardSurfacesStaleAssetWarningWhenPublishedAssetsDriftFromPackage(): void
     {
         $this->publishStaleAssets();
@@ -137,6 +148,7 @@ class DashboardControllerTest extends TestCase
             ->assertSee('alert-warning', false)
             ->assertSee('php artisan waterline:publish', false)
             ->assertSee('vendor/waterline/app-dark.css', false)
+            ->assertSee('vendor/waterline/components.css', false)
             ->assertSee('vendor/waterline/app.js', false)
             ->assertSee('wl-topbar__scope', false)
             ->assertSee('Scope');

@@ -22,6 +22,7 @@ class DashboardController extends Controller
         return view('waterline::layout', [
             'assetsAreCurrent' => $this->assetsAreCurrent(),
             'cssUrl' => $this->assetUrl($cssFile),
+            'componentsCssUrl' => $this->assetUrl('components.css'),
             'jsUrl' => $this->assetUrl('app.js'),
             'waterlineScriptVariables' => [
                 'path' => config('waterline.path', 'waterline'),

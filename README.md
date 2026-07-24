@@ -160,7 +160,7 @@ If you prefer to run commands manually:
 1. Install dependencies:
    ```bash
    composer install
-   npm install
+   npm ci
    ```
 2. Build assets:
    ```bash

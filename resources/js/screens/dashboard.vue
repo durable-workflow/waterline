@@ -911,7 +911,7 @@ export default {
         this.refreshStatsPeriodically();
     },
 
-    beforeDestroy() {
+    beforeUnmount() {
         clearTimeout(this.timeout);
     },
 

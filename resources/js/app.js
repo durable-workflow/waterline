@@ -1,22 +1,20 @@
-import Vue from 'vue';
+import { createApp } from 'vue';
 import Base from './base';
 import axios from 'axios';
 import Routes from './routes';
-import VueRouter from 'vue-router';
+import { createRouter, createWebHistory } from 'vue-router';
 import VueJsonPretty from 'vue-json-pretty';
-import VueApexCharts from 'vue-apexcharts';
-import { PrismEditor } from 'vue-prism-editor';
+import VueApexCharts from 'vue3-apexcharts';
+import PrismEditor from './components/PrismEditor.vue';
 import ErrorBoundary from './components/ErrorBoundary.vue';
+import Popper from 'popper.js';
+import $ from 'jquery';
 
-import 'vue-prism-editor/dist/prismeditor.min.css';
+import 'bootstrap';
+import 'vue-json-pretty/lib/styles.css';
 
-window.Popper = require('popper.js').default;
-
-try {
-    window.$ = window.jQuery = require('jquery');
-
-    require('bootstrap');
-} catch (e) {}
+window.Popper = Popper;
+window.$ = window.jQuery = $;
 
 let token = document.head.querySelector('meta[name="csrf-token"]');
 
@@ -25,10 +23,6 @@ axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 if (token) {
     axios.defaults.headers.common['X-CSRF-TOKEN'] = token.content;
 }
-
-Vue.use(VueRouter);
-
-Vue.prototype.$http = axios.create();
 
 window.Waterline.basePath = '/' + window.Waterline.path;
 
@@ -39,39 +33,12 @@ if (window.Waterline.path === '' || window.Waterline.path === '/') {
     window.Waterline.basePath = '';
 }
 
-const router = new VueRouter({
+const router = createRouter({
     routes: Routes,
-    mode: 'history',
-    base: routerBasePath,
+    history: createWebHistory(routerBasePath),
 });
 
-Vue.use(VueApexCharts)
-
-Vue.component('apexchart', VueApexCharts)
-Vue.component('vue-json-pretty', VueJsonPretty);
-Vue.component('PrismEditor', PrismEditor);
-Vue.component('error-boundary', ErrorBoundary);
-
-Vue.config.errorHandler = function (err, vm, info) {
-    // eslint-disable-next-line no-console
-    console.error('[Vue:errorHandler]', err, info);
-};
-
-Vue.mixin(Base);
-
-Vue.directive('tooltip', function (el, binding) {
-    $(el).tooltip({
-        title: binding.value,
-        placement: binding.arg,
-        trigger: 'hover',
-    });
-});
-
-new Vue({
-    el: '#waterline',
-
-    router,
-
+const app = createApp({
     data() {
         return {
             alert: {
@@ -108,3 +75,24 @@ new Vue({
         }
     }
 });
+
+app.config.globalProperties.$http = axios.create();
+app.config.errorHandler = function (err, instance, info) {
+    // eslint-disable-next-line no-console
+    console.error('[Vue:errorHandler]', err, info);
+};
+
+app.use(router);
+app.component('apexchart', VueApexCharts);
+app.component('vue-json-pretty', VueJsonPretty);
+app.component('PrismEditor', PrismEditor);
+app.component('error-boundary', ErrorBoundary);
+app.mixin(Base);
+app.directive('tooltip', function (el, binding) {
+    $(el).tooltip({
+        title: binding.value,
+        placement: binding.arg,
+        trigger: 'hover',
+    });
+});
+app.mount('#waterline');

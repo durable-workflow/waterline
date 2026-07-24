@@ -72,7 +72,7 @@
     },
     "extra": {
         "durable-workflow": {
-            "product-train": "2.0.0-beta.10"
+            "product-train": "2.0.0-beta.11"
         },
         "laravel": {
             "providers": [

@@ -16,7 +16,7 @@ install: ## Install PHP and Node dependencies
 	@echo "$(CYAN)Installing Composer dependencies...$(RESET)"
 	composer install
 	@echo "$(CYAN)Installing NPM dependencies...$(RESET)"
-	npm install
+	npm ci
 	@echo "$(GREEN)✓ Dependencies installed$(RESET)"
 
 build: ## Build production assets

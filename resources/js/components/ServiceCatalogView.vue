@@ -283,11 +283,10 @@
                     </button>
 
                     <div class="service-catalog-view__pagination-pages">
-                        <template v-for="(page, index) in visiblePages">
-                            <span v-if="page === '...'" :key="`ellipsis-${index}-${pagination.current_page}`" class="service-catalog-view__pagination-ellipsis">...</span>
+                        <template v-for="(page, index) in visiblePages" :key="`${page}-${index}-${pagination.current_page}`">
+                            <span v-if="page === '...'" class="service-catalog-view__pagination-ellipsis">...</span>
                             <button
                                 v-else
-                                :key="page"
                                 class="btn btn-sm"
                                 :class="page === pagination.current_page ? 'btn-primary' : 'btn-outline-secondary'"
                                 @click="goToPage(page)">
@@ -329,9 +328,9 @@
                         <section class="service-catalog-view__detail-section">
                             <h6>Summary</h6>
                             <dl>
-                                <template v-for="row in detailRows">
-                                    <dt :key="row.key + '-label'">{{ row.label }}</dt>
-                                    <dd :key="row.key + '-value'">
+                                <template v-for="row in detailRows" :key="row.key">
+                                    <dt>{{ row.label }}</dt>
+                                    <dd>
                                         <code v-if="row.mono">{{ row.value }}</code>
                                         <span v-else>{{ row.value }}</span>
                                     </dd>
