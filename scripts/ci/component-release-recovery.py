@@ -487,20 +487,36 @@ def manifest_digest(value: Any) -> str:
     return hashlib.sha256(canonical_json(value)).hexdigest()
 
 
+def increment_numeric_identifier(identifier: str) -> str:
+    digits = list(identifier)
+    index = len(digits) - 1
+    while index >= 0 and digits[index] == "9":
+        digits[index] = "0"
+        index -= 1
+    if index < 0:
+        return "1" + "".join(digits)
+    digits[index] = chr(ord(digits[index]) + 1)
+    return "".join(digits)
+
+
 def is_immediate_version_successor(previous: str, successor: str) -> bool:
-    previous_match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?", previous)
-    successor_match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?", successor)
+    previous_match = re.fullmatch(
+        r"(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?", previous
+    )
+    successor_match = re.fullmatch(
+        r"(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?", successor
+    )
     if previous_match is None or successor_match is None:
         return False
-    previous_core = tuple(int(value) for value in previous_match.groups()[:3])
-    successor_core = tuple(int(value) for value in successor_match.groups()[:3])
+    previous_core = previous_match.groups()[:3]
+    successor_core = successor_match.groups()[:3]
     previous_prerelease = previous_match.group(4)
     successor_prerelease = successor_match.group(4)
     if previous_prerelease is None:
         return successor_prerelease is None and successor_core == (
             previous_core[0],
             previous_core[1],
-            previous_core[2] + 1,
+            increment_numeric_identifier(previous_core[2]),
         )
     previous_parts = previous_prerelease.rsplit(".", 1)
     successor_parts = (successor_prerelease or "").rsplit(".", 1)
@@ -511,7 +527,7 @@ def is_immediate_version_successor(previous: str, successor: str) -> bool:
         and previous_parts[0] == successor_parts[0]
         and previous_parts[1].isdigit()
         and successor_parts[1].isdigit()
-        and int(successor_parts[1]) == int(previous_parts[1]) + 1
+        and successor_parts[1] == increment_numeric_identifier(previous_parts[1])
     )
 
 
@@ -1985,12 +2001,26 @@ def classify_plan_authorities(client: PublicClient) -> list[dict[str, Any]]:
     return authorities
 
 
-def semver_precedence(version: str) -> tuple[int, int, int, int, tuple[tuple[int, int | str], ...]]:
+def numeric_identifier_precedence(identifier: str) -> tuple[int, str]:
+    return len(identifier), identifier
+
+
+def semver_precedence(
+    version: str,
+) -> tuple[
+    tuple[int, str],
+    tuple[int, str],
+    tuple[int, str],
+    int,
+    tuple[tuple[int, tuple[int, str] | str], ...],
+]:
     without_build = version.split("+", 1)[0]
     core, separator, prerelease = without_build.partition("-")
-    major, minor, patch = (int(part) for part in core.split("."))
+    major, minor, patch = (
+        numeric_identifier_precedence(part) for part in core.split(".")
+    )
     identifiers = tuple(
-        (0, int(part)) if part.isdigit() else (1, part)
+        (0, numeric_identifier_precedence(part)) if part.isdigit() else (1, part)
         for part in prerelease.split(".")
     )
     return major, minor, patch, 1 if not separator else 0, identifiers
