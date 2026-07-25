@@ -22,6 +22,7 @@ jobs:
     outputs:
       qualification-class: ${{ steps.classify.outputs.qualification-class }}
       qualification-reason: ${{ steps.classify.outputs.qualification-reason }}
+      focused-checks: ${{ steps.classify.outputs.focused-checks }}
       started-at: ${{ steps.clock.outputs.started-at }}
 
     steps:
@@ -123,6 +124,65 @@ jobs:
         "$policy_python" scripts/ci/test-service-image-recovery.py
         "$policy_python" scripts/ci/test-standalone-lock-contract.py
         "$policy_python" scripts/ci/standalone_lock_contract.py
+
+  conformance-contracts:
+    name: Published-artifact conformance contracts
+    needs: classify
+    if: ${{ github.server_url == 'https://github.com' && needs.classify.outputs.qualification-class == 'conformance' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        persist-credentials: false
+
+    - name: Install PHP and Composer
+      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
+      with:
+        php-version: '8.3'
+        extensions: pdo_sqlite
+        tools: composer
+        coverage: none
+
+    - name: Install Node 22
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
+      with:
+        node-version: '22'
+
+    - name: Install focused PHP test dependencies
+      run: >-
+        composer install
+        --prefer-dist
+        --no-progress
+        --no-interaction
+        --no-scripts
+
+    - name: Check conformance runner syntax
+      run: |
+        node --check scripts/conformance/worker-status-network.mjs
+        node --check scripts/conformance/worker-status-published-artifacts.mjs
+        bash -n scripts/conformance/worker-status-published-artifacts.sh
+        node --check scripts/conformance/worker-status-runner-lifecycle.mjs
+        node --check scripts/conformance/worker-status-shared-isolation.mjs
+        node --check scripts/conformance/worker-status-shared-topology.mjs
+        node --check scripts/conformance/worker-status-version.mjs
+        php -l tests/Unit/WorkerStatusConformanceRunnerTest.php
+
+    - name: Run focused PHP conformance regression
+      run: >-
+        vendor/bin/phpunit
+        --configuration=phpunit-sqlite.xml
+        tests/Unit/WorkerStatusConformanceRunnerTest.php
+
+    - name: Run focused Node conformance regressions
+      run: >-
+        node --test
+        tests/Unit/WorkerStatusNetworkTest.mjs
+        tests/Unit/WorkerStatusRunnerLifecycleTest.mjs
+        tests/Unit/WorkerStatusSharedIsolationTest.mjs
+        tests/Unit/WorkerStatusSharedTopologyTest.mjs
+        tests/Unit/WorkerStatusVersionTest.mjs
 
   frontend:
     name: Frontend dependency and production build
@@ -451,6 +511,8 @@ jobs:
     needs:
       - classify
       - release-contracts
+      - conformance-contracts
+      - frontend
       - build
       - laravel-matrix
       - laravel-compatibility
@@ -468,6 +530,8 @@ jobs:
         QUALIFICATION_CLASS: ${{ needs.classify.outputs.qualification-class }}
         CLASSIFICATION_RESULT: ${{ needs.classify.result }}
         RELEASE_CONTRACTS_RESULT: ${{ needs.release-contracts.result }}
+        CONFORMANCE_CONTRACTS_RESULT: ${{ needs.conformance-contracts.result }}
+        FRONTEND_RESULT: ${{ needs.frontend.result }}
         BUILD_RESULT: ${{ needs.build.result }}
         MATRIX_RESULT: ${{ needs.laravel-matrix.result }}
         LARAVEL_RESULT: ${{ needs.laravel-compatibility.result }}
@@ -478,6 +542,8 @@ jobs:
         --classification="$QUALIFICATION_CLASS"
         --classification-result="$CLASSIFICATION_RESULT"
         --release-contracts-result="$RELEASE_CONTRACTS_RESULT"
+        --conformance-contracts-result="$CONFORMANCE_CONTRACTS_RESULT"
+        --frontend-result="$FRONTEND_RESULT"
         --build-result="$BUILD_RESULT"
         --laravel-matrix-result="$MATRIX_RESULT"
         --laravel-compatibility-result="$LARAVEL_RESULT"

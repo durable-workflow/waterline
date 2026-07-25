@@ -16,8 +16,9 @@ from typing import Iterable, Mapping, Sequence
 
 
 COMPLETE = "complete"
+CONFORMANCE = "conformance"
 RELEASE = "release"
-QUALIFICATION_CLASSES = frozenset({COMPLETE, RELEASE})
+QUALIFICATION_CLASSES = frozenset({COMPLETE, CONFORMANCE, RELEASE})
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 # This is deliberately an exact allowlist. A new path receives complete
@@ -46,6 +47,34 @@ RELEASE_ONLY_PATHS = frozenset(
         "scripts/ci/test-standalone-lock-contract.py",
         "standalone/composer.lock",
     }
+)
+
+CONFORMANCE_ONLY_PATHS = frozenset(
+    {
+        "scripts/conformance/worker-status-network.mjs",
+        "scripts/conformance/worker-status-published-artifacts.mjs",
+        "scripts/conformance/worker-status-published-artifacts.sh",
+        "scripts/conformance/worker-status-runner-lifecycle.mjs",
+        "scripts/conformance/worker-status-shared-isolation.mjs",
+        "scripts/conformance/worker-status-shared-topology.mjs",
+        "scripts/conformance/worker-status-version.mjs",
+        "tests/Unit/WorkerStatusConformanceRunnerTest.php",
+        "tests/Unit/WorkerStatusNetworkTest.mjs",
+        "tests/Unit/WorkerStatusRunnerLifecycleTest.mjs",
+        "tests/Unit/WorkerStatusSharedIsolationTest.mjs",
+        "tests/Unit/WorkerStatusSharedTopologyTest.mjs",
+        "tests/Unit/WorkerStatusVersionTest.mjs",
+    }
+)
+
+COMMON_FOCUSED_CHECKS = (
+    "workflow-syntax-and-trust",
+    "public-boundary",
+    "release-and-recovery-contracts",
+)
+CONFORMANCE_FOCUSED_CHECKS = (
+    "phpunit:tests/Unit/WorkerStatusConformanceRunnerTest.php",
+    "node:test:tests/Unit/WorkerStatus*Test.mjs",
 )
 
 
@@ -90,6 +119,8 @@ def classify_paths(paths: Iterable[str]) -> Classification:
         return Classification(COMPLETE, "no-changed-paths")
     if all(path in RELEASE_ONLY_PATHS for path in normalized):
         return Classification(RELEASE, "release-paths-only", normalized)
+    if all(path in CONFORMANCE_ONLY_PATHS for path in normalized):
+        return Classification(CONFORMANCE, "conformance-paths-only", normalized)
 
     return Classification(COMPLETE, "complete-path-present", normalized)
 
@@ -157,19 +188,41 @@ def classify_event(
 def expected_results(classification: str) -> Mapping[str, str]:
     if classification == COMPLETE:
         matrix_result = "success"
-    elif classification == RELEASE:
+        frontend_result = "success"
+        conformance_result = "skipped"
+    elif classification in {CONFORMANCE, RELEASE}:
         matrix_result = "skipped"
+        frontend_result = "skipped"
+        conformance_result = (
+            "success" if classification == CONFORMANCE else "skipped"
+        )
     else:
         raise ValueError(f"unknown qualification class: {classification}")
 
     return {
         "classification": "success",
         "release-contracts": "success",
+        "conformance-contracts": conformance_result,
+        "frontend": frontend_result,
         "build": matrix_result,
         "laravel-matrix": matrix_result,
         "laravel-compatibility": matrix_result,
         "database": matrix_result,
     }
+
+
+def focused_checks(classification: str) -> tuple[str, ...]:
+    if classification == CONFORMANCE:
+        return COMMON_FOCUSED_CHECKS + CONFORMANCE_FOCUSED_CHECKS
+    if classification == RELEASE:
+        return COMMON_FOCUSED_CHECKS
+    if classification == COMPLETE:
+        return COMMON_FOCUSED_CHECKS + (
+            "frontend-production-build",
+            "laravel-compatibility-matrix",
+            "complete-database-matrix",
+        )
+    raise ValueError(f"unknown qualification class: {classification}")
 
 
 def evaluate_results(
@@ -198,8 +251,13 @@ def load_benchmark(path: Path) -> dict[str, object]:
         raise ValueError("qualification benchmark has an unsupported schema")
 
     baseline = benchmark.get("baseline")
+    conformance_baseline = benchmark.get("conformance_change_baseline")
     improved = benchmark.get("improved_release_path")
-    if not isinstance(baseline, dict) or not isinstance(improved, dict):
+    if (
+        not isinstance(baseline, dict)
+        or not isinstance(conformance_baseline, dict)
+        or not isinstance(improved, dict)
+    ):
         raise ValueError("qualification benchmark is incomplete")
 
     baseline_seconds = baseline.get("elapsed_seconds")
@@ -220,6 +278,17 @@ def load_benchmark(path: Path) -> dict[str, object]:
         or reduction_basis_points != round(saved_seconds / baseline_seconds * 10_000)
     ):
         raise ValueError("qualification benchmark timing is inconsistent")
+
+    if (
+        conformance_baseline.get("event") != "push"
+        or conformance_baseline.get("head_branch") != "v2"
+        or conformance_baseline.get("selected_class") != COMPLETE
+        or not isinstance(conformance_baseline.get("run_id"), int)
+        or not isinstance(conformance_baseline.get("elapsed_seconds"), int)
+        or conformance_baseline["run_id"] <= 0
+        or conformance_baseline["elapsed_seconds"] <= 0
+    ):
+        raise ValueError("conformance change benchmark is inconsistent")
 
     return benchmark
 
@@ -251,6 +320,10 @@ def classify_command(arguments: argparse.Namespace) -> int:
         "qualification-class": result.name,
         "qualification-reason": result.reason,
         "changed-path-count": len(result.changed_paths),
+        "focused-checks": json.dumps(
+            focused_checks(result.name),
+            separators=(",", ":"),
+        ),
     }
     write_github_output(arguments.github_output, values)
     append_summary(
@@ -261,6 +334,8 @@ def classify_command(arguments: argparse.Namespace) -> int:
             f"- Selected class: `{result.name}`",
             f"- Classification basis: `{result.reason}`",
             f"- Changed paths considered: {len(result.changed_paths)}",
+            "- Focused checks: "
+            + ", ".join(f"`{check}`" for check in focused_checks(result.name)),
         ),
     )
     for key, value in values.items():
@@ -272,12 +347,19 @@ def gate_command(arguments: argparse.Namespace) -> int:
     observed = {
         "classification": arguments.classification_result,
         "release-contracts": arguments.release_contracts_result,
+        "conformance-contracts": arguments.conformance_contracts_result,
+        "frontend": arguments.frontend_result,
         "build": arguments.build_result,
         "laravel-matrix": arguments.laravel_matrix_result,
         "laravel-compatibility": arguments.laravel_compatibility_result,
         "database": arguments.database_result,
     }
     failures = evaluate_results(arguments.classification, observed)
+    selected_checks = (
+        focused_checks(arguments.classification)
+        if arguments.classification in QUALIFICATION_CLASSES
+        else ("invalid-qualification-class",)
+    )
 
     try:
         benchmark = load_benchmark(Path(arguments.benchmark))
@@ -287,8 +369,13 @@ def gate_command(arguments: argparse.Namespace) -> int:
 
     elapsed_seconds = max(0, int(time.time()) - arguments.started_at)
     baseline = benchmark.get("baseline", {})
+    conformance_baseline = benchmark.get("conformance_change_baseline", {})
     improved = benchmark.get("improved_release_path", {})
     baseline_seconds = baseline.get("elapsed_seconds", "unavailable")
+    conformance_baseline_seconds = conformance_baseline.get(
+        "elapsed_seconds",
+        "unavailable",
+    )
     projected_seconds = improved.get("projected_elapsed_seconds", "unavailable")
 
     append_summary(
@@ -297,8 +384,12 @@ def gate_command(arguments: argparse.Namespace) -> int:
             "## Target-branch qualification result",
             "",
             f"- Selected class: `{arguments.classification}`",
+            "- Focused checks: "
+            + ", ".join(f"`{check}`" for check in selected_checks),
             f"- Current build-workflow elapsed time: {elapsed_seconds}s",
             f"- Recorded complete-path baseline: {baseline_seconds}s",
+            "- Recorded conformance-change complete-path baseline: "
+            f"{conformance_baseline_seconds}s",
             f"- Recorded release-path projection: {projected_seconds}s",
             f"- Gate result: `{'failure' if failures else 'success'}`",
         ),
@@ -337,6 +428,8 @@ def parser() -> argparse.ArgumentParser:
     gate.add_argument("--classification", required=True)
     gate.add_argument("--classification-result", required=True)
     gate.add_argument("--release-contracts-result", required=True)
+    gate.add_argument("--conformance-contracts-result", required=True)
+    gate.add_argument("--frontend-result", required=True)
     gate.add_argument("--build-result", required=True)
     gate.add_argument("--laravel-matrix-result", required=True)
     gate.add_argument("--laravel-compatibility-result", required=True)

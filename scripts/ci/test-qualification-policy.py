@@ -37,6 +37,31 @@ trust = load_module(
 
 
 class ChangeClassificationTest(unittest.TestCase):
+    def test_published_artifact_conformance_change_selects_conformance_qualification(
+        self,
+    ) -> None:
+        result = qualification.classify_paths(
+            [
+                "scripts/conformance/worker-status-published-artifacts.mjs",
+                "scripts/conformance/worker-status-shared-topology.mjs",
+                "tests/Unit/WorkerStatusConformanceRunnerTest.php",
+                "tests/Unit/WorkerStatusSharedTopologyTest.mjs",
+            ]
+        )
+
+        self.assertEqual(qualification.CONFORMANCE, result.name)
+        self.assertEqual("conformance-paths-only", result.reason)
+
+    def test_all_reviewed_conformance_paths_select_conformance_qualification(
+        self,
+    ) -> None:
+        result = qualification.classify_paths(
+            qualification.CONFORMANCE_ONLY_PATHS
+        )
+
+        self.assertEqual(qualification.CONFORMANCE, result.name)
+        self.assertEqual("conformance-paths-only", result.reason)
+
     def test_release_authority_change_selects_release_qualification(self) -> None:
         result = qualification.classify_paths(
             [
@@ -77,9 +102,14 @@ class ChangeClassificationTest(unittest.TestCase):
             "runtime": "Dockerfile",
             "sqlserver-runtime": "scripts/ci/install-sqlserver-odbc.sh",
             "dependency-matrix": ".github/laravel-matrix.json",
+            "workbench": "workbench/app/Providers/WorkbenchServiceProvider.php",
+            "frontend-dependency": "package.json",
+            "frontend-runtime": "resources/js/components/WorkflowList.vue",
             "workflow": ".github/workflows/php.yml",
             "classifier": "scripts/ci/qualification_policy.py",
             "test-source": "tests/Feature/ServiceModeBackendTest.php",
+            "unreviewed-conformance-runner": "scripts/conformance/new-runner.mjs",
+            "unreviewed-conformance-test": "tests/Unit/NewConformanceTest.mjs",
         }
 
         for surface, path in complete_paths.items():
@@ -89,6 +119,38 @@ class ChangeClassificationTest(unittest.TestCase):
                 self.assertEqual("complete-path-present", result.reason)
 
     def test_mixed_change_selects_complete_qualification(self) -> None:
+        for complete_path in (
+            "config/waterline.php",
+            "standalone/composer.json",
+            "Dockerfile",
+            "database/migrations/2026_04_09_000000_create_waterline_saved_views_table.php",
+            "workbench/app/Providers/WorkbenchServiceProvider.php",
+            "resources/js/components/WorkflowList.vue",
+        ):
+            with self.subTest(complete_path=complete_path):
+                result = qualification.classify_paths(
+                    [
+                        "scripts/conformance/worker-status-published-artifacts.mjs",
+                        "tests/Unit/WorkerStatusConformanceRunnerTest.php",
+                        complete_path,
+                    ]
+                )
+
+                self.assertEqual(qualification.COMPLETE, result.name)
+                self.assertEqual("complete-path-present", result.reason)
+
+    def test_release_and_conformance_paths_mixed_together_fail_closed(self) -> None:
+        result = qualification.classify_paths(
+            [
+                "scripts/ci/component-release-recovery.py",
+                "scripts/conformance/worker-status-published-artifacts.mjs",
+            ]
+        )
+
+        self.assertEqual(qualification.COMPLETE, result.name)
+        self.assertEqual("complete-path-present", result.reason)
+
+    def test_release_mixed_with_runtime_change_still_fails_closed(self) -> None:
         for complete_path in (
             "config/waterline.php",
             "standalone/composer.json",
@@ -106,7 +168,7 @@ class ChangeClassificationTest(unittest.TestCase):
                 self.assertEqual(qualification.COMPLETE, result.name)
                 self.assertEqual("complete-path-present", result.reason)
 
-    def test_classifier_and_build_workflow_cannot_select_release(self) -> None:
+    def test_classifier_and_build_workflow_cannot_select_focused_route(self) -> None:
         for path in (
             ".github/workflows/php.yml",
             "scripts/ci/qualification_policy.py",
@@ -192,6 +254,33 @@ class ChangeClassificationTest(unittest.TestCase):
                 ).name,
             )
 
+            conformance_path = (
+                repository
+                / "scripts"
+                / "conformance"
+                / "worker-status-published-artifacts.mjs"
+            )
+            conformance_path.parent.mkdir(parents=True)
+            conformance_path.write_text("export const baseline = false;\n")
+            subprocess.run(["git", "-C", repository, "add", "."], check=True)
+            subprocess.run(
+                ["git", "-C", repository, "commit", "-qm", "conformance"],
+                check=True,
+            )
+            conformance_head = subprocess.check_output(
+                ["git", "-C", repository, "rev-parse", "HEAD"],
+                text=True,
+            ).strip()
+            self.assertEqual(
+                qualification.CONFORMANCE,
+                qualification.classify_event(
+                    repository,
+                    "push",
+                    release_head,
+                    conformance_head,
+                ).name,
+            )
+
             runtime_path = repository / "app" / "Support" / "RuntimeConfiguration.php"
             runtime_path.parent.mkdir(parents=True)
             runtime_path.write_text("<?php\n")
@@ -209,13 +298,41 @@ class ChangeClassificationTest(unittest.TestCase):
                 qualification.classify_event(
                     repository,
                     "push",
-                    release_head,
+                    conformance_head,
                     runtime_head,
                 ).name,
             )
 
 
 class QualificationGateTest(unittest.TestCase):
+    def test_conformance_route_requires_focused_job_and_skipped_matrices(
+        self,
+    ) -> None:
+        observed = dict(qualification.expected_results(qualification.CONFORMANCE))
+        self.assertEqual(
+            (),
+            qualification.evaluate_results("conformance", observed),
+        )
+
+        for job, result in (
+            ("conformance-contracts", "skipped"),
+            ("frontend", "success"),
+            ("laravel-matrix", "success"),
+            ("database", "success"),
+        ):
+            with self.subTest(job=job, result=result):
+                invalid = {**observed, job: result}
+                self.assertNotEqual(
+                    (),
+                    qualification.evaluate_results("conformance", invalid),
+                )
+
+        self.assertEqual(
+            qualification.COMMON_FOCUSED_CHECKS
+            + qualification.CONFORMANCE_FOCUSED_CHECKS,
+            qualification.focused_checks(qualification.CONFORMANCE),
+        )
+
     def test_release_route_requires_matrix_jobs_to_be_skipped(self) -> None:
         observed = dict(qualification.expected_results(qualification.RELEASE))
         self.assertEqual((), qualification.evaluate_results("release", observed))
@@ -223,12 +340,25 @@ class QualificationGateTest(unittest.TestCase):
         observed["database"] = "success"
         self.assertNotEqual((), qualification.evaluate_results("release", observed))
 
+        observed = dict(qualification.expected_results(qualification.RELEASE))
+        observed["conformance-contracts"] = "success"
+        self.assertNotEqual((), qualification.evaluate_results("release", observed))
+
     def test_complete_route_requires_every_matrix_job(self) -> None:
         observed = dict(qualification.expected_results(qualification.COMPLETE))
         self.assertEqual((), qualification.evaluate_results("complete", observed))
 
-        observed["laravel-compatibility"] = "skipped"
-        self.assertNotEqual((), qualification.evaluate_results("complete", observed))
+        for job, result in (
+            ("frontend", "skipped"),
+            ("conformance-contracts", "success"),
+            ("laravel-compatibility", "skipped"),
+        ):
+            with self.subTest(job=job, result=result):
+                invalid = {**observed, job: result}
+                self.assertNotEqual(
+                    (),
+                    qualification.evaluate_results("complete", invalid),
+                )
 
     def test_unknown_route_is_rejected(self) -> None:
         self.assertNotEqual(
@@ -242,7 +372,12 @@ class QualificationGateTest(unittest.TestCase):
         )
 
         baseline = benchmark["baseline"]
+        conformance_baseline = benchmark["conformance_change_baseline"]
         improved = benchmark["improved_release_path"]
+        self.assertEqual("push", conformance_baseline["event"])
+        self.assertEqual("v2", conformance_baseline["head_branch"])
+        self.assertEqual("complete", conformance_baseline["selected_class"])
+        self.assertGreater(conformance_baseline["elapsed_seconds"], 0)
         self.assertEqual(
             baseline["elapsed_seconds"] - improved["projected_elapsed_seconds"],
             improved["projected_saved_seconds"],
@@ -251,6 +386,90 @@ class QualificationGateTest(unittest.TestCase):
             improved["projected_elapsed_seconds"],
             sum(improved["projection_components_seconds"].values()),
         )
+
+
+class ConformanceQualificationWorkflowContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.workflow = yaml.load(
+            (ROOT / ".github" / "workflows" / "php.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        if not isinstance(cls.workflow, dict):
+            raise RuntimeError("build workflow must be a mapping")
+
+    def conformance_job(self) -> dict:
+        job = self.workflow["jobs"]["conformance-contracts"]
+        self.assertIsInstance(job, dict)
+        return job
+
+    def named_step(self, name: str) -> dict:
+        steps = self.conformance_job()["steps"]
+        matches = [
+            step
+            for step in steps
+            if isinstance(step, dict) and step.get("name") == name
+        ]
+        self.assertEqual(1, len(matches), f"expected one workflow step named {name}")
+        return matches[0]
+
+    def test_focused_job_is_restricted_to_public_conformance_qualification(
+        self,
+    ) -> None:
+        self.assertEqual(
+            "${{ github.server_url == 'https://github.com' && needs.classify.outputs.qualification-class == 'conformance' }}",
+            self.conformance_job()["if"],
+        )
+
+    def test_focused_job_runs_exact_php_and_node_regressions(self) -> None:
+        php_command = self.named_step(
+            "Run focused PHP conformance regression"
+        )["run"].split()
+        self.assertEqual(
+            [
+                "vendor/bin/phpunit",
+                "--configuration=phpunit-sqlite.xml",
+                "tests/Unit/WorkerStatusConformanceRunnerTest.php",
+            ],
+            php_command,
+        )
+
+        node_command = self.named_step(
+            "Run focused Node conformance regressions"
+        )["run"].split()
+        self.assertEqual(
+            [
+                "node",
+                "--test",
+                "tests/Unit/WorkerStatusNetworkTest.mjs",
+                "tests/Unit/WorkerStatusRunnerLifecycleTest.mjs",
+                "tests/Unit/WorkerStatusSharedIsolationTest.mjs",
+                "tests/Unit/WorkerStatusSharedTopologyTest.mjs",
+                "tests/Unit/WorkerStatusVersionTest.mjs",
+            ],
+            node_command,
+        )
+
+    def test_target_gate_observes_focused_and_frontend_jobs(self) -> None:
+        gate = self.workflow["jobs"]["target-branch-qualification"]
+        self.assertIn("conformance-contracts", gate["needs"])
+        self.assertIn("frontend", gate["needs"])
+        command = self.named_gate_step(gate)["run"]
+        self.assertIn(
+            "--conformance-contracts-result=\"$CONFORMANCE_CONTRACTS_RESULT\"",
+            command,
+        )
+        self.assertIn("--frontend-result=\"$FRONTEND_RESULT\"", command)
+
+    def named_gate_step(self, gate: dict) -> dict:
+        matches = [
+            step
+            for step in gate["steps"]
+            if isinstance(step, dict)
+            and step.get("name") == "Enforce selected qualification class"
+        ]
+        self.assertEqual(1, len(matches))
+        return matches[0]
 
 
 class DatabaseQualificationWorkflowContractTest(unittest.TestCase):

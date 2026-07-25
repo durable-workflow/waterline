@@ -15,6 +15,22 @@
     "matrix_to_required_check_start_seconds": 2,
     "required_check_elapsed_seconds": 4
   },
+  "conformance_change_baseline": {
+    "workflow": "build",
+    "run_id": 30138214749,
+    "head_sha": "8acd439dcb92d37bd4543c16ae15f93543a1ef32",
+    "event": "push",
+    "head_branch": "v2",
+    "selected_class": "complete",
+    "started_at": "2026-07-25T01:18:13Z",
+    "completed_at": "2026-07-25T01:37:15Z",
+    "elapsed_seconds": 1142,
+    "focused_checks_completed_at": "2026-07-25T01:19:21Z",
+    "focused_path_elapsed_seconds": 68,
+    "slowest_matrix_job": "qualification-mysql",
+    "slowest_matrix_job_elapsed_seconds": 1059,
+    "live_elapsed_report": "target-branch-qualification-job-summary"
+  },
   "improved_release_path": {
     "measurement": "baseline-critical-path-projection",
     "projected_elapsed_seconds": 29,
