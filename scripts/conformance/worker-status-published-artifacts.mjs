@@ -15,6 +15,7 @@ import {
 } from './worker-status-runner-lifecycle.mjs';
 import { verifySharedWaterlineIsolation } from './worker-status-shared-isolation.mjs';
 import {
+  taskQueuePrefixBindingEvidence,
   workerIdPrefixBindingEvidence,
   sharedServerReceiptFailures,
   workerStatusWorkerIds,
@@ -890,6 +891,7 @@ function runPublishedCommand(server, waterline) {
       sharedServerState,
       productEvidence,
       WORKFLOW_IDS,
+      TASK_QUEUE,
     );
     if (!sharedIsolationEvidence.passed) {
       const failedChecks = Object.entries(sharedIsolationEvidence.checks)
@@ -1009,6 +1011,11 @@ function removeDirectory(directory) {
 function finalResult() {
   const cleanupPassed = cleanupFailures.length === 0;
   const productPassed = productEvidence?.outcome === 'pass' && productEvidence?.runner_blocked === false;
+  const taskQueuePrefixBinding = taskQueuePrefixBindingEvidence(
+    sharedServerReceipt,
+    TASK_QUEUE,
+    productEvidence,
+  );
   const workerIdPrefixBinding = workerIdPrefixBindingEvidence(
     sharedServerReceipt,
     WORKER_IDS,
@@ -1063,7 +1070,7 @@ function finalResult() {
       shared_wave_run_id: sharedServerReceipt?.wave_run_id ?? null,
       isolation: {
         prescribed_namespace: sharedServerReceipt?.cell_isolation?.waterline?.namespace ?? null,
-        task_queue_prefix: sharedServerReceipt?.cell_isolation?.waterline?.task_queue_prefix ?? null,
+        ...taskQueuePrefixBinding,
         ...workerIdPrefixBinding,
         ...workflowIdPrefixBinding,
         verification: sharedIsolationEvidence,

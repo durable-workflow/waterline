@@ -35,17 +35,26 @@ const workflowIds = {
   initial_workflow_id: 'waterline-worker-status-initial-cell',
   after_stale_workflow_id: 'waterline-worker-status-after-stale-cell',
 };
+const taskQueue = 'waterline-status-cell';
 
 test('actual shared-wave identities satisfy every prescribed receipt boundary', () => {
-  const verification = verifySharedWaterlineIsolation(state(), evidence(), workflowIds);
+  const verification = verifySharedWaterlineIsolation(
+    state(),
+    evidence(),
+    workflowIds,
+    taskQueue,
+  );
 
   assert.equal(verification.passed, true);
-  assert.deepEqual(verification.planned, workflowIds);
+  assert.deepEqual(verification.planned, {
+    task_queue: taskQueue,
+    ...workflowIds,
+  });
   assert.equal(verification.observed.stale_worker_id, 'waterline-stale-cell');
   assert.equal(verification.observed.fresh_worker_id, 'waterline-fresh-cell');
   assert.deepEqual(
     Object.values(verification.checks),
-    [true, true, true, true, true, true, true, true, true, true],
+    [true, true, true, true, true, true, true, true, true, true, true, true],
   );
 });
 
@@ -53,7 +62,12 @@ test('a mismatched actual worker identity fails the shared-wave receipt', () => 
   const observed = evidence();
   observed.topology.fresh_worker_id = 'another-cell-fresh';
 
-  const verification = verifySharedWaterlineIsolation(state(), observed, workflowIds);
+  const verification = verifySharedWaterlineIsolation(
+    state(),
+    observed,
+    workflowIds,
+    taskQueue,
+  );
 
   assert.equal(verification.passed, false);
   assert.equal(verification.checks.stale_worker_matches_prefix, true);
@@ -65,7 +79,12 @@ test('missing actual worker identities cannot pass from prescribed values alone'
   delete observed.topology.stale_worker_id;
   delete observed.topology.fresh_worker_id;
 
-  const verification = verifySharedWaterlineIsolation(state(), observed, workflowIds);
+  const verification = verifySharedWaterlineIsolation(
+    state(),
+    observed,
+    workflowIds,
+    taskQueue,
+  );
 
   assert.equal(verification.passed, false);
   assert.equal(verification.observed.stale_worker_id, '');
@@ -76,9 +95,30 @@ test('observed workflow IDs must equal the prevalidated plan', () => {
   const observed = evidence();
   observed.topology.after_stale_workflow_id = 'waterline-worker-status-after-stale-other';
 
-  const verification = verifySharedWaterlineIsolation(state(), observed, workflowIds);
+  const verification = verifySharedWaterlineIsolation(
+    state(),
+    observed,
+    workflowIds,
+    taskQueue,
+  );
 
   assert.equal(verification.passed, false);
   assert.equal(verification.checks.after_stale_workflow_matches_prefix, true);
   assert.equal(verification.checks.after_stale_workflow_matches_plan, false);
+});
+
+test('observed task queue must equal the prevalidated plan', () => {
+  const observed = evidence();
+  observed.topology.task_queue = 'waterline-status-other';
+
+  const verification = verifySharedWaterlineIsolation(
+    state(),
+    observed,
+    workflowIds,
+    taskQueue,
+  );
+
+  assert.equal(verification.passed, false);
+  assert.equal(verification.checks.task_queue_matches_prefix, true);
+  assert.equal(verification.checks.task_queue_matches_plan, false);
 });

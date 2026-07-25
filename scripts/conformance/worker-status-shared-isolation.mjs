@@ -6,7 +6,12 @@ function matchesPrefix(value, prefix) {
   return prefix !== '' && value !== '' && value.startsWith(prefix);
 }
 
-export function verifySharedWaterlineIsolation(state, productEvidence, workflowIds = {}) {
+export function verifySharedWaterlineIsolation(
+  state,
+  productEvidence,
+  workflowIds = {},
+  taskQueue = '',
+) {
   const receipt = state?.cell_isolation?.waterline ?? {};
   const topology = productEvidence?.topology ?? {};
   const prescribed = {
@@ -24,14 +29,19 @@ export function verifySharedWaterlineIsolation(state, productEvidence, workflowI
     after_stale_workflow_id: string(topology.after_stale_workflow_id),
   };
   const planned = {
+    task_queue: string(taskQueue),
     initial_workflow_id: string(workflowIds.initial_workflow_id),
     after_stale_workflow_id: string(workflowIds.after_stale_workflow_id),
   };
   const checks = {
     namespace_matches_receipt:
       prescribed.namespace !== '' && observed.namespace === prescribed.namespace,
+    planned_task_queue_matches_prefix:
+      matchesPrefix(planned.task_queue, prescribed.task_queue_prefix),
     task_queue_matches_prefix:
       matchesPrefix(observed.task_queue, prescribed.task_queue_prefix),
+    task_queue_matches_plan:
+      planned.task_queue !== '' && observed.task_queue === planned.task_queue,
     stale_worker_matches_prefix:
       matchesPrefix(observed.stale_worker_id, prescribed.worker_id_prefix),
     fresh_worker_matches_prefix:

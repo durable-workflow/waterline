@@ -28,6 +28,28 @@ export function workerStatusWorkflowIds(runId) {
   };
 }
 
+export function taskQueuePrefixBindingEvidence(state, plannedTaskQueue, productEvidence) {
+  const prescribedPrefix = state?.cell_isolation?.waterline?.task_queue_prefix ?? null;
+  const observedTaskQueue = productEvidence?.topology?.task_queue ?? null;
+  const prefixPrevalidated = state === null
+    ? null
+    : plannedIdsMatchPrefix(prescribedPrefix, [plannedTaskQueue]);
+  const observedTaskQueueEqualsPlan = productEvidence === null
+    ? null
+    : observedTaskQueue === plannedTaskQueue;
+
+  return {
+    task_queue_prefix: prescribedPrefix,
+    planned_task_queue: plannedTaskQueue,
+    observed_task_queue: observedTaskQueue,
+    task_queue_prefix_prevalidated: prefixPrevalidated,
+    observed_task_queue_equals_plan: observedTaskQueueEqualsPlan,
+    task_queue_prefix_binding_proven: prefixPrevalidated === null
+      ? null
+      : prefixPrevalidated && observedTaskQueueEqualsPlan === true,
+  };
+}
+
 export function workerIdPrefixBindingEvidence(state, workerIds, productEvidence) {
   const prescribedPrefix = state?.cell_isolation?.waterline?.worker_id_prefix ?? null;
   const actualStaleWorkerId = productEvidence?.topology?.stale_worker_id ?? null;
@@ -102,9 +124,13 @@ export function sharedServerReceiptFailures(state, expected) {
     || state?.lifecycle?.cleanup_status !== 'pending') {
     failures.push('shared heartbeat server lifecycle is not owned by an active wave');
   }
-  if (!isolation || isolation.namespace !== expected.namespace
-    || !expected.taskQueue.startsWith(isolation.task_queue_prefix ?? '\0')) {
+  if (!isolation || isolation.namespace !== expected.namespace) {
     failures.push('shared heartbeat server did not prescribe isolated Waterline cell identities');
+  }
+
+  const prescribedTaskQueuePrefix = isolation?.task_queue_prefix;
+  if (!plannedIdsMatchPrefix(prescribedTaskQueuePrefix, [expected.taskQueue])) {
+    failures.push('shared heartbeat server task-queue prefix does not match the planned Waterline task queue');
   }
 
   const prescribedPrefix = isolation?.worker_id_prefix;
