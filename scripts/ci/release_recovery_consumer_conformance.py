@@ -30,8 +30,24 @@ VERSION_PATTERN = re.compile(
 )
 COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+CURRENT_PLAN_SCHEMA = "durable-workflow.release-plan/v2"
+HISTORICAL_PLAN_SCHEMA = "durable-workflow.release-plan/v1"
+EXPECTED_LEGACY_PLAN_DIGESTS = frozenset(
+    {
+        "0be354d5ea603170b6aef8ae0d9861886c4ccc0f75e6acb763239b30dd5d8ba3",
+        "295a3f654716ea8cd8dc693c1cd15a4b487737e5f01184bad7363fbde6717c40",
+        "486d9ef7c5a7f4443a89566cab33d7f2bccc518254ab6698d918a431d6a1c9ce",
+        "498804a2c7fd5b0e34f93ef080bea3073bc98e420e8bf84a98ca4cdb94729973",
+        "7bd737c92f139eec33026bc88a6491dc635d819a87a61c985e14e06aca645582",
+        "80e88698fa37b6d738d111dd2be3e3c145607973f8147c54cc25e5d91d415b17",
+        "9c0a5879652a2d5f4806a9167399687328c1764fa10dbc8d76215b43ac83b9d6",
+        "db90616c98f305c61d7eb2fb9ed03cc28f06963e9ca020c8ef6d7c6a8557f7bc",
+        "e1fc6e20c9d2ded0b5e7ac4d6be75ba861d31fc4b2db651dc0272dca623f2c7f",
+    }
+)
 REQUIRED_CASES = (
     "immutable-plan-enumeration",
+    "current-plan-schema",
     "completed-plan-lifecycle",
     "superseded-plan-lifecycle",
     "exact-successor-identity",
@@ -303,6 +319,52 @@ def plan(module: ModuleType, identity: str = "conformance") -> dict[str, Any]:
     }
 
 
+def legacy_beta_one_plan() -> dict[str, Any]:
+    return {
+        "schema": HISTORICAL_PLAN_SCHEMA,
+        "plan": "beta-1-e743e3760000",
+        "channel": "beta",
+        "foundation": {
+            "tag": "beta-candidate/beta-continuity-foundation",
+            "commit": "4995052410bd4301c5796ffba54e0b6d2f490ed1",
+        },
+        "components": {
+            "workflow": {
+                "version": "2.0.0-beta.1",
+                "commit": "22bbf2a1469f4a38b1a6e1006ca8e46835c2fea4",
+            },
+            "waterline": {
+                "version": "2.0.0-beta.1",
+                "commit": "0fb3caaba1e8a77f9bfa63ba3dcb2bcbaa825c31",
+            },
+            "server": {
+                "version": "0.2.699",
+                "commit": "d6e8fb6c76c1d71cc7d3a1d38bdebd324150acad",
+            },
+            "cli": {
+                "version": "0.1.95",
+                "commit": "bc036e94604329612b65a2a9effe2e929f91f4e1",
+            },
+            "sdk-php": {
+                "version": "0.1.16",
+                "commit": "3b79813b1bbcb811277cc30d8dcfc359ea53f65c",
+            },
+            "sdk-python": {
+                "version": "0.4.106",
+                "commit": "13037ddcb1f55d72c24256591e346b991ad64273",
+            },
+            "sdk-rust": {
+                "version": "0.1.22",
+                "commit": "6fa98425c8ec7690ef96f8296a21407aa8d03067",
+            },
+        },
+        "beta_authorization": {
+            "tag": "beta-authorization/beta-1-e743e3760000",
+            "commit": "bef98bfd61b604d48459c15e968e3ace8e5124b0",
+        },
+    }
+
+
 def authority(
     module: ModuleType,
     candidate: dict[str, Any],
@@ -363,6 +425,39 @@ def case_immutable_plan_enumeration(module: ModuleType) -> None:
         )
 
 
+def case_current_plan_schema(module: ModuleType) -> None:
+    if getattr(module, "SCHEMA", None) != CURRENT_PLAN_SCHEMA:
+        raise ConformanceError("consumer does not accept the current release-plan schema")
+    if getattr(module, "LEGACY_SCHEMA", None) != HISTORICAL_PLAN_SCHEMA:
+        raise ConformanceError("consumer does not identify the historical release-plan schema")
+    if getattr(module, "LEGACY_PLAN_DIGESTS", None) != EXPECTED_LEGACY_PLAN_DIGESTS:
+        raise ConformanceError("consumer does not pin the exact historical release-plan authorities")
+
+    current = plan(module, "current-schema-conformance")
+    module.validate_plan(current)
+
+    historical = legacy_beta_one_plan()
+    if module.manifest_digest(historical) != "e1fc6e20c9d2ded0b5e7ac4d6be75ba861d31fc4b2db651dc0272dca623f2c7f":
+        raise ConformanceError("shared historical release-plan fixture has an unexpected digest")
+    module.validate_plan(historical)
+
+    unrecorded = copy.deepcopy(historical)
+    unrecorded["plan"] = "beta-1-replacement"
+    expect_recovery_error(
+        module,
+        lambda: module.validate_plan(unrecorded),
+        "consumer accepted an unrecorded historical release plan",
+    )
+
+    unsupported = copy.deepcopy(current)
+    unsupported["schema"] = "durable-workflow.release-plan/v3"
+    expect_recovery_error(
+        module,
+        lambda: module.validate_plan(unsupported),
+        "consumer accepted an unsupported current release-plan schema",
+    )
+
+
 def case_completed_plan_lifecycle(module: ModuleType) -> None:
     completed = authority(module, plan(module, "completed-conformance"), "completed")
     with mock.patch.object(module, "classify_plan_authorities", return_value=[completed]):
@@ -414,11 +509,7 @@ def case_completed_plan_lifecycle(module: ModuleType) -> None:
         ),
         mock.patch.dict(
             module.VERIFIERS,
-            {
-                component.distribution: mock.Mock(
-                    side_effect=module.NotFound("not published")
-                )
-            },
+            {component.distribution: mock.Mock(side_effect=module.NotFound("not published"))},
         ),
     ):
         expect_recovery_error(
@@ -585,6 +676,7 @@ def case_bounded_authority_convergence(module: ModuleType) -> None:
 
 CASE_RUNNERS = {
     "immutable-plan-enumeration": case_immutable_plan_enumeration,
+    "current-plan-schema": case_current_plan_schema,
     "completed-plan-lifecycle": case_completed_plan_lifecycle,
     "superseded-plan-lifecycle": case_superseded_plan_lifecycle,
     "exact-successor-identity": case_exact_successor_identity,

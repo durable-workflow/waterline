@@ -34,7 +34,21 @@ from recovery_workflow_authority import (
     verify_workflow_source,
 )
 
-SCHEMA = "durable-workflow.release-plan/v1"
+SCHEMA = "durable-workflow.release-plan/v2"
+LEGACY_SCHEMA = "durable-workflow.release-plan/v1"
+LEGACY_PLAN_DIGESTS = frozenset(
+    {
+        "0be354d5ea603170b6aef8ae0d9861886c4ccc0f75e6acb763239b30dd5d8ba3",
+        "295a3f654716ea8cd8dc693c1cd15a4b487737e5f01184bad7363fbde6717c40",
+        "486d9ef7c5a7f4443a89566cab33d7f2bccc518254ab6698d918a431d6a1c9ce",
+        "498804a2c7fd5b0e34f93ef080bea3073bc98e420e8bf84a98ca4cdb94729973",
+        "7bd737c92f139eec33026bc88a6491dc635d819a87a61c985e14e06aca645582",
+        "80e88698fa37b6d738d111dd2be3e3c145607973f8147c54cc25e5d91d415b17",
+        "9c0a5879652a2d5f4806a9167399687328c1764fa10dbc8d76215b43ac83b9d6",
+        "db90616c98f305c61d7eb2fb9ed03cc28f06963e9ca020c8ef6d7c6a8557f7bc",
+        "e1fc6e20c9d2ded0b5e7ac4d6be75ba861d31fc4b2db651dc0272dca623f2c7f",
+    }
+)
 PREPARATION_SCHEMA = "durable-workflow.release-preparation/v1"
 STATE_SCHEMA = "durable-workflow.component-release-recovery/v1"
 CONTROL_REPOSITORY = "durable-workflow/.github"
@@ -449,8 +463,8 @@ def validate_plan(plan: Any) -> None:
     if not isinstance(plan, dict):
         raise RecoveryError("release plan must be a JSON object")
     expected = {"schema", "plan", "channel", "foundation", "components", "beta_authorization"}
-    if set(plan) != expected or plan.get("schema") != SCHEMA:
-        raise RecoveryError("release plan does not satisfy the channel-aware v1 contract")
+    if set(plan) != expected or plan.get("schema") not in {LEGACY_SCHEMA, SCHEMA}:
+        raise RecoveryError("release plan does not satisfy a supported channel-aware contract")
     if not isinstance(plan["plan"], str) or not PLAN_PATTERN.fullmatch(plan["plan"]):
         raise RecoveryError("release plan has an invalid identity")
     if plan["channel"] not in {"alpha", "beta"}:
@@ -481,6 +495,8 @@ def validate_plan(plan: Any) -> None:
         or not COMMIT_PATTERN.fullmatch(str(authorization.get("commit", "")))
     ):
         raise RecoveryError("beta plans require an immutable beta authorization")
+    if plan["schema"] == LEGACY_SCHEMA and manifest_digest(plan) not in LEGACY_PLAN_DIGESTS:
+        raise RecoveryError("legacy release plan is not an exact recorded historical contract")
 
 
 def manifest_digest(value: Any) -> str:
