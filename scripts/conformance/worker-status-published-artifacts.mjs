@@ -13,6 +13,7 @@ import {
   runWithCleanup,
   waitForHttpReadiness,
 } from './worker-status-runner-lifecycle.mjs';
+import { verifySharedWaterlineIsolation } from './worker-status-shared-isolation.mjs';
 import {
   workerIdPrefixBindingEvidence,
   sharedServerReceiptFailures,
@@ -84,6 +85,7 @@ let sharedServerState = null;
 let cliInstall = null;
 let packageInstall = null;
 let runnerError = null;
+let sharedIsolationEvidence = null;
 const interruption = createInterruptionMonitor();
 
 function env(name) {
@@ -872,6 +874,17 @@ function runPublishedCommand(server, waterline) {
     || productEvidence?.topology?.fresh_worker_id !== WORKER_IDS.fresh_worker_id) {
     throw new Error('published command evidence does not match the validated Waterline worker-ID plan');
   }
+  if (USE_SHARED_SERVER) {
+    sharedIsolationEvidence = verifySharedWaterlineIsolation(sharedServerState, productEvidence);
+    if (!sharedIsolationEvidence.passed) {
+      const failedChecks = Object.entries(sharedIsolationEvidence.checks)
+        .filter(([, passed]) => passed !== true)
+        .map(([check]) => check);
+      throw new Error(
+        `published Waterline identities do not satisfy the shared-wave receipt: ${failedChecks.join(', ')}`,
+      );
+    }
+  }
 }
 
 function cleanupWaterline() {
@@ -1032,6 +1045,7 @@ function finalResult() {
         prescribed_namespace: sharedServerState?.cell_isolation?.waterline?.namespace ?? null,
         task_queue_prefix: sharedServerState?.cell_isolation?.waterline?.task_queue_prefix ?? null,
         ...workerIdPrefixBinding,
+        verification: sharedIsolationEvidence,
       },
     },
     installs: {

@@ -348,6 +348,7 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             'scripts/conformance/worker-status-published-artifacts.mjs',
             'scripts/conformance/worker-status-network.mjs',
             'scripts/conformance/worker-status-runner-lifecycle.mjs',
+            'scripts/conformance/worker-status-shared-isolation.mjs',
             'scripts/conformance/worker-status-shared-topology.mjs',
             'scripts/conformance/worker-status-version.mjs',
             'app/Console/WorkerStatusConformanceCommand.php',
