@@ -90,9 +90,9 @@ function executeSharedRunner(state, temporaryDirectoryPrefix) {
         DW_SERVER_VERSION: expected.serverVersion,
         DW_SERVER_IMAGE: expected.serverImage,
         DW_CLI_VERSION: '0.1.86',
-        DW_PHP_SDK_VERSION: '2.0.0-beta.14',
-        DW_WORKFLOW_PHP_VERSION: '2.0.0-beta.14',
-        DW_WATERLINE_VERSION: '2.0.0-beta.14',
+        DW_PHP_SDK_VERSION: '2.0.0-beta.16',
+        DW_WORKFLOW_PHP_VERSION: '2.0.0-beta.16',
+        DW_WATERLINE_VERSION: '2.0.0-beta.16',
         DW_WATERLINE_WORKER_STATUS_NAMESPACE: expected.namespace,
         DW_WATERLINE_WORKER_STATUS_SHARED_SERVER_STATE: statePath,
       },
@@ -164,7 +164,7 @@ test('matching receipt prefix constructs and validates both Waterline worker IDs
   );
 });
 
-test('mismatched receipt prefix is rejected before the beta.14 workers can run', () => {
+test('mismatched receipt prefix is rejected before the beta.16 workers can run', () => {
   const workerIds = workerStatusWorkerIds('shared-cell-1234');
   const workflowIds = workerStatusWorkflowIds('shared-cell-1234');
   const state = receipt({ workerIdPrefix: 'different-cell-' });

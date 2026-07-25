@@ -11,8 +11,8 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("standalone_lock_contract.py")
 PACKAGE = "durable-workflow/sdk"
-VERSION = "2.0.0-beta.14"
-REFERENCE = "47bb5d213b1ebd1504a01b49cd574891b603a747"
+VERSION = "2.0.0-beta.16"
+REFERENCE = "b1c756259847ea1259c1c132d9b2efbf4e24d188"
 
 
 def load_contract():
@@ -88,7 +88,7 @@ class StandaloneLockContractTest(unittest.TestCase):
 
         with self.assertRaisesRegex(
             contract.ContractError,
-            r"source\.reference.+public 2\.0\.0-beta\.14 package",
+            r"source\.reference.+public 2\.0\.0-beta\.16 package",
         ):
             contract.validate_identity(manifest(), lock(stale), published())
 
@@ -99,7 +99,7 @@ class StandaloneLockContractTest(unittest.TestCase):
 
         with self.assertRaisesRegex(
             contract.ContractError,
-            r"dist\.url.+public 2\.0\.0-beta\.14 package",
+            r"dist\.url.+public 2\.0\.0-beta\.16 package",
         ):
             contract.validate_identity(manifest(), inconsistent, published())
 
