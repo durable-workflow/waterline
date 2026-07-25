@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import importlib.util
 import json
 import os
@@ -73,19 +74,62 @@ def source_recovery_evidence(release_plan: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema": recovery.RECOVERY_SCHEMA,
         "component": "waterline",
-        "release_plan_tag": PLAN_TAG,
-        "plan": "beta.14",
-        "channel": "beta",
+        "release_plan_tag": f"release-plan/{release_plan['plan']}",
+        "plan": release_plan["plan"],
+        "channel": release_plan["channel"],
         "plan_record_commit": PLAN_COMMIT,
         "phase": "complete",
         "outcome": "verified",
         "declared_identity": identity,
-        "source_tag": {"status": "present", "commit": SOURCE_COMMIT},
+        "source_tag": {"status": "present", "commit": identity["commit"]},
         "public_evidence": {
-            "version": VERSION,
-            "commit": SOURCE_COMMIT,
+            "version": identity["version"],
+            "commit": identity["commit"],
             "distribution": {"kind": "composer"},
             "github_release": {"id": 7},
+        },
+    }
+
+
+def legacy_beta_one_plan() -> dict[str, Any]:
+    return {
+        "schema": recovery.LEGACY_PLAN_SCHEMA,
+        "plan": "beta-1-e743e3760000",
+        "channel": "beta",
+        "foundation": recovery.FOUNDATION,
+        "components": {
+            "workflow": {
+                "version": "2.0.0-beta.1",
+                "commit": "22bbf2a1469f4a38b1a6e1006ca8e46835c2fea4",
+            },
+            "waterline": {
+                "version": "2.0.0-beta.1",
+                "commit": "0fb3caaba1e8a77f9bfa63ba3dcb2bcbaa825c31",
+            },
+            "server": {
+                "version": "0.2.699",
+                "commit": "d6e8fb6c76c1d71cc7d3a1d38bdebd324150acad",
+            },
+            "cli": {
+                "version": "0.1.95",
+                "commit": "bc036e94604329612b65a2a9effe2e929f91f4e1",
+            },
+            "sdk-php": {
+                "version": "0.1.16",
+                "commit": "3b79813b1bbcb811277cc30d8dcfc359ea53f65c",
+            },
+            "sdk-python": {
+                "version": "0.4.106",
+                "commit": "13037ddcb1f55d72c24256591e346b991ad64273",
+            },
+            "sdk-rust": {
+                "version": "0.1.22",
+                "commit": "6fa98425c8ec7690ef96f8296a21407aa8d03067",
+            },
+        },
+        "beta_authorization": {
+            "tag": "beta-authorization/beta-1-e743e3760000",
+            "commit": "bef98bfd61b604d48459c15e968e3ace8e5124b0",
         },
     }
 
@@ -277,6 +321,58 @@ class ServiceImageRecoveryTest(unittest.TestCase):
 
     def evidence(self) -> dict[str, Any]:
         return json.loads(self.evidence_path.read_bytes())
+
+    def test_plan_schema_accepts_current_and_only_recorded_historical_contracts(
+        self,
+    ) -> None:
+        current = self.plan
+        self.assertEqual(
+            (VERSION, SOURCE_COMMIT),
+            recovery.validate_plan(
+                current,
+                source_recovery_evidence(current),
+                PLAN_TAG,
+                PLAN_COMMIT,
+            ),
+        )
+
+        historical = legacy_beta_one_plan()
+        historical_tag = f"release-plan/{historical['plan']}"
+        self.assertEqual(
+            (
+                historical["components"]["waterline"]["version"],
+                historical["components"]["waterline"]["commit"],
+            ),
+            recovery.validate_plan(
+                historical,
+                source_recovery_evidence(historical),
+                historical_tag,
+                PLAN_COMMIT,
+            ),
+        )
+
+        altered_historical = copy.deepcopy(historical)
+        altered_historical["components"]["cli"]["commit"] = "d" * 40
+        with self.assertRaisesRegex(
+            recovery.RecoveryError,
+            "not an exact recorded historical contract",
+        ):
+            recovery.validate_plan(
+                altered_historical,
+                source_recovery_evidence(altered_historical),
+                historical_tag,
+                PLAN_COMMIT,
+            )
+
+        unknown = copy.deepcopy(current)
+        unknown["schema"] = "durable-workflow.release-plan/v3"
+        with self.assertRaisesRegex(recovery.RecoveryError, "unsupported schema"):
+            recovery.validate_plan(
+                unknown,
+                source_recovery_evidence(unknown),
+                PLAN_TAG,
+                PLAN_COMMIT,
+            )
 
     def test_public_noop_rehearsal_binds_digest_platforms_and_labels_to_plan(
         self,

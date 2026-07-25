@@ -19,7 +19,21 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA = "durable-workflow.waterline.service-image-recovery/v1"
-PLAN_SCHEMA = "durable-workflow.release-plan/v1"
+PLAN_SCHEMA = "durable-workflow.release-plan/v2"
+LEGACY_PLAN_SCHEMA = "durable-workflow.release-plan/v1"
+LEGACY_PLAN_DIGESTS = frozenset(
+    {
+        "0be354d5ea603170b6aef8ae0d9861886c4ccc0f75e6acb763239b30dd5d8ba3",
+        "295a3f654716ea8cd8dc693c1cd15a4b487737e5f01184bad7363fbde6717c40",
+        "486d9ef7c5a7f4443a89566cab33d7f2bccc518254ab6698d918a431d6a1c9ce",
+        "498804a2c7fd5b0e34f93ef080bea3073bc98e420e8bf84a98ca4cdb94729973",
+        "7bd737c92f139eec33026bc88a6491dc635d819a87a61c985e14e06aca645582",
+        "80e88698fa37b6d738d111dd2be3e3c145607973f8147c54cc25e5d91d415b17",
+        "9c0a5879652a2d5f4806a9167399687328c1764fa10dbc8d76215b43ac83b9d6",
+        "db90616c98f305c61d7eb2fb9ed03cc28f06963e9ca020c8ef6d7c6a8557f7bc",
+        "e1fc6e20c9d2ded0b5e7ac4d6be75ba861d31fc4b2db651dc0272dca623f2c7f",
+    }
+)
 RECOVERY_SCHEMA = "durable-workflow.component-release-recovery/v1"
 CONTROL_REPOSITORY = "durable-workflow/.github"
 WATERLINE_REPOSITORY = "durable-workflow/waterline"
@@ -181,8 +195,16 @@ def validate_plan(
         "beta_authorization",
     }:
         raise RecoveryError("release plan has an invalid top-level shape")
-    if plan.get("schema") != PLAN_SCHEMA:
+    if plan.get("schema") not in {PLAN_SCHEMA, LEGACY_PLAN_SCHEMA}:
         raise RecoveryError("release plan has an unsupported schema")
+    if (
+        plan["schema"] == LEGACY_PLAN_SCHEMA
+        and hashlib.sha256(canonical_json(plan)).hexdigest()
+        not in LEGACY_PLAN_DIGESTS
+    ):
+        raise RecoveryError(
+            "legacy release plan is not an exact recorded historical contract"
+        )
     plan_name = plan.get("plan")
     if not isinstance(plan_name, str) or not PLAN_PATTERN.fullmatch(plan_name):
         raise RecoveryError("release plan has an invalid identity")
