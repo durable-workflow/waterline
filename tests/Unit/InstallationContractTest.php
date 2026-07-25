@@ -28,9 +28,9 @@ final class InstallationContractTest extends TestCase
             JSON_THROW_ON_ERROR,
         );
         $releaseVersion = $manifest['extra']['durable-workflow']['product-train'] ?? null;
-        $dependencyVersion = '2.0.0-beta.13';
+        $dependencyVersion = '2.0.0-beta.14';
 
-        $this->assertSame('2.0.0-beta.13', $releaseVersion);
+        $this->assertSame('2.0.0-beta.14', $releaseVersion);
         $this->assertSame($dependencyVersion, $manifest['require']['durable-workflow/sdk'] ?? null);
         $this->assertArrayNotHasKey('durable-workflow/workflow', $manifest['require'] ?? []);
         $this->assertSame($dependencyVersion, $manifest['require-dev']['durable-workflow/workflow'] ?? null);
@@ -69,7 +69,7 @@ final class InstallationContractTest extends TestCase
             }
         }
 
-        $this->assertSame('2.0.0-beta.13', $packages['durable-workflow/sdk'] ?? null);
+        $this->assertSame('2.0.0-beta.14', $packages['durable-workflow/sdk'] ?? null);
         $this->assertArrayNotHasKey('durable-workflow/waterline', $packages);
         $this->assertArrayNotHasKey('durable-workflow/workflow', $packages);
     }

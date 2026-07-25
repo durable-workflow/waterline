@@ -25,8 +25,8 @@ SPEC.loader.exec_module(recovery)
 PLAN_COMMIT = "a" * 40
 SOURCE_COMMIT = "b" * 40
 WORKFLOW_COMMIT = "c" * 40
-VERSION = "2.0.0-beta.13"
-PLAN_TAG = "release-plan/beta.13"
+VERSION = "2.0.0-beta.14"
+PLAN_TAG = "release-plan/beta.14"
 
 
 def raw_json(value: Any) -> bytes:
@@ -35,13 +35,13 @@ def raw_json(value: Any) -> bytes:
 
 def plan() -> dict[str, Any]:
     versions = {
-        "workflow": "2.0.0-beta.13",
+        "workflow": "2.0.0-beta.14",
         "waterline": VERSION,
-        "server": "2.0.0-beta.13",
-        "cli": "2.0.0-beta.13",
-        "sdk-php": "2.0.0-beta.13",
-        "sdk-python": "2.0.0-beta.13",
-        "sdk-rust": "2.0.0-beta.13",
+        "server": "2.0.0-beta.14",
+        "cli": "2.0.0-beta.14",
+        "sdk-php": "2.0.0-beta.14",
+        "sdk-python": "2.0.0-beta.14",
+        "sdk-rust": "2.0.0-beta.14",
     }
     commits = {
         "workflow": "1" * 40,
@@ -54,7 +54,7 @@ def plan() -> dict[str, Any]:
     }
     return {
         "schema": recovery.PLAN_SCHEMA,
-        "plan": "beta.13",
+        "plan": "beta.14",
         "channel": "beta",
         "foundation": recovery.FOUNDATION,
         "components": {
@@ -62,7 +62,7 @@ def plan() -> dict[str, Any]:
             for name in sorted(recovery.COMPONENTS)
         },
         "beta_authorization": {
-            "tag": "beta-authorization/beta.13",
+            "tag": "beta-authorization/beta.14",
             "commit": "8" * 40,
         },
     }
@@ -74,7 +74,7 @@ def source_recovery_evidence(release_plan: dict[str, Any]) -> dict[str, Any]:
         "schema": recovery.RECOVERY_SCHEMA,
         "component": "waterline",
         "release_plan_tag": PLAN_TAG,
-        "plan": "beta.13",
+        "plan": "beta.14",
         "channel": "beta",
         "plan_record_commit": PLAN_COMMIT,
         "phase": "complete",

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "ba686a4b9582283f3f6865e3e904b58d",
+    "content-hash": "d78669cdd8bee55a508543ebefcb6ce2",
     "packages": [
         {
             "name": "apache/avro",
@@ -505,16 +505,16 @@
         },
         {
             "name": "durable-workflow/sdk",
-            "version": "2.0.0-beta.13",
+            "version": "2.0.0-beta.14",
             "source": {
                 "type": "git",
                 "url": "https://github.com/durable-workflow/sdk-php.git",
-                "reference": "55d8520490581eb07c499b47011962e04221fdb3"
+                "reference": "47bb5d213b1ebd1504a01b49cd574891b603a747"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/55d8520490581eb07c499b47011962e04221fdb3",
-                "reference": "55d8520490581eb07c499b47011962e04221fdb3",
+                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/47bb5d213b1ebd1504a01b49cd574891b603a747",
+                "reference": "47bb5d213b1ebd1504a01b49cd574891b603a747",
                 "shasum": ""
             },
             "require": {
@@ -538,13 +538,13 @@
             "type": "library",
             "extra": {
                 "durable-workflow": {
-                    "product-train": "2.0.0-beta.13",
+                    "product-train": "2.0.0-beta.14",
                     "payload-codecs": [
                         "avro"
                     ],
                     "control-plane-version": "2",
                     "worker-protocol-version": "1.13",
-                    "supported-server-versions": "2.0.0-beta.13"
+                    "supported-server-versions": "2.0.0-beta.14"
                 }
             },
             "autoload": {
@@ -575,7 +575,7 @@
                 "issues": "https://github.com/durable-workflow/sdk-php/issues",
                 "source": "https://github.com/durable-workflow/sdk-php"
             },
-            "time": "2026-07-25T06:03:45+00:00"
+            "time": "2026-07-25T09:05:52+00:00"
         },
         {
             "name": "egulias/email-validator",
