@@ -55,6 +55,7 @@ const COMPOSER_HOME_DIR = path.join(RUN_ROOT, 'composer-home');
 const COMPOSE_FILE = path.join(RUN_ROOT, 'docker-compose.yml');
 const PROJECT = `dw-waterline-status-${SUFFIX}`;
 let NETWORK = `${PROJECT}_default`;
+let sharedServerNetwork = '';
 const WATERLINE_CONTAINER = `dw-waterline-status-ui-${SUFFIX}`;
 const TASK_QUEUE = `waterline-status-${SUFFIX}`;
 const WORKER_IDS = workerStatusWorkerIds(RUN_ID);
@@ -159,6 +160,16 @@ function commandExists(command) {
 }
 
 function run(command, args, options = {}) {
+  if (command === 'docker'
+    && args[0] === 'run'
+    && sharedServerNetwork
+    && !args.includes('--network')) {
+    args = [
+      'run',
+      '--network', sharedServerNetwork,
+      ...args.slice(1),
+    ];
+  }
   const display = options.display ?? [command, ...args].map((part) => path.basename(String(part))).join(' ');
   log(`command: ${display}`);
   const result = spawnSync(command, args, {
@@ -444,6 +455,8 @@ async function attachSharedServer() {
     // The shared receipt validator reports the actionable endpoint failure.
   }
   if (failures.length > 0) throw new Error(failures.join('; '));
+  sharedServerNetwork = state.compose.network;
+  NETWORK = sharedServerNetwork;
 
   const image = parseJson(run('docker', ['image', 'inspect', SERVER_IMAGE], {
     display: 'inspect shared published server image',
@@ -467,7 +480,6 @@ async function attachSharedServer() {
     throw new Error('shared heartbeat server receipt has no canonical public image digest');
   }
   const phpRuntime = detectPhpRuntime(SERVER_IMAGE, 'the exact shared published server image');
-  NETWORK = state.compose.network;
   ARTIFACT_SOURCES.server = `docker://${publicDigest}`;
   sharedServerState = state;
   serverInstall = {

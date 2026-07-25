@@ -135,6 +135,22 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             $sharedTopology,
         );
         $this->assertStringContainsString('running shared server no longer matches', $node);
+        $this->assertStringContainsString(
+            "command === 'docker'",
+            $node,
+        );
+        $this->assertStringContainsString(
+            "args[0] === 'run'",
+            $node,
+        );
+        $this->assertStringContainsString(
+            "'--network', sharedServerNetwork",
+            $node,
+        );
+        $this->assertStringContainsString(
+            'sharedServerNetwork = state.compose.network;',
+            $node,
+        );
         $this->assertStringContainsString("mode: 'shared_wave_clean_bootstrap'", $node);
         $this->assertStringContainsString("mode: 'focused_cell_clean_bootstrap'", $node);
         $this->assertStringContainsString("status: 'retained_for_wave_cleanup'", $node);
