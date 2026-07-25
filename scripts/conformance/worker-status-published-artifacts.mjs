@@ -18,6 +18,8 @@ import {
   workerIdPrefixBindingEvidence,
   sharedServerReceiptFailures,
   workerStatusWorkerIds,
+  workerStatusWorkflowIds,
+  workflowIdPrefixBindingEvidence,
 } from './worker-status-shared-topology.mjs';
 import { isExact2xPrerelease, isExactSemverRelease } from './worker-status-version.mjs';
 
@@ -55,6 +57,7 @@ let NETWORK = `${PROJECT}_default`;
 const WATERLINE_CONTAINER = `dw-waterline-status-ui-${SUFFIX}`;
 const TASK_QUEUE = `waterline-status-${SUFFIX}`;
 const WORKER_IDS = workerStatusWorkerIds(RUN_ID);
+const WORKFLOW_IDS = workerStatusWorkflowIds(RUN_ID);
 const EVIDENCE_PATH = path.join(RESULT_DIR, 'waterline-worker-status-evidence.json');
 const RESULT_PATH = path.join(RESULT_DIR, 'waterline-worker-status-result.json');
 const ARTIFACT_VERSIONS = {
@@ -81,6 +84,7 @@ let publishedCommandStarted = false;
 let productEvidence = null;
 let sourceHygiene = null;
 let serverInstall = null;
+let sharedServerReceipt = null;
 let sharedServerState = null;
 let cliInstall = null;
 let packageInstall = null;
@@ -422,12 +426,14 @@ async function attachSharedServer() {
   }
   const stateBytes = fs.readFileSync(statePath);
   const state = JSON.parse(stateBytes.toString('utf8'));
+  sharedServerReceipt = state;
   const failures = sharedServerReceiptFailures(state, {
     serverVersion: SERVER_VERSION,
     serverImage: SERVER_IMAGE,
     namespace: NAMESPACE,
     taskQueue: TASK_QUEUE,
     workerIds: WORKER_IDS,
+    workflowIds: WORKFLOW_IDS,
   });
   let hostUrl = null;
   try {
@@ -874,8 +880,17 @@ function runPublishedCommand(server, waterline) {
     || productEvidence?.topology?.fresh_worker_id !== WORKER_IDS.fresh_worker_id) {
     throw new Error('published command evidence does not match the validated Waterline worker-ID plan');
   }
+  if (productEvidence?.topology?.initial_workflow_id !== WORKFLOW_IDS.initial_workflow_id
+    || productEvidence?.topology?.after_stale_workflow_id
+      !== WORKFLOW_IDS.after_stale_workflow_id) {
+    throw new Error('published command evidence does not match the validated Waterline workflow-ID plan');
+  }
   if (USE_SHARED_SERVER) {
-    sharedIsolationEvidence = verifySharedWaterlineIsolation(sharedServerState, productEvidence);
+    sharedIsolationEvidence = verifySharedWaterlineIsolation(
+      sharedServerState,
+      productEvidence,
+      WORKFLOW_IDS,
+    );
     if (!sharedIsolationEvidence.passed) {
       const failedChecks = Object.entries(sharedIsolationEvidence.checks)
         .filter(([, passed]) => passed !== true)
@@ -995,8 +1010,13 @@ function finalResult() {
   const cleanupPassed = cleanupFailures.length === 0;
   const productPassed = productEvidence?.outcome === 'pass' && productEvidence?.runner_blocked === false;
   const workerIdPrefixBinding = workerIdPrefixBindingEvidence(
-    sharedServerState,
+    sharedServerReceipt,
     WORKER_IDS,
+    productEvidence,
+  );
+  const workflowIdPrefixBinding = workflowIdPrefixBindingEvidence(
+    sharedServerReceipt,
+    WORKFLOW_IDS,
     productEvidence,
   );
   let outcome = 'non_passing_runner_blocked';
@@ -1040,11 +1060,12 @@ function finalResult() {
       stale_after_seconds: STALE_SECONDS,
       readiness_attempt_timeout_seconds: READINESS_ATTEMPT_SECONDS,
       readiness_deadline_seconds: READINESS_DEADLINE_SECONDS,
-      shared_wave_run_id: sharedServerState?.wave_run_id ?? null,
+      shared_wave_run_id: sharedServerReceipt?.wave_run_id ?? null,
       isolation: {
-        prescribed_namespace: sharedServerState?.cell_isolation?.waterline?.namespace ?? null,
-        task_queue_prefix: sharedServerState?.cell_isolation?.waterline?.task_queue_prefix ?? null,
+        prescribed_namespace: sharedServerReceipt?.cell_isolation?.waterline?.namespace ?? null,
+        task_queue_prefix: sharedServerReceipt?.cell_isolation?.waterline?.task_queue_prefix ?? null,
         ...workerIdPrefixBinding,
+        ...workflowIdPrefixBinding,
         verification: sharedIsolationEvidence,
       },
     },

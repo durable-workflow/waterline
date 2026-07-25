@@ -1,9 +1,30 @@
-export function workerStatusWorkerIds(runId) {
+function runIdentitySuffix(runId) {
   const normalizedRunId = String(runId).replace(/[^a-zA-Z0-9]/g, '') || 'run';
-  const suffix = normalizedRunId.slice(-16).toLowerCase();
+  return normalizedRunId.slice(-16).toLowerCase();
+}
+
+function plannedIdsMatchPrefix(prefix, plannedIds) {
+  return typeof prefix === 'string'
+    && prefix !== ''
+    && prefix === prefix.trim()
+    && !/[\u0000-\u001f\u007f]/.test(prefix)
+    && plannedIds.every((plannedId) =>
+      typeof plannedId === 'string' && plannedId.startsWith(prefix));
+}
+
+export function workerStatusWorkerIds(runId) {
+  const suffix = runIdentitySuffix(runId);
   return {
     stale_worker_id: `waterline-stale-${suffix}`,
     fresh_worker_id: `waterline-fresh-${suffix}`,
+  };
+}
+
+export function workerStatusWorkflowIds(runId) {
+  const suffix = runIdentitySuffix(runId);
+  return {
+    initial_workflow_id: `waterline-worker-status-initial-${suffix}`,
+    after_stale_workflow_id: `waterline-worker-status-after-stale-${suffix}`,
   };
 }
 
@@ -23,6 +44,38 @@ export function workerIdPrefixBindingEvidence(state, workerIds, productEvidence)
         && actualFreshWorkerId === workerIds.fresh_worker_id
         && actualStaleWorkerId.startsWith(prescribedPrefix)
         && actualFreshWorkerId.startsWith(prescribedPrefix),
+  };
+}
+
+export function workflowIdPrefixBindingEvidence(state, workflowIds, productEvidence) {
+  const prescribedPrefix = state?.cell_isolation?.waterline?.workflow_id_prefix ?? null;
+  const plannedInitialWorkflowId = workflowIds.initial_workflow_id;
+  const plannedAfterStaleWorkflowId = workflowIds.after_stale_workflow_id;
+  const observedInitialWorkflowId = productEvidence?.topology?.initial_workflow_id ?? null;
+  const observedAfterStaleWorkflowId =
+    productEvidence?.topology?.after_stale_workflow_id ?? null;
+  const prefixPrevalidated = state === null
+    ? null
+    : plannedIdsMatchPrefix(prescribedPrefix, [
+      plannedInitialWorkflowId,
+      plannedAfterStaleWorkflowId,
+    ]);
+  const observedIdsEqualPlan = productEvidence === null
+    ? null
+    : observedInitialWorkflowId === plannedInitialWorkflowId
+      && observedAfterStaleWorkflowId === plannedAfterStaleWorkflowId;
+
+  return {
+    workflow_id_prefix: prescribedPrefix,
+    planned_initial_workflow_id: plannedInitialWorkflowId,
+    planned_after_stale_workflow_id: plannedAfterStaleWorkflowId,
+    observed_initial_workflow_id: observedInitialWorkflowId,
+    observed_after_stale_workflow_id: observedAfterStaleWorkflowId,
+    workflow_id_prefix_prevalidated: prefixPrevalidated,
+    observed_workflow_ids_equal_plan: observedIdsEqualPlan,
+    workflow_id_prefix_binding_proven: prefixPrevalidated === null
+      ? null
+      : prefixPrevalidated && observedIdsEqualPlan === true,
   };
 }
 
@@ -59,13 +112,17 @@ export function sharedServerReceiptFailures(state, expected) {
     expected.workerIds?.stale_worker_id,
     expected.workerIds?.fresh_worker_id,
   ];
-  if (typeof prescribedPrefix !== 'string'
-    || prescribedPrefix === ''
-    || prescribedPrefix !== prescribedPrefix.trim()
-    || /[\u0000-\u001f\u007f]/.test(prescribedPrefix)
-    || plannedWorkerIds.some((workerId) =>
-      typeof workerId !== 'string' || !workerId.startsWith(prescribedPrefix))) {
+  if (!plannedIdsMatchPrefix(prescribedPrefix, plannedWorkerIds)) {
     failures.push('shared heartbeat server worker-ID prefix does not match the planned Waterline workers');
+  }
+
+  const prescribedWorkflowPrefix = isolation?.workflow_id_prefix;
+  const plannedWorkflowIds = [
+    expected.workflowIds?.initial_workflow_id,
+    expected.workflowIds?.after_stale_workflow_id,
+  ];
+  if (!plannedIdsMatchPrefix(prescribedWorkflowPrefix, plannedWorkflowIds)) {
+    failures.push('shared heartbeat server workflow-ID prefix does not match the planned Waterline workflows');
   }
 
   try {

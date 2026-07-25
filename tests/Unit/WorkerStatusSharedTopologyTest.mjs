@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 import {
   workerIdPrefixBindingEvidence,
   sharedServerReceiptFailures,
   workerStatusWorkerIds,
+  workerStatusWorkflowIds,
+  workflowIdPrefixBindingEvidence,
 } from '../../scripts/conformance/worker-status-shared-topology.mjs';
 
 const expected = {
@@ -14,7 +20,10 @@ const expected = {
   taskQueue: 'waterline-status-abc123',
 };
 
-function receipt(workerIdPrefix = 'waterline-') {
+function receipt({
+  workerIdPrefix = 'waterline-',
+  workflowIdPrefix = 'waterline-worker-status-',
+} = {}) {
   return {
     schema: 'durable-workflow.v2.heartbeat-runtime.shared-server-bootstrap',
     version: 1,
@@ -37,6 +46,7 @@ function receipt(workerIdPrefix = 'waterline-') {
       waterline: {
         namespace: expected.namespace,
         task_queue_prefix: 'waterline-status-',
+        workflow_id_prefix: workflowIdPrefix,
         worker_id_prefix: workerIdPrefix,
       },
     },
@@ -53,12 +63,20 @@ function receipt(workerIdPrefix = 'waterline-') {
 test('matching receipt prefix constructs and validates both Waterline worker IDs', () => {
   const state = receipt();
   const workerIds = workerStatusWorkerIds('1722222222222-ABCDEF0123456789');
+  const workflowIds = workerStatusWorkflowIds('1722222222222-ABCDEF0123456789');
 
   assert.deepEqual(workerIds, {
     stale_worker_id: 'waterline-stale-abcdef0123456789',
     fresh_worker_id: 'waterline-fresh-abcdef0123456789',
   });
-  assert.deepEqual(sharedServerReceiptFailures(state, { ...expected, workerIds }), []);
+  assert.deepEqual(workflowIds, {
+    initial_workflow_id: 'waterline-worker-status-initial-abcdef0123456789',
+    after_stale_workflow_id: 'waterline-worker-status-after-stale-abcdef0123456789',
+  });
+  assert.deepEqual(
+    sharedServerReceiptFailures(state, { ...expected, workerIds, workflowIds }),
+    [],
+  );
   assert.deepEqual(workerIdPrefixBindingEvidence(state, workerIds, {
     topology: {
       stale_worker_id: workerIds.stale_worker_id,
@@ -70,19 +88,133 @@ test('matching receipt prefix constructs and validates both Waterline worker IDs
     actual_fresh_worker_id: 'waterline-fresh-abcdef0123456789',
     worker_id_prefix_binding_proven: true,
   });
+  assert.deepEqual(workflowIdPrefixBindingEvidence(state, workflowIds, {
+    topology: workflowIds,
+  }), {
+    workflow_id_prefix: 'waterline-worker-status-',
+    planned_initial_workflow_id: workflowIds.initial_workflow_id,
+    planned_after_stale_workflow_id: workflowIds.after_stale_workflow_id,
+    observed_initial_workflow_id: workflowIds.initial_workflow_id,
+    observed_after_stale_workflow_id: workflowIds.after_stale_workflow_id,
+    workflow_id_prefix_prevalidated: true,
+    observed_workflow_ids_equal_plan: true,
+    workflow_id_prefix_binding_proven: true,
+  });
 });
 
 test('mismatched receipt prefix is rejected before the beta.12 workers can run', () => {
   const workerIds = workerStatusWorkerIds('shared-cell-1234');
-  const state = receipt('different-cell-');
+  const workflowIds = workerStatusWorkflowIds('shared-cell-1234');
+  const state = receipt({ workerIdPrefix: 'different-cell-' });
 
-  assert.deepEqual(sharedServerReceiptFailures(state, { ...expected, workerIds }), [
+  assert.deepEqual(sharedServerReceiptFailures(state, { ...expected, workerIds, workflowIds }), [
     'shared heartbeat server worker-ID prefix does not match the planned Waterline workers',
   ]);
 });
 
+test('missing, malformed, and partial workflow-ID prefixes fail preflight', () => {
+  const workerIds = workerStatusWorkerIds('shared-cell-1234');
+  const workflowIds = workerStatusWorkflowIds('shared-cell-1234');
+  const cases = [
+    undefined,
+    '',
+    ' waterline-worker-status-',
+    'waterline-worker-status-\n',
+    'waterline-worker-status-initial-',
+    'different-cell-',
+  ];
+
+  for (const workflowIdPrefix of cases) {
+    const state = receipt({ workflowIdPrefix });
+    if (workflowIdPrefix === undefined) {
+      delete state.cell_isolation.waterline.workflow_id_prefix;
+    }
+
+    assert.deepEqual(
+      sharedServerReceiptFailures(state, { ...expected, workerIds, workflowIds }),
+      ['shared heartbeat server workflow-ID prefix does not match the planned Waterline workflows'],
+    );
+  }
+});
+
+test('mismatched workflow-ID prefix blocks the published command in the executable runner', () => {
+  const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'waterline-workflow-prefix-'));
+  const resultDir = path.join(testRoot, 'results');
+  const fakeBin = path.join(testRoot, 'bin');
+  const statePath = path.join(testRoot, 'shared-receipt.json');
+  fs.mkdirSync(resultDir);
+  fs.mkdirSync(fakeBin);
+
+  try {
+    for (const command of ['docker', 'curl']) {
+      const commandPath = path.join(fakeBin, command);
+      fs.writeFileSync(commandPath, '#!/bin/sh\nexit 99\n', 'utf8');
+      fs.chmodSync(commandPath, 0o755);
+    }
+    fs.writeFileSync(
+      statePath,
+      `${JSON.stringify(receipt({ workflowIdPrefix: 'different-cell-' }))}\n`,
+      'utf8',
+    );
+
+    const runner = path.resolve(
+      import.meta.dirname,
+      '../../scripts/conformance/worker-status-published-artifacts.mjs',
+    );
+    const result = spawnSync(process.execPath, [runner], {
+      env: {
+        ...process.env,
+        PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ''}`,
+        RESULT_DIR: resultDir,
+        DW_SERVER_VERSION: expected.serverVersion,
+        DW_SERVER_IMAGE: expected.serverImage,
+        DW_CLI_VERSION: '0.1.86',
+        DW_PHP_SDK_VERSION: '2.0.0-beta.10',
+        DW_WORKFLOW_PHP_VERSION: '2.0.0-beta.10',
+        DW_WATERLINE_VERSION: '2.0.0-beta.12',
+        DW_WATERLINE_WORKER_STATUS_NAMESPACE: expected.namespace,
+        DW_WATERLINE_WORKER_STATUS_SHARED_SERVER_STATE: statePath,
+      },
+      encoding: 'utf8',
+    });
+
+    assert.equal(result.status, 1, result.stderr || result.stdout);
+    const runResult = JSON.parse(fs.readFileSync(
+      path.join(resultDir, 'waterline-worker-status-result.json'),
+      'utf8',
+    ));
+    assert.match(
+      runResult.runner_error.message,
+      /workflow-ID prefix does not match the planned Waterline workflows/,
+    );
+    assert.equal(runResult.runner_error.published_command_started, false);
+    assert.equal(runResult.product_evidence, null);
+    assert.equal(
+      runResult.topology.isolation.workflow_id_prefix,
+      'different-cell-',
+    );
+    assert.match(
+      runResult.topology.isolation.planned_initial_workflow_id,
+      /^waterline-worker-status-initial-/,
+    );
+    assert.match(
+      runResult.topology.isolation.planned_after_stale_workflow_id,
+      /^waterline-worker-status-after-stale-/,
+    );
+    assert.equal(runResult.topology.isolation.observed_initial_workflow_id, null);
+    assert.equal(runResult.topology.isolation.observed_after_stale_workflow_id, null);
+    assert.equal(runResult.topology.isolation.workflow_id_prefix_prevalidated, false);
+    assert.equal(runResult.topology.isolation.observed_workflow_ids_equal_plan, null);
+    assert.equal(runResult.topology.isolation.workflow_id_prefix_binding_proven, false);
+    assert.deepEqual(runResult.cleanup.failures, []);
+  } finally {
+    fs.rmSync(testRoot, { recursive: true, force: true });
+  }
+});
+
 test('shared receipt validation retains the topology, image, lifecycle, and cleanup guards', () => {
   const workerIds = workerStatusWorkerIds('shared-cell-1234');
+  const workflowIds = workerStatusWorkflowIds('shared-cell-1234');
   const cases = [
     {
       mutate: (state) => { state.cell_isolation.waterline.namespace = 'another-namespace'; },
@@ -91,6 +223,10 @@ test('shared receipt validation retains the topology, image, lifecycle, and clea
     {
       mutate: (state) => { state.cell_isolation.waterline.task_queue_prefix = 'another-queue-'; },
       failure: 'shared heartbeat server did not prescribe isolated Waterline cell identities',
+    },
+    {
+      mutate: (state) => { state.cell_isolation.waterline.worker_id_prefix = 'another-worker-'; },
+      failure: 'shared heartbeat server worker-ID prefix does not match the planned Waterline workers',
     },
     {
       mutate: (state) => { state.server.requested_reference = 'durableworkflow/server:0.2.699'; },
@@ -114,7 +250,10 @@ test('shared receipt validation retains the topology, image, lifecycle, and clea
     const state = receipt();
     scenario.mutate(state);
     assert.equal(
-      sharedServerReceiptFailures(state, { ...expected, workerIds }).includes(scenario.failure),
+      sharedServerReceiptFailures(
+        state,
+        { ...expected, workerIds, workflowIds },
+      ).includes(scenario.failure),
       true,
     );
   }

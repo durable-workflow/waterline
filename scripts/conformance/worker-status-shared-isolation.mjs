@@ -6,7 +6,7 @@ function matchesPrefix(value, prefix) {
   return prefix !== '' && value !== '' && value.startsWith(prefix);
 }
 
-export function verifySharedWaterlineIsolation(state, productEvidence) {
+export function verifySharedWaterlineIsolation(state, productEvidence, workflowIds = {}) {
   const receipt = state?.cell_isolation?.waterline ?? {};
   const topology = productEvidence?.topology ?? {};
   const prescribed = {
@@ -23,6 +23,10 @@ export function verifySharedWaterlineIsolation(state, productEvidence) {
     initial_workflow_id: string(topology.initial_workflow_id),
     after_stale_workflow_id: string(topology.after_stale_workflow_id),
   };
+  const planned = {
+    initial_workflow_id: string(workflowIds.initial_workflow_id),
+    after_stale_workflow_id: string(workflowIds.after_stale_workflow_id),
+  };
   const checks = {
     namespace_matches_receipt:
       prescribed.namespace !== '' && observed.namespace === prescribed.namespace,
@@ -32,14 +36,25 @@ export function verifySharedWaterlineIsolation(state, productEvidence) {
       matchesPrefix(observed.stale_worker_id, prescribed.worker_id_prefix),
     fresh_worker_matches_prefix:
       matchesPrefix(observed.fresh_worker_id, prescribed.worker_id_prefix),
+    planned_initial_workflow_matches_prefix:
+      matchesPrefix(planned.initial_workflow_id, prescribed.workflow_id_prefix),
+    planned_after_stale_workflow_matches_prefix:
+      matchesPrefix(planned.after_stale_workflow_id, prescribed.workflow_id_prefix),
     initial_workflow_matches_prefix:
       matchesPrefix(observed.initial_workflow_id, prescribed.workflow_id_prefix),
     after_stale_workflow_matches_prefix:
       matchesPrefix(observed.after_stale_workflow_id, prescribed.workflow_id_prefix),
+    initial_workflow_matches_plan:
+      planned.initial_workflow_id !== ''
+        && observed.initial_workflow_id === planned.initial_workflow_id,
+    after_stale_workflow_matches_plan:
+      planned.after_stale_workflow_id !== ''
+        && observed.after_stale_workflow_id === planned.after_stale_workflow_id,
   };
 
   return {
     prescribed,
+    planned,
     observed,
     checks,
     passed: Object.values(checks).every((passed) => passed === true),
