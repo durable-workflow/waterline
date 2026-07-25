@@ -2,11 +2,11 @@
   "cases": [
     {
       "id": "immutable-plan-enumeration",
-      "requirement": "Enumerate the complete immutable Git tag registry and reject duplicate or malformed plan authorities."
+      "requirement": "Enumerate the complete immutable Git tag registry and reject a missing, duplicate, or malformed plan authority."
     },
     {
       "id": "completed-plan-lifecycle",
-      "requirement": "Treat a completed plan as terminal and never return it as an actionable implicit recovery authority."
+      "requirement": "Select the unique completed current plan for verification-only recovery while refusing any attempt to republish it whether selected explicitly or implicitly."
     },
     {
       "id": "superseded-plan-lifecycle",
@@ -26,7 +26,7 @@
     },
     {
       "id": "explicit-terminal-plan-rejection",
-      "requirement": "Reject an explicitly requested terminal plan before it can reach publication or distribution verification."
+      "requirement": "Allow an explicitly requested completed plan to verify as a no-op, and reject a superseded plan before publication or distribution verification."
     },
     {
       "id": "bounded-authority-convergence",
@@ -72,7 +72,7 @@
   ],
   "schema": "durable-workflow.release-recovery-consumer-conformance/v1",
   "suite": {
-    "sha256": "9baddc3048cf1eafb36bad22c84038cd07b381cd387f0e50ba6041a16a07d28d"
+    "sha256": "e67aa862a950d4da18556c891244f781fe1e9b22e8e5b9d7d3c74aa57e220d85"
   },
-  "version": "1.0.1"
+  "version": "1.1.1"
 }

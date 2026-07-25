@@ -340,6 +340,12 @@ def case_immutable_plan_enumeration(module: ModuleType) -> None:
         lambda: module.list_release_plan_tags(client),
         "consumer accepted duplicate immutable plan authority",
     )
+    client.json.return_value = []
+    expect_recovery_error(
+        module,
+        lambda: module.list_release_plan_tags(client),
+        "consumer accepted a missing immutable plan registry",
+    )
     malformed_registry_entries = (
         None,
         {},
@@ -361,8 +367,73 @@ def case_completed_plan_lifecycle(module: ModuleType) -> None:
     completed = authority(module, plan(module, "completed-conformance"), "completed")
     with mock.patch.object(module, "classify_plan_authorities", return_value=[completed]):
         selected, snapshot = module.classify_implicit_plan_authority(mock.Mock())
-    if selected is not None or snapshot != [completed]:
-        raise ConformanceError("consumer treated a completed plan as actionable")
+    if selected != completed or snapshot != [completed]:
+        raise ConformanceError("consumer did not select the completed current plan for verification")
+
+    preparation = {
+        "components": {
+            "sdk-php": {
+                "release_notes": {
+                    "release_date": "2026-07-25",
+                    "sha256": "c" * 64,
+                    "source": {},
+                }
+            }
+        }
+    }
+    completed["preparation"] = preparation
+    implicit_authority = {
+        **completed,
+        "selection": "implicit",
+        "authority_snapshot": [completed],
+    }
+    component = module.COMPONENTS["sdk-php"]
+    with (
+        mock.patch.object(module, "verify_plan_authority", return_value=({}, {})),
+        mock.patch.object(module, "validate_release_preparation"),
+        mock.patch.object(module, "resolve_tag", return_value=None),
+        mock.patch.object(
+            module,
+            "classify_implicit_plan_authority",
+            return_value=(completed, [completed]),
+        ),
+        mock.patch.object(
+            module,
+            "continuity_authority_snapshot",
+            return_value={
+                "accepted": {"tag": None, "commit": None},
+                "resumed": {"tag": None, "commit": None},
+            },
+            create=True,
+        ),
+        mock.patch.object(
+            module,
+            "scheduled_continuity_pause",
+            return_value=None,
+            create=True,
+        ),
+        mock.patch.dict(
+            module.VERIFIERS,
+            {
+                component.distribution: mock.Mock(
+                    side_effect=module.NotFound("not published")
+                )
+            },
+        ),
+    ):
+        expect_recovery_error(
+            module,
+            lambda: module.resolve_component(
+                mock.Mock(),
+                "sdk-php",
+                completed["tag"],
+                completed["commit"],
+                completed["plan"],
+                preparation,
+                implicit_authority,
+            ),
+            "consumer returned publication-ready for an implicitly selected completed plan",
+        )
 
 
 def supersession_pair(module: ModuleType) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -461,20 +532,31 @@ def case_continuity_ambiguity_rejection(module: ModuleType) -> None:
 
 def case_explicit_terminal_plan_rejection(module: ModuleType) -> None:
     candidate = plan(module, "terminal-conformance")
-    for lifecycle in ("superseded", "completed"):
-        terminal = authority(module, candidate, lifecycle)
-        with mock.patch.object(module, "classify_plan_authorities", return_value=[terminal]):
-            expect_recovery_error(
-                module,
-                lambda terminal=terminal: module.select_explicit_plan_authority(
-                    mock.Mock(),
-                    terminal["tag"],
-                    terminal["commit"],
-                    candidate,
-                    None,
-                ),
-                f"consumer accepted an explicitly selected {lifecycle} plan",
-            )
+    completed = authority(module, candidate, "completed")
+    with mock.patch.object(module, "classify_plan_authorities", return_value=[completed]):
+        selected = module.select_explicit_plan_authority(
+            mock.Mock(),
+            completed["tag"],
+            completed["commit"],
+            candidate,
+            None,
+        )
+    if selected != {**completed, "selection": "explicit"}:
+        raise ConformanceError("consumer did not select an explicitly requested completed plan")
+
+    superseded = authority(module, candidate, "superseded")
+    with mock.patch.object(module, "classify_plan_authorities", return_value=[superseded]):
+        expect_recovery_error(
+            module,
+            lambda: module.select_explicit_plan_authority(
+                mock.Mock(),
+                superseded["tag"],
+                superseded["commit"],
+                candidate,
+                None,
+            ),
+            "consumer accepted an explicitly selected superseded plan",
+        )
 
 
 def case_bounded_authority_convergence(module: ModuleType) -> None:

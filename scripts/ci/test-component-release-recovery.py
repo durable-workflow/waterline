@@ -824,12 +824,10 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
                 "accepted_continuity_supersession",
                 return_value=None,
             ),
-            self.assertRaisesRegex(
-                self.recovery.RecoveryError,
-                "no public release plan is available",
-            ),
         ):
-            self.recovery.select_implicit_plan_authority(mock.Mock())
+            selected = self.recovery.select_implicit_plan_authority(mock.Mock())
+        self.assertEqual(tags[1], selected["tag"])
+        self.assertEqual("completed", selected["lifecycle"])
 
     def test_equal_versions_with_different_source_commits_are_conflicting(self) -> None:
         first = lifecycle_plan(self.recovery, "beta")
@@ -1026,7 +1024,7 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
             self.recovery.current_product_train_authorities(authorities),
         )
 
-    def test_scheduled_recovery_without_actionable_plan_is_a_truthful_no_op(self) -> None:
+    def test_scheduled_recovery_without_plan_authority_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             evidence = root / "release-recovery-evidence.json"
@@ -1059,15 +1057,15 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
                 ),
                 mock.patch.object(self.recovery, "resolve_component") as recover_component,
             ):
-                self.assertEqual(0, self.recovery.main())
+                self.assertEqual(1, self.recovery.main())
 
             recover_component.assert_not_called()
             state = json.loads(evidence.read_text())
             self.assertEqual("plan-discovery", state["phase"])
-            self.assertEqual("idle", state["outcome"])
-            self.assertEqual("action=none\n", github_output.read_text())
+            self.assertEqual("failed", state["outcome"])
+            self.assertFalse(github_output.exists())
 
-    def test_explicit_completed_plan_is_not_recovered(self) -> None:
+    def test_explicit_completed_plan_is_selected_for_verification(self) -> None:
         candidate = lifecycle_plan(self.recovery, "beta")
         tag = f"release-plan/{candidate['plan']}"
         commit = "a" * 40
@@ -1080,11 +1078,11 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
             "lifecycle": "completed",
             "successor": None,
         }
-        with (
-            mock.patch.object(self.recovery, "classify_plan_authorities", return_value=[authority]),
-            self.assertRaisesRegex(self.recovery.RecoveryError, "is completed and cannot be recovered"),
-        ):
-            self.recovery.select_explicit_plan_authority(mock.Mock(), tag, commit, candidate, None)
+        with mock.patch.object(self.recovery, "classify_plan_authorities", return_value=[authority]):
+            selected = self.recovery.select_explicit_plan_authority(
+                mock.Mock(), tag, commit, candidate, None
+            )
+        self.assertEqual({**authority, "selection": "explicit"}, selected)
 
     def test_final_implicit_boundary_rejects_continuity_pause_activated_after_initial_read(
         self,
