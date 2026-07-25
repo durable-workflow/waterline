@@ -500,13 +500,77 @@ class DatabaseQualificationWorkflowContractTest(unittest.TestCase):
         self.assertEqual(1, len(matches), f"expected one workflow step named {name}")
         return matches[0]
 
-    def test_sql_server_cell_installs_only_the_required_odbc_runtime(self) -> None:
-        rows = self.qualification_job()["strategy"]["matrix"]["include"]
-        sql_server_rows = [
+    def matrix_rows(self, database: str) -> list[dict]:
+        return [
             row
-            for row in rows
-            if isinstance(row, dict) and row.get("database") == "mssql"
+            for row in self.qualification_job()["strategy"]["matrix"]["include"]
+            if isinstance(row, dict) and row.get("database") == database
         ]
+
+    def test_mysql_suite_is_complete_deterministic_and_parallel(self) -> None:
+        rows = self.matrix_rows("mysql")
+
+        self.assertEqual(4, len(rows))
+        self.assertEqual(["0", "1", "2", "3"], [row["shard-index"] for row in rows])
+        self.assertEqual({"4"}, {row["shard-count"] for row in rows})
+        self.assertEqual({"phpunit-mysql.xml"}, {row["configuration"] for row in rows})
+        self.assertEqual({"test-mysql"}, {row["composer-script"] for row in rows})
+        self.assertEqual({"480"}, {row["target-seconds"] for row in rows})
+        self.assertEqual({"7m"}, {row["command_timeout"] for row in rows})
+        self.assertEqual(
+            {
+                "mysql shard 1/4",
+                "mysql shard 2/4",
+                "mysql shard 3/4",
+                "mysql shard 4/4",
+            },
+            {row["label"] for row in rows},
+        )
+
+        selection = self.named_step("Select deterministic test scope")["run"]
+        self.assertIn("scripts/ci/qualification_shards.py select", selection)
+        self.assertIn('--shard-index="${{ matrix.shard-index }}"', selection)
+        self.assertIn('--shard-count="${{ matrix.shard-count }}"', selection)
+
+        runner = self.named_step(
+            "Run ${{ matrix.label }} complete test scope"
+        )["run"]
+        self.assertIn('--filter "$QUALIFICATION_FILTER"', runner)
+        self.assertIn('--log-junit "$junit_report"', runner)
+        self.assertIn("scripts/ci/qualification_timing.py", runner)
+        self.assertIn("timeout --foreground", runner)
+
+    def test_other_database_cells_still_run_the_complete_inventory(self) -> None:
+        expected = {
+            "mssql": ("phpunit-mssql.xml", "test-mssql"),
+            "pgsql": ("phpunit-pgsql.xml", "test-pgsql"),
+            "sqlite": ("phpunit-sqlite.xml", "test-sqlite"),
+        }
+
+        for database, (configuration, composer_script) in expected.items():
+            with self.subTest(database=database):
+                rows = self.matrix_rows(database)
+                self.assertEqual(1, len(rows))
+                self.assertEqual("0", rows[0]["shard-index"])
+                self.assertEqual("1", rows[0]["shard-count"])
+                self.assertEqual(configuration, rows[0]["configuration"])
+                self.assertEqual(composer_script, rows[0]["composer-script"])
+
+    def test_aggregate_gate_requires_every_database_matrix_cell(self) -> None:
+        gate = self.workflow["jobs"]["target-branch-qualification"]
+
+        self.assertIn("qualification", gate["needs"])
+        command = [
+            step["run"]
+            for step in gate["steps"]
+            if isinstance(step, dict)
+            and step.get("name") == "Enforce selected qualification class"
+        ]
+        self.assertEqual(1, len(command))
+        self.assertIn('--database-result="$DATABASE_RESULT"', command[0])
+
+    def test_sql_server_cell_installs_only_the_required_odbc_runtime(self) -> None:
+        sql_server_rows = self.matrix_rows("mssql")
         self.assertEqual(1, len(sql_server_rows))
         self.assertEqual("pdo_sqlsrv", sql_server_rows[0].get("extension"))
         self.assertEqual("test-mssql", sql_server_rows[0].get("composer-script"))

@@ -62,9 +62,10 @@ jobs:
         scripts/ci/workflow_trust_policy.py
 
     - name: Verify qualification policy behavior
-      run: >-
-        "$RUNNER_TEMP/workflow-policy/bin/python"
-        scripts/ci/test-qualification-policy.py
+      run: |
+        policy_python="$RUNNER_TEMP/workflow-policy/bin/python"
+        "$policy_python" scripts/ci/test-qualification-policy.py
+        "$policy_python" scripts/ci/test-database-qualification.py
 
     - name: Scan the public boundary
       run: scripts/check-public-boundary.sh
@@ -387,7 +388,7 @@ jobs:
       run: composer test-sqlite
 
   qualification:
-    name: Complete database qualification (${{ matrix.database }})
+    name: Complete database qualification (${{ matrix.label }})
     needs: build
     if: ${{ github.server_url == 'https://github.com' }}
     runs-on: ubuntu-latest
@@ -398,23 +399,73 @@ jobs:
       matrix:
         include:
           - database: mssql
+            label: mssql
             extension: pdo_sqlsrv
             composer-script: test-mssql
+            configuration: phpunit-mssql.xml
+            shard-index: 0
+            shard-count: 1
+            target-seconds: 0
             command_timeout: 15m
             step_timeout: 17
           - database: mysql
+            label: mysql shard 1/4
             extension: pdo_mysql
             composer-script: test-mysql
-            command_timeout: 20m
-            step_timeout: 22
+            configuration: phpunit-mysql.xml
+            shard-index: 0
+            shard-count: 4
+            target-seconds: 480
+            command_timeout: 7m
+            step_timeout: 9
+          - database: mysql
+            label: mysql shard 2/4
+            extension: pdo_mysql
+            composer-script: test-mysql
+            configuration: phpunit-mysql.xml
+            shard-index: 1
+            shard-count: 4
+            target-seconds: 480
+            command_timeout: 7m
+            step_timeout: 9
+          - database: mysql
+            label: mysql shard 3/4
+            extension: pdo_mysql
+            composer-script: test-mysql
+            configuration: phpunit-mysql.xml
+            shard-index: 2
+            shard-count: 4
+            target-seconds: 480
+            command_timeout: 7m
+            step_timeout: 9
+          - database: mysql
+            label: mysql shard 4/4
+            extension: pdo_mysql
+            composer-script: test-mysql
+            configuration: phpunit-mysql.xml
+            shard-index: 3
+            shard-count: 4
+            target-seconds: 480
+            command_timeout: 7m
+            step_timeout: 9
           - database: pgsql
+            label: pgsql
             extension: pdo_pgsql
             composer-script: test-pgsql
+            configuration: phpunit-pgsql.xml
+            shard-index: 0
+            shard-count: 1
+            target-seconds: 0
             command_timeout: 15m
             step_timeout: 17
           - database: sqlite
+            label: sqlite
             extension: pdo_sqlite
             composer-script: test-sqlite
+            configuration: phpunit-sqlite.xml
+            shard-index: 0
+            shard-count: 1
+            target-seconds: 0
             command_timeout: 15m
             step_timeout: 17
 
@@ -459,6 +510,10 @@ jobs:
           - 6379:6379
 
     steps:
+    - name: Start database qualification clock
+      id: qualification-clock
+      run: echo "started-at=$(date +%s)" >> "$GITHUB_OUTPUT"
+
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       with:
         fetch-depth: 10
@@ -496,24 +551,68 @@ jobs:
         DB_HOST: 127.0.0.1
       run: php scripts/ci/preflight-databases.php "${{ matrix.database }}" "$DB_HOST"
 
-    - name: Run ${{ matrix.database }} test suite
+    - name: Select deterministic test scope
+      id: test-scope
+      run: >-
+        python scripts/ci/qualification_shards.py select
+        --configuration="${{ matrix.configuration }}"
+        --shard-index="${{ matrix.shard-index }}"
+        --shard-count="${{ matrix.shard-count }}"
+
+    - name: Run ${{ matrix.label }} complete test scope
       timeout-minutes: ${{ matrix.step_timeout }}
       env:
+        COMMAND_TIMEOUT: ${{ matrix.command_timeout }}
+        COMPOSER_SCRIPT: ${{ matrix.composer-script }}
+        DATABASE: ${{ matrix.database }}
         DB_HOST: 127.0.0.1
+        EXPECTED_TESTS: ${{ steps.test-scope.outputs.expected-tests }}
+        QUALIFICATION_FILTER: ${{ steps.test-scope.outputs.test-filter }}
+        QUALIFICATION_STARTED_AT: ${{ steps.qualification-clock.outputs.started-at }}
+        SELECTED_CLASSES: ${{ steps.test-scope.outputs.selected-classes }}
+        SHARD_INDEX: ${{ matrix.shard-index }}
+        SHARD_LABEL: ${{ steps.test-scope.outputs.shard-label }}
+        TARGET_SECONDS: ${{ matrix.target-seconds }}
       run: |
-        status=0
-        if [ "${{ matrix.database }}" = mysql ]; then
-          timeout --foreground --signal=TERM --kill-after=30s ${{ matrix.command_timeout }} \
-            composer "${{ matrix.composer-script }}" -- --stop-on-error --stop-on-failure || status=$?
-        else
-          timeout --foreground --signal=TERM --kill-after=30s ${{ matrix.command_timeout }} \
-            composer "${{ matrix.composer-script }}" || status=$?
+        test_started_at=$(date +%s)
+        junit_report="$RUNNER_TEMP/qualification-${DATABASE}-${SHARD_INDEX}.xml"
+
+        report() {
+          status=$?
+          trap - EXIT
+          set +e
+          timing_status=0
+          python scripts/ci/qualification_timing.py \
+            --database="$DATABASE" \
+            --shard-label="$SHARD_LABEL" \
+            --expected-tests="$EXPECTED_TESTS" \
+            --selected-classes="$SELECTED_CLASSES" \
+            --started-at="$QUALIFICATION_STARTED_AT" \
+            --test-started-at="$test_started_at" \
+            --completed-at="$(date +%s)" \
+            --target-seconds="$TARGET_SECONDS" \
+            --status="$status" \
+            --junit="$junit_report" || timing_status=$?
+          if [ "$status" -eq 0 ] && [ "$timing_status" -ne 0 ]; then
+            status=$timing_status
+          fi
+          if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+            echo "::error::$DATABASE test scope exceeded its $COMMAND_TIMEOUT limit"
+          fi
+          exit "$status"
+        }
+        trap report EXIT
+
+        arguments=(--log-junit "$junit_report")
+        if [ -n "$QUALIFICATION_FILTER" ]; then
+          arguments+=(--filter "$QUALIFICATION_FILTER")
         fi
-        if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
-          echo "::error::${{ matrix.database }} test suite exceeded its ${{ matrix.command_timeout }} limit"
-          exit 1
+        if [ "$DATABASE" = mysql ]; then
+          arguments+=(--stop-on-error --stop-on-failure)
         fi
-        exit "$status"
+
+        timeout --foreground --signal=TERM --kill-after=30s "$COMMAND_TIMEOUT" \
+          composer "$COMPOSER_SCRIPT" -- "${arguments[@]}"
 
   target-branch-qualification:
     name: Target branch qualification
