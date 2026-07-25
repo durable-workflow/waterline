@@ -1,0 +1,22 @@
+{
+  "component": "waterline",
+  "consumer": "scripts/ci/component-release-recovery.py",
+  "contract": {
+    "path": "scripts/ci/release-recovery-consumer-contract.json",
+    "sha256": "e4a27044fbbb29190e209a6f8d5bb376244012560ae2feb81d92334f10e9a5b5",
+    "version": "1.0.1"
+  },
+  "distribution_verification": {
+    "command": [
+      "{python}",
+      "scripts/ci/test-component-release-recovery.py"
+    ]
+  },
+  "repository": "durable-workflow/waterline",
+  "schema": "durable-workflow.release-recovery-consumer-adapter/v1",
+  "suite": {
+    "path": "scripts/ci/release_recovery_consumer_conformance.py",
+    "sha256": "9baddc3048cf1eafb36bad22c84038cd07b381cd387f0e50ba6041a16a07d28d"
+  },
+  "target_branch": "v2"
+}

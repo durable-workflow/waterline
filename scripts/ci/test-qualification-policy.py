@@ -67,6 +67,9 @@ class ChangeClassificationTest(unittest.TestCase):
             [
                 "scripts/ci/cli_release_verifier_contract.py",
                 "scripts/ci/component-release-recovery.py",
+                "scripts/ci/release-recovery-consumer-adapter.json",
+                "scripts/ci/release-recovery-consumer-contract.json",
+                "scripts/ci/release_recovery_consumer_conformance.py",
                 "scripts/ci/recovery_workflow_authority.py",
                 "scripts/ci/test-component-release-recovery.py",
             ]

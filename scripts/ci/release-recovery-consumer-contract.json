@@ -1,0 +1,78 @@
+{
+  "cases": [
+    {
+      "id": "immutable-plan-enumeration",
+      "requirement": "Enumerate the complete immutable Git tag registry and reject duplicate or malformed plan authorities."
+    },
+    {
+      "id": "completed-plan-lifecycle",
+      "requirement": "Treat a completed plan as terminal and never return it as an actionable implicit recovery authority."
+    },
+    {
+      "id": "superseded-plan-lifecycle",
+      "requirement": "Resolve a superseded plan only through its digest-bound successor and select the surviving product train."
+    },
+    {
+      "id": "exact-successor-identity",
+      "requirement": "Reject a successor edge whose tag, plan document, or canonical plan digest is not an exact identity match."
+    },
+    {
+      "id": "malformed-authority-rejection",
+      "requirement": "Reject malformed and type-coercible authority values before plan selection, including non-exact SemVer."
+    },
+    {
+      "id": "continuity-ambiguity-rejection",
+      "requirement": "Reject multiple continuity successor claims unless one immutable digest-bound resolution selects exactly one claim."
+    },
+    {
+      "id": "explicit-terminal-plan-rejection",
+      "requirement": "Reject an explicitly requested terminal plan before it can reach publication or distribution verification."
+    },
+    {
+      "id": "bounded-authority-convergence",
+      "requirement": "Re-enumerate lifecycle authority and fail closed when the registry does not converge within the declared attempt bound."
+    }
+  ],
+  "consumers": [
+    {
+      "component": "workflow",
+      "repository": "durable-workflow/workflow",
+      "target_branch": "v2"
+    },
+    {
+      "component": "waterline",
+      "repository": "durable-workflow/waterline",
+      "target_branch": "v2"
+    },
+    {
+      "component": "server",
+      "repository": "durable-workflow/server",
+      "target_branch": "main"
+    },
+    {
+      "component": "cli",
+      "repository": "durable-workflow/cli",
+      "target_branch": "main"
+    },
+    {
+      "component": "sdk-php",
+      "repository": "durable-workflow/sdk-php",
+      "target_branch": "main"
+    },
+    {
+      "component": "sdk-python",
+      "repository": "durable-workflow/sdk-python",
+      "target_branch": "main"
+    },
+    {
+      "component": "sdk-rust",
+      "repository": "durable-workflow/sdk-rust",
+      "target_branch": "main"
+    }
+  ],
+  "schema": "durable-workflow.release-recovery-consumer-conformance/v1",
+  "suite": {
+    "sha256": "9baddc3048cf1eafb36bad22c84038cd07b381cd387f0e50ba6041a16a07d28d"
+  },
+  "version": "1.0.1"
+}

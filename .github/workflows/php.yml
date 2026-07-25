@@ -78,6 +78,7 @@ jobs:
     steps:
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       with:
+        fetch-depth: 0
         persist-credentials: false
 
     - name: Install Composer for public package verification
@@ -107,19 +108,28 @@ jobs:
 
     - name: Validate release and recovery tooling
       env:
+        CONFORMANCE_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         SHARED_TARGET_QUALIFICATION_ROOT: ${{ github.workspace }}/.target-qualification
       run: |
         policy_python="$RUNNER_TEMP/recovery-policy/bin/python"
         "$policy_python" -m py_compile \
           scripts/ci/component-release-recovery.py \
           scripts/ci/publish-planned-tag.py \
+          scripts/ci/release_recovery_consumer_conformance.py \
           scripts/ci/service-image-recovery.py \
           scripts/ci/standalone_lock_contract.py \
           scripts/ci/test-component-release-recovery.py \
           scripts/ci/test-publish-planned-tag.py \
           scripts/ci/test-service-image-recovery.py \
           scripts/ci/test-standalone-lock-contract.py
-        "$policy_python" scripts/ci/test-component-release-recovery.py
+        arguments=()
+        if [ -n "$CONFORMANCE_BASE_REF" ]; then
+          arguments+=(--previous-ref "$CONFORMANCE_BASE_REF")
+        fi
+        "$policy_python" scripts/ci/release_recovery_consumer_conformance.py \
+          --contract scripts/ci/release-recovery-consumer-contract.json \
+          --adapter scripts/ci/release-recovery-consumer-adapter.json \
+          "${arguments[@]}"
         "$policy_python" scripts/ci/test-publish-planned-tag.py
         "$policy_python" scripts/ci/test-service-image-recovery.py
         "$policy_python" scripts/ci/test-standalone-lock-contract.py
