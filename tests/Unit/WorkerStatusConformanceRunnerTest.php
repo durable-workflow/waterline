@@ -107,8 +107,20 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
     {
         $root = dirname(__DIR__, 2);
         $node = (string) file_get_contents($root.'/scripts/conformance/worker-status-published-artifacts.mjs');
+        $sharedTopology = (string) file_get_contents(
+            $root.'/scripts/conformance/worker-status-shared-topology.mjs',
+        );
+        $command = (string) file_get_contents($root.'/app/Console/WorkerStatusConformanceCommand.php');
         $shell = (string) file_get_contents($root.'/scripts/conformance/worker-status-published-artifacts.sh');
+        $nodeBinary = trim((string) shell_exec('command -v node 2>/dev/null'));
+        $this->assertNotSame('', $nodeBinary, 'Node is required to execute the shared-topology regression.');
+        exec(sprintf(
+            '%s --test %s 2>&1',
+            escapeshellarg($nodeBinary),
+            escapeshellarg($root.'/tests/Unit/WorkerStatusSharedTopologyTest.mjs'),
+        ), $output, $status);
 
+        $this->assertSame(0, $status, implode("\n", $output));
         $this->assertStringContainsString(
             "const SHARED_SERVER_STATE_FILE = env('DW_WATERLINE_WORKER_STATUS_SHARED_SERVER_STATE');",
             $node,
@@ -116,16 +128,22 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $this->assertStringContainsString('if (USE_SHARED_SERVER) return attachSharedServer();', $node);
         $this->assertStringContainsString(
             "state?.clean_bootstrap?.migrations_completed !== true",
-            $node,
+            $sharedTopology,
         );
         $this->assertStringContainsString(
             "state?.lifecycle?.cleanup_status !== 'pending'",
-            $node,
+            $sharedTopology,
         );
         $this->assertStringContainsString('running shared server no longer matches', $node);
         $this->assertStringContainsString("mode: 'shared_wave_clean_bootstrap'", $node);
         $this->assertStringContainsString("mode: 'focused_cell_clean_bootstrap'", $node);
         $this->assertStringContainsString("status: 'retained_for_wave_cleanup'", $node);
+        $this->assertStringContainsString('actual_stale_worker_id:', $sharedTopology);
+        $this->assertStringContainsString('actual_fresh_worker_id:', $sharedTopology);
+        $this->assertStringContainsString('worker_id_prefix_binding_proven:', $sharedTopology);
+        $this->assertStringNotContainsString('--worker-id-prefix', $node.$command);
+        $this->assertStringContainsString("'waterline-stale-'.strtolower(\$suffix)", $command);
+        $this->assertStringContainsString("'waterline-fresh-'.strtolower(\$suffix)", $command);
         $this->assertStringContainsString(
             'DW_WATERLINE_WORKER_STATUS_SHARED_SERVER_STATE',
             $shell,
@@ -330,6 +348,7 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             'scripts/conformance/worker-status-published-artifacts.mjs',
             'scripts/conformance/worker-status-network.mjs',
             'scripts/conformance/worker-status-runner-lifecycle.mjs',
+            'scripts/conformance/worker-status-shared-topology.mjs',
             'scripts/conformance/worker-status-version.mjs',
             'app/Console/WorkerStatusConformanceCommand.php',
             'app/Console/WorkerStatusSdkWorkerCommand.php',

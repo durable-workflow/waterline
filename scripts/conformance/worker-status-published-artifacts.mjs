@@ -13,6 +13,11 @@ import {
   runWithCleanup,
   waitForHttpReadiness,
 } from './worker-status-runner-lifecycle.mjs';
+import {
+  workerIdPrefixBindingEvidence,
+  sharedServerReceiptFailures,
+  workerStatusWorkerIds,
+} from './worker-status-shared-topology.mjs';
 import { isExact2xPrerelease, isExactSemverRelease } from './worker-status-version.mjs';
 
 const RESULT_DIR = requiredEnv('RESULT_DIR');
@@ -48,6 +53,7 @@ const PROJECT = `dw-waterline-status-${SUFFIX}`;
 let NETWORK = `${PROJECT}_default`;
 const WATERLINE_CONTAINER = `dw-waterline-status-ui-${SUFFIX}`;
 const TASK_QUEUE = `waterline-status-${SUFFIX}`;
+const WORKER_IDS = workerStatusWorkerIds(RUN_ID);
 const EVIDENCE_PATH = path.join(RESULT_DIR, 'waterline-worker-status-evidence.json');
 const RESULT_PATH = path.join(RESULT_DIR, 'waterline-worker-status-result.json');
 const ARTIFACT_VERSIONS = {
@@ -414,45 +420,19 @@ async function attachSharedServer() {
   }
   const stateBytes = fs.readFileSync(statePath);
   const state = JSON.parse(stateBytes.toString('utf8'));
-  const isolation = state?.cell_isolation?.waterline;
-  const failures = [];
-  if (state?.schema !== 'durable-workflow.v2.heartbeat-runtime.shared-server-bootstrap'
-    || state?.version !== 1) {
-    failures.push('shared heartbeat server state has an unsupported schema');
-  }
-  if (state?.server?.version !== SERVER_VERSION
-    || state?.server?.requested_reference !== SERVER_IMAGE
-    || state?.server?.exact_published_image_verified !== true) {
-    failures.push('shared heartbeat server state does not bind the selected exact server image');
-  }
-  if (state?.clean_bootstrap?.status !== 'pass'
-    || state?.clean_bootstrap?.migrations_completed !== true
-    || state?.clean_bootstrap?.fresh_compose_project !== true) {
-    failures.push('shared heartbeat server state does not prove clean bootstrap and migrations');
-  }
-  if (state?.lifecycle?.owner !== 'heartbeat-wave-runner'
-    || state?.lifecycle?.cleanup_required !== true
-    || state?.lifecycle?.cleanup_status !== 'pending') {
-    failures.push('shared heartbeat server lifecycle is not owned by an active wave');
-  }
-  if (!isolation || isolation.namespace !== NAMESPACE
-    || !TASK_QUEUE.startsWith(isolation.task_queue_prefix ?? '\0')) {
-    failures.push('shared heartbeat server did not prescribe isolated Waterline cell identities');
-  }
+  const failures = sharedServerReceiptFailures(state, {
+    serverVersion: SERVER_VERSION,
+    serverImage: SERVER_IMAGE,
+    namespace: NAMESPACE,
+    taskQueue: TASK_QUEUE,
+    workerIds: WORKER_IDS,
+  });
   let hostUrl = null;
   try {
     const parsed = new URL(state?.endpoint?.host_url ?? '');
-    if (parsed.protocol !== 'http:'
-      || !['127.0.0.1', 'localhost'].includes(parsed.hostname)
-      || parsed.pathname !== '/') {
-      failures.push('shared heartbeat server endpoint must be a loopback HTTP origin');
-    }
     hostUrl = parsed.origin;
   } catch {
-    failures.push('shared heartbeat server endpoint is invalid');
-  }
-  if (!state?.compose?.network || state?.endpoint?.container_url !== 'http://server:8080') {
-    failures.push('shared heartbeat server state has no private compose network handoff');
+    // The shared receipt validator reports the actionable endpoint failure.
   }
   if (failures.length > 0) throw new Error(failures.join('; '));
 
@@ -888,6 +868,10 @@ function runPublishedCommand(server, waterline) {
   if (!productEvidence || productEvidence.outcome !== 'pass' || productEvidence.runner_blocked !== false) {
     throw new Error('published command exited successfully without passing non-runner-blocked evidence');
   }
+  if (productEvidence?.topology?.stale_worker_id !== WORKER_IDS.stale_worker_id
+    || productEvidence?.topology?.fresh_worker_id !== WORKER_IDS.fresh_worker_id) {
+    throw new Error('published command evidence does not match the validated Waterline worker-ID plan');
+  }
 }
 
 function cleanupWaterline() {
@@ -997,6 +981,11 @@ function removeDirectory(directory) {
 function finalResult() {
   const cleanupPassed = cleanupFailures.length === 0;
   const productPassed = productEvidence?.outcome === 'pass' && productEvidence?.runner_blocked === false;
+  const workerIdPrefixBinding = workerIdPrefixBindingEvidence(
+    sharedServerState,
+    WORKER_IDS,
+    productEvidence,
+  );
   let outcome = 'non_passing_runner_blocked';
   let runnerBlocked = true;
   let classification = 'waterline-worker-status-runner-blocked';
@@ -1042,7 +1031,7 @@ function finalResult() {
       isolation: {
         prescribed_namespace: sharedServerState?.cell_isolation?.waterline?.namespace ?? null,
         task_queue_prefix: sharedServerState?.cell_isolation?.waterline?.task_queue_prefix ?? null,
-        worker_id_prefix: sharedServerState?.cell_isolation?.waterline?.worker_id_prefix ?? null,
+        ...workerIdPrefixBinding,
       },
     },
     installs: {
