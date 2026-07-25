@@ -940,6 +940,60 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
             ],
         )
 
+    def test_semver_successors_cover_both_terminal_conflict_paths(self) -> None:
+        long_numeric = "9" * 4301
+        cases = (
+            ("release", "1.2.3", "1.2.4"),
+            ("prerelease", "1.2.3-alpha.9", "1.2.3-alpha.10"),
+            ("release-build", "1.2.3+build.1", "1.2.4+build.2"),
+            ("prerelease-build", "1.2.3-alpha.9+build.1", "1.2.3-alpha.10+build.2"),
+            ("single-numeric-prerelease", "1.2.3-9", "1.2.3-10"),
+            ("single-numeric-prerelease-build", "1.2.3-9+build.1", "1.2.3-10+build.2"),
+            ("nonnumeric-prerelease", "1.2.3-rc", "1.2.3-rc.1"),
+            ("nonnumeric-prerelease-build", "1.2.3-rc+build.1", "1.2.3-rc.1+build.2"),
+            ("long-core", f"1.2.{long_numeric}", f"1.2.1{'0' * 4301}"),
+            ("long-prerelease", f"1.2.3-alpha.{long_numeric}", f"1.2.3-alpha.1{'0' * 4301}"),
+        )
+        reasons = (
+            self.recovery.SUPERSESSION_REASON,
+            self.recovery.OCCUPIED_SOURCE_MANIFEST_REASON,
+        )
+
+        for reason in reasons:
+            for label, previous_version, successor_version in cases:
+                failed = lifecycle_plan(self.recovery, "beta")
+                failed["plan"] = f"semver-{label}-failed"
+                failed["components"]["server"]["version"] = previous_version
+                successor = json.loads(json.dumps(failed))
+                successor["plan"] = f"semver-{label}-successor"
+                successor["components"]["server"]["version"] = successor_version
+                if reason == self.recovery.OCCUPIED_SOURCE_MANIFEST_REASON:
+                    successor["components"]["server"]["commit"] = "e" * 40
+
+                with self.subTest(reason=reason, kind=label):
+                    self.recovery.validate_successor_transition(
+                        failed,
+                        successor,
+                        [{"component": "server", "reason": reason}],
+                    )
+
+            failed = lifecycle_plan(self.recovery, "beta")
+            failed["plan"] = "semver-long-skipped-failed"
+            failed["components"]["server"]["version"] = f"1.2.{long_numeric}"
+            successor = json.loads(json.dumps(failed))
+            successor["plan"] = "semver-long-skipped-successor"
+            successor["components"]["server"]["version"] = f"1.2.2{'0' * 4301}"
+            if reason == self.recovery.OCCUPIED_SOURCE_MANIFEST_REASON:
+                successor["components"]["server"]["commit"] = "e" * 40
+
+            with self.subTest(reason=reason, kind="invalid"), self.assertRaises(self.recovery.RecoveryError) as raised:
+                self.recovery.validate_successor_transition(
+                    failed,
+                    successor,
+                    [{"component": "server", "reason": reason}],
+                )
+            self.assertEqual("plan-discovery", raised.exception.phase)
+
     def test_validated_source_manifest_supersession_selects_successor(self) -> None:
         predecessor = lifecycle_plan(self.recovery, "beta")
         predecessor["plan"] = "source-manifest-predecessor"

@@ -463,7 +463,7 @@ def validate_plan(plan: Any) -> None:
     for name, identity in components.items():
         if not isinstance(identity, dict) or set(identity) != {"version", "commit"}:
             raise RecoveryError(f"components.{name} must contain only version and commit")
-        if not isinstance(identity["version"], str) or not VERSION_PATTERN.fullmatch(identity["version"]):
+        if not isinstance(identity["version"], str) or parse_semver(identity["version"]) is None:
             raise RecoveryError(f"components.{name}.version is not exact SemVer")
         if not isinstance(identity["commit"], str) or not COMMIT_PATTERN.fullmatch(identity["commit"]):
             raise RecoveryError(f"components.{name}.commit is not a full source identity")
@@ -487,6 +487,10 @@ def manifest_digest(value: Any) -> str:
     return hashlib.sha256(canonical_json(value)).hexdigest()
 
 
+def numeric_identifier_precedence(identifier: str) -> tuple[int, str]:
+    return len(identifier), identifier
+
+
 def increment_numeric_identifier(identifier: str) -> str:
     digits = list(identifier)
     index = len(digits) - 1
@@ -499,35 +503,58 @@ def increment_numeric_identifier(identifier: str) -> str:
     return "".join(digits)
 
 
-def is_immediate_version_successor(previous: str, successor: str) -> bool:
-    previous_match = re.fullmatch(
-        r"(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?", previous
-    )
-    successor_match = re.fullmatch(
-        r"(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?", successor
-    )
-    if previous_match is None or successor_match is None:
-        return False
-    previous_core = previous_match.groups()[:3]
-    successor_core = successor_match.groups()[:3]
-    previous_prerelease = previous_match.group(4)
-    successor_prerelease = successor_match.group(4)
-    if previous_prerelease is None:
-        return successor_prerelease is None and successor_core == (
-            previous_core[0],
-            previous_core[1],
-            increment_numeric_identifier(previous_core[2]),
+@dataclass(frozen=True)
+class SemVer:
+    value: str
+    core: tuple[str, str, str]
+    prerelease: tuple[str, ...]
+    build: tuple[str, ...]
+
+    @property
+    def precedence(self) -> tuple[Any, ...]:
+        major, minor, patch = (numeric_identifier_precedence(part) for part in self.core)
+        identifiers = tuple(
+            (0, numeric_identifier_precedence(part)) if part.isdigit() else (1, part) for part in self.prerelease
         )
-    previous_parts = previous_prerelease.rsplit(".", 1)
-    successor_parts = (successor_prerelease or "").rsplit(".", 1)
+        return major, minor, patch, 0 if self.prerelease else 1, identifiers
+
+    def immediately_precedes(self, successor: SemVer) -> bool:
+        if not self.prerelease:
+            return (
+                not successor.prerelease
+                and successor.core[:2] == self.core[:2]
+                and successor.core[2] == increment_numeric_identifier(self.core[2])
+            )
+        if self.prerelease[-1].isdigit():
+            expected_prerelease = self.prerelease[:-1] + (
+                increment_numeric_identifier(self.prerelease[-1]),
+            )
+        else:
+            expected_prerelease = self.prerelease + ("1",)
+        return successor.core == self.core and successor.prerelease == expected_prerelease
+
+
+def parse_semver(version: str) -> SemVer | None:
+    if VERSION_PATTERN.fullmatch(version) is None:
+        return None
+    without_build, build_separator, build = version.partition("+")
+    core, prerelease_separator, prerelease = without_build.partition("-")
+    major, minor, patch = core.split(".")
+    return SemVer(
+        value=version,
+        core=(major, minor, patch),
+        prerelease=tuple(prerelease.split(".")) if prerelease_separator else (),
+        build=tuple(build.split(".")) if build_separator else (),
+    )
+
+
+def is_immediate_version_successor(previous: str, successor: str) -> bool:
+    previous_semver = parse_semver(previous)
+    successor_semver = parse_semver(successor)
     return (
-        successor_core == previous_core
-        and len(previous_parts) == 2
-        and len(successor_parts) == 2
-        and previous_parts[0] == successor_parts[0]
-        and previous_parts[1].isdigit()
-        and successor_parts[1].isdigit()
-        and successor_parts[1] == increment_numeric_identifier(previous_parts[1])
+        previous_semver is not None
+        and successor_semver is not None
+        and previous_semver.immediately_precedes(successor_semver)
     )
 
 
@@ -2001,10 +2028,6 @@ def classify_plan_authorities(client: PublicClient) -> list[dict[str, Any]]:
     return authorities
 
 
-def numeric_identifier_precedence(identifier: str) -> tuple[int, str]:
-    return len(identifier), identifier
-
-
 def semver_precedence(
     version: str,
 ) -> tuple[
@@ -2014,16 +2037,10 @@ def semver_precedence(
     int,
     tuple[tuple[int, tuple[int, str] | str], ...],
 ]:
-    without_build = version.split("+", 1)[0]
-    core, separator, prerelease = without_build.partition("-")
-    major, minor, patch = (
-        numeric_identifier_precedence(part) for part in core.split(".")
-    )
-    identifiers = tuple(
-        (0, numeric_identifier_precedence(part)) if part.isdigit() else (1, part)
-        for part in prerelease.split(".")
-    )
-    return major, minor, patch, 1 if not separator else 0, identifiers
+    parsed = parse_semver(version)
+    if parsed is None:
+        raise ValueError("version is not exact SemVer")
+    return parsed.precedence
 
 
 def current_product_train_authorities(
