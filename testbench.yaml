@@ -1,7 +1,6 @@
 laravel: workbench
 
 providers:
-  - Waterline\WaterlineApplicationServiceProvider
   - Workbench\App\Providers\WorkbenchServiceProvider
 
 env:

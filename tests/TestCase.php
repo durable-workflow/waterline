@@ -6,7 +6,6 @@ use Illuminate\Support\Carbon;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use function Orchestra\Testbench\artisan;
 use function Orchestra\Testbench\default_skeleton_path;
-use function Orchestra\Testbench\workbench_path;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 use PDO;
 use Waterline\Waterline;
@@ -55,13 +54,8 @@ abstract class TestCase extends BaseTestCase
 
     protected function getPackageProviders($app)
     {
-        if (! class_exists('\Workflow\Models\Model')) {
-            class_alias(\Illuminate\Database\Eloquent\Model::class, '\Workflow\Models\Model');
-        }
-
         return array_values(array_unique(array_merge(parent::getPackageProviders($app), [
             'Waterline\WaterlineServiceProvider',
-            'Waterline\WaterlineApplicationServiceProvider',
         ])));
     }
 }

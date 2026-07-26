@@ -51,6 +51,7 @@ jobs:
           fetch-depth: 10
 
     - name: Install mssql-tools
+      if: ${{ github.server_url == 'https://github.com' }}
       run: |
         sudo apt-get update
         sudo apt-get install -y curl gnupg2
@@ -65,6 +66,7 @@ jobs:
       run: composer validate --strict
 
     - name: Cache Composer packages
+      if: ${{ github.server_url == 'https://github.com' }}
       id: composer-cache
       uses: actions/cache@v3
       with:
@@ -77,10 +79,42 @@ jobs:
       run: composer install --prefer-dist --no-progress
 
     - name: Create databases
-      run: |
-        /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P "P@ssword" -Q "CREATE DATABASE testing;"
-
-    - name: Run test suite
-      run: composer test
+      if: ${{ github.server_url == 'https://github.com' }}
       env:
         DB_HOST: 127.0.0.1
+      run: |
+        sqlcmd_command=(
+          /opt/mssql-tools/bin/sqlcmd
+          -S "$DB_HOST"
+          -U sa
+          -P "P@ssword"
+        )
+
+        for attempt in {1..30}; do
+          if "${sqlcmd_command[@]}" \
+            -l 2 \
+            -Q "SELECT 1;" \
+            -b > /dev/null 2>&1
+          then
+            break
+          fi
+
+          if [ "$attempt" -eq 30 ]; then
+            echo "SQL Server did not become ready after 30 attempts." >&2
+            exit 1
+          fi
+
+          sleep 2
+        done
+
+        "${sqlcmd_command[@]}" -Q "CREATE DATABASE testing;"
+
+    - name: Run full database test suite
+      if: ${{ github.server_url == 'https://github.com' }}
+      env:
+        DB_HOST: 127.0.0.1
+      run: composer test
+
+    - name: Run SQLite test suite
+      if: ${{ github.server_url != 'https://github.com' }}
+      run: composer test-sqlite
