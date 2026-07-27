@@ -27,9 +27,9 @@ This UI is installable via [Composer](https://getcomposer.org).
 
 ```bash
 composer require \
-    durable-workflow/waterline:2.0.0-beta.18@beta \
-    durable-workflow/workflow:2.0.0-beta.18@beta \
-    durable-workflow/sdk:2.0.0-beta.18@beta
+    durable-workflow/waterline:2.0.0-beta.21@beta \
+    durable-workflow/workflow:2.0.0-beta.21@beta \
+    durable-workflow/sdk:2.0.0-beta.21@beta
 
 php artisan waterline:install
 ```
@@ -100,9 +100,9 @@ latest assets.
 
 ```bash
 composer require --with-all-dependencies \
-    durable-workflow/waterline:2.0.0-beta.18@beta \
-    durable-workflow/workflow:2.0.0-beta.18@beta \
-    durable-workflow/sdk:2.0.0-beta.18@beta
+    durable-workflow/waterline:2.0.0-beta.21@beta \
+    durable-workflow/workflow:2.0.0-beta.21@beta \
+    durable-workflow/sdk:2.0.0-beta.21@beta
 
 php artisan waterline:publish
 ```
