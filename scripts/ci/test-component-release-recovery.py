@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import hashlib
 import importlib.util
@@ -192,6 +193,21 @@ class SharedContractVersionGuardTest(unittest.TestCase):
             self.contract("1.3.0", "current"),
             "strictly advancing SemVer version",
         )
+
+    def test_suite_digest_change_requires_strictly_advancing_version(self):
+        current = json.loads(CONSUMER_CONTRACT_PATH.read_text())
+        current["version"] = "1.4.2"
+        previous = copy.deepcopy(current)
+        previous["suite"]["sha256"] = "0" * 64
+
+        self.assert_transition_fails(
+            previous,
+            current,
+            "strictly advancing SemVer version",
+        )
+
+        current["version"] = "1.4.3"
+        self.assert_transition_passes(previous, current)
 
     def test_patch_minor_and_major_advances_are_accepted(self):
         for label, current_version in {

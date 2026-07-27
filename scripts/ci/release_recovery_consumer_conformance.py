@@ -346,14 +346,6 @@ def require_versioned_contract_change(
 ) -> None:
     if previous is None or previous == current:
         return
-    previous_semantics = copy.deepcopy(previous)
-    current_semantics = copy.deepcopy(current)
-    for contract in (previous_semantics, current_semantics):
-        suite = contract.get("suite")
-        if isinstance(suite, dict) and set(suite) == {"sha256"}:
-            suite["sha256"] = "<shared-suite-bytes>"
-    if previous_semantics == current_semantics:
-        return
     previous_version = previous.get("version")
     current_version = current.get("version")
     parse_semver(previous_version, "previous shared contract version")
