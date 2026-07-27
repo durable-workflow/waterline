@@ -26,7 +26,7 @@
     },
     {
       "id": "continuity-ambiguity-rejection",
-      "requirement": "Reject multiple continuity successor claims unless one immutable digest-bound resolution selects exactly one claim."
+      "requirement": "Accept one exactly qualified immutable digest-bound resolution selecting a member of the exact continuity claim set independent of enumeration order, and reject every unresolved or invalid fork."
     },
     {
       "id": "explicit-terminal-plan-rejection",
@@ -76,7 +76,7 @@
   ],
   "schema": "durable-workflow.release-recovery-consumer-conformance/v1",
   "suite": {
-    "sha256": "84585f831c6b045057d6fb1623ec54eb8a6451155e491242a5490b03a77ca4dc"
+    "sha256": "4efc61459e77c9102bc8236de3955bca0883c04c271e7a1134b5c54819cd9f87"
   },
-  "version": "1.3.0"
+  "version": "1.4.0"
 }

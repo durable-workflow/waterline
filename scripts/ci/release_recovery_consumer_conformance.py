@@ -453,6 +453,138 @@ def expect_recovery_error(module: ModuleType, action: Any, message: str) -> None
     raise ConformanceError(message)
 
 
+def continuity_resolution_qualification(module: ModuleType) -> dict[str, Any]:
+    return {
+        "repository": module.CONTROL_REPOSITORY,
+        "workflow": module.CONTINUITY_RESOLUTION_QUALIFICATION_WORKFLOW,
+        "event": module.CONTINUITY_RESOLUTION_QUALIFICATION_EVENT,
+        "head_branch": module.CONTINUITY_RESOLUTION_QUALIFICATION_BRANCH,
+        "head_sha": "9" * 40,
+        "run_id": 987,
+        "run_attempt": 2,
+        "status": "completed",
+        "conclusion": "success",
+    }
+
+
+def continuity_resolution_qualification_run(
+    module: ModuleType,
+    qualification: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "id": qualification["run_id"],
+        "run_attempt": qualification["run_attempt"],
+        "repository": {"full_name": module.CONTROL_REPOSITORY},
+        "head_repository": {"full_name": module.CONTROL_REPOSITORY},
+        "path": (
+            f"{module.CONTINUITY_RESOLUTION_QUALIFICATION_WORKFLOW}"
+            f"@{module.CONTINUITY_RESOLUTION_QUALIFICATION_BRANCH}"
+        ),
+        "event": qualification["event"],
+        "head_branch": qualification["head_branch"],
+        "head_sha": qualification["head_sha"],
+        "status": qualification["status"],
+        "conclusion": qualification["conclusion"],
+    }
+
+
+def continuity_resolution_fixture(
+    module: ModuleType,
+) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    interrupted_plan = {"plan": "interrupted-conformance"}
+    interrupted = {
+        "tag": "release-plan/interrupted-conformance",
+        "commit": "a" * 40,
+        "plan": interrupted_plan,
+    }
+    interruption = {
+        "tag": "beta-continuity/interrupted-conformance/interrupted",
+        "commit": "b" * 40,
+        "evidence_sha256": "c" * 64,
+    }
+    successors: list[dict[str, Any]] = []
+    for index, name in enumerate(("first-successor", "second-successor"), start=1):
+        successors.append(
+            {
+                "tag": f"release-plan/{name}",
+                "supersession": {
+                    **interruption,
+                    "continuity_claim": {
+                        "plan": {
+                            "tag": f"release-plan/{name}",
+                            "commit": str(index) * 40,
+                            "sha256": str(index + 2) * 64,
+                        },
+                        "acceptance": {
+                            "tag": f"beta-continuity/{name}/accepted",
+                            "commit": str(index + 4) * 40,
+                            "sha256": str(index + 6) * 64,
+                        },
+                    },
+                },
+            }
+        )
+    claims = sorted(
+        (successor["supersession"]["continuity_claim"] for successor in successors),
+        key=lambda claim: claim["plan"]["tag"],
+    )
+    qualification = continuity_resolution_qualification(module)
+    resolution = {
+        "schema": module.CONTINUITY_RESOLUTION_SCHEMA,
+        "qualification": qualification,
+        "interruption": {
+            "plan": {
+                "tag": interrupted["tag"],
+                "commit": interrupted["commit"],
+                "sha256": module.manifest_digest(interrupted_plan),
+            },
+            "evidence": {
+                "tag": interruption["tag"],
+                "commit": interruption["commit"],
+                "sha256": interruption["evidence_sha256"],
+            },
+        },
+        "successor_claims": claims,
+        "selected_successor": claims[1]["plan"],
+    }
+    return (
+        interrupted,
+        successors,
+        resolution,
+        continuity_resolution_qualification_run(module, qualification),
+    )
+
+
+def continuity_resolution_tag(
+    module: ModuleType,
+    interrupted: dict[str, Any],
+    resolution: dict[str, Any],
+) -> str:
+    return (
+        f"{module.CONTINUITY_RESOLUTION_TAG_PREFIX}{interrupted['plan']['plan']}/"
+        f"{module.manifest_digest(resolution)}"
+    )
+
+
+def exercise_continuity_resolution(
+    module: ModuleType,
+    interrupted: dict[str, Any],
+    successors: list[dict[str, Any]],
+    resolution: Any,
+    resolution_tags: list[str],
+    resolution_commit: str | None,
+    qualification_run: Any,
+) -> str:
+    client = mock.Mock()
+    client.json.return_value = qualification_run
+    with (
+        mock.patch.object(module, "list_continuity_resolution_tags", return_value=resolution_tags),
+        mock.patch.object(module, "resolve_tag", return_value=resolution_commit),
+        mock.patch.object(module, "read_record", return_value=resolution),
+    ):
+        return module.resolve_continuity_successor_fork(client, interrupted, successors)
+
+
 def case_immutable_plan_enumeration(module: ModuleType) -> None:
     tags = ["release-plan/conformance-a", "release-plan/conformance-b"]
     client = mock.Mock()
@@ -667,21 +799,149 @@ def case_malformed_authority_rejection(module: ModuleType) -> None:
 
 
 def case_continuity_ambiguity_rejection(module: ModuleType) -> None:
-    interrupted = {
-        "tag": "release-plan/interrupted-conformance",
-        "commit": "a" * 40,
-        "plan": {"plan": "interrupted-conformance"},
-    }
-    with mock.patch.object(module, "list_continuity_resolution_tags", return_value=[]):
+    interrupted, successors, resolution, qualification_run = continuity_resolution_fixture(module)
+    resolution_tag = continuity_resolution_tag(module, interrupted, resolution)
+    expected_selected = resolution["selected_successor"]["tag"]
+
+    for ordering in (successors, list(reversed(successors))):
+        selected = exercise_continuity_resolution(
+            module,
+            interrupted,
+            ordering,
+            resolution,
+            [resolution_tag],
+            "f" * 40,
+            qualification_run,
+        )
+        if selected != expected_selected:
+            raise ConformanceError(
+                "consumer did not select the exact digest-bound continuity successor independent of enumeration order"
+            )
+
+    absent_authorities = (
+        ([], "f" * 40, "consumer accepted continuity successors without a resolution authority"),
+        (
+            [resolution_tag],
+            None,
+            "consumer accepted a continuity resolution authority without an immutable record",
+        ),
+        (
+            [
+                resolution_tag,
+                (
+                    f"{module.CONTINUITY_RESOLUTION_TAG_PREFIX}{interrupted['plan']['plan']}/"
+                    f"{'e' * 64}"
+                ),
+            ],
+            "f" * 40,
+            "consumer accepted multiple continuity resolution authorities",
+        ),
+    )
+    for resolution_tags, resolution_commit, message in absent_authorities:
         expect_recovery_error(
             module,
-            lambda: module.resolve_continuity_successor_fork(
-                mock.Mock(),
+            lambda resolution_tags=resolution_tags, resolution_commit=resolution_commit: exercise_continuity_resolution(
+                module,
                 interrupted,
-                [{"tag": "first"}, {"tag": "second"}],
+                successors,
+                resolution,
+                resolution_tags,
+                resolution_commit,
+                qualification_run,
             ),
-            "consumer accepted ambiguous continuity successors without a resolution",
+            message,
         )
+
+    malformed_records: tuple[Any, ...] = (
+        None,
+        {**resolution, "unexpected": True},
+    )
+    for malformed in malformed_records:
+        malformed_tag = (
+            resolution_tag
+            if not isinstance(malformed, dict)
+            else continuity_resolution_tag(module, interrupted, malformed)
+        )
+        expect_recovery_error(
+            module,
+            lambda malformed=malformed, malformed_tag=malformed_tag: exercise_continuity_resolution(
+                module,
+                interrupted,
+                successors,
+                malformed,
+                [malformed_tag],
+                "f" * 40,
+                qualification_run,
+            ),
+            "consumer accepted a malformed continuity resolution record",
+        )
+
+    interruption_mismatch = copy.deepcopy(resolution)
+    interruption_mismatch["interruption"]["plan"]["commit"] = "e" * 40
+    claim_set_mismatch = copy.deepcopy(resolution)
+    claim_set_mismatch["successor_claims"][0]["acceptance"]["sha256"] = "e" * 64
+    selected_outside_claim_set = copy.deepcopy(resolution)
+    selected_outside_claim_set["selected_successor"] = {
+        "tag": "release-plan/outside-claim-set",
+        "commit": "e" * 40,
+        "sha256": "e" * 64,
+    }
+    invalid_qualification = copy.deepcopy(resolution)
+    invalid_qualification["qualification"]["repository"] = "durable-workflow/untrusted"
+    semantic_mismatches = (
+        (interruption_mismatch, "consumer accepted a continuity resolution for another interruption"),
+        (claim_set_mismatch, "consumer accepted a continuity resolution for another claim set"),
+        (selected_outside_claim_set, "consumer accepted a successor outside the exact claim set"),
+        (invalid_qualification, "consumer accepted an invalid qualification identity"),
+    )
+    for mismatched, message in semantic_mismatches:
+        mismatched_tag = continuity_resolution_tag(module, interrupted, mismatched)
+        expect_recovery_error(
+            module,
+            lambda mismatched=mismatched, mismatched_tag=mismatched_tag: exercise_continuity_resolution(
+                module,
+                interrupted,
+                successors,
+                mismatched,
+                [mismatched_tag],
+                "f" * 40,
+                qualification_run,
+            ),
+            message,
+        )
+
+    digest_mismatch_tag = (
+        f"{module.CONTINUITY_RESOLUTION_TAG_PREFIX}{interrupted['plan']['plan']}/"
+        f"{'0' * 64}"
+    )
+    expect_recovery_error(
+        module,
+        lambda: exercise_continuity_resolution(
+            module,
+            interrupted,
+            successors,
+            resolution,
+            [digest_mismatch_tag],
+            "f" * 40,
+            qualification_run,
+        ),
+        "consumer accepted a continuity resolution with the wrong immutable digest",
+    )
+
+    mismatched_run = {**qualification_run, "head_sha": "8" * 40}
+    expect_recovery_error(
+        module,
+        lambda: exercise_continuity_resolution(
+            module,
+            interrupted,
+            successors,
+            resolution,
+            [resolution_tag],
+            "f" * 40,
+            mismatched_run,
+        ),
+        "consumer accepted qualification evidence for another source identity",
+    )
 
 
 def case_explicit_terminal_plan_rejection(module: ModuleType) -> None:
