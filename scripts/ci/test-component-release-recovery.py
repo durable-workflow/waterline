@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -36,6 +37,9 @@ CONSUMER_CONFORMANCE_SCRIPT = Path(__file__).with_name(
 )
 CONSUMER_CONTRACT_PATH = Path(__file__).with_name(
     "release-recovery-consumer-contract.json"
+)
+CONSUMER_ADAPTER_PATH = Path(__file__).with_name(
+    "release-recovery-consumer-adapter.json"
 )
 SPEC = importlib.util.spec_from_file_location("component_release_recovery", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
@@ -240,6 +244,88 @@ class SharedContractVersionGuardTest(unittest.TestCase):
             self.contract("1.3.0", "current"),
             "previous contract commit is unavailable",
             previous_ref="f" * 40,
+        )
+
+
+class ConsumerContractIdentityRegressionTest(unittest.TestCase):
+    def write_json(self, path: Path, value: object) -> None:
+        path.write_text(
+            json.dumps(
+                value,
+                indent=2,
+                sort_keys=True,
+                ensure_ascii=True,
+            )
+            + "\n"
+        )
+
+    def run_variant(self, variant: str) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            ci_root = root / "scripts/ci"
+            shutil.copytree(CONSUMER_CONFORMANCE_SCRIPT.parent, ci_root)
+            suite_path = ci_root / CONSUMER_CONFORMANCE_SCRIPT.name
+            contract_path = ci_root / CONSUMER_CONTRACT_PATH.name
+            adapter_path = ci_root / CONSUMER_ADAPTER_PATH.name
+            invoked_contract = contract_path
+
+            if variant == "alternate-invoked":
+                invoked_contract = (
+                    ci_root / "alternate-release-recovery-consumer-contract.json"
+                )
+                shutil.copyfile(contract_path, invoked_contract)
+            elif variant == "stale-declared":
+                contract = json.loads(contract_path.read_text())
+                contract["version"] = "1.4.0"
+                self.write_json(contract_path, contract)
+            elif variant == "mismatched-declared-bytes":
+                contract = json.loads(contract_path.read_text())
+                contract["cases"][0]["requirement"] += " (mismatched declared bytes)"
+                self.write_json(contract_path, contract)
+            elif variant != "matching":
+                self.fail(f"unknown contract identity variant: {variant}")
+
+            return subprocess.run(
+                [
+                    sys.executable,
+                    str(suite_path),
+                    "--contract",
+                    str(invoked_contract.relative_to(root)),
+                    "--adapter",
+                    str(adapter_path.relative_to(root)),
+                    "--shared-only",
+                ],
+                cwd=root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+    def assert_rejected(self, variant: str, message: str) -> None:
+        result = self.run_variant(variant)
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertIn(message, result.stderr)
+
+    def test_matching_declared_and_invoked_contract_passes(self):
+        result = self.run_variant("matching")
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def test_alternate_invoked_contract_is_rejected(self):
+        self.assert_rejected(
+            "alternate-invoked",
+            "the invoked contract is not the adapter's declared contract",
+        )
+
+    def test_stale_declared_contract_version_is_rejected(self):
+        self.assert_rejected(
+            "stale-declared",
+            "the adapter's declared contract does not match its version and digest pins",
+        )
+
+    def test_mismatched_declared_contract_bytes_are_rejected(self):
+        self.assert_rejected(
+            "mismatched-declared-bytes",
+            "the adapter's declared contract does not match its version and digest pins",
         )
 
 

@@ -76,7 +76,7 @@
   ],
   "schema": "durable-workflow.release-recovery-consumer-conformance/v1",
   "suite": {
-    "sha256": "4efc61459e77c9102bc8236de3955bca0883c04c271e7a1134b5c54819cd9f87"
+    "sha256": "e5893129289f7af2688f9ea232b5b36d06370839840b33b0972ee6976608ec3d"
   },
-  "version": "1.4.0"
+  "version": "1.4.1"
 }

@@ -127,7 +127,12 @@ def relative_file(root: Path, value: Any, label: str) -> Path:
     path = PurePosixPath(value)
     if path.is_absolute() or ".." in path.parts:
         raise ConformanceError(f"{label} must stay within the repository")
-    resolved = root.joinpath(*path.parts)
+    repository_root = root.resolve()
+    resolved = root.joinpath(*path.parts).resolve()
+    try:
+        resolved.relative_to(repository_root)
+    except ValueError as error:
+        raise ConformanceError(f"{label} must stay within the repository") from error
     if not resolved.is_file():
         raise ConformanceError(f"{label} does not exist: {value}")
     return resolved
@@ -220,6 +225,7 @@ def validate_adapter(
     contract_sha256: str,
     repository_root: Path,
     current_suite: Path,
+    current_contract: Path,
 ) -> tuple[Path, list[str]]:
     expected_keys = {
         "component",
@@ -241,13 +247,19 @@ def validate_adapter(
     if identity not in CONSUMERS or identity not in contract["consumers"]:
         raise ConformanceError("consumer adapter is not in the contract target topology")
     contract_pin = adapter.get("contract")
-    if (
-        not isinstance(contract_pin, dict)
-        or set(contract_pin) != {"path", "sha256", "version"}
-        or contract_pin.get("version") != contract["version"]
-        or contract_pin.get("sha256") != contract_sha256
-    ):
-        raise ConformanceError("consumer adapter does not pin the exact contract version and digest")
+    if not isinstance(contract_pin, dict) or set(contract_pin) != {"path", "sha256", "version"}:
+        raise ConformanceError("consumer adapter does not declare the exact contract pin shape")
+    adapter_contract = relative_file(repository_root, contract_pin["path"], "adapter contract")
+    invoked_contract = current_contract.resolve()
+    if adapter_contract != invoked_contract:
+        raise ConformanceError("the invoked contract is not the adapter's declared contract")
+    declared_contract, declared_contract_raw = load_json_object(adapter_contract, "adapter contract")
+    if declared_contract.get("version") != contract_pin.get("version") or sha256_bytes(
+        declared_contract_raw
+    ) != contract_pin.get("sha256"):
+        raise ConformanceError("the adapter's declared contract does not match its version and digest pins")
+    if contract_pin.get("version") != contract["version"] or contract_pin.get("sha256") != contract_sha256:
+        raise ConformanceError("consumer adapter does not pin the exact invoked contract version and digest")
     suite_pin = adapter.get("suite")
     if (
         not isinstance(suite_pin, dict)
@@ -258,7 +270,6 @@ def validate_adapter(
     adapter_suite = relative_file(repository_root, suite_pin["path"], "adapter suite")
     if adapter_suite.resolve() != current_suite.resolve():
         raise ConformanceError("the invoked suite is not the adapter's declared suite")
-    relative_file(repository_root, contract_pin["path"], "adapter contract")
     consumer = relative_file(repository_root, adapter.get("consumer"), "adapter consumer")
     distribution = adapter.get("distribution_verification")
     if (
@@ -1162,6 +1173,7 @@ def main() -> int:
         contract_sha256,
         repository_root,
         suite_path,
+        contract_path,
     )
     module = load_consumer(consumer_path)
     cases, failures = run_cases(module)
