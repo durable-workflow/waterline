@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath
 from types import ModuleType
@@ -345,6 +346,14 @@ def require_versioned_contract_change(
 ) -> None:
     if previous is None or previous == current:
         return
+    previous_semantics = copy.deepcopy(previous)
+    current_semantics = copy.deepcopy(current)
+    for contract in (previous_semantics, current_semantics):
+        suite = contract.get("suite")
+        if isinstance(suite, dict) and set(suite) == {"sha256"}:
+            suite["sha256"] = "<shared-suite-bytes>"
+    if previous_semantics == current_semantics:
+        return
     previous_version = previous.get("version")
     current_version = current.get("version")
     parse_semver(previous_version, "previous shared contract version")
@@ -587,13 +596,240 @@ def exercise_continuity_resolution(
     qualification_run: Any,
 ) -> str:
     client = mock.Mock()
-    client.json.return_value = qualification_run
-    with (
-        mock.patch.object(module, "list_continuity_resolution_tags", return_value=resolution_tags),
-        mock.patch.object(module, "resolve_tag", return_value=resolution_commit),
-        mock.patch.object(module, "read_record", return_value=resolution),
+    resolution_tag = resolution_tags[0] if len(resolution_tags) == 1 else None
+    qualification = resolution.get("qualification") if isinstance(resolution, dict) else None
+    resolution_prefix = (
+        f"{module.CONTINUITY_RESOLUTION_TAG_PREFIX}{interrupted['plan']['plan']}/"
+    )
+    registry_url = (
+        f"https://api.github.com/repos/{module.CONTROL_REPOSITORY}"
+        f"/git/matching-refs/tags/{resolution_prefix}"
+    )
+    tag_url = (
+        (
+            f"https://api.github.com/repos/{module.CONTROL_REPOSITORY}/git/ref/tags/"
+            f"{urllib.parse.quote(resolution_tag, safe='')}"
+        )
+        if resolution_tag is not None
+        else None
+    )
+    record_url = (
+        (
+            f"https://api.github.com/repos/{module.CONTROL_REPOSITORY}/contents/"
+            f"continuity-successor-resolution.json?ref={resolution_commit}"
+        )
+        if resolution_tag is not None and resolution_commit is not None
+        else None
+    )
+    qualification_url = (
+        (
+            f"https://api.github.com/repos/{module.CONTROL_REPOSITORY}/actions/runs/"
+            f"{qualification['run_id']}/attempts/{qualification['run_attempt']}"
+        )
+        if (
+            isinstance(qualification, dict)
+            and isinstance(qualification.get("repository"), str)
+            and type(qualification.get("run_id")) is int
+            and type(qualification.get("run_attempt")) is int
+        )
+        else None
+    )
+    json_urls: list[str] = []
+    bytes_urls: list[str] = []
+
+    def read_json(url: Any, **kwargs: Any) -> Any:
+        if not isinstance(url, str) or kwargs:
+            raise ConformanceError(
+                f"consumer used invalid JSON transport arguments for continuity authority: {url!r}"
+            )
+        json_urls.append(url)
+        if url == registry_url:
+            return [{"ref": f"refs/tags/{tag}"} for tag in resolution_tags]
+        if tag_url is not None and url == tag_url:
+            if resolution_commit is None:
+                raise module.NotFound(
+                    f"continuity resolution tag is absent: {resolution_tag}",
+                    "plan-discovery",
+                )
+            return {"object": {"sha": resolution_commit, "type": "commit"}}
+        if qualification_url is not None and url == qualification_url:
+            return qualification_run
+        raise ConformanceError(
+            f"consumer queried an undeclared continuity JSON authority: {url}"
+        )
+
+    def read_bytes(url: Any, **kwargs: Any) -> bytes:
+        if (
+            not isinstance(url, str)
+            or url != record_url
+            or kwargs != {"accept": "application/vnd.github.raw+json"}
+        ):
+            raise ConformanceError(
+                f"consumer queried an undeclared continuity record authority: {url!r}"
+            )
+        bytes_urls.append(url)
+        return canonical_json(resolution)
+
+    client.json.side_effect = read_json
+    client.bytes.side_effect = read_bytes
+    selected = module.resolve_continuity_successor_fork(client, interrupted, successors)
+    required_json_urls = {registry_url, tag_url, qualification_url}
+    missing_json_urls = {
+        url for url in required_json_urls if url is not None and url not in json_urls
+    }
+    if missing_json_urls or record_url is None or record_url not in bytes_urls:
+        raise ConformanceError(
+            "consumer returned a continuity successor without reading every exact declared authority"
+        )
+    return selected
+
+
+def expect_continuity_transport_rejection(
+    module: ModuleType,
+    action: Any,
+    message: str,
+) -> None:
+    try:
+        action()
+    except ConformanceError:
+        return
+    except module.RecoveryError as error:
+        raise ConformanceError(
+            f"{message}; the focused mutant did not reach the strict transport"
+        ) from error
+    raise ConformanceError(message)
+
+
+def assert_continuity_transport_mutants_rejected(
+    module: ModuleType,
+    interrupted: dict[str, Any],
+    successors: list[dict[str, Any]],
+    resolution: dict[str, Any],
+    resolution_tag: str,
+    resolution_commit: str,
+    qualification_run: dict[str, Any],
+) -> None:
+    def exercise() -> str:
+        return exercise_continuity_resolution(
+            module,
+            interrupted,
+            successors,
+            resolution,
+            [resolution_tag],
+            resolution_commit,
+            qualification_run,
+        )
+
+    def wrong_registry_route(client: Any, interrupted_plan: str) -> list[str]:
+        prefix = f"{module.CONTINUITY_RESOLUTION_TAG_PREFIX}{interrupted_plan}/"
+        client.json(
+            f"https://api.github.com/repos/{module.CONTROL_REPOSITORY}"
+            f"/git/matching-refs/heads/{prefix}"
+        )
+        return [resolution_tag]
+
+    with mock.patch.object(
+        module,
+        "list_continuity_resolution_tags",
+        side_effect=wrong_registry_route,
     ):
-        return module.resolve_continuity_successor_fork(client, interrupted, successors)
+        expect_continuity_transport_rejection(
+            module,
+            exercise,
+            "shared conformance accepted a wrong continuity registry route",
+        )
+
+    resolve_tag = module.resolve_tag
+    tag_mutants = (
+        (
+            lambda client, _repository, tag: resolve_tag(
+                client,
+                "durable-workflow/unrelated",
+                tag,
+            ),
+            "shared conformance accepted a continuity tag lookup in the wrong repository",
+        ),
+        (
+            lambda client, repository, _tag: resolve_tag(
+                client,
+                repository,
+                "main",
+            ),
+            "shared conformance accepted a mutable continuity tag ref",
+        ),
+    )
+    for mutant, message in tag_mutants:
+        with mock.patch.object(module, "resolve_tag", side_effect=mutant):
+            expect_continuity_transport_rejection(module, exercise, message)
+
+    def record_ref_mutant(ref: str) -> Any:
+        def read_record(
+            client: Any,
+            _tag: str,
+            _commit: str,
+            filename: str,
+        ) -> Any:
+            encoded_filename = urllib.parse.quote(filename, safe="/")
+            raw = client.bytes(
+                f"https://api.github.com/repos/{module.CONTROL_REPOSITORY}/contents/"
+                f"{encoded_filename}?ref={ref}",
+                accept="application/vnd.github.raw+json",
+            )
+            return json.loads(raw)
+
+        return read_record
+
+    record_ref_mutants = (
+        (
+            "main",
+            "shared conformance accepted a mutable continuity record ref",
+        ),
+        (
+            "e" * 40,
+            "shared conformance accepted an unrelated continuity record ref",
+        ),
+    )
+    for ref, message in record_ref_mutants:
+        with mock.patch.object(
+            module,
+            "read_record",
+            side_effect=record_ref_mutant(ref),
+        ):
+            expect_continuity_transport_rejection(module, exercise, message)
+
+    def qualification_route_mutant(
+        repository: str,
+        run_id: int,
+    ) -> Any:
+        def validate(qualification: dict[str, Any], client: Any) -> dict[str, Any]:
+            client.json(
+                f"https://api.github.com/repos/{repository}/actions/runs/{run_id}"
+                f"/attempts/{qualification['run_attempt']}"
+            )
+            return qualification
+
+        return validate
+
+    qualification = resolution["qualification"]
+    qualification_route_mutants = (
+        (
+            "durable-workflow/unrelated",
+            qualification["run_id"],
+            "shared conformance accepted a qualification lookup in the wrong repository",
+        ),
+        (
+            module.CONTROL_REPOSITORY,
+            qualification["run_id"] + 1,
+            "shared conformance accepted the wrong qualification run lookup",
+        ),
+    )
+    for repository, run_id, message in qualification_route_mutants:
+        with mock.patch.object(
+            module,
+            "validate_continuity_resolution_qualification",
+            side_effect=qualification_route_mutant(repository, run_id),
+        ):
+            expect_continuity_transport_rejection(module, exercise, message)
 
 
 def case_immutable_plan_enumeration(module: ModuleType) -> None:
@@ -828,6 +1064,16 @@ def case_continuity_ambiguity_rejection(module: ModuleType) -> None:
             raise ConformanceError(
                 "consumer did not select the exact digest-bound continuity successor independent of enumeration order"
             )
+
+    assert_continuity_transport_mutants_rejected(
+        module,
+        interrupted,
+        successors,
+        resolution,
+        resolution_tag,
+        "f" * 40,
+        qualification_run,
+    )
 
     absent_authorities = (
         ([], "f" * 40, "consumer accepted continuity successors without a resolution authority"),

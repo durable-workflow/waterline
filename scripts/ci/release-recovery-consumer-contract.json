@@ -26,7 +26,7 @@
     },
     {
       "id": "continuity-ambiguity-rejection",
-      "requirement": "Accept one exactly qualified immutable digest-bound resolution selecting a member of the exact continuity claim set independent of enumeration order, and reject every unresolved or invalid fork."
+      "requirement": "Accept one exactly qualified immutable digest-bound resolution selecting a member of the exact continuity claim set independent of enumeration order only when discovery, record, and qualification lookups use their declared authority identities, and reject every unresolved or invalid fork."
     },
     {
       "id": "explicit-terminal-plan-rejection",
@@ -76,7 +76,7 @@
   ],
   "schema": "durable-workflow.release-recovery-consumer-conformance/v1",
   "suite": {
-    "sha256": "e5893129289f7af2688f9ea232b5b36d06370839840b33b0972ee6976608ec3d"
+    "sha256": "0b86fe58ba2dca553e9ed53683c2ebffb8f0e30d5691d82193b055d9d305631f"
   },
-  "version": "1.4.1"
+  "version": "1.4.2"
 }
