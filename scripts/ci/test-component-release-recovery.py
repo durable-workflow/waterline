@@ -8,6 +8,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -30,6 +31,12 @@ from recovery_workflow_authority import (
 )
 
 SCRIPT = Path(__file__).with_name("component-release-recovery.py")
+CONSUMER_CONFORMANCE_SCRIPT = Path(__file__).with_name(
+    "release_recovery_consumer_conformance.py"
+)
+CONSUMER_CONTRACT_PATH = Path(__file__).with_name(
+    "release-recovery-consumer-contract.json"
+)
 SPEC = importlib.util.spec_from_file_location("component_release_recovery", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 recovery = importlib.util.module_from_spec(SPEC)
@@ -76,6 +83,164 @@ def github_http_error(status: int, body: bytes = b"error", **headers: str) -> ur
         headers,
         io.BytesIO(body),
     )
+
+
+class SharedContractVersionGuardTest(unittest.TestCase):
+    def contract(self, version: str, content_marker: str) -> dict[str, object]:
+        contract = json.loads(CONSUMER_CONTRACT_PATH.read_text())
+        contract["version"] = version
+        contract["cases"][0]["requirement"] += f" ({content_marker})"
+        return contract
+
+    def write_contract(self, root: Path, contract: dict[str, object]) -> Path:
+        path = root / "scripts/ci/release-recovery-consumer-contract.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                contract,
+                indent=2,
+                sort_keys=True,
+                ensure_ascii=True,
+            )
+            + "\n"
+        )
+        return path
+
+    def git(self, root: Path, *arguments: str) -> str:
+        result = subprocess.run(
+            ["git", *arguments],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
+    def run_transition(
+        self,
+        previous: dict[str, object] | None,
+        current: dict[str, object],
+        *,
+        previous_ref: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.git(root, "init", "--quiet")
+            if previous is None:
+                (root / "README.md").write_text("contract not adopted\n")
+            else:
+                self.write_contract(root, previous)
+            self.git(root, "add", "--all")
+            self.git(
+                root,
+                "-c",
+                "user.name=Release Recovery Test",
+                "-c",
+                "user.email=release-recovery@example.invalid",
+                "commit",
+                "--quiet",
+                "--message=baseline",
+            )
+            baseline = self.git(root, "rev-parse", "HEAD")
+            contract_path = self.write_contract(root, current)
+            return subprocess.run(
+                [
+                    sys.executable,
+                    str(CONSUMER_CONFORMANCE_SCRIPT),
+                    "--contract",
+                    str(contract_path),
+                    "--previous-ref",
+                    previous_ref or baseline,
+                ],
+                cwd=root,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+    def assert_transition_passes(
+        self,
+        previous: dict[str, object] | None,
+        current: dict[str, object],
+    ) -> None:
+        result = self.run_transition(previous, current)
+        self.assertEqual(0, result.returncode, result.stderr)
+
+    def assert_transition_fails(
+        self,
+        previous: dict[str, object] | None,
+        current: dict[str, object],
+        message: str,
+        *,
+        previous_ref: str | None = None,
+    ) -> None:
+        result = self.run_transition(
+            previous,
+            current,
+            previous_ref=previous_ref,
+        )
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertIn(message, result.stderr)
+
+    def test_changed_content_with_unchanged_version_is_rejected(self):
+        self.assert_transition_fails(
+            self.contract("1.3.0", "previous"),
+            self.contract("1.3.0", "current"),
+            "strictly advancing SemVer version",
+        )
+
+    def test_patch_minor_and_major_advances_are_accepted(self):
+        for label, current_version in {
+            "patch": "1.2.4",
+            "minor": "1.3.0",
+            "major": "2.0.0",
+        }.items():
+            with self.subTest(label=label):
+                self.assert_transition_passes(
+                    self.contract("1.2.3", "previous"),
+                    self.contract(current_version, "current"),
+                )
+
+    def test_prerelease_advance_is_accepted(self):
+        self.assert_transition_passes(
+            self.contract("1.3.0-rc.1", "previous"),
+            self.contract("1.3.0-rc.2", "current"),
+        )
+
+    def test_downgrade_is_rejected(self):
+        self.assert_transition_fails(
+            self.contract("2.0.0", "previous"),
+            self.contract("1.9.9", "current"),
+            "strictly advancing SemVer version",
+        )
+
+    def test_build_metadata_only_change_is_rejected(self):
+        self.assert_transition_fails(
+            self.contract("1.3.0+previous", "previous"),
+            self.contract("1.3.0+current", "current"),
+            "strictly advancing SemVer version",
+        )
+
+    def test_leading_zero_numeric_prerelease_is_rejected(self):
+        self.assert_transition_fails(
+            self.contract("1.2.0", "previous"),
+            self.contract("1.3.0-rc.01", "current"),
+            "shared contract version must be exact SemVer",
+        )
+
+    def test_first_adoption_without_a_previous_contract_is_accepted(self):
+        self.assert_transition_passes(
+            None,
+            self.contract("1.0.0", "current"),
+        )
+
+    def test_unavailable_previous_commit_is_rejected(self):
+        self.assert_transition_fails(
+            self.contract("1.2.0", "previous"),
+            self.contract("1.3.0", "current"),
+            "previous contract commit is unavailable",
+            previous_ref="f" * 40,
+        )
 
 
 def load_recovery_for_retry_tests():

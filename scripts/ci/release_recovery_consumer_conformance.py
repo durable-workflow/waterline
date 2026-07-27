@@ -24,9 +24,10 @@ CONTRACT_SCHEMA = "durable-workflow.release-recovery-consumer-conformance/v1"
 ADAPTER_SCHEMA = "durable-workflow.release-recovery-consumer-adapter/v1"
 EVIDENCE_SCHEMA = "durable-workflow.release-recovery-consumer-conformance-evidence/v1"
 VERSION_PATTERN = re.compile(
-    r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
-    r"(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
-    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+    r"(?P<major>0|[1-9][0-9]*)\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)"
+    r"(?:-(?P<prerelease>(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+    r"(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?"
+    r"(?:\+(?P<build>[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
 )
 COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
@@ -175,6 +176,44 @@ def validate_contract(
     return sha256_bytes(contract_raw)
 
 
+def parse_semver(
+    version: Any,
+    label: str,
+) -> tuple[tuple[int, int, int], tuple[str, ...] | None]:
+    if not isinstance(version, str):
+        raise ConformanceError(f"{label} must be exact SemVer")
+    match = VERSION_PATTERN.fullmatch(version)
+    if match is None:
+        raise ConformanceError(f"{label} must be exact SemVer")
+    core = tuple(int(match.group(field)) for field in ("major", "minor", "patch"))
+    prerelease = match.group("prerelease")
+    return core, None if prerelease is None else tuple(prerelease.split("."))
+
+
+def compare_semver_precedence(left: str, right: str) -> int:
+    left_core, left_prerelease = parse_semver(left, "left version")
+    right_core, right_prerelease = parse_semver(right, "right version")
+    if left_core != right_core:
+        return 1 if left_core > right_core else -1
+    if left_prerelease is None or right_prerelease is None:
+        if left_prerelease == right_prerelease:
+            return 0
+        return 1 if left_prerelease is None else -1
+    for left_identifier, right_identifier in zip(left_prerelease, right_prerelease, strict=False):
+        if left_identifier == right_identifier:
+            continue
+        left_numeric = left_identifier.isdigit()
+        right_numeric = right_identifier.isdigit()
+        if left_numeric and right_numeric:
+            return 1 if int(left_identifier) > int(right_identifier) else -1
+        if left_numeric != right_numeric:
+            return -1 if left_numeric else 1
+        return 1 if left_identifier > right_identifier else -1
+    if len(left_prerelease) == len(right_prerelease):
+        return 0
+    return 1 if len(left_prerelease) > len(right_prerelease) else -1
+
+
 def validate_adapter(
     adapter: dict[str, Any],
     contract: dict[str, Any],
@@ -249,6 +288,28 @@ def previous_contract(
     if COMMIT_PATTERN.fullmatch(previous_ref) is None or previous_ref == "0" * 40:
         raise ConformanceError("previous contract ref must be an exact nonzero commit")
     relative = contract_path.resolve().relative_to(repository_root.resolve()).as_posix()
+    commit = subprocess.run(
+        ["git", "cat-file", "-e", f"{previous_ref}^{{commit}}"],
+        cwd=repository_root,
+        check=False,
+        capture_output=True,
+        text=False,
+    )
+    if commit.returncode != 0:
+        raise ConformanceError("previous contract commit is unavailable")
+    tree = subprocess.run(
+        ["git", "ls-tree", "--name-only", "-z", previous_ref, "--", relative],
+        cwd=repository_root,
+        check=False,
+        capture_output=True,
+        text=False,
+    )
+    if tree.returncode != 0:
+        raise ConformanceError("previous contract commit cannot be inspected")
+    if tree.stdout == b"":
+        return None
+    if tree.stdout != f"{relative}\0".encode():
+        raise ConformanceError("previous contract path could not be resolved exactly")
     result = subprocess.run(
         ["git", "show", f"{previous_ref}:{relative}"],
         cwd=repository_root,
@@ -257,7 +318,7 @@ def previous_contract(
         text=False,
     )
     if result.returncode != 0:
-        return None
+        raise ConformanceError("previous shared contract is unreadable")
     try:
         value = json.loads(result.stdout)
     except json.JSONDecodeError as error:
@@ -275,8 +336,10 @@ def require_versioned_contract_change(
         return
     previous_version = previous.get("version")
     current_version = current.get("version")
-    if previous_version == current_version:
-        raise ConformanceError("shared contract content changed without advancing its exact SemVer version")
+    parse_semver(previous_version, "previous shared contract version")
+    parse_semver(current_version, "current shared contract version")
+    if compare_semver_precedence(current_version, previous_version) <= 0:
+        raise ConformanceError("shared contract content changed without a strictly advancing SemVer version")
 
 
 def load_consumer(path: Path) -> ModuleType:
