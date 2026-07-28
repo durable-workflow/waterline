@@ -9,6 +9,11 @@ Avro payload previews now understand the shared fixed typed Value schema and
 render binary values explicitly, so byte sequences cannot be mistaken for
 equal-looking UTF-8 or base64 text.
 
+Managed Waterline now renders under strict Content Security Policy without
+inline scripts, inline styles, or third-party fonts. Its escaped page bootstrap
+and published frontend assets preserve dashboard scope, backend, maintenance,
+and environment-banner state on Cloud-managed routes.
+
 The packaged service now rejects process-local SQLite memory databases before
 running migrations. Service mode supports file-backed SQLite, MySQL, and
 PostgreSQL persistence across its separate migration and HTTP server processes.
