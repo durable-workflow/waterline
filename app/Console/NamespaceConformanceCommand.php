@@ -523,7 +523,7 @@ class NamespaceConformanceCommand extends Command
         $statsJson = $stats['json'];
         $schedulesJson = $schedules['json'];
         $scheduleDetailJson = $scheduleDetail['json'];
-        $dashboardVariables = $this->dashboardVariables($dashboard['body']);
+        $dashboardBootstrap = $this->dashboardBootstrap($dashboard['body']);
 
         $listRows = is_array($listJson['data'] ?? null) ? $listJson['data'] : [];
         $scheduleRows = is_array($schedulesJson['data'] ?? null) ? $schedulesJson['data'] : [];
@@ -615,11 +615,12 @@ class NamespaceConformanceCommand extends Command
                 'status' => $dashboard['status'],
                 'request_path' => $dashboard['request_path'],
                 'body_sha256' => hash('sha256', $dashboard['body']),
-                'scope_label_visible' => str_contains($dashboard['body'], 'Scope'),
-                'scope_value_visible' => str_contains($dashboard['body'], $namespace),
-                'script_operator_scope' => $this->operatorScope($dashboardVariables),
-                'script_operator_scope_namespace' => data_get($dashboardVariables, 'operator_scope.namespace'),
-                'script_operator_scope_authority' => data_get($dashboardVariables, 'operator_scope.authority'),
+                'scope_label' => data_get($dashboardBootstrap, 'operator_scope.label'),
+                'scope_value' => data_get($dashboardBootstrap, 'operator_scope.namespace'),
+                'scope_description' => data_get($dashboardBootstrap, 'operator_scope.description'),
+                'bootstrap_operator_scope' => $this->operatorScope($dashboardBootstrap),
+                'bootstrap_operator_scope_namespace' => data_get($dashboardBootstrap, 'operator_scope.namespace'),
+                'bootstrap_operator_scope_authority' => data_get($dashboardBootstrap, 'operator_scope.authority'),
             ],
             'schedule_list' => [
                 'path' => '/api/v2/schedules',
@@ -703,7 +704,7 @@ class NamespaceConformanceCommand extends Command
         $scheduleList = $this->apiGet($kernel, '/api/v2/schedules');
         $workflowJson = $workflowList['json'];
         $statsJson = $stats['json'];
-        $dashboardVariables = $this->dashboardVariables($dashboard['body']);
+        $dashboardBootstrap = $this->dashboardBootstrap($dashboard['body']);
         $scheduleJson = $scheduleList['json'];
         $workflowRows = is_array($workflowJson['data'] ?? null) ? $workflowJson['data'] : [];
         $scheduleRows = is_array($scheduleJson['data'] ?? null) ? $scheduleJson['data'] : [];
@@ -756,15 +757,12 @@ class NamespaceConformanceCommand extends Command
                 'status' => $dashboard['status'],
                 'request_path' => $dashboard['request_path'],
                 'body_sha256' => hash('sha256', $dashboard['body']),
-                'scope_label_visible' => str_contains($dashboard['body'], 'Scope'),
-                'scope_value_visible' => str_contains($dashboard['body'], 'Cluster-wide'),
-                'authority_description_visible' => str_contains(
-                    $dashboard['body'],
-                    'Cluster-wide Waterline scope can observe all namespaces',
-                ),
-                'script_operator_scope' => $this->operatorScope($dashboardVariables),
-                'script_operator_scope_namespace' => data_get($dashboardVariables, 'operator_scope.namespace'),
-                'script_operator_scope_authority' => data_get($dashboardVariables, 'operator_scope.authority'),
+                'scope_label' => data_get($dashboardBootstrap, 'operator_scope.label'),
+                'scope_value' => data_get($dashboardBootstrap, 'operator_scope.namespace'),
+                'scope_description' => data_get($dashboardBootstrap, 'operator_scope.description'),
+                'bootstrap_operator_scope' => $this->operatorScope($dashboardBootstrap),
+                'bootstrap_operator_scope_namespace' => data_get($dashboardBootstrap, 'operator_scope.namespace'),
+                'bootstrap_operator_scope_authority' => data_get($dashboardBootstrap, 'operator_scope.authority'),
             ],
             'schedule_list' => [
                 'path' => '/api/v2/schedules',
@@ -857,14 +855,15 @@ class NamespaceConformanceCommand extends Command
     /**
      * @return array<string, mixed>
      */
-    private function dashboardVariables(string $body): array
+    private function dashboardBootstrap(string $body): array
     {
-        if (preg_match('/window\\.Waterline\\s*=\\s*(\\{.*?\\});/s', $body, $matches) !== 1) {
+        if (preg_match('/\bdata-waterline-config=(["\'])(.*?)\1/s', $body, $matches) !== 1) {
             return [];
         }
 
         try {
-            $decoded = json_decode($matches[1], true, flags: JSON_THROW_ON_ERROR);
+            $serialized = html_entity_decode($matches[2], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $decoded = json_decode($serialized, true, flags: JSON_THROW_ON_ERROR);
 
             return is_array($decoded) ? $decoded : [];
         } catch (JsonException) {
@@ -1114,11 +1113,14 @@ class NamespaceConformanceCommand extends Command
 
         return data_get($dashboard, 'status') === 200
             && data_get($dashboard, 'path') === '/'
-            && data_get($dashboard, 'scope_label_visible') === true
-            && data_get($dashboard, 'scope_value_visible') === true
-            && data_get($dashboard, 'script_operator_scope.mode') === 'namespace'
-            && data_get($dashboard, 'script_operator_scope.namespace') === $namespace
-            && data_get($dashboard, 'script_operator_scope.authority') === 'tenant'
+            && is_string(data_get($dashboard, 'scope_label'))
+            && trim(data_get($dashboard, 'scope_label')) !== ''
+            && data_get($dashboard, 'scope_value') === $namespace
+            && is_string(data_get($dashboard, 'scope_description'))
+            && trim(data_get($dashboard, 'scope_description')) !== ''
+            && data_get($dashboard, 'bootstrap_operator_scope.mode') === 'namespace'
+            && data_get($dashboard, 'bootstrap_operator_scope.namespace') === $namespace
+            && data_get($dashboard, 'bootstrap_operator_scope.authority') === 'tenant'
             && data_get($tenant, 'api_captures.dashboard_view.status') === 200
             && data_get($tenant, 'api_captures.dashboard_view.path') === '/';
     }
@@ -1135,12 +1137,14 @@ class NamespaceConformanceCommand extends Command
 
         return data_get($dashboard, 'status') === 200
             && data_get($dashboard, 'path') === '/'
-            && data_get($dashboard, 'scope_label_visible') === true
-            && data_get($dashboard, 'scope_value_visible') === true
-            && data_get($dashboard, 'authority_description_visible') === true
-            && data_get($dashboard, 'script_operator_scope.mode') === 'cluster'
-            && data_get($dashboard, 'script_operator_scope.namespace') === null
-            && data_get($dashboard, 'script_operator_scope.authority') === 'cluster'
+            && is_string(data_get($dashboard, 'scope_label'))
+            && trim(data_get($dashboard, 'scope_label')) !== ''
+            && data_get($dashboard, 'scope_value') === null
+            && is_string(data_get($dashboard, 'scope_description'))
+            && trim(data_get($dashboard, 'scope_description')) !== ''
+            && data_get($dashboard, 'bootstrap_operator_scope.mode') === 'cluster'
+            && data_get($dashboard, 'bootstrap_operator_scope.namespace') === null
+            && data_get($dashboard, 'bootstrap_operator_scope.authority') === 'cluster'
             && data_get($unscoped, 'api_captures.dashboard_view.status') === 200
             && data_get($unscoped, 'api_captures.dashboard_view.path') === '/';
     }

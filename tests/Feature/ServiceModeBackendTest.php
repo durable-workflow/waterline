@@ -191,11 +191,34 @@ final class ServiceModeBackendTest extends TestCase
 
     public function testDashboardPublishesBackendScopeAndAuthorizationState(): void
     {
-        $this->get('/waterline')
+        $content = $this->get('/waterline')
             ->assertOk()
-            ->assertSee('Standalone service')
-            ->assertSee('orders')
-            ->assertSee('read-only')
-            ->assertSee('configured');
+            ->getContent();
+
+        $bootstrap = $this->bootstrapConfig($content);
+
+        $this->assertSame('service', $bootstrap['backend']['mode']);
+        $this->assertSame('Standalone service', $bootstrap['backend']['label']);
+        $this->assertSame('orders', $bootstrap['backend']['namespace']);
+        $this->assertSame('read_only', $bootstrap['backend']['access_mode']);
+        $this->assertTrue($bootstrap['backend']['read_only']);
+        $this->assertSame('configured', $bootstrap['backend']['authentication']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function bootstrapConfig(string|false $content): array
+    {
+        $this->assertIsString($content);
+        $this->assertMatchesRegularExpression('/data-waterline-config="[^"]+"/', $content);
+
+        preg_match('/data-waterline-config="([^"]+)"/', $content, $matches);
+
+        return json_decode(
+            html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
     }
 }

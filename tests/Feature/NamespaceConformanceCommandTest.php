@@ -369,9 +369,12 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertTrue($visibility['tenant_a_scoped_views']['operator_api_stats']['excludes_foreign_run']);
         $this->assertSame('/', $visibility['tenant_a_scoped_views']['dashboard_view']['path']);
         $this->assertSame('/waterline/', $visibility['tenant_a_scoped_views']['dashboard_view']['request_path']);
-        $this->assertTrue($visibility['tenant_a_scoped_views']['dashboard_view']['scope_label_visible']);
-        $this->assertTrue($visibility['tenant_a_scoped_views']['dashboard_view']['scope_value_visible']);
-        $this->assertSame('billing', $visibility['tenant_a_scoped_views']['dashboard_view']['script_operator_scope']['namespace']);
+        $this->assertIsString($visibility['tenant_a_scoped_views']['dashboard_view']['scope_label']);
+        $this->assertNotSame('', trim($visibility['tenant_a_scoped_views']['dashboard_view']['scope_label']));
+        $this->assertSame('billing', $visibility['tenant_a_scoped_views']['dashboard_view']['scope_value']);
+        $this->assertIsString($visibility['tenant_a_scoped_views']['dashboard_view']['scope_description']);
+        $this->assertNotSame('', trim($visibility['tenant_a_scoped_views']['dashboard_view']['scope_description']));
+        $this->assertSame('billing', $visibility['tenant_a_scoped_views']['dashboard_view']['bootstrap_operator_scope']['namespace']);
         $this->assertTrue($visibility['tenant_a_scoped_views']['schedule_list']['includes_own_schedule']);
         $this->assertTrue($visibility['tenant_a_scoped_views']['schedule_list']['excludes_foreign_schedule']);
         $this->assertSame('billing', $visibility['tenant_a_scoped_views']['schedule_list']['operator_scope']['namespace']);
@@ -391,9 +394,12 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertNull($visibility['unscoped_view_authority']['operator_api_stats']['operator_scope']['namespace']);
         $this->assertTrue($visibility['unscoped_view_authority']['operator_api_stats']['flow_count_covers_fixture_runs']);
         $this->assertSame('/', $visibility['unscoped_view_authority']['dashboard_view']['path']);
-        $this->assertTrue($visibility['unscoped_view_authority']['dashboard_view']['scope_value_visible']);
-        $this->assertTrue($visibility['unscoped_view_authority']['dashboard_view']['authority_description_visible']);
-        $this->assertSame('cluster', $visibility['unscoped_view_authority']['dashboard_view']['script_operator_scope']['authority']);
+        $this->assertIsString($visibility['unscoped_view_authority']['dashboard_view']['scope_label']);
+        $this->assertNotSame('', trim($visibility['unscoped_view_authority']['dashboard_view']['scope_label']));
+        $this->assertNull($visibility['unscoped_view_authority']['dashboard_view']['scope_value']);
+        $this->assertIsString($visibility['unscoped_view_authority']['dashboard_view']['scope_description']);
+        $this->assertNotSame('', trim($visibility['unscoped_view_authority']['dashboard_view']['scope_description']));
+        $this->assertSame('cluster', $visibility['unscoped_view_authority']['dashboard_view']['bootstrap_operator_scope']['authority']);
         $this->assertSame('cluster', $visibility['unscoped_view_authority']['schedule_list']['operator_scope']['authority']);
         $this->assertNull($visibility['unscoped_view_authority']['schedule_list']['operator_scope']['namespace']);
         $this->assertTrue($visibility['unscoped_view_authority']['schedule_list']['includes_tenant_a_schedule']);
@@ -501,6 +507,43 @@ class NamespaceConformanceCommandTest extends TestCase
                 });
             }
         }
+    }
+
+    public function testDashboardBootstrapParserRejectsMissingAndMalformedConfiguration(): void
+    {
+        $command = app(NamespaceConformanceCommand::class);
+        $parse = Closure::bind(
+            function (string $body): array {
+                return $this->dashboardBootstrap($body);
+            },
+            $command,
+            NamespaceConformanceCommand::class,
+        );
+
+        $this->assertNotNull($parse);
+        $this->assertSame([], $parse('<div id="waterline"></div>'));
+        $this->assertSame([], $parse('<div id="waterline" data-waterline-config="{not-json"></div>'));
+
+        $bootstrap = [
+            'path' => 'waterline',
+            'operator_scope' => [
+                'mode' => 'namespace',
+                'namespace' => 'billing',
+                'label' => 'Billing & Fulfillment',
+                'authority' => 'tenant',
+                'description' => 'Restricted to <billing>.',
+            ],
+        ];
+        $serialized = htmlspecialchars(
+            json_encode($bootstrap, JSON_THROW_ON_ERROR),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8',
+        );
+
+        $this->assertSame(
+            $bootstrap,
+            $parse('<div id="waterline" data-waterline-config="'.$serialized.'"></div>'),
+        );
     }
 
     public function testCommandFailsWhenPublishedArtifactTupleIsNotProven(): void
@@ -612,8 +655,16 @@ class NamespaceConformanceCommandTest extends TestCase
         $this->assertFalse($passes($wrongCapturedScope));
 
         $missingDashboardScope = $visibility;
-        data_set($missingDashboardScope, 'tenant_a_scoped_views.dashboard_view.script_operator_scope.namespace', null);
+        data_set($missingDashboardScope, 'tenant_a_scoped_views.dashboard_view.bootstrap_operator_scope.namespace', null);
         $this->assertFalse($passes($missingDashboardScope));
+
+        $missingDashboardScopeLabel = $visibility;
+        data_set($missingDashboardScopeLabel, 'tenant_a_scoped_views.dashboard_view.scope_label', '');
+        $this->assertFalse($passes($missingDashboardScopeLabel));
+
+        $missingDashboardScopeDescription = $visibility;
+        data_set($missingDashboardScopeDescription, 'tenant_a_scoped_views.dashboard_view.scope_description', '');
+        $this->assertFalse($passes($missingDashboardScopeDescription));
 
         $wrongStatsScope = $visibility;
         data_set($wrongStatsScope, 'tenant_a_scoped_views.operator_api_stats.operator_scope.namespace', 'shipping');
