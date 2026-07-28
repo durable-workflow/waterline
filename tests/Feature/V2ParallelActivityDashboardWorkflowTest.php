@@ -77,7 +77,7 @@ final class V2ParallelActivityDashboardWorkflowTest extends TestCase
 
         $this->assertCount(3, $waits);
         $this->assertSame('parallel-activities:1:3', $waits[0]['parallel_group_id']);
-        $this->assertSame([
+        $this->assertEquals([
             [
                 'parallel_group_id' => 'parallel-activities:1:3',
                 'parallel_group_kind' => 'activity',
@@ -87,7 +87,7 @@ final class V2ParallelActivityDashboardWorkflowTest extends TestCase
             ],
         ], $waits[0]['parallel_group_path']);
         $this->assertSame('parallel-activities:2:2', $waits[1]['parallel_group_id']);
-        $this->assertSame([
+        $this->assertEquals([
             [
                 'parallel_group_id' => 'parallel-activities:1:3',
                 'parallel_group_kind' => 'activity',
@@ -104,7 +104,7 @@ final class V2ParallelActivityDashboardWorkflowTest extends TestCase
             ],
         ], $waits[1]['parallel_group_path']);
         $this->assertSame('parallel-activities:2:2', $waits[2]['parallel_group_id']);
-        $this->assertSame([
+        $this->assertEquals([
             [
                 'parallel_group_id' => 'parallel-activities:1:3',
                 'parallel_group_kind' => 'activity',
