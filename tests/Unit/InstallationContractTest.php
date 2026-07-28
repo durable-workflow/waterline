@@ -28,18 +28,18 @@ final class InstallationContractTest extends TestCase
             JSON_THROW_ON_ERROR,
         );
         $releaseVersion = $manifest['extra']['durable-workflow']['product-train'] ?? null;
-        $dependencyVersion = '2.0.0-beta.21';
+        $dependencyVersion = '2.0.0-rc.1';
 
-        $this->assertSame('2.0.0-beta.21', $releaseVersion);
+        $this->assertSame('2.0.0-rc.1', $releaseVersion);
         $this->assertSame($dependencyVersion, $manifest['require']['durable-workflow/sdk'] ?? null);
         $this->assertArrayNotHasKey('durable-workflow/workflow', $manifest['require'] ?? []);
         $this->assertSame($dependencyVersion, $manifest['require-dev']['durable-workflow/workflow'] ?? null);
         $this->assertArrayHasKey('durable-workflow/workflow', $manifest['suggest'] ?? []);
 
         $expectedPins = [
-            'durable-workflow/waterline:'.$dependencyVersion.'@beta',
-            'durable-workflow/workflow:'.$dependencyVersion.'@beta',
-            'durable-workflow/sdk:'.$dependencyVersion.'@beta',
+            'durable-workflow/waterline:'.$dependencyVersion.'@RC',
+            'durable-workflow/workflow:'.$dependencyVersion.'@RC',
+            'durable-workflow/sdk:'.$dependencyVersion.'@RC',
         ];
         $readme = (string) file_get_contents($root.'/README.md');
         preg_match_all('/```bash\n(composer require .*?)\n```/s', $readme, $matches);
@@ -69,7 +69,7 @@ final class InstallationContractTest extends TestCase
             }
         }
 
-        $this->assertSame('2.0.0-beta.21', $packages['durable-workflow/sdk'] ?? null);
+        $this->assertSame('2.0.0-rc.1', $packages['durable-workflow/sdk'] ?? null);
         $this->assertArrayNotHasKey('durable-workflow/waterline', $packages);
         $this->assertArrayNotHasKey('durable-workflow/workflow', $packages);
     }

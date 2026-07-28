@@ -35,6 +35,10 @@
     {
       "id": "bounded-authority-convergence",
       "requirement": "Re-enumerate lifecycle authority and fail closed when the registry does not converge within the declared attempt bound."
+    },
+    {
+      "id": "release-candidate-beta-qualification",
+      "requirement": "Accept an exact release-candidate plan only when it retains one coherent immutable beta qualification, and reject non-beta qualification records."
     }
   ],
   "consumers": [
@@ -76,7 +80,7 @@
   ],
   "schema": "durable-workflow.release-recovery-consumer-conformance/v1",
   "suite": {
-    "sha256": "73bc2642c036da15440f2eccc6517ecb633da46195be5853e407725c311f2298"
+    "sha256": "71e222faec79a5311ebf9acfa274e4385d5a86b76d0894050a4bfe4f930fb9f3"
   },
-  "version": "1.4.3"
+  "version": "1.5.0"
 }

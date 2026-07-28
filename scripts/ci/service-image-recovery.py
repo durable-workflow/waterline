@@ -62,7 +62,7 @@ PLAN_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,55}$")
 VERSION_PATTERN = re.compile(
     r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$"
 )
-WATERLINE_VERSION_PATTERN = re.compile(r"^2\.0\.0-(?:alpha|beta)\.[1-9][0-9]*$")
+WATERLINE_VERSION_PATTERN = re.compile(r"^2\.0\.0-(?:alpha|beta|rc)\.[1-9][0-9]*$")
 MANIFEST_ACCEPT = ", ".join(
     (
         "application/vnd.oci.image.index.v1+json",
@@ -218,7 +218,7 @@ def validate_plan(
             "release plan does not name the immutable candidate foundation"
         )
     channel = plan.get("channel")
-    if channel not in {"alpha", "beta"}:
+    if channel not in {"alpha", "beta", "rc"}:
         raise RecoveryError("release plan has an invalid channel")
 
     components = plan.get("components")
@@ -250,14 +250,14 @@ def validate_plan(
     authorization = plan.get("beta_authorization")
     if channel == "alpha" and authorization is not None:
         raise RecoveryError("alpha release plan unexpectedly has beta authorization")
-    if channel == "beta" and (
+    if channel in {"beta", "rc"} and (
         not isinstance(authorization, dict)
         or set(authorization) != {"tag", "commit"}
         or not isinstance(authorization.get("tag"), str)
         or not authorization["tag"].startswith("beta-authorization/")
         or not COMMIT_PATTERN.fullmatch(str(authorization.get("commit", "")))
     ):
-        raise RecoveryError("beta release plan lacks exact immutable authorization")
+        raise RecoveryError("prerelease plan lacks exact immutable beta qualification")
 
     expected_recovery = {
         "schema": RECOVERY_SCHEMA,

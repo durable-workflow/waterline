@@ -57,6 +57,7 @@ REQUIRED_CASES = (
     "continuity-ambiguity-rejection",
     "explicit-terminal-plan-rejection",
     "bounded-authority-convergence",
+    "release-candidate-beta-qualification",
 )
 CONSUMERS = (
     {
@@ -1246,6 +1247,31 @@ def case_bounded_authority_convergence(module: ModuleType) -> None:
         raise ConformanceError("consumer did not enforce the declared convergence attempt bound")
 
 
+def case_release_candidate_beta_qualification(module: ModuleType) -> None:
+    candidate = plan(module, "release-candidate-conformance")
+    candidate["channel"] = "rc"
+    for identity in candidate["components"].values():
+        identity["version"] = "2.0.0-rc.1"
+    module.validate_plan(candidate)
+
+    beta_components = copy.deepcopy(candidate["components"])
+    for identity in beta_components.values():
+        identity["version"] = "2.0.0-beta.21"
+    record = {
+        "schema": "durable-workflow.beta-authorization/v1",
+        "channel": "beta",
+        "candidate": "coherent-beta-qualification",
+        "components": beta_components,
+    }
+    candidate["beta_authorization"]["tag"] = "beta-authorization/coherent-beta-qualification"
+    if not module.beta_authorization_matches_plan(candidate, candidate["beta_authorization"], record):
+        raise ConformanceError("consumer rejected coherent beta qualification for a release-candidate plan")
+
+    record["components"]["server"]["version"] = "2.0.0-rc.1"
+    if module.beta_authorization_matches_plan(candidate, candidate["beta_authorization"], record):
+        raise ConformanceError("consumer accepted non-beta qualification for a release-candidate plan")
+
+
 CASE_RUNNERS = {
     "immutable-plan-enumeration": case_immutable_plan_enumeration,
     "current-plan-schema": case_current_plan_schema,
@@ -1256,6 +1282,7 @@ CASE_RUNNERS = {
     "continuity-ambiguity-rejection": case_continuity_ambiguity_rejection,
     "explicit-terminal-plan-rejection": case_explicit_terminal_plan_rejection,
     "bounded-authority-convergence": case_bounded_authority_convergence,
+    "release-candidate-beta-qualification": case_release_candidate_beta_qualification,
 }
 
 

@@ -3,7 +3,7 @@
 ## Unreleased
 
 Waterline and its Workflow and PHP SDK dependencies advance together to the
-synchronized Durable Workflow `2.0.0-beta.21` product train.
+synchronized Durable Workflow `2.0.0-rc.1` product train.
 
 The packaged service now rejects process-local SQLite memory databases before
 running migrations. Service mode supports file-backed SQLite, MySQL, and

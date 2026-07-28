@@ -26,8 +26,8 @@ SPEC.loader.exec_module(recovery)
 PLAN_COMMIT = "a" * 40
 SOURCE_COMMIT = "b" * 40
 WORKFLOW_COMMIT = "c" * 40
-VERSION = "2.0.0-beta.21"
-PLAN_TAG = "release-plan/beta.21"
+VERSION = "2.0.0-rc.1"
+PLAN_TAG = "release-plan/coherent-2-0-rc-1"
 
 
 def raw_json(value: Any) -> bytes:
@@ -36,13 +36,13 @@ def raw_json(value: Any) -> bytes:
 
 def plan() -> dict[str, Any]:
     versions = {
-        "workflow": "2.0.0-beta.21",
+        "workflow": "2.0.0-rc.1",
         "waterline": VERSION,
-        "server": "2.0.0-beta.21",
-        "cli": "2.0.0-beta.21",
-        "sdk-php": "2.0.0-beta.21",
-        "sdk-python": "2.0.0-beta.21",
-        "sdk-rust": "2.0.0-beta.21",
+        "server": "2.0.0-rc.1",
+        "cli": "2.0.0-rc.1",
+        "sdk-php": "2.0.0-rc.1",
+        "sdk-python": "2.0.0-rc.1",
+        "sdk-rust": "2.0.0-rc.1",
     }
     commits = {
         "workflow": "1" * 40,
@@ -55,15 +55,15 @@ def plan() -> dict[str, Any]:
     }
     return {
         "schema": recovery.PLAN_SCHEMA,
-        "plan": "beta.21",
-        "channel": "beta",
+        "plan": "coherent-2-0-rc-1",
+        "channel": "rc",
         "foundation": recovery.FOUNDATION,
         "components": {
             name: {"version": versions[name], "commit": commits[name]}
             for name in sorted(recovery.COMPONENTS)
         },
         "beta_authorization": {
-            "tag": "beta-authorization/beta.21",
+            "tag": "beta-authorization/coherent-2-0-beta-21",
             "commit": "8" * 40,
         },
     }
