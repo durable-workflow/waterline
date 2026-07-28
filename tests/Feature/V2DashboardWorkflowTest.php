@@ -4456,7 +4456,7 @@ class V2DashboardWorkflowTest extends TestCase
 
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertStatus(200)
-            ->assertJsonPath('waits_projection_source', 'workflow_run_waits_rebuilt')
+            ->assertJsonPath('waits_projection_source', 'workflow_run_waits')
             ->assertJsonPath('waits.0.id', 'signal-wait-projected')
             ->assertJsonPath('waits.0.kind', 'signal')
             ->assertJsonPath('waits.0.status', 'open')
