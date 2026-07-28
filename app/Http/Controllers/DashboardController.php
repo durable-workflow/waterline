@@ -4,30 +4,46 @@ namespace Waterline\Http\Controllers;
 
 use Illuminate\Support\Facades\App;
 use RuntimeException;
-use Waterline\Support\OperatorScope;
 use Waterline\Support\BackendConfiguration;
+use Waterline\Support\OperatorScope;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Waterline;
 
 class DashboardController extends Controller
 {
+    private const ENVIRONMENT_COLOR_CLASSES = [
+        '#0d6efd' => 'blue',
+        '#2563eb' => 'blue',
+        '#198754' => 'green',
+        '#28a745' => 'green',
+        '#6f42c1' => 'purple',
+        '#7746ec' => 'purple',
+        '#dc3545' => 'red',
+        '#fd7e14' => 'orange',
+        '#ffc107' => 'yellow',
+    ];
+
     public function index()
     {
         $operatorScope = OperatorScope::payload();
         $backend = BackendConfiguration::serviceMode()
             ? app(RemoteBackend::class)->status()
             : BackendConfiguration::payload();
+        $assetsAreCurrent = $this->assetsAreCurrent();
         $cssFile = 'app-dark.css';
 
         return view('waterline::layout', [
-            'assetsAreCurrent' => $this->assetsAreCurrent(),
+            'assetsAreCurrent' => $assetsAreCurrent,
             'cssUrl' => $this->assetUrl($cssFile),
             'componentsCssUrl' => $this->assetUrl('components.css'),
             'jsUrl' => $this->assetUrl('app.js'),
-            'waterlineScriptVariables' => [
+            'waterlineBootstrap' => [
                 'path' => config('waterline.path', 'waterline'),
                 'operator_scope' => $operatorScope,
                 'backend' => $backend,
+                'app_name' => config('app.name') ?: 'Workflow Operations',
+                'assets_current' => $assetsAreCurrent,
+                'maintenance' => App::isDownForMaintenance(),
             ],
             'operatorScope' => $operatorScope,
             'backend' => $backend,
@@ -72,18 +88,12 @@ class DashboardController extends Controller
 
         return [
             'name' => $name,
-            'color' => $this->safeCssColor((string) config('waterline.env_color', '#6c757d')),
+            'colorClass' => $this->environmentColorClass((string) config('waterline.env_color', '#6c757d')),
         ];
     }
 
-    private function safeCssColor(string $color): string
+    private function environmentColorClass(string $color): string
     {
-        $color = trim($color);
-
-        if (preg_match('/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/', $color) === 1) {
-            return $color;
-        }
-
-        return '#6c757d';
+        return self::ENVIRONMENT_COLOR_CLASSES[strtolower(trim($color))] ?? 'neutral';
     }
 }

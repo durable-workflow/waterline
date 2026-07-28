@@ -1640,7 +1640,7 @@ export default {
 .wl-screen-eyebrow {
     margin: 0 0 0.45rem;
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1676,7 +1676,7 @@ export default {
     border-radius: 999px;
     background: color-mix(in srgb, var(--wl-accent) 14%, transparent);
     color: var(--wl-accent);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1740,7 +1740,7 @@ export default {
 .wl-overview-tile__label,
 .wl-operator-metric__label {
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1882,7 +1882,7 @@ export default {
     gap: 1rem;
     padding-bottom: 0.45rem;
     border-bottom: 1px solid color-mix(in srgb, var(--wl-text) 6%, transparent);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.86rem;
     color: var(--wl-text);
 }

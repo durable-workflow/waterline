@@ -9,90 +9,65 @@ import PrismEditor from './components/PrismEditor.vue';
 import ErrorBoundary from './components/ErrorBoundary.vue';
 import Popper from 'popper.js';
 import $ from 'jquery';
+import { readBootstrapConfig } from './bootstrap-config.mjs';
+import WaterlineApp from './WaterlineApp.vue';
 
 import 'bootstrap';
 import 'vue-json-pretty/lib/styles.css';
 
-window.Popper = Popper;
-window.$ = window.jQuery = $;
+const mountElement = document.getElementById('waterline');
+const waterline = readBootstrapConfig(mountElement);
 
-let token = document.head.querySelector('meta[name="csrf-token"]');
+if (mountElement && waterline) {
+    window.Waterline = waterline;
+    window.Popper = Popper;
+    window.$ = window.jQuery = $;
 
-axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
+    const token = document.head.querySelector('meta[name="csrf-token"]');
 
-if (token) {
-    axios.defaults.headers.common['X-CSRF-TOKEN'] = token.content;
-}
+    axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 
-window.Waterline.basePath = '/' + window.Waterline.path;
-
-let routerBasePath = window.Waterline.basePath + '/';
-
-if (window.Waterline.path === '' || window.Waterline.path === '/') {
-    routerBasePath = '/';
-    window.Waterline.basePath = '';
-}
-
-const router = createRouter({
-    routes: Routes,
-    history: createWebHistory(routerBasePath),
-});
-
-const app = createApp({
-    data() {
-        return {
-            alert: {
-                type: null,
-                autoClose: 0,
-                message: '',
-                confirmationProceed: null,
-                confirmationCancel: null,
-            },
-
-            autoLoadsNewEntries: localStorage.autoLoadsNewEntries === '1',
-
-            theme: localStorage.getItem('waterline-theme') || 'dark',
-        };
-    },
-
-    mounted() {
-        this.applyTheme();
-    },
-
-    methods: {
-        toggleTheme() {
-            this.theme = this.theme === 'light' ? 'dark' : 'light';
-            localStorage.setItem('waterline-theme', this.theme);
-            this.applyTheme();
-        },
-
-        applyTheme() {
-            const link = document.getElementById('app-stylesheet');
-            if (link) {
-                const cssFile = this.theme === 'dark' ? 'app-dark.css' : 'app.css';
-                link.href = `/vendor/waterline/${cssFile}`;
-            }
-        }
+    if (token) {
+        axios.defaults.headers.common['X-CSRF-TOKEN'] = token.content;
     }
-});
 
-app.config.globalProperties.$http = axios.create();
-app.config.errorHandler = function (err, instance, info) {
-    // eslint-disable-next-line no-console
-    console.error('[Vue:errorHandler]', err, info);
-};
+    const routerBasePath = waterline.basePath === '' ? '/' : `${waterline.basePath}/`;
 
-app.use(router);
-app.component('apexchart', VueApexCharts);
-app.component('vue-json-pretty', VueJsonPretty);
-app.component('PrismEditor', PrismEditor);
-app.component('error-boundary', ErrorBoundary);
-app.mixin(Base);
-app.directive('tooltip', function (el, binding) {
-    $(el).tooltip({
-        title: binding.value,
-        placement: binding.arg,
-        trigger: 'hover',
+    const router = createRouter({
+        routes: Routes,
+        history: createWebHistory(routerBasePath),
     });
-});
-app.mount('#waterline');
+
+    const app = createApp(WaterlineApp, { bootstrap: waterline });
+
+    app.config.globalProperties.$http = axios.create();
+    app.config.errorHandler = function (err, instance, info) {
+        // eslint-disable-next-line no-console
+        console.error('[Vue:errorHandler]', err, info);
+    };
+
+    app.use(router);
+    app.component('apexchart', VueApexCharts);
+    app.component('vue-json-pretty', VueJsonPretty);
+    app.component('PrismEditor', PrismEditor);
+    app.component('error-boundary', ErrorBoundary);
+    app.mixin(Base);
+    app.directive('tooltip', function (el, binding) {
+        $(el).tooltip({
+            title: binding.value,
+            placement: binding.arg,
+            trigger: 'hover',
+        });
+    });
+    app.mount(mountElement);
+    mountElement.setAttribute('data-waterline-mounted', 'true');
+} else if (mountElement) {
+    mountElement.removeAttribute('v-cloak');
+    mountElement.replaceChildren();
+
+    const message = document.createElement('div');
+    message.className = 'alert alert-danger';
+    message.setAttribute('role', 'alert');
+    message.textContent = 'Waterline could not start because its page configuration is missing or invalid.';
+    mountElement.appendChild(message);
+}

@@ -173,7 +173,10 @@ return [
     |
     | Waterline can show a thin environment strip above the dashboard chrome so
     | operators can distinguish local, staging, and production tabs before
-    | issuing manual commands. Use a hex color such as "#dc3545".
+    | issuing manual commands. Recognized palette colors are blue (#2563eb or
+    | #0d6efd), green (#198754 or #28a745), orange (#fd7e14), purple (#6f42c1
+    | or #7746ec), red (#dc3545), and yellow (#ffc107). Other values use the
+    | neutral banner so hosts never need an inline style exception.
     |
     */
 

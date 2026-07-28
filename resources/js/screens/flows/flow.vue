@@ -1544,7 +1544,7 @@
                                             <span v-if="exception.exception_replay_blocked === true">
                                                 [replay blocked until this exception mapping is fixed]
                                             </span><br />
-                                            <span style="opacity: 0.8">in {{ decodedException.file }} (line {{ decodedException.line
+                                            <span class="wl-exception-location">in {{ decodedException.file }} (line {{ decodedException.line
                                             }})</span><br /><br />
                                             <div v-if="decodedException.properties && decodedException.properties.length">
                                                 <b>Custom Properties</b><br /><br />
@@ -1555,12 +1555,12 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <prism-editor :id="'prism' + exception.id" style="background-color: #424242" v-model="exception.code"
+                                        <prism-editor :id="'prism' + exception.id" class="wl-exception-editor" v-model="exception.code"
                                             :highlight="highlighter" line-numbers readonly></prism-editor>
                                         <br />
                                         <div v-for="trace in unserialize(exception.exception).trace">
                                             <b>{{ trace.class }}{{ trace.type }}{{ trace.function }}()</b> <br />
-                                            <span style="opacity: 0.8">in {{ trace.file }} (line {{ trace.line
+                                            <span class="wl-exception-location">in {{ trace.file }} (line {{ trace.line
                                             }})</span><br /><br />
                                         </div>
                                     </div>
@@ -1663,13 +1663,13 @@ export default {
                                 details.push('<b>Reason</b>: ' + this.historyUnsupportedReasonLabel(data.history_unsupported_reason))
                             }
 
-                            return '<div style="padding: 1em">' + details.join('<br />') + '</div>'
+                            return '<div class="wl-chart-tooltip">' + details.join('<br />') + '</div>'
                         }
                         if (seriesIndex === 1) {
                             let exception = this.unserialize(this.flow.exceptions[dataPointIndex].exception)
                             if (typeof exception !== 'object') return '';
 
-                            return '<div style="padding: 1em">' +
+                            return '<div class="wl-chart-tooltip">' +
                                 '<b>Class</b>: ' + exception.__constructor + '<br />' +
                                 '<b>Message</b>: ' + exception.message + '<br />' +
                                 ((exception.code !== undefined && exception.code !== null)
@@ -3003,7 +3003,7 @@ export default {
                     <label class="d-block text-left mb-2" for="waterline-signal-target">Signal</label>
                     <select id="waterline-signal-target" class="swal2-input">${options}</select>
                     <label class="d-block text-left mb-2" for="waterline-signal-arguments">Arguments JSON</label>
-                    <textarea id="waterline-signal-arguments" class="swal2-textarea" style="min-height: 8rem;">${this.escapeHtml(this.defaultSignalArguments(firstSignal))}</textarea>
+                    <textarea id="waterline-signal-arguments" class="swal2-textarea wl-command-textarea wl-command-textarea--signal">${this.escapeHtml(this.defaultSignalArguments(firstSignal))}</textarea>
                     <div class="small text-muted text-left">Use a JSON object for named arguments when the signal declares a contract, a JSON array for positional arguments, or any other JSON value for one payload.</div>
                 `,
                 showCancelButton: true,
@@ -3079,7 +3079,7 @@ export default {
                     <label class="d-block text-left mb-2" for="waterline-query-target">Query</label>
                     <select id="waterline-query-target" class="swal2-input">${options}</select>
                     <label class="d-block text-left mb-2" for="waterline-query-arguments">Arguments JSON</label>
-                    <textarea id="waterline-query-arguments" class="swal2-textarea" style="min-height: 10rem;">${this.escapeHtml(this.defaultQueryArguments(firstQuery))}</textarea>
+                    <textarea id="waterline-query-arguments" class="swal2-textarea wl-command-textarea">${this.escapeHtml(this.defaultQueryArguments(firstQuery))}</textarea>
                     <div class="small text-muted text-left">Use a JSON object for named arguments or a JSON array for positional arguments.</div>
                 `,
                 showCancelButton: true,
@@ -3155,7 +3155,7 @@ export default {
                     <label class="d-block text-left mb-2" for="waterline-update-target">Update</label>
                     <select id="waterline-update-target" class="swal2-input">${options}</select>
                     <label class="d-block text-left mb-2" for="waterline-update-arguments">Arguments JSON</label>
-                    <textarea id="waterline-update-arguments" class="swal2-textarea" style="min-height: 10rem;">${this.escapeHtml(this.defaultUpdateArguments(firstUpdate))}</textarea>
+                    <textarea id="waterline-update-arguments" class="swal2-textarea wl-command-textarea">${this.escapeHtml(this.defaultUpdateArguments(firstUpdate))}</textarea>
                     <label class="d-block text-left mb-2" for="waterline-update-wait-for">Return after</label>
                     <select id="waterline-update-wait-for" class="swal2-input">
                         <option value="completed">Worker applies update</option>
@@ -4304,7 +4304,7 @@ export default {
 
 .wl-flow-detail__eyebrow {
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -4333,7 +4333,7 @@ export default {
     gap: 0.35rem;
     padding: 0.45rem 0.7rem;
     border-radius: 999px;
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -4415,7 +4415,7 @@ export default {
 
 .wl-flow-detail__summary-body .col-md-2 {
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -4435,7 +4435,7 @@ export default {
 }
 
 .wl-flow-detail :deep(.vue-json-pretty) {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.86rem;
 }
 
@@ -4454,7 +4454,7 @@ export default {
     border-radius: 999px;
     background: color-mix(in srgb, var(--wl-text) 5%, transparent);
     color: var(--wl-text-muted);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;

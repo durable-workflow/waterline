@@ -76,7 +76,7 @@ export default defineConfig({
     resolve: {
         alias: {
             '@': path.join(root, 'resources/js'),
-            vue: 'vue/dist/vue.esm-bundler.js',
+            vue: 'vue/dist/vue.runtime.esm-bundler.js',
         },
     },
     define: {

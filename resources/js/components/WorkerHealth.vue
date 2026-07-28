@@ -1540,7 +1540,7 @@ export default {
 .worker-health__eyebrow {
     margin: 0 0 0.45rem;
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1582,7 +1582,7 @@ export default {
     border-radius: 999px;
     background: color-mix(in srgb, var(--wl-text) 5%, transparent);
     color: var(--wl-text-muted);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1652,7 +1652,7 @@ export default {
 
 .worker-health__summary-label {
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1727,7 +1727,7 @@ export default {
 
 .worker-health__queue-metric-label {
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.7rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1773,7 +1773,7 @@ export default {
     max-width: 13rem;
     overflow-wrap: anywhere;
     color: var(--wl-text);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.9rem;
 }
 
@@ -1827,7 +1827,7 @@ export default {
 .worker-health__category-eyebrow {
     display: block;
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.7rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;

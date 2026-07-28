@@ -68,32 +68,45 @@ class DashboardControllerTest extends TestCase
         $this->get('/waterline')
             ->assertOk()
             ->assertSee('environment-strip', false)
-            ->assertSee('--waterline-env-color: #dc3545;', false)
+            ->assertSee('environment-strip--red', false)
+            ->assertDontSee('style=', false)
             ->assertSee('Production');
+    }
+
+    public function testDashboardRendersManagedBlueEnvironmentStripWithABoundedClass(): void
+    {
+        config()->set('waterline.env_name', 'Managed Waterline');
+        config()->set('waterline.env_color', '#2563eb');
+
+        $this->get('/waterline')
+            ->assertOk()
+            ->assertSee('environment-strip--blue', false)
+            ->assertDontSee('style=', false)
+            ->assertSee('Managed Waterline');
     }
 
     public function testDashboardRendersConfiguredOperatorNamespaceScope(): void
     {
         config()->set('waterline.namespace', 'billing');
 
-        $this->get('/waterline')
+        $content = $this->get('/waterline')
             ->assertOk()
-            ->assertSee('wl-topbar__scope', false)
-            ->assertSee('Scope')
-            ->assertSee('billing')
-            ->assertSee('"operator_scope":{"mode":"namespace","namespace":"billing"', false);
+            ->getContent();
+
+        $this->assertSame('namespace', $this->bootstrapConfig($content)['operator_scope']['mode']);
+        $this->assertSame('billing', $this->bootstrapConfig($content)['operator_scope']['namespace']);
     }
 
     public function testDashboardRendersClusterWideOperatorScopeWhenNamespaceIsUnset(): void
     {
         config()->set('waterline.namespace', null);
 
-        $this->get('/waterline')
+        $content = $this->get('/waterline')
             ->assertOk()
-            ->assertSee('wl-topbar__scope', false)
-            ->assertSee('Cluster-wide')
-            ->assertSee('Cluster-wide Waterline scope can observe all namespaces', false)
-            ->assertSee('"operator_scope":{"mode":"cluster","namespace":null', false);
+            ->getContent();
+
+        $this->assertSame('cluster', $this->bootstrapConfig($content)['operator_scope']['mode']);
+        $this->assertNull($this->bootstrapConfig($content)['operator_scope']['namespace']);
     }
 
     public function testDashboardFallsBackWhenEnvironmentStripColorIsUnsafe(): void
@@ -103,18 +116,53 @@ class DashboardControllerTest extends TestCase
 
         $this->get('/waterline')
             ->assertOk()
-            ->assertSee('--waterline-env-color: #6c757d;', false)
+            ->assertSee('environment-strip--neutral', false)
+            ->assertDontSee('style=', false)
             ->assertDontSee('red; background', false);
+    }
+
+    public function testDashboardRendersBootstrapAsEscapedNonExecutableData(): void
+    {
+        config()->set('waterline.path', 'waterline"></div><script>alert("unsafe")</script>');
+
+        $content = $this->get('/waterline')
+            ->assertOk()
+            ->assertDontSee('window.Waterline', false)
+            ->assertDontSee('fonts.bunny.net', false)
+            ->assertDontSee('<script>alert("unsafe")</script>', false)
+            ->getContent();
+
+        $this->assertIsString($content);
+        $bootstrap = $this->bootstrapConfig($content);
+
+        $this->assertSame('waterline"></div><script>alert("unsafe")</script>', $bootstrap['path']);
+        $this->assertIsArray($bootstrap['operator_scope']);
+        $this->assertIsArray($bootstrap['backend']);
+    }
+
+    private function bootstrapConfig(string|false $content): array
+    {
+        $this->assertIsString($content);
+        $this->assertMatchesRegularExpression('/data-waterline-config="[^"]+"/', $content);
+
+        preg_match('/data-waterline-config="([^"]+)"/', $content, $matches);
+
+        return json_decode(
+            html_entity_decode($matches[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
     }
 
     public function testDashboardHidesStaleAssetWarningWhenPublishedAssetsMatchPackage(): void
     {
         // setUp() already published a manifest that matches the package's manifest.
 
-        $this->get('/waterline')
+        $content = $this->get('/waterline')
             ->assertOk()
-            ->assertDontSee('php artisan waterline:publish', false)
-            ->assertDontSee('not up-to-date');
+            ->getContent();
+
+        $this->assertTrue($this->bootstrapConfig($content)['assets_current']);
     }
 
     public function testDashboardLoadsEveryFrontendEntryFromThePublishedManifest(): void
@@ -132,25 +180,24 @@ class DashboardControllerTest extends TestCase
     {
         $this->publishStaleAssets();
 
-        $this->get('/waterline')
+        $content = $this->get('/waterline')
             ->assertOk()
-            ->assertSee('alert-warning', false)
-            ->assertSee('not up-to-date')
-            ->assertSee('php artisan waterline:publish', false);
+            ->getContent();
+
+        $this->assertFalse($this->bootstrapConfig($content)['assets_current']);
     }
 
     public function testDashboardSurfacesStaleAssetWarningWhenPublishedManifestIsMissing(): void
     {
         @unlink($this->publishedManifestPath());
 
-        $this->get('/waterline')
+        $content = $this->get('/waterline')
             ->assertOk()
-            ->assertSee('alert-warning', false)
-            ->assertSee('php artisan waterline:publish', false)
             ->assertSee('vendor/waterline/app-dark.css', false)
             ->assertSee('vendor/waterline/components.css', false)
             ->assertSee('vendor/waterline/app.js', false)
-            ->assertSee('wl-topbar__scope', false)
-            ->assertSee('Scope');
+            ->getContent();
+
+        $this->assertFalse($this->bootstrapConfig($content)['assets_current']);
     }
 }

@@ -8,7 +8,8 @@
         "watch-poll": "vite build --mode development --watch",
         "hot": "vite build --mode development --watch",
         "prod": "npm run production",
-        "production": "vite build"
+        "production": "vite build",
+        "test": "node --test tests/Frontend/*.test.mjs"
     },
     "devDependencies": {
         "@vitejs/plugin-vue": "^6.0.8",

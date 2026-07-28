@@ -1782,7 +1782,7 @@
 .flow-index__section-kicker {
     margin: 0 0 0.45rem;
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1820,7 +1820,7 @@
 
 .flow-index__metric-label {
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1903,7 +1903,7 @@
     border-radius: 999px;
     background: color-mix(in srgb, var(--wl-accent) 12%, transparent);
     color: var(--wl-accent);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -1948,7 +1948,7 @@
     border-bottom: 1px solid var(--wl-border);
     background: var(--wl-surface);
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;

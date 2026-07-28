@@ -1049,7 +1049,7 @@ export default {
 
 .service-catalog-view__eyebrow {
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.75rem;
     letter-spacing: 0.08em;
     margin-bottom: 0.35rem;
@@ -1160,7 +1160,7 @@ export default {
 
 .service-catalog-view__summary-label {
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     text-transform: uppercase;
 }

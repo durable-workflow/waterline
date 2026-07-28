@@ -47,7 +47,7 @@ export default {
 <style scoped>
 .prism-editor {
     color: #f8f8f2;
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     line-height: 1.5;
     margin: 0;
     overflow: auto;

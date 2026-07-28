@@ -117,7 +117,7 @@ textarea:focus-visible,
 body {
     padding-bottom: 0;
     min-height: 100vh;
-    font-family: 'IBM Plex Sans', sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     background:
         radial-gradient(circle at top right, rgba($primary, 0.15), transparent 26%),
         radial-gradient(circle at bottom left, rgba($info, 0.08), transparent 24%),
@@ -125,13 +125,36 @@ body {
 }
 
 .environment-strip {
-    --waterline-env-color: #6c757d;
-    background: var(--waterline-env-color);
+    background: #6c757d;
     color: #ffffff;
     font-size: 0.75rem;
     font-weight: 700;
     line-height: 1.25;
     text-transform: uppercase;
+}
+
+.environment-strip--blue {
+    background: #2563eb;
+}
+
+.environment-strip--green {
+    background: #198754;
+}
+
+.environment-strip--orange {
+    background: #fd7e14;
+}
+
+.environment-strip--purple {
+    background: #6f42c1;
+}
+
+.environment-strip--red {
+    background: #dc3545;
+}
+
+.environment-strip--yellow {
+    background: #8a6700;
 }
 
 .environment-strip__inner {
@@ -421,6 +444,26 @@ button:hover {
     background: $code-bg;
 }
 
+.wl-exception-location {
+    opacity: 0.8;
+}
+
+.wl-exception-editor {
+    background-color: #424242;
+}
+
+.wl-chart-tooltip {
+    padding: 1em;
+}
+
+textarea.swal2-textarea.wl-command-textarea {
+    min-height: 10rem;
+}
+
+textarea.swal2-textarea.wl-command-textarea--signal {
+    min-height: 8rem;
+}
+
 .disabled-watcher {
     padding: 0.75rem;
     color: #fff;
@@ -491,7 +534,7 @@ button:hover {
 
 .wl-topbar__subtitle {
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.75rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -517,7 +560,7 @@ button:hover {
 
 .wl-topbar__scope-label {
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.7rem;
     font-weight: 600;
     letter-spacing: 0;
@@ -528,7 +571,7 @@ button:hover {
     max-width: 14rem;
     overflow: hidden;
     color: var(--wl-text);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0;
@@ -545,7 +588,7 @@ button:hover {
     border-radius: 999px;
     background: var(--wl-surface);
     color: var(--wl-text-muted);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
@@ -595,7 +638,7 @@ button:hover {
 
 .wl-sidebar__label {
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -686,7 +729,7 @@ button:hover {
 .wl-main .table th {
     background: var(--wl-surface-emphasis);
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.72rem;
     font-weight: 500;
     letter-spacing: 0.06em;
@@ -705,7 +748,7 @@ button:hover {
 .wl-main code,
 .wl-main pre,
 .wl-main .mono {
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
 }
 
 .wl-main .code-bg {

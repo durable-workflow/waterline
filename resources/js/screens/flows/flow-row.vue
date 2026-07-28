@@ -379,7 +379,7 @@
 
 .flow-row__mono {
     color: var(--wl-text-soft);
-    font-family: 'IBM Plex Mono', monospace;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
     font-size: 0.78rem;
     overflow-wrap: anywhere;
 }
