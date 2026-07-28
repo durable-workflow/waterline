@@ -6,6 +6,8 @@ namespace Waterline\Tests\Feature;
 
 use Illuminate\Support\Str;
 use Waterline\Tests\TestCase;
+use Workflow\Serializers\AvroBinaryValue;
+use Workflow\Serializers\AvroMapValue;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Models\WorkflowHistoryEvent;
@@ -48,6 +50,61 @@ class V2PolyglotRunRenderingTest extends TestCase
             ->assertJsonPath('workflow_type', 'greeter')
             ->assertJsonPath('arguments', $arguments)
             ->assertJsonPath('output', $output);
+    }
+
+    public function testRunDetailRendersAvroBytesWithoutConflatingThemWithText(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $run = $this->createCompletedRun(
+            namespace: 'default',
+            workflowClass: 'durable_workflow.examples.bytes.BytesWorkflow',
+            workflowType: 'bytes',
+            payloadCodec: 'avro',
+            arguments: [[
+                'text' => 'AP8=',
+                'bytes' => AvroBinaryValue::fromBytes("\x00\xFF"),
+            ]],
+            output: AvroBinaryValue::fromBytes('result'),
+        );
+
+        $this->getJson('/waterline/api/instances/'.$run->workflow_instance_id.'/runs/'.$run->id)
+            ->assertOk()
+            ->assertJsonPath('arguments.0.text', 'AP8=')
+            ->assertJsonPath('arguments.0.bytes.$type', 'bytes')
+            ->assertJsonPath('arguments.0.bytes.base64', 'AP8=')
+            ->assertJsonPath('output.$type', 'bytes')
+            ->assertJsonPath('output.base64', 'cmVzdWx0');
+    }
+
+    public function testRunDetailRendersAmbiguousAvroMapsWithoutConflatingThemWithLists(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+
+        $run = $this->createCompletedRun(
+            namespace: 'default',
+            workflowClass: 'durable_workflow.examples.maps.MapsWorkflow',
+            workflowType: 'maps',
+            payloadCodec: 'avro',
+            arguments: [
+                AvroMapValue::fromPairs([]),
+                AvroMapValue::fromPairs([['0', 'zero'], ['1', ['nested']]]),
+                ['zero', 'one'],
+            ],
+            output: AvroMapValue::fromPairs([['0', AvroBinaryValue::fromBytes("\x00\xFF")]]),
+        );
+
+        $this->getJson('/waterline/api/instances/'.$run->workflow_instance_id.'/runs/'.$run->id)
+            ->assertOk()
+            ->assertJsonPath('arguments.0.$type', 'map')
+            ->assertJsonPath('arguments.0.entries', [])
+            ->assertJsonPath('arguments.1.$type', 'map')
+            ->assertJsonPath('arguments.1.entries.0.key', '0')
+            ->assertJsonPath('arguments.1.entries.1.value.0', 'nested')
+            ->assertJsonPath('arguments.2.0', 'zero')
+            ->assertJsonPath('output.$type', 'map')
+            ->assertJsonPath('output.entries.0.value.$type', 'bytes')
+            ->assertJsonPath('output.entries.0.value.base64', 'AP8=');
     }
 
     public function testRunDetailDecodesLegacyPhpSerializerAuthoredArgumentsAndOutput(): void

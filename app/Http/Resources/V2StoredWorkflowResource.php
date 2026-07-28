@@ -15,6 +15,7 @@ use Waterline\Support\ObserverStateEnvelope;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\RunDiagnostics;
 use Waterline\Support\SelectedRunCommandContract;
+use Workflow\Serializers\AvroValueJsonProjection;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowFailure;
@@ -63,7 +64,12 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['namespace'] = $this->resource->namespace;
         $detail['operator_scope'] = OperatorScope::payload();
 
-        return ActionabilityContract::annotateRun($detail);
+        return $this->displayTypedValues(ActionabilityContract::annotateRun($detail));
+    }
+
+    private function displayTypedValues(mixed $value): mixed
+    {
+        return AvroValueJsonProjection::project($value);
     }
 
     /**
