@@ -3,7 +3,7 @@
 ## Unreleased
 
 Waterline and its Workflow and PHP SDK dependencies advance together to the
-synchronized Durable Workflow `2.0.0-rc.3` product train.
+synchronized Durable Workflow `2.0.0-rc.4` product train.
 
 Avro payload previews now understand the shared fixed typed Value schema and
 render binary values explicitly, so byte sequences cannot be mistaken for

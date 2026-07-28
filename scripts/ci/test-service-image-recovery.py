@@ -26,7 +26,7 @@ SPEC.loader.exec_module(recovery)
 PLAN_COMMIT = "a" * 40
 SOURCE_COMMIT = "b" * 40
 WORKFLOW_COMMIT = "c" * 40
-VERSION = "2.0.0-rc.3"
+VERSION = "2.0.0-rc.4"
 PLAN_TAG = "release-plan/coherent-2-0-rc-1"
 
 
@@ -36,13 +36,13 @@ def raw_json(value: Any) -> bytes:
 
 def plan() -> dict[str, Any]:
     versions = {
-        "workflow": "2.0.0-rc.3",
+        "workflow": "2.0.0-rc.4",
         "waterline": VERSION,
-        "server": "2.0.0-rc.3",
-        "cli": "2.0.0-rc.3",
-        "sdk-php": "2.0.0-rc.3",
-        "sdk-python": "2.0.0-rc.3",
-        "sdk-rust": "2.0.0-rc.3",
+        "server": "2.0.0-rc.4",
+        "cli": "2.0.0-rc.4",
+        "sdk-php": "2.0.0-rc.4",
+        "sdk-python": "2.0.0-rc.4",
+        "sdk-rust": "2.0.0-rc.4",
     }
     commits = {
         "workflow": "1" * 40,

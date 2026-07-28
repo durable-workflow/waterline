@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "durable-workflow/sdk": "2.0.0-rc.3",
+        "durable-workflow/sdk": "2.0.0-rc.4",
         "laravel/framework": "^12.0"
     },
     "autoload": {
