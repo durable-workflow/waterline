@@ -87,6 +87,17 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('data.0.workflow_type', 'orders.process');
     }
 
+    public function testSavedViewsUseTheWaterlineContractWithoutLoadingTheEmbeddedEngine(): void
+    {
+        $this->getJson('/waterline/api/saved-views?bucket=terminated')
+            ->assertOk()
+            ->assertJsonPath('filter_version', 6)
+            ->assertJsonPath('supported_filter_versions', [6])
+            ->assertJsonPath('filter_definition.fields.instance_id.label', 'Instance ID')
+            ->assertJsonPath('filter_definition.fields.repair_state.label', 'Repair State')
+            ->assertJsonPath('filter_definition.actionability.schema', 'waterline.actionability');
+    }
+
     public function testUnhealthyRemoteHealthRetainsServerChecksAndStatus(): void
     {
         $this->client->failures['systemHealth'] = new ServerException(

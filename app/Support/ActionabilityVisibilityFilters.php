@@ -6,11 +6,11 @@ namespace Waterline\Support;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Workflow\V2\Support\VisibilityFilters;
+use LogicException;
 
 final class ActionabilityVisibilityFilters
 {
-    public const VERSION = VisibilityFilters::VERSION;
+    public const VERSION = VisibilityFilterContract::VERSION;
 
     private const REPAIR_STATE_FIELD = 'repair_state';
 
@@ -19,7 +19,7 @@ final class ActionabilityVisibilityFilters
      */
     public static function supportedVersions(): array
     {
-        return VisibilityFilters::supportedVersions();
+        return VisibilityFilterContract::supportedVersions();
     }
 
     /**
@@ -27,7 +27,7 @@ final class ActionabilityVisibilityFilters
      */
     public static function versionMetadata(mixed $version): array
     {
-        return VisibilityFilters::versionMetadata($version);
+        return VisibilityFilterContract::versionMetadata($version);
     }
 
     /**
@@ -36,7 +36,7 @@ final class ActionabilityVisibilityFilters
      */
     public static function normalize(array $filters): array
     {
-        $normalized = VisibilityFilters::normalize($filters);
+        $normalized = VisibilityFilterContract::normalize($filters);
         $repairState = self::repairState($filters[self::REPAIR_STATE_FIELD] ?? null);
 
         if ($repairState !== null) {
@@ -52,7 +52,7 @@ final class ActionabilityVisibilityFilters
     public static function fromRequest(Request $request): array
     {
         return self::normalize([
-            ...VisibilityFilters::fromRequest($request),
+            ...VisibilityFilterContract::fromRequest($request),
             self::REPAIR_STATE_FIELD => $request->query(self::REPAIR_STATE_FIELD),
         ]);
     }
@@ -70,7 +70,7 @@ final class ActionabilityVisibilityFilters
             $repairState = $normalized[self::REPAIR_STATE_FIELD]
                 ?? $merged[self::REPAIR_STATE_FIELD]
                 ?? null;
-            $merged = VisibilityFilters::merge($merged, $normalized);
+            $merged = VisibilityFilterContract::merge($merged, $normalized);
 
             if ($repairState !== null) {
                 $merged[self::REPAIR_STATE_FIELD] = $repairState;
@@ -88,7 +88,13 @@ final class ActionabilityVisibilityFilters
     public static function apply(Builder $query, array $filters): Builder
     {
         $normalized = self::normalize($filters);
-        VisibilityFilters::apply($query, $normalized);
+        $embeddedFilters = \Workflow\V2\Support\VisibilityFilters::class;
+
+        if (! class_exists($embeddedFilters)) {
+            throw new LogicException('The embedded Waterline backend requires durable-workflow/workflow visibility filters.');
+        }
+
+        $embeddedFilters::apply($query, $normalized);
 
         return self::applyRepairState($query, $normalized[self::REPAIR_STATE_FIELD] ?? null);
     }
@@ -98,7 +104,7 @@ final class ActionabilityVisibilityFilters
      */
     public static function definition(): array
     {
-        $definition = VisibilityFilters::definition();
+        $definition = VisibilityFilterContract::definition();
         $fields = is_array($definition['fields'] ?? null) ? $definition['fields'] : [];
         $maxOrder = -1;
 

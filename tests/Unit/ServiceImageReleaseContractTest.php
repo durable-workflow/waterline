@@ -75,6 +75,7 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringContainsString('DB_DATABASE=:memory:', $smoke);
         $this->assertStringContainsString('/queries/current', $smoke);
         $this->assertStringContainsString('/signals/approve', $smoke);
+        $this->assertStringContainsString('/api/saved-views?bucket=terminated', $smoke);
         $this->assertStringContainsString('WATERLINE_ACCESS_MODE=operator', $smoke);
     }
 

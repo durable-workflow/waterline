@@ -260,6 +260,11 @@ request 200 \
 list="$response_content"
 
 request 200 \
+    "GET ${waterline_url}/waterline/api/saved-views?bucket=terminated" \
+    "${waterline_url}/waterline/api/saved-views?bucket=terminated"
+saved_views="$response_content"
+
+request 200 \
     "GET ${waterline_url}/waterline/api/instances/smoke-order/runs/smoke-run" \
     "${waterline_url}/waterline/api/instances/smoke-order/runs/smoke-run"
 detail="$response_content"
@@ -279,12 +284,15 @@ request 200 \
 signal="$response_content"
 
 php -r '
-[$list, $detail, $query, $signal] = array_slice($argv, 1);
+[$list, $savedViews, $detail, $query, $signal] = array_slice($argv, 1);
 $list = json_decode($list, true, flags: JSON_THROW_ON_ERROR);
+$savedViews = json_decode($savedViews, true, flags: JSON_THROW_ON_ERROR);
 $detail = json_decode($detail, true, flags: JSON_THROW_ON_ERROR);
 $query = json_decode($query, true, flags: JSON_THROW_ON_ERROR);
 $signal = json_decode($signal, true, flags: JSON_THROW_ON_ERROR);
 if (($list["data"][0]["instance_id"] ?? null) !== "smoke-order"
+    || ($savedViews["filter_version"] ?? null) !== 6
+    || ($savedViews["filter_definition"]["fields"]["repair_state"]["label"] ?? null) !== "Repair State"
     || ($detail["selected_run_id"] ?? null) !== "smoke-run"
     || ($detail["timeline"][0]["event_type"] ?? null) !== "WorkflowStarted"
     || ($query["query"] ?? null) !== "current"
@@ -297,12 +305,12 @@ if (($list["data"][0]["instance_id"] ?? null) !== "smoke-order"
     fwrite(STDERR, "Service image selected-run/query/signal contract mismatch.\n");
     exit(1);
 }
-' "$list" "$detail" "$query" "$signal"
+' "$list" "$saved_views" "$detail" "$query" "$signal"
 
 server_requests="$(docker logs "$server_container" 2>&1)"
 printf '%s\n' "$server_requests" | grep -F 'POST /api/workflows/smoke-order/runs/smoke-run/query/current' >/dev/null
 printf '%s\n' "$server_requests" | grep -F 'POST /api/workflows/smoke-order/runs/smoke-run/signal/approve' >/dev/null
 
 summary="Service image $image_release ($image_revision) rejected DB_DATABASE=:memory:,"\
-" reached /up in ${startup_elapsed}s, and passed selected-run, query, and signal checks."
+" reached /up in ${startup_elapsed}s, and passed saved-view, selected-run, query, and signal checks."
 printf '%s\n' "$summary"
