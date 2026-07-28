@@ -5,6 +5,11 @@
 Waterline and its Workflow and PHP SDK dependencies advance together to the
 synchronized Durable Workflow `2.0.0-rc.4` product train.
 
+Saved-view filter metadata and normalization are now owned by Waterline, so
+service mode can render and use saved views without loading the optional
+embedded Workflow package. Embedded-mode query execution continues to use the
+Workflow engine's visibility filters.
+
 Avro payload previews now understand the shared fixed typed Value schema and
 render binary values explicitly, so byte sequences cannot be mistaken for
 equal-looking UTF-8 or base64 text.
