@@ -2,8 +2,12 @@
 
 ## Unreleased
 
-Waterline and its Workflow and PHP SDK dependencies advance together to the
-synchronized Durable Workflow `2.0.0-rc.4` product train.
+Waterline, Workflow, and the PHP SDK advance together to the synchronized
+Durable Workflow `2.0.0-rc.5` product train.
+
+Worker Health now labels the returned registration total accurately and shows
+active and stale registration counts separately. Historical stale rows are no
+longer described as active workers.
 
 Saved-view filter metadata and normalization are now owned by Waterline, so
 service mode can render and use saved views without loading the optional

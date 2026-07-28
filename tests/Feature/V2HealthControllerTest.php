@@ -443,6 +443,7 @@ class V2HealthControllerTest extends TestCase
         $this->assertSame(30, $first['heartbeat_interval_seconds']);
         $this->assertSame(120, $payload['operator_metrics']['workers']['stale_after_seconds']);
         $this->assertSame(2, $payload['operator_metrics']['workers']['registration_count']);
+        $this->assertSame(1, $payload['operator_metrics']['workers']['active_registration_count']);
         $this->assertSame(1, $payload['operator_metrics']['workers']['stale_registration_count']);
         $this->assertSame(
             'waterline-worker-status-stale',
@@ -1092,7 +1093,7 @@ class V2HealthControllerTest extends TestCase
         $this->assertSame(2, $alert['facts']['backfill_needed_runs'] ?? null);
         $this->assertSame(1, $alert['facts']['backfill_available_runs'] ?? null);
         $this->assertSame(1, $alert['facts']['backfill_unavailable_runs'] ?? null);
-        $this->assertStringContainsString('2 runs need command-contract backfill', (string) ($alert['details'] ?? ''));
+        $this->assertStringContainsString('2 open runs need command-contract backfill', (string) ($alert['details'] ?? ''));
     }
 
     public function testHealthEndpointPublishesQueueCoordinationAlerts(): void

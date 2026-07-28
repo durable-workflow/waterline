@@ -71,6 +71,8 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('status', 'healthy')
             ->assertJsonPath('operator_metrics.workers.registrations.0.worker_id', 'worker-1')
             ->assertJsonPath('operator_metrics.workers.stale_registrations.0.worker_id', 'worker-stale')
+            ->assertJsonPath('operator_metrics.workers.registration_count', 2)
+            ->assertJsonPath('operator_metrics.workers.active_registration_count', 1)
             ->assertJsonPath('operator_metrics.workers.stale_registration_count', 1)
             ->assertJsonPath('queue_visibility.task_queues.0.name', 'orders');
 

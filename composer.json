@@ -14,7 +14,7 @@
     "require": {
         "php": "^8.0.2",
         "illuminate/support": "^9.0|^10.0|^11.0|^12.0|^13.0",
-        "durable-workflow/sdk": "2.0.0-rc.4"
+        "durable-workflow/sdk": "2.0.0-rc.5"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
@@ -22,7 +22,7 @@
         "orchestra/testbench": "^10.11",
         "orchestra/workbench": "^10.0.8",
         "phpunit/phpunit": "^11.5.3",
-        "durable-workflow/workflow": "2.0.0-rc.4"
+        "durable-workflow/workflow": "2.0.0-rc.5"
     },
     "autoload": {
         "psr-4": {
@@ -72,7 +72,7 @@
     },
     "extra": {
         "durable-workflow": {
-            "product-train": "2.0.0-rc.4"
+            "product-train": "2.0.0-rc.5"
         },
         "laravel": {
             "providers": [

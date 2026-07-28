@@ -76,6 +76,8 @@ final class RemoteHealthController extends RemoteController
                     'active_workers' => $workerMetrics['active_workers'] ?? count($registrations) - $stale,
                     'active_worker_scopes' => $workerMetrics['active_worker_scopes'] ?? count($registrations) - $stale,
                     'active_workers_supporting_required' => $workerMetrics['active_workers_supporting_required'] ?? count($registrations) - $stale,
+                    'registration_count' => count($registrations),
+                    'active_registration_count' => count($registrations) - $stale,
                     'stale_registration_count' => $stale,
                     'registrations' => $registrations,
                     'stale_registrations' => array_values(array_filter(

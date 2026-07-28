@@ -54,9 +54,9 @@
 
                 <article class="card worker-health__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="worker-health__summary-label">Active workers</div>
-                        <div class="worker-health__summary-value">{{ activeWorkerCount.toLocaleString() }}</div>
-                        <div class="worker-health__summary-meta">{{ workers.length.toLocaleString() }} active registrations returned.</div>
+                        <div class="worker-health__summary-label">Worker registrations</div>
+                        <div class="worker-health__summary-value">{{ registrationCount.toLocaleString() }}</div>
+                        <div class="worker-health__summary-meta">{{ registrationSummary }}</div>
                     </div>
                 </article>
 
@@ -72,7 +72,7 @@
                     <div class="card-body card-bg-secondary">
                         <div class="worker-health__summary-label">Active leases</div>
                         <div class="worker-health__summary-value">{{ totalLeases.toLocaleString() }}</div>
-                        <div class="worker-health__summary-meta">{{ staleWorkerCount.toLocaleString() }} worker<span v-if="staleWorkerCount !== 1">s</span> stale.</div>
+                        <div class="worker-health__summary-meta">Leases currently held by returned registrations.</div>
                     </div>
                 </article>
             </section>
@@ -513,8 +513,26 @@ export default {
     },
 
     computed: {
-        activeWorkerCount() {
-            return this.healthData?.operator_metrics?.workers?.active_workers || 0;
+        registrationCount() {
+            const count = Number(this.healthData?.operator_metrics?.workers?.registration_count);
+
+            if (Number.isFinite(count)) {
+                return count;
+            }
+
+            const returnedStale = this.workers.filter((worker) => worker?.status === 'stale').length;
+
+            return this.workers.length + Math.max(0, this.staleRegistrationCount - returnedStale);
+        },
+
+        activeRegistrationCount() {
+            const count = Number(this.healthData?.operator_metrics?.workers?.active_registration_count);
+
+            if (Number.isFinite(count)) {
+                return count;
+            }
+
+            return Math.max(0, this.registrationCount - this.staleRegistrationCount);
         },
 
         supportedWorkerCount() {
@@ -529,7 +547,7 @@ export default {
             }, 0);
         },
 
-        staleWorkerCount() {
+        staleRegistrationCount() {
             const count = Number(this.healthData?.operator_metrics?.workers?.stale_registration_count);
 
             if (Number.isFinite(count)) {
@@ -537,6 +555,13 @@ export default {
             }
 
             return this.workers.filter((worker) => this.isHeartbeatStale(worker.last_heartbeat_at)).length;
+        },
+
+        registrationSummary() {
+            const active = this.activeRegistrationCount;
+            const stale = this.staleRegistrationCount;
+
+            return `${active.toLocaleString()} active; ${stale.toLocaleString()} stale.`;
         },
 
         healthChecks() {

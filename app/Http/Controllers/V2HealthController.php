@@ -398,6 +398,7 @@ class V2HealthController extends Controller
         $workersBlock['registrations'] = $registrationPayload;
         $workersBlock['stale_registrations'] = $staleRegistrationPayload;
         $workersBlock['registration_count'] = count($registrationPayload) + count($staleRegistrationPayload);
+        $workersBlock['active_registration_count'] = count($registrationPayload);
         $workersBlock['stale_registration_count'] = count($staleRegistrationPayload);
         $workersBlock['stale_after_seconds'] = $staleAfter;
         $workersBlock['worker_versioning'] = $this->workerVersioningWorkersSummary(
@@ -1019,18 +1020,24 @@ class V2HealthController extends Controller
      */
     private function commandContractAlertDetails(array $facts): ?string
     {
-        $needed = $this->integerValue($facts['backfill_needed_runs'] ?? 0);
+        $needed = $this->integerValue(
+            $facts['actionable_backfill_needed_runs'] ?? $facts['backfill_needed_runs'] ?? 0,
+        );
 
         if ($needed <= 0) {
             return null;
         }
 
         return sprintf(
-            '%d run%s need command-contract backfill; %d can be backfilled from history and %d still lack recoverable snapshots.',
+            '%d open run%s need command-contract backfill; %d can be backfilled from history and %d still lack recoverable snapshots.',
             $needed,
             $needed === 1 ? '' : 's',
-            $this->integerValue($facts['backfill_available_runs'] ?? 0),
-            $this->integerValue($facts['backfill_unavailable_runs'] ?? 0),
+            $this->integerValue(
+                $facts['actionable_backfill_available_runs'] ?? $facts['backfill_available_runs'] ?? 0,
+            ),
+            $this->integerValue(
+                $facts['actionable_backfill_unavailable_runs'] ?? $facts['backfill_unavailable_runs'] ?? 0,
+            ),
         );
     }
 
