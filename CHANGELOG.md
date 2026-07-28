@@ -9,6 +9,10 @@ Worker Health now labels the returned registration total accurately and shows
 active and stale registration counts separately. Historical stale rows are no
 longer described as active workers.
 
+Command-contract health alerts now use actionable open-run backfill counts when
+available, so immutable contract gaps on closed runs are no longer reported as
+active fleet health failures.
+
 Saved-view filter metadata and normalization are now owned by Waterline, so
 service mode can render and use saved views without loading the optional
 embedded Workflow package. Embedded-mode query execution continues to use the
