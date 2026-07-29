@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -58,6 +59,8 @@ REQUIRED_CASES = (
     "explicit-terminal-plan-rejection",
     "bounded-authority-convergence",
     "release-candidate-beta-qualification",
+    "authoritative-rc-foundation",
+    "scheduled-empty-no-op",
 )
 CONSUMERS = (
     {
@@ -1272,6 +1275,239 @@ def case_release_candidate_beta_qualification(module: ModuleType) -> None:
         raise ConformanceError("consumer accepted non-beta qualification for a release-candidate plan")
 
 
+def aggregate_rc_plan(module: ModuleType) -> dict[str, Any]:
+    candidate = plan(module, "authoritative-rc-conformance")
+    candidate["channel"] = "rc"
+    for identity in candidate["components"].values():
+        identity["version"] = "2.0.0-rc.5"
+    candidate["foundation"] = {
+        "tag": f"beta-candidate/rc-{candidate['plan']}",
+        "commit": "e" * 40,
+    }
+    candidate["beta_authorization"] = None
+    return candidate
+
+
+def aggregate_rc_verification(module: ModuleType, candidate: dict[str, Any]) -> dict[str, Any]:
+    foundation = {
+        "schema": "durable-workflow.beta-candidate/v2",
+        "candidate": f"rc-{candidate['plan']}",
+        "components": candidate["components"],
+    }
+    return {
+        "schema": "durable-workflow.beta-candidate-verification/v2",
+        "candidate": foundation["candidate"],
+        "manifest_sha256": module.manifest_digest(foundation),
+        "outcome": "verified",
+        "components": {
+            name: {
+                "version": identity["version"],
+                "commit": identity["commit"],
+                "outcome": "verified",
+            }
+            for name, identity in candidate["components"].items()
+        },
+    }
+
+
+def case_authoritative_rc_foundation(module: ModuleType) -> None:
+    candidate = aggregate_rc_plan(module)
+    module.validate_plan(candidate)
+
+    malformed_tag = copy.deepcopy(candidate)
+    malformed_tag["foundation"]["tag"] = "beta-candidate/rc-substitution"
+    expect_recovery_error(
+        module,
+        lambda: module.validate_plan(malformed_tag),
+        "consumer accepted an aggregate foundation for a different release plan",
+    )
+
+    malformed_commit = copy.deepcopy(candidate)
+    malformed_commit["foundation"]["commit"] = "not-a-commit"
+    expect_recovery_error(
+        module,
+        lambda: module.validate_plan(malformed_commit),
+        "consumer accepted a malformed aggregate foundation commit",
+    )
+
+    unapproved = copy.deepcopy(candidate)
+    unapproved["beta_authorization"] = {
+        "tag": f"beta-authorization/{candidate['plan']}",
+        "commit": "f" * 40,
+    }
+    expect_recovery_error(
+        module,
+        lambda: module.validate_plan(unapproved),
+        "consumer accepted conflicting authority for an aggregate foundation",
+    )
+
+    foundation = {
+        "schema": "durable-workflow.beta-candidate/v2",
+        "candidate": f"rc-{candidate['plan']}",
+        "components": candidate["components"],
+    }
+    verification = aggregate_rc_verification(module, candidate)
+
+    class FoundationAccepted(RuntimeError):
+        pass
+
+    with (
+        mock.patch.object(
+            module,
+            "resolve_tag",
+            return_value=candidate["foundation"]["commit"],
+        ),
+        mock.patch.object(
+            module,
+            "read_record",
+            side_effect=(foundation, verification),
+        ),
+        mock.patch.object(
+            module,
+            "load_recovery_workflow_authority",
+            side_effect=FoundationAccepted,
+        ),
+    ):
+        try:
+            module.verify_plan_authority(mock.Mock(), candidate)
+        except FoundationAccepted:
+            pass
+        else:
+            raise ConformanceError(
+                "consumer did not continue after verifying the exact aggregate foundation"
+            )
+
+    with (
+        mock.patch.object(module, "resolve_tag", return_value="d" * 40),
+        mock.patch.object(module, "read_record") as read_record,
+    ):
+        expect_recovery_error(
+            module,
+            lambda: module.verify_plan_authority(mock.Mock(), candidate),
+            "consumer accepted a moved aggregate foundation tag",
+        )
+        read_record.assert_not_called()
+
+    substituted_foundation = copy.deepcopy(foundation)
+    substituted_foundation["components"]["server"]["commit"] = "d" * 40
+    with (
+        mock.patch.object(
+            module,
+            "resolve_tag",
+            return_value=candidate["foundation"]["commit"],
+        ),
+        mock.patch.object(
+            module,
+            "read_record",
+            return_value=substituted_foundation,
+        ),
+    ):
+        expect_recovery_error(
+            module,
+            lambda: module.verify_plan_authority(mock.Mock(), candidate),
+            "consumer accepted a substituted aggregate component tuple",
+        )
+
+    malformed_verification = copy.deepcopy(verification)
+    malformed_verification["components"]["server"]["outcome"] = "failed"
+    with (
+        mock.patch.object(
+            module,
+            "resolve_tag",
+            return_value=candidate["foundation"]["commit"],
+        ),
+        mock.patch.object(
+            module,
+            "read_record",
+            side_effect=(foundation, malformed_verification),
+        ),
+    ):
+        expect_recovery_error(
+            module,
+            lambda: module.verify_plan_authority(mock.Mock(), candidate),
+            "consumer accepted aggregate foundation evidence that was not verified",
+        )
+
+
+def case_scheduled_empty_no_op(module: ModuleType) -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        evidence = root / "release-recovery-evidence.json"
+        github_output = root / "github-output"
+        component = next(iter(module.COMPONENTS))
+        arguments = [
+            "component-release-recovery.py",
+            "resolve",
+            "--component",
+            component,
+            "--plan-output",
+            str(root / "release-plan.json"),
+            "--preparation-output",
+            str(root / "release-preparation.json"),
+            "--evidence",
+            str(evidence),
+            "--github-output",
+            str(github_output),
+            "--allow-empty",
+        ]
+        with (
+            mock.patch.object(sys, "argv", arguments),
+            mock.patch.object(
+                module,
+                "discover_plan",
+                side_effect=module.RecoveryError(
+                    "no public release plan is available",
+                    "plan-discovery",
+                ),
+            ),
+        ):
+            result = module.main()
+
+        state = json.loads(evidence.read_bytes())
+        if (
+            result != 0
+            or state.get("phase") != "plan-discovery"
+            or state.get("outcome") != "no-op"
+            or github_output.read_text(encoding="utf-8") != "action=none\n"
+        ):
+            raise ConformanceError(
+                "scheduled recovery without eligible work did not record a neutral no-op"
+            )
+
+        failure_evidence = root / "release-recovery-failure-evidence.json"
+        failure_output = root / "failure-github-output"
+        failure_arguments = [
+            *arguments[: arguments.index("--evidence")],
+            "--evidence",
+            str(failure_evidence),
+            "--github-output",
+            str(failure_output),
+            "--allow-empty",
+        ]
+        with (
+            mock.patch.object(sys, "argv", failure_arguments),
+            mock.patch.object(
+                module,
+                "discover_plan",
+                side_effect=module.RecoveryError(
+                    "release plan registry is malformed",
+                    "plan-discovery",
+                ),
+            ),
+        ):
+            failure_result = module.main()
+
+        failure_state = json.loads(failure_evidence.read_bytes())
+        if (
+            failure_result != 1
+            or failure_state.get("outcome") != "failed"
+            or failure_output.exists()
+        ):
+            raise ConformanceError(
+                "scheduled empty handling weakened unrelated plan-discovery failures"
+            )
+
+
 CASE_RUNNERS = {
     "immutable-plan-enumeration": case_immutable_plan_enumeration,
     "current-plan-schema": case_current_plan_schema,
@@ -1283,6 +1519,8 @@ CASE_RUNNERS = {
     "explicit-terminal-plan-rejection": case_explicit_terminal_plan_rejection,
     "bounded-authority-convergence": case_bounded_authority_convergence,
     "release-candidate-beta-qualification": case_release_candidate_beta_qualification,
+    "authoritative-rc-foundation": case_authoritative_rc_foundation,
+    "scheduled-empty-no-op": case_scheduled_empty_no_op,
 }
 
 

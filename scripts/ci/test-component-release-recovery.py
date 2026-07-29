@@ -1291,7 +1291,7 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
             self.recovery.current_product_train_authorities(authorities),
         )
 
-    def test_scheduled_recovery_without_plan_authority_fails_closed(self) -> None:
+    def test_scheduled_recovery_without_plan_authority_records_no_op(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             evidence = root / "release-recovery-evidence.json"
@@ -1324,13 +1324,13 @@ class ImmutablePlanDiscoveryTest(unittest.TestCase):
                 ),
                 mock.patch.object(self.recovery, "resolve_component") as recover_component,
             ):
-                self.assertEqual(1, self.recovery.main())
+                self.assertEqual(0, self.recovery.main())
 
             recover_component.assert_not_called()
             state = json.loads(evidence.read_text())
             self.assertEqual("plan-discovery", state["phase"])
-            self.assertEqual("failed", state["outcome"])
-            self.assertFalse(github_output.exists())
+            self.assertEqual("no-op", state["outcome"])
+            self.assertEqual("action=none\n", github_output.read_text())
 
     def test_explicit_completed_plan_is_selected_for_verification(self) -> None:
         candidate = lifecycle_plan(self.recovery, "beta")
@@ -2971,6 +2971,8 @@ class ReleaseCandidateChannelTest(unittest.TestCase):
 
     def test_rc_plan_retains_coherent_beta_qualification(self) -> None:
         candidate = lifecycle_plan(self.recovery, "rc")
+        for identity in candidate["components"].values():
+            identity["version"] = "2.0.0-rc.5"
         self.recovery.validate_plan(candidate)
         beta = lifecycle_plan(self.recovery, "beta")
         record = {

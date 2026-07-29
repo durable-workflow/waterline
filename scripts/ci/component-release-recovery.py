@@ -470,8 +470,17 @@ def validate_plan(plan: Any) -> None:
         raise RecoveryError("release plan has an invalid identity")
     if plan["channel"] not in {"alpha", "beta", "rc"}:
         raise RecoveryError("release plan channel must be alpha, beta, or rc")
-    if plan["foundation"] != {"tag": FOUNDATION_TAG, "commit": FOUNDATION_COMMIT}:
-        raise RecoveryError("release plan does not name the proven immutable candidate foundation")
+    foundation = plan["foundation"]
+    legacy_foundation = {"tag": FOUNDATION_TAG, "commit": FOUNDATION_COMMIT}
+    aggregate_rc_foundation = (
+        plan["channel"] == "rc"
+        and isinstance(foundation, dict)
+        and set(foundation) == {"tag", "commit"}
+        and foundation.get("tag") == f"beta-candidate/rc-{plan['plan']}"
+        and COMMIT_PATTERN.fullmatch(str(foundation.get("commit", ""))) is not None
+    )
+    if foundation != legacy_foundation and not aggregate_rc_foundation:
+        raise RecoveryError("release plan does not name its proven immutable candidate foundation")
     components = plan["components"]
     if not isinstance(components, dict) or set(components) != set(COMPONENTS):
         raise RecoveryError("release plan must contain the exact seven-component tuple")
@@ -487,17 +496,24 @@ def validate_plan(plan: Any) -> None:
         "beta": BETA_VERSION_PATTERN,
         "rc": RC_VERSION_PATTERN,
     }[plan["channel"]]
-    for name in ("workflow", "waterline"):
+    channel_components = COMPONENTS if plan["channel"] == "rc" else ("workflow", "waterline")
+    for name in channel_components:
         if not channel_pattern.fullmatch(components[name]["version"]):
             raise RecoveryError(f"{name} does not have an exact 2.0.0-{plan['channel']}.N identity")
     authorization = plan["beta_authorization"]
     if plan["channel"] == "alpha" and authorization is not None:
         raise RecoveryError("alpha plans cannot claim beta authorization")
-    if plan["channel"] in {"beta", "rc"} and (
-        not isinstance(authorization, dict)
-        or set(authorization) != {"tag", "commit"}
-        or not re.fullmatch(r"beta-authorization/[a-z0-9][a-z0-9._-]{0,55}", str(authorization.get("tag", "")))
-        or not COMMIT_PATTERN.fullmatch(str(authorization.get("commit", "")))
+    if aggregate_rc_foundation and authorization is not None:
+        raise RecoveryError("aggregate release-candidate plans cannot claim beta qualification")
+    if (
+        plan["channel"] in {"beta", "rc"}
+        and not aggregate_rc_foundation
+        and (
+            not isinstance(authorization, dict)
+            or set(authorization) != {"tag", "commit"}
+            or not re.fullmatch(r"beta-authorization/[a-z0-9][a-z0-9._-]{0,55}", str(authorization.get("tag", "")))
+            or not COMMIT_PATTERN.fullmatch(str(authorization.get("commit", "")))
+        )
     ):
         raise RecoveryError("beta and release-candidate plans require immutable beta qualification")
     if plan["schema"] == LEGACY_SCHEMA and manifest_digest(plan) not in LEGACY_PLAN_DIGESTS:
@@ -2458,9 +2474,64 @@ def select_publication_run(
 def verify_plan_authority(
     client: PublicClient, plan: dict[str, Any]
 ) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
-    foundation = read_record(client, FOUNDATION_TAG, FOUNDATION_COMMIT, "candidate.json")
-    if foundation.get("candidate") != "beta-continuity-foundation":
-        raise RecoveryError("immutable candidate foundation has an unexpected identity", "plan-preflight")
+    foundation_identity = plan["foundation"]
+    if (
+        foundation_identity["tag"] != FOUNDATION_TAG
+        and resolve_tag(client, CONTROL_REPOSITORY, foundation_identity["tag"])
+        != foundation_identity["commit"]
+    ):
+        raise RecoveryError(
+            "aggregate candidate foundation tag does not match its pinned commit",
+            "plan-preflight",
+        )
+    foundation = read_record(
+        client,
+        foundation_identity["tag"],
+        foundation_identity["commit"],
+        "candidate.json",
+    )
+    if foundation_identity["tag"] == FOUNDATION_TAG:
+        if foundation.get("candidate") != "beta-continuity-foundation":
+            raise RecoveryError("immutable candidate foundation has an unexpected identity", "plan-preflight")
+    else:
+        expected_foundation = {
+            "schema": "durable-workflow.beta-candidate/v2",
+            "candidate": f"rc-{plan['plan']}",
+            "components": plan["components"],
+        }
+        if foundation != expected_foundation:
+            raise RecoveryError(
+                "aggregate release-candidate foundation names a different exact tuple",
+                "plan-preflight",
+            )
+        verification = read_record(
+            client,
+            foundation_identity["tag"],
+            foundation_identity["commit"],
+            "verification.json",
+        )
+        verification_components = verification.get("components") if isinstance(verification, dict) else None
+        if (
+            not isinstance(verification, dict)
+            or verification.get("schema") != "durable-workflow.beta-candidate-verification/v2"
+            or verification.get("candidate") != foundation["candidate"]
+            or verification.get("manifest_sha256") != manifest_digest(foundation)
+            or verification.get("outcome") != "verified"
+            or not isinstance(verification_components, dict)
+            or set(verification_components) != set(COMPONENTS)
+            or any(
+                result.get("version") != plan["components"][name]["version"]
+                or result.get("commit") != plan["components"][name]["commit"]
+                or result.get("outcome") != "verified"
+                for name, result in verification_components.items()
+                if isinstance(result, dict)
+            )
+            or any(not isinstance(result, dict) for result in verification_components.values())
+        ):
+            raise RecoveryError(
+                "aggregate release-candidate foundation lacks exact verification evidence",
+                "plan-preflight",
+            )
     authority, authority_source = load_recovery_workflow_authority(client)
     branches: dict[str, str] = {}
     recovery_workflows: dict[str, dict[str, Any]] = {}
@@ -3196,6 +3267,24 @@ def main() -> int:
                 args.evidence.write_bytes(canonical_json(state))
                 write_output(args.github_output, outputs)
             except RecoveryError as error:
+                if (
+                    args.allow_empty
+                    and args.plan_tag is None
+                    and error.phase == "plan-discovery"
+                    and str(error) == "no public release plan is available"
+                ):
+                    no_op = base_state(args.component)
+                    no_op.update(
+                        {
+                            "phase": "plan-discovery",
+                            "outcome": "no-op",
+                            "reason": str(error),
+                            "resume_action": "No action is required; scheduled recovery found no eligible release plan",
+                        }
+                    )
+                    args.evidence.write_bytes(canonical_json(no_op))
+                    write_output(args.github_output, {"action": "none"})
+                    return 0
                 failure = base_state(args.component, tag, plan)
                 if record_commit is not None:
                     failure["plan_record_commit"] = record_commit

@@ -39,6 +39,14 @@
     {
       "id": "release-candidate-beta-qualification",
       "requirement": "Accept an exact release-candidate plan only when it retains one coherent immutable beta qualification, and reject non-beta qualification records."
+    },
+    {
+      "id": "authoritative-rc-foundation",
+      "requirement": "Accept the aggregate release-candidate foundation authenticated by the selected immutable plan only when its tag, commit, exact seven-component tuple, and verification evidence agree; reject substitutions, malformed identities, and conflicting authority."
+    },
+    {
+      "id": "scheduled-empty-no-op",
+      "requirement": "Record a successful neutral no-op when scheduled recovery has no eligible release plan, while retaining failures for malformed or unavailable authority."
     }
   ],
   "consumers": [
@@ -80,7 +88,7 @@
   ],
   "schema": "durable-workflow.release-recovery-consumer-conformance/v1",
   "suite": {
-    "sha256": "71e222faec79a5311ebf9acfa274e4385d5a86b76d0894050a4bfe4f930fb9f3"
+    "sha256": "340f5b1e89f22a0377986573eadfebd43401a663c904762949e0fe4bd14e243e"
   },
-  "version": "1.5.0"
+  "version": "1.6.0"
 }
