@@ -21,6 +21,9 @@ final class FakeRemoteClient
     /** @var array<string, Throwable> */
     public array $failures = [];
 
+    /** @var list<array<string, mixed>>|null */
+    public ?array $workflowRows = null;
+
     public function listWorkflows(
         ?string $workflowType = null,
         ?string $status = null,
@@ -30,11 +33,18 @@ final class FakeRemoteClient
     ): WorkflowPage {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        $raw = $this->workflowRaw($status ?? 'running');
+        $rows = $this->workflowRows ?? [$this->workflowRaw($status ?? 'running')];
+        $rows = array_values(array_filter(
+            $rows,
+            static fn (array $row): bool => ($workflowType === null || ($row['workflow_type'] ?? null) === $workflowType)
+                && ($status === null
+                    || ($row['status'] ?? null) === $status
+                    || ($row['status_bucket'] ?? null) === $status),
+        ));
 
         return new WorkflowPage([
-            WorkflowExecution::fromArray($raw),
-        ], null, 1, ['workflows' => [$raw]]);
+            ...array_map(static fn (array $row): WorkflowExecution => WorkflowExecution::fromArray($row), $rows),
+        ], null, count($rows), ['workflows' => $rows]);
     }
 
     public function describeWorkflow(string $workflowId, ?string $runId = null): WorkflowExecution

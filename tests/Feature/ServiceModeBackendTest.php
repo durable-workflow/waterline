@@ -7,6 +7,7 @@ namespace Waterline\Tests\Feature;
 use DurableWorkflow\Exception\ServerException;
 use DurableWorkflow\Exception\TransportException;
 use Orchestra\Testbench\TestCase;
+use function Orchestra\Testbench\artisan;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Tests\Fixtures\FakeRemoteClient;
 use Waterline\Waterline;
@@ -31,6 +32,11 @@ final class ServiceModeBackendTest extends TestCase
         $app['config']->set('waterline.service.access_mode', 'read_only');
         $app['config']->set('waterline.middleware', []);
         $app['config']->set('waterline.api_middleware', []);
+    }
+
+    protected function defineDatabaseMigrations(): void
+    {
+        artisan($this, 'migrate:fresh');
     }
 
     protected function setUp(): void
@@ -96,8 +102,90 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('filter_version', 6)
             ->assertJsonPath('supported_filter_versions', [6])
             ->assertJsonPath('filter_definition.fields.instance_id.label', 'Instance ID')
+            ->assertJsonPath('filter_definition.fields.instance_id.service_mode_available', true)
             ->assertJsonPath('filter_definition.fields.repair_state.label', 'Repair State')
+            ->assertJsonPath('filter_definition.fields.repair_state.filterable', false)
+            ->assertJsonPath('filter_definition.fields.repair_state.saved_view_compatible', false)
+            ->assertJsonPath('filter_definition.labels.service_mode_available', false)
+            ->assertJsonPath('filter_definition.search_attributes.service_mode_available', false)
             ->assertJsonPath('filter_definition.actionability.schema', 'waterline.actionability');
+    }
+
+    public function testSavedViewFiltersNarrowTheAuthoritativeRemoteWorkflowList(): void
+    {
+        $this->client->workflowRows = [
+            [
+                'workflow_id' => 'order-1',
+                'run_id' => 'run-1',
+                'workflow_type' => 'orders.process',
+                'task_queue' => 'orders',
+                'status' => 'running',
+                'status_bucket' => 'running',
+                'started_at' => '2026-07-22T12:00:00Z',
+            ],
+            [
+                'workflow_id' => 'invoice-1',
+                'run_id' => 'run-2',
+                'workflow_type' => 'invoices.process',
+                'task_queue' => 'billing',
+                'status' => 'running',
+                'status_bucket' => 'running',
+                'started_at' => '2026-07-22T12:01:00Z',
+            ],
+        ];
+
+        $created = $this->postJson('/waterline/api/saved-views', [
+            'name' => 'Order workflows',
+            'bucket' => 'running',
+            'filters' => [
+                'workflow_type' => 'orders.process',
+            ],
+            'shared' => true,
+        ])
+            ->assertCreated()
+            ->assertJsonPath('service_mode_available', true)
+            ->json();
+
+        $this->getJson('/waterline/api/flows/running?view='.$created['id'])
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.instance_id', 'order-1')
+            ->assertJsonPath('visibility_filters.saved_view.id', $created['id'])
+            ->assertJsonPath('visibility_filters.saved_view_applied', true)
+            ->assertJsonPath('visibility_filters.applied.workflow_type', 'orders.process')
+            ->assertJsonPath('visibility_filters.unavailable', [])
+            ->assertJsonPath('visibility_filters.capability.fully_applied', true)
+            ->assertJsonPath('visibility_filters.capability_warning', null);
+
+        $listCall = collect($this->client->calls)->last(
+            static fn (array $call): bool => $call['method'] === 'listWorkflows',
+        );
+
+        $this->assertSame('orders.process', $listCall['arguments']['workflowType']);
+    }
+
+    public function testUnavailableServiceModeFiltersAreRejectedOrReportedInsteadOfIgnored(): void
+    {
+        $this->postJson('/waterline/api/saved-views', [
+            'name' => 'Repair blocked',
+            'bucket' => 'running',
+            'filters' => [
+                'repair_state' => 'blocked',
+            ],
+            'shared' => true,
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.filters.0', 'The connected service cannot apply these workflow-list filters: repair_state.');
+
+        $this->getJson('/waterline/api/flows/running?repair_state=blocked')
+            ->assertOk()
+            ->assertJsonPath('visibility_filters.applied', [])
+            ->assertJsonPath('visibility_filters.unavailable.repair_state', 'blocked')
+            ->assertJsonPath('visibility_filters.capability.fully_applied', false)
+            ->assertJsonPath(
+                'visibility_filters.capability_warning',
+                'The connected service cannot apply these workflow-list filters: repair_state.',
+            );
     }
 
     public function testUnhealthyRemoteHealthRetainsServerChecksAndStatus(): void

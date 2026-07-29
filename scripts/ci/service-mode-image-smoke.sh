@@ -260,9 +260,28 @@ request 200 \
 list="$response_content"
 
 request 200 \
-    "GET ${waterline_url}/waterline/api/saved-views?bucket=terminated" \
-    "${waterline_url}/waterline/api/saved-views?bucket=terminated"
+    "GET ${waterline_url}/waterline/api/saved-views?bucket=running" \
+    "${waterline_url}/waterline/api/saved-views?bucket=running"
 saved_views="$response_content"
+
+request 201 \
+    "POST ${waterline_url}/waterline/api/saved-views" \
+    -X POST -H 'Content-Type: application/json' \
+    -d '{"name":"Smoke orders","bucket":"running","filters":{"workflow_type":"smoke.order"},"shared":true}' \
+    "${waterline_url}/waterline/api/saved-views"
+selected_saved_view="$response_content"
+selected_saved_view_id="$(php -r '
+$view = json_decode($argv[1], true, flags: JSON_THROW_ON_ERROR);
+if (!is_string($view["id"] ?? null) || $view["id"] === "") {
+    exit(1);
+}
+echo rawurlencode($view["id"]);
+' "$selected_saved_view")"
+
+request 200 \
+    "GET ${waterline_url}/waterline/api/flows/running?view=${selected_saved_view_id}" \
+    "${waterline_url}/waterline/api/flows/running?view=${selected_saved_view_id}"
+filtered_list="$response_content"
 
 request 200 \
     "GET ${waterline_url}/waterline/api/instances/smoke-order/runs/smoke-run" \
@@ -284,15 +303,27 @@ request 200 \
 signal="$response_content"
 
 php -r '
-[$list, $savedViews, $detail, $query, $signal] = array_slice($argv, 1);
+[$list, $savedViews, $selectedSavedView, $filteredList, $detail, $query, $signal] = array_slice($argv, 1);
 $list = json_decode($list, true, flags: JSON_THROW_ON_ERROR);
 $savedViews = json_decode($savedViews, true, flags: JSON_THROW_ON_ERROR);
+$selectedSavedView = json_decode($selectedSavedView, true, flags: JSON_THROW_ON_ERROR);
+$filteredList = json_decode($filteredList, true, flags: JSON_THROW_ON_ERROR);
 $detail = json_decode($detail, true, flags: JSON_THROW_ON_ERROR);
 $query = json_decode($query, true, flags: JSON_THROW_ON_ERROR);
 $signal = json_decode($signal, true, flags: JSON_THROW_ON_ERROR);
 if (($list["data"][0]["instance_id"] ?? null) !== "smoke-order"
+    || count($list["data"] ?? []) !== 2
     || ($savedViews["filter_version"] ?? null) !== 6
     || ($savedViews["filter_definition"]["fields"]["repair_state"]["label"] ?? null) !== "Repair State"
+    || ($savedViews["filter_definition"]["fields"]["repair_state"]["filterable"] ?? null) !== false
+    || ($selectedSavedView["filters"]["workflow_type"] ?? null) !== "smoke.order"
+    || ($selectedSavedView["service_mode_available"] ?? null) !== true
+    || count($filteredList["data"] ?? []) !== 1
+    || ($filteredList["data"][0]["instance_id"] ?? null) !== "smoke-order"
+    || ($filteredList["visibility_filters"]["saved_view"]["id"] ?? null) !== ($selectedSavedView["id"] ?? null)
+    || ($filteredList["visibility_filters"]["saved_view_applied"] ?? null) !== true
+    || ($filteredList["visibility_filters"]["applied"]["workflow_type"] ?? null) !== "smoke.order"
+    || ($filteredList["visibility_filters"]["capability"]["fully_applied"] ?? null) !== true
     || ($detail["selected_run_id"] ?? null) !== "smoke-run"
     || ($detail["timeline"][0]["event_type"] ?? null) !== "WorkflowStarted"
     || ($query["query"] ?? null) !== "current"
@@ -305,12 +336,12 @@ if (($list["data"][0]["instance_id"] ?? null) !== "smoke-order"
     fwrite(STDERR, "Service image selected-run/query/signal contract mismatch.\n");
     exit(1);
 }
-' "$list" "$saved_views" "$detail" "$query" "$signal"
+' "$list" "$saved_views" "$selected_saved_view" "$filtered_list" "$detail" "$query" "$signal"
 
 server_requests="$(docker logs "$server_container" 2>&1)"
 printf '%s\n' "$server_requests" | grep -F 'POST /api/workflows/smoke-order/runs/smoke-run/query/current' >/dev/null
 printf '%s\n' "$server_requests" | grep -F 'POST /api/workflows/smoke-order/runs/smoke-run/signal/approve' >/dev/null
 
 summary="Service image $image_release ($image_revision) rejected DB_DATABASE=:memory:,"\
-" reached /up in ${startup_elapsed}s, and passed saved-view, selected-run, query, and signal checks."
+" reached /up in ${startup_elapsed}s, and passed saved-view narrowing, selected-run, query, and signal checks."
 printf '%s\n' "$summary"

@@ -7,8 +7,10 @@ namespace Waterline\Http\Controllers;
 use Illuminate\Http\Request;
 use Waterline\Models\SavedWorkflowView;
 use Waterline\Support\ActionabilityVisibilityFilters;
+use Waterline\Support\BackendConfiguration;
 use Waterline\Support\EngineSourceReadiness;
 use Waterline\Support\OperatorScope;
+use Waterline\Support\ServiceVisibilityFilters;
 use Waterline\Support\WorkflowEngineSourceResolver;
 
 class SavedViewsController extends Controller
@@ -26,7 +28,7 @@ class SavedViewsController extends Controller
                 'data' => [],
                 'filter_version' => ActionabilityVisibilityFilters::VERSION,
                 'supported_filter_versions' => ActionabilityVisibilityFilters::supportedVersions(),
-                'filter_definition' => ActionabilityVisibilityFilters::definition(),
+                'filter_definition' => $this->filterDefinition(),
                 'saved_view_policy' => $this->savedViewPolicy(),
                 'operator_scope' => OperatorScope::payload(),
             ]);
@@ -39,17 +41,17 @@ class SavedViewsController extends Controller
             ->when($bucket !== null, static fn ($query) => $query->where('bucket', $bucket))
             ->orderBy('name')
             ->get()
-            ->map(static fn (SavedWorkflowView $view): array => $view->toWaterlinePayload($request))
+            ->map(fn (SavedWorkflowView $view): array => $this->viewPayload($view->toWaterlinePayload($request)))
             ->all();
 
         return response()->json([
             'data' => [
-                ...SavedWorkflowView::systemViews($bucket),
+                ...array_map(fn (array $view): array => $this->viewPayload($view), SavedWorkflowView::systemViews($bucket)),
                 ...$saved,
             ],
             'filter_version' => ActionabilityVisibilityFilters::VERSION,
             'supported_filter_versions' => ActionabilityVisibilityFilters::supportedVersions(),
-            'filter_definition' => ActionabilityVisibilityFilters::definition(),
+            'filter_definition' => $this->filterDefinition(),
             'saved_view_policy' => $this->savedViewPolicy(),
             'operator_scope' => OperatorScope::payload(),
         ]);
@@ -85,7 +87,7 @@ class SavedViewsController extends Controller
             'owner_id' => $owner['id'],
         ]);
 
-        return response()->json($this->withOperatorScope($view->toWaterlinePayload($request)), 201);
+        return response()->json($this->withOperatorScope($this->viewPayload($view->toWaterlinePayload($request))), 201);
     }
 
     public function show(string $view, Request $request)
@@ -93,7 +95,7 @@ class SavedViewsController extends Controller
         EngineSourceReadiness::throwIfPinnedV2Unavailable();
         abort_unless($this->available(), 404);
 
-        return response()->json($this->withOperatorScope($this->findViewPayload($view, $request)));
+        return response()->json($this->withOperatorScope($this->viewPayload($this->findViewPayload($view, $request))));
     }
 
     public function update(string $view, Request $request)
@@ -125,7 +127,9 @@ class SavedViewsController extends Controller
             'shared' => $payload['shared'],
         ]);
 
-        return response()->json($this->withOperatorScope($savedView->fresh()->toWaterlinePayload($request)));
+        return response()->json($this->withOperatorScope(
+            $this->viewPayload($savedView->fresh()->toWaterlinePayload($request)),
+        ));
     }
 
     public function destroy(string $view, Request $request)
@@ -166,10 +170,17 @@ class SavedViewsController extends Controller
 
         abort_if($name === '', 422, 'A Waterline saved view name is required.');
 
+        $filters = ActionabilityVisibilityFilters::normalize($validated['filters'] ?? []);
+        $bucket = $this->bucket($validated['bucket'], required: true);
+
+        if (BackendConfiguration::serviceMode()) {
+            ServiceVisibilityFilters::assertSavable($filters, $bucket);
+        }
+
         return [
             'name' => $name,
-            'bucket' => $this->bucket($validated['bucket'], required: true),
-            'filters' => ActionabilityVisibilityFilters::normalize($validated['filters'] ?? []),
+            'bucket' => $bucket,
+            'filters' => $filters,
             'shared' => (bool) ($validated['shared'] ?? false),
         ];
     }
@@ -220,6 +231,10 @@ class SavedViewsController extends Controller
      */
     private function available(?array $engineSource = null): bool
     {
+        if (BackendConfiguration::serviceMode()) {
+            return config('waterline.saved_views.enabled', true);
+        }
+
         $engineSource ??= WorkflowEngineSourceResolver::status();
 
         return ($engineSource['uses_v2'] ?? false) === true
@@ -252,5 +267,26 @@ class SavedViewsController extends Controller
         $payload['operator_scope'] = OperatorScope::payload();
 
         return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function filterDefinition(): array
+    {
+        return BackendConfiguration::serviceMode()
+            ? ServiceVisibilityFilters::definition()
+            : ActionabilityVisibilityFilters::definition();
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function viewPayload(array $payload): array
+    {
+        return BackendConfiguration::serviceMode()
+            ? ServiceVisibilityFilters::annotateSavedView($payload)
+            : $payload;
     }
 }

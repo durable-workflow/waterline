@@ -682,6 +682,7 @@
                 const contract = this.visibilityFilterContract()
 
                 return Object.entries((contract && contract.fields) || {})
+                    .filter(([, definition]) => definition && definition.filterable !== false)
                     .sort(([, left], [, right]) => {
                         const leftOrder = typeof left.order === 'number' ? left.order : Number.MAX_SAFE_INTEGER
                         const rightOrder = typeof right.order === 'number' ? right.order : Number.MAX_SAFE_INTEGER
@@ -705,7 +706,7 @@
             visibilityLabelsDefinition() {
                 const contract = this.visibilityFilterContract()
 
-                return contract && contract.labels
+                return contract && contract.labels && contract.labels.filterable !== false
                     ? contract.labels
                     : null
             },
@@ -716,10 +717,12 @@
                     ? contract[sectionKey]
                     : {}
 
-                return Object.entries(section).map(([key, definition]) => ({
-                    key,
-                    ...(definition && typeof definition === 'object' ? definition : {}),
-                }))
+                return Object.entries(section)
+                    .filter(([, definition]) => !definition || definition.filterable !== false)
+                    .map(([key, definition]) => ({
+                        key,
+                        ...(definition && typeof definition === 'object' ? definition : {}),
+                    }))
             },
 
             labelKeyPattern() {
@@ -745,7 +748,7 @@
             searchAttributesDefinition() {
                 const contract = this.visibilityFilterContract()
 
-                return contract && contract.search_attributes
+                return contract && contract.search_attributes && contract.search_attributes.filterable !== false
                     ? contract.search_attributes
                     : null
             },
@@ -1043,10 +1046,6 @@
             filterEditorHtml(filters) {
                 const labelsDefinition = this.visibilityLabelsDefinition()
 
-                if (!labelsDefinition) {
-                    return '<div class="text-left">Visibility filters are unavailable.</div>'
-                }
-
                 const textInput = (id, label, value, help = '', labelClass = 'd-block text-left mb-1') => `
                     <label class="${labelClass}" for="${id}">${label}</label>
                     <input id="${id}" class="swal2-input mt-1" value="${this.escapeHtml(value)}">
@@ -1078,8 +1077,18 @@
 
                     return textInput(id, label, value, help, labelClass)
                 }
-                const labelPlaceholder = this.escapeHtml(labelsDefinition.placeholder || '')
-                    .replace(/\n/g, '&#10;')
+                const labelPlaceholder = labelsDefinition
+                    ? this.escapeHtml(labelsDefinition.placeholder || '').replace(/\n/g, '&#10;')
+                    : ''
+                const labelsHtml = labelsDefinition
+                    ? `
+                        <label class="d-block text-left mb-1" for="waterline-filter-labels">${this.escapeHtml(labelsDefinition.label || 'Labels')}</label>
+                        <textarea id="waterline-filter-labels" class="swal2-textarea" rows="4" placeholder="${labelPlaceholder}">${this.escapeHtml(this.labelsText(filters))}</textarea>
+                        ${labelsDefinition.help
+                            ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(labelsDefinition.help)}</small>`
+                            : ''}
+                    `
+                    : ''
                 const containsPairs = this.containsFieldPairs()
                 const fieldsHtml = this.visibleFilterEditorEntries()
                     .map(([field, definition]) => {
@@ -1120,11 +1129,7 @@
                     <div class="text-left">
                         ${this.filterMetadataNoticeHtml()}
                         ${fieldsHtml}
-                        <label class="d-block text-left mb-1" for="waterline-filter-labels">${this.escapeHtml(labelsDefinition.label || 'Labels')}</label>
-                        <textarea id="waterline-filter-labels" class="swal2-textarea" rows="4" placeholder="${labelPlaceholder}">${this.escapeHtml(this.labelsText(filters))}</textarea>
-                        ${labelsDefinition.help
-                            ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(labelsDefinition.help)}</small>`
-                            : ''}
+                        ${labelsHtml}
                         ${searchAttrHtml}
                     </div>
                 `
@@ -1261,7 +1266,8 @@
                                 }
                             })
 
-                            const labels = this.parseLabelText(document.getElementById('waterline-filter-labels').value)
+                            const labelsEl = document.getElementById('waterline-filter-labels')
+                            const labels = labelsEl ? this.parseLabelText(labelsEl.value) : {}
 
                             if (Object.keys(labels).length > 0) {
                                 filters.labels = labels
@@ -1530,7 +1536,13 @@
 
             savedViewOptionLabel(view) {
                 if (view && view.system === true) {
-                    return `System: ${view.name}`
+                    return view.service_mode_available === false
+                        ? `System: ${view.name} (unavailable in service mode)`
+                        : `System: ${view.name}`
+                }
+
+                if (view && view.service_mode_available === false) {
+                    return `${view.name} (unavailable in service mode)`
                 }
 
                 if (this.savedViewVersionSupported(view)) {
@@ -1631,7 +1643,10 @@
                             @change="selectSavedView"
                             class="custom-select custom-select-sm flow-index__view-select">
                         <option :value="null">Default View</option>
-                        <option v-for="view in savedViews" :key="view.id" :value="view.id">
+                        <option v-for="view in savedViews"
+                                :key="view.id"
+                                :value="view.id"
+                                :disabled="view.service_mode_available === false">
                             {{ savedViewOptionLabel(view) }}
                         </option>
                     </select>

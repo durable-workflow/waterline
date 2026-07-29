@@ -19,20 +19,39 @@ parse_str((string) parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_QUERY), $qu
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $requestBody = json_decode((string) file_get_contents('php://input'), true);
 error_log($method.' '.$path);
+$workflowRows = [
+    [
+        'workflow_id' => 'smoke-order',
+        'run_id' => 'smoke-run',
+        'workflow_type' => 'smoke.order',
+        'namespace' => 'smoke',
+        'task_queue' => 'smoke',
+        'status' => 'running',
+        'status_bucket' => 'running',
+        'is_terminal' => false,
+        'started_at' => '2026-07-22T12:00:00Z',
+    ],
+    [
+        'workflow_id' => 'smoke-invoice',
+        'run_id' => 'smoke-invoice-run',
+        'workflow_type' => 'smoke.invoice',
+        'namespace' => 'smoke',
+        'task_queue' => 'smoke',
+        'status' => 'running',
+        'status_bucket' => 'running',
+        'is_terminal' => false,
+        'started_at' => '2026-07-22T12:01:00Z',
+    ],
+];
+$listedWorkflows = array_values(array_filter(
+    $workflowRows,
+    static fn (array $workflow): bool => ! isset($query['workflow_type'])
+        || $workflow['workflow_type'] === $query['workflow_type'],
+));
 $payload = match (true) {
     $method === 'GET' && $path === '/api/workflows' => [
-        'workflows' => [[
-            'workflow_id' => 'smoke-order',
-            'run_id' => 'smoke-run',
-            'workflow_type' => 'smoke.order',
-            'namespace' => 'smoke',
-            'task_queue' => 'smoke',
-            'status' => 'running',
-            'status_bucket' => 'running',
-            'is_terminal' => false,
-            'started_at' => '2026-07-22T12:00:00Z',
-        ]],
-        'workflow_count' => 1,
+        'workflows' => $listedWorkflows,
+        'workflow_count' => count($listedWorkflows),
         'next_page_token' => null,
     ],
     $method === 'GET' && in_array($path, [

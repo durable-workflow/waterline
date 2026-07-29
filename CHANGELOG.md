@@ -2,9 +2,9 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.6` source identity. The qualified
+Waterline advances to the `2.0.0-rc.7` source identity. The qualified
 `2.0.0-rc.5` aggregate remains the installation recommendation until the exact
-RC6 train completes qualification.
+RC7 train completes qualification.
 
 Worker Health now labels the returned registration total accurately and shows
 active and stale registration counts separately. Historical stale rows are no
@@ -16,8 +16,11 @@ active fleet health failures.
 
 Saved-view filter metadata and normalization are now owned by Waterline, so
 service mode can render and use saved views without loading the optional
-embedded Workflow package. Embedded-mode query execution continues to use the
-Workflow engine's visibility filters.
+embedded Workflow package. Service-mode workflow lists apply supported saved
+filters through the authoritative SDK query before pagination and report any
+embedded-only filters as unavailable instead of silently ignoring them.
+Embedded-mode query execution continues to use the Workflow engine's visibility
+filters.
 
 Avro payload previews now understand the shared fixed typed Value schema and
 render binary values explicitly, so byte sequences cannot be mistaken for

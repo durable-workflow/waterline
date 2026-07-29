@@ -6,9 +6,12 @@ namespace Waterline\Http\Controllers\Remote;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
 use Waterline\Support\ActionabilityContract;
+use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\RemoteBackend;
+use Waterline\Support\ServiceVisibilityFilters;
 
 final class RemoteWorkflowsController extends RemoteController
 {
@@ -196,14 +199,26 @@ final class RemoteWorkflowsController extends RemoteController
     private function list(string $bucket, Request $request): JsonResponse
     {
         $pageNumber = max(1, (int) $request->query('page', 1));
+        $context = V2VisibilityFilterContext::resolve($request, $bucket);
+        $filterPlan = ServiceVisibilityFilters::plan(
+            $context['applied_filters'],
+            $bucket,
+            $this->stringQuery($request, 'query'),
+        );
+        $savedViewPlan = ServiceVisibilityFilters::plan($context['saved_filters'], $bucket);
+        $savedViewApplied = $context['saved_view'] === null
+            ? null
+            : ($context['saved_view_applied'] === true && $savedViewPlan['unavailable_filters'] === []);
+        $savedViewWarning = $context['saved_view_warning']
+            ?? ($context['saved_view'] === null ? null : $savedViewPlan['warning']);
         $token = null;
         $page = null;
 
         for ($current = 1; $current <= $pageNumber; $current++) {
             $page = $this->backend->client()->listWorkflows(
-                workflowType: $this->stringQuery($request, 'workflow_type'),
+                workflowType: $filterPlan['workflow_type'],
                 status: $bucket,
-                query: $this->stringQuery($request, 'query'),
+                query: $filterPlan['query'],
                 pageSize: self::PAGE_SIZE,
                 nextPageToken: $token,
             );
@@ -225,13 +240,18 @@ final class RemoteWorkflowsController extends RemoteController
             'total' => (($pageNumber - 1) * self::PAGE_SIZE) + count($items) + ($token === null ? 0 : 1),
             'next_page_token' => $token,
             'visibility_filters' => [
+                'version' => ActionabilityVisibilityFilters::VERSION,
+                'supported_versions' => ActionabilityVisibilityFilters::supportedVersions(),
                 'bucket' => $bucket,
-                'definition' => null,
-                'applied' => array_filter([
-                    'workflow_type' => $this->stringQuery($request, 'workflow_type'),
-                    'query' => $this->stringQuery($request, 'query'),
-                ]),
-                'backend_contract' => 'durable-workflow/sdk',
+                'definition' => ServiceVisibilityFilters::definition(),
+                'applied' => $filterPlan['applied_filters'],
+                'unavailable' => $filterPlan['unavailable_filters'],
+                'saved_view' => $context['saved_view'],
+                'saved_view_applied' => $savedViewApplied,
+                'saved_view_warning' => $savedViewWarning,
+                'capability_warning' => $filterPlan['warning'] ?? $savedViewWarning,
+                'capability' => $filterPlan['capability'],
+                'backend_contract' => 'durable-workflow/sdk.workflow-list',
             ],
         ]));
     }
