@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-Waterline, Workflow, and the PHP SDK advance together to the synchronized
-Durable Workflow `2.0.0-rc.5` product train.
+Waterline advances to the `2.0.0-rc.6` source identity. The qualified
+`2.0.0-rc.5` aggregate remains the installation recommendation until the exact
+RC6 train completes qualification.
 
 Worker Health now labels the returned registration total accurately and shows
 active and stale registration counts separately. Historical stale rows are no
@@ -22,10 +23,15 @@ Avro payload previews now understand the shared fixed typed Value schema and
 render binary values explicitly, so byte sequences cannot be mistaken for
 equal-looking UTF-8 or base64 text.
 
-Managed Waterline now renders under strict Content Security Policy without
-inline scripts, inline styles, or third-party fonts. Its escaped page bootstrap
-and published frontend assets preserve dashboard scope, backend, maintenance,
-and environment-banner state on Cloud-managed routes.
+Managed Waterline now loads executable scripts and package-authored style
+elements from the same origin under the production Content Security Policy,
+without `unsafe-inline` or `unsafe-eval` script permission and without external
+style or font origins. Package-authored markup no longer contains static inline
+style attributes. The UI runtime still creates style elements and attributes
+for charting, positioning, and virtualized history, so managed routes retain
+the browser-qualified, route-scoped `style-src-elem 'self' 'unsafe-inline'` and
+`style-src-attr 'unsafe-inline'` allowances; `style-src 'self'` alone is not a
+supported policy for the operator interface.
 
 The packaged service now rejects process-local SQLite memory databases before
 running migrations. Service mode supports file-backed SQLite, MySQL, and

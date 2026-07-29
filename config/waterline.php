@@ -176,7 +176,9 @@ return [
     | issuing manual commands. Recognized palette colors are blue (#2563eb or
     | #0d6efd), green (#198754 or #28a745), orange (#fd7e14), purple (#6f42c1
     | or #7746ec), red (#dc3545), and yellow (#ffc107). Other values use the
-    | neutral banner so hosts never need an inline style exception.
+    | neutral banner so package markup never introduces a static inline style.
+    | Runtime charting and positioning still require the host's route-scoped
+    | CSP allowances for generated style elements and attributes.
     |
     */
 
