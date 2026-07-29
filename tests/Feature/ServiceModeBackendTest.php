@@ -6,12 +6,15 @@ namespace Waterline\Tests\Feature;
 
 use DurableWorkflow\Exception\ServerException;
 use DurableWorkflow\Exception\TransportException;
+use DurableWorkflow\Waterline\CI\SqlServerQualificationTls;
 use Orchestra\Testbench\TestCase;
 use function Orchestra\Testbench\artisan;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Tests\Fixtures\FakeRemoteClient;
 use Waterline\Waterline;
 use Waterline\WaterlineServiceProvider;
+
+require_once dirname(__DIR__, 2).'/scripts/ci/SqlServerQualificationTls.php';
 
 final class ServiceModeBackendTest extends TestCase
 {
@@ -32,6 +35,12 @@ final class ServiceModeBackendTest extends TestCase
         $app['config']->set('waterline.service.access_mode', 'read_only');
         $app['config']->set('waterline.middleware', []);
         $app['config']->set('waterline.api_middleware', []);
+
+        if (($_ENV['DB_CONNECTION'] ?? getenv('DB_CONNECTION')) === 'sqlsrv') {
+            foreach (SqlServerQualificationTls::laravelConfiguration() as $option => $value) {
+                $app['config']->set("database.connections.sqlsrv.{$option}", $value);
+            }
+        }
     }
 
     protected function defineDatabaseMigrations(): void
