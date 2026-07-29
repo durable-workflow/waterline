@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
-      action: ${{ steps.image.outputs.action }}
+      action: ${{ steps.release.outputs.action == 'none' && 'none' || steps.image.outputs.action }}
       artifact-digest: ${{ steps.privileged-handoff.outputs.artifact-digest }}
       artifact-id: ${{ steps.privileged-handoff.outputs.artifact-id }}
       commit: ${{ steps.image.outputs.commit }}

@@ -21,6 +21,8 @@ from typing import Any
 SCHEMA = "durable-workflow.waterline.service-image-recovery/v1"
 PLAN_SCHEMA = "durable-workflow.release-plan/v2"
 LEGACY_PLAN_SCHEMA = "durable-workflow.release-plan/v1"
+CANDIDATE_SCHEMA = "durable-workflow.beta-candidate/v2"
+CANDIDATE_VERIFICATION_SCHEMA = "durable-workflow.beta-candidate-verification/v2"
 LEGACY_PLAN_DIGESTS = frozenset(
     {
         "0be354d5ea603170b6aef8ae0d9861886c4ccc0f75e6acb763239b30dd5d8ba3",
@@ -63,6 +65,10 @@ VERSION_PATTERN = re.compile(
     r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$"
 )
 WATERLINE_VERSION_PATTERN = re.compile(r"^2\.0\.0-(?:alpha|beta|rc)\.[1-9][0-9]*$")
+RC_VERSION_PATTERN = re.compile(r"^2\.0\.0-rc\.[1-9][0-9]*$")
+VERIFIED_AT_PATTERN = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+)
 MANIFEST_ACCEPT = ", ".join(
     (
         "application/vnd.oci.image.index.v1+json",
@@ -159,6 +165,10 @@ def sha256_digest(raw: bytes) -> str:
     return f"sha256:{hashlib.sha256(raw).hexdigest()}"
 
 
+def manifest_digest(value: Any) -> str:
+    return hashlib.sha256(canonical_json(value)).hexdigest()
+
+
 def require_commit(value: Any, field: str) -> str:
     if not isinstance(value, str) or not COMMIT_PATTERN.fullmatch(value):
         raise RecoveryError(f"{field} must be an exact lowercase source commit")
@@ -213,13 +223,21 @@ def validate_plan(
             "release plan tag does not match the immutable plan identity"
         )
     require_commit(plan_commit, "release plan commit")
-    if plan.get("foundation") != FOUNDATION:
-        raise RecoveryError(
-            "release plan does not name the immutable candidate foundation"
-        )
     channel = plan.get("channel")
     if channel not in {"alpha", "beta", "rc"}:
         raise RecoveryError("release plan has an invalid channel")
+    foundation = plan.get("foundation")
+    aggregate_rc_foundation = (
+        channel == "rc"
+        and isinstance(foundation, dict)
+        and set(foundation) == {"tag", "commit"}
+        and foundation.get("tag") == f"beta-candidate/rc-{plan_name}"
+        and COMMIT_PATTERN.fullmatch(str(foundation.get("commit", ""))) is not None
+    )
+    if foundation != FOUNDATION and not aggregate_rc_foundation:
+        raise RecoveryError(
+            "release plan does not name its proven immutable candidate foundation"
+        )
 
     components = plan.get("components")
     if not isinstance(components, dict) or set(components) != COMPONENTS:
@@ -237,6 +255,12 @@ def validate_plan(
                 f"release plan component {name} has an invalid identity"
             )
         require_commit(identity["commit"], f"release plan component {name} commit")
+        if aggregate_rc_foundation and not RC_VERSION_PATTERN.fullmatch(
+            identity["version"]
+        ):
+            raise RecoveryError(
+                f"release plan component {name} does not have an exact 2.0.0-rc.N identity"
+            )
 
     identity = components["waterline"]
     version = identity["version"]
@@ -250,12 +274,20 @@ def validate_plan(
     authorization = plan.get("beta_authorization")
     if channel == "alpha" and authorization is not None:
         raise RecoveryError("alpha release plan unexpectedly has beta authorization")
-    if channel in {"beta", "rc"} and (
-        not isinstance(authorization, dict)
-        or set(authorization) != {"tag", "commit"}
-        or not isinstance(authorization.get("tag"), str)
-        or not authorization["tag"].startswith("beta-authorization/")
-        or not COMMIT_PATTERN.fullmatch(str(authorization.get("commit", "")))
+    if aggregate_rc_foundation and authorization is not None:
+        raise RecoveryError(
+            "aggregate release-candidate plan cannot claim beta qualification"
+        )
+    if (
+        channel in {"beta", "rc"}
+        and not aggregate_rc_foundation
+        and (
+            not isinstance(authorization, dict)
+            or set(authorization) != {"tag", "commit"}
+            or not isinstance(authorization.get("tag"), str)
+            or not authorization["tag"].startswith("beta-authorization/")
+            or not COMMIT_PATTERN.fullmatch(str(authorization.get("commit", "")))
+        )
     ):
         raise RecoveryError("prerelease plan lacks exact immutable beta qualification")
 
@@ -325,6 +357,100 @@ def resolve_tag(client: Any, repository: str, tag: str) -> str:
     return str(target["sha"])
 
 
+def read_foundation_record(
+    client: Any,
+    commit: str,
+    filename: str,
+) -> Any:
+    encoded_filename = urllib.parse.quote(filename, safe="/")
+    raw, _ = client.bytes(
+        f"https://api.github.com/repos/{CONTROL_REPOSITORY}/contents/"
+        f"{encoded_filename}?ref={commit}",
+        accept="application/vnd.github.raw+json",
+    )
+    return decode_json(raw, f"{commit}:{filename}")
+
+
+def verify_foundation_authority(
+    client: Any,
+    plan: dict[str, Any],
+) -> dict[str, Any]:
+    identity = plan["foundation"]
+    if identity == FOUNDATION:
+        return {
+            "kind": "legacy-beta-continuity",
+            "tag": identity["tag"],
+            "commit": identity["commit"],
+        }
+
+    if resolve_tag(client, CONTROL_REPOSITORY, identity["tag"]) != identity["commit"]:
+        raise RecoveryError(
+            "aggregate candidate foundation tag does not match its pinned commit"
+        )
+    candidate = read_foundation_record(client, identity["commit"], "candidate.json")
+    expected_candidate = {
+        "schema": CANDIDATE_SCHEMA,
+        "candidate": f"rc-{plan['plan']}",
+        "components": plan["components"],
+    }
+    if candidate != expected_candidate:
+        raise RecoveryError(
+            "aggregate release-candidate foundation names a different exact tuple"
+        )
+
+    verification = read_foundation_record(
+        client,
+        identity["commit"],
+        "verification.json",
+    )
+    verification_components = (
+        verification.get("components") if isinstance(verification, dict) else None
+    )
+    if (
+        not isinstance(verification, dict)
+        or set(verification)
+        != {
+            "schema",
+            "candidate",
+            "manifest_sha256",
+            "verified_at",
+            "outcome",
+            "components",
+        }
+        or verification.get("schema") != CANDIDATE_VERIFICATION_SCHEMA
+        or verification.get("candidate") != candidate["candidate"]
+        or verification.get("manifest_sha256") != manifest_digest(candidate)
+        or verification.get("outcome") != "verified"
+        or not isinstance(verification.get("verified_at"), str)
+        or VERIFIED_AT_PATTERN.fullmatch(verification["verified_at"]) is None
+        or not isinstance(verification_components, dict)
+        or set(verification_components) != COMPONENTS
+        or any(
+            not isinstance(result, dict) for result in verification_components.values()
+        )
+        or any(
+            result.get("version") != plan["components"][name]["version"]
+            or result.get("commit") != plan["components"][name]["commit"]
+            or result.get("outcome") != "verified"
+            for name, result in verification_components.items()
+        )
+    ):
+        raise RecoveryError(
+            "aggregate release-candidate foundation lacks exact verification evidence"
+        )
+
+    return {
+        "kind": "aggregate-release-candidate",
+        "tag": identity["tag"],
+        "commit": identity["commit"],
+        "candidate": candidate["candidate"],
+        "manifest_sha256": manifest_digest(candidate),
+        "verification_sha256": manifest_digest(verification),
+        "verified_at": verification["verified_at"],
+        "outcome": verification["outcome"],
+    }
+
+
 def validate_public_authority(
     client: Any,
     plan: dict[str, Any],
@@ -338,7 +464,7 @@ def validate_public_authority(
     github_ref: str,
     github_sha: str,
     github_event_name: str,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     if github_server_url != "https://github.com":
         raise RecoveryError(
             "service image recovery is restricted to GitHub", "protected-source"
@@ -403,19 +529,23 @@ def validate_public_authority(
         raise RecoveryError(
             "release plan handoff differs from immutable public Git authority"
         )
+    foundation = verify_foundation_authority(client, plan)
     if resolve_tag(client, WATERLINE_REPOSITORY, version) != source_commit:
         raise RecoveryError(
             "Waterline source tag does not resolve to the planned source commit"
         )
 
-    return {
-        "repository": github_repository,
-        "server_url": github_server_url,
-        "ref": github_ref,
-        "commit": github_sha,
-        "event": github_event_name,
-        "branch_protected": True,
-    }
+    return (
+        {
+            "repository": github_repository,
+            "server_url": github_server_url,
+            "ref": github_ref,
+            "commit": github_sha,
+            "event": github_event_name,
+            "branch_protected": True,
+        },
+        foundation,
+    )
 
 
 def registry_token(client: Any) -> str:
@@ -669,7 +799,7 @@ def run(args: argparse.Namespace, client: Any) -> int:
         version, source_commit = validate_plan(
             plan, recovery, args.plan_tag, args.plan_commit
         )
-        protected_source = validate_public_authority(
+        protected_source, foundation = validate_public_authority(
             client,
             plan,
             args.plan_tag,
@@ -702,6 +832,7 @@ def run(args: argparse.Namespace, client: Any) -> int:
                 "action": action,
                 "outcome": "verified" if image is not None else "missing",
                 "protected_source": protected_source,
+                "release_candidate_foundation": foundation,
                 "source_release": {"tag": version, "commit": source_commit},
                 "image": image
                 or {

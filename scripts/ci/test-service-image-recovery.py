@@ -26,8 +26,9 @@ SPEC.loader.exec_module(recovery)
 PLAN_COMMIT = "a" * 40
 SOURCE_COMMIT = "b" * 40
 WORKFLOW_COMMIT = "c" * 40
+FOUNDATION_COMMIT = "e" * 40
 VERSION = "2.0.0-rc.5"
-PLAN_TAG = "release-plan/coherent-2-0-rc-1"
+PLAN_TAG = "release-plan/coherent-2-0-rc-5"
 
 
 def raw_json(value: Any) -> bytes:
@@ -55,17 +56,17 @@ def plan() -> dict[str, Any]:
     }
     return {
         "schema": recovery.PLAN_SCHEMA,
-        "plan": "coherent-2-0-rc-1",
+        "plan": "coherent-2-0-rc-5",
         "channel": "rc",
-        "foundation": recovery.FOUNDATION,
+        "foundation": {
+            "tag": "beta-candidate/rc-coherent-2-0-rc-5",
+            "commit": FOUNDATION_COMMIT,
+        },
         "components": {
             name: {"version": versions[name], "commit": commits[name]}
             for name in sorted(recovery.COMPONENTS)
         },
-        "beta_authorization": {
-            "tag": "beta-authorization/coherent-2-0-beta-21",
-            "commit": "8" * 40,
-        },
+        "beta_authorization": None,
     }
 
 
@@ -87,6 +88,33 @@ def source_recovery_evidence(release_plan: dict[str, Any]) -> dict[str, Any]:
             "commit": identity["commit"],
             "distribution": {"kind": "composer"},
             "github_release": {"id": 7},
+        },
+    }
+
+
+def foundation_candidate(release_plan: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "schema": recovery.CANDIDATE_SCHEMA,
+        "candidate": f"rc-{release_plan['plan']}",
+        "components": copy.deepcopy(release_plan["components"]),
+    }
+
+
+def foundation_verification(release_plan: dict[str, Any]) -> dict[str, Any]:
+    candidate = foundation_candidate(release_plan)
+    return {
+        "schema": recovery.CANDIDATE_VERIFICATION_SCHEMA,
+        "candidate": candidate["candidate"],
+        "manifest_sha256": recovery.manifest_digest(candidate),
+        "verified_at": "2026-07-28T23:28:46Z",
+        "outcome": "verified",
+        "components": {
+            name: {
+                "version": identity["version"],
+                "commit": identity["commit"],
+                "outcome": "verified",
+            }
+            for name, identity in release_plan["components"].items()
         },
     }
 
@@ -148,6 +176,11 @@ class FakePublicClient:
         protected: bool = True,
         branch_commit: str = WORKFLOW_COMMIT,
         source_tag_commit: str = SOURCE_COMMIT,
+        foundation_tag_commit: str | None = None,
+        candidate_record: dict[str, Any] | None = None,
+        verification_record: dict[str, Any] | None = None,
+        plan_release_draft: bool = False,
+        public_plan: dict[str, Any] | None = None,
         release_label: str = VERSION,
         revision_label: str = SOURCE_COMMIT,
         include_arm64: bool = True,
@@ -159,6 +192,21 @@ class FakePublicClient:
         self.protected = protected
         self.branch_commit = branch_commit
         self.source_tag_commit = source_tag_commit
+        self.foundation_tag_commit = (
+            foundation_tag_commit or release_plan["foundation"]["commit"]
+        )
+        self.candidate_record = (
+            foundation_candidate(release_plan)
+            if candidate_record is None
+            else candidate_record
+        )
+        self.verification_record = (
+            foundation_verification(release_plan)
+            if verification_record is None
+            else verification_record
+        )
+        self.plan_release_draft = plan_release_draft
+        self.public_plan = release_plan if public_plan is None else public_plan
         self.requests: list[str] = []
         self.token_url = (
             "https://auth.docker.io/token?service=registry.docker.io&scope="
@@ -253,7 +301,20 @@ class FakePublicClient:
             f"https://api.github.com/repos/{recovery.CONTROL_REPOSITORY}"
             f"/releases/tags/{encoded_plan}"
         ):
-            return {"tag_name": PLAN_TAG, "draft": False}
+            return {"tag_name": PLAN_TAG, "draft": self.plan_release_draft}
+        encoded_foundation = urllib.parse.quote(
+            self.release_plan["foundation"]["tag"], safe=""
+        )
+        if url == (
+            f"https://api.github.com/repos/{recovery.CONTROL_REPOSITORY}"
+            f"/git/ref/tags/{encoded_foundation}"
+        ):
+            return {
+                "object": {
+                    "type": "commit",
+                    "sha": self.foundation_tag_commit,
+                }
+            }
         encoded_version = urllib.parse.quote(VERSION, safe="")
         if url == (
             f"https://api.github.com/repos/{recovery.WATERLINE_REPOSITORY}"
@@ -275,7 +336,18 @@ class FakePublicClient:
             f"https://api.github.com/repos/{recovery.CONTROL_REPOSITORY}"
             f"/contents/release-plan.json?ref={PLAN_COMMIT}"
         ):
-            return raw_json(self.release_plan), {}
+            return raw_json(self.public_plan), {}
+        foundation_commit = self.release_plan["foundation"]["commit"]
+        if url == (
+            f"https://api.github.com/repos/{recovery.CONTROL_REPOSITORY}"
+            f"/contents/candidate.json?ref={foundation_commit}"
+        ):
+            return raw_json(self.candidate_record), {}
+        if url == (
+            f"https://api.github.com/repos/{recovery.CONTROL_REPOSITORY}"
+            f"/contents/verification.json?ref={foundation_commit}"
+        ):
+            return raw_json(self.verification_record), {}
         if url == self.image_url and not self.image_present:
             raise recovery.NotFound("image tag is absent")
         try:
@@ -374,6 +446,49 @@ class ServiceImageRecoveryTest(unittest.TestCase):
                 PLAN_COMMIT,
             )
 
+        invalid_plans = {
+            "substituted foundation tag": (
+                "proven immutable candidate foundation",
+                lambda candidate: candidate["foundation"].update(
+                    {"tag": "beta-candidate/rc-substitution"}
+                ),
+            ),
+            "malformed foundation commit": (
+                "proven immutable candidate foundation",
+                lambda candidate: candidate["foundation"].update(
+                    {"commit": "not-a-commit"}
+                ),
+            ),
+            "conflicting beta authority": (
+                "cannot claim beta qualification",
+                lambda candidate: candidate.update(
+                    {
+                        "beta_authorization": {
+                            "tag": "beta-authorization/substitution",
+                            "commit": "f" * 40,
+                        }
+                    }
+                ),
+            ),
+            "non-RC aggregate component": (
+                "exact 2.0.0-rc.N identity",
+                lambda candidate: candidate["components"]["server"].update(
+                    {"version": "2.0.0-beta.21"}
+                ),
+            ),
+        }
+        for label, (message, mutate) in invalid_plans.items():
+            with self.subTest(label=label):
+                invalid = copy.deepcopy(current)
+                mutate(invalid)
+                with self.assertRaisesRegex(recovery.RecoveryError, message):
+                    recovery.validate_plan(
+                        invalid,
+                        source_recovery_evidence(invalid),
+                        PLAN_TAG,
+                        PLAN_COMMIT,
+                    )
+
     def test_public_noop_rehearsal_binds_digest_platforms_and_labels_to_plan(
         self,
     ) -> None:
@@ -391,7 +506,85 @@ class ServiceImageRecoveryTest(unittest.TestCase):
         )
         self.assertEqual(SOURCE_COMMIT, evidence["source_release"]["commit"])
         self.assertEqual(WORKFLOW_COMMIT, evidence["protected_source"]["commit"])
+        foundation = evidence["release_candidate_foundation"]
+        self.assertEqual("aggregate-release-candidate", foundation["kind"])
+        self.assertEqual(self.plan["foundation"]["tag"], foundation["tag"])
+        self.assertEqual(FOUNDATION_COMMIT, foundation["commit"])
+        self.assertEqual(
+            recovery.manifest_digest(foundation_candidate(self.plan)),
+            foundation["manifest_sha256"],
+        )
+        self.assertRegex(foundation["verification_sha256"], r"^[0-9a-f]{64}$")
         self.assertIn("action=noop", self.output_path.read_text())
+
+    def test_aggregate_foundation_substitutions_fail_before_registry_access(
+        self,
+    ) -> None:
+        substituted_candidate = foundation_candidate(self.plan)
+        substituted_candidate["components"]["server"]["commit"] = "d" * 40
+        failed_verification = foundation_verification(self.plan)
+        failed_verification["components"]["server"]["outcome"] = "failed"
+        mismatched_verification = foundation_verification(self.plan)
+        mismatched_verification["manifest_sha256"] = "0" * 64
+        malformed_verification = foundation_verification(self.plan)
+        del malformed_verification["verified_at"]
+        clients = {
+            "moved foundation tag": FakePublicClient(
+                self.plan,
+                foundation_tag_commit="d" * 40,
+            ),
+            "substituted component tuple": FakePublicClient(
+                self.plan,
+                candidate_record=substituted_candidate,
+            ),
+            "failed component verification": FakePublicClient(
+                self.plan,
+                verification_record=failed_verification,
+            ),
+            "mismatched candidate digest": FakePublicClient(
+                self.plan,
+                verification_record=mismatched_verification,
+            ),
+            "malformed verification record": FakePublicClient(
+                self.plan,
+                verification_record=malformed_verification,
+            ),
+        }
+
+        for label, client in clients.items():
+            with self.subTest(label=label):
+                self.output_path.unlink(missing_ok=True)
+
+                self.assertEqual(1, recovery.run(self.args(), client))
+
+                evidence = self.evidence()
+                self.assertEqual("reject", evidence["action"])
+                self.assertNotIn(client.token_url, client.requests)
+                self.assertFalse(self.output_path.exists())
+
+    def test_unapproved_or_substituted_public_plan_is_rejected(self) -> None:
+        substituted_plan = copy.deepcopy(self.plan)
+        substituted_plan["components"]["cli"]["commit"] = "d" * 40
+        clients = {
+            "draft plan release": FakePublicClient(
+                self.plan,
+                plan_release_draft=True,
+            ),
+            "substituted public plan": FakePublicClient(
+                self.plan,
+                public_plan=substituted_plan,
+            ),
+        }
+
+        for label, client in clients.items():
+            with self.subTest(label=label):
+                self.output_path.unlink(missing_ok=True)
+
+                self.assertEqual(1, recovery.run(self.args(), client))
+
+                self.assertEqual("reject", self.evidence()["action"])
+                self.assertNotIn(client.token_url, client.requests)
+                self.assertFalse(self.output_path.exists())
 
     def test_only_an_absent_top_level_image_tag_requests_publication(self) -> None:
         client = FakePublicClient(self.plan, image_present=False)
@@ -535,6 +728,11 @@ class ServiceImageRecoveryWorkflowTest(unittest.TestCase):
         )
         self.assertIn("arguments+=(--allow-empty)", schedule_branch)
         self.assertNotIn("--plan-tag", schedule_branch)
+        self.assertIn(
+            "action: ${{ steps.release.outputs.action == 'none' && 'none' || "
+            "steps.image.outputs.action }}",
+            self.workflow,
+        )
 
     def test_public_decision_and_handoff_validation_precede_credentials(self) -> None:
         publisher = self.workflow.split("\n  publish:\n", 1)[1]
