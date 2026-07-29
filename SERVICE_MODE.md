@@ -77,6 +77,17 @@ operator metrics can require its admin role. A 401, 403, unavailable SDK
 capability, namespace error, or transport failure is returned as typed JSON and
 shown as an explicit unavailable state by the shared UI.
 
+### Worker health roster contract
+
+`GET /waterline/api/v2/health` uses the same worker roster in embedded and
+service mode. `operator_metrics.workers.registrations` contains active
+registrations, while `stale_registrations` contains the disjoint stale roster.
+`registration_count` is the total of both rosters, and
+`active_registration_count` and `stale_registration_count` match their
+respective roster lengths. The workers table and active-lease summary are
+derived from the active roster; stale registrations remain visible in the
+registration summary without contributing rows or leases.
+
 ## Docker Compose
 
 [`deploy/docker-compose.service.yml`](deploy/docker-compose.service.yml) is a

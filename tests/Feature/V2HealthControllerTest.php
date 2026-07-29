@@ -445,6 +445,7 @@ class V2HealthControllerTest extends TestCase
         $this->assertSame(2, $payload['operator_metrics']['workers']['registration_count']);
         $this->assertSame(1, $payload['operator_metrics']['workers']['active_registration_count']);
         $this->assertSame(1, $payload['operator_metrics']['workers']['stale_registration_count']);
+        $this->assertCount(1, $payload['operator_metrics']['workers']['stale_registrations']);
         $this->assertSame(
             'waterline-worker-status-stale',
             $payload['operator_metrics']['workers']['stale_registrations'][0]['worker_id'] ?? null,
@@ -453,6 +454,69 @@ class V2HealthControllerTest extends TestCase
             'stale',
             $payload['operator_metrics']['workers']['stale_registrations'][0]['status'] ?? null,
         );
+    }
+
+    public function testWorkerRegistrationRostersAreDisjointForEveryFleetShape(): void
+    {
+        config()->set('queue.default', 'redis');
+        config()->set('queue.connections.redis.driver', 'redis');
+        config()->set('cache.default', 'file');
+        config()->set('waterline.namespace', 'worker-roster-parity');
+        config()->set('waterline.worker_stale_after_seconds', 120);
+        config()->set('workflows.v2.compatibility.namespace', 'worker-roster-parity');
+
+        $this->createWorkerRegistrationsTable();
+
+        $active = [[
+            'worker_id' => 'worker-active',
+            'namespace' => 'worker-roster-parity',
+            'task_queue' => 'orders',
+            'runtime' => 'php',
+            'last_heartbeat_at' => now(),
+            'status' => 'active',
+        ]];
+        $stale = [[
+            'worker_id' => 'worker-stale',
+            'namespace' => 'worker-roster-parity',
+            'task_queue' => 'orders',
+            'runtime' => 'php',
+            'last_heartbeat_at' => now()->subSeconds(180),
+            'status' => 'active',
+        ]];
+        $scenarios = [
+            'active-only' => [$active, []],
+            'stale-only' => [[], $stale],
+            'mixed' => [$active, $stale],
+        ];
+
+        foreach ($scenarios as $name => [$activeRows, $staleRows]) {
+            WorkerRegistration::query()
+                ->where('namespace', 'worker-roster-parity')
+                ->delete();
+
+            foreach (array_merge($activeRows, $staleRows) as $registration) {
+                WorkerRegistration::create($registration);
+            }
+
+            $workers = $this->get('/waterline/api/v2/health')
+                ->assertOk()
+                ->json('operator_metrics.workers');
+
+            $this->assertIsArray($workers, $name);
+            $this->assertSame(
+                array_column($activeRows, 'worker_id'),
+                array_column($workers['registrations'] ?? [], 'worker_id'),
+                $name,
+            );
+            $this->assertSame(
+                array_column($staleRows, 'worker_id'),
+                array_column($workers['stale_registrations'] ?? [], 'worker_id'),
+                $name,
+            );
+            $this->assertSame(count($activeRows) + count($staleRows), $workers['registration_count'], $name);
+            $this->assertSame(count($activeRows), $workers['active_registration_count'], $name);
+            $this->assertSame(count($staleRows), $workers['stale_registration_count'], $name);
+        }
     }
 
     public function testHealthEndpointExposesWorkerVersioningCohortsAndRolloutState(): void

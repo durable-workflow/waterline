@@ -84,7 +84,9 @@ final class ServiceModeBackendTest extends TestCase
         $this->getJson('/waterline/api/v2/health')
             ->assertOk()
             ->assertJsonPath('status', 'healthy')
+            ->assertJsonCount(1, 'operator_metrics.workers.registrations')
             ->assertJsonPath('operator_metrics.workers.registrations.0.worker_id', 'worker-1')
+            ->assertJsonCount(1, 'operator_metrics.workers.stale_registrations')
             ->assertJsonPath('operator_metrics.workers.stale_registrations.0.worker_id', 'worker-stale')
             ->assertJsonPath('operator_metrics.workers.registration_count', 2)
             ->assertJsonPath('operator_metrics.workers.active_registration_count', 1)
@@ -102,6 +104,55 @@ final class ServiceModeBackendTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.id', 'nightly-orders')
             ->assertJsonPath('data.0.workflow_type', 'orders.process');
+    }
+
+    public function testWorkerRegistrationRostersAreDisjointForEveryFleetShape(): void
+    {
+        $active = [[
+            'worker_id' => 'worker-active',
+            'namespace' => 'orders',
+            'task_queue' => 'orders',
+            'status' => 'active',
+            'current_leases' => 2,
+        ]];
+        $stale = [[
+            'worker_id' => 'worker-stale',
+            'namespace' => 'orders',
+            'task_queue' => 'orders',
+            'status' => 'stale',
+            'current_leases' => 13,
+        ]];
+        $scenarios = [
+            'active-only' => [$active, []],
+            'stale-only' => [[], $stale],
+            'mixed' => [$active, $stale],
+        ];
+
+        foreach ($scenarios as $name => [$activeRows, $staleRows]) {
+            // The unfiltered service response contains every registration,
+            // including the rows returned again by the stale-only query.
+            $this->client->activeWorkerRows = array_merge($activeRows, $staleRows);
+            $this->client->staleWorkerRows = $staleRows;
+
+            $workers = $this->getJson('/waterline/api/v2/health')
+                ->assertOk()
+                ->json('operator_metrics.workers');
+
+            $this->assertIsArray($workers, $name);
+            $this->assertSame(
+                array_column($activeRows, 'worker_id'),
+                array_column($workers['registrations'] ?? [], 'worker_id'),
+                $name,
+            );
+            $this->assertSame(
+                array_column($staleRows, 'worker_id'),
+                array_column($workers['stale_registrations'] ?? [], 'worker_id'),
+                $name,
+            );
+            $this->assertSame(count($activeRows) + count($staleRows), $workers['registration_count'], $name);
+            $this->assertSame(count($activeRows), $workers['active_registration_count'], $name);
+            $this->assertSame(count($staleRows), $workers['stale_registration_count'], $name);
+        }
     }
 
     public function testSavedViewsUseTheWaterlineContractWithoutLoadingTheEmbeddedEngine(): void

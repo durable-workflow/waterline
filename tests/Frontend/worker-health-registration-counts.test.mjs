@@ -20,53 +20,81 @@ function componentOptions() {
     return Function(executable)();
 }
 
-test('worker registration summary separates returned active and stale registrations', () => {
-    const component = componentOptions();
-    const context = {
-        healthData: {
-            operator_metrics: {
-                workers: {
-                    registration_count: 2,
-                    active_registration_count: 0,
-                    stale_registration_count: 2,
-                },
+function healthSnapshot(backend, registrations, staleRegistrations) {
+    return {
+        backend: {mode: backend},
+        operator_metrics: {
+            workers: {
+                registration_count: registrations.length + staleRegistrations.length,
+                active_registration_count: registrations.length,
+                stale_registration_count: staleRegistrations.length,
+                registrations,
+                stale_registrations: staleRegistrations,
             },
         },
-        workers: [],
+    };
+}
+
+function renderedState(component, healthData) {
+    const workers = component.methods.workersFromSnapshot.call({}, healthData);
+    const context = {
+        healthData,
+        workers,
     };
 
     context.staleRegistrationCount = component.computed.staleRegistrationCount.call(context);
     context.registrationCount = component.computed.registrationCount.call(context);
     context.activeRegistrationCount = component.computed.activeRegistrationCount.call(context);
 
-    assert.equal(context.registrationCount, 2);
-    assert.equal(context.activeRegistrationCount, 0);
-    assert.equal(context.staleRegistrationCount, 2);
-    assert.equal(component.computed.registrationSummary.call(context), '0 active; 2 stale.');
-});
+    return {
+        workerIds: workers.map((worker) => worker.worker_id),
+        registrationCount: context.registrationCount,
+        activeRegistrationCount: context.activeRegistrationCount,
+        staleRegistrationCount: context.staleRegistrationCount,
+        registrationSummary: component.computed.registrationSummary.call(context),
+        totalLeases: component.computed.totalLeases.call(context),
+    };
+}
 
-test('worker registration summary does not double count stale rows returned in the roster', () => {
+test('embedded and service snapshots render and aggregate equivalent worker fleets identically', () => {
     const component = componentOptions();
-    const context = {
-        healthData: {
-            operator_metrics: {
-                workers: {
-                    stale_registration_count: 1,
-                },
-            },
-        },
-        workers: [
-            {worker_id: 'worker-active', status: 'active'},
-            {worker_id: 'worker-stale', status: 'stale'},
-        ],
+    const active = [
+        {worker_id: 'worker-active-1', status: 'active', current_leases: 2},
+        {worker_id: 'worker-active-2', status: 'active', current_leases: 3},
+    ];
+    const stale = [
+        {worker_id: 'worker-stale', status: 'stale', current_leases: 13},
+    ];
+    const scenarios = {
+        'active-only': [active, []],
+        'stale-only': [[], stale],
+        mixed: [active, stale],
     };
 
-    context.staleRegistrationCount = component.computed.staleRegistrationCount.call(context);
-    context.registrationCount = component.computed.registrationCount.call(context);
-    context.activeRegistrationCount = component.computed.activeRegistrationCount.call(context);
+    for (const [name, [activeRoster, staleRoster]] of Object.entries(scenarios)) {
+        const embedded = renderedState(
+            component,
+            healthSnapshot('embedded', activeRoster, staleRoster),
+        );
+        const service = renderedState(
+            component,
+            healthSnapshot('service', activeRoster, staleRoster),
+        );
 
-    assert.equal(context.registrationCount, 2);
-    assert.equal(context.activeRegistrationCount, 1);
-    assert.equal(context.staleRegistrationCount, 1);
-    assert.equal(component.computed.registrationSummary.call(context), '1 active; 1 stale.');
+        assert.deepEqual(service, embedded, name);
+        assert.deepEqual(embedded.workerIds, activeRoster.map((worker) => worker.worker_id), name);
+        assert.equal(embedded.registrationCount, activeRoster.length + staleRoster.length, name);
+        assert.equal(embedded.activeRegistrationCount, activeRoster.length, name);
+        assert.equal(embedded.staleRegistrationCount, staleRoster.length, name);
+        assert.equal(
+            embedded.registrationSummary,
+            `${activeRoster.length} active; ${staleRoster.length} stale.`,
+            name,
+        );
+        assert.equal(
+            embedded.totalLeases,
+            activeRoster.reduce((total, worker) => total + worker.current_leases, 0),
+            name,
+        );
+    }
 });

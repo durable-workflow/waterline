@@ -2,9 +2,14 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.7` source identity. The qualified
+Waterline advances to the `2.0.0-rc.8` source identity. The qualified
 `2.0.0-rc.5` aggregate remains the installation recommendation until the exact
-RC7 train completes qualification.
+RC8 train completes qualification.
+
+Embedded and service-mode health snapshots now expose disjoint active and stale
+worker-registration rosters with matching total, active, and stale counters.
+Worker table rows and active-lease totals are derived only from active
+registrations in both modes.
 
 Worker Health now labels the returned registration total accurately and shows
 active and stale registration counts separately. Historical stale rows are no

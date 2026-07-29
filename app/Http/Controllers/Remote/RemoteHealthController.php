@@ -8,6 +8,7 @@ use DurableWorkflow\Exception\ServerException;
 use Illuminate\Http\JsonResponse;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\RemoteBackend;
+use Waterline\Support\WorkerRegistrationRoster;
 
 final class RemoteHealthController extends RemoteController
 {
@@ -55,14 +56,13 @@ final class RemoteHealthController extends RemoteController
             ];
         }
 
-        $registrations = $this->workerRegistrations($workers, $staleWorkers);
+        $roster = WorkerRegistrationRoster::from(
+            $this->workerRegistrations($workers),
+            $this->workerRegistrations($staleWorkers),
+        );
         $taskQueues = is_array($queues['task_queues'] ?? null) ? $queues['task_queues'] : [];
         $operatorMetrics = is_array($health['operator_metrics'] ?? null) ? $health['operator_metrics'] : [];
         $workerMetrics = is_array($operatorMetrics['workers'] ?? null) ? $operatorMetrics['workers'] : [];
-        $stale = count(array_filter(
-            $registrations,
-            static fn (mixed $worker): bool => is_array($worker) && ($worker['status'] ?? null) === 'stale',
-        ));
 
         $payload = $this->scoped([
             ...$health,
@@ -73,17 +73,10 @@ final class RemoteHealthController extends RemoteController
                 ...$operatorMetrics,
                 'workers' => [
                     ...$workerMetrics,
-                    'active_workers' => $workerMetrics['active_workers'] ?? count($registrations) - $stale,
-                    'active_worker_scopes' => $workerMetrics['active_worker_scopes'] ?? count($registrations) - $stale,
-                    'active_workers_supporting_required' => $workerMetrics['active_workers_supporting_required'] ?? count($registrations) - $stale,
-                    'registration_count' => count($registrations),
-                    'active_registration_count' => count($registrations) - $stale,
-                    'stale_registration_count' => $stale,
-                    'registrations' => $registrations,
-                    'stale_registrations' => array_values(array_filter(
-                        $registrations,
-                        static fn (mixed $worker): bool => is_array($worker) && ($worker['status'] ?? null) === 'stale',
-                    )),
+                    'active_workers' => $workerMetrics['active_workers'] ?? $roster['active_registration_count'],
+                    'active_worker_scopes' => $workerMetrics['active_worker_scopes'] ?? $roster['active_registration_count'],
+                    'active_workers_supporting_required' => $workerMetrics['active_workers_supporting_required'] ?? $roster['active_registration_count'],
+                    ...$roster,
                 ],
             ],
             'queue_visibility' => [
@@ -101,26 +94,22 @@ final class RemoteHealthController extends RemoteController
     }
 
     /**
-     * @param array<string, mixed> $active
-     * @param array<string, mixed> $stale
+     * @param array<string, mixed> $response
      * @return list<array<string, mixed>>
      */
-    private function workerRegistrations(array $active, array $stale): array
+    private function workerRegistrations(array $response): array
     {
         $registrations = [];
 
-        foreach ([$active['workers'] ?? [], $stale['workers'] ?? []] as $workers) {
-            foreach (is_array($workers) ? $workers : [] as $worker) {
-                if (! is_array($worker)) {
-                    continue;
-                }
-
-                $key = (string) ($worker['worker_id'] ?? '').'|'.(string) ($worker['task_queue'] ?? '');
-                $registrations[$key] = $worker;
+        foreach (is_array($response['workers'] ?? null) ? $response['workers'] : [] as $worker) {
+            if (! is_array($worker)) {
+                continue;
             }
+
+            $registrations[] = $worker;
         }
 
-        return array_values($registrations);
+        return $registrations;
     }
 
     /** @return array<string, mixed> */

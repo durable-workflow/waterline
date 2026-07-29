@@ -24,6 +24,12 @@ final class FakeRemoteClient
     /** @var list<array<string, mixed>>|null */
     public ?array $workflowRows = null;
 
+    /** @var list<array<string, mixed>>|null */
+    public ?array $activeWorkerRows = null;
+
+    /** @var list<array<string, mixed>>|null */
+    public ?array $staleWorkerRows = null;
+
     public function listWorkflows(
         ?string $workflowType = null,
         ?string $status = null,
@@ -134,7 +140,7 @@ final class FakeRemoteClient
         $this->called(__FUNCTION__, get_defined_vars());
 
         if ($status === 'stale') {
-            return ['workers' => [[
+            return ['workers' => $this->staleWorkerRows ?? [[
                 'worker_id' => 'worker-stale',
                 'namespace' => 'orders',
                 'task_queue' => 'orders',
@@ -143,7 +149,7 @@ final class FakeRemoteClient
             ]]];
         }
 
-        return ['workers' => [[
+        return ['workers' => $this->activeWorkerRows ?? [[
             'worker_id' => 'worker-1',
             'namespace' => 'orders',
             'task_queue' => 'orders',

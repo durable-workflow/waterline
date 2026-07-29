@@ -10,6 +10,7 @@ use Waterline\Models\WorkerBuildIdRollout;
 use Waterline\Models\WorkerRegistration;
 use Waterline\Support\HybridMigrationView;
 use Waterline\Support\OperatorScope;
+use Waterline\Support\WorkerRegistrationRoster;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Workflow\V2\Enums\TaskStatus;
 use Workflow\V2\Enums\TaskType;
@@ -395,14 +396,14 @@ class V2HealthController extends Controller
         $workersBlock = is_array($operatorMetrics['workers'] ?? null)
             ? $operatorMetrics['workers']
             : [];
-        $workersBlock['registrations'] = $registrationPayload;
-        $workersBlock['stale_registrations'] = $staleRegistrationPayload;
-        $workersBlock['registration_count'] = count($registrationPayload) + count($staleRegistrationPayload);
-        $workersBlock['active_registration_count'] = count($registrationPayload);
-        $workersBlock['stale_registration_count'] = count($staleRegistrationPayload);
+        $roster = WorkerRegistrationRoster::from($registrationPayload, $staleRegistrationPayload);
+        $workersBlock = [
+            ...$workersBlock,
+            ...$roster,
+        ];
         $workersBlock['stale_after_seconds'] = $staleAfter;
         $workersBlock['worker_versioning'] = $this->workerVersioningWorkersSummary(
-            array_merge($registrationPayload, $staleRegistrationPayload),
+            array_merge($roster['registrations'], $roster['stale_registrations']),
         );
         $operatorMetrics['workers'] = $workersBlock;
         $snapshot['operator_metrics'] = $operatorMetrics;
