@@ -116,11 +116,13 @@ jobs:
         "$policy_python" -m py_compile \
           scripts/ci/component-release-recovery.py \
           scripts/ci/publish-planned-tag.py \
+          scripts/ci/release_example_contract.py \
           scripts/ci/release_recovery_consumer_conformance.py \
           scripts/ci/service-image-recovery.py \
           scripts/ci/standalone_lock_contract.py \
           scripts/ci/test-component-release-recovery.py \
           scripts/ci/test-publish-planned-tag.py \
+          scripts/ci/test-release-example-contract.py \
           scripts/ci/test-service-image-recovery.py \
           scripts/ci/test-standalone-lock-contract.py
         arguments=()
@@ -132,8 +134,10 @@ jobs:
           --adapter scripts/ci/release-recovery-consumer-adapter.json \
           "${arguments[@]}"
         "$policy_python" scripts/ci/test-publish-planned-tag.py
+        "$policy_python" scripts/ci/test-release-example-contract.py
         "$policy_python" scripts/ci/test-service-image-recovery.py
         "$policy_python" scripts/ci/test-standalone-lock-contract.py
+        "$policy_python" scripts/ci/release_example_contract.py
         "$policy_python" scripts/ci/standalone_lock_contract.py
 
   conformance-contracts:
