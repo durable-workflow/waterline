@@ -25,6 +25,13 @@ attempts="${DOCS_RELEASE_AUDIT_ATTEMPTS:-6}"
 sleep_seconds="${DOCS_RELEASE_AUDIT_RETRY_SLEEP:-20}"
 evidence_path="${DOCS_RELEASE_AUDIT_EVIDENCE:-}"
 handoff_path="${DOCS_RELEASE_AUDIT_HANDOFF:-}"
+composer_manifest="${DOCS_RELEASE_AUDIT_COMPOSER_MANIFEST:-composer.json}"
+
+if [ ! -f "$composer_manifest" ]; then
+    fail "Waterline Composer manifest required" "DOCS_RELEASE_AUDIT_COMPOSER_MANIFEST must identify the exact released composer.json."
+fi
+sdk_expected="$(node -e "const m=JSON.parse(require('fs').readFileSync(process.argv[1])); process.stdout.write(m.require['durable-workflow/sdk'])" "$composer_manifest")"
+workflow_expected="$(node -e "const m=JSON.parse(require('fs').readFileSync(process.argv[1])); process.stdout.write(m['require-dev']['durable-workflow/workflow'])" "$composer_manifest")"
 
 write_unavailable_evidence() {
     message="$1"
@@ -76,10 +83,19 @@ attempt=1
 
 while [ "$attempt" -le "$attempts" ]; do
     if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 10 --max-time 30 -o "$audit_path" "$audit_url"; then
-        if node - "$audit_path" "$artifact" "$expected" "$audit_url" "$evidence_path" "$handoff_path" <<'NODE'
+        if node - "$audit_path" "$artifact" "$expected" "$audit_url" "$evidence_path" "$handoff_path" "$sdk_expected" "$workflow_expected" <<'NODE'
 const fs = require('fs');
 
-const [auditPath, artifact, expected, auditUrl, evidencePath, handoffPath] = process.argv.slice(2);
+const [
+  auditPath,
+  artifact,
+  expected,
+  auditUrl,
+  evidencePath,
+  handoffPath,
+  expectedSdk,
+  expectedWorkflow,
+] = process.argv.slice(2);
 const title = 'Docs release-audit tuple stale';
 const refreshCommand = 'npm run refresh:public-artifact-versions';
 const refreshFiles = [
@@ -272,8 +288,70 @@ if (actual !== expected) {
   );
 }
 
-writeEvidence('pass', {actual_version: actual});
-console.log(`${auditUrl} confirms artifact_versions.${artifact}=${expected}.`);
+const compatibility = audit.artifact_compatibility_evidence;
+const qualified = compatibility && compatibility.qualified_artifact_versions;
+if (
+  !compatibility
+  || compatibility.role !== 'qualified_aggregate_recommendation'
+  || compatibility.outcome !== 'pass'
+  || !qualified
+  || qualified.waterline !== expected
+  || qualified['sdk-php'] !== expectedSdk
+  || qualified.workflow !== expectedWorkflow
+) {
+  fail(
+    `${auditUrl} has not qualified the exact Composer tuple ` +
+      `waterline=${expected}, sdk-php=${expectedSdk}, workflow=${expectedWorkflow}.`,
+    {
+      qualified_artifact_versions: qualified || null,
+    },
+  );
+}
+
+const requiredScenarios = [
+  'php_user_local_server_completion',
+  'python_user_local_server_completion',
+  'rust_user_local_server_completion',
+  'operator_local_server_observation',
+  'laravel_user_embedded_completion',
+];
+const exactTuple = (candidate, authority) => (
+  candidate
+  && authority
+  && Object.keys(candidate).length === Object.keys(authority).length
+  && Object.entries(authority).every(([name, version]) => candidate[name] === version)
+);
+const quickstart = audit.quickstart_qualification;
+const quickstartEvidence = quickstart && quickstart.evidence;
+if (
+  !quickstart
+  || quickstart.role !== 'five_scenario_exact_current'
+  || quickstart.outcome !== 'pass'
+  || JSON.stringify(quickstart.required_scenarios) !== JSON.stringify(requiredScenarios)
+  || !exactTuple(quickstart.artifact_versions, qualified)
+  || !quickstartEvidence
+  || quickstartEvidence.outcome !== 'pass'
+  || quickstartEvidence.runner_blocked !== false
+  || !exactTuple(quickstartEvidence.artifact_tuple, qualified)
+) {
+  fail(
+    `${auditUrl} lacks passing five-scenario exact-current quickstart evidence for ` +
+      `waterline=${expected}, sdk-php=${expectedSdk}, workflow=${expectedWorkflow}.`,
+    {
+      quickstart_qualification: quickstart || null,
+    },
+  );
+}
+
+writeEvidence('pass', {
+  actual_version: actual,
+  qualified_artifact_versions: qualified,
+  quickstart_qualification: quickstart,
+});
+console.log(
+  `${auditUrl} confirms artifact_versions.${artifact}=${expected} and a passing ` +
+    'five-scenario exact-current quickstart.',
+);
 NODE
         then
             exit 0

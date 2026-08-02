@@ -60,6 +60,45 @@ jobs:
           fi
           python scripts/ci/component-release-recovery.py "${arguments[@]}"
 
+      - name: Resolve the planned Waterline source identity
+        id: waterline
+        if: steps.recovery.outputs.action != 'none'
+        run: |
+          python - <<'PYTHON' >> "$GITHUB_OUTPUT"
+          import json
+
+          with open("release-plan.json", encoding="utf-8") as source:
+              identity = json.load(source)["components"]["waterline"]
+          print(f"commit={identity['commit']}")
+          PYTHON
+
+      - name: Check out the public release-train baseline
+        if: steps.recovery.outputs.action != 'none'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          repository: durable-workflow/.github
+          ref: main
+          path: .release-train-authority
+          persist-credentials: false
+
+      - name: Check out the exact planned Waterline source
+        if: steps.recovery.outputs.action != 'none'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          repository: durable-workflow/waterline
+          ref: ${{ steps.waterline.outputs.commit }}
+          path: .planned-waterline
+          persist-credentials: false
+
+      - name: Require exact Composer pins for the sequential train
+        if: steps.recovery.outputs.action == 'publish'
+        run: |
+          python scripts/ci/php_waterline_release_train.py \
+            --plan release-plan.json \
+            --baseline .release-train-authority/release-plans/current.json \
+            --waterline-composer .planned-waterline/composer.json \
+            --evidence php-waterline-plan-qualification.json
+
       - name: Retain recovery evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
@@ -69,12 +108,13 @@ jobs:
             release-plan.json
             release-preparation.json
             release-recovery-evidence.json
+            php-waterline-plan-qualification.json
           if-no-files-found: warn
 
       - name: Package the privileged publication handoff as one immutable file
         run: |
           handoff=()
-          for file in release-plan.json release-preparation.json release-recovery-evidence.json; do
+          for file in release-plan.json release-preparation.json release-recovery-evidence.json php-waterline-plan-qualification.json; do
             [ ! -f "$file" ] || handoff+=("$file")
           done
           if [ "${#handoff[@]}" -eq 0 ]; then
@@ -217,4 +257,5 @@ jobs:
             release-tag-publication-evidence.json
             registry-publication-evidence.json
             release-completion-evidence.json
+            php-waterline-plan-qualification.json
           if-no-files-found: warn
