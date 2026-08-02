@@ -114,6 +114,20 @@ class PhpWaterlineReleaseTrainTest(unittest.TestCase):
             qualification,
         )
 
+    def test_publication_evidence_retains_the_validated_train_qualification(
+        self,
+    ) -> None:
+        publication = workflow_step("Retain publication evidence")
+
+        self.assertIn(
+            "            recovery-input/php-waterline-plan-qualification.json\n",
+            publication,
+        )
+        self.assertNotIn(
+            "            php-waterline-plan-qualification.json\n",
+            publication,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

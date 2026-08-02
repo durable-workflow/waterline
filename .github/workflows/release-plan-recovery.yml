@@ -257,5 +257,5 @@ jobs:
             release-tag-publication-evidence.json
             registry-publication-evidence.json
             release-completion-evidence.json
-            php-waterline-plan-qualification.json
+            recovery-input/php-waterline-plan-qualification.json
           if-no-files-found: warn
