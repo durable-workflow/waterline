@@ -28,10 +28,10 @@ final class InstallationContractTest extends TestCase
             JSON_THROW_ON_ERROR,
         );
         $releaseVersion = $manifest['extra']['durable-workflow']['product-train'] ?? null;
-        $sdkVersion = '2.0.0-rc.6';
+        $sdkVersion = '2.0.0-rc.7';
         $workflowVersion = '2.0.0-rc.12';
 
-        $this->assertSame('2.0.0-rc.9', $releaseVersion);
+        $this->assertSame('2.0.0-rc.10', $releaseVersion);
         $this->assertSame($sdkVersion, $manifest['require']['durable-workflow/sdk'] ?? null);
         $this->assertArrayNotHasKey('durable-workflow/workflow', $manifest['require'] ?? []);
         $this->assertSame($workflowVersion, $manifest['require-dev']['durable-workflow/workflow'] ?? null);

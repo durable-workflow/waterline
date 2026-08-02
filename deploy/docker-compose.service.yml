@@ -1,6 +1,6 @@
 services:
   waterline:
-    image: ${WATERLINE_IMAGE:-durableworkflow/waterline:2.0.0-rc.9}
+    image: ${WATERLINE_IMAGE:-durableworkflow/waterline:2.0.0-rc.10}
     restart: unless-stopped
     ports:
       - "127.0.0.1:${WATERLINE_PORT:-8080}:8080"
