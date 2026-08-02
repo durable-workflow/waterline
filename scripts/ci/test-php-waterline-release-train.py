@@ -4,10 +4,18 @@
 from __future__ import annotations
 
 import copy
+import io
 import importlib.util
+import os
+import shlex
+import subprocess
 import sys
+import tarfile
+import tempfile
 import unittest
 from pathlib import Path
+
+import yaml
 
 from release_recovery_consumer_conformance import legacy_beta_one_plan
 
@@ -45,11 +53,32 @@ def manifest(candidate: dict) -> tuple[dict, bytes]:
     return value, b"exact planned Waterline composer source"
 
 
-def workflow_step(name: str) -> str:
-    marker = f"      - name: {name}\n"
-    source = WORKFLOW.read_text(encoding="utf-8")
-    section = source.split(marker, 1)[1]
-    return section.split("      - name:", 1)[0]
+def workflow() -> dict:
+    document = yaml.load(WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    if not isinstance(document, dict):
+        raise RuntimeError(f"cannot load workflow {WORKFLOW}")
+    return document
+
+
+def workflow_step(job: str, command: str) -> dict:
+    steps = workflow()["jobs"][job]["steps"]
+    matches = [step for step in steps if command in step.get("run", "")]
+    if len(matches) != 1:
+        raise RuntimeError(f"expected one {job} step invoking {command}")
+    return matches[0]
+
+
+def run_step(step: dict, directory: Path) -> subprocess.CompletedProcess[str]:
+    environment = os.environ.copy()
+    environment.update(step.get("env", {}))
+    return subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", step["run"]],
+        cwd=directory,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
 
 
 class PhpWaterlineReleaseTrainTest(unittest.TestCase):
@@ -107,26 +136,75 @@ class PhpWaterlineReleaseTrainTest(unittest.TestCase):
             train.versions(historical)
 
         qualification = workflow_step(
-            "Require exact Composer pins for the sequential train"
+            "discover", "scripts/ci/php_waterline_release_train.py"
         )
-        self.assertIn(
-            "        if: steps.recovery.outputs.action == 'publish'\n",
-            qualification,
+        self.assertEqual(
+            "steps.recovery.outputs.action == 'publish'", qualification["if"]
         )
 
-    def test_publication_evidence_retains_the_validated_train_qualification(
+    def test_publication_requires_and_retains_extracted_train_qualification(
         self,
     ) -> None:
-        publication = workflow_step("Retain publication evidence")
+        document = workflow()
+        discover_steps = document["jobs"]["discover"]["steps"]
+        publish_steps = document["jobs"]["publish"]["steps"]
 
-        self.assertIn(
-            "            recovery-input/php-waterline-plan-qualification.json\n",
-            publication,
+        qualification = next(
+            step
+            for step in discover_steps
+            if "scripts/ci/php_waterline_release_train.py" in step.get("run", "")
         )
-        self.assertNotIn(
-            "            php-waterline-plan-qualification.json\n",
-            publication,
+        qualification_command = shlex.split(qualification["run"])
+        evidence_name = qualification_command[
+            qualification_command.index("--evidence") + 1
+        ]
+        extraction = next(
+            step for step in publish_steps if "tar -xf" in step.get("run", "")
         )
+        extraction_command = shlex.split(extraction["run"])
+        extraction_directory = extraction_command[
+            extraction_command.index("-C") + 1
+        ]
+        requirement = workflow_step("publish", "$QUALIFICATION_EVIDENCE")
+        required_evidence = requirement["env"]["QUALIFICATION_EVIDENCE"]
+        publication_uploads = [
+            step
+            for step in publish_steps
+            if step.get("uses", "").startswith("actions/upload-artifact@")
+        ]
+
+        self.assertEqual(1, len(publication_uploads))
+        publication = publication_uploads[0]
+        retained_paths = publication["with"]["path"].splitlines()
+        self.assertEqual(
+            str(Path(extraction_directory) / evidence_name), required_evidence
+        )
+        self.assertIn(required_evidence, retained_paths)
+        self.assertEqual("error", publication["with"]["if-no-files-found"])
+
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            archive_directory = directory / "isolated-release-recovery"
+            archive_directory.mkdir()
+            handoff = archive_directory / "release-recovery-handoff.tar"
+            with tarfile.open(handoff, "w") as archive:
+                release_plan = tarfile.TarInfo("release-plan.json")
+                release_plan.size = 3
+                archive.addfile(release_plan, io.BytesIO(b"{}\n"))
+
+            self.assertEqual(0, run_step(extraction, directory).returncode)
+            missing = run_step(requirement, directory)
+            self.assertNotEqual(0, missing.returncode)
+
+            with tarfile.open(handoff, "w") as archive:
+                qualification_evidence = tarfile.TarInfo(evidence_name)
+                qualification_evidence.size = 3
+                archive.addfile(qualification_evidence, io.BytesIO(b"{}\n"))
+            (directory / extraction_directory / "release-plan.json").unlink()
+            (directory / extraction_directory).rmdir()
+            self.assertEqual(0, run_step(extraction, directory).returncode)
+            self.assertEqual(0, run_step(requirement, directory).returncode)
+            self.assertTrue((directory / required_evidence).is_file())
 
 
 if __name__ == "__main__":

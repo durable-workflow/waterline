@@ -212,6 +212,15 @@ jobs:
           mkdir recovery-input
           tar -xf isolated-release-recovery/release-recovery-handoff.tar -C recovery-input
 
+      - name: Require the validated PHP/Waterline train qualification
+        env:
+          QUALIFICATION_EVIDENCE: recovery-input/php-waterline-plan-qualification.json
+        run: |
+          if [ ! -f "$QUALIFICATION_EVIDENCE" ] || [ ! -s "$QUALIFICATION_EVIDENCE" ] || [ -L "$QUALIFICATION_EVIDENCE" ]; then
+            printf 'validated PHP/Waterline train qualification is missing\n' >&2
+            exit 1
+          fi
+
       - name: Create or verify the exact planned source tag
         env:
           PLAN_TAG: ${{ needs.discover.outputs.plan_tag }}
@@ -258,4 +267,4 @@ jobs:
             registry-publication-evidence.json
             release-completion-evidence.json
             recovery-input/php-waterline-plan-qualification.json
-          if-no-files-found: warn
+          if-no-files-found: error
