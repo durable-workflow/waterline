@@ -6,6 +6,9 @@ Waterline advances to the `2.0.0-rc.11` source identity. Package and standalone
 service distributions now bind PHP SDK `2.0.0-rc.7`, while embedded integration
 targets Workflow `2.0.0-rc.12`.
 
+The standalone service now bundles `league/commonmark` 2.9.0, resolving six
+security advisories present in the previously locked dependency version.
+
 Embedded and service-mode health snapshots now expose disjoint active and stale
 worker-registration rosters with matching total, active, and stale counters.
 Worker table rows and active-lease totals are derived only from active
