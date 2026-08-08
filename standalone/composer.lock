@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "1931730af2d34b6c282a565a62253c02",
+    "content-hash": "eec60c1ec66c6f6c237fdbfc6e34ad9d",
     "packages": [
         {
             "name": "apache/avro",
@@ -505,16 +505,16 @@
         },
         {
             "name": "durable-workflow/sdk",
-            "version": "2.0.0-rc.7",
+            "version": "2.0.0-rc.11",
             "source": {
                 "type": "git",
                 "url": "https://github.com/durable-workflow/sdk-php.git",
-                "reference": "1b4e0eb7a44fb190d5654868d816be4f2fd82d93"
+                "reference": "1ae0137cda02e5ac490b58275ad09e88d7119f1a"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/1b4e0eb7a44fb190d5654868d816be4f2fd82d93",
-                "reference": "1b4e0eb7a44fb190d5654868d816be4f2fd82d93",
+                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/1ae0137cda02e5ac490b58275ad09e88d7119f1a",
+                "reference": "1ae0137cda02e5ac490b58275ad09e88d7119f1a",
                 "shasum": ""
             },
             "require": {
@@ -523,9 +523,11 @@
                 "ext-json": "*",
                 "guzzlehttp/guzzle": "^7.8",
                 "php": "^8.1",
+                "psr/container": "^1.1|^2.0",
                 "psr/http-client": "^1.0",
                 "psr/http-factory": "^1.0",
-                "psr/http-message": "^1.1|^2.0"
+                "psr/http-message": "^1.1|^2.0",
+                "psr/log": "^1.1|^2.0|^3.0"
             },
             "require-dev": {
                 "phpdocumentor/phpdocumentor": "^3.7",
@@ -533,18 +535,33 @@
                 "phpunit/phpunit": "^10.5|^11.0"
             },
             "suggest": {
-                "ext-pcntl": "Enables managed workers to handle SIGINT and SIGTERM gracefully."
+                "ext-pcntl": "Required by framework console workers for graceful SIGINT and SIGTERM handling.",
+                "laravel/framework": "Enables the auto-discovered Laravel 12 and 13 service-mode bridge.",
+                "symfony/console": "Required with symfony/framework-bundle to run the Symfony 6.4, 7, and 8 worker command.",
+                "symfony/framework-bundle": "Enables the Symfony 6.4, 7, and 8 service-mode bundle."
             },
             "type": "library",
             "extra": {
+                "laravel": {
+                    "aliases": {
+                        "DurableWorkflow": "DurableWorkflow\\Bridge\\Laravel\\Facades\\DurableWorkflow"
+                    },
+                    "providers": [
+                        "DurableWorkflow\\Bridge\\Laravel\\DurableWorkflowServiceProvider"
+                    ]
+                },
                 "durable-workflow": {
-                    "product-train": "2.0.0-rc.7",
+                    "frameworks": {
+                        "laravel": "^12.0|^13.0",
+                        "symfony": "^6.4|^7.0|^8.0"
+                    },
+                    "product-train": "2.0.0-rc.11",
                     "payload-codecs": [
                         "avro"
                     ],
                     "control-plane-version": "2",
                     "worker-protocol-version": "1.13",
-                    "supported-server-versions": "2.0.0-rc.12"
+                    "supported-server-versions": "2.0.0-rc.17"
                 }
             },
             "autoload": {
@@ -575,7 +592,7 @@
                 "issues": "https://github.com/durable-workflow/sdk-php/issues",
                 "source": "https://github.com/durable-workflow/sdk-php"
             },
-            "time": "2026-08-02T04:55:18+00:00"
+            "time": "2026-08-08T09:09:23+00:00"
         },
         {
             "name": "egulias/email-validator",
