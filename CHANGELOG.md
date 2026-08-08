@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.10` source identity. Package and standalone
+Waterline advances to the `2.0.0-rc.11` source identity. Package and standalone
 service distributions now bind PHP SDK `2.0.0-rc.7`, while embedded integration
 targets Workflow `2.0.0-rc.12`.
 
