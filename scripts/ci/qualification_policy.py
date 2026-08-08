@@ -75,6 +75,7 @@ CONFORMANCE_ONLY_PATHS = frozenset(
 COMMON_FOCUSED_CHECKS = (
     "workflow-syntax-and-trust",
     "public-boundary",
+    "standalone-locked-composer-audit",
     "release-and-recovery-contracts",
 )
 CONFORMANCE_FOCUSED_CHECKS = (

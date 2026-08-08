@@ -83,7 +83,27 @@ class ChangeClassificationTest(unittest.TestCase):
 
         self.assertEqual(qualification.RELEASE, result.name)
 
-    def test_standalone_lock_repair_selects_release_qualification(self) -> None:
+    def test_standalone_dependency_changes_require_security_audit(self) -> None:
+        cases = {
+            "standalone/composer.json": qualification.COMPLETE,
+            "standalone/composer.lock": qualification.RELEASE,
+        }
+
+        for path, expected_class in cases.items():
+            with self.subTest(path=path):
+                result = qualification.classify_paths([path])
+
+                self.assertEqual(expected_class, result.name)
+                self.assertEqual(
+                    "success",
+                    qualification.expected_results(result.name)["release-contracts"],
+                )
+                self.assertIn(
+                    "standalone-locked-composer-audit",
+                    qualification.focused_checks(result.name),
+                )
+
+    def test_standalone_lock_repair_remains_release_focused(self) -> None:
         result = qualification.classify_paths(
             [
                 "standalone/composer.lock",
@@ -336,6 +356,20 @@ class QualificationGateTest(unittest.TestCase):
             qualification.focused_checks(qualification.CONFORMANCE),
         )
 
+    def test_every_route_requires_standalone_security_audit(self) -> None:
+        for classification in qualification.QUALIFICATION_CLASSES:
+            with self.subTest(classification=classification):
+                self.assertEqual(
+                    "success",
+                    qualification.expected_results(classification)[
+                        "release-contracts"
+                    ],
+                )
+                self.assertIn(
+                    "standalone-locked-composer-audit",
+                    qualification.focused_checks(classification),
+                )
+
     def test_release_route_requires_matrix_jobs_to_be_skipped(self) -> None:
         observed = dict(qualification.expected_results(qualification.RELEASE))
         self.assertEqual((), qualification.evaluate_results("release", observed))
@@ -473,6 +507,77 @@ class ConformanceQualificationWorkflowContractTest(unittest.TestCase):
         ]
         self.assertEqual(1, len(matches))
         return matches[0]
+
+
+class StandaloneComposerAuditWorkflowContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.workflow = yaml.load(
+            (ROOT / ".github" / "workflows" / "php.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        if not isinstance(cls.workflow, dict):
+            raise RuntimeError("build workflow must be a mapping")
+
+    def release_contracts_job(self) -> dict:
+        job = self.workflow["jobs"]["release-contracts"]
+        self.assertIsInstance(job, dict)
+        return job
+
+    def named_step(self, name: str) -> dict:
+        matches = [
+            step
+            for step in self.release_contracts_job()["steps"]
+            if isinstance(step, dict) and step.get("name") == name
+        ]
+        self.assertEqual(1, len(matches), f"expected one workflow step named {name}")
+        return matches[0]
+
+    def test_audit_reads_the_locked_production_service_graph(self) -> None:
+        command = self.named_step(
+            "Audit the locked standalone Composer graph"
+        )["run"].split()
+
+        self.assertEqual(
+            [
+                "composer",
+                "audit",
+                "--working-dir=standalone",
+                "--locked",
+                "--no-dev",
+                "--no-interaction",
+            ],
+            command,
+        )
+
+    def test_audit_job_is_required_for_every_qualification_route(self) -> None:
+        job = self.release_contracts_job()
+        gate = self.workflow["jobs"]["target-branch-qualification"]
+
+        self.assertNotIn("if", job)
+        self.assertIn("release-contracts", gate["needs"])
+        for classification in qualification.QUALIFICATION_CLASSES:
+            with self.subTest(classification=classification):
+                self.assertEqual(
+                    "success",
+                    qualification.expected_results(classification)[
+                        "release-contracts"
+                    ],
+                )
+
+    def test_lock_identity_and_service_image_smoke_contracts_remain_required(self) -> None:
+        release_validation = self.named_step(
+            "Validate release and recovery tooling"
+        )["run"]
+
+        self.assertIn(
+            '"$policy_python" scripts/ci/standalone_lock_contract.py',
+            release_validation,
+        )
+        self.assertIn(
+            ".github/workflows/service-image-smoke.yml",
+            qualification.RELEASE_ONLY_PATHS,
+        )
 
 
 class DatabaseQualificationWorkflowContractTest(unittest.TestCase):

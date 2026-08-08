@@ -89,6 +89,14 @@ jobs:
         tools: composer
         coverage: none
 
+    - name: Audit the locked standalone Composer graph
+      run: >-
+        composer audit
+        --working-dir=standalone
+        --locked
+        --no-dev
+        --no-interaction
+
     - name: Check out the shared target qualification policy
       uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       with:
