@@ -23,13 +23,16 @@ VERSIONS = {
     "waterline": "2.0.0-rc.10",
     "workflow": "2.0.0-rc.12",
 }
-SCENARIOS = [
-    "php_user_local_server_completion",
-    "python_user_local_server_completion",
-    "rust_user_local_server_completion",
-    "operator_local_server_observation",
-    "laravel_user_embedded_completion",
-]
+AGGREGATE_VERSIONS = {
+    **VERSIONS,
+    "sdk-php": "2.0.0-rc.6",
+    "waterline": "2.0.0-rc.9",
+}
+COMPOSER_VERSIONS = {
+    "waterline": VERSIONS["waterline"],
+    "sdk-php": VERSIONS["sdk-php"],
+    "workflow": VERSIONS["workflow"],
+}
 
 
 def audit() -> dict:
@@ -39,18 +42,42 @@ def audit() -> dict:
         "artifact_compatibility_evidence": {
             "role": "qualified_aggregate_recommendation",
             "outcome": "pass",
-            "qualified_artifact_versions": VERSIONS,
+            "qualified_artifact_versions": AGGREGATE_VERSIONS,
         },
-        "quickstart_qualification": {
-            "role": "five_scenario_exact_current",
+        "component_release_qualifications": {
+            "role": "retained_component_release_qualifications",
+            "schema": "durable-workflow.docs.public-component-release-qualifications",
+            "schema_version": 1,
             "outcome": "pass",
-            "artifact_versions": VERSIONS,
-            "required_scenarios": SCENARIOS,
-            "evidence": {
-                "outcome": "pass",
-                "runner_blocked": False,
-                "artifact_tuple": VERSIONS,
-            },
+            "qualifications": [
+                {
+                    "id": f"waterline-{VERSIONS['waterline']}-composer",
+                    "component": {
+                        "artifact": "waterline",
+                        "version": VERSIONS["waterline"],
+                    },
+                    "qualification": {
+                        "schema": "durable-workflow.exact-current-composer-qualification/v1",
+                        "outcome": "pass",
+                        "packages": {
+                            "waterline": VERSIONS["waterline"],
+                            "sdk-php": VERSIONS["sdk-php"],
+                            "workflow": VERSIONS["workflow"],
+                        },
+                    },
+                    "source": {
+                        "repository_url": "https://github.com/durable-workflow/waterline",
+                        "release_tag": VERSIONS["waterline"],
+                        "release_commit": "a" * 40,
+                        "workflow_run": {
+                            "name": "Release Docs Audit",
+                            "run_id": 123456,
+                            "run_attempt": 2,
+                            "run_url": "https://github.com/durable-workflow/waterline/actions/runs/123456",
+                        },
+                    },
+                }
+            ],
         },
     }
 
@@ -95,16 +122,19 @@ class DocsReleaseAuditTest(unittest.TestCase):
             evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
             return process, evidence
 
-    def test_exact_tuple_and_five_scenarios_pass(self) -> None:
+    def test_retained_exact_composer_tuple_passes_with_older_aggregate(self) -> None:
         process, evidence = self.run_audit(audit())
 
         self.assertEqual(0, process.returncode, process.stderr)
         self.assertEqual("pass", evidence["outcome"])
+        self.assertEqual(
+            COMPOSER_VERSIONS,
+            evidence["component_release_qualification"]["qualification"]["packages"],
+        )
 
-    def test_source_only_or_stale_quickstart_evidence_cannot_pass(self) -> None:
+    def test_missing_component_release_qualification_cannot_pass(self) -> None:
         stale = copy.deepcopy(audit())
-        stale["quickstart_qualification"]["outcome"] = "incomplete"
-        stale["quickstart_qualification"]["evidence"] = None
+        stale["component_release_qualifications"]["qualifications"] = []
 
         process, evidence = self.run_audit(stale)
 

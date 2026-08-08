@@ -295,50 +295,59 @@ if (
   || compatibility.role !== 'qualified_aggregate_recommendation'
   || compatibility.outcome !== 'pass'
   || !qualified
-  || qualified.waterline !== expected
-  || qualified['sdk-php'] !== expectedSdk
-  || qualified.workflow !== expectedWorkflow
 ) {
   fail(
-    `${auditUrl} has not qualified the exact Composer tuple ` +
-      `waterline=${expected}, sdk-php=${expectedSdk}, workflow=${expectedWorkflow}.`,
+    `${auditUrl} does not contain passing aggregate compatibility evidence.`,
     {
       qualified_artifact_versions: qualified || null,
     },
   );
 }
 
-const requiredScenarios = [
-  'php_user_local_server_completion',
-  'python_user_local_server_completion',
-  'rust_user_local_server_completion',
-  'operator_local_server_observation',
-  'laravel_user_embedded_completion',
-];
-const exactTuple = (candidate, authority) => (
-  candidate
-  && authority
-  && Object.keys(candidate).length === Object.keys(authority).length
-  && Object.entries(authority).every(([name, version]) => candidate[name] === version)
-);
-const quickstart = audit.quickstart_qualification;
-const quickstartEvidence = quickstart && quickstart.evidence;
+const componentQualifications = audit.component_release_qualifications;
+const qualificationRecords = Array.isArray(componentQualifications?.qualifications)
+  ? componentQualifications.qualifications
+  : [];
+const exactQualification = qualificationRecords.find(record => {
+  const packages = record?.qualification?.packages;
+  const run = record?.source?.workflow_run;
+  return (
+    record?.component?.artifact === 'waterline'
+    && record.component.version === expected
+    && record.qualification.schema ===
+      'durable-workflow.exact-current-composer-qualification/v1'
+    && record.qualification.outcome === 'pass'
+    && packages
+    && Object.keys(packages).length === 3
+    && packages.waterline === expected
+    && packages['sdk-php'] === expectedSdk
+    && packages.workflow === expectedWorkflow
+    && record.source?.repository_url === 'https://github.com/durable-workflow/waterline'
+    && record.source.release_tag === expected
+    && /^[0-9a-f]{40}$/.test(record.source.release_commit || '')
+    && run?.name === 'Release Docs Audit'
+    && Number.isInteger(run.run_id)
+    && run.run_id > 0
+    && Number.isInteger(run.run_attempt)
+    && run.run_attempt > 0
+    && run.run_url ===
+      `https://github.com/durable-workflow/waterline/actions/runs/${run.run_id}`
+  );
+});
 if (
-  !quickstart
-  || quickstart.role !== 'five_scenario_exact_current'
-  || quickstart.outcome !== 'pass'
-  || JSON.stringify(quickstart.required_scenarios) !== JSON.stringify(requiredScenarios)
-  || !exactTuple(quickstart.artifact_versions, qualified)
-  || !quickstartEvidence
-  || quickstartEvidence.outcome !== 'pass'
-  || quickstartEvidence.runner_blocked !== false
-  || !exactTuple(quickstartEvidence.artifact_tuple, qualified)
+  !componentQualifications
+  || componentQualifications.role !== 'retained_component_release_qualifications'
+  || componentQualifications.schema !==
+    'durable-workflow.docs.public-component-release-qualifications'
+  || componentQualifications.schema_version !== 1
+  || componentQualifications.outcome !== 'pass'
+  || !exactQualification
 ) {
   fail(
-    `${auditUrl} lacks passing five-scenario exact-current quickstart evidence for ` +
+    `${auditUrl} has not retained passing exact Composer qualification for ` +
       `waterline=${expected}, sdk-php=${expectedSdk}, workflow=${expectedWorkflow}.`,
     {
-      quickstart_qualification: quickstart || null,
+      component_release_qualifications: componentQualifications || null,
     },
   );
 }
@@ -346,11 +355,11 @@ if (
 writeEvidence('pass', {
   actual_version: actual,
   qualified_artifact_versions: qualified,
-  quickstart_qualification: quickstart,
+  component_release_qualification: exactQualification,
 });
 console.log(
-  `${auditUrl} confirms artifact_versions.${artifact}=${expected} and a passing ` +
-    'five-scenario exact-current quickstart.',
+  `${auditUrl} confirms artifact_versions.${artifact}=${expected} and retained exact ` +
+    `Composer qualification with sdk-php=${expectedSdk}, workflow=${expectedWorkflow}.`,
 );
 NODE
         then
