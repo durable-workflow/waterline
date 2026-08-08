@@ -291,8 +291,8 @@ jobs:
 
   laravel-matrix:
     name: Resolve Laravel dependency matrix
-    needs: build
-    if: ${{ github.server_url == 'https://github.com' }}
+    needs: [classify, build]
+    if: ${{ github.server_url == 'https://github.com' && needs.classify.outputs.qualification-class == 'complete' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -317,8 +317,8 @@ jobs:
 
   laravel-compatibility:
     name: ${{ matrix.label }} compatibility
-    needs: [build, laravel-matrix]
-    if: ${{ github.server_url == 'https://github.com' }}
+    needs: [classify, build, laravel-matrix]
+    if: ${{ github.server_url == 'https://github.com' && needs.classify.outputs.qualification-class == 'complete' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -409,8 +409,8 @@ jobs:
 
   qualification:
     name: Complete database qualification (${{ matrix.label }})
-    needs: build
-    if: ${{ github.server_url == 'https://github.com' }}
+    needs: [classify, build]
+    if: ${{ github.server_url == 'https://github.com' && needs.classify.outputs.qualification-class == 'complete' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

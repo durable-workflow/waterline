@@ -78,15 +78,36 @@ class ChangeClassificationTest(unittest.TestCase):
         self.assertEqual(qualification.RELEASE, result.name)
         self.assertEqual("release-paths-only", result.reason)
 
-    def test_release_workflows_and_contracts_select_release_qualification(self) -> None:
+    def test_release_contracts_select_release_qualification(self) -> None:
         result = qualification.classify_paths(qualification.RELEASE_ONLY_PATHS)
 
         self.assertEqual(qualification.RELEASE, result.name)
 
+    def test_non_runtime_documentation_selects_non_runtime_qualification(
+        self,
+    ) -> None:
+        paths = (
+            "CHANGELOG.md",
+            "CONFORMANCE.md",
+            "INTEGRATION_GUIDE.md",
+            "INTEGRATION_TEST_README.md",
+            "LICENSE",
+            "README.md",
+            "SERVICE_MODE.md",
+            "docs/screenshots/dashboard.png",
+            "docs/screenshots/workflow-detail.png",
+        )
+
+        result = qualification.classify_paths(paths)
+
+        self.assertEqual(qualification.NON_RUNTIME, result.name)
+        self.assertEqual("non-runtime-paths-only", result.reason)
+        self.assertEqual(tuple(sorted(paths)), result.changed_paths)
+
     def test_standalone_dependency_changes_require_security_audit(self) -> None:
         cases = {
             "standalone/composer.json": qualification.COMPLETE,
-            "standalone/composer.lock": qualification.RELEASE,
+            "standalone/composer.lock": qualification.COMPLETE,
         }
 
         for path, expected_class in cases.items():
@@ -103,7 +124,7 @@ class ChangeClassificationTest(unittest.TestCase):
                     qualification.focused_checks(result.name),
                 )
 
-    def test_standalone_lock_repair_remains_release_focused(self) -> None:
+    def test_standalone_lock_repair_requires_complete_qualification(self) -> None:
         result = qualification.classify_paths(
             [
                 "standalone/composer.lock",
@@ -112,14 +133,15 @@ class ChangeClassificationTest(unittest.TestCase):
             ]
         )
 
-        self.assertEqual(qualification.RELEASE, result.name)
-        self.assertEqual("release-paths-only", result.reason)
+        self.assertEqual(qualification.COMPLETE, result.name)
+        self.assertEqual("complete-path-present", result.reason)
 
     def test_behavioral_inputs_select_complete_qualification(self) -> None:
         complete_paths = {
             "php-source": "app/Support/RuntimeConfiguration.php",
             "dependency": "composer.json",
             "standalone-dependency": "standalone/composer.json",
+            "standalone-lock": "standalone/composer.lock",
             "migration": "database/migrations/2026_04_09_000000_create_waterline_saved_views_table.php",
             "database": "phpunit-mssql.xml",
             "runtime": "Dockerfile",
@@ -127,9 +149,15 @@ class ChangeClassificationTest(unittest.TestCase):
             "dependency-matrix": ".github/laravel-matrix.json",
             "workbench": "workbench/app/Providers/WorkbenchServiceProvider.php",
             "frontend-dependency": "package.json",
+            "frontend-lock": "package-lock.json",
             "frontend-runtime": "resources/js/components/WorkflowList.vue",
+            "generated-runtime-asset": "public/app.js",
+            "docs-executable": "docs/generate-screenshots.py",
             "workflow": ".github/workflows/php.yml",
+            "release-workflow": ".github/workflows/release-docs-audit.yml",
+            "container-definition": "deploy/docker-compose.service.yml",
             "classifier": "scripts/ci/qualification_policy.py",
+            "qualification-sharding": "scripts/ci/qualification_shards.py",
             "test-source": "tests/Feature/ServiceModeBackendTest.php",
             "unreviewed-conformance-runner": "scripts/conformance/new-runner.mjs",
             "unreviewed-conformance-test": "tests/Unit/NewConformanceTest.mjs",
@@ -138,6 +166,30 @@ class ChangeClassificationTest(unittest.TestCase):
         for surface, path in complete_paths.items():
             with self.subTest(surface=surface, path=path):
                 result = qualification.classify_paths([path])
+                self.assertEqual(qualification.COMPLETE, result.name)
+                self.assertEqual("complete-path-present", result.reason)
+
+    def test_non_runtime_documentation_mixed_with_sensitive_input_fails_closed(
+        self,
+    ) -> None:
+        complete_paths = (
+            "app/Support/RuntimeConfiguration.php",
+            "composer.json",
+            "standalone/composer.lock",
+            "package-lock.json",
+            "public/app.js",
+            ".github/workflows/release-docs-audit.yml",
+            "Dockerfile",
+            "deploy/docker-compose.service.yml",
+            "scripts/ci/qualification_policy.py",
+        )
+
+        for complete_path in complete_paths:
+            with self.subTest(complete_path=complete_path):
+                result = qualification.classify_paths(
+                    ["CHANGELOG.md", "docs/screenshots/dashboard.png", complete_path]
+                )
+
                 self.assertEqual(qualification.COMPLETE, result.name)
                 self.assertEqual("complete-path-present", result.reason)
 
@@ -277,6 +329,27 @@ class ChangeClassificationTest(unittest.TestCase):
                 ).name,
             )
 
+            documentation_path = repository / "CHANGELOG.md"
+            documentation_path.write_text("# Release notes\n")
+            subprocess.run(["git", "-C", repository, "add", "."], check=True)
+            subprocess.run(
+                ["git", "-C", repository, "commit", "-qm", "documentation"],
+                check=True,
+            )
+            documentation_head = subprocess.check_output(
+                ["git", "-C", repository, "rev-parse", "HEAD"],
+                text=True,
+            ).strip()
+            self.assertEqual(
+                qualification.NON_RUNTIME,
+                qualification.classify_event(
+                    repository,
+                    "push",
+                    release_head,
+                    documentation_head,
+                ).name,
+            )
+
             conformance_path = (
                 repository
                 / "scripts"
@@ -299,7 +372,7 @@ class ChangeClassificationTest(unittest.TestCase):
                 qualification.classify_event(
                     repository,
                     "push",
-                    release_head,
+                    documentation_head,
                     conformance_head,
                 ).name,
             )
@@ -380,6 +453,32 @@ class QualificationGateTest(unittest.TestCase):
         observed = dict(qualification.expected_results(qualification.RELEASE))
         observed["conformance-contracts"] = "success"
         self.assertNotEqual((), qualification.evaluate_results("release", observed))
+
+    def test_non_runtime_route_requires_focused_checks_and_skipped_matrices(
+        self,
+    ) -> None:
+        observed = dict(qualification.expected_results(qualification.NON_RUNTIME))
+        self.assertEqual((), qualification.evaluate_results("non-runtime", observed))
+
+        for job in (
+            "frontend",
+            "build",
+            "laravel-matrix",
+            "laravel-compatibility",
+            "database",
+        ):
+            with self.subTest(job=job):
+                invalid = {**observed, job: "success"}
+                self.assertNotEqual(
+                    (),
+                    qualification.evaluate_results("non-runtime", invalid),
+                )
+
+        self.assertEqual(
+            qualification.COMMON_FOCUSED_CHECKS
+            + qualification.NON_RUNTIME_FOCUSED_CHECKS,
+            qualification.focused_checks(qualification.NON_RUNTIME),
+        )
 
     def test_complete_route_requires_every_matrix_job(self) -> None:
         observed = dict(qualification.expected_results(qualification.COMPLETE))
@@ -509,6 +608,57 @@ class ConformanceQualificationWorkflowContractTest(unittest.TestCase):
         return matches[0]
 
 
+class NonRuntimeQualificationWorkflowContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.workflow = yaml.load(
+            (ROOT / ".github" / "workflows" / "php.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        if not isinstance(cls.workflow, dict):
+            raise RuntimeError("build workflow must be a mapping")
+
+    def test_non_runtime_route_retains_boundary_policy_and_release_checks(
+        self,
+    ) -> None:
+        jobs = self.workflow["jobs"]
+        classify_steps = jobs["classify"]["steps"]
+        classify_commands = "\n".join(
+            step.get("run", "") for step in classify_steps if isinstance(step, dict)
+        )
+
+        self.assertIn("scripts/ci/workflow_trust_policy.py", classify_commands)
+        self.assertIn("scripts/check-public-boundary.sh", classify_commands)
+        self.assertNotIn("if", jobs["release-contracts"])
+        release_commands = "\n".join(
+            step.get("run", "")
+            for step in jobs["release-contracts"]["steps"]
+            if isinstance(step, dict)
+        )
+        self.assertIn("scripts/ci/release_example_contract.py", release_commands)
+
+    def test_every_runtime_job_explicitly_requires_complete_classification(
+        self,
+    ) -> None:
+        jobs = self.workflow["jobs"]
+        complete_condition = "needs.classify.outputs.qualification-class == 'complete'"
+
+        for job_name in (
+            "frontend",
+            "build",
+            "laravel-matrix",
+            "laravel-compatibility",
+            "qualification",
+        ):
+            with self.subTest(job_name=job_name):
+                job = jobs[job_name]
+                self.assertIn(complete_condition, job["if"])
+                needs = job["needs"]
+                if isinstance(needs, str):
+                    needs = [needs]
+                self.assertIn("classify", needs)
+
+
 class StandaloneComposerAuditWorkflowContractTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -565,7 +715,7 @@ class StandaloneComposerAuditWorkflowContractTest(unittest.TestCase):
                     ],
                 )
 
-    def test_lock_identity_and_service_image_smoke_contracts_remain_required(self) -> None:
+    def test_lock_identity_contract_remains_required(self) -> None:
         release_validation = self.named_step(
             "Validate release and recovery tooling"
         )["run"]
@@ -574,10 +724,17 @@ class StandaloneComposerAuditWorkflowContractTest(unittest.TestCase):
             '"$policy_python" scripts/ci/standalone_lock_contract.py',
             release_validation,
         )
-        self.assertIn(
+        for path in (
             ".github/workflows/service-image-smoke.yml",
-            qualification.RELEASE_ONLY_PATHS,
-        )
+            "scripts/ci/service-mode-image-smoke.sh",
+            "standalone/composer.lock",
+        ):
+            with self.subTest(path=path):
+                self.assertNotIn(path, qualification.RELEASE_ONLY_PATHS)
+                self.assertEqual(
+                    qualification.COMPLETE,
+                    qualification.classify_paths([path]).name,
+                )
 
 
 class DatabaseQualificationWorkflowContractTest(unittest.TestCase):

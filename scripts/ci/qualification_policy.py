@@ -17,19 +17,19 @@ from typing import Iterable, Mapping, Sequence
 
 COMPLETE = "complete"
 CONFORMANCE = "conformance"
+NON_RUNTIME = "non-runtime"
 RELEASE = "release"
-QUALIFICATION_CLASSES = frozenset({COMPLETE, CONFORMANCE, RELEASE})
+QUALIFICATION_CLASSES = frozenset({COMPLETE, CONFORMANCE, NON_RUNTIME, RELEASE})
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+NON_RUNTIME_DOCUMENTATION_SUFFIXES = frozenset(
+    {".gif", ".jpeg", ".jpg", ".md", ".mdx", ".png", ".svg", ".webp"}
+)
 
-# This is deliberately an exact allowlist. A new path receives complete
-# qualification until it is reviewed and intentionally added here.
+# These focused code routes are deliberately exact allowlists. A new path
+# receives complete qualification until it is reviewed and intentionally
+# added here.
 RELEASE_ONLY_PATHS = frozenset(
     {
-        ".github/workflows/release-docs-audit.yml",
-        ".github/workflows/release-plan-recovery.yml",
-        ".github/workflows/service-image-recovery.yml",
-        ".github/workflows/service-image-smoke.yml",
-        ".github/workflows/service-image.yml",
         "scripts/ci/check-docs-release-audit.sh",
         "scripts/ci/check-packagist-release.sh",
         "scripts/ci/cli-release-plan-recovery.fixture.yml",
@@ -43,14 +43,12 @@ RELEASE_ONLY_PATHS = frozenset(
         "scripts/ci/release_recovery_consumer_conformance.py",
         "scripts/ci/recovery_workflow_authority.py",
         "scripts/ci/service-image-recovery.py",
-        "scripts/ci/service-mode-image-smoke.sh",
         "scripts/ci/standalone_lock_contract.py",
         "scripts/ci/test-component-release-recovery.py",
         "scripts/ci/test-publish-planned-tag.py",
         "scripts/ci/test-release-example-contract.py",
         "scripts/ci/test-service-image-recovery.py",
         "scripts/ci/test-standalone-lock-contract.py",
-        "standalone/composer.lock",
     }
 )
 
@@ -82,6 +80,7 @@ CONFORMANCE_FOCUSED_CHECKS = (
     "phpunit:tests/Unit/WorkerStatusConformanceRunnerTest.php",
     "node:test:tests/Unit/WorkerStatus*Test.mjs",
 )
+NON_RUNTIME_FOCUSED_CHECKS = ("documentation-links-and-assets",)
 
 
 @dataclass(frozen=True)
@@ -117,6 +116,21 @@ def normalize_paths(paths: Iterable[str]) -> tuple[str, ...] | None:
     return tuple(sorted(normalized))
 
 
+def is_non_runtime_path(path: str) -> bool:
+    candidate = PurePosixPath(path)
+    return (
+        path == "LICENSE"
+        or (
+            candidate.parent == PurePosixPath(".")
+            and candidate.suffix in {".md", ".mdx"}
+        )
+        or (
+            path.startswith("docs/")
+            and candidate.suffix.lower() in NON_RUNTIME_DOCUMENTATION_SUFFIXES
+        )
+    )
+
+
 def classify_paths(paths: Iterable[str]) -> Classification:
     normalized = normalize_paths(paths)
     if normalized is None:
@@ -127,6 +141,8 @@ def classify_paths(paths: Iterable[str]) -> Classification:
         return Classification(RELEASE, "release-paths-only", normalized)
     if all(path in CONFORMANCE_ONLY_PATHS for path in normalized):
         return Classification(CONFORMANCE, "conformance-paths-only", normalized)
+    if all(is_non_runtime_path(path) for path in normalized):
+        return Classification(NON_RUNTIME, "non-runtime-paths-only", normalized)
 
     return Classification(COMPLETE, "complete-path-present", normalized)
 
@@ -196,12 +212,10 @@ def expected_results(classification: str) -> Mapping[str, str]:
         matrix_result = "success"
         frontend_result = "success"
         conformance_result = "skipped"
-    elif classification in {CONFORMANCE, RELEASE}:
+    elif classification in {CONFORMANCE, NON_RUNTIME, RELEASE}:
         matrix_result = "skipped"
         frontend_result = "skipped"
-        conformance_result = (
-            "success" if classification == CONFORMANCE else "skipped"
-        )
+        conformance_result = "success" if classification == CONFORMANCE else "skipped"
     else:
         raise ValueError(f"unknown qualification class: {classification}")
 
@@ -222,6 +236,8 @@ def focused_checks(classification: str) -> tuple[str, ...]:
         return COMMON_FOCUSED_CHECKS + CONFORMANCE_FOCUSED_CHECKS
     if classification == RELEASE:
         return COMMON_FOCUSED_CHECKS
+    if classification == NON_RUNTIME:
+        return COMMON_FOCUSED_CHECKS + NON_RUNTIME_FOCUSED_CHECKS
     if classification == COMPLETE:
         return COMMON_FOCUSED_CHECKS + (
             "frontend-production-build",

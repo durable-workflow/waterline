@@ -10,6 +10,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).parents[2]
@@ -26,6 +27,7 @@ IMAGE_REFERENCE = re.compile(
     rf"(?<![0-9A-Za-z_./-]){re.escape(SERVICE_IMAGE)}:"
     r"(?P<tag>[0-9A-Za-z][0-9A-Za-z_.-]*)"
 )
+MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\((?P<target><[^>]+>|[^)\s]+)(?:\s+[^)]*)?\)")
 
 
 class ContractError(RuntimeError):
@@ -63,6 +65,7 @@ class RepositoryValidation:
     readme_examples: ExampleCounts
     service_examples: ExampleCounts
     documented_images: int
+    local_documentation_links: int
     default_image: str
 
 
@@ -293,6 +296,54 @@ def validate_default_image(
     return default_image
 
 
+def validate_markdown_links(source: Path, document: str, root: Path) -> int:
+    repository = root.resolve()
+    source_directory = (repository / source).parent
+    local_links = 0
+
+    for match in MARKDOWN_LINK.finditer(document):
+        target = match.group("target").strip("<>")
+        parsed = urlsplit(target)
+        if (
+            parsed.scheme
+            or parsed.netloc
+            or not parsed.path
+            or parsed.path.startswith("/")
+        ):
+            continue
+
+        destination = (source_directory / unquote(parsed.path)).resolve()
+        try:
+            destination.relative_to(repository)
+        except ValueError as error:
+            raise ContractError(
+                f"{source.as_posix()} contains a local link outside the repository: "
+                f"{target}"
+            ) from error
+
+        if not destination.is_file():
+            raise ContractError(
+                f"{source.as_posix()} contains a missing local link: {target}"
+            )
+        local_links += 1
+
+    return local_links
+
+
+def validate_documentation_links(root: Path) -> int:
+    documents = sorted(root.glob("*.md"))
+    documents.extend(sorted(root.glob("*.mdx")))
+    docs = root / "docs"
+    if docs.is_dir():
+        documents.extend(sorted(docs.rglob("*.md")))
+        documents.extend(sorted(docs.rglob("*.mdx")))
+
+    return sum(
+        validate_markdown_links(path.relative_to(root), read_text(path), root)
+        for path in documents
+    )
+
+
 def validate_repository(root: Path = ROOT) -> RepositoryValidation:
     release = declared_release_tuple(read_json(root / "composer.json"))
     readme_examples = validate_composer_examples(
@@ -316,6 +367,7 @@ def validate_repository(root: Path = ROOT) -> RepositoryValidation:
         release,
         minimum=1,
     )
+    local_documentation_links = validate_documentation_links(root)
     default_image = validate_default_image(
         "deploy/docker-compose.service.yml",
         read_text(root / "deploy" / "docker-compose.service.yml"),
@@ -326,6 +378,7 @@ def validate_repository(root: Path = ROOT) -> RepositoryValidation:
         readme_examples=readme_examples,
         service_examples=service_examples,
         documented_images=documented_images,
+        local_documentation_links=local_documentation_links,
         default_image=default_image,
     )
 
@@ -342,6 +395,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
         "composer_examples="
         f"{result.readme_examples.total + result.service_examples.total}, "
         f"documented_images={result.documented_images}, "
+        f"local_documentation_links={result.local_documentation_links}, "
         f"default_image={result.default_image}"
     )
     return 0

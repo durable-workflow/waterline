@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -134,6 +135,43 @@ The install command can move and use indented Markdown instead.
                 minimum_install=1,
                 minimum_upgrade=1,
             )
+
+    def test_local_documentation_links_validate_targets_without_prose_coupling(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            asset = root / "docs" / "screenshots" / "dashboard.png"
+            asset.parent.mkdir(parents=True)
+            asset.write_bytes(b"png")
+
+            count = contract.validate_markdown_links(
+                Path("README.md"),
+                "\n".join(
+                    (
+                        "![Dashboard](docs/screenshots/dashboard.png)",
+                        "[External](https://example.com/docs)",
+                        "[Section](#section)",
+                    )
+                ),
+                root,
+            )
+
+            self.assertEqual(1, count)
+
+    def test_local_documentation_links_reject_missing_or_escaping_targets(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for target in ("docs/missing.png", "../outside.md"):
+                with self.subTest(target=target):
+                    with self.assertRaises(contract.ContractError):
+                        contract.validate_markdown_links(
+                            Path("README.md"),
+                            f"[Target]({target})",
+                            root,
+                        )
 
 
 if __name__ == "__main__":
