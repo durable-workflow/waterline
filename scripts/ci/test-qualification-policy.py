@@ -888,6 +888,95 @@ class DatabaseQualificationWorkflowContractTest(unittest.TestCase):
         )
 
 
+class ReleaseDocsAuditWorkflowContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.workflow = yaml.load(
+            (ROOT / ".github" / "workflows" / "release-docs-audit.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        if not isinstance(cls.workflow, dict):
+            raise RuntimeError("release docs audit workflow must be a mapping")
+
+    def audit_job(self) -> dict:
+        job = self.workflow["jobs"]["docs-release-audit"]
+        self.assertIsInstance(job, dict)
+        return job
+
+    def test_public_schedule_tag_and_manual_triggers_remain_available(self) -> None:
+        triggers = self.workflow["on"]
+
+        self.assertEqual([{"cron": "53 * * * *"}], triggers["schedule"])
+        self.assertEqual(
+            [
+                "2.0.0-alpha.*",
+                "2.0.0-beta.*",
+                "2.0.0-rc.*",
+                "2.0.0",
+            ],
+            triggers["push"]["tags"],
+        )
+        self.assertEqual(
+            "true",
+            triggers["workflow_dispatch"]["inputs"]["tag"]["required"],
+        )
+
+    def test_only_identified_non_github_schedules_skip_runner_assignment(
+        self,
+    ) -> None:
+        self.assertEqual(
+            "${{ github.event_name != 'schedule' || "
+            "github.server_url == '' || "
+            "github.server_url == 'https://github.com' }}",
+            self.audit_job()["if"],
+        )
+
+    def test_complete_public_release_evidence_remains_fail_closed(self) -> None:
+        steps = self.audit_job()["steps"]
+        commands = "\n".join(
+            step.get("run", "") for step in steps if isinstance(step, dict)
+        )
+
+        release_source_checkouts = [
+            step
+            for step in steps
+            if isinstance(step, dict)
+            and str(step.get("uses", "")).startswith("actions/checkout@")
+            and step.get("with", {}).get("path") == ".release-source"
+        ]
+        self.assertEqual(1, len(release_source_checkouts))
+        self.assertEqual(
+            "${{ steps.release.outputs.tag }}",
+            release_source_checkouts[0]["with"]["ref"],
+        )
+
+        self.assertIn("scripts/ci/verify-release-surfaces.py", commands)
+        self.assertIn("scripts/ci/check-exact-current-composer.sh", commands)
+        self.assertIn("scripts/ci/check-packagist-release.sh", commands)
+        self.assertIn("scripts/ci/check-docs-release-audit.sh", commands)
+
+        commands_with_failure_override = [
+            step
+            for step in steps
+            if isinstance(step, dict)
+            and step.get("run")
+            and step.get("continue-on-error") == "true"
+        ]
+        self.assertEqual([], commands_with_failure_override)
+
+        evidence_uploads = [
+            step
+            for step in steps
+            if isinstance(step, dict)
+            and str(step.get("uses", "")).startswith("actions/upload-artifact@")
+        ]
+        self.assertEqual(1, len(evidence_uploads))
+        evidence_paths = evidence_uploads[0]["with"]["path"]
+        self.assertIn("release-surfaces-evidence.json", evidence_paths)
+        self.assertIn("exact-current-composer-evidence.json", evidence_paths)
+        self.assertIn("docs-release-audit-evidence.json", evidence_paths)
+
+
 class WorkflowTrustPolicyTest(unittest.TestCase):
     def parse(self, source: str):
         document = yaml.load(source, Loader=yaml.BaseLoader)
