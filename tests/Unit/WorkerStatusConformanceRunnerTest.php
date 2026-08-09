@@ -5,10 +5,130 @@ declare(strict_types=1);
 namespace Waterline\Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Process\Process;
 use Waterline\Support\WorkerStatusObservationGate;
 
 final class WorkerStatusConformanceRunnerTest extends TestCase
 {
+    public function testExerciseCrashesTheWorkerDesignatedForTheStaleTransition(): void
+    {
+        $exercise = new \ReflectionMethod(
+            \Waterline\Console\WorkerStatusConformanceCommand::class,
+            'exercise',
+        );
+        $source = file($exercise->getFileName());
+        $this->assertIsArray($source);
+        $exerciseSource = implode('', array_slice(
+            $source,
+            $exercise->getStartLine() - 1,
+            $exercise->getEndLine() - $exercise->getStartLine() + 1,
+        ));
+
+        $matched = preg_match(
+            <<<'REGEX'
+                ~\$staleProcessLoss\s*=\s*\$this->(?<method>\w+)\(\s*\$staleProcess\s*,\s*'stale'[^;]*\);~
+                REGEX,
+            $exerciseSource,
+            $terminationCall,
+            PREG_OFFSET_CAPTURE,
+        );
+
+        $this->assertSame(1, $matched, 'The stale-transition termination call was not found in exercise().');
+        $this->assertSame(
+            'crashSdkWorker',
+            $terminationCall['method'][0],
+            'The exercise() stale-transition path must not invoke graceful Worker cleanup.',
+        );
+
+        $waitForStale = strpos($exerciseSource, '$this->waitForStaleTransition(');
+        $this->assertNotFalse($waitForStale);
+        $this->assertLessThan($waitForStale, $terminationCall[0][1]);
+        $this->assertDoesNotMatchRegularExpression(
+            '~\$this->stopSdkWorker\(\s*\$staleProcess\b~',
+            substr($exerciseSource, 0, $waitForStale),
+            'The stale worker must not be gracefully stopped before its stale transition is observed.',
+        );
+    }
+
+    public function testStaleTransitionUsesAbruptProcessLossWithoutRunningGracefulCleanup(): void
+    {
+        if (! extension_loaded('pcntl')) {
+            $this->markTestSkipped('PCNTL is required to distinguish SIGKILL from managed SIGTERM cleanup.');
+        }
+
+        $cleanupMarker = sys_get_temp_dir().'/waterline-graceful-cleanup-'.bin2hex(random_bytes(8));
+        $worker = <<<'PHP'
+            pcntl_async_signals(true);
+            pcntl_signal(SIGTERM, static function () use ($argv): void {
+                file_put_contents($argv[1], 'managed cleanup ran');
+                exit(0);
+            });
+            fwrite(STDOUT, "ready\n");
+            while (true) {
+                usleep(100_000);
+            }
+            PHP;
+        $process = new Process([PHP_BINARY, '-r', $worker, $cleanupMarker]);
+        $process->setTimeout(null);
+
+        try {
+            $process->start();
+            $deadline = microtime(true) + 5;
+            while (! str_contains($process->getOutput(), 'ready') && microtime(true) < $deadline) {
+                $this->assertTrue($process->isRunning(), $process->getErrorOutput());
+                usleep(25_000);
+            }
+            $this->assertStringContainsString('ready', $process->getOutput());
+
+            $crash = new \ReflectionMethod(
+                \Waterline\Console\WorkerStatusConformanceCommand::class,
+                'crashSdkWorker',
+            );
+            $event = $crash->invoke(
+                new \Waterline\Console\WorkerStatusConformanceCommand(),
+                $process,
+                'stale',
+            );
+
+            $this->assertFalse($process->isRunning());
+            $this->assertFileDoesNotExist($cleanupMarker);
+            $this->assertSame('abrupt_process_loss', $event['cleanup_mode']);
+            $this->assertSame(9, $event['signal']);
+            $this->assertTrue($event['process_gone']);
+        } finally {
+            if ($process->isRunning()) {
+                $process->stop(1);
+            }
+            if (is_file($cleanupMarker)) {
+                unlink($cleanupMarker);
+            }
+        }
+    }
+
+    public function testStaleDeadlineIsMeasuredFromTheFinalAcceptedHeartbeat(): void
+    {
+        $timing = new \ReflectionMethod(
+            \Waterline\Console\WorkerStatusConformanceCommand::class,
+            'staleTransitionTiming',
+        );
+
+        $this->assertSame([
+            'final_heartbeat_at' => '2026-08-09T02:00:00Z',
+            'stale_deadline_at' => '2026-08-09T02:00:07Z',
+            'configured_stale_after_seconds' => 7,
+            'transition_elapsed_seconds' => 9,
+            'seconds_after_stale_deadline' => 2,
+            'bounded_min_seconds' => 7,
+            'bounded_max_seconds' => 17,
+            'within_bounded_window' => true,
+        ], $timing->invoke(
+            new \Waterline\Console\WorkerStatusConformanceCommand(),
+            '2026-08-09T02:00:00Z',
+            '2026-08-09T02:00:09Z',
+            7,
+        ));
+    }
+
     public function testFixtureAndPlanSuppliedProjectionsCannotManufactureAPass(): void
     {
         $matchingBody = [
@@ -256,7 +376,7 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $runner = (string) file_get_contents($root.'/app/Console/WorkerStatusConformanceCommand.php');
         $worker = (string) file_get_contents($root.'/app/Console/WorkerStatusSdkWorkerCommand.php');
 
-        $this->assertSame('2.0.0-rc.12', $manifest['extra']['durable-workflow']['product-train'] ?? null);
+        $this->assertSame('2.0.0-rc.13', $manifest['extra']['durable-workflow']['product-train'] ?? null);
         $this->assertSame('2.0.0-rc.13', $manifest['require-dev']['durable-workflow/workflow'] ?? null);
         $this->assertSame('2.0.0-rc.11', $manifest['require']['durable-workflow/sdk'] ?? null);
         $this->assertStringContainsString('use DurableWorkflow\\Client as SdkClient;', $runner);

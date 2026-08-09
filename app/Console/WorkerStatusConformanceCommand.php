@@ -18,6 +18,8 @@ use Waterline\Support\WorkerStatusObservationGate;
 
 final class WorkerStatusConformanceCommand extends Command
 {
+    private const ABRUPT_PROCESS_LOSS_SIGNAL = 9;
+
     protected $signature = 'waterline:worker-status-conformance
         {--server-url= : Base URL of the exact published standalone server}
         {--waterline-url= : Base URL of the published Waterline package host}
@@ -97,6 +99,7 @@ final class WorkerStatusConformanceCommand extends Command
             $this->report['observations'] = $this->observations;
             $this->report['worker_execution'] = $context['worker_execution'];
             $this->report['stale_transition'] = $context['stale_transition'];
+            $this->report['orderly_deregistration'] = $context['orderly_deregistration'];
             $this->report['routing_exclusion'] = $context['routing_exclusion'];
             $this->report['topology'] = $context['topology'];
             $this->report['worker_processes'] = $this->workerProcesses;
@@ -180,6 +183,7 @@ final class WorkerStatusConformanceCommand extends Command
         $staleProcess = null;
         $freshProcess = null;
         $staleStopped = false;
+        $freshStopped = false;
 
         try {
             $staleProcess = $this->startSdkWorker(
@@ -275,9 +279,19 @@ final class WorkerStatusConformanceCommand extends Command
                 $cliBin,
             );
 
-            $this->stopSdkWorker($staleProcess, 'stale', 'stale-transition');
+            $staleProcessLoss = $this->crashSdkWorker($staleProcess, 'stale');
             $staleStopped = true;
-            $stoppedAt = $this->now();
+            $postCrashRegistration = $this->captureServer(
+                'server.stale.post-crash-registration',
+                $serverUrl,
+                '/api/workers/'.rawurlencode($staleWorkerId),
+                $token,
+                $namespace,
+            );
+            $finalHeartbeatAt = data_get($postCrashRegistration, 'body.last_heartbeat_at');
+            if (! is_string($finalHeartbeatAt) || ! $this->timestamp($finalHeartbeatAt)) {
+                throw new RuntimeException('The crashed worker registration did not preserve its final accepted heartbeat timestamp.');
+            }
             $staleTransition = $this->waitForStaleTransition(
                 $serverUrl,
                 $waterlineUrl,
@@ -287,7 +301,8 @@ final class WorkerStatusConformanceCommand extends Command
                 $staleWorkerId,
                 $heartbeatInterval,
                 $staleAfter,
-                $stoppedAt,
+                $finalHeartbeatAt,
+                $staleProcessLoss['observed_at'],
             );
 
             $afterWorkflowId = 'waterline-worker-status-after-stale-'.strtolower($suffix);
@@ -330,6 +345,17 @@ final class WorkerStatusConformanceCommand extends Command
                 $freshWorkerId,
                 $cliBin,
             );
+            $orderlyProcessStop = $this->stopSdkWorker($freshProcess, 'fresh', 'orderly-deregistration-proof');
+            $freshStopped = true;
+            $orderlyDeregistration = $this->waitForOrderlyDeregistration(
+                $serverUrl,
+                $waterlineUrl,
+                $token,
+                $namespace,
+                $taskQueue,
+                $freshWorkerId,
+                $cliBin,
+            );
 
             return [
                 'topology' => [
@@ -347,6 +373,7 @@ final class WorkerStatusConformanceCommand extends Command
                 'before' => $before,
                 'after' => $after,
                 'stale_transition' => $staleTransition,
+                'orderly_deregistration' => $orderlyDeregistration,
                 'routing_exclusion' => [
                     'stale_worker_poll' => $stalePoll,
                     'stale_worker_tasks_claimed' => $staleTask === null ? 0 : 1,
@@ -357,7 +384,10 @@ final class WorkerStatusConformanceCommand extends Command
                     'client' => SdkClient::class,
                     'heartbeat_loop_implementation_owner' => 'durable-workflow/sdk',
                     'stale_registration' => $staleRegistration,
+                    'stale_post_crash_registration' => $postCrashRegistration,
+                    'stale_process_loss' => $staleProcessLoss,
                     'fresh_registration' => $freshRegistration,
+                    'orderly_process_stop' => $orderlyProcessStop,
                     'stale_heartbeat_timestamps' => $staleHeartbeats,
                     'fresh_heartbeat_timestamps' => $freshHeartbeats,
                     'initial_workflow' => [
@@ -374,7 +404,7 @@ final class WorkerStatusConformanceCommand extends Command
             if ($staleProcess instanceof Process && ! $staleStopped) {
                 $this->stopSdkWorker($staleProcess, 'stale', 'cleanup');
             }
-            if ($freshProcess instanceof Process) {
+            if ($freshProcess instanceof Process && ! $freshStopped) {
                 $this->stopSdkWorker($freshProcess, 'fresh', 'cleanup');
             }
         }
@@ -469,19 +499,61 @@ final class WorkerStatusConformanceCommand extends Command
         return $process;
     }
 
-    private function stopSdkWorker(Process $process, string $label, string $reason): void
+    /** @return array<string, mixed> */
+    private function crashSdkWorker(Process $process, string $label): array
+    {
+        if (! $process->isRunning()) {
+            throw new RuntimeException(sprintf('PHP SDK %s worker exited before abrupt process loss could be exercised.', $label));
+        }
+
+        $processId = $process->getPid();
+        $process->signal(self::ABRUPT_PROCESS_LOSS_SIGNAL);
+        $deadline = microtime(true) + 5;
+        while ($process->isRunning() && microtime(true) < $deadline) {
+            usleep(50_000);
+        }
+
+        $processGone = ! $process->isRunning();
+        $event = [
+            'label' => $label,
+            'event' => 'crashed',
+            'reason' => 'stale-transition',
+            'cleanup_mode' => 'abrupt_process_loss',
+            'signal' => self::ABRUPT_PROCESS_LOSS_SIGNAL,
+            'process_id' => $processId,
+            'process_gone' => $processGone,
+            'exit_code' => $process->getExitCode(),
+            'observed_at' => $this->now(),
+            'stderr' => trim($process->getErrorOutput()),
+        ];
+        $this->workerProcesses[] = $event;
+
+        if (! $processGone) {
+            throw new RuntimeException(sprintf('PHP SDK %s worker remained alive after abrupt process loss.', $label));
+        }
+
+        return $event;
+    }
+
+    /** @return array<string, mixed> */
+    private function stopSdkWorker(Process $process, string $label, string $reason): array
     {
         $wasRunning = $process->isRunning();
         $exitCode = $wasRunning ? $process->stop(5) : $process->getExitCode();
-        $this->workerProcesses[] = [
+        $event = [
             'label' => $label,
             'event' => 'stopped',
             'reason' => $reason,
+            'cleanup_mode' => 'graceful',
             'was_running' => $wasRunning,
+            'process_gone' => ! $process->isRunning(),
             'exit_code' => $exitCode,
             'observed_at' => $this->now(),
             'stderr' => trim($process->getErrorOutput()),
         ];
+        $this->workerProcesses[] = $event;
+
+        return $event;
     }
 
     private function assertSdkWorkerRunning(Process $process, string $label): void
@@ -618,9 +690,15 @@ final class WorkerStatusConformanceCommand extends Command
         string $staleWorkerId,
         int $heartbeatInterval,
         int $staleAfter,
-        string $stoppedAt,
+        string $finalHeartbeatAt,
+        string $processLostAt,
     ): array {
-        $deadline = microtime(true) + $staleAfter + 20;
+        $finalHeartbeatTimestamp = strtotime($finalHeartbeatAt);
+        if ($finalHeartbeatTimestamp === false) {
+            throw new RuntimeException('The stale transition requires a valid final heartbeat timestamp.');
+        }
+
+        $deadline = max(microtime(true), $finalHeartbeatTimestamp + $staleAfter) + 20;
         $lastServer = [];
         $lastWaterline = [];
 
@@ -639,15 +717,10 @@ final class WorkerStatusConformanceCommand extends Command
                 && ($waterlineStale['list']['status'] ?? null) === 'stale'
                 && ($waterlineStale['detail']['status'] ?? null) === 'stale') {
                 $observedAt = $this->now();
-                $elapsed = (strtotime($observedAt) ?: 0) - (strtotime($stoppedAt) ?: 0);
 
-                return [
-                    'stopped_at' => $stoppedAt,
+                return $this->staleTransitionTiming($finalHeartbeatAt, $observedAt, $staleAfter) + [
+                    'process_lost_at' => $processLostAt,
                     'observed_stale_at' => $observedAt,
-                    'configured_stale_after_seconds' => $staleAfter,
-                    'transition_elapsed_seconds' => $elapsed,
-                    'bounded_max_seconds' => $staleAfter + 10,
-                    'within_bounded_window' => $elapsed >= 0 && $elapsed <= $staleAfter + 10,
                     'server' => $lastServer,
                     'waterline' => $lastWaterline,
                 ];
@@ -663,13 +736,10 @@ final class WorkerStatusConformanceCommand extends Command
             $staleWorkerId,
         );
 
-        return [
-            'stopped_at' => $stoppedAt,
+        return $this->staleTransitionTiming($finalHeartbeatAt, $observedAt, $staleAfter) + [
+            'process_lost_at' => $processLostAt,
             'observed_stale_at' => null,
             'last_checked_at' => $observedAt,
-            'configured_stale_after_seconds' => $staleAfter,
-            'transition_elapsed_seconds' => (strtotime($observedAt) ?: 0) - (strtotime($stoppedAt) ?: 0),
-            'bounded_max_seconds' => $staleAfter + 10,
             'within_bounded_window' => false,
             'server' => $lastServer,
             'waterline' => $lastWaterline,
@@ -680,6 +750,108 @@ final class WorkerStatusConformanceCommand extends Command
                 'waterline_detail_status' => data_get($waterlineWorker, 'detail.status'),
             ],
         ];
+    }
+
+    /** @return array<string, int|string|bool> */
+    private function staleTransitionTiming(string $finalHeartbeatAt, string $observedAt, int $staleAfter): array
+    {
+        $finalHeartbeatTimestamp = strtotime($finalHeartbeatAt);
+        $observedTimestamp = strtotime($observedAt);
+        if ($finalHeartbeatTimestamp === false || $observedTimestamp === false) {
+            throw new RuntimeException('Stale transition timing requires valid heartbeat and observation timestamps.');
+        }
+
+        $elapsed = $observedTimestamp - $finalHeartbeatTimestamp;
+
+        return [
+            'final_heartbeat_at' => $finalHeartbeatAt,
+            'stale_deadline_at' => gmdate('Y-m-d\TH:i:s\Z', $finalHeartbeatTimestamp + $staleAfter),
+            'configured_stale_after_seconds' => $staleAfter,
+            'transition_elapsed_seconds' => $elapsed,
+            'seconds_after_stale_deadline' => $elapsed - $staleAfter,
+            'bounded_min_seconds' => $staleAfter,
+            'bounded_max_seconds' => $staleAfter + 10,
+            'within_bounded_window' => $elapsed >= $staleAfter && $elapsed <= $staleAfter + 10,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function waitForOrderlyDeregistration(
+        string $serverUrl,
+        string $waterlineUrl,
+        string $token,
+        string $namespace,
+        string $taskQueue,
+        string $workerId,
+        string $cliBin,
+    ): array {
+        $deadline = microtime(true) + 10;
+        $last = [];
+
+        while (microtime(true) < $deadline) {
+            $serverDetail = $this->captureWorkerDetailAllowMissing(
+                'server.orderly-deregistration.detail',
+                $serverUrl,
+                $workerId,
+                $token,
+                $namespace,
+            );
+            $serverList = $this->captureServer(
+                'server.orderly-deregistration.list',
+                $serverUrl,
+                '/api/workers?'.http_build_query(['task_queue' => $taskQueue]),
+                $token,
+                $namespace,
+            );
+            $serverStaleList = $this->captureServer(
+                'server.orderly-deregistration.stale-list',
+                $serverUrl,
+                '/api/workers?'.http_build_query(['task_queue' => $taskQueue, 'status' => 'stale']),
+                $token,
+                $namespace,
+            );
+            $waterline = $this->captureWaterline('waterline.orderly-deregistration.health', $waterlineUrl);
+            $cliList = $this->captureCli(
+                'cli.orderly-deregistration.list',
+                $cliBin,
+                ['worker:list', '--task-queue='.$taskQueue],
+                $serverUrl,
+                $token,
+                $namespace,
+            );
+            $cliStaleList = $this->captureCli(
+                'cli.orderly-deregistration.stale-list',
+                $cliBin,
+                ['worker:list', '--task-queue='.$taskQueue, '--status=stale'],
+                $serverUrl,
+                $token,
+                $namespace,
+            );
+            $waterlineWorker = $this->waterlineWorker($waterline['body'], $taskQueue, $workerId);
+            $last = [
+                'observed_at' => $this->now(),
+                'server_detail' => $serverDetail,
+                'server_list' => $serverList,
+                'server_stale_list' => $serverStaleList,
+                'waterline' => $waterline,
+                'cli_list' => $cliList,
+                'cli_stale_list' => $cliStaleList,
+                'server_absent' => $serverDetail['status_code'] === 404
+                    && $this->findWorker($this->authorityWorkers($serverList['body']), $workerId) === []
+                    && $this->findWorker($this->authorityWorkers($serverStaleList['body']), $workerId) === [],
+                'waterline_absent' => $waterlineWorker['list'] === [] && $waterlineWorker['detail'] === [],
+                'cli_absent' => $this->findWorker($this->authorityWorkers($cliList['body']), $workerId) === []
+                    && $this->findWorker($this->authorityWorkers($cliStaleList['body']), $workerId) === [],
+            ];
+
+            if ($last['server_absent'] && $last['waterline_absent'] && $last['cli_absent']) {
+                return $last + ['deregistered_instead_of_stale' => true];
+            }
+
+            usleep(250_000);
+        }
+
+        return $last + ['deregistered_instead_of_stale' => false];
     }
 
     /**
@@ -747,6 +919,36 @@ final class WorkerStatusConformanceCommand extends Command
             'no_local_product_source_checkout' => ($this->report['local_product_source_checkouts_used'] ?? null) === false,
             'stale_worker_emitted_two_heartbeats' => count($context['worker_execution']['stale_heartbeat_timestamps']) >= 2,
             'fresh_worker_emitted_two_heartbeats' => count($context['worker_execution']['fresh_heartbeat_timestamps']) >= 2,
+            'stale_worker_terminated_by_abrupt_process_loss' => ($context['worker_execution']['stale_process_loss']['cleanup_mode'] ?? null) === 'abrupt_process_loss'
+                && ($context['worker_execution']['stale_process_loss']['signal'] ?? null) === self::ABRUPT_PROCESS_LOSS_SIGNAL
+                && ($context['worker_execution']['stale_process_loss']['process_gone'] ?? false) === true,
+            'stale_worker_final_heartbeat_preserved' => $this->sameTimestamp(
+                data_get($context, 'worker_execution.stale_post_crash_registration.body.last_heartbeat_at'),
+                data_get($context, 'stale_transition.server.body.last_heartbeat_at'),
+            ) && $this->sameTimestamp(
+                data_get($context, 'worker_execution.stale_post_crash_registration.body.last_heartbeat_at'),
+                data_get($context, 'after.server_stale_detail.body.last_heartbeat_at'),
+            ) && $this->sameTimestamp(
+                data_get($context, 'worker_execution.stale_post_crash_registration.body.last_heartbeat_at'),
+                $afterStaleWaterline['detail']['last_heartbeat_at'] ?? null,
+            ) && $this->sameTimestamp(
+                data_get($context, 'worker_execution.stale_post_crash_registration.body.last_heartbeat_at'),
+                $afterStaleCli['last_heartbeat_at'] ?? null,
+            ),
+            'orderly_worker_deregisters_instead_of_becoming_stale' => ($context['worker_execution']['orderly_process_stop']['cleanup_mode'] ?? null) === 'graceful'
+                && ($context['worker_execution']['orderly_process_stop']['was_running'] ?? false) === true
+                && ($context['worker_execution']['orderly_process_stop']['process_gone'] ?? false) === true
+                && ($context['orderly_deregistration']['deregistered_instead_of_stale'] ?? false) === true,
+            'dedicated_wave_topology_preserved' => $staleId !== $freshId
+                && ($context['worker_execution']['stale_post_crash_registration']['body']['worker_id'] ?? null) === $staleId
+                && ($context['worker_execution']['stale_post_crash_registration']['body']['namespace'] ?? null) === $topology['namespace']
+                && ($context['worker_execution']['stale_post_crash_registration']['body']['task_queue'] ?? null) === $taskQueue
+                && ($context['worker_execution']['fresh_registration']['worker_id'] ?? null) === $freshId
+                && ($context['worker_execution']['fresh_registration']['namespace'] ?? null) === $topology['namespace']
+                && ($context['worker_execution']['fresh_registration']['task_queue'] ?? null) === $taskQueue
+                && $topology['initial_workflow_id'] !== $topology['after_stale_workflow_id']
+                && ($context['worker_execution']['initial_workflow']['start']['workflow_id'] ?? null) === $topology['initial_workflow_id']
+                && ($context['worker_execution']['after_stale_workflow']['start']['workflow_id'] ?? null) === $topology['after_stale_workflow_id'],
             'real_workflow_work_executed' => $this->completed($context['worker_execution']['initial_workflow']['detail'])
                 && $this->completed($context['worker_execution']['after_stale_workflow']['detail']),
             'waterline_namespace_and_task_queue_visible' => ($beforeWaterline['list']['namespace'] ?? null) === $topology['namespace']
@@ -950,6 +1152,27 @@ final class WorkerStatusConformanceCommand extends Command
     }
 
     /** @return array<string, mixed> */
+    private function captureWorkerDetailAllowMissing(
+        string $name,
+        string $baseUrl,
+        string $workerId,
+        string $token,
+        string $namespace,
+    ): array {
+        $url = $baseUrl.'/api/workers/'.rawurlencode($workerId);
+        $response = $this->http->acceptJson()
+            ->withToken($token)
+            ->withHeaders([
+                'X-Namespace' => $namespace,
+                'X-Durable-Workflow-Control-Plane-Version' => '2',
+            ])
+            ->timeout(15)
+            ->get($url);
+
+        return $this->recordHttp($name, $url, $response, acceptedStatuses: [404]);
+    }
+
+    /** @return array<string, mixed> */
     private function captureStaleWorkerPoll(
         string $baseUrl,
         string $token,
@@ -1011,7 +1234,13 @@ final class WorkerStatusConformanceCommand extends Command
     }
 
     /** @return array<string, mixed> */
-    private function recordHttp(string $name, string $url, Response $response, string $method = 'GET'): array
+    private function recordHttp(
+        string $name,
+        string $url,
+        Response $response,
+        string $method = 'GET',
+        array $acceptedStatuses = [],
+    ): array
     {
         $body = $response->json();
         $capture = [
@@ -1027,7 +1256,7 @@ final class WorkerStatusConformanceCommand extends Command
         ];
         $this->observations[$name] = $capture;
 
-        if (! $response->successful()) {
+        if (! $response->successful() && ! in_array($response->status(), $acceptedStatuses, true)) {
             throw new RuntimeException(sprintf('%s %s returned HTTP %d', $method, $url, $response->status()));
         }
 
@@ -1322,6 +1551,13 @@ final class WorkerStatusConformanceCommand extends Command
         return is_string($value) && strtotime($value) !== false;
     }
 
+    private function sameTimestamp(mixed $left, mixed $right): bool
+    {
+        return $this->timestamp($left)
+            && $this->timestamp($right)
+            && strtotime($left) === strtotime($right);
+    }
+
     private function requiredUrlOption(string $name): string
     {
         $value = $this->requiredOption($name);
@@ -1411,7 +1647,8 @@ final class WorkerStatusConformanceCommand extends Command
     {
         return match (true) {
             str_contains($check, 'authoritative_capture') => 'A live HTTP response or executed published CLI process envelope captured by this runner.',
-            str_contains($check, 'stale_transition') => 'The stopped worker becomes stale on server and Waterline within the configured bounded interval.',
+            str_contains($check, 'stale_transition') => 'The crashed worker becomes stale on server and Waterline within the interval measured from its final heartbeat.',
+            str_contains($check, 'orderly_worker') => 'The gracefully stopped worker is absent from server, CLI, and Waterline active and stale projections.',
             str_contains($check, 'cannot_claim') => 'A queued workflow task is refused to the stale worker with the typed stale-registration reason.',
             str_contains($check, 'fresh_peer') => 'The fresh peer remains active, visible, and completes work after its peer becomes stale.',
             str_contains($check, 'agree') => 'Waterline list and task-queue detail fields match server API and published CLI observations for the same worker.',

@@ -2,10 +2,16 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.12` source identity. Package and standalone
+Waterline advances to the `2.0.0-rc.13` source identity. Package and standalone
 service distributions now bind PHP SDK `2.0.0-rc.11`, while embedded integration
-targets Workflow `2.0.0-rc.13`. This sequential successor restores the exact
-current Composer tuple after the independently published SDK prerelease.
+targets Workflow `2.0.0-rc.13`. This direct successor keeps that exact Composer
+tuple while correcting the published worker-status experiment.
+
+Worker-status conformance now kills its designated stale worker without giving
+the managed SDK an opportunity to deregister. It proves the child process is
+gone, anchors the stale deadline to the final accepted heartbeat, and separately
+proves that an orderly peer shutdown deregisters across server, CLI, and
+Waterline projections.
 
 The standalone service now bundles `league/commonmark` 2.9.0, resolving six
 security advisories present in the previously locked dependency version.
