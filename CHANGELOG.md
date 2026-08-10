@@ -2,10 +2,17 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.13` source identity. Package and standalone
+Waterline advances to the `2.0.0-rc.14` source identity. Package and standalone
 service distributions now bind PHP SDK `2.0.0-rc.11`, while embedded integration
 targets Workflow `2.0.0-rc.13`. This direct successor keeps that exact Composer
-tuple while correcting the published worker-status experiment.
+tuple while correcting the workflow-list dialog experience.
+
+Workflow-list filter and view-option dialogs now use a coherent light or dark
+palette, keep their action row reachable around an internally scrolling body,
+and explicitly mark the surrounding application inert while modal focus is
+contained. Browser qualification opens both dialogs across desktop,
+intermediate, mobile, and short-height viewports and validates contrast,
+overflow, focus containment, and control reachability.
 
 Worker-status conformance now kills its designated stale worker without giving
 the managed SDK an opportunity to deregister. It proves the child process is

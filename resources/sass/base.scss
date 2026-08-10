@@ -95,6 +95,12 @@ textarea:focus-visible,
     position: absolute;
     top: -40px;
     left: 0;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: nowrap;
     background: #0066cc;
     color: white;
     padding: 8px 16px;
@@ -462,6 +468,207 @@ textarea.swal2-textarea.wl-command-textarea {
 
 textarea.swal2-textarea.wl-command-textarea--signal {
     min-height: 8rem;
+}
+
+$waterline-dialog-muted: mix($body-color, $modal-content-bg, 72%);
+$waterline-dialog-border: mix($body-color, $input-bg, 36%);
+
+.swal2-container:has(.waterline-dialog) {
+    padding: clamp(0.5rem, 2vw, 1rem);
+}
+
+.swal2-popup.waterline-dialog {
+    display: flex !important;
+    flex-direction: column;
+    width: min(36rem, 100%);
+    max-width: 100%;
+    max-height: calc(100dvh - 2rem);
+    padding: 1.25rem;
+    overflow: hidden;
+    color: $body-color;
+    border: 1px solid $waterline-dialog-border;
+    border-radius: $border-radius-lg;
+    box-shadow: 0 24px 64px rgba(#000, 0.45);
+}
+
+.swal2-popup.waterline-dialog .swal2-title,
+.swal2-popup.waterline-dialog .swal2-html-container,
+.swal2-popup.waterline-dialog label,
+.swal2-popup.waterline-dialog strong {
+    color: $body-color;
+}
+
+.swal2-popup.waterline-dialog .swal2-title {
+    flex: 0 0 auto;
+    padding: 0 0 0.9rem;
+    font-size: 1.45rem;
+    line-height: 1.25;
+}
+
+.swal2-popup.waterline-dialog .waterline-dialog__body {
+    min-height: 0;
+    margin: 0;
+    padding: 0.25rem 0.5rem 0.25rem 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+}
+
+.swal2-popup.waterline-dialog .text-muted,
+.swal2-popup.waterline-dialog small,
+.swal2-popup.waterline-dialog .small {
+    color: $waterline-dialog-muted !important;
+}
+
+.swal2-popup.waterline-dialog .card-bg-secondary {
+    color: $body-color;
+    border: 1px solid $waterline-dialog-border;
+}
+
+.swal2-popup.waterline-dialog .swal2-input,
+.swal2-popup.waterline-dialog .swal2-textarea,
+.swal2-popup.waterline-dialog .swal2-select {
+    width: 100%;
+    max-width: 100%;
+    margin: 0.25rem 0 0;
+    color: $input-color;
+    background: $input-bg;
+    border: 1px solid $waterline-dialog-border;
+    border-radius: $border-radius;
+    box-shadow: none;
+}
+
+.swal2-popup.waterline-dialog .swal2-input,
+.swal2-popup.waterline-dialog .swal2-select {
+    min-height: 2.75rem;
+    padding: 0.55rem 0.75rem;
+}
+
+.swal2-popup.waterline-dialog .swal2-textarea {
+    min-height: 6rem;
+    padding: 0.65rem 0.75rem;
+}
+
+.swal2-popup.waterline-dialog .swal2-input::placeholder,
+.swal2-popup.waterline-dialog .swal2-textarea::placeholder {
+    color: $waterline-dialog-muted;
+    opacity: 1;
+}
+
+.swal2-popup.waterline-dialog .swal2-input:focus,
+.swal2-popup.waterline-dialog .swal2-textarea:focus,
+.swal2-popup.waterline-dialog .swal2-select:focus {
+    border-color: $primary;
+    box-shadow: 0 0 0 0.2rem rgba($primary, 0.28);
+}
+
+.swal2-popup.waterline-dialog .waterline-column-option {
+    appearance: none;
+    display: inline-grid;
+    flex: 0 0 1.125rem;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-top: 0;
+    place-content: center;
+    color: color-yiq($primary);
+    background: $input-bg;
+    border: 2px solid $primary;
+    border-radius: 0.2rem;
+}
+
+.swal2-popup.waterline-dialog .waterline-column-option::before {
+    width: 0.6rem;
+    height: 0.32rem;
+    content: '';
+    border-bottom: 0.16rem solid currentColor;
+    border-left: 0.16rem solid currentColor;
+    opacity: 0;
+    transform: translateY(-0.05rem) rotate(-45deg);
+}
+
+.swal2-popup.waterline-dialog .waterline-column-option:checked {
+    background: $primary;
+}
+
+.swal2-popup.waterline-dialog .waterline-column-option:checked::before {
+    opacity: 1;
+}
+
+.swal2-popup.waterline-dialog .waterline-column-option:focus-visible {
+    outline: 3px solid $primary;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 0.2rem rgba($primary, 0.28);
+}
+
+.swal2-popup.waterline-dialog .waterline-column-option:disabled {
+    cursor: not-allowed;
+}
+
+.swal2-popup.waterline-dialog .waterline-dialog__validation {
+    flex: 0 0 auto;
+    margin: 0.75rem 0 0;
+    padding: 0.75rem;
+    color: #fff;
+    background: $danger;
+    border-radius: $border-radius;
+}
+
+.swal2-popup.waterline-dialog .waterline-dialog__validation::before {
+    color: #fff;
+    border-color: #fff;
+}
+
+.swal2-popup.waterline-dialog .waterline-dialog__actions {
+    flex: 0 0 auto;
+    gap: 0.5rem;
+    width: 100%;
+    margin: 1rem 0 0;
+}
+
+.swal2-popup.waterline-dialog .waterline-dialog__actions button {
+    min-width: 7rem;
+    min-height: 2.75rem;
+    margin: 0;
+    padding: 0.6rem 1rem;
+    white-space: normal;
+    line-height: 1.25;
+}
+
+.swal2-popup.waterline-dialog .waterline-dialog__confirm {
+    color: color-yiq($primary);
+    background: $primary;
+}
+
+.swal2-popup.waterline-dialog .waterline-dialog__cancel {
+    color: $body-color;
+    background: $input-bg;
+    border: 1px solid $waterline-dialog-border;
+}
+
+.swal2-popup.waterline-dialog .waterline-dialog__deny {
+    color: #fff;
+    background: $danger;
+}
+
+@media (max-width: 480px) {
+    .swal2-popup.waterline-dialog {
+        max-height: calc(100dvh - 1rem);
+        padding: 1rem;
+    }
+
+    .swal2-popup.waterline-dialog .swal2-title {
+        padding-bottom: 0.7rem;
+        font-size: 1.25rem;
+    }
+
+    .swal2-popup.waterline-dialog .waterline-dialog__actions {
+        flex-wrap: wrap;
+    }
+
+    .swal2-popup.waterline-dialog .waterline-dialog__actions button {
+        flex: 1 1 8rem;
+    }
 }
 
 .disabled-watcher {

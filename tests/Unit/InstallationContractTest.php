@@ -31,7 +31,7 @@ final class InstallationContractTest extends TestCase
         $sdkVersion = '2.0.0-rc.11';
         $workflowVersion = '2.0.0-rc.13';
 
-        $this->assertSame('2.0.0-rc.13', $releaseVersion);
+        $this->assertSame('2.0.0-rc.14', $releaseVersion);
         $this->assertSame($sdkVersion, $manifest['require']['durable-workflow/sdk'] ?? null);
         $this->assertArrayNotHasKey('durable-workflow/workflow', $manifest['require'] ?? []);
         $this->assertSame($workflowVersion, $manifest['require-dev']['durable-workflow/workflow'] ?? null);

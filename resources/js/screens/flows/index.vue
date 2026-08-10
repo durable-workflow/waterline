@@ -1,6 +1,7 @@
 <script type="text/ecmascript-6">
     import FlowRow from './flow-row.vue';
     import Swal from 'sweetalert2';
+    import { createWaterlineDialogOptions } from '../../dialogs.mjs';
 
     export default {
         /**
@@ -483,6 +484,12 @@
                 return this.$root && this.$root.theme === 'light' ? '#ffffff' : '#1c1c1c'
             },
 
+            workflowListDialogOptions(options) {
+                const theme = this.$root && this.$root.theme === 'light' ? 'light' : 'dark'
+
+                return createWaterlineDialogOptions(theme, options)
+            },
+
             async persistWorkflowListPreferences(preferences, options = {}) {
                 const payload = {
                     ...this.operatorPreferences,
@@ -523,7 +530,7 @@
                     </label>
                 `).join('')
 
-                const result = await Swal.fire({
+                const result = await Swal.fire(this.workflowListDialogOptions({
                     title: 'View Options',
                     html: `
                         <div class="text-left">
@@ -545,7 +552,6 @@
                     `,
                     showCancelButton: true,
                     confirmButtonText: 'Save Options',
-                    background: this.swalBackground(),
                     preConfirm: () => {
                         const selectedColumns = Array.from(document.querySelectorAll('.waterline-column-option'))
                             .filter((input) => input.checked || input.value === 'flow')
@@ -557,7 +563,7 @@
                             columns: selectedColumns,
                         }
                     },
-                })
+                }))
 
                 if (!result.isConfirmed) {
                     return
@@ -1243,12 +1249,11 @@
                 const current = this.selectedCustomView && !this.savedViewVersionSupported(this.selectedCustomView)
                     ? this.mergeFilterPayloads(this.selectedCustomView.filters || {}, this.currentFilterPayload())
                     : this.currentFilterPayload()
-                const result = await Swal.fire({
+                const result = await Swal.fire(this.workflowListDialogOptions({
                     title: 'Edit Filters',
                     html: this.filterEditorHtml(current),
                     showCancelButton: true,
                     confirmButtonText: 'Apply Filters',
-                    background: this.swalBackground(),
                     preConfirm: () => {
                         try {
                             const filters = {}
@@ -1288,7 +1293,7 @@
                             Swal.showValidationMessage(error.message)
                         }
                     },
-                })
+                }))
 
                 if (result.isConfirmed) {
                     this.pushVisibilityFilters(result.value || {}, {clearView: false})
@@ -1654,6 +1659,7 @@
                     <div class="flow-index__toolbar-actions">
                         <button v-if="hasVisibilityFilterContract()"
                                 class="btn btn-outline-secondary btn-sm"
+                                data-waterline-dialog-trigger="filters"
                                 @click="editFilters">
                             Filters
                         </button>
@@ -1677,6 +1683,7 @@
                         </button>
 
                         <button class="btn btn-outline-secondary btn-sm"
+                                data-waterline-dialog-trigger="view-options"
                                 :disabled="savingOperatorPreferences"
                                 @click="editViewOptions">
                             View Options
