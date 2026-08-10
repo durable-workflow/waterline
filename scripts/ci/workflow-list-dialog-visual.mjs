@@ -4,14 +4,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const VIEWPORTS = [
+export const VIEWPORTS = [
     { name: 'desktop', width: 1440, height: 900 },
     { name: 'intermediate', width: 900, height: 768 },
     { name: 'mobile', width: 390, height: 844 },
     { name: 'short-height', width: 1280, height: 480 },
 ];
 
-const DIALOGS = [
+export const DIALOGS = [
     {
         name: 'filters',
         buttonName: 'Filters',
@@ -572,6 +572,25 @@ async function auditFocusTrap(page) {
     return visited;
 }
 
+export function summarizeDialogReports(baseUrl, reports) {
+    return {
+        schema: 'durable-workflow.waterline.dialog-visual-summary.v1',
+        baseUrl,
+        expectedCases: VIEWPORTS.length * DIALOGS.length,
+        observedCases: reports.length,
+        passedCases: reports.filter((report) => report.status === 'passed').length,
+        failedCases: reports.filter((report) => report.status === 'failed').length,
+        cases: reports.map((report) => ({
+            dialog: report.dialog,
+            state: report.state,
+            viewport: report.viewport,
+            screenshot: report.screenshot,
+            status: report.status,
+            failure: report.failure,
+        })),
+    };
+}
+
 export async function runWorkflowListDialogVisual({
     baseUrl,
     outputDirectory,
@@ -600,6 +619,15 @@ export async function runWorkflowListDialogVisual({
                 await context.addInitScript(() => localStorage.setItem('waterline-theme', 'dark'));
                 const page = await context.newPage();
                 const consoleErrors = [];
+                const name = `${dialog.name}-${viewport.name}`;
+                const screenshot = `${name}.png`;
+                let openedDialog = false;
+                let geometry = null;
+                let contrast = [];
+                let focus = [];
+                let controls = [];
+                let checkboxes = [];
+                let failure = null;
 
                 page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
                 page.on('console', (message) => {
@@ -616,6 +644,7 @@ export async function runWorkflowListDialogVisual({
                         state: 'visible',
                         timeout: 10_000,
                     });
+                    openedDialog = true;
 
                     if (dialog.validation) {
                         await triggerValidation(page);
@@ -623,11 +652,11 @@ export async function runWorkflowListDialogVisual({
 
                     await page.waitForTimeout(400);
 
-                    const geometry = await auditModalGeometry(page, dialog, viewport);
-                    const contrast = await auditContrast(page, dialog.requiredContrastCategories);
-                    const focus = await auditFocusTrap(page);
-                    const controls = await auditControlReachability(page);
-                    const checkboxes = dialog.name === 'view-options'
+                    geometry = await auditModalGeometry(page, dialog, viewport);
+                    contrast = await auditContrast(page, dialog.requiredContrastCategories);
+                    focus = await auditFocusTrap(page);
+                    controls = await auditControlReachability(page);
+                    checkboxes = dialog.name === 'view-options'
                         ? await auditCheckboxAffordances(page)
                         : [];
 
@@ -638,34 +667,58 @@ export async function runWorkflowListDialogVisual({
                     if (consoleErrors.length > 0) {
                         throw new Error(`Dialog emitted browser errors: ${consoleErrors.join(' | ')}`);
                     }
+                } catch (error) {
+                    failure = {
+                        name: error instanceof Error ? error.name : 'Error',
+                        message: error instanceof Error ? error.message : String(error),
+                        stack: error instanceof Error ? error.stack : null,
+                    };
+                } finally {
+                    try {
+                        await page.screenshot({
+                            path: path.join(outputDirectory, screenshot),
+                            fullPage: false,
+                        });
+                    } catch (error) {
+                        const screenshotFailure = error instanceof Error ? error.message : String(error);
 
-                    const name = `${dialog.name}-${viewport.name}`;
-                    const screenshot = `${name}.png`;
+                        if (failure) {
+                            failure.screenshot = screenshotFailure;
+                        } else {
+                            failure = {
+                                name: 'ScreenshotError',
+                                message: screenshotFailure,
+                                stack: error instanceof Error ? error.stack : null,
+                            };
+                        }
+                    }
+
                     const report = {
                         schema: 'durable-workflow.waterline.dialog-visual.v1',
+                        status: failure ? 'failed' : 'passed',
                         dialog: dialog.name,
+                        state: dialog.validation ? 'filter-validation' : 'checked-and-unchecked-columns',
                         viewport,
                         url: page.url(),
                         screenshot,
+                        openedDialog,
                         consoleErrors,
                         contrast,
                         geometry,
                         controls,
                         checkboxes,
                         focus,
+                        failure,
                     };
 
-                    await page.screenshot({
-                        path: path.join(outputDirectory, screenshot),
-                        fullPage: false,
-                    });
                     fs.writeFileSync(
                         path.join(outputDirectory, `${name}.json`),
                         `${JSON.stringify(report, null, 2)}\n`,
                     );
                     reports.push(report);
-                    console.log(`DIALOG_VISUAL ${dialog.name} ${viewport.name} PASS`);
-                } finally {
+                    console.log(
+                        `DIALOG_VISUAL ${dialog.name} ${viewport.name} ${failure ? 'FAIL' : 'PASS'}`,
+                    );
                     await context.close();
                 }
             }
@@ -674,25 +727,18 @@ export async function runWorkflowListDialogVisual({
         await browser.close();
     }
 
-    const summary = {
-        schema: 'durable-workflow.waterline.dialog-visual-summary.v1',
-        baseUrl,
-        expectedCases: VIEWPORTS.length * DIALOGS.length,
-        passedCases: reports.length,
-        cases: reports.map((report) => ({
-            dialog: report.dialog,
-            viewport: report.viewport,
-            screenshot: report.screenshot,
-        })),
-    };
+    const summary = summarizeDialogReports(baseUrl, reports);
 
     fs.writeFileSync(
         path.join(outputDirectory, 'summary.json'),
         `${JSON.stringify(summary, null, 2)}\n`,
     );
 
-    if (summary.passedCases !== summary.expectedCases) {
-        throw new Error(`Expected ${summary.expectedCases} dialog cases, observed ${summary.passedCases}.`);
+    if (summary.observedCases !== summary.expectedCases || summary.failedCases > 0) {
+        throw new Error(
+            `Expected ${summary.expectedCases} passing dialog cases; `
+            + `observed ${summary.observedCases} with ${summary.failedCases} failures.`,
+        );
     }
 
     return summary;

@@ -7,7 +7,7 @@ import argparse
 import re
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Iterator, Mapping
 
 import yaml
@@ -25,6 +25,8 @@ ARTIFACT_ACTIONS = (
     "actions/upload-artifact@",
     "actions/download-artifact@",
 )
+RUN_ID_EXPRESSION = "${{ github.run_id }}"
+RUN_ATTEMPT_EXPRESSION = "${{ github.run_attempt }}"
 REQUIRED_FOCUSED_WORKFLOWS = {
     "public-boundary.yml": {
         "triggers": frozenset({"pull_request", "push"}),
@@ -94,6 +96,36 @@ def action_name(step: Mapping[str, object]) -> str:
 
 def is_cache_action(uses: str) -> bool:
     return uses.startswith("actions/cache@") or uses.startswith("actions/cache/")
+
+
+def is_run_bound_dialog_evidence_upload(
+    uses: str,
+    configuration: object,
+) -> bool:
+    if not uses.startswith("actions/upload-artifact@") or not isinstance(
+        configuration, Mapping
+    ):
+        return False
+
+    name = configuration.get("name")
+    configured_path = configuration.get("path")
+    retention = configuration.get("retention-days")
+    if not isinstance(name, str) or not isinstance(configured_path, str):
+        return False
+    if RUN_ID_EXPRESSION not in name or RUN_ATTEMPT_EXPRESSION not in name:
+        return False
+    if configuration.get("if-no-files-found") != "error" or retention != "30":
+        return False
+    if any(character in configured_path for character in ("\0", "\n", "\r", "*")):
+        return False
+
+    candidate = PurePosixPath(configured_path.rstrip("/"))
+
+    return (
+        not candidate.is_absolute()
+        and ".." not in candidate.parts
+        and candidate.as_posix() == "sample-app/dialog-evidence"
+    )
 
 
 def validate_focused_workflow(
@@ -247,7 +279,12 @@ def validate_document(
                 violations.add(
                     Violation(workflow_name, "pr-persisted-checkout", job_identifier)
                 )
-            if uses.startswith(ARTIFACT_ACTIONS):
+            if uses.startswith(
+                ARTIFACT_ACTIONS
+            ) and not is_run_bound_dialog_evidence_upload(
+                uses,
+                configuration,
+            ):
                 violations.add(Violation(workflow_name, "pr-artifact", job_identifier))
             if is_cache_action(uses):
                 key = (

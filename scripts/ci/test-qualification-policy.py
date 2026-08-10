@@ -37,6 +37,43 @@ trust = load_module(
 
 
 class ChangeClassificationTest(unittest.TestCase):
+    def test_customer_facing_changes_require_dialog_visual_qualification(
+        self,
+    ) -> None:
+        for path in (
+            "resources/js/dialogs.mjs",
+            "resources/js/screens/flows/index.vue",
+            "resources/sass/base.scss",
+            "resources/views/layout.blade.php",
+            "public/app-dark.css",
+            "package-lock.json",
+            "vite.config.mjs",
+            "scripts/ci/workflow-list-dialog-visual.mjs",
+            ".github/workflows/php.yml",
+        ):
+            with self.subTest(path=path):
+                result = qualification.classify_paths([path])
+                self.assertTrue(qualification.requires_dialog_visual(result))
+
+    def test_non_visual_changes_do_not_require_dialog_visual_qualification(
+        self,
+    ) -> None:
+        for path in (
+            "README.md",
+            "app/Console/WorkerStatusConformanceCommand.php",
+            "scripts/ci/component-release-recovery.py",
+        ):
+            with self.subTest(path=path):
+                result = qualification.classify_paths([path])
+                self.assertFalse(qualification.requires_dialog_visual(result))
+
+    def test_unavailable_change_range_requires_dialog_visual_qualification(
+        self,
+    ) -> None:
+        result = qualification.classify_event(ROOT, "workflow_dispatch", "", "")
+
+        self.assertTrue(qualification.requires_dialog_visual(result))
+
     def test_published_artifact_conformance_change_selects_conformance_qualification(
         self,
     ) -> None:
@@ -401,6 +438,32 @@ class ChangeClassificationTest(unittest.TestCase):
 
 
 class QualificationGateTest(unittest.TestCase):
+    def test_visual_change_requires_successful_dialog_job(self) -> None:
+        observed = dict(
+            qualification.expected_results(
+                qualification.COMPLETE,
+                dialog_visual_required=True,
+            )
+        )
+        self.assertEqual(
+            (),
+            qualification.evaluate_results(
+                qualification.COMPLETE,
+                observed,
+                dialog_visual_required=True,
+            ),
+        )
+
+        observed["dialog-visual"] = "skipped"
+        self.assertNotEqual(
+            (),
+            qualification.evaluate_results(
+                qualification.COMPLETE,
+                observed,
+                dialog_visual_required=True,
+            ),
+        )
+
     def test_conformance_route_requires_focused_job_and_skipped_matrices(
         self,
     ) -> None:
@@ -606,6 +669,79 @@ class ConformanceQualificationWorkflowContractTest(unittest.TestCase):
         ]
         self.assertEqual(1, len(matches))
         return matches[0]
+
+
+class DialogVisualQualificationWorkflowContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.workflow = yaml.load(
+            (ROOT / ".github" / "workflows" / "php.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        if not isinstance(cls.workflow, dict):
+            raise RuntimeError("build workflow must be a mapping")
+
+    def job(self) -> dict:
+        job = self.workflow["jobs"]["dialog-visual"]
+        self.assertIsInstance(job, dict)
+        return job
+
+    def named_step(self, name: str) -> dict:
+        matches = [
+            step
+            for step in self.job()["steps"]
+            if isinstance(step, dict) and step.get("name") == name
+        ]
+        self.assertEqual(1, len(matches), f"expected one workflow step named {name}")
+        return matches[0]
+
+    def test_candidate_dialog_job_is_selected_by_changed_path_output(self) -> None:
+        classify = self.workflow["jobs"]["classify"]
+        self.assertEqual(
+            "${{ steps.classify.outputs.dialog-visual-required }}",
+            classify["outputs"]["dialog-visual-required"],
+        )
+        self.assertIn(
+            "needs.classify.outputs.dialog-visual-required == 'true'",
+            self.job()["if"],
+        )
+        self.assertEqual("classify", self.job()["needs"])
+
+    def test_job_installs_candidate_through_sample_app(self) -> None:
+        candidate = self.named_step("Check out candidate Waterline")
+        self.assertEqual("waterline", candidate["with"]["path"])
+        self.assertNotIn("ref", candidate["with"])
+        self.assertEqual(
+            "durable-workflow/sample-app",
+            self.named_step("Check out Sample App integration")["with"]["repository"],
+        )
+        install = self.named_step("Install the candidate in Sample App")["run"]
+        self.assertIn("repositories.waterline-candidate", install)
+        self.assertIn("durable-workflow/waterline:*@dev", install)
+
+    def test_job_runs_and_uploads_the_opened_dialog_matrix(self) -> None:
+        command = self.named_step("Qualify the eight opened-dialog cases")["run"]
+        self.assertIn("scripts/ci/workflow-list-dialog-visual.mjs", command)
+        self.assertIn("--output-dir dialog-evidence", command)
+
+        upload = self.named_step("Upload responsive dialog evidence")
+        self.assertEqual("${{ always() }}", upload["if"])
+        self.assertEqual("sample-app/dialog-evidence", upload["with"]["path"])
+        self.assertEqual("error", upload["with"]["if-no-files-found"])
+        self.assertIn("${{ github.run_id }}", upload["with"]["name"])
+        self.assertIn("${{ github.run_attempt }}", upload["with"]["name"])
+
+    def test_required_target_gate_observes_dialog_result(self) -> None:
+        gate = self.workflow["jobs"]["target-branch-qualification"]
+        self.assertIn("dialog-visual", gate["needs"])
+        command = next(
+            step["run"]
+            for step in gate["steps"]
+            if isinstance(step, dict)
+            and step.get("name") == "Enforce selected qualification class"
+        )
+        self.assertIn('--dialog-visual-required="$DIALOG_VISUAL_REQUIRED"', command)
+        self.assertIn('--dialog-visual-result="$DIALOG_VISUAL_RESULT"', command)
 
 
 class NonRuntimeQualificationWorkflowContractTest(unittest.TestCase):
@@ -1093,6 +1229,48 @@ jobs:
         with:
           name: shared
           path: output
+"""
+        )
+
+        self.assertIn("pr-artifact", codes)
+
+    def test_run_bound_dialog_evidence_upload_is_allowed(self) -> None:
+        codes = self.codes(
+            """
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/upload-artifact@1111111111111111111111111111111111111111
+        with:
+          name: waterline-dialog-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: sample-app/dialog-evidence
+          if-no-files-found: error
+          retention-days: 30
+"""
+        )
+
+        self.assertNotIn("pr-artifact", codes)
+
+    def test_untrusted_artifact_download_remains_rejected(self) -> None:
+        codes = self.codes(
+            """
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  unsafe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@1111111111111111111111111111111111111111
+        with:
+          name: waterline-dialog-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: sample-app/dialog-evidence
+          if-no-files-found: error
+          retention-days: 30
 """
         )
 

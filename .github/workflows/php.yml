@@ -22,6 +22,7 @@ jobs:
     outputs:
       qualification-class: ${{ steps.classify.outputs.qualification-class }}
       qualification-reason: ${{ steps.classify.outputs.qualification-reason }}
+      dialog-visual-required: ${{ steps.classify.outputs.dialog-visual-required }}
       focused-checks: ${{ steps.classify.outputs.focused-checks }}
       started-at: ${{ steps.clock.outputs.started-at }}
 
@@ -214,6 +215,172 @@ jobs:
         tests/Unit/WorkerStatusSharedIsolationTest.mjs
         tests/Unit/WorkerStatusSharedTopologyTest.mjs
         tests/Unit/WorkerStatusVersionTest.mjs
+
+  dialog-visual:
+    name: Responsive workflow-list dialogs
+    needs: classify
+    if: ${{ github.server_url == 'https://github.com' && needs.classify.outputs.dialog-visual-required == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_USER: laravel
+          MYSQL_PASSWORD: password
+          MYSQL_DATABASE: sample
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -ppassword"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=3s
+          --health-timeout=3s
+          --health-retries=10
+
+    env:
+      APP_URL: http://127.0.0.1:8000
+
+    steps:
+    - name: Check out candidate Waterline
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        path: waterline
+        persist-credentials: false
+
+    - name: Check out Sample App integration
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        repository: durable-workflow/sample-app
+        path: sample-app
+        persist-credentials: false
+        ref: main
+
+    - name: Check out released workflow integration
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        repository: durable-workflow/workflow
+        path: workflow
+        persist-credentials: false
+        ref: v2
+
+    - name: Install PHP 8.4 and Composer
+      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
+      with:
+        php-version: '8.4'
+        extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, redis, bcmath
+        coverage: none
+        tools: composer:v2
+
+    - name: Install Node 22
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
+      with:
+        node-version: '22'
+
+    - name: Install the candidate in Sample App
+      working-directory: sample-app
+      env:
+        COMPOSER_MEMORY_LIMIT: '-1'
+      run: |
+        composer config repositories.waterline-candidate '{"type":"path","url":"../waterline","options":{"symlink":false}}'
+        composer config repositories.workflow-release '{"type":"path","url":"../workflow","options":{"symlink":false}}'
+        composer require --no-update \
+          'durable-workflow/waterline:*@dev' \
+          'durable-workflow/workflow:*@dev'
+        composer update --with-all-dependencies --no-progress --no-interaction --prefer-dist
+
+    - name: Configure the Sample App
+      working-directory: sample-app
+      run: |
+        APP_KEY_VALUE="base64:$(openssl rand -base64 32)"
+        cat > .env << ENVEOF
+        APP_NAME=Laravel
+        APP_ENV=local
+        APP_KEY=${APP_KEY_VALUE}
+        APP_DEBUG=true
+        APP_URL=${APP_URL}
+        LOG_CHANNEL=stack
+        LOG_LEVEL=debug
+        DB_CONNECTION=mysql
+        DB_HOST=127.0.0.1
+        DB_PORT=3306
+        DB_DATABASE=sample
+        DB_USERNAME=laravel
+        DB_PASSWORD=password
+        SHARED_DB_HOST=127.0.0.1
+        SHARED_DB_PORT=3306
+        SHARED_DB_DATABASE=sample
+        SHARED_DB_USERNAME=laravel
+        SHARED_DB_PASSWORD=password
+        REDIS_HOST=127.0.0.1
+        REDIS_PORT=6379
+        QUEUE_CONNECTION=redis
+        CACHE_STORE=redis
+        SESSION_DRIVER=redis
+        ENVEOF
+        php artisan config:clear
+        php artisan migrate --force
+        php artisan db:seed --force
+        php artisan tinker --execute="App\\Models\\User::query()->updateOrCreate(['email' => 'demo@example.com'], ['name' => 'Waterline Visual Operator', 'password' => Illuminate\\Support\\Facades\\Hash::make('password')]);"
+
+    - name: Publish candidate Waterline assets
+      working-directory: sample-app
+      run: |
+        php artisan vendor:publish --tag=waterline-assets --force
+        test -f public/vendor/waterline/app-dark.css
+        test -f public/vendor/waterline/app.js
+        test -f public/vendor/waterline/mix-manifest.json
+
+    - name: Start Sample App
+      working-directory: sample-app
+      run: |
+        php artisan serve --host=127.0.0.1 --port=8000 > ../dialog-web.log 2>&1 &
+        echo $! > ../dialog-web.pid
+        for attempt in $(seq 1 30); do
+          if curl -sf "${APP_URL}/up" > /dev/null; then
+            exit 0
+          fi
+          sleep 1
+        done
+        cat ../dialog-web.log
+        exit 1
+
+    - name: Install pinned-browser tooling
+      working-directory: sample-app
+      run: |
+        npm install --no-save playwright
+        npx playwright install chromium --with-deps
+
+    - name: Qualify the eight opened-dialog cases
+      working-directory: sample-app
+      run: >-
+        node ../waterline/scripts/ci/workflow-list-dialog-visual.mjs
+        --base-url "${APP_URL}"
+        --output-dir dialog-evidence
+
+    - name: Upload responsive dialog evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+      with:
+        name: waterline-dialog-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+        path: sample-app/dialog-evidence
+        if-no-files-found: error
+        retention-days: 30
+
+    - name: Stop Sample App
+      if: ${{ always() }}
+      run: '[ -f dialog-web.pid ] && kill "$(cat dialog-web.pid)" 2>/dev/null || true'
 
   frontend:
     name: Frontend dependency and production build
@@ -641,6 +808,7 @@ jobs:
       - classify
       - release-contracts
       - conformance-contracts
+      - dialog-visual
       - frontend
       - build
       - laravel-matrix
@@ -660,6 +828,8 @@ jobs:
         CLASSIFICATION_RESULT: ${{ needs.classify.result }}
         RELEASE_CONTRACTS_RESULT: ${{ needs.release-contracts.result }}
         CONFORMANCE_CONTRACTS_RESULT: ${{ needs.conformance-contracts.result }}
+        DIALOG_VISUAL_REQUIRED: ${{ needs.classify.outputs.dialog-visual-required }}
+        DIALOG_VISUAL_RESULT: ${{ needs.dialog-visual.result }}
         FRONTEND_RESULT: ${{ needs.frontend.result }}
         BUILD_RESULT: ${{ needs.build.result }}
         MATRIX_RESULT: ${{ needs.laravel-matrix.result }}
@@ -672,6 +842,8 @@ jobs:
         --classification-result="$CLASSIFICATION_RESULT"
         --release-contracts-result="$RELEASE_CONTRACTS_RESULT"
         --conformance-contracts-result="$CONFORMANCE_CONTRACTS_RESULT"
+        --dialog-visual-required="$DIALOG_VISUAL_REQUIRED"
+        --dialog-visual-result="$DIALOG_VISUAL_RESULT"
         --frontend-result="$FRONTEND_RESULT"
         --build-result="$BUILD_RESULT"
         --laravel-matrix-result="$MATRIX_RESULT"

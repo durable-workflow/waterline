@@ -81,6 +81,22 @@ CONFORMANCE_FOCUSED_CHECKS = (
     "node:test:tests/Unit/WorkerStatus*Test.mjs",
 )
 NON_RUNTIME_FOCUSED_CHECKS = ("documentation-links-and-assets",)
+DIALOG_VISUAL_PATH_PREFIXES = (
+    "public/",
+    "resources/",
+)
+DIALOG_VISUAL_PATHS = frozenset(
+    {
+        ".github/workflows/php.yml",
+        "package-lock.json",
+        "package.json",
+        "scripts/ci/qualification_policy.py",
+        "scripts/ci/test-qualification-policy.py",
+        "scripts/ci/workflow-list-dialog-visual.mjs",
+        "scripts/ci/workflow_trust_policy.py",
+        "vite.config.mjs",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -207,7 +223,25 @@ def classify_event(
     return git_changed_paths(repository, base, head)
 
 
-def expected_results(classification: str) -> Mapping[str, str]:
+def requires_dialog_visual(result: Classification) -> bool:
+    if result.reason in {
+        "no-changed-paths",
+        "non-change-event",
+        "unavailable-git-range",
+        "unsafe-changed-path",
+    }:
+        return True
+
+    return any(
+        path in DIALOG_VISUAL_PATHS or path.startswith(DIALOG_VISUAL_PATH_PREFIXES)
+        for path in result.changed_paths
+    )
+
+
+def expected_results(
+    classification: str,
+    dialog_visual_required: bool = False,
+) -> Mapping[str, str]:
     if classification == COMPLETE:
         matrix_result = "success"
         frontend_result = "success"
@@ -223,6 +257,7 @@ def expected_results(classification: str) -> Mapping[str, str]:
         "classification": "success",
         "release-contracts": "success",
         "conformance-contracts": conformance_result,
+        "dialog-visual": "success" if dialog_visual_required else "skipped",
         "frontend": frontend_result,
         "build": matrix_result,
         "laravel-matrix": matrix_result,
@@ -250,9 +285,10 @@ def focused_checks(classification: str) -> tuple[str, ...]:
 def evaluate_results(
     classification: str,
     observed: Mapping[str, str],
+    dialog_visual_required: bool = False,
 ) -> tuple[str, ...]:
     try:
-        expected = expected_results(classification)
+        expected = expected_results(classification, dialog_visual_required)
     except ValueError:
         return ("qualification-class:invalid",)
 
@@ -342,6 +378,7 @@ def classify_command(arguments: argparse.Namespace) -> int:
         "qualification-class": result.name,
         "qualification-reason": result.reason,
         "changed-path-count": len(result.changed_paths),
+        "dialog-visual-required": str(requires_dialog_visual(result)).lower(),
         "focused-checks": json.dumps(
             focused_checks(result.name),
             separators=(",", ":"),
@@ -356,6 +393,8 @@ def classify_command(arguments: argparse.Namespace) -> int:
             f"- Selected class: `{result.name}`",
             f"- Classification basis: `{result.reason}`",
             f"- Changed paths considered: {len(result.changed_paths)}",
+            "- Responsive dialog visual required: "
+            f"`{str(requires_dialog_visual(result)).lower()}`",
             "- Focused checks: "
             + ", ".join(f"`{check}`" for check in focused_checks(result.name)),
         ),
@@ -370,13 +409,18 @@ def gate_command(arguments: argparse.Namespace) -> int:
         "classification": arguments.classification_result,
         "release-contracts": arguments.release_contracts_result,
         "conformance-contracts": arguments.conformance_contracts_result,
+        "dialog-visual": arguments.dialog_visual_result,
         "frontend": arguments.frontend_result,
         "build": arguments.build_result,
         "laravel-matrix": arguments.laravel_matrix_result,
         "laravel-compatibility": arguments.laravel_compatibility_result,
         "database": arguments.database_result,
     }
-    failures = evaluate_results(arguments.classification, observed)
+    failures = evaluate_results(
+        arguments.classification,
+        observed,
+        arguments.dialog_visual_required == "true",
+    )
     selected_checks = (
         focused_checks(arguments.classification)
         if arguments.classification in QUALIFICATION_CLASSES
@@ -451,6 +495,12 @@ def parser() -> argparse.ArgumentParser:
     gate.add_argument("--classification-result", required=True)
     gate.add_argument("--release-contracts-result", required=True)
     gate.add_argument("--conformance-contracts-result", required=True)
+    gate.add_argument(
+        "--dialog-visual-required",
+        required=True,
+        choices=("true", "false"),
+    )
+    gate.add_argument("--dialog-visual-result", required=True)
     gate.add_argument("--frontend-result", required=True)
     gate.add_argument("--build-result", required=True)
     gate.add_argument("--laravel-matrix-result", required=True)
