@@ -2,11 +2,13 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.16` source identity. Package and standalone
-service distributions now bind PHP SDK `2.0.0-rc.14`, while embedded integration
-targets Workflow `2.0.0-rc.14`. Namespace-scoped capacity evidence now exposes
-bounded runtime saturation signals and guarded, advisory recommendation inputs
-without treating infrastructure telemetry as Waterline-owned measurements.
+Waterline advances to the `2.0.0-rc.17` source identity. Its package metadata
+now describes the operational UI across embedded and service-mode deployments.
+Package and standalone service distributions remain bound to PHP SDK
+`2.0.0-rc.14`, while embedded integration targets Workflow `2.0.0-rc.14`.
+Namespace-scoped capacity evidence exposes bounded runtime saturation signals
+and guarded, advisory recommendation inputs without treating infrastructure
+telemetry as Waterline-owned measurements.
 
 Workflow-list filter and view-option dialogs now use a coherent light or dark
 palette, keep their action row reachable around an internally scrolling body,

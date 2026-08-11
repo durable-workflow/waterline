@@ -13,14 +13,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
 SCRIPT = ROOT / "scripts" / "ci" / "check-exact-current-composer.sh"
-WATERLINE = "2.0.0-rc.16"
+WATERLINE = "2.0.0-rc.17"
 WORKFLOW = "2.0.0-rc.18"
 SDK = "2.0.0-rc.12"
+DESCRIPTION = (
+    "Operational UI for Durable Workflow across embedded and service-mode deployments."
+)
 
 
 class ExactCurrentComposerTest(unittest.TestCase):
     def run_probe(
-        self, *, cached_attempts: int, attempts: int
+        self, *, cached_attempts: int, metadata_cached_attempts: int, attempts: int
     ) -> tuple[subprocess.CompletedProcess[str], dict[str, object], int]:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
@@ -44,6 +47,14 @@ case " $* " in
             exit 2
         fi
         ;;
+    *" show "*)
+        count="$(sed -n '1p' "$FAKE_COMPOSER_COUNTER")"
+        description="$FAKE_COMPOSER_DESCRIPTION"
+        if [ "$count" -le "$FAKE_COMPOSER_METADATA_CACHED_ATTEMPTS" ]; then
+            description='Stale package description.'
+        fi
+        printf '{"description":"%s"}\n' "$description"
+        ;;
 esac
 exit 0
 """,
@@ -55,6 +66,7 @@ exit 0
                 json.dumps(
                     {
                         "extra": {"durable-workflow": {"product-train": WATERLINE}},
+                        "description": DESCRIPTION,
                         "require": {"durable-workflow/sdk": SDK},
                         "require-dev": {"durable-workflow/workflow": WORKFLOW},
                     }
@@ -70,6 +82,10 @@ exit 0
                     "PATH": f"{binary_directory}:{os.environ['PATH']}",
                     "FAKE_COMPOSER_COUNTER": str(counter),
                     "FAKE_COMPOSER_CACHED_ATTEMPTS": str(cached_attempts),
+                    "FAKE_COMPOSER_METADATA_CACHED_ATTEMPTS": str(
+                        metadata_cached_attempts
+                    ),
+                    "FAKE_COMPOSER_DESCRIPTION": DESCRIPTION,
                     "EXACT_CURRENT_COMPOSER_MANIFEST": str(manifest),
                     "EXACT_CURRENT_COMPOSER_EVIDENCE": str(evidence),
                     "EXACT_CURRENT_COMPOSER_ATTEMPTS": str(attempts),
@@ -84,7 +100,9 @@ exit 0
             return process, observed, count
 
     def test_cached_metadata_is_rechecked_until_the_exact_tuple_installs(self) -> None:
-        process, evidence, attempts = self.run_probe(cached_attempts=1, attempts=2)
+        process, evidence, attempts = self.run_probe(
+            cached_attempts=1, metadata_cached_attempts=0, attempts=2
+        )
 
         self.assertEqual(0, process.returncode, process.stderr)
         self.assertEqual(2, attempts)
@@ -93,10 +111,34 @@ exit 0
             {"waterline": WATERLINE, "workflow": WORKFLOW, "sdk-php": SDK},
             evidence["packages"],
         )
+        self.assertEqual(
+            {
+                "name": "durable-workflow/waterline",
+                "description": DESCRIPTION,
+            },
+            evidence["package_metadata"],
+        )
         self.assertIn("Waiting for Composer metadata convergence (1/2)", process.stderr)
 
+    def test_stale_description_is_rechecked_until_registry_metadata_matches(
+        self,
+    ) -> None:
+        process, evidence, attempts = self.run_probe(
+            cached_attempts=0, metadata_cached_attempts=1, attempts=2
+        )
+
+        self.assertEqual(0, process.returncode, process.stderr)
+        self.assertEqual(2, attempts)
+        self.assertEqual(DESCRIPTION, evidence["package_metadata"]["description"])
+        self.assertIn(
+            f"Composer reported the published Waterline description: {DESCRIPTION}",
+            process.stdout,
+        )
+
     def test_non_installable_tuple_fails_after_the_bound_with_versions(self) -> None:
-        process, evidence, attempts = self.run_probe(cached_attempts=2, attempts=2)
+        process, evidence, attempts = self.run_probe(
+            cached_attempts=2, metadata_cached_attempts=0, attempts=2
+        )
 
         self.assertNotEqual(0, process.returncode)
         self.assertEqual(2, attempts)

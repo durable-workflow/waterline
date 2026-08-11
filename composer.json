@@ -1,6 +1,6 @@
 {
     "name": "durable-workflow/waterline",
-    "description": "An elegant UI for monitoring Laravel Workflows.",
+    "description": "Operational UI for Durable Workflow across embedded and service-mode deployments.",
     "license": "MIT",
     "replace": {
         "laravel-workflow/waterline": "self.version"
@@ -72,7 +72,7 @@
     },
     "extra": {
         "durable-workflow": {
-            "product-train": "2.0.0-rc.16"
+            "product-train": "2.0.0-rc.17"
         },
         "laravel": {
             "providers": [
