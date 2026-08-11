@@ -106,6 +106,68 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('data.0.workflow_type', 'orders.process');
     }
 
+    public function testCapacityEvidenceUsesTheOfficialRemoteMetricsContractWithoutLeakingExecutionIds(): void
+    {
+        config()->set('waterline.capacity_evidence.plan', [
+            'version' => 'cloud-test-v1',
+            'limits' => ['workflow_starts_per_second' => 1],
+        ]);
+        $this->client->capacityEvidence = [
+            'observation_window' => ['duration_seconds' => 300],
+            'sustained_evidence' => [
+                'observation_windows' => 2,
+                'downgrade_clear_windows' => ['workflow_starts_per_second' => 2],
+            ],
+            'throughput' => [
+                'workflow_starts' => [
+                    'available' => true,
+                    'value' => 12,
+                    'unit' => 'count',
+                    'kind' => 'window_count',
+                    'source' => 'durable_workflow_service',
+                    'workflow_id' => 'remote-workflow-id',
+                ],
+                'queries' => [
+                    'available' => true,
+                    'value' => 8,
+                    'unit' => 'count',
+                    'kind' => 'window_count',
+                    'source' => 'durable_workflow_service',
+                ],
+            ],
+        ];
+
+        $response = $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=300')
+            ->assertOk()
+            ->assertJsonPath('schema', 'waterline.namespace_capacity_evidence')
+            ->assertJsonPath('transport', 'service')
+            ->assertJsonPath('scope.namespace', 'orders')
+            ->assertJsonPath('observation_window.duration_seconds', 300)
+            ->assertJsonPath('runtime_evidence.throughput.workflow_starts.value', 12)
+            ->assertJsonPath('runtime_evidence.throughput.queries.value', 8)
+            ->assertJsonPath('runtime_evidence.throughput.activity_dispatches.available', false)
+            ->assertJsonPath('runtime_evidence.concurrency.open_workflows.value', 1)
+            ->assertJsonPath('recommendation_input.decision_guardrails.observation_windows_available', 2)
+            ->assertJsonPath('recommendation_input.decision_guardrails.sustained_windows_observed', 2)
+            ->assertJsonPath('commercial_boundary.automatic_infrastructure_change', false)
+            ->assertJsonPath('backend.capabilities.capacity_evidence', true);
+
+        $this->assertStringNotContainsString(
+            'remote-workflow-id',
+            json_encode($response->json(), JSON_THROW_ON_ERROR),
+        );
+
+        $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
+            ->assertOk()
+            ->assertJsonPath('runtime_evidence.throughput.workflow_starts.available', false)
+            ->assertJsonPath('runtime_evidence.throughput.queries.available', false);
+
+        $this->assertSame(
+            'operatorMetrics',
+            collect($this->client->calls)->last()['method'],
+        );
+    }
+
     public function testWorkerRegistrationRostersAreDisjointForEveryFleetShape(): void
     {
         $active = [[

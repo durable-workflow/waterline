@@ -243,6 +243,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Namespace Capacity Evidence
+    |--------------------------------------------------------------------------
+    |
+    | This diagnostic surface exposes bounded, namespace-scoped runtime
+    | evidence for an external capacity adviser. It is deliberately separate
+    | from billing and infrastructure telemetry. Applications may add their
+    | current plan identity and measured envelope through runtime config; no
+    | default throughput or latency limit is invented by Waterline.
+    |
+    */
+
+    'capacity_evidence' => [
+        'default_window_seconds' => 3600,
+        'allowed_window_seconds' => [60, 300, 900, 3600, 21600, 86400],
+        'latency_sample_limit' => 10000,
+        'percentile_min_samples' => [
+            'p50' => 1,
+            'p95' => 20,
+            'p99' => 100,
+        ],
+        'tenant' => env('WATERLINE_CAPACITY_EVIDENCE_TENANT'),
+        'plan' => [
+            'version' => env('WATERLINE_CAPACITY_PLAN_VERSION'),
+            'limits' => [],
+        ],
+        'recommendation_policy' => [
+            'sustained_windows' => 3,
+            'upgrade_utilization_ratio' => 0.8,
+            'downgrade_utilization_ratio' => 0.5,
+            'cooldown_seconds' => 86400,
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Workflow Sort Column
     |--------------------------------------------------------------------------
     |

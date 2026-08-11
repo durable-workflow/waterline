@@ -68,6 +68,7 @@ final class BackendConfiguration
             'history' => true,
             'health' => true,
             'metrics' => true,
+            'capacity_evidence' => true,
             'dashboard_summary' => true,
             'workers' => true,
             'task_queues' => true,

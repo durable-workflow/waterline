@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Waterline\Http\Controllers\CapacityEvidenceController;
 use Waterline\Http\Controllers\DashboardStatsController;
 use Waterline\Http\Controllers\SavedViewsController;
 use Waterline\Http\Controllers\UserPreferencesController;
@@ -9,6 +10,7 @@ use Waterline\Http\Controllers\V2SchedulesController;
 use Waterline\Http\Controllers\V2ServicesController;
 use Waterline\Http\Controllers\WorkflowsController;
 use Waterline\Http\Controllers\Remote\RemoteCapabilityController;
+use Waterline\Http\Controllers\Remote\RemoteCapacityEvidenceController;
 use Waterline\Http\Controllers\Remote\RemoteHealthController;
 use Waterline\Http\Controllers\Remote\RemoteSchedulesController;
 use Waterline\Http\Controllers\Remote\RemoteStatsController;
@@ -17,11 +19,15 @@ use Waterline\Support\BackendConfiguration;
 
 $workflowsController = BackendConfiguration::serviceMode() ? RemoteWorkflowsController::class : WorkflowsController::class;
 $statsController = BackendConfiguration::serviceMode() ? RemoteStatsController::class : DashboardStatsController::class;
+$capacityEvidenceController = BackendConfiguration::serviceMode()
+    ? RemoteCapacityEvidenceController::class
+    : CapacityEvidenceController::class;
 $healthController = BackendConfiguration::serviceMode() ? RemoteHealthController::class : V2HealthController::class;
 $schedulesController = BackendConfiguration::serviceMode() ? RemoteSchedulesController::class : V2SchedulesController::class;
 
-Route::prefix('api')->group(function () use ($healthController, $schedulesController, $statsController, $workflowsController) {
+Route::prefix('api')->group(function () use ($capacityEvidenceController, $healthController, $schedulesController, $statsController, $workflowsController) {
     Route::get('/stats', [$statsController, 'index'])->name('waterline.stats.index');
+    Route::get('/v2/capacity-evidence', [$capacityEvidenceController, 'show'])->name('waterline.v2.capacity-evidence.show');
     Route::get('/v2/health', [$healthController, 'show'])->name('waterline.v2.health');
     Route::get('/saved-views', [SavedViewsController::class, 'index'])->name('waterline.saved-views.index');
     Route::post('/saved-views', [SavedViewsController::class, 'store'])->name('waterline.saved-views.store');

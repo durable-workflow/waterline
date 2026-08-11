@@ -30,6 +30,9 @@ final class FakeRemoteClient
     /** @var list<array<string, mixed>>|null */
     public ?array $staleWorkerRows = null;
 
+    /** @var array<string, mixed>|null */
+    public ?array $capacityEvidence = null;
+
     public function listWorkflows(
         ?string $workflowType = null,
         ?string $status = null,
@@ -116,7 +119,10 @@ final class FakeRemoteClient
     {
         $this->called(__FUNCTION__, []);
 
-        return ['operator_metrics' => ['runs' => ['total' => 1, 'running' => 1, 'failed' => 0]]];
+        return ['operator_metrics' => array_filter([
+            'runs' => ['total' => 1, 'running' => 1, 'failed' => 0],
+            'capacity_evidence' => $this->capacityEvidence,
+        ], static fn (mixed $value): bool => $value !== null)];
     }
 
     /** @return array<string, mixed> */

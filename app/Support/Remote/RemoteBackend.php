@@ -63,6 +63,7 @@ final class RemoteBackend
         $capabilities = BackendConfiguration::declaredCapabilities();
         $capabilities['health'] = $this->supports('systemHealth');
         $capabilities['metrics'] = $this->supports('operatorMetrics');
+        $capabilities['capacity_evidence'] = $this->supports('operatorMetrics');
         $capabilities['dashboard_summary'] = $this->supports('operatorDashboard');
         $capabilities['workers'] = $this->supports('listWorkers');
         $capabilities['task_queues'] = $this->supports('listTaskQueues');
