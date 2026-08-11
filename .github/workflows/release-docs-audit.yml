@@ -21,7 +21,14 @@ permissions:
 jobs:
   docs-release-audit:
     name: Verify complete Waterline public release train
-    if: ${{ github.event_name != 'schedule' || github.server_url == '' || github.server_url == 'https://github.com' }}
+    if: >-
+      ${{
+        github.event_name != 'schedule' ||
+        github.server_url == 'https://github.com' ||
+        (github.server_url == '' &&
+         (github.repository == '' ||
+          github.repository == 'durable-workflow/waterline'))
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import ast
 import importlib.util
+import re
 import subprocess
 import sys
 import tempfile
@@ -14,6 +16,38 @@ import yaml
 
 
 ROOT = Path(__file__).parents[2]
+
+
+def evaluate_job_condition(condition: str, github: dict[str, str]) -> bool:
+    prefix = "${{"
+    suffix = "}}"
+    if not condition.startswith(prefix) or not condition.endswith(suffix):
+        raise ValueError("job condition must use an Actions expression")
+
+    expression = condition[len(prefix) : -len(suffix)].strip()
+    expression = re.sub(
+        r"\bgithub\.(event_name|repository|server_url)\b",
+        lambda match: repr(github.get(match.group(1), "")),
+        expression,
+    )
+    expression = expression.replace("||", " or ").replace("&&", " and ")
+    expression = " ".join(expression.split())
+
+    tree = ast.parse(expression, mode="eval")
+    allowed_nodes = (
+        ast.Expression,
+        ast.BoolOp,
+        ast.Or,
+        ast.And,
+        ast.Compare,
+        ast.Eq,
+        ast.NotEq,
+        ast.Constant,
+    )
+    if any(not isinstance(node, allowed_nodes) for node in ast.walk(tree)):
+        raise ValueError("job condition uses unsupported expression syntax")
+
+    return bool(eval(compile(tree, "<job-condition>", "eval"), {"__builtins__": {}}))
 
 
 def load_module(name: str, path: Path):
@@ -1063,14 +1097,65 @@ class ReleaseDocsAuditWorkflowContractTest(unittest.TestCase):
             triggers["workflow_dispatch"]["inputs"]["tag"]["required"],
         )
 
-    def test_only_identified_non_github_schedules_skip_runner_assignment(
-        self,
-    ) -> None:
-        self.assertEqual(
-            "${{ github.event_name != 'schedule' || "
-            "github.server_url == '' || "
-            "github.server_url == 'https://github.com' }}",
-            self.audit_job()["if"],
+    def audit_runs(self, **github: str) -> bool:
+        return evaluate_job_condition(self.audit_job()["if"], github)
+
+    def test_forgejo_schedule_skips_audit_before_runner_assignment(self) -> None:
+        audit_runs = self.audit_runs(
+            event_name="schedule",
+            repository="forgejo-mirror/waterline",
+            server_url="",
+        )
+
+        runner_available_at = 0
+        audit_assignment = None
+        if audit_runs:
+            audit_assignment = runner_available_at
+            runner_available_at += 580
+        candidate_assignment = runner_available_at
+
+        self.assertIsNone(audit_assignment)
+        self.assertEqual(0, candidate_assignment)
+
+    def test_only_identified_non_github_schedules_skip_audit(self) -> None:
+        contexts = {
+            "github-schedule": {
+                "event_name": "schedule",
+                "repository": "durable-workflow/waterline",
+                "server_url": "https://github.com",
+            },
+            "github-schedule-with-missing-server-url": {
+                "event_name": "schedule",
+                "repository": "durable-workflow/waterline",
+                "server_url": "",
+            },
+            "unidentified-schedule": {
+                "event_name": "schedule",
+                "repository": "",
+                "server_url": "",
+            },
+            "tag": {
+                "event_name": "push",
+                "repository": "durable-workflow/waterline",
+                "server_url": "https://github.com",
+            },
+            "manual": {
+                "event_name": "workflow_dispatch",
+                "repository": "durable-workflow/waterline",
+                "server_url": "https://github.com",
+            },
+        }
+
+        for name, context in contexts.items():
+            with self.subTest(name=name):
+                self.assertTrue(self.audit_runs(**context))
+
+        self.assertFalse(
+            self.audit_runs(
+                event_name="schedule",
+                repository="durable-workflow/waterline",
+                server_url="https://forgejo.example",
+            )
         )
 
     def test_complete_public_release_evidence_remains_fail_closed(self) -> None:
