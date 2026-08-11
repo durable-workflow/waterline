@@ -717,6 +717,12 @@ class DialogVisualQualificationWorkflowContractTest(unittest.TestCase):
         )
         install = self.named_step("Install the candidate in Sample App")["run"]
         self.assertIn("repositories.waterline-candidate", install)
+        self.assertIn(
+            "../waterline/release/current-product-tuple.json",
+            install,
+        )
+        self.assertIn('$tuple["versions"]["sdk-php"]', install)
+        self.assertIn('"durable-workflow/sdk:${sdk_version}"', install)
         self.assertIn("durable-workflow/waterline:*@dev", install)
 
     def test_job_runs_and_uploads_the_opened_dialog_matrix(self) -> None:

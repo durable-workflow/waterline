@@ -305,9 +305,25 @@ jobs:
       env:
         COMPOSER_MEMORY_LIMIT: '-1'
       run: |
+        sdk_version="$(
+          php -r '
+            $tuple = json_decode(
+                file_get_contents("../waterline/release/current-product-tuple.json"),
+                true,
+                flags: JSON_THROW_ON_ERROR
+            );
+            $version = $tuple["versions"]["sdk-php"] ?? null;
+            if (!is_string($version)) {
+                fwrite(STDERR, "approved PHP SDK version is missing\n");
+                exit(1);
+            }
+            echo $version;
+          '
+        )"
         composer config repositories.waterline-candidate '{"type":"path","url":"../waterline","options":{"symlink":false}}'
         composer config repositories.workflow-release '{"type":"path","url":"../workflow","options":{"symlink":false}}'
         composer require --no-update \
+          "durable-workflow/sdk:${sdk_version}" \
           'durable-workflow/waterline:*@dev' \
           'durable-workflow/workflow:*@dev'
         composer update --with-all-dependencies --no-progress --no-interaction --prefer-dist
