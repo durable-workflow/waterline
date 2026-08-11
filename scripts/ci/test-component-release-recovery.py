@@ -2861,6 +2861,32 @@ class PrivilegedWorkflowBoundaryTest(unittest.TestCase):
                 self.assertLess(validation_at, publisher.index(extraction))
                 self.assertLess(validation_at, publisher.index(consumer))
 
+    def test_completed_release_dispatch_stays_inside_the_protected_publisher(
+        self,
+    ) -> None:
+        publisher = WATERLINE_WORKFLOW.split("\n  publish:\n", 1)[1]
+        verification_at = publisher.index(
+            "      - name: Verify completed public release"
+        )
+        dispatch_at = publisher.index(
+            "      - name: Dispatch the completed release audit"
+        )
+
+        self.assertLess(
+            publisher.index("    environment: release-plan-publication"),
+            dispatch_at,
+        )
+        self.assertLess(verification_at, dispatch_at)
+        self.assertIn(
+            'event_type: "waterline-release-publisher-completed"', publisher
+        )
+        self.assertIn(
+            "client_payload: {tag: $tag, commit: $commit}", publisher
+        )
+        self.assertIn(
+            '"repos/${GITHUB_REPOSITORY}/dispatches" --input -', publisher
+        )
+
     def test_screenshot_generator_is_read_only_and_drops_checkout_credentials(self) -> None:
         generator = SCREENSHOTS_WORKFLOW.split("\n  publish:\n", 1)[0]
 

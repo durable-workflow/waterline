@@ -1079,7 +1079,7 @@ class ReleaseDocsAuditWorkflowContractTest(unittest.TestCase):
         self.assertIsInstance(job, dict)
         return job
 
-    def test_public_schedule_tag_and_manual_triggers_remain_available(self) -> None:
+    def test_public_convergence_triggers_remain_available(self) -> None:
         triggers = self.workflow["on"]
 
         self.assertEqual([{"cron": "53 * * * *"}], triggers["schedule"])
@@ -1091,6 +1091,10 @@ class ReleaseDocsAuditWorkflowContractTest(unittest.TestCase):
                 "2.0.0",
             ],
             triggers["push"]["tags"],
+        )
+        self.assertEqual(
+            ["waterline-release-publisher-completed"],
+            triggers["repository_dispatch"]["types"],
         )
         self.assertEqual(
             "true",
@@ -1134,8 +1138,8 @@ class ReleaseDocsAuditWorkflowContractTest(unittest.TestCase):
                 "repository": "",
                 "server_url": "",
             },
-            "tag": {
-                "event_name": "push",
+            "publisher-completed": {
+                "event_name": "repository_dispatch",
                 "repository": "durable-workflow/waterline",
                 "server_url": "https://github.com",
             },
@@ -1157,6 +1161,73 @@ class ReleaseDocsAuditWorkflowContractTest(unittest.TestCase):
                 server_url="https://forgejo.example",
             )
         )
+        self.assertFalse(
+            self.audit_runs(
+                event_name="push",
+                repository="durable-workflow/waterline",
+                server_url="https://github.com",
+            )
+        )
+
+    def test_rc16_ordering_defers_tag_and_audits_publisher_completion(self) -> None:
+        public_state = {
+            "service_image": "published",
+            "packagist_api": "published",
+            "composer_metadata": "cached",
+            "github_release": "absent",
+        }
+        self.assertEqual("cached", public_state["composer_metadata"])
+        self.assertEqual("absent", public_state["github_release"])
+        self.assertFalse(
+            self.audit_runs(
+                event_name="push",
+                repository="durable-workflow/waterline",
+                server_url="https://github.com",
+            )
+        )
+
+        publisher = yaml.load(
+            (ROOT / ".github" / "workflows" / "release-plan-recovery.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )["jobs"]["publish"]
+        step_names = [step.get("name") for step in publisher["steps"]]
+        registry_step = next(
+            step
+            for step in publisher["steps"]
+            if step.get("name") == "Wait for Packagist source identity"
+        )
+        self.assertIn("--registry-only", registry_step["run"])
+        self.assertLess(
+            step_names.index("Wait for Packagist source identity"),
+            step_names.index("Create or verify the source GitHub prerelease"),
+        )
+        self.assertLess(
+            step_names.index("Verify completed public release"),
+            step_names.index("Dispatch the completed release audit"),
+        )
+
+        public_state["github_release"] = "published"
+        self.assertEqual("cached", public_state["composer_metadata"])
+        self.assertEqual("published", public_state["github_release"])
+        self.assertTrue(
+            self.audit_runs(
+                event_name="repository_dispatch",
+                repository="durable-workflow/waterline",
+                server_url="https://github.com",
+            )
+        )
+
+        composer_step = next(
+            step
+            for step in self.audit_job()["steps"]
+            if step.get("run") == "scripts/ci/check-exact-current-composer.sh"
+        )
+        attempts = int(composer_step["env"]["EXACT_CURRENT_COMPOSER_ATTEMPTS"])
+        delay = int(composer_step["env"]["EXACT_CURRENT_COMPOSER_RETRY_SLEEP"])
+        self.assertGreaterEqual((attempts - 1) * delay, 15 * 60)
+
+        public_state["composer_metadata"] = "current"
+        self.assertEqual("current", public_state["composer_metadata"])
 
     def test_complete_public_release_evidence_remains_fail_closed(self) -> None:
         steps = self.audit_job()["steps"]

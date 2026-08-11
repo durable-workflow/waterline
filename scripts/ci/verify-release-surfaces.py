@@ -34,7 +34,9 @@ SERVICE_IMAGE = recovery.Component(
 )
 
 
-def verify(client: Any, version: str) -> dict[str, Any]:
+def verify(
+    client: Any, version: str, expected_commit: str | None = None
+) -> dict[str, Any]:
     identity = {
         "version": version,
         "commit": recovery.resolve_tag(client, "durable-workflow/waterline", version),
@@ -42,6 +44,12 @@ def verify(client: Any, version: str) -> dict[str, Any]:
     if identity["commit"] is None:
         raise recovery.NotFound(
             f"Waterline source tag {version} is absent", "source-tag"
+        )
+    if expected_commit is not None and identity["commit"] != expected_commit:
+        raise recovery.RecoveryError(
+            f"Waterline source tag {version} points to {identity['commit']}, "
+            f"not publisher-completed commit {expected_commit}",
+            "source-tag",
         )
     recovery.require_source_tag(client, "waterline", identity)
     return {
@@ -70,10 +78,16 @@ def main() -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--attempts", type=int, default=1)
     parser.add_argument("--sleep", type=int, default=0)
+    parser.add_argument("--expected-commit")
     parser.add_argument("--evidence", required=True, type=Path)
     args = parser.parse_args()
     if args.attempts < 1 or args.sleep < 0:
         parser.error("attempts must be positive and sleep must be non-negative")
+    if args.expected_commit is not None and (
+        len(args.expected_commit) != 40
+        or any(character not in "0123456789abcdef" for character in args.expected_commit)
+    ):
+        parser.error("expected commit must be an exact lowercase 40-character SHA")
 
     client = recovery.PublicClient(
         os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
@@ -81,7 +95,7 @@ def main() -> int:
     last_error: Exception | None = None
     for attempt in range(1, args.attempts + 1):
         try:
-            evidence = verify(client, args.version)
+            evidence = verify(client, args.version, args.expected_commit)
             args.evidence.write_text(
                 json.dumps(evidence, indent=2, sort_keys=True, ensure_ascii=True)
                 + "\n",
@@ -108,6 +122,7 @@ def main() -> int:
                 "schema": "durable-workflow.waterline-release-surfaces/v1",
                 "outcome": "incomplete",
                 "version": args.version,
+                "expected_source_commit": args.expected_commit,
                 "reason": str(last_error),
             },
             indent=2,

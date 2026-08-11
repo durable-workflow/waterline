@@ -260,6 +260,21 @@ jobs:
             --component waterline --plan recovery-input/release-plan.json \
             --attempts 3 --sleep 5 --evidence release-completion-evidence.json
 
+      - name: Dispatch the completed release audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.discover.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.discover.outputs.commit }}
+        run: |
+          jq -n \
+            --arg tag "$RELEASE_TAG" \
+            --arg commit "$RELEASE_COMMIT" \
+            '{
+              event_type: "waterline-release-publisher-completed",
+              client_payload: {tag: $tag, commit: $commit}
+            }' | gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/dispatches" --input -
+
       - name: Retain publication evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7

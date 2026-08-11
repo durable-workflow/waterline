@@ -9,6 +9,9 @@ on:
       - '2.0.0-beta.*'
       - '2.0.0-rc.*'
       - '2.0.0'
+  repository_dispatch:
+    types:
+      - waterline-release-publisher-completed
   workflow_dispatch:
     inputs:
       tag:
@@ -23,14 +26,15 @@ jobs:
     name: Verify complete Waterline public release train
     if: >-
       ${{
-        github.event_name != 'schedule' ||
-        github.server_url == 'https://github.com' ||
-        (github.server_url == '' &&
-         (github.repository == '' ||
-          github.repository == 'durable-workflow/waterline'))
+        github.event_name != 'push' &&
+        (github.event_name != 'schedule' ||
+         github.server_url == 'https://github.com' ||
+         (github.server_url == '' &&
+          (github.repository == '' ||
+           github.repository == 'durable-workflow/waterline')))
       }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
 
@@ -39,21 +43,35 @@ jobs:
         shell: bash
         env:
           INPUT_TAG: ${{ inputs.tag }}
+          PUBLISHED_TAG: ${{ github.event.client_payload.tag }}
+          PUBLISHED_COMMIT: ${{ github.event.client_payload.commit }}
         run: |
           set -euo pipefail
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             tag="$INPUT_TAG"
+            commit=''
+          elif [ "$GITHUB_EVENT_NAME" = "repository_dispatch" ]; then
+            tag="$PUBLISHED_TAG"
+            commit="$PUBLISHED_COMMIT"
           elif [ "$GITHUB_EVENT_NAME" = "push" ]; then
             tag="$GITHUB_REF_NAME"
+            commit=''
           else
             tag="$(node -e "process.stdout.write(require('./composer.json').extra['durable-workflow']['product-train'])")"
+            commit=''
           fi
           tag="${tag#v}"
           if ! printf '%s\n' "$tag" | grep -Eq '^2\.0\.0((-(alpha|beta|rc)\.[0-9]+)?)$'; then
             echo "::error::Invalid Waterline release tag for docs audit: $tag"
             exit 1
           fi
+          if [ "$GITHUB_EVENT_NAME" = "repository_dispatch" ] && \
+             ! printf '%s\n' "$commit" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Publisher completion did not identify an exact Waterline source commit"
+            exit 1
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
 
       - name: Check out the exact release source as inert qualification data
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
@@ -72,17 +90,25 @@ jobs:
       - name: Require source-bound GitHub, Packagist, and image surfaces
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          EXPECTED_SOURCE_COMMIT: ${{ steps.release.outputs.commit }}
         run: |
-          python scripts/ci/verify-release-surfaces.py \
-            --version "${{ steps.release.outputs.tag }}" \
-            --attempts 20 \
-            --sleep 30 \
+          arguments=(
+            --version "${{ steps.release.outputs.tag }}"
+            --attempts 20
+            --sleep 30
             --evidence release-surfaces-evidence.json
+          )
+          if [ -n "$EXPECTED_SOURCE_COMMIT" ]; then
+            arguments+=(--expected-commit "$EXPECTED_SOURCE_COMMIT")
+          fi
+          python scripts/ci/verify-release-surfaces.py "${arguments[@]}"
 
       - name: Solve the exact Waterline, Workflow, and PHP SDK tuple
         env:
           EXACT_CURRENT_COMPOSER_MANIFEST: .release-source/composer.json
           EXACT_CURRENT_COMPOSER_EVIDENCE: exact-current-composer-evidence.json
+          EXACT_CURRENT_COMPOSER_ATTEMPTS: 32
+          EXACT_CURRENT_COMPOSER_RETRY_SLEEP: 30
         run: scripts/ci/check-exact-current-composer.sh
 
       - name: Wait for Packagist release

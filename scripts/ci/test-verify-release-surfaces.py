@@ -75,6 +75,21 @@ class VerifyReleaseSurfacesTest(unittest.TestCase):
             with self.assertRaisesRegex(surfaces.recovery.NotFound, "source tag"):
                 surfaces.verify(mock.Mock(), "2.0.0-rc.10")
 
+    def test_publisher_completion_commit_must_match_the_immutable_tag(self) -> None:
+        commit = "a" * 40
+        with mock.patch.object(
+            surfaces.recovery, "resolve_tag", return_value=commit
+        ):
+            with self.assertRaisesRegex(
+                surfaces.recovery.RecoveryError,
+                "not publisher-completed commit",
+            ):
+                surfaces.verify(
+                    mock.Mock(),
+                    "2.0.0-rc.16",
+                    expected_commit="b" * 40,
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
