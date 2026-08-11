@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.14` source identity. Package and standalone
-service distributions now bind PHP SDK `2.0.0-rc.11`, while embedded integration
-targets Workflow `2.0.0-rc.13`. This direct successor keeps that exact Composer
-tuple while correcting the workflow-list dialog experience.
+Waterline advances to the `2.0.0-rc.15` source identity. Package and standalone
+service distributions now bind PHP SDK `2.0.0-rc.14`, while embedded integration
+targets Workflow `2.0.0-rc.14`. Release qualification now compares every source
+change and tag-triggered image publication with the approved current tuple.
 
 Workflow-list filter and view-option dialogs now use a coherent light or dark
 palette, keep their action row reachable around an internally scrolling body,

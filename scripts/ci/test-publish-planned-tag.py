@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -14,6 +15,8 @@ from pathlib import Path
 SCRIPT = Path(__file__).with_name("publish-planned-tag.py")
 PLAN_TAG = "release-plan/alpha-continuity-test"
 RELEASE_TAG = "2.0.0-alpha.136"
+SDK_VERSION = "2.0.0-alpha.135"
+WORKFLOW_VERSION = "2.0.0-alpha.135"
 
 
 def git(*arguments: str, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -49,6 +52,7 @@ class PlannedTagPublicationTest(unittest.TestCase):
         *,
         package: str = "durable-workflow/waterline",
         legacy_replacement: str = "self.version",
+        sdk_version: str = SDK_VERSION,
     ) -> str:
         (self.source / "value.txt").write_text(f"{value}\n", encoding="utf-8")
         (self.source / "composer.json").write_text(
@@ -56,6 +60,13 @@ class PlannedTagPublicationTest(unittest.TestCase):
                 {
                     "name": package,
                     "replace": {"laravel-workflow/waterline": legacy_replacement},
+                    "require": {"durable-workflow/sdk": sdk_version},
+                    "require-dev": {
+                        "durable-workflow/workflow": WORKFLOW_VERSION
+                    },
+                    "extra": {
+                        "durable-workflow": {"product-train": RELEASE_TAG}
+                    },
                 },
                 indent=2,
             )
@@ -74,6 +85,26 @@ class PlannedTagPublicationTest(unittest.TestCase):
         tag: str = RELEASE_TAG,
         plan_tag: str = PLAN_TAG,
     ) -> subprocess.CompletedProcess[str]:
+        qualification = self.root / f"{evidence_name}.qualification.json"
+        source = git("show", f"{commit}:composer.json", cwd=self.source).stdout.encode()
+        qualification.write_text(
+            json.dumps(
+                {
+                    "schema": "durable-workflow.php-waterline-plan-qualification/v1",
+                    "outcome": "verified",
+                    "transition": "paired-sdk-waterline-successor",
+                    "versions": {
+                        "waterline": tag,
+                        "workflow": WORKFLOW_VERSION,
+                        "sdk-php": SDK_VERSION,
+                    },
+                    "waterline_composer_sha256": hashlib.sha256(source).hexdigest(),
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         return subprocess.run(
             [
                 sys.executable,
@@ -86,6 +117,8 @@ class PlannedTagPublicationTest(unittest.TestCase):
                 commit,
                 "--plan-tag",
                 plan_tag,
+                "--qualification-evidence",
+                str(qualification),
                 "--evidence",
                 str(self.root / evidence_name),
             ],
@@ -149,6 +182,24 @@ class PlannedTagPublicationTest(unittest.TestCase):
         self.assertEqual(evidence["package"], "example/not-waterline")
         self.assertEqual(evidence["planned_version"], RELEASE_TAG)
         self.assertIn("protected successor plan", str(evidence["safe_recovery_action"]))
+        absent = git("ls-remote", str(self.remote), f"refs/tags/{RELEASE_TAG}")
+        self.assertEqual(absent.stdout, "")
+
+    def test_rejects_stale_sdk_pin_before_creating_tag(self) -> None:
+        stale_commit = self.commit(
+            "stale SDK dependency",
+            sdk_version="2.0.0-alpha.134",
+        )
+
+        rejected = self.publish(stale_commit)
+
+        self.assertEqual(rejected.returncode, 1)
+        evidence = self.evidence()
+        self.assertEqual(evidence["phase"], "release-train-qualification")
+        self.assertEqual(evidence["classification"], "stale-release-train-dependency")
+        self.assertEqual(
+            evidence["observed_versions"]["sdk-php"], "2.0.0-alpha.134"
+        )
         absent = git("ls-remote", str(self.remote), f"refs/tags/{RELEASE_TAG}")
         self.assertEqual(absent.stdout, "")
 

@@ -269,6 +269,16 @@ jobs:
           test "$EXPECTED_COMMIT" = "${{ steps.revalidate.outputs.commit }}"
           test "$EXPECTED_IMAGE" = "${{ steps.revalidate.outputs.image }}"
 
+      - name: Reject stale dependency identities in the planned source
+        run: >-
+          python scripts/ci/waterline_release_identity.py
+          --approved-tuple release/current-product-tuple.json
+          --waterline-composer release-source/composer.json
+          --standalone-composer release-source/standalone/composer.json
+          --standalone-lock release-source/standalone/composer.lock
+          --release-version "${{ needs.discover.outputs.version }}"
+          --evidence service-image-release-identity-evidence.json
+
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4
 
       - name: Configure least-privilege Docker Hub publication credential
@@ -330,6 +340,7 @@ jobs:
         with:
           name: waterline-service-image-publication-${{ needs.discover.outputs.plan }}
           path: |
+            service-image-release-identity-evidence.json
             service-image-prepublication-evidence.json
             service-image-publication-evidence.json
           if-no-files-found: warn

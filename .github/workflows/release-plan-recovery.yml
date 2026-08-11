@@ -226,9 +226,12 @@ jobs:
           PLAN_TAG: ${{ needs.discover.outputs.plan_tag }}
           RELEASE_TAG: ${{ needs.discover.outputs.version }}
           RELEASE_COMMIT: ${{ needs.discover.outputs.commit }}
+          TRAIN_QUALIFICATION: >-
+            recovery-input/php-waterline-plan-qualification.json
         run: |
           python scripts/ci/publish-planned-tag.py \
             --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT" --plan-tag "$PLAN_TAG" \
+            --qualification-evidence "$TRAIN_QUALIFICATION" \
             --evidence release-tag-publication-evidence.json
 
       - name: Wait for Packagist source identity

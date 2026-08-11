@@ -49,6 +49,8 @@ RELEASE_ONLY_PATHS = frozenset(
         "scripts/ci/test-release-example-contract.py",
         "scripts/ci/test-service-image-recovery.py",
         "scripts/ci/test-standalone-lock-contract.py",
+        "scripts/ci/test-waterline-release-identity.py",
+        "scripts/ci/waterline_release_identity.py",
     }
 )
 
@@ -74,6 +76,7 @@ COMMON_FOCUSED_CHECKS = (
     "workflow-syntax-and-trust",
     "public-boundary",
     "standalone-locked-composer-audit",
+    "approved-current-release-tuple",
     "release-and-recovery-contracts",
 )
 CONFORMANCE_FOCUSED_CHECKS = (

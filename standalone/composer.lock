@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "eec60c1ec66c6f6c237fdbfc6e34ad9d",
+    "content-hash": "2456a274c8cc897607ad1993bca07ca0",
     "packages": [
         {
             "name": "apache/avro",
@@ -505,16 +505,16 @@
         },
         {
             "name": "durable-workflow/sdk",
-            "version": "2.0.0-rc.11",
+            "version": "2.0.0-rc.14",
             "source": {
                 "type": "git",
                 "url": "https://github.com/durable-workflow/sdk-php.git",
-                "reference": "1ae0137cda02e5ac490b58275ad09e88d7119f1a"
+                "reference": "57a8149ae340e5eddecac9099e45a97eb64d3bb0"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/1ae0137cda02e5ac490b58275ad09e88d7119f1a",
-                "reference": "1ae0137cda02e5ac490b58275ad09e88d7119f1a",
+                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/57a8149ae340e5eddecac9099e45a97eb64d3bb0",
+                "reference": "57a8149ae340e5eddecac9099e45a97eb64d3bb0",
                 "shasum": ""
             },
             "require": {
@@ -555,7 +555,7 @@
                         "laravel": "^12.0|^13.0",
                         "symfony": "^6.4|^7.0|^8.0"
                     },
-                    "product-train": "2.0.0-rc.11",
+                    "product-train": "2.0.0-rc.14",
                     "payload-codecs": [
                         "avro"
                     ],
@@ -592,7 +592,7 @@
                 "issues": "https://github.com/durable-workflow/sdk-php/issues",
                 "source": "https://github.com/durable-workflow/sdk-php"
             },
-            "time": "2026-08-08T09:09:23+00:00"
+            "time": "2026-08-10T04:25:26+00:00"
         },
         {
             "name": "egulias/email-validator",

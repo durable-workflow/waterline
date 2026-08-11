@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import re
 import subprocess
@@ -16,6 +17,7 @@ COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 PLAN_TAG_PATTERN = re.compile(r"^release-plan/[a-z0-9][a-z0-9._-]{0,55}$")
 TAG_PATTERN = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$")
 SCHEMA = "durable-workflow.release-tag-publication/v1"
+TRAIN_SCHEMA = "durable-workflow.php-waterline-plan-qualification/v1"
 MAX_REMOTE_DIAGNOSTIC = 2048
 PERMISSION_BOUNDARY = (
     "repository write deploy key release-plan-publication; private key available only in the "
@@ -180,6 +182,122 @@ def require_source_identity(commit: str, tag: str, plan_tag: str) -> None:
         )
 
 
+def read_train_qualification(path: Path) -> dict[str, Any]:
+    try:
+        if path.is_symlink():
+            raise OSError("symbolic links are not accepted")
+        raw = path.read_bytes()
+        evidence = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as error:
+        raise PublicationError(
+            f"cannot load PHP/Waterline train qualification {path}: {error}",
+            phase="release-train-qualification",
+        ) from error
+    if len(raw) > 1024 * 1024 or not isinstance(evidence, dict):
+        raise PublicationError(
+            "PHP/Waterline train qualification must be a JSON object no larger than 1 MiB",
+            phase="release-train-qualification",
+        )
+    return evidence
+
+
+def require_train_qualification(
+    commit: str,
+    tag: str,
+    plan_tag: str,
+    qualification: dict[str, Any],
+) -> None:
+    versions = qualification.get("versions")
+    expected_fields = {"waterline", "workflow", "sdk-php"}
+    if (
+        qualification.get("schema") != TRAIN_SCHEMA
+        or qualification.get("outcome") != "verified"
+        or not isinstance(versions, dict)
+        or set(versions) != expected_fields
+        or any(
+            not isinstance(versions.get(component), str)
+            or TAG_PATTERN.fullmatch(versions[component]) is None
+            for component in expected_fields
+        )
+        or qualification.get("waterline_composer_sha256") is None
+        or re.fullmatch(
+            r"[0-9a-f]{64}", str(qualification["waterline_composer_sha256"])
+        )
+        is None
+    ):
+        raise PublicationError(
+            "PHP/Waterline train qualification has an invalid or incomplete identity",
+            phase="release-train-qualification",
+        )
+    if versions["waterline"] != tag:
+        raise PublicationError(
+            "PHP/Waterline train qualification does not authorize the planned release tag",
+            phase="release-train-qualification",
+        )
+
+    operation = f"git show {commit}:composer.json"
+    result = run_git("show", f"{commit}:composer.json")
+    if result.returncode:
+        raise PublicationError(
+            f"planned commit {commit} has no readable composer.json",
+            phase="release-train-qualification",
+            operation=operation,
+            remote_diagnostic=result.stderr,
+        )
+    source_raw = result.stdout.encode()
+    observed_hash = hashlib.sha256(source_raw).hexdigest()
+    if observed_hash != qualification["waterline_composer_sha256"]:
+        raise PublicationError(
+            "exact planned composer.json does not match the validated release-train source",
+            phase="release-train-qualification",
+            operation=operation,
+            evidence={
+                "classification": "release-train-source-substitution",
+                "expected_composer_sha256": qualification[
+                    "waterline_composer_sha256"
+                ],
+                "observed_composer_sha256": observed_hash,
+            },
+            safe_recovery_action=source_identity_recovery(plan_tag, tag),
+        )
+
+    try:
+        manifest = json.loads(source_raw)
+    except json.JSONDecodeError as error:
+        raise PublicationError(
+            "exact planned composer.json is not valid JSON",
+            phase="release-train-qualification",
+            operation=operation,
+        ) from error
+    require = manifest.get("require") if isinstance(manifest, dict) else None
+    require_dev = manifest.get("require-dev") if isinstance(manifest, dict) else None
+    extra = manifest.get("extra") if isinstance(manifest, dict) else None
+    durable = extra.get("durable-workflow") if isinstance(extra, dict) else None
+    observed = {
+        "waterline": durable.get("product-train") if isinstance(durable, dict) else None,
+        "workflow": (
+            require_dev.get("durable-workflow/workflow")
+            if isinstance(require_dev, dict)
+            else None
+        ),
+        "sdk-php": (
+            require.get("durable-workflow/sdk") if isinstance(require, dict) else None
+        ),
+    }
+    if observed != versions:
+        raise PublicationError(
+            "exact planned composer.json carries stale dependency identities",
+            phase="release-train-qualification",
+            operation=operation,
+            evidence={
+                "classification": "stale-release-train-dependency",
+                "approved_versions": versions,
+                "observed_versions": observed,
+            },
+            safe_recovery_action=source_identity_recovery(plan_tag, tag),
+        )
+
+
 def safe_recovery(plan_tag: str) -> str:
     return (
         "Approve or restore the repository's release-plan-publication environment and write deploy key, "
@@ -211,8 +329,15 @@ def validate_arguments(tag: str, commit: str, plan_tag: str, remote: str) -> Non
         raise PublicationError("Git remote has an invalid identity", phase="input")
 
 
-def publish_tag(remote: str, tag: str, commit: str, plan_tag: str) -> dict[str, Any]:
+def publish_tag(
+    remote: str,
+    tag: str,
+    commit: str,
+    plan_tag: str,
+    qualification: dict[str, Any],
+) -> dict[str, Any]:
     ref = f"refs/tags/{tag}"
+    require_train_qualification(commit, tag, plan_tag, qualification)
     require_source_identity(commit, tag, plan_tag)
     existing = resolve_remote_tag(remote, ref)
     if existing is not None:
@@ -258,13 +383,21 @@ def main() -> int:
     parser.add_argument("--tag", required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--plan-tag", required=True)
+    parser.add_argument("--qualification-evidence", required=True, type=Path)
     parser.add_argument("--evidence", required=True, type=Path)
     args = parser.parse_args()
 
     state = evidence_base(args.tag, args.commit, args.plan_tag, args.remote)
     try:
         validate_arguments(args.tag, args.commit, args.plan_tag, args.remote)
-        publication = publish_tag(args.remote, args.tag, args.commit, args.plan_tag)
+        qualification = read_train_qualification(args.qualification_evidence)
+        publication = publish_tag(
+            args.remote,
+            args.tag,
+            args.commit,
+            args.plan_tag,
+            qualification,
+        )
         state.update(
             {
                 "phase": "source-tag",
