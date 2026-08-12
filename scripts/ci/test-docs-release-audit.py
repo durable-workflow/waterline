@@ -94,9 +94,10 @@ class DocsReleaseAuditTest(unittest.TestCase):
                 json.dumps(
                     {
                         "name": "durable-workflow/waterline",
-                        "require": {"durable-workflow/sdk": VERSIONS["sdk-php"]},
+                        "require": {},
                         "require-dev": {
-                            "durable-workflow/workflow": VERSIONS["workflow"]
+                            "durable-workflow/sdk": VERSIONS["sdk-php"],
+                            "durable-workflow/workflow": VERSIONS["workflow"],
                         },
                     }
                 ),

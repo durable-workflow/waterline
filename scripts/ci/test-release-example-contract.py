@@ -37,11 +37,11 @@ RELEASE = contract.ReleaseTuple(
 )
 
 
-def composer_command(*, upgrade: bool = False) -> str:
+def composer_command(*, graph: str = "embedded", upgrade: bool = False) -> str:
     flag = " --with-all-dependencies" if upgrade else ""
     pins = [
         f"{package}:{contract.example_pin(version)}"
-        for package, version in RELEASE.packages.items()
+        for package, version in RELEASE.composer_graphs[graph].items()
     ]
     return f"composer require{flag} " + " ".join(pins)
 
@@ -66,6 +66,7 @@ The install command can move and use indented Markdown instead.
             RELEASE,
             minimum_install=1,
             minimum_upgrade=1,
+            required_graphs=("embedded",),
         )
 
         self.assertEqual(contract.ExampleCounts(install=1, upgrade=1), counts)
@@ -74,7 +75,7 @@ The install command can move and use indented Markdown instead.
     def test_rejects_a_stale_pin_for_each_tuple_component(self) -> None:
         current = composer_command()
 
-        for package, version in RELEASE.packages.items():
+        for package, version in RELEASE.composer_graphs["embedded"].items():
             with self.subTest(package=package):
                 stale = current.replace(
                     f"{package}:{contract.example_pin(version)}",
@@ -91,6 +92,35 @@ The install command can move and use indented Markdown instead.
                         minimum_install=1,
                         minimum_upgrade=0,
                     )
+
+        service = composer_command(graph="service")
+        stale_sdk = service.replace(
+            f"{contract.SDK_PACKAGE}:{contract.example_pin(RELEASE.sdk)}",
+            f"{contract.SDK_PACKAGE}:2.0.0-rc.1@RC",
+        )
+        with self.assertRaisesRegex(contract.ContractError, contract.SDK_PACKAGE):
+            contract.validate_composer_examples(
+                "example.md",
+                stale_sdk,
+                RELEASE,
+                minimum_install=1,
+                minimum_upgrade=0,
+            )
+
+    def test_rejects_a_combined_embedded_and_service_dependency_graph(self) -> None:
+        combined = "composer require " + " ".join(
+            f"{package}:{contract.example_pin(version)}"
+            for package, version in RELEASE.packages.items()
+        )
+
+        with self.assertRaisesRegex(contract.ContractError, "exactly the embedded"):
+            contract.validate_composer_examples(
+                "example.md",
+                combined,
+                RELEASE,
+                minimum_install=1,
+                minimum_upgrade=0,
+            )
 
     def test_rejects_stale_documented_service_image(self) -> None:
         stale = f"docker run {contract.SERVICE_IMAGE}:2.0.0-rc.1"

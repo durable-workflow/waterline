@@ -22,7 +22,7 @@ SPEC.loader.exec_module(identity)
 
 
 VERSIONS = {
-    "waterline": "2.0.0-rc.17",
+    "waterline": "2.0.0-rc.18",
     "workflow": "2.0.0-rc.14",
     "sdk-php": "2.0.0-rc.14",
 }
@@ -35,8 +35,11 @@ def approved() -> dict:
 def manifest() -> dict:
     return {
         "name": identity.PACKAGE,
-        "require": {identity.SDK_PACKAGE: VERSIONS["sdk-php"]},
-        "require-dev": {identity.WORKFLOW_PACKAGE: VERSIONS["workflow"]},
+        "require": {},
+        "require-dev": {
+            identity.SDK_PACKAGE: VERSIONS["sdk-php"],
+            identity.WORKFLOW_PACKAGE: VERSIONS["workflow"],
+        },
         "extra": {"durable-workflow": {"product-train": VERSIONS["waterline"]}},
     }
 
@@ -89,7 +92,7 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
 
     def test_deliberately_stale_php_sdk_pin_is_rejected(self) -> None:
         stale = manifest()
-        stale["require"][identity.SDK_PACKAGE] = "2.0.0-rc.11"
+        stale["require-dev"][identity.SDK_PACKAGE] = "2.0.0-rc.11"
 
         with self.assertRaisesRegex(
             identity.IdentityError, "do not match the approved current product tuple"

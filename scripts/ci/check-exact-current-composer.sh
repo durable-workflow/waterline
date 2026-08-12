@@ -3,6 +3,7 @@
 set -eu
 
 manifest="${EXACT_CURRENT_COMPOSER_MANIFEST:-composer.json}"
+service_manifest="${EXACT_CURRENT_COMPOSER_SERVICE_MANIFEST:-standalone/composer.json}"
 evidence="${EXACT_CURRENT_COMPOSER_EVIDENCE:-exact-current-composer-evidence.json}"
 attempts="${EXACT_CURRENT_COMPOSER_ATTEMPTS:-32}"
 sleep_seconds="${EXACT_CURRENT_COMPOSER_RETRY_SLEEP:-30}"
@@ -31,6 +32,22 @@ $result = [
         "name" => "durable-workflow/waterline",
         "description" => $argv[5],
     ],
+    "composer_graphs" => [
+        "embedded" => [
+            "minimum_stability" => "stable",
+            "root_require" => [
+                "durable-workflow/waterline" => $argv[2],
+                "durable-workflow/workflow" => $argv[3],
+            ],
+        ],
+        "service" => [
+            "minimum_stability" => "stable",
+            "root_require" => [
+                "durable-workflow/waterline" => $argv[2],
+                "durable-workflow/sdk" => $argv[4],
+            ],
+        ],
+    ],
     "reason" => $argv[6],
 ];
 file_put_contents($argv[1], json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
@@ -44,10 +61,14 @@ if [ ! -f "$manifest" ]; then
     printf '::error title=Waterline Composer manifest required::Waterline Composer manifest is absent: %s\n' "$manifest" >&2
     exit 1
 fi
+if [ ! -f "$service_manifest" ]; then
+    printf '::error title=Waterline service Composer manifest required::Waterline service Composer manifest is absent: %s\n' "$service_manifest" >&2
+    exit 1
+fi
 
 waterline="$(php -r '$m=json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR); echo $m["extra"]["durable-workflow"]["product-train"];' "$manifest")"
 workflow="$(php -r '$m=json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR); echo $m["require-dev"]["durable-workflow/workflow"];' "$manifest")"
-sdk="$(php -r '$m=json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR); echo $m["require"]["durable-workflow/sdk"];' "$manifest")"
+sdk="$(php -r '$m=json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR); echo $m["require"]["durable-workflow/sdk"];' "$service_manifest")"
 description="$(php -r '$m=json_decode(file_get_contents($argv[1]), true, flags: JSON_THROW_ON_ERROR); echo $m["description"] ?? "";' "$manifest")"
 
 if [ -z "$description" ]; then
@@ -73,28 +94,42 @@ fi
 
 solver_root="$(mktemp -d)"
 trap 'rm -rf "$solver_root"' EXIT HUP INT TERM
-composer --working-dir "$solver_root" init \
-    --name durable-workflow/exact-current-qualification \
+embedded_root="${solver_root}/embedded"
+service_root="${solver_root}/service"
+mkdir "$embedded_root" "$service_root"
+composer --working-dir "$embedded_root" init \
+    --name durable-workflow/embedded-exact-current-qualification \
     --no-interaction >/dev/null
-composer --working-dir "$solver_root" config minimum-stability RC
-composer --working-dir "$solver_root" config prefer-stable true
-metadata_path="${solver_root}/waterline-package-metadata.json"
+composer --working-dir "$service_root" init \
+    --name durable-workflow/service-exact-current-qualification \
+    --no-interaction >/dev/null
+composer --working-dir "$embedded_root" config prefer-stable true
+composer --working-dir "$service_root" config prefer-stable true
+metadata_path="${embedded_root}/waterline-package-metadata.json"
 attempt=1
 while :; do
     failure=""
     registry_description=""
 
-    if ! composer --working-dir "$solver_root" require \
+    if ! composer --working-dir "$embedded_root" require \
         --dry-run \
         --no-install \
         --no-interaction \
         --no-progress \
-        "durable-workflow/waterline:${waterline}@RC" \
-        "durable-workflow/workflow:${workflow}@RC" \
-        "durable-workflow/sdk:${sdk}@RC"
+        "durable-workflow/waterline:${waterline}" \
+        "durable-workflow/workflow:${workflow}"
     then
-        failure="Composer could not install the exact Waterline ${waterline}, Workflow ${workflow}, and PHP SDK ${sdk} tuple"
-    elif ! composer --working-dir "$solver_root" show \
+        failure="Composer could not install the embedded graph with exact Waterline ${waterline} and Workflow ${workflow} roots under stable minimum stability"
+    elif ! composer --working-dir "$service_root" require \
+        --dry-run \
+        --no-install \
+        --no-interaction \
+        --no-progress \
+        "durable-workflow/waterline:${waterline}" \
+        "durable-workflow/sdk:${sdk}"
+    then
+        failure="Composer could not install the service graph with exact Waterline ${waterline} and PHP SDK ${sdk} roots under stable minimum stability"
+    elif ! composer --working-dir "$embedded_root" show \
         --all \
         --format=json \
         durable-workflow/waterline \
@@ -132,10 +167,26 @@ $result = [
         "name" => "durable-workflow/waterline",
         "description" => $argv[5],
     ],
+    "composer_graphs" => [
+        "embedded" => [
+            "minimum_stability" => "stable",
+            "root_require" => [
+                "durable-workflow/waterline" => $argv[2],
+                "durable-workflow/workflow" => $argv[3],
+            ],
+        ],
+        "service" => [
+            "minimum_stability" => "stable",
+            "root_require" => [
+                "durable-workflow/waterline" => $argv[2],
+                "durable-workflow/sdk" => $argv[4],
+            ],
+        ],
+    ],
 ];
 file_put_contents($argv[1], json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
 ' "$evidence" "$waterline" "$workflow" "$sdk" "$registry_description"
 
-printf 'Composer resolved Waterline %s, Workflow %s, and PHP SDK %s together.\n' \
-    "$waterline" "$workflow" "$sdk"
+printf 'Composer resolved independent embedded (Waterline %s + Workflow %s) and service (Waterline %s + PHP SDK %s) graphs under stable minimum stability.\n' \
+    "$waterline" "$workflow" "$waterline" "$sdk"
 printf 'Composer reported the published Waterline description: %s\n' "$registry_description"

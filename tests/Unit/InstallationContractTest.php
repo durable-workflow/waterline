@@ -31,11 +31,14 @@ final class InstallationContractTest extends TestCase
         $sdkVersion = '2.0.0-rc.14';
         $workflowVersion = '2.0.0-rc.14';
 
-        $this->assertSame('2.0.0-rc.17', $releaseVersion);
-        $this->assertSame($sdkVersion, $manifest['require']['durable-workflow/sdk'] ?? null);
+        $this->assertSame('2.0.0-rc.18', $releaseVersion);
+        $this->assertArrayNotHasKey('durable-workflow/sdk', $manifest['require'] ?? []);
         $this->assertArrayNotHasKey('durable-workflow/workflow', $manifest['require'] ?? []);
+        $this->assertSame($sdkVersion, $manifest['require-dev']['durable-workflow/sdk'] ?? null);
         $this->assertSame($workflowVersion, $manifest['require-dev']['durable-workflow/workflow'] ?? null);
+        $this->assertArrayHasKey('durable-workflow/sdk', $manifest['suggest'] ?? []);
         $this->assertArrayHasKey('durable-workflow/workflow', $manifest['suggest'] ?? []);
+        $this->assertSame($sdkVersion, \Waterline\Support\ServiceModeRequirements::SDK_VERSION);
     }
 
     public function testStandaloneManifestAndLockContainOnlyTheRemoteRuntimePackages(): void
@@ -68,7 +71,7 @@ final class InstallationContractTest extends TestCase
         }
 
         $this->assertSame(
-            $packageManifest['require']['durable-workflow/sdk'] ?? null,
+            $packageManifest['require-dev']['durable-workflow/sdk'] ?? null,
             $serviceManifest['require']['durable-workflow/sdk'] ?? null,
         );
         $this->assertSame(

@@ -30,7 +30,7 @@ composer_manifest="${DOCS_RELEASE_AUDIT_COMPOSER_MANIFEST:-composer.json}"
 if [ ! -f "$composer_manifest" ]; then
     fail "Waterline Composer manifest required" "DOCS_RELEASE_AUDIT_COMPOSER_MANIFEST must identify the exact released composer.json."
 fi
-sdk_expected="$(node -e "const m=JSON.parse(require('fs').readFileSync(process.argv[1])); process.stdout.write(m.require['durable-workflow/sdk'])" "$composer_manifest")"
+sdk_expected="$(node -e "const m=JSON.parse(require('fs').readFileSync(process.argv[1])); process.stdout.write(m['require-dev']['durable-workflow/sdk'])" "$composer_manifest")"
 workflow_expected="$(node -e "const m=JSON.parse(require('fs').readFileSync(process.argv[1])); process.stdout.write(m['require-dev']['durable-workflow/workflow'])" "$composer_manifest")"
 
 write_unavailable_evidence() {

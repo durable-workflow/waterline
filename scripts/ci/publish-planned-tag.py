@@ -269,7 +269,6 @@ def require_train_qualification(
             phase="release-train-qualification",
             operation=operation,
         ) from error
-    require = manifest.get("require") if isinstance(manifest, dict) else None
     require_dev = manifest.get("require-dev") if isinstance(manifest, dict) else None
     extra = manifest.get("extra") if isinstance(manifest, dict) else None
     durable = extra.get("durable-workflow") if isinstance(extra, dict) else None
@@ -281,7 +280,9 @@ def require_train_qualification(
             else None
         ),
         "sdk-php": (
-            require.get("durable-workflow/sdk") if isinstance(require, dict) else None
+            require_dev.get("durable-workflow/sdk")
+            if isinstance(require_dev, dict)
+            else None
         ),
     }
     if observed != versions:

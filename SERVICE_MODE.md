@@ -19,7 +19,7 @@ docker run --rm -p 8080:8080 \
   -e WATERLINE_NAMESPACE=orders \
   -e WATERLINE_ACCESS_MODE=read_only \
   -e WATERLINE_ALLOW_UNAUTHENTICATED=true \
-  durableworkflow/waterline:2.0.0-rc.17
+  durableworkflow/waterline:2.0.0-rc.18
 ```
 
 Open `http://localhost:8080/waterline`. Bind the port to a private interface or
@@ -94,6 +94,23 @@ registration summary without contributing rows or leases.
 ready-to-edit service deployment. It keeps Waterline state in its own volume
 and accepts the standalone endpoint and token from the deployment environment.
 
+## Laravel-hosted service adapter
+
+Applications that host Waterline in Laravel while observing a standalone
+server install the service graph explicitly. It contains the Waterline UI and
+the PHP SDK, but not the embedded Workflow runtime:
+
+```bash
+composer require \
+  durable-workflow/waterline:2.0.0-rc.18@RC \
+  durable-workflow/sdk:2.0.0-rc.14@RC
+```
+
+Set `WATERLINE_BACKEND=service` together with the endpoint, token, namespace,
+and access-mode inputs above. If service mode is selected without the SDK,
+Waterline stops during package boot and reports the exact Composer command
+needed for the current release tuple.
+
 ## Embedded mode
 
 Embedded Laravel applications install the same Waterline package and UI plus
@@ -101,13 +118,12 @@ the optional Workflow integration:
 
 ```bash
 composer require \
-  durable-workflow/waterline:2.0.0-rc.17@RC \
-  durable-workflow/workflow:2.0.0-rc.14@RC \
-  durable-workflow/sdk:2.0.0-rc.14@RC
+  durable-workflow/waterline:2.0.0-rc.18@RC \
+  durable-workflow/workflow:2.0.0-rc.14@RC
 
 php artisan waterline:install
 ```
 
-The service adapter remains part of the package. Selecting it later only
-requires the service deployment inputs; no alternate UI or service-only fork
-is installed.
+The service adapter remains part of the package. Selecting it later requires
+adding the PHP SDK and the service deployment inputs; no alternate UI or
+service-only fork is installed.

@@ -2,10 +2,13 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.17` source identity. Its package metadata
+Waterline advances to the `2.0.0-rc.18` source identity. Its package metadata
 now describes the operational UI across embedded and service-mode deployments.
-Package and standalone service distributions remain bound to PHP SDK
-`2.0.0-rc.14`, while embedded integration targets Workflow `2.0.0-rc.14`.
+The standalone service distribution remains bound to PHP SDK `2.0.0-rc.14`,
+while embedded integration targets Workflow `2.0.0-rc.14` without pulling the
+standalone SDK into the host application. Laravel-hosted service mode now
+checks for the optional SDK at its configuration boundary and reports the exact
+installation command when it is absent.
 Namespace-scoped capacity evidence exposes bounded runtime saturation signals
 and guarded, advisory recommendation inputs without treating infrastructure
 telemetry as Waterline-owned measurements.

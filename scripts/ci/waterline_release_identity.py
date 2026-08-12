@@ -112,7 +112,7 @@ def validate(
             manifest, "require-dev", WORKFLOW_PACKAGE, "release source composer.json"
         ),
         "sdk-php": required_version(
-            manifest, "require", SDK_PACKAGE, "release source composer.json"
+            manifest, "require-dev", SDK_PACKAGE, "release source composer.json"
         ),
     }
     if observed != expected:

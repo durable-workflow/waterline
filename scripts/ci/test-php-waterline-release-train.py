@@ -46,8 +46,11 @@ def manifest(candidate: dict) -> tuple[dict, bytes]:
     versions = train.versions(candidate)
     value = {
         "name": "durable-workflow/waterline",
-        "require": {train.SDK_PACKAGE: versions["sdk-php"]},
-        "require-dev": {train.WORKFLOW_PACKAGE: versions["workflow"]},
+        "require": {},
+        "require-dev": {
+            train.SDK_PACKAGE: versions["sdk-php"],
+            train.WORKFLOW_PACKAGE: versions["workflow"],
+        },
         "extra": {"durable-workflow": {"product-train": versions["waterline"]}},
     }
     return value, b"exact planned Waterline composer source"
@@ -106,7 +109,7 @@ class PhpWaterlineReleaseTrainTest(unittest.TestCase):
     def test_cross_prerelease_compatibility_constraint_is_rejected(self) -> None:
         candidate = plan()
         composer, raw = manifest(candidate)
-        composer["require"][train.SDK_PACKAGE] = "2.0.0-rc.7"
+        composer["require-dev"][train.SDK_PACKAGE] = "2.0.0-rc.7"
 
         with self.assertRaisesRegex(train.TrainError, "Composer-satisfiable"):
             train.validate(candidate, candidate, composer, raw)

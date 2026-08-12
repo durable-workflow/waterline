@@ -48,6 +48,19 @@ class ReleaseTuple:
             SDK_PACKAGE: self.sdk,
         }
 
+    @property
+    def composer_graphs(self) -> Mapping[str, Mapping[str, str]]:
+        return {
+            "embedded": {
+                WATERLINE_PACKAGE: self.waterline,
+                WORKFLOW_PACKAGE: self.workflow,
+            },
+            "service": {
+                WATERLINE_PACKAGE: self.waterline,
+                SDK_PACKAGE: self.sdk,
+            },
+        }
+
 
 @dataclass(frozen=True)
 class ExampleCounts:
@@ -124,7 +137,7 @@ def declared_release_tuple(manifest: Mapping[str, Any]) -> ReleaseTuple:
             manifest,
             ("require-dev", WORKFLOW_PACKAGE),
         ),
-        sdk=exact_version(manifest, ("require", SDK_PACKAGE)),
+        sdk=exact_version(manifest, ("require-dev", SDK_PACKAGE)),
     )
 
 
@@ -208,9 +221,11 @@ def validate_composer_examples(
     *,
     minimum_install: int,
     minimum_upgrade: int,
+    required_graphs: Sequence[str] = (),
 ) -> ExampleCounts:
     install = 0
     upgrade = 0
+    observed_graphs: set[str] = set()
 
     for command in composer_require_commands(document):
         tokens = command_tokens(command, source)
@@ -221,7 +236,26 @@ def validate_composer_examples(
         if all(constraint is None for constraint in constraints.values()):
             continue
 
-        for package, version in release.packages.items():
+        present_packages = {
+            package
+            for package, constraint in constraints.items()
+            if constraint is not None
+        }
+        matching_graphs = [
+            name
+            for name, packages in release.composer_graphs.items()
+            if present_packages == set(packages)
+        ]
+        if len(matching_graphs) != 1:
+            raise ContractError(
+                f"{source} Composer example must select exactly the embedded "
+                f"({WATERLINE_PACKAGE} + {WORKFLOW_PACKAGE}) or service "
+                f"({WATERLINE_PACKAGE} + {SDK_PACKAGE}) package graph"
+            )
+
+        graph = matching_graphs[0]
+        observed_graphs.add(graph)
+        for package, version in release.composer_graphs[graph].items():
             expected = example_pin(version)
             observed = constraints[package]
             if observed != expected:
@@ -244,6 +278,12 @@ def validate_composer_examples(
         raise ContractError(
             f"{source} must contain at least {minimum_upgrade} embedded upgrade "
             "Composer example using -W or --with-all-dependencies"
+        )
+    missing_graphs = set(required_graphs) - observed_graphs
+    if missing_graphs:
+        raise ContractError(
+            f"{source} is missing Composer examples for package graphs "
+            f"{sorted(missing_graphs)!r}"
         )
 
     return ExampleCounts(install=install, upgrade=upgrade)
@@ -352,6 +392,7 @@ def validate_repository(root: Path = ROOT) -> RepositoryValidation:
         release,
         minimum_install=1,
         minimum_upgrade=1,
+        required_graphs=("embedded",),
     )
     service_document = read_text(root / "SERVICE_MODE.md")
     service_examples = validate_composer_examples(
@@ -360,6 +401,7 @@ def validate_repository(root: Path = ROOT) -> RepositoryValidation:
         release,
         minimum_install=1,
         minimum_upgrade=0,
+        required_graphs=("embedded", "service"),
     )
     documented_images = validate_documented_images(
         "SERVICE_MODE.md",

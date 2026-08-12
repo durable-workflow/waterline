@@ -18,6 +18,7 @@ use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\RuntimeConfiguration;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\RemoteBackend;
+use Waterline\Support\ServiceModeRequirements;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Waterline\Support\WorkflowPackageApiFloor;
 use Waterline\Support\WorkflowRepositoryResolver;
@@ -273,6 +274,7 @@ class WaterlineServiceProvider extends ServiceProvider
         }
 
         if (BackendConfiguration::serviceMode()) {
+            ServiceModeRequirements::assertSdkInstalled();
             $this->app->singleton(RemoteBackend::class, static fn (): RemoteBackend => RemoteBackend::fromConfig());
 
             return;

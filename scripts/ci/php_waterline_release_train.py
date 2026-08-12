@@ -93,7 +93,7 @@ def validate(
         raise TrainError(
             "planned Waterline composer.json has the wrong package identity"
         )
-    sdk = exact_requirement(manifest, "require", SDK_PACKAGE)
+    sdk = exact_requirement(manifest, "require-dev", SDK_PACKAGE)
     workflow = exact_requirement(manifest, "require-dev", WORKFLOW_PACKAGE)
     waterline = (
         manifest.get("extra", {}).get("durable-workflow", {}).get("product-train")

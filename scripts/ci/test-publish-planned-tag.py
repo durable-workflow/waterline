@@ -60,13 +60,12 @@ class PlannedTagPublicationTest(unittest.TestCase):
                 {
                     "name": package,
                     "replace": {"laravel-workflow/waterline": legacy_replacement},
-                    "require": {"durable-workflow/sdk": sdk_version},
+                    "require": {},
                     "require-dev": {
-                        "durable-workflow/workflow": WORKFLOW_VERSION
+                        "durable-workflow/sdk": sdk_version,
+                        "durable-workflow/workflow": WORKFLOW_VERSION,
                     },
-                    "extra": {
-                        "durable-workflow": {"product-train": RELEASE_TAG}
-                    },
+                    "extra": {"durable-workflow": {"product-train": RELEASE_TAG}},
                 },
                 indent=2,
             )
