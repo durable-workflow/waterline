@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import tarfile
@@ -200,11 +201,18 @@ class PublicInfrastructureError(RuntimeError):
         reason: str,
         failure: str | None = None,
     ) -> None:
+        self.evidence: dict[str, str | int] = {
+            "classification": "github-read-transient",
+            "endpoint_class": endpoint_class,
+            "attempts": attempts,
+            "reason": reason,
+        }
+        if failure is not None:
+            self.evidence["failure"] = failure
         evidence = [
-            "classification=github-read-transient",
-            f"endpoint_class={endpoint_class}",
-            f"attempts={attempts}",
-            f"reason={reason}",
+            f"{key}={value}"
+            for key, value in self.evidence.items()
+            if key != "failure"
         ]
         if failure is not None:
             evidence.append(failure)
@@ -255,6 +263,9 @@ class PublicClient:
         self.now = now
         self.monotonic = monotonic
         self.deadline = monotonic() + deadline_seconds
+        self.ssl_context = ssl.create_default_context()
+        if not self.ssl_context.check_hostname or self.ssl_context.verify_mode != ssl.CERT_REQUIRED:
+            raise ValueError("GitHub public-read TLS verification is not enabled")
 
     @staticmethod
     def _github_endpoint_class(url: str) -> str | None:
@@ -302,6 +313,8 @@ class PublicClient:
     @staticmethod
     def _transport_name(error: BaseException) -> str | None:
         reason = error.reason if isinstance(error, urllib.error.URLError) else error
+        if isinstance(reason, ssl.SSLCertVerificationError):
+            return "tls-certificate-verification"
         if isinstance(
             reason,
             ConnectionError | TimeoutError | http.client.IncompleteRead | http.client.RemoteDisconnected,
@@ -372,7 +385,7 @@ class PublicClient:
             request = urllib.request.Request(url, headers=request_headers)
             failure: _TransientGitHubRead | None = None
             try:
-                response = urllib.request.urlopen(request, timeout=timeout)
+                response = urllib.request.urlopen(request, timeout=timeout, context=self.ssl_context)
                 result = operation(response)
                 if endpoint_class is not None and self._remaining_time() <= 0:
                     raise PublicInfrastructureError(endpoint_class, attempt, reason="workflow-deadline")
@@ -3349,6 +3362,19 @@ def main() -> int:
                 args.evidence.write_bytes(canonical_json(state))
                 raise
     except PublicInfrastructureError as error:
+        if hasattr(args, "evidence") and hasattr(args, "component"):
+            transport = base_state(args.component)
+            transport.update(
+                {
+                    "phase": "runner-transport",
+                    "outcome": "runner-transport",
+                    "transport": error.evidence,
+                    "resume_action": "Retry recovery after trusted GitHub API transport is available",
+                }
+            )
+            args.evidence.write_bytes(canonical_json(transport))
+            if args.command == "resolve":
+                write_output(args.github_output, {"action": "none"})
         print(f"release recovery infrastructure failed: {error}", file=sys.stderr)
         return INFRASTRUCTURE_EXIT_CODE
     except RecoveryError as error:

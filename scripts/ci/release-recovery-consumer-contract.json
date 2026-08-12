@@ -47,6 +47,14 @@
     {
       "id": "scheduled-empty-no-op",
       "requirement": "Record a successful neutral no-op when scheduled recovery has no eligible release plan, while retaining failures for malformed or unavailable authority."
+    },
+    {
+      "id": "trusted-github-api-transport",
+      "requirement": "Use hostname-checking, certificate-verifying default trust for GitHub API calls; retry a transient certificate transport failure within the declared bound, classify persistent trust failure as runner transport, and never retry an ordinary API rejection."
+    },
+    {
+      "id": "transport-fail-closed-publication",
+      "requirement": "Record structured runner-transport evidence with no publication action after transport retry exhaustion while preserving the explicitly authorized publication-ready path."
     }
   ],
   "consumers": [
@@ -88,7 +96,7 @@
   ],
   "schema": "durable-workflow.release-recovery-consumer-conformance/v1",
   "suite": {
-    "sha256": "340f5b1e89f22a0377986573eadfebd43401a663c904762949e0fe4bd14e243e"
+    "sha256": "dcdd5e1aa2d7ca25847bf19a6f4c974d5390027b299e7b9280ab962b1c11dd8e"
   },
-  "version": "1.6.0"
+  "version": "1.7.0"
 }
