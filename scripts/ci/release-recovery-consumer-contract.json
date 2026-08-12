@@ -50,7 +50,7 @@
     },
     {
       "id": "trusted-github-api-transport",
-      "requirement": "Use hostname-checking, certificate-verifying default trust for GitHub API calls; retry a transient certificate transport failure within the declared bound, classify persistent trust failure as runner transport, and never retry an ordinary API rejection."
+      "requirement": "Use the GitHub Actions-supported gh API transport with its certificate-verifying runner trust for GitHub API calls; retry a transient certificate transport failure within the declared bound, classify persistent trust failure as runner transport, and never retry an ordinary API rejection."
     },
     {
       "id": "transport-fail-closed-publication",
@@ -96,7 +96,7 @@
   ],
   "schema": "durable-workflow.release-recovery-consumer-conformance/v1",
   "suite": {
-    "sha256": "dcdd5e1aa2d7ca25847bf19a6f4c974d5390027b299e7b9280ab962b1c11dd8e"
+    "sha256": "87ec235eb15d1abb63abf0199607f66d0a49faa6903217858348bc0be67f309c"
   },
-  "version": "1.7.0"
+  "version": "1.8.2"
 }

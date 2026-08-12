@@ -8,11 +8,9 @@ import copy
 import datetime as dt
 import hashlib
 import importlib.util
-import io
 import json
 import os
 import re
-import ssl
 import subprocess
 import sys
 import tempfile
@@ -1512,12 +1510,20 @@ def case_scheduled_empty_no_op(module: ModuleType) -> None:
             )
 
 
-def certificate_failure() -> urllib.error.URLError:
-    return urllib.error.URLError(
-        ssl.SSLCertVerificationError(
-            1,
-            "certificate verify failed: self-signed certificate",
-        )
+def github_cli_result(
+    status: int = 200,
+    body: bytes = b"[]",
+    *,
+    stderr: bytes = b"",
+    **headers: str,
+) -> subprocess.CompletedProcess[bytes]:
+    response_headers = b"".join(f"{name}: {value}\r\n".encode() for name, value in headers.items())
+    output = f"HTTP/2.0 {status} response\r\n".encode() + response_headers + b"\r\n" + body
+    return subprocess.CompletedProcess(
+        ["gh", "api"],
+        0 if 200 <= status <= 299 else 1,
+        output,
+        stderr,
     )
 
 
@@ -1525,38 +1531,89 @@ def case_trusted_github_api_transport(module: ModuleType) -> None:
     url = "https://api.github.com/repos/durable-workflow/.github/releases"
     sleeps: list[float] = []
     client = module.PublicClient(
+        token="conformance-token",
         max_attempts=2,
         retry_base_seconds=1,
         sleep=sleeps.append,
     )
-    with mock.patch.object(
-        module.urllib.request,
-        "urlopen",
-        side_effect=(certificate_failure(), io.BytesIO(b"[]")),
-    ) as open_url:
+    with (
+        mock.patch.dict(module.os.environ, {"GITHUB_ACTIONS": "true"}),
+        mock.patch.object(
+            module.urllib.request,
+            "urlopen",
+            side_effect=AssertionError("runner transport bypassed the GitHub CLI mock"),
+        ) as open_url,
+        mock.patch.object(
+            module.subprocess,
+            "run",
+            side_effect=(
+                github_cli_result(0, stderr=b"x509: certificate signed by unknown authority"),
+                github_cli_result(),
+            ),
+        ) as run,
+    ):
         result = client.json(url)
-    context = open_url.call_args.kwargs.get("context")
+    command = run.call_args.args[0]
     if (
         result != []
         or sleeps != [1]
-        or context is not client.ssl_context
-        or not context.check_hostname
-        or context.verify_mode != ssl.CERT_REQUIRED
+        or open_url.called
+        or command[:7] != ["gh", "api", "--hostname", "github.com", "--include", "--method", "GET"]
+        or command[-1] != "repos/durable-workflow/.github/releases"
+        or "--insecure" in command
+        or run.call_args.kwargs.get("env", {}).get("GH_TOKEN") != "conformance-token"
+        or run.call_args.kwargs.get("env", {}).get("GH_PROMPT_DISABLED") != "1"
     ):
         raise ConformanceError(
-            "consumer did not retry transient certificate failure through verified default trust"
+            "consumer did not retry transient certificate failure through the GitHub CLI trust transport"
+        )
+
+    rate_limit_sleeps: list[float] = []
+    rate_limited = module.PublicClient(
+        token="conformance-token",
+        max_attempts=2,
+        retry_base_seconds=1,
+        sleep=rate_limit_sleeps.append,
+        now=lambda: 100,
+    )
+    with (
+        mock.patch.dict(module.os.environ, {"GITHUB_ACTIONS": "true"}),
+        mock.patch.object(
+            module.subprocess,
+            "run",
+            side_effect=(
+                github_cli_result(
+                    403,
+                    b'{"message":"Forbidden"}',
+                    **{
+                        "x-ratelimit-remaining": "0",
+                        "X-rAtElImIt-ReSeT": "112",
+                    },
+                ),
+                github_cli_result(),
+            ),
+        ) as run,
+    ):
+        result = rate_limited.json(url)
+    if result != [] or rate_limit_sleeps != [12] or run.call_count != 2:
+        raise ConformanceError(
+            "consumer did not classify mixed-case GitHub CLI rate-limit headers or honor reset delay"
         )
 
     persistent = module.PublicClient(
+        token="conformance-token",
         max_attempts=2,
         retry_base_seconds=1,
         sleep=lambda _delay: None,
     )
-    with mock.patch.object(
-        module.urllib.request,
-        "urlopen",
-        side_effect=certificate_failure(),
-    ) as open_url:
+    with (
+        mock.patch.dict(module.os.environ, {"GITHUB_ACTIONS": "true"}),
+        mock.patch.object(
+            module.subprocess,
+            "run",
+            return_value=github_cli_result(0, stderr=b"x509: certificate signed by unknown authority"),
+        ) as run,
+    ):
         try:
             persistent.json(url)
         except module.PublicInfrastructureError as error:
@@ -1573,32 +1630,32 @@ def case_trusted_github_api_transport(module: ModuleType) -> None:
                 ) from error
         else:
             raise ConformanceError("persistent certificate failure did not fail closed")
-    if open_url.call_count != 2:
+    if run.call_count != 2:
         raise ConformanceError("persistent certificate failure escaped the retry bound")
 
-    api_error = urllib.error.HTTPError(
-        url,
+    api_error = github_cli_result(
         422,
-        "unprocessable entity",
-        {},
-        io.BytesIO(b'{"message":"invalid release authority"}'),
+        b'{"message":"invalid release authority"}',
     )
 
     def fail_on_sleep(_delay: float) -> None:
         raise ConformanceError("deterministic API failure was retried")
 
-    deterministic = module.PublicClient(max_attempts=3, sleep=fail_on_sleep)
-    with mock.patch.object(
-        module.urllib.request,
-        "urlopen",
-        side_effect=api_error,
-    ) as open_url:
+    deterministic = module.PublicClient(token="conformance-token", max_attempts=3, sleep=fail_on_sleep)
+    with (
+        mock.patch.dict(module.os.environ, {"GITHUB_ACTIONS": "true"}),
+        mock.patch.object(
+            module.subprocess,
+            "run",
+            return_value=api_error,
+        ) as run,
+    ):
         expect_recovery_error(
             module,
             lambda: deterministic.json(url),
             "ordinary GitHub API failure was accepted",
         )
-    if open_url.call_count != 1:
+    if run.call_count != 1:
         raise ConformanceError("ordinary GitHub API failure was retried")
 
 

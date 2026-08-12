@@ -90,6 +90,23 @@ def github_http_error(status: int, body: bytes = b"error", **headers: str) -> ur
     )
 
 
+def github_cli_result(
+    status: int = 200,
+    body: bytes = b"[]",
+    *,
+    stderr: bytes = b"",
+    **headers: str,
+) -> subprocess.CompletedProcess[bytes]:
+    response_headers = b"".join(f"{name}: {value}\r\n".encode() for name, value in headers.items())
+    output = f"HTTP/2.0 {status} response\r\n".encode() + response_headers + b"\r\n" + body
+    return subprocess.CompletedProcess(
+        ["gh", "api"],
+        0 if 200 <= status <= 299 else 1,
+        output,
+        stderr,
+    )
+
+
 class SharedContractVersionGuardTest(unittest.TestCase):
     def contract(self, version: str, content_marker: str) -> dict[str, object]:
         contract = json.loads(CONSUMER_CONTRACT_PATH.read_text())
@@ -918,21 +935,94 @@ class PublicClientRetryTest(unittest.TestCase):
         for headers, expected_version in cases:
             with self.subTest(expected_version=expected_version):
                 client = self.recovery.PublicClient(token="test-token")
-                response = mock.Mock()
-                with mock.patch.object(
-                    self.recovery.urllib.request, "urlopen", return_value=response
-                ) as open_url:
-                    self.assertIs(
-                        response,
-                        client.request(
-                            "https://api.github.com/repos/durable-workflow/.github/actions/runs/456",
-                            headers=headers,
-                        ),
+                with (
+                    mock.patch.dict(
+                        self.recovery.os.environ,
+                        {"GITHUB_ACTIONS": "true", "GH_HOST": "redirected.example"},
+                    ),
+                    mock.patch.object(
+                        self.recovery.subprocess,
+                        "run",
+                        return_value=github_cli_result(),
+                    ) as run,
+                ):
+                    response = client.request(
+                        "https://api.github.com/repos/durable-workflow/.github/actions/runs/456",
+                        headers=headers,
                     )
-                request = open_url.call_args.args[0]
-                request_headers = {key.lower(): value for key, value in request.header_items()}
-                self.assertEqual("Bearer test-token", request_headers["authorization"])
-                self.assertEqual(expected_version, request_headers["x-github-api-version"])
+
+                self.assertEqual(b"[]", response.read())
+                command = run.call_args.args[0]
+                self.assertEqual(
+                    ["gh", "api", "--hostname", "github.com", "--include", "--method", "GET"],
+                    command[:7],
+                )
+                declared_headers = [
+                    command[index + 1]
+                    for index, argument in enumerate(command)
+                    if argument == "--header"
+                ]
+                self.assertIn(f"X-GitHub-Api-Version: {expected_version}", declared_headers)
+                self.assertFalse(any(header.lower().startswith("authorization:") for header in declared_headers))
+                self.assertEqual("test-token", run.call_args.kwargs["env"]["GH_TOKEN"])
+
+    def test_runner_environment_never_uses_a_live_urllib_api_call(self) -> None:
+        client = self.recovery.PublicClient(token="test-token")
+        with (
+            mock.patch.dict(self.recovery.os.environ, {"GITHUB_ACTIONS": "true"}),
+            mock.patch.object(
+                self.recovery.urllib.request,
+                "urlopen",
+                side_effect=AssertionError("runner transport bypassed the GitHub CLI mock"),
+            ) as open_url,
+            mock.patch.object(
+                self.recovery.subprocess,
+                "run",
+                return_value=github_cli_result(),
+            ) as run,
+        ):
+            self.assertEqual(
+                [],
+                client.json("https://api.github.com/repos/durable-workflow/.github/releases"),
+            )
+
+        open_url.assert_not_called()
+        run.assert_called_once()
+
+    def test_runner_rate_limit_headers_are_case_insensitive_and_use_reset_delay(self) -> None:
+        sleeps: list[float] = []
+        client = self.recovery.PublicClient(
+            token="test-token",
+            max_attempts=2,
+            retry_base_seconds=1,
+            sleep=sleeps.append,
+            now=lambda: 100,
+        )
+        responses = [
+            github_cli_result(
+                403,
+                b'{"message":"Forbidden"}',
+                **{
+                    "x-ratelimit-remaining": "0",
+                    "X-rAtElImIt-ReSeT": "112",
+                },
+            ),
+            github_cli_result(),
+        ]
+
+        with (
+            mock.patch.dict(self.recovery.os.environ, {"GITHUB_ACTIONS": "true"}),
+            mock.patch.object(
+                self.recovery.subprocess,
+                "run",
+                side_effect=responses,
+            ) as run,
+        ):
+            result = client.json("https://api.github.com/repos/durable-workflow/.github/releases")
+
+        self.assertEqual([], result)
+        self.assertEqual([12], sleeps)
+        self.assertEqual(2, run.call_count)
 
     def test_retries_service_failures_connection_resets_and_timeouts(self) -> None:
         failures = (
