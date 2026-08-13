@@ -12,6 +12,10 @@ installation command when it is absent.
 Namespace-scoped capacity evidence exposes bounded runtime saturation signals
 and guarded, advisory recommendation inputs without treating infrastructure
 telemetry as Waterline-owned measurements.
+Latency percentiles now sample deterministic midpoint ranks across the complete
+observation-window population, with stable primary-key ordering at equal
+timestamps. Truncated samples declare their method and covered population;
+unknown or locally truncated methods fail closed before capacity guidance.
 
 Workflow-list filter and view-option dialogs now use a coherent light or dark
 palette, keep their action row reachable around an internally scrolling body,

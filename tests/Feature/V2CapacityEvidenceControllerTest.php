@@ -202,4 +202,164 @@ final class V2CapacityEvidenceControllerTest extends TestCase
             ->assertUnprocessable()
             ->assertJsonValidationErrors('window_seconds');
     }
+
+    public function testLatencySamplingRepresentsTheWholeWindowRegardlessOfRowOrder(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.capacity_evidence.latency_sample_limit', 4);
+        config()->set('waterline.capacity_evidence.percentile_min_samples', [
+            'p50' => 1,
+            'p95' => 1,
+            'p99' => 1,
+        ]);
+
+        $this->seedLatencyWindow('slow-then-fast', 's', [
+            ...array_fill(0, 10, 10_000),
+            ...array_fill(0, 10, 1_000),
+        ]);
+        $this->seedLatencyWindow('fast-then-slow', 'f', [
+            ...array_fill(0, 10, 1_000),
+            ...array_fill(0, 10, 10_000),
+        ]);
+
+        $distributions = [];
+        foreach (['slow-then-fast', 'fast-then-slow'] as $namespace) {
+            config()->set('waterline.namespace', $namespace);
+            $latency = $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
+                ->assertOk()
+                ->json('runtime_evidence.latency');
+
+            foreach (['schedule_to_start', 'execution', 'replay'] as $dimension) {
+                $distribution = $latency[$dimension];
+                $this->assertTrue($distribution['available']);
+                $this->assertSame(4, $distribution['sample_count']);
+                $this->assertSame(20, $distribution['population_count']);
+                $this->assertTrue($distribution['sample_truncated']);
+                $this->assertSame('systematic_population_rank_midpoint', $distribution['sampling_method']);
+                $this->assertSame(
+                    'eligible_rows_in_observation_window',
+                    $distribution['sampling_population'],
+                );
+                $this->assertTrue($distribution['representative_across_window']);
+                $this->assertSame(1_000, $distribution['p50_ms']);
+                $this->assertSame(10_000, $distribution['p95_ms']);
+                $this->assertSame(10_000, $distribution['p99_ms']);
+            }
+
+            $distributions[$namespace] = $latency;
+        }
+
+        foreach (['schedule_to_start', 'execution', 'replay'] as $dimension) {
+            $this->assertSame(
+                $distributions['slow-then-fast'][$dimension],
+                $distributions['fast-then-slow'][$dimension],
+            );
+        }
+    }
+
+    public function testEqualLatencyBoundaryTimestampsHaveDeterministicSampling(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'equal-boundary');
+        config()->set('waterline.capacity_evidence.latency_sample_limit', 4);
+        config()->set('waterline.capacity_evidence.percentile_min_samples', [
+            'p50' => 1,
+            'p95' => 1,
+            'p99' => 1,
+        ]);
+        $this->seedLatencyWindow(
+            'equal-boundary',
+            'e',
+            array_map(static fn (int $index): int => $index % 2 === 0 ? 1_000 : 10_000, range(0, 19)),
+            true,
+        );
+
+        $first = $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
+            ->assertOk()
+            ->json('runtime_evidence.latency');
+        $second = $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
+            ->assertOk()
+            ->json('runtime_evidence.latency');
+
+        $this->assertSame($first, $second);
+        foreach (['schedule_to_start', 'execution', 'replay'] as $dimension) {
+            $this->assertSame('systematic_population_rank_midpoint', $first[$dimension]['sampling_method']);
+            $this->assertSame(1_000, $first[$dimension]['p50_ms']);
+            $this->assertSame(10_000, $first[$dimension]['p95_ms']);
+        }
+    }
+
+    /** @param list<int> $durationsMs */
+    private function seedLatencyWindow(
+        string $namespace,
+        string $idPrefix,
+        array $durationsMs,
+        bool $equalBoundary = false,
+    ): void {
+        $timestamp = now()->subMinutes(59);
+        DB::table('workflow_instances')->insert([
+            'id' => "capacity-{$namespace}",
+            'workflow_class' => 'CapacityWorkflow',
+            'workflow_type' => 'capacity.workflow',
+            'namespace' => $namespace,
+            'run_count' => count($durationsMs),
+            'created_at' => $timestamp,
+            'updated_at' => $timestamp,
+        ]);
+
+        $runs = [];
+        $activities = [];
+        $tasks = [];
+
+        foreach ($durationsMs as $index => $durationMs) {
+            $boundary = now()->subMinutes(50)->addSeconds($equalBoundary ? 0 : $index * 120);
+            $started = $boundary->copy()->subMilliseconds($durationMs);
+            $runId = sprintf('r%s%024d', $idPrefix, $index);
+
+            $runs[] = [
+                'id' => $runId,
+                'workflow_instance_id' => "capacity-{$namespace}",
+                'run_number' => $index + 1,
+                'workflow_class' => 'CapacityWorkflow',
+                'workflow_type' => 'capacity.workflow',
+                'namespace' => $namespace,
+                'status' => 'completed',
+                'started_at' => $started,
+                'closed_at' => $boundary,
+                'last_progress_at' => $boundary,
+                'created_at' => $started,
+                'updated_at' => $boundary,
+            ];
+            $activities[] = [
+                'id' => sprintf('a%s%024d', $idPrefix, $index),
+                'workflow_run_id' => $runId,
+                'sequence' => 1,
+                'activity_class' => 'CapacityActivity',
+                'activity_type' => 'capacity.activity',
+                'status' => 'completed',
+                'attempt_count' => 1,
+                'started_at' => $boundary,
+                'closed_at' => $boundary,
+                'created_at' => $started,
+                'updated_at' => $boundary,
+            ];
+            $tasks[] = [
+                'id' => sprintf('t%s%024d', $idPrefix, $index),
+                'workflow_run_id' => $runId,
+                'namespace' => $namespace,
+                'task_type' => 'workflow',
+                'status' => 'completed',
+                'available_at' => $started,
+                'leased_at' => $started,
+                'attempt_count' => 1,
+                'repair_count' => 0,
+                'created_at' => $started,
+                'updated_at' => $boundary,
+            ];
+        }
+
+        DB::table('workflow_runs')->insert($runs);
+        DB::table('activity_executions')->insert($activities);
+        DB::table('workflow_tasks')->insert($tasks);
+    }
 }

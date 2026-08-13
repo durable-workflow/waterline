@@ -253,7 +253,12 @@ final class EmbeddedCapacityEvidenceCollector
     }
 
     /**
-     * @return array{available: bool, samples_ms?: list<float>, population_count?: int, source: string, reason?: string}
+     * Build a bounded systematic sample over the complete, chronologically
+     * ordered population. Midpoint ranks give every equally sized population
+     * stratum one observation; the primary key makes equal timestamps stable
+     * on every supported database.
+     *
+     * @return array{available: bool, samples_ms?: list<float>, population_count?: int, sampling_method?: string, sampling_population?: string, source: string, reason?: string}
      */
     private function durationDistribution(
         Builder $query,
@@ -282,38 +287,81 @@ final class EmbeddedCapacityEvidenceCollector
         }
 
         $limit = max(1, min(50000, (int) config('waterline.capacity_evidence.latency_sample_limit', 10000)));
-        $rows = $eligible
-            ->latest($boundary)
-            ->limit($limit)
-            ->get([$started, $ended]);
+        $sampleCount = min((int) $population, $limit);
+        $sampleRanks = array_fill_keys($this->systematicSampleRanks((int) $population, $sampleCount), true);
+        $primaryKey = $model->qualifyColumn($model->getKeyName());
         $samples = [];
+        $populationRank = 0;
 
-        foreach ($rows as $row) {
-            $from = $row->getAttribute($startedColumn);
-            $to = $row->getAttribute($endedColumn);
+        $eligible
+            ->select([$started, $ended, $primaryKey])
+            ->orderBy($boundary)
+            ->orderBy($primaryKey)
+            ->chunk(1000, function ($rows) use (
+                &$populationRank,
+                &$samples,
+                $endedColumn,
+                $sampleCount,
+                $sampleRanks,
+                $startedColumn,
+            ): bool {
+                foreach ($rows as $row) {
+                    if (isset($sampleRanks[$populationRank])) {
+                        $from = $row->getAttribute($startedColumn);
+                        $to = $row->getAttribute($endedColumn);
 
-            try {
-                $from = $from instanceof CarbonInterface ? $from : Carbon::parse((string) $from);
-                $to = $to instanceof CarbonInterface ? $to : Carbon::parse((string) $to);
-            } catch (Throwable) {
-                continue;
-            }
+                        try {
+                            $from = $from instanceof CarbonInterface ? $from : Carbon::parse((string) $from);
+                            $to = $to instanceof CarbonInterface ? $to : Carbon::parse((string) $to);
+                        } catch (Throwable) {
+                            ++$populationRank;
 
-            $samples[] = max(0.0, (float) $from->diffInMilliseconds($to));
-        }
+                            continue;
+                        }
 
-        return $samples === []
+                        $samples[] = max(0.0, (float) $from->diffInMilliseconds($to));
+                    }
+
+                    ++$populationRank;
+                }
+
+                return count($samples) < $sampleCount;
+            });
+
+        $samplingMethod = $population > $limit
+            ? 'systematic_population_rank_midpoint'
+            : 'full_population';
+
+        return count($samples) !== $sampleCount
             ? [
                 'available' => false,
+                'samples_ms' => $samples,
+                'population_count' => (int) $population,
+                'sampling_method' => $samplingMethod,
+                'sampling_population' => 'eligible_rows_in_observation_window',
                 'source' => 'not_available',
-                'reason' => 'insufficient_samples',
+                'reason' => 'incomplete_representative_sample',
             ]
             : [
                 'available' => true,
                 'samples_ms' => $samples,
                 'population_count' => (int) $population,
+                'sampling_method' => $samplingMethod,
+                'sampling_population' => 'eligible_rows_in_observation_window',
                 'source' => 'waterline_embedded_store',
             ];
+    }
+
+    /** @return list<int> Zero-based midpoint ranks across the population. */
+    private function systematicSampleRanks(int $population, int $sampleCount): array
+    {
+        $ranks = [];
+
+        for ($index = 0; $index < $sampleCount; ++$index) {
+            $ranks[] = intdiv((2 * $index + 1) * $population, 2 * $sampleCount);
+        }
+
+        return $ranks;
     }
 
     private function durablePayloadBytes(

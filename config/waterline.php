@@ -250,7 +250,9 @@ return [
     | evidence for an external capacity adviser. It is deliberately separate
     | from billing and infrastructure telemetry. Applications may add their
     | current plan identity and measured envelope through runtime config; no
-    | default throughput or latency limit is invented by Waterline.
+    | default throughput or latency limit is invented by Waterline. Latency
+    | samples above the configured limit use deterministic midpoint ranks over
+    | the complete timestamp-and-primary-key ordered window population.
     |
     */
 

@@ -321,19 +321,61 @@ final class CapacityEvidence
     private function normalizeDistribution(array $candidate, array $window): array
     {
         $sampleLimit = max(1, min(50000, (int) config('waterline.capacity_evidence.latency_sample_limit', 10000)));
-        $samples = is_array($candidate['samples_ms'] ?? null)
+        $candidateSamples = is_array($candidate['samples_ms'] ?? null)
+            ? array_values($candidate['samples_ms'])
+            : [];
+        $samples = $candidateSamples !== []
             ? array_values(array_filter(
-                array_slice($candidate['samples_ms'], 0, $sampleLimit),
+                array_slice($candidateSamples, 0, $sampleLimit),
                 fn (mixed $value): bool => $this->finiteNumber($value) && (float) $value >= 0,
             ))
             : [];
-        $population = max(count($samples), (int) ($candidate['population_count'] ?? count($samples)));
+        $population = max(
+            count($candidateSamples),
+            count($samples),
+            (int) ($candidate['population_count'] ?? count($candidateSamples)),
+        );
+        $sampleTruncated = $population > count($samples);
+        $locallyTruncated = count($candidateSamples) > $sampleLimit;
+        $samplingPopulation = (
+            ! $sampleTruncated
+            || ($candidate['sampling_population'] ?? null) === 'eligible_rows_in_observation_window'
+        )
+            ? 'eligible_rows_in_observation_window'
+            : 'unknown';
+        $samplingMethod = ! $sampleTruncated
+            ? 'full_population'
+            : (($candidate['sampling_method'] ?? null) === 'systematic_population_rank_midpoint'
+                ? 'systematic_population_rank_midpoint'
+                : 'unknown');
+        $representative = ! $sampleTruncated || (
+            ! $locallyTruncated
+            && $samplingMethod === 'systematic_population_rank_midpoint'
+            && $samplingPopulation === 'eligible_rows_in_observation_window'
+        );
+        $source = $this->safeSource($candidate['source'] ?? null, 'not_available');
 
-        if ($samples === []) {
+        if (($candidate['available'] ?? true) !== true || $samples === []) {
             return $this->unavailableDistribution(
                 $window,
                 $this->safeReason($candidate['reason'] ?? null),
-                $this->safeSource($candidate['source'] ?? null, 'not_available'),
+                $source,
+                count($samples),
+                $population,
+                $samples === [] ? 'not_sampled' : $samplingMethod,
+                $samplingPopulation,
+            );
+        }
+
+        if (! $representative) {
+            return $this->unavailableDistribution(
+                $window,
+                'unrepresentative_truncated_sample',
+                $source,
+                count($samples),
+                $population,
+                $samplingMethod,
+                $samplingPopulation,
             );
         }
 
@@ -347,7 +389,10 @@ final class CapacityEvidence
             'source' => $this->safeSource($candidate['source'] ?? null, 'workflow_runtime'),
             'sample_count' => count($samples),
             'population_count' => $population,
-            'sample_truncated' => $population > count($samples),
+            'sample_truncated' => $sampleTruncated,
+            'sampling_method' => $samplingMethod,
+            'sampling_population' => $samplingPopulation,
+            'representative_across_window' => true,
             'p50_ms' => count($samples) >= $minimums['p50'] ? $this->percentile($samples, 50) : null,
             'p95_ms' => count($samples) >= $minimums['p95'] ? $this->percentile($samples, 95) : null,
             'p99_ms' => count($samples) >= $minimums['p99'] ? $this->percentile($samples, 99) : null,
@@ -863,6 +908,10 @@ final class CapacityEvidence
         array $window,
         string $reason = 'windowed_runtime_measurement_unavailable',
         string $source = 'not_available',
+        int $sampleCount = 0,
+        int $populationCount = 0,
+        string $samplingMethod = 'not_sampled',
+        string $samplingPopulation = 'eligible_rows_in_observation_window',
     ): array {
         return [
             'available' => false,
@@ -870,9 +919,12 @@ final class CapacityEvidence
             'kind' => 'window_distribution',
             'source' => $source,
             'reason' => $reason,
-            'sample_count' => 0,
-            'population_count' => 0,
-            'sample_truncated' => false,
+            'sample_count' => $sampleCount,
+            'population_count' => $populationCount,
+            'sample_truncated' => $populationCount > $sampleCount,
+            'sampling_method' => $samplingMethod,
+            'sampling_population' => $samplingPopulation,
+            'representative_across_window' => false,
             'p50_ms' => null,
             'p95_ms' => null,
             'p99_ms' => null,
@@ -903,6 +955,8 @@ final class CapacityEvidence
             'query_telemetry_unavailable',
             'inspection_telemetry_unavailable',
             'insufficient_samples',
+            'incomplete_representative_sample',
+            'unrepresentative_truncated_sample',
         ];
 
         return is_string($reason) && in_array($reason, $allowed, true)

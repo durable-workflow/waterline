@@ -191,4 +191,56 @@ final class CapacityEvidenceTest extends TestCase
         $this->assertSame('downgrade_review', $sustained['recommendation_input']['advisory']['suggestion']);
         $this->assertFalse($sustained['recommendation_input']['advisory']['automatic_plan_change']);
     }
+
+    public function testUnrepresentativeTruncatedLatencyFailsClosed(): void
+    {
+        config()->set('waterline.capacity_evidence.plan', [
+            'version' => 'cloud-test-v1',
+            'limits' => [
+                'schedule_to_start_p95_ms' => 50,
+            ],
+        ]);
+        config()->set('waterline.capacity_evidence.recommendation_policy', [
+            'sustained_windows' => 3,
+            'upgrade_utilization_ratio' => 0.8,
+            'downgrade_utilization_ratio' => 0.5,
+            'cooldown_seconds' => 3600,
+        ]);
+
+        $payload = app(CapacityEvidence::class)->build(
+            [],
+            [
+                'sustained_evidence' => [
+                    'observation_windows' => 3,
+                    'upgrade_breach_windows' => ['schedule_to_start_p95_ms' => 3],
+                ],
+                'latency' => [
+                    'schedule_to_start' => [
+                        'available' => true,
+                        'samples_ms' => array_fill(0, 20, 100),
+                        'population_count' => 100,
+                        'source' => 'durable_workflow_service',
+                    ],
+                ],
+            ],
+            Carbon::parse('2026-08-11T12:00:00Z'),
+            3600,
+            ['mode' => 'namespace', 'namespace' => 'orders', 'authority' => 'tenant'],
+            'service',
+        );
+
+        $distribution = $payload['runtime_evidence']['latency']['schedule_to_start'];
+        $this->assertFalse($distribution['available']);
+        $this->assertSame('unrepresentative_truncated_sample', $distribution['reason']);
+        $this->assertSame(20, $distribution['sample_count']);
+        $this->assertSame(100, $distribution['population_count']);
+        $this->assertTrue($distribution['sample_truncated']);
+        $this->assertSame('unknown', $distribution['sampling_method']);
+        $this->assertSame('unknown', $distribution['sampling_population']);
+        $this->assertFalse($distribution['representative_across_window']);
+        $this->assertNull($distribution['p95_ms']);
+        $this->assertNull($payload['recommendation_input']['constrained_resource_or_latency_slo']);
+        $this->assertFalse($payload['recommendation_input']['decision_guardrails']['eligible_for_suggestion']);
+        $this->assertNull($payload['recommendation_input']['advisory']['suggestion']);
+    }
 }
