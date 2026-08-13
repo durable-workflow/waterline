@@ -41,7 +41,7 @@ services:
   # Bootstrap server (migrations)
   server-bootstrap:
     build:
-      context: ../server
+      context: ${SERVER_SOURCE_PATH:-../server}
       dockerfile: Dockerfile
       args:
         # Use the workflow v2 branch from the workflow repo
@@ -54,6 +54,7 @@ services:
       APP_ENV: local
       APP_KEY: "base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI="
       APP_DEBUG: "true"
+      APP_VERSION: "${SERVER_VERSION:-2.0.0-rc.32}"
       DB_CONNECTION: mysql
       DB_HOST: mysql
       DB_PORT: 3306
@@ -75,7 +76,7 @@ services:
   # Main server API
   server:
     build:
-      context: ../server
+      context: ${SERVER_SOURCE_PATH:-../server}
       dockerfile: Dockerfile
       args:
         WORKFLOW_PACKAGE_SOURCE: https://github.com/durable-workflow/workflow.git
@@ -88,6 +89,7 @@ services:
       APP_ENV: local
       APP_KEY: "base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI="
       APP_DEBUG: "true"
+      APP_VERSION: "${SERVER_VERSION:-2.0.0-rc.32}"
       DB_CONNECTION: mysql
       DB_HOST: mysql
       DB_PORT: 3306
@@ -117,7 +119,7 @@ services:
   # Queue worker for async task processing
   worker:
     build:
-      context: ../server
+      context: ${SERVER_SOURCE_PATH:-../server}
       dockerfile: Dockerfile
       args:
         WORKFLOW_PACKAGE_SOURCE: https://github.com/durable-workflow/workflow.git
@@ -128,6 +130,7 @@ services:
       APP_NAME: "Durable Workflow Server (Integration)"
       APP_ENV: local
       APP_KEY: "base64:UTyp33UhGolgzCK5CJmT+hNHcA+dJyp3+oINtX+VoPI="
+      APP_VERSION: "${SERVER_VERSION:-2.0.0-rc.32}"
       DB_CONNECTION: mysql
       DB_HOST: mysql
       DB_PORT: 3306

@@ -275,7 +275,7 @@ class WaterlineServiceProvider extends ServiceProvider
 
         if (BackendConfiguration::serviceMode()) {
             ServiceModeRequirements::assertSdkInstalled();
-            $this->app->singleton(RemoteBackend::class, static fn (): RemoteBackend => RemoteBackend::fromConfig());
+            $this->app->scoped(RemoteBackend::class, static fn (): RemoteBackend => RemoteBackend::fromConfig());
 
             return;
         }

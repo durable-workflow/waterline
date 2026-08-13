@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Waterline\Tests\Feature;
 
+use DurableWorkflow\Client;
 use DurableWorkflow\Exception\ServerException;
 use DurableWorkflow\Exception\TransportException;
+use DurableWorkflow\Transport\Transport;
 use DurableWorkflow\Waterline\CI\SqlServerQualificationTls;
+use Illuminate\Support\Carbon;
 use Orchestra\Testbench\TestCase;
 use function Orchestra\Testbench\artisan;
 use Waterline\Support\Remote\RemoteBackend;
@@ -108,64 +111,181 @@ final class ServiceModeBackendTest extends TestCase
 
     public function testCapacityEvidenceUsesTheOfficialRemoteMetricsContractWithoutLeakingExecutionIds(): void
     {
+        config()->set('waterline.capacity_evidence.allowed_window_seconds', [300, 3600]);
+        config()->set('waterline.capacity_evidence.default_window_seconds', 3600);
         config()->set('waterline.capacity_evidence.plan', [
             'version' => 'cloud-test-v1',
             'limits' => ['workflow_starts_per_second' => 1],
         ]);
-        $this->client->capacityEvidence = [
-            'observation_window' => ['duration_seconds' => 300],
-            'sustained_evidence' => [
-                'observation_windows' => 2,
-                'downgrade_clear_windows' => ['workflow_starts_per_second' => 2],
-            ],
-            'throughput' => [
-                'workflow_starts' => [
-                    'available' => true,
-                    'value' => 12,
-                    'unit' => 'count',
-                    'kind' => 'window_count',
-                    'source' => 'durable_workflow_service',
-                    'workflow_id' => 'remote-workflow-id',
-                ],
-                'queries' => [
-                    'available' => true,
-                    'value' => 8,
-                    'unit' => 'count',
-                    'kind' => 'window_count',
-                    'source' => 'durable_workflow_service',
-                ],
-            ],
-        ];
+        $capacityEvidence = $this->serverCapacityEvidence([
+            300 => $this->serverCapacityWindow(300, 12, 8),
+            3600 => $this->serverCapacityWindow(3600, 44, 21),
+        ]);
+        $transport = new class($capacityEvidence) implements Transport
+        {
+            /** @var list<array<string, mixed>> */
+            public array $requests = [];
+
+            /** @param array<string, mixed> $capacityEvidence */
+            public function __construct(private readonly array $capacityEvidence)
+            {
+            }
+
+            public function send(string $method, string $uri, array $headers, ?array $body = null): ?array
+            {
+                $this->requests[] = compact('method', 'uri', 'headers', 'body');
+
+                return [
+                    'namespace' => 'orders',
+                    'operator_metrics' => [
+                        'runs' => ['total' => 1, 'running' => 1, 'failed' => 0],
+                        'capacity_evidence' => $this->capacityEvidence,
+                    ],
+                ];
+            }
+        };
+        $sdkClient = new Client(
+            'https://server.example',
+            namespace: 'orders',
+            transport: $transport,
+            controlToken: 'secret',
+        );
+        $this->app->instance(RemoteBackend::class, new RemoteBackend($sdkClient));
 
         $response = $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=300')
             ->assertOk()
             ->assertJsonPath('schema', 'waterline.namespace_capacity_evidence')
             ->assertJsonPath('transport', 'service')
             ->assertJsonPath('scope.namespace', 'orders')
+            ->assertJsonPath('observation_window.starts_at', '2026-08-12T11:55:00.000000Z')
+            ->assertJsonPath('observation_window.ends_at', '2026-08-12T12:00:00.000000Z')
             ->assertJsonPath('observation_window.duration_seconds', 300)
             ->assertJsonPath('runtime_evidence.throughput.workflow_starts.value', 12)
             ->assertJsonPath('runtime_evidence.throughput.queries.value', 8)
-            ->assertJsonPath('runtime_evidence.throughput.activity_dispatches.available', false)
+            ->assertJsonPath('runtime_evidence.throughput.activity_dispatches.value', 7)
             ->assertJsonPath('runtime_evidence.concurrency.open_workflows.value', 1)
             ->assertJsonPath('recommendation_input.decision_guardrails.observation_windows_available', 2)
             ->assertJsonPath('recommendation_input.decision_guardrails.sustained_windows_observed', 2)
+            ->assertJsonPath('recommendation_input.observation_window.duration_seconds', 300)
+            ->assertJsonPath('commercial_boundary.automatic_plan_change', false)
+            ->assertJsonPath('commercial_boundary.automatic_billing_change', false)
             ->assertJsonPath('commercial_boundary.automatic_infrastructure_change', false)
             ->assertJsonPath('backend.capabilities.capacity_evidence', true);
 
-        $this->assertStringNotContainsString(
-            'remote-workflow-id',
-            json_encode($response->json(), JSON_THROW_ON_ERROR),
-        );
+        $encoded = json_encode($response->json(), JSON_THROW_ON_ERROR);
+        $this->assertStringNotContainsString('remote-workflow-id', $encoded);
+        $this->assertStringNotContainsString('remote-run-id', $encoded);
+        $this->assertStringNotContainsString('remote-task-id', $encoded);
+        $this->assertStringNotContainsString('remote-worker-id', $encoded);
+
+        $keys = [];
+        $payload = $response->json();
+        array_walk_recursive($payload, static function (mixed $_value, string|int $key) use (&$keys): void {
+            $keys[] = $key;
+        });
+        $this->assertSame([], array_values(array_intersect(
+            ['workflow_id', 'run_id', 'task_id', 'worker_id'],
+            $keys,
+        )));
 
         $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
             ->assertOk()
-            ->assertJsonPath('runtime_evidence.throughput.workflow_starts.available', false)
-            ->assertJsonPath('runtime_evidence.throughput.queries.available', false);
+            ->assertJsonPath('observation_window.duration_seconds', 3600)
+            ->assertJsonPath('runtime_evidence.throughput.workflow_starts.value', 44)
+            ->assertJsonPath('runtime_evidence.throughput.queries.value', 21);
 
-        $this->assertSame(
-            'operatorMetrics',
-            collect($this->client->calls)->last()['method'],
+        $this->assertCount(1, $transport->requests);
+        $this->assertSame('GET', $transport->requests[0]['method']);
+        $this->assertSame('https://server.example/api/system/operator-metrics', $transport->requests[0]['uri']);
+        $this->assertSame('orders', $transport->requests[0]['headers']['X-Namespace']);
+    }
+
+    public function testCapacityEvidenceFailsExplicitlyWhenTheServerContractIsMissing(): void
+    {
+        $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
+            ->assertStatus(501)
+            ->assertJsonPath('reason', 'capacity_evidence_contract_unavailable')
+            ->assertJsonPath('contract_failure', 'capacity_evidence_missing')
+            ->assertJsonPath('required_contract.window_seconds', 3600)
+            ->assertJsonPath('backend.capabilities.capacity_evidence', false)
+            ->assertJsonMissingPath('runtime_evidence');
+    }
+
+    public function testCapacityEvidenceNeverRelabelsAVersionedFixedServerWindow(): void
+    {
+        $this->client->capacityEvidence = $this->serverCapacityEvidence([
+            300 => $this->serverCapacityWindow(300, 12, 8),
+        ]);
+
+        $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
+            ->assertStatus(501)
+            ->assertJsonPath('reason', 'capacity_evidence_contract_unavailable')
+            ->assertJsonPath('contract_failure', 'capacity_evidence_window_unsupported')
+            ->assertJsonPath('backend.capabilities.capacity_evidence', false)
+            ->assertJsonMissingPath('runtime_evidence');
+    }
+
+    public function testCapacityEvidenceRejectsAnIncompleteVersionedServerContract(): void
+    {
+        $window = $this->serverCapacityWindow(3600, 12, 8);
+        unset($window['runtime_evidence']['reliability']['failures']);
+        $this->client->capacityEvidence = $this->serverCapacityEvidence([3600 => $window]);
+
+        $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
+            ->assertStatus(501)
+            ->assertJsonPath('reason', 'capacity_evidence_contract_unavailable')
+            ->assertJsonPath('contract_failure', 'capacity_evidence_contract_incomplete')
+            ->assertJsonPath('backend.capabilities.capacity_evidence', false)
+            ->assertJsonMissingPath('runtime_evidence');
+    }
+
+    public function testCapacityEvidenceRejectsAdversarialMeasurementAndSustainedMetadata(): void
+    {
+        $mutations = [
+            static function (array &$window): void {
+                $window['runtime_evidence']['throughput']['workflow_starts'] = [];
+            },
+            static function (array &$window): void {
+                $window['runtime_evidence']['latency']['execution']['samples_ms'] = [];
+            },
+            static function (array &$window): void {
+                $window['runtime_evidence']['growth']['history_events']['value'] = '14';
+            },
+            static function (array &$window): void {
+                unset($window['sustained_evidence']['minimum_windows_required_for_recommendation']);
+            },
+        ];
+
+        foreach ($mutations as $mutate) {
+            $window = $this->serverCapacityWindow(3600, 12, 8);
+            $mutate($window);
+            $client = new FakeRemoteClient();
+            $client->capacityEvidence = $this->serverCapacityEvidence([3600 => $window]);
+            $this->app->instance(RemoteBackend::class, new RemoteBackend($client));
+
+            $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
+                ->assertStatus(501)
+                ->assertJsonPath('reason', 'capacity_evidence_contract_unavailable')
+                ->assertJsonPath('contract_failure', 'capacity_evidence_contract_incomplete')
+                ->assertJsonPath('backend.capabilities.capacity_evidence', false)
+                ->assertJsonMissingPath('runtime_evidence');
+        }
+    }
+
+    public function testCapacityEvidencePreservesRemoteAuthorizationFailures(): void
+    {
+        $this->client->failures['operatorMetrics'] = new ServerException(
+            'The server token is not authorized for operator metrics.',
+            403,
+            'authorization_failed',
+            ['required_role' => 'admin'],
         );
+
+        $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
+            ->assertForbidden()
+            ->assertJsonPath('error', 'remote_authorization_failed')
+            ->assertJsonPath('reason', 'authorization_failed')
+            ->assertJsonPath('remote_details.required_role', 'admin');
     }
 
     public function testWorkerRegistrationRostersAreDisjointForEveryFleetShape(): void
@@ -426,6 +546,103 @@ final class ServiceModeBackendTest extends TestCase
         $this->assertSame('read_only', $bootstrap['backend']['access_mode']);
         $this->assertTrue($bootstrap['backend']['read_only']);
         $this->assertSame('configured', $bootstrap['backend']['authentication']);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $windows
+     * @return array<string, mixed>
+     */
+    private function serverCapacityEvidence(array $windows): array
+    {
+        return [
+            'schema' => 'durable-workflow.v2.namespace-capacity-evidence',
+            'schema_version' => 1,
+            'generated_at' => '2026-08-12T12:00:00.000000Z',
+            'freshness' => [
+                'strategy' => 'namespace_snapshot_cache',
+                'max_age_seconds' => 30,
+                'valid_until' => '2026-08-12T12:00:30.000000Z',
+            ],
+            'namespace' => 'orders',
+            'supported_window_seconds' => array_keys($windows),
+            'windows' => $windows,
+            'cardinality' => [
+                'bounded' => true,
+                'dimensions' => ['namespace'],
+                'prohibited_dimensions' => ['workflow_id', 'run_id', 'task_id', 'worker_id'],
+                'individual_execution_identifiers_included' => false,
+            ],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function serverCapacityWindow(int $duration, int $workflowStarts, int $queries): array
+    {
+        $end = Carbon::parse('2026-08-12T12:00:00Z');
+        $count = static fn (int $value): array => [
+            'available' => true,
+            'value' => $value,
+            'unit' => 'count',
+            'kind' => 'window_count',
+            'source' => 'durable_workflow_service',
+        ];
+        $distribution = static fn (int $value): array => [
+            'available' => true,
+            'samples_ms' => [$value],
+            'population_count' => 1,
+            'sample_limit' => 10000,
+            'sample_truncated' => false,
+            'source' => 'durable_workflow_service',
+        ];
+
+        return [
+            'observation_window' => [
+                'starts_at' => $end->copy()->subSeconds($duration)->toJSON(),
+                'ends_at' => $end->toJSON(),
+                'duration_seconds' => $duration,
+            ],
+            'runtime_evidence' => [
+                'throughput' => [
+                    'workflow_starts' => $count($workflowStarts),
+                    'workflow_completions' => $count(9),
+                    'activity_dispatches' => $count(7),
+                    'activity_completions' => $count(6),
+                    'timers_scheduled' => $count(5),
+                    'timers_fired' => $count(4),
+                    'signals' => $count(3),
+                    'queries' => $count($queries),
+                    'updates' => $count(2),
+                ],
+                'latency' => [
+                    'schedule_to_start' => $distribution(10),
+                    'execution' => $distribution(20),
+                    'replay' => $distribution(30),
+                    'inspection' => [
+                        'available' => false,
+                        'source' => 'not_available',
+                        'reason' => 'inspection_telemetry_unavailable',
+                    ],
+                ],
+                'growth' => [
+                    'history_events' => $count(14),
+                    'history_payload_bytes' => [...$count(1024), 'unit' => 'bytes'],
+                    'durable_payload_bytes' => [...$count(2048), 'unit' => 'bytes'],
+                ],
+                'reliability' => [
+                    'retries' => $count(1),
+                    'timeouts' => $count(0),
+                    'failures' => $count(0),
+                    'stale_heartbeats' => [...$count(0), 'kind' => 'gauge'],
+                    'overload_or_throttling' => $count(0),
+                ],
+            ],
+            'sustained_evidence' => [
+                'observation_windows' => 2,
+                'upgrade_breach_windows' => [],
+                'downgrade_clear_windows' => ['workflow_starts_per_second' => 2],
+                'minimum_windows_required_for_recommendation' => 3,
+            ],
+        ];
     }
 
     /**

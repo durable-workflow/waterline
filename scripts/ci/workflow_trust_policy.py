@@ -36,7 +36,21 @@ REQUIRED_FOCUSED_WORKFLOWS = {
         "triggers": frozenset({"pull_request", "push"}),
         "command": "scripts/ci/service-mode-image-smoke.sh",
     },
+    "service-capacity-tuple.yml": {
+        "triggers": frozenset({"pull_request", "push"}),
+        "command": "scripts/ci/service-capacity-tuple.sh",
+    },
 }
+SERVICE_CAPACITY_SERVER_TAG = "2.0.0-rc.32"
+SERVICE_CAPACITY_SERVER_COMMIT = "62344aadb8bc554ad3914ecaf68b974fec8b405c"
+SERVICE_CAPACITY_SERVER_REPOSITORY = "https://github.com/durable-workflow/server.git"
+GITHUB_PROVIDER_CONDITION = "${{ github.server_url == 'https://github.com' }}"
+ADMISSION_PROVIDER_CONDITION = "${{ github.server_url != 'https://github.com' }}"
+ADMISSION_FETCH_COMMANDS = (
+    'git clone --branch "$SERVER_RELEASE_TAG" --depth 1',
+    '"$SERVER_REPOSITORY_URL" server',
+    'test "$(git -C server rev-parse HEAD)" = "$SERVER_RELEASE_COMMIT"',
+)
 
 
 @dataclass(frozen=True, order=True)
@@ -163,6 +177,8 @@ def validate_focused_workflow(
 
     jobs = document.get("jobs", {})
     command_found = False
+    public_server_checkout_found = workflow_name != "service-capacity-tuple.yml"
+    admission_server_checkout_found = workflow_name != "service-capacity-tuple.yml"
     if isinstance(jobs, Mapping):
         for job_name, job in jobs.items():
             if not isinstance(job, Mapping):
@@ -179,8 +195,45 @@ def validate_focused_workflow(
                 run = step.get("run", "")
                 if isinstance(run, str) and contract["command"] in run:
                     command_found = True
+                uses = action_name(step)
+                configuration = step.get("with", {})
+                environment = step.get("env", {})
+                if (
+                    workflow_name == "service-capacity-tuple.yml"
+                    and uses.startswith("actions/checkout@")
+                    and isinstance(configuration, Mapping)
+                    and configuration.get("repository")
+                    == "${{ github.repository_owner }}/server"
+                ):
+                    if (
+                        configuration.get("ref") == SERVICE_CAPACITY_SERVER_TAG
+                        and step.get("if") == GITHUB_PROVIDER_CONDITION
+                    ):
+                        public_server_checkout_found = True
+                if (
+                    workflow_name == "service-capacity-tuple.yml"
+                    and isinstance(run, str)
+                    and isinstance(environment, Mapping)
+                    and step.get("if") == ADMISSION_PROVIDER_CONDITION
+                    and environment.get("SERVER_REPOSITORY_URL")
+                    == SERVICE_CAPACITY_SERVER_REPOSITORY
+                    and environment.get("SERVER_RELEASE_TAG")
+                    == SERVICE_CAPACITY_SERVER_TAG
+                    and environment.get("SERVER_RELEASE_COMMIT")
+                    == SERVICE_CAPACITY_SERVER_COMMIT
+                    and all(command in run for command in ADMISSION_FETCH_COMMANDS)
+                ):
+                    admission_server_checkout_found = True
     if not command_found:
         violations.add(Violation(workflow_name, "missing-focused-command"))
+    if not public_server_checkout_found:
+        violations.add(
+            Violation(workflow_name, "missing-public-server-release-checkout")
+        )
+    if not admission_server_checkout_found:
+        violations.add(
+            Violation(workflow_name, "missing-admission-server-source-checkout")
+        )
 
     return tuple(sorted(violations))
 

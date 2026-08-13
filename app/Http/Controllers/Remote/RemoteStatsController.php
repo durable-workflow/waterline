@@ -27,7 +27,7 @@ final class RemoteStatsController extends RemoteController
                 return $response;
             }
 
-            $response = $this->backend->client()->operatorMetrics();
+            $response = $this->backend->operatorMetrics();
             $metrics = is_array($response['operator_metrics'] ?? null)
                 ? $response['operator_metrics']
                 : $response;

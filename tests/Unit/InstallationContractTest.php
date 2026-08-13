@@ -18,6 +18,16 @@ final class InstallationContractTest extends TestCase
         );
     }
 
+    public function testServiceCapacityTupleEntryPointIsExecutable(): void
+    {
+        $root = dirname(__DIR__, 2);
+
+        $this->assertTrue(
+            is_executable($root.'/scripts/ci/service-capacity-tuple.sh'),
+            'The live service-capacity tuple entry point must be executable by CI.',
+        );
+    }
+
     public function testManifestSeparatesRemoteRuntimeFromOptionalEmbeddedIntegration(): void
     {
         $root = dirname(__DIR__, 2);
@@ -31,7 +41,16 @@ final class InstallationContractTest extends TestCase
         $sdkVersion = '2.0.0-rc.14';
         $workflowVersion = '2.0.0-rc.14';
 
-        $this->assertSame('2.0.0-rc.18', $releaseVersion);
+        $this->assertSame('2.0.0-rc.19', $releaseVersion);
+        $this->assertSame([
+            'server' => '2.0.0-rc.32',
+            'sdk-php' => '2.0.0-rc.14',
+            'waterline' => '2.0.0-rc.19',
+        ], $manifest['extra']['durable-workflow']['service-capacity-evidence']['first-supported-tuple'] ?? null);
+        $this->assertSame(
+            'durable-workflow.v2.namespace-capacity-evidence',
+            $manifest['extra']['durable-workflow']['service-capacity-evidence']['schema'] ?? null,
+        );
         $this->assertArrayNotHasKey('durable-workflow/sdk', $manifest['require'] ?? []);
         $this->assertArrayNotHasKey('durable-workflow/workflow', $manifest['require'] ?? []);
         $this->assertSame($sdkVersion, $manifest['require-dev']['durable-workflow/sdk'] ?? null);

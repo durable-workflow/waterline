@@ -2,7 +2,14 @@
 
 namespace Waterline\Tests\Feature;
 
+use Composer\InstalledVersions;
+use DurableWorkflow\Client;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Waterline\Http\Controllers\Remote\RemoteCapacityEvidenceController;
+use Waterline\Support\Remote\RemoteBackend;
+use Waterline\Support\ServiceModeRequirements;
 use Waterline\Tests\TestCase;
 
 /**
@@ -21,6 +28,9 @@ use Waterline\Tests\TestCase;
  * Run test:
  *   vendor/bin/phpunit tests/Feature/ServerIntegrationTest.php
  *
+ * The focused service-capacity tuple gate is self-contained:
+ *   composer test-service-capacity-tuple
+ *
  * Cleanup:
  *   docker compose -f docker-compose.integration.yml down -v
  */
@@ -35,9 +45,16 @@ class ServerIntegrationTest extends TestCase
     protected function setUp(): void
     {
         $this->afterApplicationCreated(function (): void {
-            config([
-                'database.default' => 'mysql',
-                'database.connections.mysql' => [
+            $connection = strtolower((string) env('INTEGRATION_DB_CONNECTION', 'mysql'));
+            $database = $connection === 'sqlite'
+                ? [
+                    'driver' => 'sqlite',
+                    'database' => env('INTEGRATION_DB_DATABASE'),
+                    'prefix' => '',
+                    'foreign_key_constraints' => true,
+                    'busy_timeout' => 5000,
+                ]
+                : [
                     'driver' => 'mysql',
                     'host' => env('INTEGRATION_DB_HOST', '127.0.0.1'),
                     'port' => env('INTEGRATION_DB_PORT', '33066'),
@@ -49,13 +66,17 @@ class ServerIntegrationTest extends TestCase
                     'prefix' => '',
                     'strict' => true,
                     'engine' => null,
-                ],
+                ];
+
+            config([
+                'database.default' => $connection,
+                "database.connections.{$connection}" => $database,
                 'waterline.engine_source' => 'v2',
                 'waterline.namespace' => self::NAMESPACE,
             ]);
 
-            DB::purge('mysql');
-            DB::reconnect('mysql');
+            DB::purge($connection);
+            DB::reconnect($connection);
         });
 
         parent::setUp();
@@ -174,6 +195,97 @@ class ServerIntegrationTest extends TestCase
         $this->assertContains('available_at', $columnNames);
     }
 
+    public function test_service_capacity_evidence_flows_through_the_declared_release_tuple(): void
+    {
+        Carbon::setTestNow();
+        config()->set('waterline.backend', 'service');
+        config()->set('waterline.service.endpoint', $this->serverUrl());
+        config()->set('waterline.service.token', self::AUTH_TOKEN);
+        config()->set('waterline.service.namespace', self::NAMESPACE);
+        config()->set('waterline.capacity_evidence.allowed_window_seconds', [300]);
+        config()->set('waterline.capacity_evidence.default_window_seconds', 300);
+
+        $tuple = $this->serviceCapacityEvidenceTuple();
+        $serverManifest = $this->serverSourceManifest();
+        $this->assertSame(
+            $tuple['server'],
+            $serverManifest['extra']['durable-workflow']['product-train'] ?? null,
+        );
+        $this->assertSame(ServiceModeRequirements::SDK_VERSION, $tuple['sdk-php']);
+        $this->assertSame($tuple['sdk-php'], InstalledVersions::getPrettyVersion('durable-workflow/sdk'));
+
+        $waterlineManifest = $this->manifest(dirname(__DIR__, 2).'/composer.json');
+        $this->assertSame(
+            $tuple['waterline'],
+            $waterlineManifest['extra']['durable-workflow']['product-train'] ?? null,
+        );
+
+        $client = new Client(
+            $this->serverUrl(),
+            namespace: self::NAMESPACE,
+            controlToken: self::AUTH_TOKEN,
+        );
+        $this->assertSame($tuple['server'], $client->clusterInfo()->version);
+
+        $controller = new RemoteCapacityEvidenceController(new RemoteBackend($client));
+        $response = $controller->show(Request::create(
+            '/waterline/api/v2/capacity-evidence',
+            'GET',
+            ['window_seconds' => 300],
+        ));
+        $payload = $response->getData(true);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('waterline.namespace_capacity_evidence', $payload['schema'] ?? null);
+        $this->assertSame('service', $payload['transport'] ?? null);
+        $this->assertSame(self::NAMESPACE, $payload['scope']['namespace'] ?? null);
+        $this->assertSame(300, $payload['observation_window']['duration_seconds'] ?? null);
+        $this->assertSame(
+            300,
+            (int) Carbon::parse($payload['observation_window']['starts_at'])
+                ->diffInSeconds(Carbon::parse($payload['observation_window']['ends_at'])),
+        );
+
+        foreach ([
+            'throughput' => [
+                'workflow_starts',
+                'workflow_completions',
+                'activity_dispatches',
+                'activity_completions',
+                'timers_scheduled',
+                'timers_fired',
+                'signals',
+                'queries',
+                'updates',
+            ],
+            'latency' => ['schedule_to_start', 'execution', 'replay', 'inspection'],
+            'growth' => ['history_events', 'history_payload_bytes', 'durable_payload_bytes'],
+            'reliability' => ['retries', 'timeouts', 'failures', 'stale_heartbeats', 'overload_or_throttling'],
+        ] as $category => $dimensions) {
+            foreach ($dimensions as $dimension) {
+                $this->assertIsArray($payload['runtime_evidence'][$category][$dimension] ?? null);
+            }
+        }
+
+        $this->assertFalse($payload['recommendation_input']['advisory']['automatic_plan_change'] ?? true);
+        $this->assertFalse($payload['recommendation_input']['advisory']['automatic_billing_change'] ?? true);
+        $this->assertFalse($payload['recommendation_input']['advisory']['automatic_infrastructure_change'] ?? true);
+        $this->assertTrue($payload['commercial_boundary']['diagnostic_and_advisory_only'] ?? false);
+        $this->assertFalse($payload['commercial_boundary']['automatic_plan_change'] ?? true);
+        $this->assertFalse($payload['commercial_boundary']['automatic_billing_change'] ?? true);
+        $this->assertFalse($payload['commercial_boundary']['automatic_infrastructure_change'] ?? true);
+        $this->assertFalse($payload['cardinality']['individual_execution_identifiers_included'] ?? true);
+
+        $keys = [];
+        array_walk_recursive($payload, static function (mixed $_value, string|int $key) use (&$keys): void {
+            $keys[] = $key;
+        });
+        $this->assertSame([], array_values(array_intersect(
+            ['workflow_id', 'run_id', 'task_id', 'worker_id'],
+            $keys,
+        )));
+    }
+
     private function ensureServerIsHealthy(): void
     {
         if (self::$serverHealthy === true) {
@@ -181,7 +293,7 @@ class ServerIntegrationTest extends TestCase
         }
 
         if (self::$serverHealthy === false) {
-            $this->markTestSkipped($this->serverUnavailableMessage());
+            $this->handleUnavailableServer();
         }
 
         $maxRetries = 30;
@@ -204,7 +316,7 @@ class ServerIntegrationTest extends TestCase
 
         self::$serverHealthy = false;
 
-        $this->markTestSkipped($this->serverUnavailableMessage());
+        $this->handleUnavailableServer();
     }
 
     private function ensureDefaultNamespaceExists(): void
@@ -359,8 +471,48 @@ class ServerIntegrationTest extends TestCase
         return rtrim((string) env('INTEGRATION_SERVER_URL', self::DEFAULT_SERVER_URL), '/');
     }
 
+    /** @return array{server: string, sdk-php: string, waterline: string} */
+    private function serviceCapacityEvidenceTuple(): array
+    {
+        $manifest = $this->manifest(dirname(__DIR__, 2).'/composer.json');
+        $tuple = $manifest['extra']['durable-workflow']['service-capacity-evidence']['first-supported-tuple'] ?? null;
+
+        $this->assertIsArray($tuple);
+
+        return $tuple;
+    }
+
+    /** @return array<string, mixed> */
+    private function serverSourceManifest(): array
+    {
+        $configured = env('INTEGRATION_SERVER_SOURCE_PATH');
+        $root = is_string($configured) && trim($configured) !== ''
+            ? $configured
+            : dirname(dirname(__DIR__, 2)).'/server';
+
+        return $this->manifest(rtrim($root, '/').'/composer.json');
+    }
+
+    /** @return array<string, mixed> */
+    private function manifest(string $path): array
+    {
+        $contents = file_get_contents($path);
+        $this->assertIsString($contents, 'Unable to read release manifest at '.$path);
+
+        return json_decode($contents, true, flags: JSON_THROW_ON_ERROR);
+    }
+
     private function serverUnavailableMessage(): string
     {
-        return 'Server container is not healthy. See INTEGRATION_TEST_README.md for the pinned docker compose startup command.';
+        return 'Server is not healthy. Run composer test-service-capacity-tuple for the self-contained SQLite gate.';
+    }
+
+    private function handleUnavailableServer(): void
+    {
+        if (filter_var(env('INTEGRATION_SERVER_REQUIRED', false), FILTER_VALIDATE_BOOL)) {
+            $this->fail($this->serverUnavailableMessage());
+        }
+
+        $this->markTestSkipped($this->serverUnavailableMessage());
     }
 }

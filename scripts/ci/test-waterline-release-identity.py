@@ -22,7 +22,7 @@ SPEC.loader.exec_module(identity)
 
 
 VERSIONS = {
-    "waterline": "2.0.0-rc.18",
+    "waterline": "2.0.0-rc.19",
     "workflow": "2.0.0-rc.14",
     "sdk-php": "2.0.0-rc.14",
 }

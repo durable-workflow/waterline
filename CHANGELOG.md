@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.18` source identity. Its package metadata
+Waterline advances to the `2.0.0-rc.19` source identity. Its package metadata
 now describes the operational UI across embedded and service-mode deployments.
 The standalone service distribution remains bound to PHP SDK `2.0.0-rc.14`,
 while embedded integration targets Workflow `2.0.0-rc.14` without pulling the
@@ -16,6 +16,13 @@ Latency percentiles now sample deterministic midpoint ranks across the complete
 observation-window population, with stable primary-key ordering at equal
 timestamps. Truncated samples declare their method and covered population;
 unknown or locally truncated methods fail closed before capacity guidance.
+Service mode now consumes the Server's versioned namespace capacity contract,
+selects only exact declared windows, and returns a typed unavailable response
+for older or incomplete Servers instead of advertising partial evidence. The
+first compatible service tuple is Server `2.0.0-rc.32`, PHP SDK
+`2.0.0-rc.14`, and Waterline `2.0.0-rc.19`. Server window collection is reused
+within its declared 30-second freshness bound so ordinary operator polling does
+not repeat the full aggregate query set.
 
 Workflow-list filter and view-option dialogs now use a coherent light or dark
 palette, keep their action row reachable around an internally scrolling body,

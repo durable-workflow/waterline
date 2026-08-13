@@ -1,0 +1,64 @@
+name: Service capacity release tuple
+
+on:
+  pull_request:
+  push:
+    branches: [v2]
+
+permissions:
+  contents: read
+
+jobs:
+  live-tuple:
+    name: Live Server to SDK to Waterline tuple
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          persist-credentials: false
+
+      - name: Check out the first supported Server source
+        if: ${{ github.server_url == 'https://github.com' }}
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          repository: ${{ github.repository_owner }}/server
+          ref: 2.0.0-rc.32
+          path: server
+          persist-credentials: false
+
+      - name: Fetch the landed Server source from the public repository
+        if: ${{ github.server_url != 'https://github.com' }}
+        env:
+          SERVER_REPOSITORY_URL: https://github.com/durable-workflow/server.git
+          SERVER_RELEASE_TAG: 2.0.0-rc.32
+          SERVER_RELEASE_COMMIT: 62344aadb8bc554ad3914ecaf68b974fec8b405c
+          GIT_TERMINAL_PROMPT: 0
+        run: |
+          git clone --branch "$SERVER_RELEASE_TAG" --depth 1 \
+            "$SERVER_REPOSITORY_URL" server
+          test "$(git -C server rev-parse HEAD)" = "$SERVER_RELEASE_COMMIT"
+
+      - name: Install PHP and Composer
+        # shivammathur/setup-php v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite
+          tools: composer
+          coverage: none
+
+      - name: Install the Waterline tuple dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: Install the current Server dependencies
+        run: >-
+          composer install --working-dir=server
+          --prefer-dist --no-progress --no-interaction
+
+      - name: Exercise the live capacity-evidence release tuple
+        env:
+          INTEGRATION_SERVER_SOURCE_PATH: ${{ github.workspace }}/server
+        run: >-
+          timeout --foreground --signal=TERM --kill-after=10s 5m
+          scripts/ci/service-capacity-tuple.sh

@@ -67,12 +67,22 @@
         "test-mysql": "vendor/bin/phpunit --testdox --configuration=phpunit-mysql.xml",
         "test-pgsql": "vendor/bin/phpunit --testdox --configuration=phpunit-pgsql.xml",
         "test-sqlite": "vendor/bin/phpunit --testdox --configuration=phpunit-sqlite.xml",
+        "test-service-capacity-tuple": "scripts/ci/service-capacity-tuple.sh",
         "clear": "@php vendor/bin/testbench package:purge-skeleton --ansi",
         "prepare": "@php vendor/bin/testbench package:discover --ansi"
     },
     "extra": {
         "durable-workflow": {
-            "product-train": "2.0.0-rc.18"
+            "product-train": "2.0.0-rc.19",
+            "service-capacity-evidence": {
+                "schema": "durable-workflow.v2.namespace-capacity-evidence",
+                "schema-version": 1,
+                "first-supported-tuple": {
+                    "server": "2.0.0-rc.32",
+                    "sdk-php": "2.0.0-rc.14",
+                    "waterline": "2.0.0-rc.19"
+                }
+            }
         },
         "laravel": {
             "providers": [

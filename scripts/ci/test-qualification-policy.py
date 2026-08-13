@@ -1337,6 +1337,124 @@ jobs:
         self.assertIn("filtered-focused-trigger", codes)
         self.assertIn("focused-trigger-misses-v2", codes)
 
+    def test_service_capacity_checkouts_bind_each_provider_to_landed_source(
+        self,
+    ) -> None:
+        document = self.parse(
+            """
+on: [pull_request, push]
+permissions:
+  contents: read
+jobs:
+  tuple:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1111111111111111111111111111111111111111
+        with:
+          persist-credentials: false
+      - if: ${{ github.server_url == 'https://github.com' }}
+        uses: actions/checkout@1111111111111111111111111111111111111111
+        with:
+          repository: ${{ github.repository_owner }}/server
+          ref: 2.0.0-rc.32
+          path: server
+          persist-credentials: false
+      - run: scripts/ci/service-capacity-tuple.sh
+"""
+        )
+        codes = {
+            violation.code
+            for violation in trust.validate_document(
+                "service-capacity-tuple.yml",
+                document,
+            )
+        }
+
+        self.assertNotIn("missing-public-server-release-checkout", codes)
+        self.assertIn("missing-admission-server-source-checkout", codes)
+
+    def test_service_capacity_admission_fetches_public_landed_source_without_a_token(
+        self,
+    ) -> None:
+        document = self.parse(
+            """
+on: [pull_request, push]
+permissions:
+  contents: read
+jobs:
+  tuple:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@1111111111111111111111111111111111111111
+        with:
+          persist-credentials: false
+      - if: ${{ github.server_url == 'https://github.com' }}
+        uses: actions/checkout@1111111111111111111111111111111111111111
+        with:
+          repository: ${{ github.repository_owner }}/server
+          ref: 2.0.0-rc.32
+          path: server
+          persist-credentials: false
+      - if: ${{ github.server_url != 'https://github.com' }}
+        env:
+          SERVER_REPOSITORY_URL: https://github.com/durable-workflow/server.git
+          SERVER_RELEASE_TAG: 2.0.0-rc.32
+          SERVER_RELEASE_COMMIT: 62344aadb8bc554ad3914ecaf68b974fec8b405c
+        run: |
+          git clone --branch "$SERVER_RELEASE_TAG" --depth 1 \
+            "$SERVER_REPOSITORY_URL" server
+          test "$(git -C server rev-parse HEAD)" = "$SERVER_RELEASE_COMMIT"
+      - run: scripts/ci/service-capacity-tuple.sh
+"""
+        )
+        codes = {
+            violation.code
+            for violation in trust.validate_document(
+                "service-capacity-tuple.yml",
+                document,
+            )
+        }
+
+        self.assertNotIn("missing-public-server-release-checkout", codes)
+        self.assertNotIn("missing-admission-server-source-checkout", codes)
+
+        admission = document["jobs"]["tuple"]["steps"][2]
+        admission["env"]["SERVER_REPOSITORY_URL"] = (
+            "https://code.example.test/durable-workflow/server.git"
+        )
+        private_source_codes = {
+            violation.code
+            for violation in trust.validate_document(
+                "service-capacity-tuple.yml",
+                document,
+            )
+        }
+
+        self.assertIn(
+            "missing-admission-server-source-checkout",
+            private_source_codes,
+        )
+
+        admission["env"]["SERVER_REPOSITORY_URL"] = (
+            "https://github.com/durable-workflow/server.git"
+        )
+        admission["run"] = (
+            'git clone --branch "$SERVER_RELEASE_TAG" --depth 1 '
+            '"$SERVER_REPOSITORY_URL" server\n'
+        )
+        unverified_commit_codes = {
+            violation.code
+            for violation in trust.validate_document(
+                "service-capacity-tuple.yml",
+                document,
+            )
+        }
+
+        self.assertIn(
+            "missing-admission-server-source-checkout",
+            unverified_commit_codes,
+        )
+
     def test_untrusted_job_cannot_receive_secrets_or_write_permission(self) -> None:
         codes = self.codes(
             """
