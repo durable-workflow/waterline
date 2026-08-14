@@ -19,7 +19,7 @@ docker run --rm -p 8080:8080 \
   -e WATERLINE_NAMESPACE=orders \
   -e WATERLINE_ACCESS_MODE=read_only \
   -e WATERLINE_ALLOW_UNAUTHENTICATED=true \
-  durableworkflow/waterline:2.0.0-rc.20
+  durableworkflow/waterline:2.0.0-rc.21
 ```
 
 Open `http://localhost:8080/waterline`. Bind the port to a private interface or
@@ -89,11 +89,13 @@ Waterline accepts only a Server-declared exact window for the configured
 namespace. A Server that omits the contract, publishes an incomplete dimension
 set, or does not publish the requested window receives the typed
 `capacity_evidence_contract_unavailable` response. Waterline does not relabel a
-fixed upstream window. Server `2.0.0-rc.32` snapshots the declared windows for
-at most 30 seconds and publishes `generated_at`, `freshness.max_age_seconds`,
-and `freshness.valid_until` so consumers can bound evidence age. Capacity
-recommendations remain diagnostic and advisory; they cannot change plans,
-billing, or infrastructure.
+fixed upstream window. It evaluates each snapshot against the request time and
+allows at most one second of clock skew on either freshness boundary. Evidence
+outside that bounded interval fails closed, while accepted output preserves the
+Server's `generated_at`, `freshness.max_age_seconds`, and
+`freshness.valid_until` values. Server `2.0.0-rc.32` snapshots the declared
+windows for at most 30 seconds. Capacity recommendations remain diagnostic and
+advisory; they cannot change plans, billing, or infrastructure.
 
 ### Worker health roster contract
 
@@ -120,7 +122,7 @@ the PHP SDK, but not the embedded Workflow runtime:
 
 ```bash
 composer require \
-  durable-workflow/waterline:2.0.0-rc.20@RC \
+  durable-workflow/waterline:2.0.0-rc.21@RC \
   durable-workflow/sdk:2.0.0-rc.14@RC
 ```
 
@@ -136,7 +138,7 @@ the optional Workflow integration:
 
 ```bash
 composer require \
-  durable-workflow/waterline:2.0.0-rc.20@RC \
+  durable-workflow/waterline:2.0.0-rc.21@RC \
   durable-workflow/workflow:2.0.0-rc.14@RC
 
 php artisan waterline:install

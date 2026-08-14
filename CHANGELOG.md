@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.20` source identity. Its package metadata
+Waterline advances to the `2.0.0-rc.21` source identity. Its package metadata
 now describes the operational UI across embedded and service-mode deployments.
 The standalone service distribution remains bound to PHP SDK `2.0.0-rc.14`,
 while embedded integration targets Workflow `2.0.0-rc.14` without pulling the
@@ -26,7 +26,9 @@ for older or incomplete Servers instead of advertising partial evidence. The
 first compatible service tuple is Server `2.0.0-rc.32`, PHP SDK
 `2.0.0-rc.14`, and Waterline `2.0.0-rc.19`. Server window collection is reused
 within its declared 30-second freshness bound so ordinary operator polling does
-not repeat the full aggregate query set.
+not repeat the full aggregate query set. Waterline evaluates that freshness
+bound at request time with one second of clock-skew tolerance, rejects expired
+or premature snapshots, and preserves accepted Server timestamps in its output.
 
 Workflow-list filter and view-option dialogs now use a coherent light or dark
 palette, keep their action row reachable around an internally scrolling body,

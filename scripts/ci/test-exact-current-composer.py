@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
 SCRIPT = ROOT / "scripts" / "ci" / "check-exact-current-composer.sh"
-WATERLINE = "2.0.0-rc.20"
+WATERLINE = "2.0.0-rc.21"
 WORKFLOW = "2.0.0-rc.18"
 SDK = "2.0.0-rc.12"
 DESCRIPTION = (

@@ -41,7 +41,7 @@ final class InstallationContractTest extends TestCase
         $sdkVersion = '2.0.0-rc.14';
         $workflowVersion = '2.0.0-rc.14';
 
-        $this->assertSame('2.0.0-rc.20', $releaseVersion);
+        $this->assertSame('2.0.0-rc.21', $releaseVersion);
         $this->assertSame([
             'server' => '2.0.0-rc.32',
             'sdk-php' => '2.0.0-rc.14',

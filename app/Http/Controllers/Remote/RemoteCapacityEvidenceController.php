@@ -21,6 +21,8 @@ final class RemoteCapacityEvidenceController extends RemoteController
 
     public function show(Request $request): JsonResponse
     {
+        $requestTime = now();
+
         if ($response = $this->requireCapability('operatorMetrics', 'capacity_evidence')) {
             return $response;
         }
@@ -30,7 +32,7 @@ final class RemoteCapacityEvidenceController extends RemoteController
             'window_seconds' => ['nullable', 'integer', Rule::in($allowed)],
         ]);
         $windowSeconds = (int) ($validated['window_seconds'] ?? CapacityEvidence::defaultWindowSeconds());
-        $contract = $this->backend->capacityEvidenceContract($windowSeconds);
+        $contract = $this->backend->capacityEvidenceContract($windowSeconds, $requestTime);
 
         if ($contract['available'] !== true) {
             return response()->json([
@@ -44,17 +46,26 @@ final class RemoteCapacityEvidenceController extends RemoteController
                     'namespace' => OperatorScope::namespace(),
                     'window_seconds' => $windowSeconds,
                 ],
-                'backend' => $this->backend->status(),
+                'backend' => $this->backend->status($requestTime),
             ], 501);
         }
 
-        return response()->json($this->scoped(app(CapacityEvidence::class)->build(
+        $payload = app(CapacityEvidence::class)->build(
             $contract['metrics'],
             $contract['window'],
-            now(),
+            $requestTime,
             $windowSeconds,
             OperatorScope::payload(),
             'service',
-        )));
+        );
+        $upstream = $contract['metrics']['capacity_evidence'];
+        $payload['generated_at'] = $upstream['generated_at'];
+        $payload['freshness'] = [
+            'strategy' => $upstream['freshness']['strategy'],
+            'max_age_seconds' => $upstream['freshness']['max_age_seconds'],
+            'valid_until' => $upstream['freshness']['valid_until'],
+        ];
+
+        return response()->json($this->scoped($payload, $requestTime));
     }
 }

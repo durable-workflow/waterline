@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Waterline\Http\Controllers\Remote;
 
+use Carbon\CarbonInterface;
 use Illuminate\Http\JsonResponse;
 use Waterline\Http\Controllers\Controller;
 use Waterline\Support\OperatorScope;
@@ -50,10 +51,10 @@ abstract class RemoteController extends Controller
     }
 
     /** @param array<string, mixed> $payload */
-    protected function scoped(array $payload): array
+    protected function scoped(array $payload, ?CarbonInterface $requestTime = null): array
     {
         $payload['operator_scope'] = OperatorScope::payload();
-        $payload['backend'] = $this->backend->status();
+        $payload['backend'] = $this->backend->status($requestTime);
 
         return $payload;
     }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Waterline\Support\Remote;
 
 use BadMethodCallException;
+use Carbon\CarbonInterface;
 use DurableWorkflow\Client;
 use Throwable;
 use Waterline\Support\BackendConfiguration;
@@ -79,7 +80,10 @@ final class RemoteBackend
     /**
      * @return array{available: bool, reason: string|null, metrics: array<string, mixed>, window: array<string, mixed>}
      */
-    public function capacityEvidenceContract(int $windowSeconds): array
+    public function capacityEvidenceContract(
+        int $windowSeconds,
+        ?CarbonInterface $requestTime = null,
+    ): array
     {
         if (! $this->supports('operatorMetrics')) {
             return [
@@ -94,14 +98,20 @@ final class RemoteBackend
             $this->operatorMetrics(),
             BackendConfiguration::namespace(),
             $windowSeconds,
+            $requestTime ?? now(),
         );
     }
 
-    public function supportsCapacityEvidence(): bool
+    public function supportsCapacityEvidence(?CarbonInterface $requestTime = null): bool
     {
+        $requestTime ??= now();
+
         foreach (CapacityEvidence::allowedWindowSeconds() as $windowSeconds) {
             try {
-                $available = $this->capacityEvidenceContract($windowSeconds)['available'] === true;
+                $available = $this->capacityEvidenceContract(
+                    $windowSeconds,
+                    $requestTime,
+                )['available'] === true;
             } catch (Throwable) {
                 return false;
             }
@@ -115,12 +125,12 @@ final class RemoteBackend
     }
 
     /** @return array<string, bool> */
-    public function capabilities(): array
+    public function capabilities(?CarbonInterface $requestTime = null): array
     {
         $capabilities = BackendConfiguration::declaredCapabilities();
         $capabilities['health'] = $this->supports('systemHealth');
         $capabilities['metrics'] = $this->supports('operatorMetrics');
-        $capabilities['capacity_evidence'] = $this->supportsCapacityEvidence();
+        $capabilities['capacity_evidence'] = $this->supportsCapacityEvidence($requestTime);
         $capabilities['dashboard_summary'] = $this->supports('operatorDashboard');
         $capabilities['workers'] = $this->supports('listWorkers');
         $capabilities['task_queues'] = $this->supports('listTaskQueues');
@@ -131,8 +141,8 @@ final class RemoteBackend
     }
 
     /** @return array<string, mixed> */
-    public function status(): array
+    public function status(?CarbonInterface $requestTime = null): array
     {
-        return BackendConfiguration::payload($this->capabilities());
+        return BackendConfiguration::payload($this->capabilities($requestTime));
     }
 }

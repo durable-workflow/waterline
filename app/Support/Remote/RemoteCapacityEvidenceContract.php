@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Waterline\Support\Remote;
 
+use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Throwable;
 
@@ -12,6 +13,8 @@ final class RemoteCapacityEvidenceContract
     public const SCHEMA = 'durable-workflow.v2.namespace-capacity-evidence';
 
     public const VERSION = 1;
+
+    public const CLOCK_SKEW_SECONDS = 1;
 
     /** @var array<string, list<string>> */
     private const REQUIRED_DIMENSIONS = [
@@ -43,7 +46,12 @@ final class RemoteCapacityEvidenceContract
      * @param  array<string, mixed>  $response
      * @return array{available: bool, reason: string|null, metrics: array<string, mixed>, window: array<string, mixed>}
      */
-    public function inspect(array $response, string $namespace, int $windowSeconds): array
+    public function inspect(
+        array $response,
+        string $namespace,
+        int $windowSeconds,
+        CarbonInterface $requestTime,
+    ): array
     {
         $metrics = is_array($response['operator_metrics'] ?? null)
             ? $response['operator_metrics']
@@ -78,12 +86,23 @@ final class RemoteCapacityEvidenceContract
         if (! is_array($window) || ! $this->exactWindow($window, $windowSeconds)) {
             return $this->unavailable('capacity_evidence_window_mismatch', $metrics);
         }
-        if (! $this->hasFreshness($capacity)
+        $freshness = $this->freshnessInterval($capacity);
+        if ($freshness === null
             || ! $this->hasRequiredDimensions($window)
             || ! $this->hasSustainedEvidence($window)
             || ! $this->hasBoundedCardinality($capacity)
             || $this->containsExecutionIdentifier($window)) {
             return $this->unavailable('capacity_evidence_contract_incomplete', $metrics);
+        }
+        if ($requestTime->lessThan(
+            $freshness['generated_at']->copy()->subSeconds(self::CLOCK_SKEW_SECONDS),
+        )) {
+            return $this->unavailable('capacity_evidence_not_yet_valid', $metrics);
+        }
+        if ($requestTime->greaterThan(
+            $freshness['valid_until']->copy()->addSeconds(self::CLOCK_SKEW_SECONDS),
+        )) {
+            return $this->unavailable('capacity_evidence_expired', $metrics);
         }
 
         return [
@@ -94,8 +113,11 @@ final class RemoteCapacityEvidenceContract
         ];
     }
 
-    /** @param array<string, mixed> $capacity */
-    private function hasFreshness(array $capacity): bool
+    /**
+     * @param array<string, mixed> $capacity
+     * @return array{generated_at: Carbon, valid_until: Carbon}|null
+     */
+    private function freshnessInterval(array $capacity): ?array
     {
         $freshness = is_array($capacity['freshness'] ?? null) ? $capacity['freshness'] : [];
         $generatedAt = $capacity['generated_at'] ?? null;
@@ -107,17 +129,24 @@ final class RemoteCapacityEvidenceContract
             || $maxAge < 1
             || ! is_string($generatedAt)
             || ! is_string($validUntil)) {
-            return false;
+            return null;
         }
 
         try {
             $generated = Carbon::parse($generatedAt);
             $valid = Carbon::parse($validUntil);
 
-            return $valid->greaterThan($generated)
-                && abs($generated->diffInSeconds($valid) - $maxAge) <= 1;
+            if (! $valid->greaterThan($generated)
+                || abs($generated->diffInSeconds($valid) - $maxAge) > 1) {
+                return null;
+            }
+
+            return [
+                'generated_at' => $generated,
+                'valid_until' => $valid,
+            ];
         } catch (Throwable) {
-            return false;
+            return null;
         }
     }
 

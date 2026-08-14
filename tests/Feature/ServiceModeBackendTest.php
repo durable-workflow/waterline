@@ -55,9 +55,17 @@ final class ServiceModeBackendTest extends TestCase
     {
         parent::setUp();
 
+        Carbon::setTestNow('2026-08-12T12:00:15Z');
         Waterline::auth(static fn (): bool => true);
         $this->client = new FakeRemoteClient();
         $this->app->instance(RemoteBackend::class, new RemoteBackend($this->client));
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+
+        parent::tearDown();
     }
 
     public function testWorkflowListAndSelectedRunUseTheSharedWaterlineContract(): void
@@ -155,6 +163,10 @@ final class ServiceModeBackendTest extends TestCase
         $response = $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=300')
             ->assertOk()
             ->assertJsonPath('schema', 'waterline.namespace_capacity_evidence')
+            ->assertJsonPath('generated_at', '2026-08-12T12:00:00.000000Z')
+            ->assertJsonPath('freshness.strategy', 'namespace_snapshot_cache')
+            ->assertJsonPath('freshness.max_age_seconds', 30)
+            ->assertJsonPath('freshness.valid_until', '2026-08-12T12:00:30.000000Z')
             ->assertJsonPath('transport', 'service')
             ->assertJsonPath('scope.namespace', 'orders')
             ->assertJsonPath('observation_window.starts_at', '2026-08-12T11:55:00.000000Z')
@@ -198,6 +210,65 @@ final class ServiceModeBackendTest extends TestCase
         $this->assertSame('GET', $transport->requests[0]['method']);
         $this->assertSame('https://server.example/api/system/operator-metrics', $transport->requests[0]['uri']);
         $this->assertSame('orders', $transport->requests[0]['headers']['X-Namespace']);
+    }
+
+    public function testCapacityEvidenceRejectsExpiredServerEvidenceWithoutRestampingIt(): void
+    {
+        Carbon::setTestNow('2026-08-12T12:00:32Z');
+        config()->set('waterline.capacity_evidence.allowed_window_seconds', [3600]);
+        $this->client->capacityEvidence = $this->serverCapacityEvidence([
+            3600 => $this->serverCapacityWindow(3600, 12, 8),
+        ]);
+
+        $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
+            ->assertStatus(501)
+            ->assertJsonPath('reason', 'capacity_evidence_contract_unavailable')
+            ->assertJsonPath('contract_failure', 'capacity_evidence_expired')
+            ->assertJsonPath('backend.capabilities.capacity_evidence', false)
+            ->assertJsonMissingPath('generated_at')
+            ->assertJsonMissingPath('freshness')
+            ->assertJsonMissingPath('runtime_evidence');
+    }
+
+    public function testCapacityEvidenceRejectsFutureDatedServerEvidenceWithoutRestampingIt(): void
+    {
+        Carbon::setTestNow('2026-08-12T11:59:58Z');
+        config()->set('waterline.capacity_evidence.allowed_window_seconds', [3600]);
+        $this->client->capacityEvidence = $this->serverCapacityEvidence([
+            3600 => $this->serverCapacityWindow(3600, 12, 8),
+        ]);
+
+        $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
+            ->assertStatus(501)
+            ->assertJsonPath('reason', 'capacity_evidence_contract_unavailable')
+            ->assertJsonPath('contract_failure', 'capacity_evidence_not_yet_valid')
+            ->assertJsonPath('backend.capabilities.capacity_evidence', false)
+            ->assertJsonMissingPath('generated_at')
+            ->assertJsonMissingPath('freshness')
+            ->assertJsonMissingPath('runtime_evidence');
+    }
+
+    public function testCapacityEvidenceAcceptsInclusiveFreshnessAndClockSkewBoundaries(): void
+    {
+        config()->set('waterline.capacity_evidence.allowed_window_seconds', [3600]);
+        $this->client->capacityEvidence = $this->serverCapacityEvidence([
+            3600 => $this->serverCapacityWindow(3600, 12, 8),
+        ]);
+
+        foreach ([
+            '2026-08-12T11:59:59Z',
+            '2026-08-12T12:00:00Z',
+            '2026-08-12T12:00:30Z',
+            '2026-08-12T12:00:31Z',
+        ] as $requestTime) {
+            Carbon::setTestNow($requestTime);
+
+            $this->getJson('/waterline/api/v2/capacity-evidence?window_seconds=3600')
+                ->assertOk()
+                ->assertJsonPath('generated_at', '2026-08-12T12:00:00.000000Z')
+                ->assertJsonPath('freshness.valid_until', '2026-08-12T12:00:30.000000Z')
+                ->assertJsonPath('backend.capabilities.capacity_evidence', true);
+        }
     }
 
     public function testCapacityEvidenceFailsExplicitlyWhenTheServerContractIsMissing(): void
