@@ -15,6 +15,36 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  action-policy:
+    name: Central action policy preflight
+    if: ${{ github.server_url == 'https://github.com' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - name: Check out candidate source
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        persist-credentials: false
+    - name: Check out central action policy
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        repository: durable-workflow/.github
+        ref: main
+        path: .central-action-policy
+        persist-credentials: false
+    - name: Set up Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      with:
+        python-version: "3.13"
+    - name: Install policy dependencies
+      run: python -m pip install PyYAML==6.0.2
+    - name: Require centrally approved immutable action commits
+      run: >-
+        python .central-action-policy/scripts/qualification_policy.py validate
+        --policy .central-action-policy/qualification/policy.json
+        --target waterline
+        --workflow-directory .github/workflows
+
   classify:
     name: Classify target-branch qualification
     runs-on: ubuntu-latest
@@ -835,6 +865,7 @@ jobs:
     name: Target branch qualification
     if: ${{ always() && github.server_url == 'https://github.com' }}
     needs:
+      - action-policy
       - classify
       - release-contracts
       - conformance-contracts
@@ -848,6 +879,12 @@ jobs:
     timeout-minutes: 2
 
     steps:
+    - name: Require central action policy preflight
+      if: ${{ github.server_url == 'https://github.com' }}
+      env:
+        ACTION_POLICY_RESULT: ${{ needs.action-policy.result }}
+      run: test "$ACTION_POLICY_RESULT" = success
+
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       with:
         persist-credentials: false
