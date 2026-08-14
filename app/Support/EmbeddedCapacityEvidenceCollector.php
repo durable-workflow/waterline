@@ -254,9 +254,10 @@ final class EmbeddedCapacityEvidenceCollector
 
     /**
      * Build a bounded systematic sample over the complete, chronologically
-     * ordered population. Midpoint ranks give every equally sized population
-     * stratum one observation; the primary key makes equal timestamps stable
-     * on every supported database.
+     * ordered population. Each populated distribution uses exactly two
+     * queries: one count and one ordered rank pass. The database returns only
+     * midpoint rows, and the primary key makes equal timestamps stable on
+     * every supported database.
      *
      * @return array{available: bool, samples_ms?: list<float>, population_count?: int, sampling_method?: string, sampling_population?: string, source: string, reason?: string}
      */
@@ -276,7 +277,7 @@ final class EmbeddedCapacityEvidenceCollector
             ->whereNotNull($started)
             ->whereNotNull($ended)
             ->whereBetween($boundary, [$windowStart, $windowEnd]);
-        $population = (clone $eligible)->count();
+        $population = (int) (clone $eligible)->toBase()->count();
 
         if ($population === 0) {
             return [
@@ -287,46 +288,67 @@ final class EmbeddedCapacityEvidenceCollector
         }
 
         $limit = max(1, min(50000, (int) config('waterline.capacity_evidence.latency_sample_limit', 10000)));
-        $sampleCount = min((int) $population, $limit);
-        $sampleRanks = array_fill_keys($this->systematicSampleRanks((int) $population, $sampleCount), true);
+        $sampleCount = min($population, $limit);
+        $connection = $model->getConnection();
+        $grammar = $connection->getQueryGrammar();
         $primaryKey = $model->qualifyColumn($model->getKeyName());
-        $samples = [];
-        $populationRank = 0;
+        $rankAlias = 'waterline_population_rank';
+        $startedAlias = 'waterline_started_at';
+        $endedAlias = 'waterline_ended_at';
+        $rankedAlias = 'waterline_latency_population';
+        $ranked = (clone $eligible)
+            ->toBase()
+            ->select([
+                "{$started} as {$startedAlias}",
+                "{$ended} as {$endedAlias}",
+            ])
+            ->selectRaw(sprintf(
+                'ROW_NUMBER() OVER (ORDER BY %s, %s) AS %s',
+                $grammar->wrap($boundary),
+                $grammar->wrap($primaryKey),
+                $grammar->wrap($rankAlias),
+            ));
+        $qualifiedRank = $grammar->wrap("{$rankedAlias}.{$rankAlias}");
 
-        $eligible
-            ->select([$started, $ended, $primaryKey])
-            ->orderBy($boundary)
-            ->orderBy($primaryKey)
-            ->chunk(1000, function ($rows) use (
-                &$populationRank,
-                &$samples,
-                $endedColumn,
+        // A row is a midpoint exactly when its half-stratum crossing count is
+        // one. This predicate avoids a database-specific values table or a
+        // potentially 50,000-element IN list while retaining the exact
+        // systematic population midpoint ranks.
+        $integerDivision = $connection->getDriverName() === 'mysql' ? 'DIV' : '/';
+        $midpointCrossing = sprintf(
+            '((2 * ? * %1$s + ? - 1) %2$s (2 * ?)) > '
+            .'((2 * ? * (%1$s - 1) + ? - 1) %2$s (2 * ?))',
+            $qualifiedRank,
+            $integerDivision,
+        );
+        $rows = $connection
+            ->query()
+            ->fromSub($ranked, $rankedAlias)
+            ->whereRaw($midpointCrossing, [
                 $sampleCount,
-                $sampleRanks,
-                $startedColumn,
-            ): bool {
-                foreach ($rows as $row) {
-                    if (isset($sampleRanks[$populationRank])) {
-                        $from = $row->getAttribute($startedColumn);
-                        $to = $row->getAttribute($endedColumn);
+                $population,
+                $population,
+                $sampleCount,
+                $population,
+                $population,
+            ])
+            ->orderBy($rankAlias)
+            ->get([$startedAlias, $endedAlias]);
+        $samples = [];
 
-                        try {
-                            $from = $from instanceof CarbonInterface ? $from : Carbon::parse((string) $from);
-                            $to = $to instanceof CarbonInterface ? $to : Carbon::parse((string) $to);
-                        } catch (Throwable) {
-                            ++$populationRank;
+        foreach ($rows as $row) {
+            $from = $row->{$startedAlias};
+            $to = $row->{$endedAlias};
 
-                            continue;
-                        }
+            try {
+                $from = $from instanceof CarbonInterface ? $from : Carbon::parse((string) $from);
+                $to = $to instanceof CarbonInterface ? $to : Carbon::parse((string) $to);
+            } catch (Throwable) {
+                continue;
+            }
 
-                        $samples[] = max(0.0, (float) $from->diffInMilliseconds($to));
-                    }
-
-                    ++$populationRank;
-                }
-
-                return count($samples) < $sampleCount;
-            });
+            $samples[] = max(0.0, (float) $from->diffInMilliseconds($to));
+        }
 
         $samplingMethod = $population > $limit
             ? 'systematic_population_rank_midpoint'
@@ -350,18 +372,6 @@ final class EmbeddedCapacityEvidenceCollector
                 'sampling_population' => 'eligible_rows_in_observation_window',
                 'source' => 'waterline_embedded_store',
             ];
-    }
-
-    /** @return list<int> Zero-based midpoint ranks across the population. */
-    private function systematicSampleRanks(int $population, int $sampleCount): array
-    {
-        $ranks = [];
-
-        for ($index = 0; $index < $sampleCount; ++$index) {
-            $ranks[] = intdiv((2 * $index + 1) * $population, 2 * $sampleCount);
-        }
-
-        return $ranks;
     }
 
     private function durablePayloadBytes(

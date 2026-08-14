@@ -215,9 +215,12 @@ class ServerIntegrationTest extends TestCase
         $this->assertSame($tuple['sdk-php'], InstalledVersions::getPrettyVersion('durable-workflow/sdk'));
 
         $waterlineManifest = $this->manifest(dirname(__DIR__, 2).'/composer.json');
-        $this->assertSame(
-            $tuple['waterline'],
-            $waterlineManifest['extra']['durable-workflow']['product-train'] ?? null,
+        $currentWaterline = $waterlineManifest['extra']['durable-workflow']['product-train'] ?? null;
+        $this->assertIsString($currentWaterline);
+        $this->assertGreaterThanOrEqual(
+            0,
+            version_compare($currentWaterline, $tuple['waterline']),
+            'Current Waterline source must not precede the first supported service-capacity tuple.',
         );
 
         $client = new Client(

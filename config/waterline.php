@@ -252,7 +252,10 @@ return [
     | current plan identity and measured envelope through runtime config; no
     | default throughput or latency limit is invented by Waterline. Latency
     | samples above the configured limit use deterministic midpoint ranks over
-    | the complete timestamp-and-primary-key ordered window population.
+    | the complete timestamp-and-primary-key ordered window population. Each
+    | of the three latency dimensions uses one count query and one ordered rank
+    | query when populated, so sampling query count is bounded at six and only
+    | retained rows leave the database regardless of eligible population size.
     |
     */
 

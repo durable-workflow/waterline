@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Waterline\Tests\Feature;
 
 use Illuminate\Support\Facades\DB;
+use Waterline\Support\CapacityEvidence;
+use Waterline\Support\EmbeddedCapacityEvidenceCollector;
 use Waterline\Tests\TestCase;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
@@ -289,6 +291,93 @@ final class V2CapacityEvidenceControllerTest extends TestCase
         }
     }
 
+    public function testLatencySamplingQueryCountIsFixedAcrossManyPopulationBatches(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.capacity_evidence.latency_sample_limit', 4);
+        config()->set('waterline.capacity_evidence.percentile_min_samples', [
+            'p50' => 1,
+            'p95' => 1,
+            'p99' => 1,
+        ]);
+        $this->seedLatencyWindow('bounded-small', 'b', array_fill(0, 5, 1_000), true);
+        $this->seedLatencyWindow(
+            'bounded-large',
+            'l',
+            array_map(static fn (int $index): int => ($index % 4 + 1) * 1_000, range(0, 3_004)),
+            true,
+        );
+
+        [$smallLatency, $smallQueries] = $this->capacityLatencyWithQueryLog('bounded-small');
+        [$largeLatency, $largeQueries] = $this->capacityLatencyWithQueryLog('bounded-large');
+
+        $this->assertCount(count($smallQueries), $largeQueries);
+        $rankQueries = array_values(array_filter(
+            $largeQueries,
+            static fn (array $query): bool => str_contains(
+                strtolower((string) ($query['query'] ?? '')),
+                'row_number() over',
+            ),
+        ));
+        $this->assertCount(3, $rankQueries);
+
+        foreach ($rankQueries as $query) {
+            $sql = strtolower((string) $query['query']);
+            $this->assertStringContainsString(' where ', $sql);
+            $this->assertStringNotContainsString(' offset ', $sql);
+        }
+
+        foreach (['schedule_to_start', 'execution', 'replay'] as $dimension) {
+            $this->assertTrue($smallLatency[$dimension]['available']);
+            $this->assertSame(4, $smallLatency[$dimension]['sample_count']);
+            $this->assertSame(5, $smallLatency[$dimension]['population_count']);
+
+            $distribution = $largeLatency[$dimension];
+            $this->assertTrue($distribution['available']);
+            $this->assertSame(4, $distribution['sample_count']);
+            $this->assertSame(3_005, $distribution['population_count']);
+            $this->assertTrue($distribution['sample_truncated']);
+            $this->assertSame('systematic_population_rank_midpoint', $distribution['sampling_method']);
+            $this->assertSame(
+                'eligible_rows_in_observation_window',
+                $distribution['sampling_population'],
+            );
+            $this->assertTrue($distribution['representative_across_window']);
+        }
+    }
+
+    /** @return array{array<string, mixed>, list<array{query: string, bindings: array, time: float|null}>} */
+    private function capacityLatencyWithQueryLog(string $namespace): array
+    {
+        config()->set('waterline.namespace', $namespace);
+        $connection = DB::connection();
+        $connection->flushQueryLog();
+        $connection->enableQueryLog();
+        $now = now();
+
+        try {
+            $window = app(EmbeddedCapacityEvidenceCollector::class)->collect(
+                $now->copy()->subHour(),
+                $now,
+                $namespace,
+            );
+            $queries = $connection->getQueryLog();
+        } finally {
+            $connection->disableQueryLog();
+        }
+
+        $latency = app(CapacityEvidence::class)->build(
+            [],
+            $window,
+            $now,
+            3600,
+            ['namespace' => $namespace],
+            'embedded',
+        )['runtime_evidence']['latency'];
+
+        return [$latency, $queries];
+    }
+
     /** @param list<int> $durationsMs */
     private function seedLatencyWindow(
         string $namespace,
@@ -358,8 +447,14 @@ final class V2CapacityEvidenceControllerTest extends TestCase
             ];
         }
 
-        DB::table('workflow_runs')->insert($runs);
-        DB::table('activity_executions')->insert($activities);
-        DB::table('workflow_tasks')->insert($tasks);
+        foreach (array_chunk($runs, 100) as $chunk) {
+            DB::table('workflow_runs')->insert($chunk);
+        }
+        foreach (array_chunk($activities, 100) as $chunk) {
+            DB::table('activity_executions')->insert($chunk);
+        }
+        foreach (array_chunk($tasks, 100) as $chunk) {
+            DB::table('workflow_tasks')->insert($chunk);
+        }
     }
 }
