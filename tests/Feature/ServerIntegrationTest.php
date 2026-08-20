@@ -211,10 +211,19 @@ class ServerIntegrationTest extends TestCase
             $tuple['server'],
             $serverManifest['extra']['durable-workflow']['product-train'] ?? null,
         );
-        $this->assertSame(ServiceModeRequirements::SDK_VERSION, $tuple['sdk-php']);
-        $this->assertSame($tuple['sdk-php'], InstalledVersions::getPrettyVersion('durable-workflow/sdk'));
 
         $waterlineManifest = $this->manifest(dirname(__DIR__, 2).'/composer.json');
+        $currentSdk = $waterlineManifest['require-dev']['durable-workflow/sdk'] ?? null;
+        $this->assertIsString($currentSdk);
+        $installedSdk = InstalledVersions::getPrettyVersion('durable-workflow/sdk');
+        $this->assertSame(ServiceModeRequirements::SDK_VERSION, $installedSdk);
+        $this->assertSame($currentSdk, $installedSdk);
+        $this->assertGreaterThanOrEqual(
+            0,
+            version_compare($installedSdk, $tuple['sdk-php']),
+            'Current PHP SDK must not precede the first supported service-capacity tuple.',
+        );
+
         $currentWaterline = $waterlineManifest['extra']['durable-workflow']['product-train'] ?? null;
         $this->assertIsString($currentWaterline);
         $this->assertGreaterThanOrEqual(

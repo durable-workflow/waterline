@@ -128,6 +128,14 @@ class ReleaseQualificationAssetTest(unittest.TestCase):
         audit = document["jobs"]["docs-release-audit"]
         publish = document["jobs"]["publish-qualification-evidence"]
 
+        resolve = next(
+            step
+            for step in audit["steps"]
+            if step.get("name") == "Resolve release tag"
+        )
+        self.assertIn("release/current-product-tuple.json", resolve["run"])
+        self.assertNotIn("require('./composer.json')", resolve["run"])
+
         self.assertEqual(
             "${{ steps.qualification-ready.outputs.value }}",
             audit["outputs"]["qualification-ready"],
@@ -155,6 +163,25 @@ class ReleaseQualificationAssetTest(unittest.TestCase):
             },
             upload["with"],
         )
+
+        audit_steps = audit["steps"]
+        handoff = next(
+            step
+            for step in audit_steps
+            if step.get("name") == "Build one exact qualification evidence handoff"
+        )
+        docs_confirmation = next(
+            step
+            for step in audit_steps
+            if step.get("name") == "Require live docs release audit refresh"
+        )
+        self.assertLess(audit_steps.index(handoff), audit_steps.index(upload))
+        self.assertLess(audit_steps.index(upload), audit_steps.index(docs_confirmation))
+        self.assertIs(docs_confirmation, audit_steps[-1])
+        self.assertIn("exact-current-composer-evidence.json", handoff["run"])
+        self.assertIn("release-surfaces-evidence.json", handoff["run"])
+        self.assertNotIn("docs-release-audit-evidence.json", handoff["run"])
+        self.assertNotIn("docs-release-audit-handoff.json", handoff["run"])
         self.assertEqual(
             "${{ github.run_id }}",
             audit["outputs"]["qualification-source-run-id"],
@@ -215,7 +242,6 @@ class ReleaseQualificationAssetTest(unittest.TestCase):
             build_step["run"],
         )
 
-        audit_steps = audit["steps"]
         bind = next(
             step
             for step in audit_steps

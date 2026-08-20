@@ -22,7 +22,7 @@ final class ServiceModeRequirementsTest extends TestCase
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage(
             'Waterline service mode requires the optional durable-workflow/sdk package. '
-            .'Install it with `composer require durable-workflow/sdk:2.0.0-rc.14`, then retry; '
+            .'Install it with `composer require durable-workflow/sdk:2.0.0-rc.40`, then retry; '
             .'or set WATERLINE_BACKEND=embedded.',
         );
 

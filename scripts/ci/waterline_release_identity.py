@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail closed unless release source matches the approved current tuple."""
+"""Validate candidate source separately from current published artifacts."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ PRERELEASE = re.compile(r"^2\.0\.0-(?:alpha|beta|rc)\.[1-9][0-9]*$")
 
 
 class IdentityError(RuntimeError):
-    """The Waterline source is not eligible for current publication."""
+    """The Waterline source or published dependency selection is invalid."""
 
 
 def load_json(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
@@ -102,11 +102,11 @@ def validate(
     *,
     release_version: str | None = None,
 ) -> dict[str, Any]:
-    expected = approved_versions(approved)
+    published = approved_versions(approved)
     if manifest.get("name") != PACKAGE:
         raise IdentityError(f"release source composer.json must identify {PACKAGE}")
 
-    observed = {
+    candidate = {
         "waterline": declared_waterline_version(manifest),
         "workflow": required_version(
             manifest, "require-dev", WORKFLOW_PACKAGE, "release source composer.json"
@@ -115,35 +115,45 @@ def validate(
             manifest, "require-dev", SDK_PACKAGE, "release source composer.json"
         ),
     }
-    if observed != expected:
+    candidate_dependencies = {
+        name: candidate[name] for name in ("workflow", "sdk-php")
+    }
+    published_dependencies = {
+        name: published[name] for name in ("workflow", "sdk-php")
+    }
+    if candidate_dependencies != published_dependencies:
         raise IdentityError(
-            "release source dependency identities do not match the approved current product tuple: "
-            f"expected {expected}, observed {observed}"
+            "candidate source dependency pins do not match the current public "
+            f"dependency selection: expected {published_dependencies}, "
+            f"observed {candidate_dependencies}"
         )
 
     standalone_sdk = required_version(
         standalone, "require", SDK_PACKAGE, "standalone/composer.json"
     )
-    if standalone_sdk != expected["sdk-php"]:
+    if standalone_sdk != published["sdk-php"]:
         raise IdentityError(
-            "standalone service PHP SDK identity does not match the approved current product tuple"
+            "standalone service PHP SDK identity does not match the current public "
+            "dependency selection"
         )
-    if locked_version(lock, SDK_PACKAGE) != expected["sdk-php"]:
+    if locked_version(lock, SDK_PACKAGE) != published["sdk-php"]:
         raise IdentityError(
-            "standalone service lock PHP SDK identity does not match the approved current product tuple"
+            "standalone service lock PHP SDK identity does not match the current "
+            "public dependency selection"
         )
 
     normalized_release = release_version.removeprefix("v") if release_version else None
-    if normalized_release is not None and normalized_release != expected["waterline"]:
+    if normalized_release is not None and normalized_release != candidate["waterline"]:
         raise IdentityError(
-            f"release tag {release_version!r} does not match approved Waterline "
-            f"identity {expected['waterline']!r}"
+            f"release tag {release_version!r} does not match source-declared Waterline "
+            f"identity {candidate['waterline']!r}"
         )
 
     return {
-        "schema": "durable-workflow.waterline-release-identity-qualification/v1",
+        "schema": "durable-workflow.waterline-source-identity-qualification/v2",
         "outcome": "verified",
-        "versions": expected,
+        "current_public_artifacts": published,
+        "candidate_source": candidate,
         "release_tag": normalized_release,
         "source_sha256": {
             "composer": hashlib.sha256(manifest_raw).hexdigest(),
@@ -159,7 +169,9 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser.add_argument("--waterline-composer", required=True, type=Path)
     parser.add_argument("--standalone-composer", required=True, type=Path)
     parser.add_argument("--standalone-lock", required=True, type=Path)
-    parser.add_argument("--release-version")
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--candidate-source", action="store_true")
+    mode.add_argument("--release-version")
     parser.add_argument("--evidence", required=True, type=Path)
     args = parser.parse_args(arguments)
 
@@ -183,11 +195,17 @@ def main(arguments: Sequence[str] | None = None) -> int:
         json.dumps(evidence, indent=2, sort_keys=True, ensure_ascii=True) + "\n",
         encoding="utf-8",
     )
-    versions = evidence["versions"]
+    published = evidence["current_public_artifacts"]
+    candidate = evidence["candidate_source"]
+    subject = (
+        f"release tag {evidence['release_tag']}"
+        if evidence["release_tag"] is not None
+        else f"candidate Waterline source {candidate['waterline']}"
+    )
     print(
-        "Verified approved current Waterline tuple "
-        f"Waterline {versions['waterline']}, Workflow {versions['workflow']}, "
-        f"PHP SDK {versions['sdk-php']}"
+        f"Verified {subject} with current public dependencies Workflow "
+        f"{published['workflow']} and PHP SDK {published['sdk-php']}; current "
+        f"published Waterline is {published['waterline']}"
     )
     return 0
 

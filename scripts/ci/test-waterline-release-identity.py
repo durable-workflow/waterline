@@ -21,15 +21,16 @@ sys.modules[SPEC.name] = identity
 SPEC.loader.exec_module(identity)
 
 
-VERSIONS = {
+CURRENT_PUBLIC = {
     "waterline": "2.0.0-rc.21",
-    "workflow": "2.0.0-rc.14",
-    "sdk-php": "2.0.0-rc.14",
+    "workflow": "2.0.0-rc.33",
+    "sdk-php": "2.0.0-rc.40",
 }
+CANDIDATE_WATERLINE = "2.0.0-rc.22"
 
 
 def approved() -> dict:
-    return {"schema": identity.SCHEMA, "versions": VERSIONS}
+    return {"schema": identity.SCHEMA, "versions": CURRENT_PUBLIC}
 
 
 def manifest() -> dict:
@@ -37,20 +38,22 @@ def manifest() -> dict:
         "name": identity.PACKAGE,
         "require": {},
         "require-dev": {
-            identity.SDK_PACKAGE: VERSIONS["sdk-php"],
-            identity.WORKFLOW_PACKAGE: VERSIONS["workflow"],
+            identity.SDK_PACKAGE: CURRENT_PUBLIC["sdk-php"],
+            identity.WORKFLOW_PACKAGE: CURRENT_PUBLIC["workflow"],
         },
-        "extra": {"durable-workflow": {"product-train": VERSIONS["waterline"]}},
+        "extra": {"durable-workflow": {"product-train": CANDIDATE_WATERLINE}},
     }
 
 
 def standalone() -> dict:
-    return {"require": {identity.SDK_PACKAGE: VERSIONS["sdk-php"]}}
+    return {"require": {identity.SDK_PACKAGE: CURRENT_PUBLIC["sdk-php"]}}
 
 
 def lock() -> dict:
     return {
-        "packages": [{"name": identity.SDK_PACKAGE, "version": VERSIONS["sdk-php"]}]
+        "packages": [
+            {"name": identity.SDK_PACKAGE, "version": CURRENT_PUBLIC["sdk-php"]}
+        ]
     }
 
 
@@ -59,7 +62,7 @@ def validate(
     candidate_standalone: dict | None = None,
     candidate_lock: dict | None = None,
     *,
-    release_version: str | None = VERSIONS["waterline"],
+    release_version: str | None = None,
 ) -> dict:
     return identity.validate(
         approved(),
@@ -84,18 +87,27 @@ def workflow(name: str) -> dict:
 
 
 class WaterlineReleaseIdentityTest(unittest.TestCase):
-    def test_approved_current_source_is_publishable(self) -> None:
+    def test_candidate_source_is_distinct_from_current_public_artifact(self) -> None:
         evidence = validate()
 
         self.assertEqual("verified", evidence["outcome"])
-        self.assertEqual(VERSIONS, evidence["versions"])
+        self.assertEqual(CURRENT_PUBLIC, evidence["current_public_artifacts"])
+        self.assertEqual(
+            {
+                "waterline": CANDIDATE_WATERLINE,
+                "workflow": CURRENT_PUBLIC["workflow"],
+                "sdk-php": CURRENT_PUBLIC["sdk-php"],
+            },
+            evidence["candidate_source"],
+        )
+        self.assertIsNone(evidence["release_tag"])
 
     def test_deliberately_stale_php_sdk_pin_is_rejected(self) -> None:
         stale = manifest()
         stale["require-dev"][identity.SDK_PACKAGE] = "2.0.0-rc.11"
 
         with self.assertRaisesRegex(
-            identity.IdentityError, "do not match the approved current product tuple"
+            identity.IdentityError, "do not match the current public dependency selection"
         ):
             validate(candidate_manifest=stale)
 
@@ -104,7 +116,7 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         stale["require-dev"][identity.WORKFLOW_PACKAGE] = "2.0.0-rc.13"
 
         with self.assertRaisesRegex(
-            identity.IdentityError, "do not match the approved current product tuple"
+            identity.IdentityError, "do not match the current public dependency selection"
         ):
             validate(candidate_manifest=stale)
 
@@ -122,8 +134,16 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         with self.assertRaisesRegex(identity.IdentityError, "standalone service lock"):
             validate(candidate_lock=stale_lock)
 
-    def test_stale_or_unapproved_release_tag_is_rejected(self) -> None:
-        with self.assertRaisesRegex(identity.IdentityError, "does not match approved"):
+    def test_release_tag_must_match_source_not_prior_published_artifact(self) -> None:
+        evidence = validate(release_version=CANDIDATE_WATERLINE)
+
+        self.assertEqual(CANDIDATE_WATERLINE, evidence["release_tag"])
+        self.assertEqual(
+            CURRENT_PUBLIC["waterline"],
+            evidence["current_public_artifacts"]["waterline"],
+        )
+
+        with self.assertRaisesRegex(identity.IdentityError, "does not match source-declared"):
             validate(release_version="2.0.0-rc.14")
 
     def test_every_branch_route_runs_current_identity_qualification(self) -> None:
@@ -139,6 +159,7 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         self.assertNotIn("if", job)
         self.assertEqual(1, len(matching))
         self.assertIn("release/current-product-tuple.json", matching[0]["run"])
+        self.assertIn("--candidate-source", matching[0]["run"])
         self.assertIn("composer.json", matching[0]["run"])
         self.assertIn("standalone/composer.lock", matching[0]["run"])
 

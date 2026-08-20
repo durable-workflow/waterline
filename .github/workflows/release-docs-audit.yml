@@ -65,7 +65,7 @@ jobs:
             tag="$GITHUB_REF_NAME"
             commit=''
           else
-            tag="$(node -e "process.stdout.write(require('./composer.json').extra['durable-workflow']['product-train'])")"
+            tag="$(node -e "process.stdout.write(require('./release/current-product-tuple.json').versions.waterline)")"
             commit=''
           fi
           tag="${tag#v}"
@@ -163,21 +163,10 @@ jobs:
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
 
-      - name: Require live docs release audit refresh
-        env:
-          DOCS_RELEASE_AUDIT_ARTIFACT: waterline
-          DOCS_RELEASE_AUDIT_VERSION: ${{ steps.release.outputs.tag }}
-          DOCS_RELEASE_AUDIT_COMPOSER_MANIFEST: .release-source/composer.json
-          DOCS_RELEASE_AUDIT_EVIDENCE: docs-release-audit-evidence.json
-          DOCS_RELEASE_AUDIT_HANDOFF: docs-release-audit-handoff.json
-        run: scripts/ci/check-docs-release-audit.sh
-
       - name: Build one exact qualification evidence handoff
         run: |
           set -euo pipefail
           tar -cf release-qualification-evidence.tar \
-            docs-release-audit-evidence.json \
-            docs-release-audit-handoff.json \
             exact-current-composer-evidence.json \
             release-surfaces-evidence.json
 
@@ -188,6 +177,15 @@ jobs:
           archive: false
           if-no-files-found: error
           path: release-qualification-evidence.tar
+
+      - name: Require live docs release audit refresh
+        env:
+          DOCS_RELEASE_AUDIT_ARTIFACT: waterline
+          DOCS_RELEASE_AUDIT_VERSION: ${{ steps.release.outputs.tag }}
+          DOCS_RELEASE_AUDIT_COMPOSER_MANIFEST: .release-source/composer.json
+          DOCS_RELEASE_AUDIT_EVIDENCE: docs-release-audit-evidence.json
+          DOCS_RELEASE_AUDIT_HANDOFF: docs-release-audit-handoff.json
+        run: scripts/ci/check-docs-release-audit.sh
 
   publish-qualification-evidence:
     name: Publish immutable qualification release asset

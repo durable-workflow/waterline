@@ -758,6 +758,9 @@ class DialogVisualQualificationWorkflowContractTest(unittest.TestCase):
         self.assertIn('$tuple["versions"]["sdk-php"]', install)
         self.assertIn('"durable-workflow/sdk:${sdk_version}"', install)
         self.assertIn("durable-workflow/waterline:*@dev", install)
+        self.assertIn("repositories.workflow-candidate", install)
+        self.assertIn("durable-workflow/workflow:*@dev", install)
+        self.assertNotIn("candidate_workflow_version", install)
 
     def test_job_runs_and_uploads_the_opened_dialog_matrix(self) -> None:
         command = self.named_step("Qualify the eight opened-dialog cases")["run"]
@@ -1286,7 +1289,17 @@ class ReleaseDocsAuditWorkflowContractTest(unittest.TestCase):
         )
         self.assertIn("release-surfaces-evidence.json", handoff["run"])
         self.assertIn("exact-current-composer-evidence.json", handoff["run"])
-        self.assertIn("docs-release-audit-evidence.json", handoff["run"])
+        self.assertNotIn("docs-release-audit-evidence.json", handoff["run"])
+        self.assertNotIn("docs-release-audit-handoff.json", handoff["run"])
+
+        docs_confirmation = next(
+            step
+            for step in steps
+            if step.get("name") == "Require live docs release audit refresh"
+        )
+        self.assertLess(steps.index(handoff), steps.index(evidence_uploads[0]))
+        self.assertLess(steps.index(evidence_uploads[0]), steps.index(docs_confirmation))
+        self.assertIs(docs_confirmation, steps[-1])
 
 
 class WorkflowTrustPolicyTest(unittest.TestCase):

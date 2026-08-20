@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.21` source identity. Its package metadata
+Waterline advances to the `2.0.0-rc.22` source identity. Its package metadata
 now describes the operational UI across embedded and service-mode deployments.
-The standalone service distribution remains bound to PHP SDK `2.0.0-rc.14`,
-while embedded integration targets Workflow `2.0.0-rc.14` without pulling the
+The standalone service distribution remains bound to PHP SDK `2.0.0-rc.40`,
+while embedded integration targets Workflow `2.0.0-rc.33` without pulling the
 standalone SDK into the host application. Laravel-hosted service mode now
 checks for the optional SDK at its configuration boundary and reports the exact
 installation command when it is absent.

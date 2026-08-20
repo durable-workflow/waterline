@@ -19,7 +19,7 @@ docker run --rm -p 8080:8080 \
   -e WATERLINE_NAMESPACE=orders \
   -e WATERLINE_ACCESS_MODE=read_only \
   -e WATERLINE_ALLOW_UNAUTHENTICATED=true \
-  durableworkflow/waterline:2.0.0-rc.21
+  durableworkflow/waterline:2.0.0-rc.22
 ```
 
 Open `http://localhost:8080/waterline`. Bind the port to a private interface or
@@ -122,8 +122,8 @@ the PHP SDK, but not the embedded Workflow runtime:
 
 ```bash
 composer require \
-  durable-workflow/waterline:2.0.0-rc.21@RC \
-  durable-workflow/sdk:2.0.0-rc.14@RC
+  durable-workflow/waterline:2.0.0-rc.22@RC \
+  durable-workflow/sdk:2.0.0-rc.40@RC
 ```
 
 Set `WATERLINE_BACKEND=service` together with the endpoint, token, namespace,
@@ -138,8 +138,8 @@ the optional Workflow integration:
 
 ```bash
 composer require \
-  durable-workflow/waterline:2.0.0-rc.21@RC \
-  durable-workflow/workflow:2.0.0-rc.14@RC
+  durable-workflow/waterline:2.0.0-rc.22@RC \
+  durable-workflow/workflow:2.0.0-rc.33@RC
 
 php artisan waterline:install
 ```

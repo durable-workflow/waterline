@@ -128,9 +128,10 @@ jobs:
         --no-dev
         --no-interaction
 
-    - name: Require the approved current release tuple
+    - name: Validate candidate source and current public dependencies
       run: >-
         python scripts/ci/waterline_release_identity.py
+        --candidate-source
         --approved-tuple release/current-product-tuple.json
         --waterline-composer composer.json
         --standalone-composer standalone/composer.json
@@ -314,7 +315,7 @@ jobs:
         persist-credentials: false
         ref: main
 
-    - name: Check out released workflow integration
+    - name: Check out candidate Workflow integration
       uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       with:
         repository: durable-workflow/workflow
@@ -347,16 +348,16 @@ jobs:
                 true,
                 flags: JSON_THROW_ON_ERROR
             );
-            $version = $tuple["versions"]["sdk-php"] ?? null;
-            if (!is_string($version)) {
+            $sdk = $tuple["versions"]["sdk-php"] ?? null;
+            if (!is_string($sdk)) {
                 fwrite(STDERR, "approved PHP SDK version is missing\n");
                 exit(1);
             }
-            echo $version;
+            echo $sdk;
           '
         )"
         composer config repositories.waterline-candidate '{"type":"path","url":"../waterline","options":{"symlink":false}}'
-        composer config repositories.workflow-release '{"type":"path","url":"../workflow","options":{"symlink":false}}'
+        composer config repositories.workflow-candidate '{"type":"path","url":"../workflow","options":{"symlink":false}}'
         composer require --no-update \
           "durable-workflow/sdk:${sdk_version}" \
           'durable-workflow/waterline:*@dev' \
