@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\DB;
 use Waterline\Support\CapacityEvidence;
 use Waterline\Support\EmbeddedCapacityEvidenceCollector;
 use Waterline\Tests\TestCase;
+use Workflow\Serializers\CodecDecodeException;
+use Workflow\Serializers\Serializer;
+use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
@@ -90,8 +93,9 @@ final class V2CapacityEvidenceControllerTest extends TestCase
             'activity_class' => 'CapacityActivity',
             'activity_type' => 'capacity.activity',
             'status' => 'completed',
-            'arguments' => 'activity-input',
-            'result' => 'activity-output',
+            'payload_codec' => 'avro',
+            'arguments' => Serializer::serializeWithCodec('avro', ['activity-input']),
+            'result' => Serializer::serializeWithCodec('avro', 'activity-output'),
             'attempt_count' => 1,
             'started_at' => now()->subMinutes(24)->addSeconds(10),
             'closed_at' => now()->subMinutes(20),
@@ -118,7 +122,11 @@ final class V2CapacityEvidenceControllerTest extends TestCase
                 'target_scope' => 'run',
                 'source' => 'php',
                 'status' => 'accepted',
-                'payload' => json_encode(['name' => 'capacity.signal', 'arguments' => []]),
+                'payload_codec' => 'avro',
+                'payload' => Serializer::serializeWithCodec('avro', [
+                    'name' => 'capacity.signal',
+                    'arguments' => [],
+                ]),
                 'accepted_at' => now()->subMinutes(15),
                 'created_at' => now()->subMinutes(15),
                 'updated_at' => now()->subMinutes(15),
@@ -131,7 +139,11 @@ final class V2CapacityEvidenceControllerTest extends TestCase
                 'target_scope' => 'run',
                 'source' => 'php',
                 'status' => 'accepted',
-                'payload' => json_encode(['name' => 'capacity.update', 'arguments' => []]),
+                'payload_codec' => 'avro',
+                'payload' => Serializer::serializeWithCodec('avro', [
+                    'name' => 'capacity.update',
+                    'arguments' => [],
+                ]),
                 'accepted_at' => now()->subMinutes(14),
                 'created_at' => now()->subMinutes(14),
                 'updated_at' => now()->subMinutes(14),
@@ -194,6 +206,22 @@ final class V2CapacityEvidenceControllerTest extends TestCase
         $this->assertStringNotContainsString('capacity-run', $encoded);
         $this->assertStringNotContainsString('capacity-task', $encoded);
         $this->assertStringNotContainsString('capacity-history', $encoded);
+    }
+
+    public function testCapacityEvidenceFixtureRejectsJsonFramedWorkflowCommands(): void
+    {
+        $command = new WorkflowCommand([
+            'payload_codec' => 'avro',
+            'payload' => json_encode([
+                'name' => 'capacity.update',
+                'arguments' => [],
+            ], JSON_THROW_ON_ERROR),
+        ]);
+
+        $this->expectException(CodecDecodeException::class);
+        $this->expectExceptionMessage('invalid_payload_framing');
+
+        $command->targetName();
     }
 
     public function testCapacityEvidenceRejectsUnboundedObservationWindows(): void
