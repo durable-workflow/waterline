@@ -166,6 +166,7 @@ jobs:
           scripts/ci/test-exact-current-composer.py \
           scripts/ci/php_waterline_release_train.py \
           scripts/ci/publish-planned-tag.py \
+          scripts/ci/release_qualification_asset.py \
           scripts/ci/release_example_contract.py \
           scripts/ci/release_recovery_consumer_conformance.py \
           scripts/ci/service-image-recovery.py \
@@ -174,6 +175,7 @@ jobs:
           scripts/ci/test-docs-release-audit.py \
           scripts/ci/test-php-waterline-release-train.py \
           scripts/ci/test-publish-planned-tag.py \
+          scripts/ci/test-release-qualification-asset.py \
           scripts/ci/test-release-example-contract.py \
           scripts/ci/test-service-image-recovery.py \
           scripts/ci/test-standalone-lock-contract.py \
@@ -190,6 +192,7 @@ jobs:
           --adapter scripts/ci/release-recovery-consumer-adapter.json \
           "${arguments[@]}"
         "$policy_python" scripts/ci/test-publish-planned-tag.py
+        "$policy_python" scripts/ci/test-release-qualification-asset.py
         "$policy_python" scripts/ci/test-docs-release-audit.py
         "$policy_python" scripts/ci/test-exact-current-composer.py
         "$policy_python" scripts/ci/test-php-waterline-release-train.py

@@ -35,6 +35,12 @@ jobs:
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    outputs:
+      qualification-ready: ${{ steps.qualification-ready.outputs.value }}
+      release-tag: ${{ steps.qualification-ready.outputs.tag }}
+      release-commit: ${{ steps.qualification-ready.outputs.commit }}
+      qualification-artifact-id: ${{ steps.qualification-artifact.outputs.artifact-id }}
+      qualification-artifact-digest: ${{ steps.qualification-artifact.outputs.artifact-digest }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
 
@@ -80,6 +86,25 @@ jobs:
           path: .release-source
           persist-credentials: false
 
+      - name: Bind release tag to exact source commit
+        id: release-source
+        shell: bash
+        env:
+          DECLARED_RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
+        run: |
+          set -euo pipefail
+          source_commit="$(git -C .release-source rev-parse HEAD)"
+          if ! printf '%s\n' "$source_commit" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Release tag did not resolve to an exact Waterline source commit"
+            exit 1
+          fi
+          if [ -n "$DECLARED_RELEASE_COMMIT" ] && \
+             [ "$source_commit" != "$DECLARED_RELEASE_COMMIT" ]; then
+            echo "::error::Publisher completion commit does not match the immutable release tag"
+            exit 1
+          fi
+          echo "commit=$source_commit" >> "$GITHUB_OUTPUT"
+
       - name: Install Composer for exact-current qualification
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
         with:
@@ -90,7 +115,7 @@ jobs:
       - name: Require source-bound GitHub, Packagist, and image surfaces
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          EXPECTED_SOURCE_COMMIT: ${{ steps.release.outputs.commit }}
+          EXPECTED_SOURCE_COMMIT: ${{ steps.release-source.outputs.commit }}
         run: |
           arguments=(
             --version "${{ steps.release.outputs.tag }}"
@@ -106,6 +131,7 @@ jobs:
       - name: Solve the exact Waterline, Workflow, and PHP SDK tuple
         env:
           EXACT_CURRENT_COMPOSER_MANIFEST: .release-source/composer.json
+          EXACT_CURRENT_COMPOSER_SERVICE_MANIFEST: .release-source/standalone/composer.json
           EXACT_CURRENT_COMPOSER_EVIDENCE: exact-current-composer-evidence.json
           EXACT_CURRENT_COMPOSER_ATTEMPTS: 32
           EXACT_CURRENT_COMPOSER_RETRY_SLEEP: 30
@@ -117,6 +143,24 @@ jobs:
           PACKAGIST_PACKAGE_VERSION: ${{ steps.release.outputs.tag }}
         run: scripts/ci/check-packagist-release.sh
 
+      - name: Mark exact Composer qualification ready
+        id: qualification-ready
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_COMMIT: ${{ steps.release-source.outputs.commit }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" != "repository_dispatch" ]; then
+            exit 0
+          fi
+          if ! printf '%s\n' "$RELEASE_COMMIT" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::Exact Composer qualification has no immutable release commit"
+            exit 1
+          fi
+          echo "value=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+
       - name: Require live docs release audit refresh
         env:
           DOCS_RELEASE_AUDIT_ARTIFACT: waterline
@@ -127,6 +171,7 @@ jobs:
         run: scripts/ci/check-docs-release-audit.sh
 
       - name: Upload docs release audit evidence
+        id: qualification-artifact
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
@@ -137,3 +182,84 @@ jobs:
             exact-current-composer-evidence.json
             release-surfaces-evidence.json
           if-no-files-found: warn
+
+  publish-qualification-evidence:
+    name: Publish immutable qualification release asset
+    needs: docs-release-audit
+    if: >-
+      ${{
+        always() &&
+        github.server_url == 'https://github.com' &&
+        github.repository == 'durable-workflow/waterline' &&
+        github.event_name == 'repository_dispatch' &&
+        needs.docs-release-audit.outputs.qualification-ready == 'true' &&
+        needs.docs-release-audit.outputs.qualification-artifact-id != '' &&
+        needs.docs-release-audit.outputs.qualification-artifact-digest != ''
+      }}
+    permissions:
+      actions: read
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Restore the exact completed-run qualification
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          artifact-ids: ${{ needs.docs-release-audit.outputs.qualification-artifact-id }}
+          path: qualification-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          digest-mismatch: error
+
+      - name: Build source-bound public qualification evidence
+        env:
+          RELEASE_TAG: ${{ needs.docs-release-audit.outputs.release-tag }}
+          RELEASE_COMMIT: ${{ needs.docs-release-audit.outputs.release-commit }}
+        run: |
+          python scripts/ci/release_qualification_asset.py \
+            --qualification qualification-artifact/exact-current-composer-evidence.json \
+            --release-surfaces qualification-artifact/release-surfaces-evidence.json \
+            --output-dir release-assets \
+            --repository "$GITHUB_REPOSITORY" \
+            --workflow-name "$GITHUB_WORKFLOW" \
+            --workflow-path .github/workflows/release-docs-audit.yml \
+            --event "$GITHUB_EVENT_NAME" \
+            --run-id "$GITHUB_RUN_ID" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --head-sha "$GITHUB_SHA" \
+            --release-tag "$RELEASE_TAG" \
+            --release-commit "$RELEASE_COMMIT"
+
+      - name: Create or verify immutable public release evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.docs-release-audit.outputs.release-tag }}
+        run: |
+          set -euo pipefail
+          asset_path="$(
+            find release-assets -maxdepth 1 -type f \
+              -name 'waterline-exact-composer-qualification-*.json' -print
+          )"
+          if [ -z "$asset_path" ] || [ "$(printf '%s\n' "$asset_path" | wc -l)" -ne 1 ]; then
+            echo "::error::Expected exactly one source-bound qualification release asset"
+            exit 1
+          fi
+
+          asset_name="$(basename "$asset_path")"
+          download_dir="$(mktemp -d)"
+          trap 'rm -rf "$download_dir"' EXIT
+          if gh release download "$RELEASE_TAG" \
+            --pattern "$asset_name" --dir "$download_dir" >/dev/null 2>&1; then
+            cmp --silent "$asset_path" "$download_dir/$asset_name" || {
+              echo "::error::Existing qualification release asset differs from this run"
+              exit 1
+            }
+          else
+            gh release upload "$RELEASE_TAG" "$asset_path"
+          fi
