@@ -141,6 +141,29 @@ class ReleaseQualificationAssetTest(unittest.TestCase):
             publish["if"],
         )
 
+        upload = next(
+            step
+            for step in audit["steps"]
+            if str(step.get("uses", "")).startswith("actions/upload-artifact@")
+        )
+        self.assertNotIn("if", upload)
+        self.assertEqual(
+            {
+                "archive": "false",
+                "if-no-files-found": "error",
+                "path": "release-qualification-evidence.tar",
+            },
+            upload["with"],
+        )
+        self.assertEqual(
+            "${{ github.run_id }}",
+            audit["outputs"]["qualification-source-run-id"],
+        )
+        self.assertEqual(
+            "${{ github.run_attempt }}",
+            audit["outputs"]["qualification-source-run-attempt"],
+        )
+
         steps = publish["steps"]
         download = next(
             step
@@ -151,9 +174,33 @@ class ReleaseQualificationAssetTest(unittest.TestCase):
             "${{ needs.docs-release-audit.outputs.qualification-artifact-id }}",
             download["with"]["artifact-ids"],
         )
+        self.assertEqual(
+            "isolated-release-qualification-evidence",
+            download["with"]["path"],
+        )
         self.assertEqual("error", download["with"]["digest-mismatch"])
-        self.assertEqual("${{ github.run_id }}", download["with"]["run-id"])
+        self.assertEqual(
+            "${{ needs.docs-release-audit.outputs.qualification-source-run-id }}",
+            download["with"]["run-id"],
+        )
         self.assertEqual("${{ github.repository }}", download["with"]["repository"])
+
+        validator = steps[steps.index(download) + 1]
+        self.assertEqual(
+            "Validate the exact producer artifact before use", validator["name"]
+        )
+        self.assertEqual(
+            {
+                "ARTIFACT_DIRECTORY": "isolated-release-qualification-evidence",
+                "EXPECTED_ARTIFACT_DIGEST": "${{ needs.docs-release-audit.outputs.qualification-artifact-digest }}",
+                "EXPECTED_ARTIFACT_ID": "${{ needs.docs-release-audit.outputs.qualification-artifact-id }}",
+                "EXPECTED_SOURCE_RUN_ATTEMPT": "${{ needs.docs-release-audit.outputs.qualification-source-run-attempt }}",
+                "EXPECTED_SOURCE_RUN_ID": "${{ needs.docs-release-audit.outputs.qualification-source-run-id }}",
+            },
+            validator["env"],
+        )
+        self.assertIn("sha256sum", validator["run"])
+        self.assertIn("exactly one regular file", validator["run"])
 
         build_step = next(
             step
@@ -163,6 +210,10 @@ class ReleaseQualificationAssetTest(unittest.TestCase):
         self.assertIn("--release-tag", build_step["run"])
         self.assertIn("--release-commit", build_step["run"])
         self.assertIn("--head-sha", build_step["run"])
+        self.assertIn(
+            "isolated-release-qualification-evidence/release-qualification-evidence.tar",
+            build_step["run"],
+        )
 
         audit_steps = audit["steps"]
         bind = next(

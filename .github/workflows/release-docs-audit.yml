@@ -41,6 +41,8 @@ jobs:
       release-commit: ${{ steps.qualification-ready.outputs.commit }}
       qualification-artifact-id: ${{ steps.qualification-artifact.outputs.artifact-id }}
       qualification-artifact-digest: ${{ steps.qualification-artifact.outputs.artifact-digest }}
+      qualification-source-run-id: ${{ github.run_id }}
+      qualification-source-run-attempt: ${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
 
@@ -170,18 +172,22 @@ jobs:
           DOCS_RELEASE_AUDIT_HANDOFF: docs-release-audit-handoff.json
         run: scripts/ci/check-docs-release-audit.sh
 
+      - name: Build one exact qualification evidence handoff
+        run: |
+          set -euo pipefail
+          tar -cf release-qualification-evidence.tar \
+            docs-release-audit-evidence.json \
+            docs-release-audit-handoff.json \
+            exact-current-composer-evidence.json \
+            release-surfaces-evidence.json
+
       - name: Upload docs release audit evidence
         id: qualification-artifact
-        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
-          name: docs-release-audit-evidence
-          path: |
-            docs-release-audit-evidence.json
-            docs-release-audit-handoff.json
-            exact-current-composer-evidence.json
-            release-surfaces-evidence.json
-          if-no-files-found: warn
+          archive: false
+          if-no-files-found: error
+          path: release-qualification-evidence.tar
 
   publish-qualification-evidence:
     name: Publish immutable qualification release asset
@@ -194,7 +200,9 @@ jobs:
         github.event_name == 'repository_dispatch' &&
         needs.docs-release-audit.outputs.qualification-ready == 'true' &&
         needs.docs-release-audit.outputs.qualification-artifact-id != '' &&
-        needs.docs-release-audit.outputs.qualification-artifact-digest != ''
+        needs.docs-release-audit.outputs.qualification-artifact-digest != '' &&
+        needs.docs-release-audit.outputs.qualification-source-run-id != '' &&
+        needs.docs-release-audit.outputs.qualification-source-run-attempt != ''
       }}
     permissions:
       actions: read
@@ -203,6 +211,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
         with:
+          fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
 
@@ -210,20 +219,64 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
         with:
           artifact-ids: ${{ needs.docs-release-audit.outputs.qualification-artifact-id }}
-          path: qualification-artifact
+          path: isolated-release-qualification-evidence
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ github.run_id }}
+          run-id: ${{ needs.docs-release-audit.outputs.qualification-source-run-id }}
           digest-mismatch: error
+
+      - name: Validate the exact producer artifact before use
+        env:
+          ARTIFACT_DIRECTORY: isolated-release-qualification-evidence
+          EXPECTED_ARTIFACT_DIGEST: ${{ needs.docs-release-audit.outputs.qualification-artifact-digest }}
+          EXPECTED_ARTIFACT_ID: ${{ needs.docs-release-audit.outputs.qualification-artifact-id }}
+          EXPECTED_SOURCE_RUN_ATTEMPT: ${{ needs.docs-release-audit.outputs.qualification-source-run-attempt }}
+          EXPECTED_SOURCE_RUN_ID: ${{ needs.docs-release-audit.outputs.qualification-source-run-id }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
+            printf 'producer artifact digest is not an exact SHA-256 digest\n' >&2
+            exit 1
+          fi
+          for identity in "$EXPECTED_ARTIFACT_ID" "$EXPECTED_SOURCE_RUN_ID" "$EXPECTED_SOURCE_RUN_ATTEMPT"; do
+            if [[ ! "$identity" =~ ^[1-9][0-9]*$ ]]; then
+              printf 'producer artifact identity is invalid\n' >&2
+              exit 1
+            fi
+          done
+          if [[ ! "$ARTIFACT_DIRECTORY" =~ ^isolated-[a-z0-9][a-z0-9._-]*$ ]]; then
+            printf 'artifact validation directory is unsafe\n' >&2
+            exit 1
+          fi
+          mapfile -d '' entries < <(
+            /usr/bin/find "$ARTIFACT_DIRECTORY" -mindepth 1 -maxdepth 1 -print0
+          )
+          if [ "${#entries[@]}" -ne 1 ] || [ ! -f "${entries[0]}" ] || [ -L "${entries[0]}" ]; then
+            printf 'artifact handoff must contain exactly one regular file\n' >&2
+            exit 1
+          fi
+          observed_digest="$(/usr/bin/sha256sum "${entries[0]}")"
+          observed_digest="${observed_digest%% *}"
+          if [ "$observed_digest" != "$EXPECTED_ARTIFACT_DIGEST" ]; then
+            printf 'artifact digest mismatch: expected %s, got %s\n' \
+              "$EXPECTED_ARTIFACT_DIGEST" "$observed_digest" >&2
+            exit 1
+          fi
+          printf 'validated artifact %s from run %s attempt %s\n' \
+            "$EXPECTED_ARTIFACT_ID" "$EXPECTED_SOURCE_RUN_ID" "$EXPECTED_SOURCE_RUN_ATTEMPT"
 
       - name: Build source-bound public qualification evidence
         env:
           RELEASE_TAG: ${{ needs.docs-release-audit.outputs.release-tag }}
           RELEASE_COMMIT: ${{ needs.docs-release-audit.outputs.release-commit }}
         run: |
+          mkdir qualification-evidence
+          tar -xf \
+            isolated-release-qualification-evidence/release-qualification-evidence.tar \
+            -C qualification-evidence
           python scripts/ci/release_qualification_asset.py \
-            --qualification qualification-artifact/exact-current-composer-evidence.json \
-            --release-surfaces qualification-artifact/release-surfaces-evidence.json \
+            --qualification qualification-evidence/exact-current-composer-evidence.json \
+            --release-surfaces qualification-evidence/release-surfaces-evidence.json \
             --output-dir release-assets \
             --repository "$GITHUB_REPOSITORY" \
             --workflow-name "$GITHUB_WORKFLOW" \

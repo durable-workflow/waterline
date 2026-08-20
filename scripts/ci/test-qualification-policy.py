@@ -1269,10 +1269,24 @@ class ReleaseDocsAuditWorkflowContractTest(unittest.TestCase):
             and str(step.get("uses", "")).startswith("actions/upload-artifact@")
         ]
         self.assertEqual(1, len(evidence_uploads))
-        evidence_paths = evidence_uploads[0]["with"]["path"]
-        self.assertIn("release-surfaces-evidence.json", evidence_paths)
-        self.assertIn("exact-current-composer-evidence.json", evidence_paths)
-        self.assertIn("docs-release-audit-evidence.json", evidence_paths)
+        self.assertNotIn("if", evidence_uploads[0])
+        self.assertEqual(
+            {
+                "archive": "false",
+                "if-no-files-found": "error",
+                "path": "release-qualification-evidence.tar",
+            },
+            evidence_uploads[0]["with"],
+        )
+
+        handoff = next(
+            step
+            for step in steps
+            if step.get("name") == "Build one exact qualification evidence handoff"
+        )
+        self.assertIn("release-surfaces-evidence.json", handoff["run"])
+        self.assertIn("exact-current-composer-evidence.json", handoff["run"])
+        self.assertIn("docs-release-audit-evidence.json", handoff["run"])
 
 
 class WorkflowTrustPolicyTest(unittest.TestCase):
