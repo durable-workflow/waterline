@@ -26,7 +26,7 @@ CURRENT_PUBLIC = {
     "workflow": "2.0.0-rc.33",
     "sdk-php": "2.0.0-rc.40",
 }
-CANDIDATE_WATERLINE = "2.0.0-rc.23"
+CANDIDATE_WATERLINE = "2.0.0-rc.24"
 
 
 def approved() -> dict:

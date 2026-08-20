@@ -16,14 +16,14 @@ use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
 
 /**
- * Polyglot rendering contract: Waterline must render a run authored by any
- * SDK (PHP, Python, ...) using whichever payload codec the engine stored.
+ * Polyglot rendering contract: Waterline must render runs authored by the
+ * PHP, Python, and Rust SDKs through the shared v2 Avro payload contract.
  *
  * The run-detail and list payloads delegate decoding to the workflow
  * package's RunDetailView / WorkflowRun helpers, which read the
  * `payload_codec` column on each row. This test pins that contract so a
- * regression that makes the dashboard PHP-only — for example sniffing
- * blob shape instead of honoring the persisted codec — fails loudly.
+ * regression that makes the dashboard author-specific — for example sniffing
+ * blob shape instead of honoring the persisted Avro codec — fails loudly.
  */
 class V2PolyglotRunRenderingTest extends TestCase
 {
@@ -38,7 +38,6 @@ class V2PolyglotRunRenderingTest extends TestCase
             namespace: 'default',
             workflowClass: 'durable_workflow.examples.greeter.GreeterWorkflow',
             workflowType: 'greeter',
-            payloadCodec: 'avro',
             arguments: $arguments,
             output: $output,
         );
@@ -60,7 +59,6 @@ class V2PolyglotRunRenderingTest extends TestCase
             namespace: 'default',
             workflowClass: 'durable_workflow.examples.bytes.BytesWorkflow',
             workflowType: 'bytes',
-            payloadCodec: 'avro',
             arguments: [[
                 'text' => 'AP8=',
                 'bytes' => AvroBinaryValue::fromBytes("\x00\xFF"),
@@ -85,7 +83,6 @@ class V2PolyglotRunRenderingTest extends TestCase
             namespace: 'default',
             workflowClass: 'durable_workflow.examples.maps.MapsWorkflow',
             workflowType: 'maps',
-            payloadCodec: 'avro',
             arguments: [
                 AvroMapValue::fromPairs([]),
                 AvroMapValue::fromPairs([['0', 'zero'], ['1', ['nested']]]),
@@ -107,32 +104,7 @@ class V2PolyglotRunRenderingTest extends TestCase
             ->assertJsonPath('output.entries.0.value.base64', 'AP8=');
     }
 
-    public function testRunDetailDecodesLegacyPhpSerializerAuthoredArgumentsAndOutput(): void
-    {
-        config()->set('waterline.engine_source', 'v2');
-
-        $arguments = [['actor' => 'Taylor']];
-        $output = ['approved' => true];
-
-        $run = $this->createCompletedRun(
-            namespace: 'default',
-            workflowClass: 'App\\Workflows\\ApprovalWorkflow',
-            workflowType: 'approval',
-            payloadCodec: 'workflow-serializer-y',
-            arguments: $arguments,
-            output: $output,
-        );
-
-        $this->getJson('/waterline/api/instances/'.$run->workflow_instance_id.'/runs/'.$run->id)
-            ->assertOk()
-            ->assertJsonPath('run_id', $run->id)
-            ->assertJsonPath('class', 'App\\Workflows\\ApprovalWorkflow')
-            ->assertJsonPath('workflow_type', 'approval')
-            ->assertJsonPath('arguments', $arguments)
-            ->assertJsonPath('output', $output);
-    }
-
-    public function testRunDetailRendersAvroAndLegacyAuthoredRunsWithIdenticalShape(): void
+    public function testRunDetailRendersAvroPolyglotRunsWithIdenticalShape(): void
     {
         config()->set('waterline.engine_source', 'v2');
 
@@ -140,7 +112,6 @@ class V2PolyglotRunRenderingTest extends TestCase
             namespace: 'default',
             workflowClass: 'durable_workflow.examples.greeter.GreeterWorkflow',
             workflowType: 'polyglot.shared',
-            payloadCodec: 'avro',
             arguments: [['caller' => 'python']],
             output: ['ok' => true],
         );
@@ -149,10 +120,22 @@ class V2PolyglotRunRenderingTest extends TestCase
             namespace: 'default',
             workflowClass: 'App\\Workflows\\PolyglotSharedWorkflow',
             workflowType: 'polyglot.shared',
-            payloadCodec: 'workflow-serializer-y',
             arguments: [['caller' => 'php']],
             output: ['ok' => true],
         );
+
+        $rustRun = $this->createCompletedRun(
+            namespace: 'default',
+            workflowClass: 'durable_workflow_examples::greeter::GreeterWorkflow',
+            workflowType: 'polyglot.shared',
+            arguments: [['caller' => 'rust']],
+            output: ['ok' => true],
+        );
+
+        foreach ([$phpRun, $pythonRun, $rustRun] as $run) {
+            $this->assertSame('avro', $run->payload_codec);
+            $this->assertSame('avro', $run->output_payload_codec);
+        }
 
         $pythonShape = array_keys($this->getJson(
             '/waterline/api/instances/'.$pythonRun->workflow_instance_id.'/runs/'.$pythonRun->id,
@@ -162,17 +145,27 @@ class V2PolyglotRunRenderingTest extends TestCase
             '/waterline/api/instances/'.$phpRun->workflow_instance_id.'/runs/'.$phpRun->id,
         )->assertOk()->json());
 
+        $rustShape = array_keys($this->getJson(
+            '/waterline/api/instances/'.$rustRun->workflow_instance_id.'/runs/'.$rustRun->id,
+        )->assertOk()->json());
+
         sort($pythonShape);
         sort($phpShape);
+        sort($rustShape);
 
         $this->assertSame(
             $phpShape,
             $pythonShape,
             'Run-detail shape must not depend on the SDK that authored the run.',
         );
+        $this->assertSame(
+            $phpShape,
+            $rustShape,
+            'Run-detail shape must not depend on the SDK that authored the run.',
+        );
     }
 
-    public function testListRoutesReturnPolyglotRunsAcrossCodecs(): void
+    public function testListRoutesReturnAvroPolyglotRunsAcrossAuthors(): void
     {
         config()->set('waterline.engine_source', 'v2');
 
@@ -180,7 +173,6 @@ class V2PolyglotRunRenderingTest extends TestCase
             namespace: 'default',
             workflowClass: 'durable_workflow.examples.order.OrderWorkflow',
             workflowType: 'polyglot.list',
-            payloadCodec: 'avro',
             arguments: [['order_id' => 'py-1']],
             output: ['shipped' => true],
         );
@@ -189,8 +181,15 @@ class V2PolyglotRunRenderingTest extends TestCase
             namespace: 'default',
             workflowClass: 'App\\Workflows\\OrderWorkflow',
             workflowType: 'polyglot.list',
-            payloadCodec: 'workflow-serializer-y',
             arguments: [['order_id' => 'php-1']],
+            output: ['shipped' => true],
+        );
+
+        $rustRun = $this->createCompletedRun(
+            namespace: 'default',
+            workflowClass: 'durable_workflow_examples::order::OrderWorkflow',
+            workflowType: 'polyglot.list',
+            arguments: [['order_id' => 'rust-1']],
             output: ['shipped' => true],
         );
 
@@ -206,7 +205,12 @@ class V2PolyglotRunRenderingTest extends TestCase
         $this->assertContains(
             $phpRun->id,
             $ids,
-            'Legacy-codec PHP runs must appear in the completed list payload.',
+            'PHP-authored Avro runs must appear in the completed list payload.',
+        );
+        $this->assertContains(
+            $rustRun->id,
+            $ids,
+            'Rust-authored Avro runs must appear in the completed list payload.',
         );
     }
 
@@ -219,7 +223,6 @@ class V2PolyglotRunRenderingTest extends TestCase
             namespace: 'tenant-a',
             workflowClass: 'durable_workflow.examples.greeter.GreeterWorkflow',
             workflowType: 'polyglot.tenancy',
-            payloadCodec: 'avro',
             arguments: [['caller' => 'tenant-a']],
             output: ['ok' => true],
         );
@@ -228,7 +231,6 @@ class V2PolyglotRunRenderingTest extends TestCase
             namespace: 'tenant-b',
             workflowClass: 'durable_workflow.examples.greeter.GreeterWorkflow',
             workflowType: 'polyglot.tenancy',
-            payloadCodec: 'avro',
             arguments: [['caller' => 'tenant-b']],
             output: ['ok' => true],
         );
@@ -244,7 +246,7 @@ class V2PolyglotRunRenderingTest extends TestCase
             $this->assertSame(
                 'tenant-a',
                 $row['namespace'] ?? null,
-                'A namespace-pinned dashboard must never leak runs from another tenant, regardless of payload codec.',
+                'A namespace-pinned dashboard must never leak runs from another tenant, regardless of authoring SDK.',
             );
             $this->assertNotSame($tenantBRun->id, $row['id'] ?? null);
         }
@@ -263,7 +265,6 @@ class V2PolyglotRunRenderingTest extends TestCase
         string $namespace,
         string $workflowClass,
         string $workflowType,
-        string $payloadCodec,
         array $arguments,
         mixed $output,
     ): WorkflowRun {
@@ -287,10 +288,10 @@ class V2PolyglotRunRenderingTest extends TestCase
             'status' => 'completed',
             'closed_reason' => 'completed',
             'namespace' => $namespace,
-            'payload_codec' => $payloadCodec,
-            'output_payload_codec' => $payloadCodec,
-            'arguments' => Serializer::serializeWithCodec($payloadCodec, $arguments),
-            'output' => Serializer::serializeWithCodec($payloadCodec, $output),
+            'payload_codec' => 'avro',
+            'output_payload_codec' => 'avro',
+            'arguments' => Serializer::serializeWithCodec('avro', $arguments),
+            'output' => Serializer::serializeWithCodec('avro', $output),
             'connection' => 'redis',
             'queue' => 'default',
             'last_history_sequence' => 2,
