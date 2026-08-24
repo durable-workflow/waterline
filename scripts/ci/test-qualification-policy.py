@@ -915,6 +915,38 @@ class StandaloneComposerAuditWorkflowContractTest(unittest.TestCase):
                     qualification.classify_paths([path]).name,
                 )
 
+    def test_release_contract_solves_both_onboarding_graphs(self) -> None:
+        command = self.named_step(
+            "Solve both public prerelease Composer channels from clean roots"
+        )["run"]
+
+        self.assertEqual("scripts/ci/check-onboarding-composer.sh", command)
+
+
+class ServiceImageSmokeWorkflowContractTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.workflow = yaml.load(
+            (ROOT / ".github" / "workflows" / "service-image-smoke.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        if not isinstance(cls.workflow, dict):
+            raise RuntimeError("service image smoke workflow must be a mapping")
+
+    def test_smokes_candidate_and_resolver_selected_public_images(self) -> None:
+        steps = self.workflow["jobs"]["smoke"]["steps"]
+        commands = [step.get("run", "") for step in steps if isinstance(step, dict)]
+
+        self.assertIn("scripts/ci/service-mode-image-smoke.sh", commands)
+        public = next(
+            command
+            for command in commands
+            if "scripts/resolve-current-prerelease.py" in command
+        )
+        self.assertIn("SERVICE_IMAGE_SKIP_BUILD=1", public)
+        self.assertIn("EXPECTED_WATERLINE_VERSION", public)
+        self.assertIn('value["service_image"]["pull"]', public)
+
 
 class DatabaseQualificationWorkflowContractTest(unittest.TestCase):
     @classmethod

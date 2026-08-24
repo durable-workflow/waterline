@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import importlib.util
-import re
 import sys
 import tempfile
 import unittest
@@ -40,8 +39,8 @@ RELEASE = contract.ReleaseTuple(
 def composer_command(*, graph: str = "embedded", upgrade: bool = False) -> str:
     flag = " --with-all-dependencies" if upgrade else ""
     pins = [
-        f"{package}:{contract.example_pin(version)}"
-        for package, version in RELEASE.composer_graphs[graph].items()
+        f'"{package}:{contract.ONBOARDING_CONSTRAINT}"'
+        for package in RELEASE.composer_graphs[graph]
     ]
     return f"composer require{flag} " + " ".join(pins)
 
@@ -72,18 +71,18 @@ The install command can move and use indented Markdown instead.
         self.assertEqual(contract.ExampleCounts(install=1, upgrade=1), counts)
         self.assertEqual(3, len(set(RELEASE.packages.values())))
 
-    def test_rejects_a_stale_pin_for_each_tuple_component(self) -> None:
+    def test_rejects_a_copied_rc_pin_for_each_tuple_component(self) -> None:
         current = composer_command()
 
-        for package, version in RELEASE.composer_graphs["embedded"].items():
+        for package in RELEASE.composer_graphs["embedded"]:
             with self.subTest(package=package):
                 stale = current.replace(
-                    f"{package}:{contract.example_pin(version)}",
-                    f"{package}:2.0.0-rc.1@RC",
+                    f'"{package}:{contract.ONBOARDING_CONSTRAINT}"',
+                    f'"{package}:2.0.0-rc.1@RC"',
                 )
                 with self.assertRaisesRegex(
                     contract.ContractError,
-                    re.escape(package),
+                    "copies an exact prerelease pin",
                 ):
                     contract.validate_composer_examples(
                         "example.md",
@@ -95,10 +94,12 @@ The install command can move and use indented Markdown instead.
 
         service = composer_command(graph="service")
         stale_sdk = service.replace(
-            f"{contract.SDK_PACKAGE}:{contract.example_pin(RELEASE.sdk)}",
-            f"{contract.SDK_PACKAGE}:2.0.0-rc.1@RC",
+            f'"{contract.SDK_PACKAGE}:{contract.ONBOARDING_CONSTRAINT}"',
+            f'"{contract.SDK_PACKAGE}:2.0.0-rc.1@RC"',
         )
-        with self.assertRaisesRegex(contract.ContractError, contract.SDK_PACKAGE):
+        with self.assertRaisesRegex(
+            contract.ContractError, "copies an exact prerelease pin"
+        ):
             contract.validate_composer_examples(
                 "example.md",
                 stale_sdk,
@@ -109,8 +110,8 @@ The install command can move and use indented Markdown instead.
 
     def test_rejects_a_combined_embedded_and_service_dependency_graph(self) -> None:
         combined = "composer require " + " ".join(
-            f"{package}:{contract.example_pin(version)}"
-            for package, version in RELEASE.packages.items()
+            f'"{package}:{contract.ONBOARDING_CONSTRAINT}"'
+            for package in RELEASE.packages
         )
 
         with self.assertRaisesRegex(contract.ContractError, "exactly the embedded"):
@@ -122,21 +123,40 @@ The install command can move and use indented Markdown instead.
                 minimum_upgrade=0,
             )
 
-    def test_rejects_stale_documented_service_image(self) -> None:
+    def test_rejects_copied_documented_service_image(self) -> None:
         stale = f"docker run {contract.SERVICE_IMAGE}:2.0.0-rc.1"
 
         with self.assertRaisesRegex(
             contract.ContractError,
-            "expected '2.0.0-rc.91'",
+            "copies a service image reference",
         ):
             contract.validate_documented_images(
                 "SERVICE_MODE.md",
                 stale,
-                RELEASE,
                 minimum=1,
             )
 
-    def test_rejects_stale_default_service_image(self) -> None:
+    def test_accepts_resolver_backed_image_without_prose_coupling(self) -> None:
+        document = f"""
+```bash
+WATERLINE_IMAGE="$(python3 {contract.PRERELEASE_RESOLVER} image)"
+docker run --rm "$WATERLINE_IMAGE"
+```
+
+Retained compatibility evidence names
+{contract.SERVICE_IMAGE}:2.0.0-rc.1 as an immutable historical identity.
+"""
+
+        self.assertEqual(
+            1,
+            contract.validate_documented_images(
+                "SERVICE_MODE.md",
+                document,
+                minimum=1,
+            ),
+        )
+
+    def test_rejects_default_or_unqualified_service_image(self) -> None:
         stale = (
             "services:\n"
             "  waterline:\n"
@@ -145,13 +165,36 @@ The install command can move and use indented Markdown instead.
 
         with self.assertRaisesRegex(
             contract.ContractError,
-            re.escape(f"{contract.SERVICE_IMAGE}:{RELEASE.waterline}"),
+            "must require WATERLINE_IMAGE",
         ):
             contract.validate_default_image(
                 "deploy/docker-compose.service.yml",
                 stale,
-                RELEASE,
             )
+
+        with self.assertRaisesRegex(
+            contract.ContractError,
+            "must require WATERLINE_IMAGE",
+        ):
+            contract.validate_default_image(
+                "deploy/docker-compose.service.yml",
+                f"services:\n  waterline:\n    image: {contract.SERVICE_IMAGE}:latest\n",
+            )
+
+    def test_accepts_compose_image_required_from_resolver(self) -> None:
+        compose = (
+            "services:\n"
+            "  waterline:\n"
+            "    image: ${WATERLINE_IMAGE:?run-prerelease-resolver}\n"
+        )
+
+        self.assertEqual(
+            "${WATERLINE_IMAGE:?run-prerelease-resolver}",
+            contract.validate_default_image(
+                "deploy/docker-compose.service.yml",
+                compose,
+            ),
+        )
 
     def test_rejects_missing_upgrade_example_without_reading_headings(self) -> None:
         with self.assertRaisesRegex(

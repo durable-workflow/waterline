@@ -10,6 +10,8 @@ final class ServiceModeRequirements
 {
     public const SDK_VERSION = '2.0.0-rc.40';
 
+    public const SDK_ONBOARDING_CONSTRAINT = '^2.0@RC';
+
     /**
      * @param  (callable(class-string): bool)|null  $classExists
      */
@@ -22,8 +24,8 @@ final class ServiceModeRequirements
         }
 
         throw new LogicException(sprintf(
-            'Waterline service mode requires the optional durable-workflow/sdk package. Install it with `composer require durable-workflow/sdk:%s`, then retry; or set WATERLINE_BACKEND=embedded.',
-            self::SDK_VERSION,
+            'Waterline service mode requires the optional durable-workflow/sdk package. Install it with `composer require --with-all-dependencies "durable-workflow/sdk:%s"`, then retry; or set WATERLINE_BACKEND=embedded.',
+            self::SDK_ONBOARDING_CONSTRAINT,
         ));
     }
 }

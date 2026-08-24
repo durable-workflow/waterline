@@ -18,14 +18,16 @@ WATERLINE_PACKAGE = "durable-workflow/waterline"
 WORKFLOW_PACKAGE = "durable-workflow/workflow"
 SDK_PACKAGE = "durable-workflow/sdk"
 SERVICE_IMAGE = "durableworkflow/waterline"
+ONBOARDING_CONSTRAINT = "^2.0@RC"
+PRERELEASE_RESOLVER = "scripts/resolve-current-prerelease.py"
 EXACT_VERSION = re.compile(
     r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$"
 )
 FENCE = re.compile(r"^(?:`{3,}|~{3,})")
 COMPOSER_REQUIRE = re.compile(r"^(?:\$\s+)?composer\s+require(?:\s|$)")
-IMAGE_REFERENCE = re.compile(
-    rf"(?<![0-9A-Za-z_./-]){re.escape(SERVICE_IMAGE)}:"
-    r"(?P<tag>[0-9A-Za-z][0-9A-Za-z_.-]*)"
+EXACT_PRERELEASE = re.compile(
+    r"^2\.0\.0-(?:alpha|beta|rc)\.(?:0|[1-9][0-9]*)(?:@(?:alpha|beta|rc))?$",
+    re.IGNORECASE,
 )
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\((?P<target><[^>]+>|[^)\s]+)(?:\s+[^)]*)?\)")
 
@@ -77,9 +79,9 @@ class RepositoryValidation:
     release: ReleaseTuple
     readme_examples: ExampleCounts
     service_examples: ExampleCounts
-    documented_images: int
+    resolved_images: int
     local_documentation_links: int
-    default_image: str
+    compose_image: str
 
 
 def read_json(path: Path) -> Mapping[str, Any]:
@@ -139,30 +141,6 @@ def declared_release_tuple(manifest: Mapping[str, Any]) -> ReleaseTuple:
         ),
         sdk=exact_version(manifest, ("require-dev", SDK_PACKAGE)),
     )
-
-
-def stability_flag(version: str) -> str:
-    prerelease = version.lower().split("-", maxsplit=1)
-    if len(prerelease) == 1:
-        return ""
-
-    channel = prerelease[1].split(".", maxsplit=1)[0]
-    flags = {
-        "dev": "@dev",
-        "alpha": "@alpha",
-        "beta": "@beta",
-        "rc": "@RC",
-    }
-    flag = flags.get(channel)
-    if flag is None:
-        raise ContractError(
-            f"release version {version!r} has an unsupported Composer stability"
-        )
-    return flag
-
-
-def example_pin(version: str) -> str:
-    return version + stability_flag(version)
 
 
 def composer_require_commands(document: str) -> tuple[str, ...]:
@@ -255,13 +233,17 @@ def validate_composer_examples(
 
         graph = matching_graphs[0]
         observed_graphs.add(graph)
-        for package, version in release.composer_graphs[graph].items():
-            expected = example_pin(version)
+        for package in release.composer_graphs[graph]:
             observed = constraints[package]
-            if observed != expected:
+            if isinstance(observed, str) and EXACT_PRERELEASE.fullmatch(observed):
                 raise ContractError(
-                    f"{source} Composer example pins {package} to {observed!r}; "
-                    f"expected {expected!r} from composer.json"
+                    f"{source} Composer example copies an exact prerelease pin "
+                    f"for {package}: {observed!r}"
+                )
+            if observed != ONBOARDING_CONSTRAINT:
+                raise ContractError(
+                    f"{source} Composer example selects {package} with {observed!r}; "
+                    f"expected the tested {ONBOARDING_CONSTRAINT!r} channel"
                 )
 
         if "--with-all-dependencies" in tokens or "-W" in tokens:
@@ -289,51 +271,86 @@ def validate_composer_examples(
     return ExampleCounts(install=install, upgrade=upgrade)
 
 
+def shell_commands(document: str) -> tuple[str, ...]:
+    commands: list[str] = []
+    continuation = ""
+
+    for line in document.splitlines():
+        stripped = line.strip()
+        if not stripped or FENCE.match(stripped):
+            if continuation:
+                continuation = ""
+            continue
+
+        candidate = f"{continuation} {stripped}".strip()
+        if candidate.endswith("\\"):
+            continuation = candidate[:-1].rstrip()
+            continue
+
+        commands.append(candidate)
+        continuation = ""
+
+    return tuple(commands)
+
+
 def validate_documented_images(
     source: str,
     document: str,
-    release: ReleaseTuple,
     *,
     minimum: int,
 ) -> int:
-    tags = [match.group("tag") for match in IMAGE_REFERENCE.finditer(document)]
-    if len(tags) < minimum:
-        raise ContractError(
-            f"{source} must contain at least {minimum} versioned "
-            f"{SERVICE_IMAGE} example"
-        )
+    commands = [
+        command
+        for command in shell_commands(document)
+        if re.match(r"^(?:\$\s+)?docker\s+(?:pull|run)(?:\s|$)", command)
+    ]
+    resolved = 0
+    for command in commands:
+        tokens = command_tokens(command, source)
+        if len(tokens) > 1 and tokens[1] == "run" and "$WATERLINE_IMAGE" in tokens:
+            resolved += 1
+        if any(
+            token == SERVICE_IMAGE
+            or token.startswith(f"{SERVICE_IMAGE}:")
+            or token.startswith(f"{SERVICE_IMAGE}@")
+            for token in tokens
+        ):
+            raise ContractError(
+                f"{source} copies a service image reference; use the "
+                f"machine-owned {PRERELEASE_RESOLVER} output"
+            )
 
-    stale = [tag for tag in tags if tag != release.waterline]
-    if stale:
+    if resolved < minimum:
         raise ContractError(
-            f"{source} uses {SERVICE_IMAGE} tags {stale!r}; "
-            f"expected {release.waterline!r} from composer.json"
+            f"{source} must contain at least {minimum} Docker example using "
+            "$WATERLINE_IMAGE"
         )
-    return len(tags)
+    resolver_commands = [
+        command
+        for command in shell_commands(document)
+        if PRERELEASE_RESOLVER in command and command.endswith(' image)"')
+    ]
+    if not resolver_commands:
+        raise ContractError(
+            f"{source} must obtain WATERLINE_IMAGE from {PRERELEASE_RESOLVER}"
+        )
+    return resolved
 
 
 def validate_default_image(
     source: str,
     compose: str,
-    release: ReleaseTuple,
 ) -> str:
-    image_values = re.findall(r"(?m)^\s*image:\s*(\S+)\s*$", compose)
+    image_values = re.findall(r"(?m)^\s*image:\s*(.+?)\s*$", compose)
     if len(image_values) != 1:
         raise ContractError(f"{source} must declare exactly one service image")
 
     value = image_values[0].strip("'\"")
-    environment_default = re.fullmatch(
-        r"\$\{WATERLINE_IMAGE:-([^}]+)\}",
-        value,
-    )
-    default_image = environment_default.group(1) if environment_default else value
-    expected = f"{SERVICE_IMAGE}:{release.waterline}"
-    if default_image != expected:
+    if re.fullmatch(r"\$\{WATERLINE_IMAGE:\?[^}]+\}", value) is None:
         raise ContractError(
-            f"{source} defaults to image {default_image!r}; "
-            f"expected {expected!r} from composer.json"
+            f"{source} must require WATERLINE_IMAGE without a stable or latest fallback"
         )
-    return default_image
+    return value
 
 
 def validate_markdown_links(source: Path, document: str, root: Path) -> int:
@@ -406,22 +423,20 @@ def validate_repository(root: Path = ROOT) -> RepositoryValidation:
     documented_images = validate_documented_images(
         "SERVICE_MODE.md",
         service_document,
-        release,
         minimum=1,
     )
     local_documentation_links = validate_documentation_links(root)
     default_image = validate_default_image(
         "deploy/docker-compose.service.yml",
         read_text(root / "deploy" / "docker-compose.service.yml"),
-        release,
     )
     return RepositoryValidation(
         release=release,
         readme_examples=readme_examples,
         service_examples=service_examples,
-        documented_images=documented_images,
+        resolved_images=documented_images,
         local_documentation_links=local_documentation_links,
-        default_image=default_image,
+        compose_image=default_image,
     )
 
 
@@ -436,9 +451,9 @@ def main(arguments: Sequence[str] | None = None) -> int:
         f"workflow={result.release.workflow}, sdk={result.release.sdk}; "
         "composer_examples="
         f"{result.readme_examples.total + result.service_examples.total}, "
-        f"documented_images={result.documented_images}, "
+        f"resolved_images={result.resolved_images}, "
         f"local_documentation_links={result.local_documentation_links}, "
-        f"default_image={result.default_image}"
+        f"compose_image={result.compose_image}"
     )
     return 0
 

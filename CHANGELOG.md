@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.24` source identity. Its package metadata
+Waterline advances to the `2.0.0-rc.25` source identity. Its package metadata
 now describes the operational UI across embedded and service-mode deployments.
 The standalone service distribution remains bound to PHP SDK `2.0.0-rc.40`,
 while embedded integration targets Workflow `2.0.0-rc.33` without pulling the
