@@ -12,7 +12,10 @@ final class ServiceModeRequirementsTest extends TestCase
 {
     public function testServiceModeAcceptsAnInstalledPhpSdk(): void
     {
-        ServiceModeRequirements::assertSdkInstalled(static fn (string $class): bool => true);
+        ServiceModeRequirements::assertSdkInstalled(
+            static fn (string $class): bool => true,
+            static fn (): string => ServiceModeRequirements::SDK_VERSION,
+        );
 
         $this->addToAssertionCount(1);
     }
@@ -34,5 +37,18 @@ final class ServiceModeRequirementsTest extends TestCase
                 $message,
             );
         }
+    }
+
+    public function testServiceModeRejectsAnOlderPrereleaseWithoutACompatibilityShim(): void
+    {
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage(
+            'Waterline service mode requires durable-workflow/sdk 2.0.0-rc.45 exactly; installed 2.0.0-rc.40.',
+        );
+
+        ServiceModeRequirements::assertSdkInstalled(
+            static fn (string $class): bool => true,
+            static fn (): string => '2.0.0-rc.40',
+        );
     }
 }

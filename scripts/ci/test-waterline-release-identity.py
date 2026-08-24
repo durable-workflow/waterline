@@ -24,9 +24,10 @@ SPEC.loader.exec_module(identity)
 CURRENT_PUBLIC = {
     "waterline": "2.0.0-rc.21",
     "workflow": "2.0.0-rc.33",
-    "sdk-php": "2.0.0-rc.40",
+    "sdk-php": "2.0.0-rc.45",
 }
-CANDIDATE_WATERLINE = "2.0.0-rc.25"
+CANDIDATE_WATERLINE = "2.0.0-rc.26"
+PUBLIC_SDK_REFERENCE = "0123456789abcdef0123456789abcdef01234567"
 
 
 def approved() -> dict:
@@ -50,9 +51,27 @@ def standalone() -> dict:
 
 
 def lock() -> dict:
+    version = CURRENT_PUBLIC["sdk-php"]
     return {
         "packages": [
-            {"name": identity.SDK_PACKAGE, "version": CURRENT_PUBLIC["sdk-php"]}
+            {
+                "name": identity.SDK_PACKAGE,
+                "version": version,
+                "source": {
+                    "type": "git",
+                    "url": "https://github.com/durable-workflow/sdk-php.git",
+                    "reference": PUBLIC_SDK_REFERENCE,
+                },
+                "dist": {
+                    "type": "zip",
+                    "url": (
+                        "https://api.github.com/repos/durable-workflow/"
+                        f"sdk-php/zipball/{PUBLIC_SDK_REFERENCE}"
+                    ),
+                    "reference": PUBLIC_SDK_REFERENCE,
+                    "shasum": "",
+                },
+            }
         ]
     }
 
@@ -133,6 +152,32 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         stale_lock["packages"][0]["version"] = "2.0.0-rc.11"
         with self.assertRaisesRegex(identity.IdentityError, "standalone service lock"):
             validate(candidate_lock=stale_lock)
+
+    def test_mutable_mismatched_or_local_service_lock_reference_is_rejected(
+        self,
+    ) -> None:
+        stale_lock = lock()
+        stale_lock["packages"][0]["source"]["reference"] = "2.0.0-rc.40"
+
+        with self.assertRaisesRegex(identity.IdentityError, "immutable public"):
+            validate(candidate_lock=stale_lock)
+
+        mismatched_lock = lock()
+        mismatched_lock["packages"][0]["dist"]["reference"] = "f" * 40
+
+        with self.assertRaisesRegex(identity.IdentityError, "immutable public"):
+            validate(candidate_lock=mismatched_lock)
+
+        local_lock = lock()
+        local_lock["packages"][0].pop("source")
+        local_lock["packages"][0]["dist"] = {
+            "type": "path",
+            "url": "../../sdk-php",
+            "reference": "worker-commit",
+        }
+
+        with self.assertRaisesRegex(identity.IdentityError, "immutable public"):
+            validate(candidate_lock=local_lock)
 
     def test_release_tag_must_match_source_not_prior_published_artifact(self) -> None:
         evidence = validate(release_version=CANDIDATE_WATERLINE)

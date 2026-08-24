@@ -12,6 +12,7 @@ use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ServiceVisibilityFilters;
+use Waterline\Support\WorkflowStreamPresenter;
 
 final class RemoteWorkflowsController extends RemoteController
 {
@@ -264,9 +265,16 @@ final class RemoteWorkflowsController extends RemoteController
         $runs = $client->listWorkflowRuns($workflowId);
         $history = $selectedRunId !== '' ? $client->workflowHistory($workflowId, $selectedRunId) : [];
         $diagnostics = [];
+        $workflowStreams = [];
 
         if ($selectedRunId !== '' && $this->backend->supports('workflowDiagnostics')) {
             $diagnostics = $client->workflowDiagnostics($workflowId, $selectedRunId);
+        }
+
+        if ($selectedRunId !== '') {
+            $workflowStreams = app(WorkflowStreamPresenter::class)->service(
+                $client->listWorkflowStreams($workflowId, $selectedRunId),
+            );
         }
 
         $payload = array_merge($execution->raw, $diagnostics, [
@@ -303,6 +311,8 @@ final class RemoteWorkflowsController extends RemoteController
             'signals' => is_array($execution->raw['signals'] ?? null) ? $execution->raw['signals'] : [],
             'updates' => is_array($execution->raw['updates'] ?? null) ? $execution->raw['updates'] : [],
             'commands' => is_array($execution->raw['commands'] ?? null) ? $execution->raw['commands'] : [],
+            'workflow_streams' => $workflowStreams,
+            'workflow_streams_mode' => 'service',
             'logs' => [],
             'exceptions' => [],
             'chartData' => [],

@@ -17,6 +17,7 @@ PACKAGE = "durable-workflow/waterline"
 SDK_PACKAGE = "durable-workflow/sdk"
 WORKFLOW_PACKAGE = "durable-workflow/workflow"
 PRERELEASE = re.compile(r"^2\.0\.0-(?:alpha|beta|rc)\.[1-9][0-9]*$")
+PUBLIC_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 
 
 class IdentityError(RuntimeError):
@@ -66,7 +67,7 @@ def required_version(
     return exact_version(requirement, f"{label} {table}.{package}")
 
 
-def locked_version(lock: Mapping[str, Any], package: str) -> str:
+def locked_package(lock: Mapping[str, Any], package: str) -> Mapping[str, Any]:
     packages = lock.get("packages")
     if not isinstance(packages, list):
         raise IdentityError("standalone Composer lock packages must be a list")
@@ -79,9 +80,45 @@ def locked_version(lock: Mapping[str, Any], package: str) -> str:
         raise IdentityError(
             f"standalone Composer lock must contain exactly one {package}"
         )
+    return matches[0]
+
+
+def locked_version(lock: Mapping[str, Any], package: str) -> str:
+    candidate = locked_package(lock, package)
     return exact_version(
-        matches[0].get("version"), f"standalone Composer lock {package} version"
+        candidate.get("version"), f"standalone Composer lock {package} version"
     )
+
+
+def require_locked_public_route(lock: Mapping[str, Any], package: str) -> None:
+    candidate = locked_package(lock, package)
+    source = candidate.get("source")
+    dist = candidate.get("dist")
+    reference = source.get("reference") if isinstance(source, dict) else None
+    if not isinstance(reference, str) or PUBLIC_COMMIT.fullmatch(reference) is None:
+        raise IdentityError(
+            f"standalone Composer lock {package} must use an immutable public "
+            "release route"
+        )
+    expected_source = {
+        "type": "git",
+        "url": "https://github.com/durable-workflow/sdk-php.git",
+        "reference": reference,
+    }
+    expected_dist = {
+        "type": "zip",
+        "url": (
+            "https://api.github.com/repos/durable-workflow/sdk-php/zipball/"
+            f"{reference}"
+        ),
+        "reference": reference,
+        "shasum": "",
+    }
+    if source != expected_source or dist != expected_dist:
+        raise IdentityError(
+            f"standalone Composer lock {package} must use an immutable public "
+            "release route"
+        )
 
 
 def declared_waterline_version(manifest: Mapping[str, Any]) -> str:
@@ -136,11 +173,13 @@ def validate(
             "standalone service PHP SDK identity does not match the current public "
             "dependency selection"
         )
-    if locked_version(lock, SDK_PACKAGE) != published["sdk-php"]:
+    locked_sdk = locked_version(lock, SDK_PACKAGE)
+    if locked_sdk != published["sdk-php"]:
         raise IdentityError(
             "standalone service lock PHP SDK identity does not match the current "
             "public dependency selection"
         )
+    require_locked_public_route(lock, SDK_PACKAGE)
 
     normalized_release = release_version.removeprefix("v") if release_version else None
     if normalized_release is not None and normalized_release != candidate["waterline"]:

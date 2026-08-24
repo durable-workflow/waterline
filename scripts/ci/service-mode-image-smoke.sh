@@ -114,6 +114,24 @@ fi
 
 image_revision="$(image_label org.opencontainers.image.revision)"
 image_release="$(image_label dev.durable-workflow.release.tag)"
+workflow_streams_required=0
+
+case "$image_release" in
+    0.0.0-service-smoke|2.0.0)
+        workflow_streams_required=1
+        ;;
+    2.0.0-rc.*)
+        rc_number="${image_release##*.}"
+        case "$rc_number" in
+            ''|*[!0-9]*) ;;
+            *)
+                if [ "$rc_number" -ge 26 ]; then
+                    workflow_streams_required=1
+                fi
+                ;;
+        esac
+        ;;
+esac
 
 if [ -z "$image_revision" ] || [ -z "$image_release" ]; then
     echo "Service image is missing its immutable revision or release label." >&2
@@ -254,6 +272,28 @@ if [ "$service_uid" != "$www_data_uid" ]; then
     exit 1
 fi
 
+packaged_sdk_version="$(docker exec "$container" php -r '
+require "/app/vendor/autoload.php";
+$manifest = json_decode(file_get_contents("/app/composer.json"), true, flags: JSON_THROW_ON_ERROR);
+$expected = $manifest["require"]["durable-workflow/sdk"] ?? null;
+$actual = Composer\InstalledVersions::getPrettyVersion("durable-workflow/sdk");
+$controller = new ReflectionClass(Waterline\Http\Controllers\Remote\RemoteWorkflowsController::class);
+$controllerFile = $controller->getFileName();
+if ($actual !== $expected
+    || !is_string($controllerFile)
+    || !str_starts_with($controllerFile, "/app/waterline/app/")) {
+    fwrite(STDERR, "Packaged service runtime identity mismatch.\n");
+    exit(1);
+}
+if ($argv[1] === "1"
+    && (!method_exists(DurableWorkflow\Client::class, "listWorkflowStreams")
+        || !class_exists(Waterline\Support\WorkflowStreamPresenter::class))) {
+    fwrite(STDERR, "Packaged service is missing the Workflow Streams runtime contract.\n");
+    exit(1);
+}
+echo $actual;
+' "$workflow_streams_required")"
+
 request 200 \
     "GET ${waterline_url}/waterline/api/flows/running" \
     "${waterline_url}/waterline/api/flows/running"
@@ -303,7 +343,7 @@ request 200 \
 signal="$response_content"
 
 php -r '
-[$list, $savedViews, $selectedSavedView, $filteredList, $detail, $query, $signal] = array_slice($argv, 1);
+[$list, $savedViews, $selectedSavedView, $filteredList, $detail, $query, $signal, $workflowStreamsRequired] = array_slice($argv, 1);
 $list = json_decode($list, true, flags: JSON_THROW_ON_ERROR);
 $savedViews = json_decode($savedViews, true, flags: JSON_THROW_ON_ERROR);
 $selectedSavedView = json_decode($selectedSavedView, true, flags: JSON_THROW_ON_ERROR);
@@ -311,6 +351,40 @@ $filteredList = json_decode($filteredList, true, flags: JSON_THROW_ON_ERROR);
 $detail = json_decode($detail, true, flags: JSON_THROW_ON_ERROR);
 $query = json_decode($query, true, flags: JSON_THROW_ON_ERROR);
 $signal = json_decode($signal, true, flags: JSON_THROW_ON_ERROR);
+
+$detailExpectations = [
+    "selected_run_id" => "smoke-run",
+    "timeline.0.event_type" => "WorkflowStarted",
+];
+if ($workflowStreamsRequired === "1") {
+    $detailExpectations += [
+        "workflow_streams_mode" => "service",
+        "workflow_streams.0.stream_name" => "receipts",
+        "workflow_streams.0.status" => "errored",
+        "workflow_streams.0.last_offset" => 4,
+        "workflow_streams.0.pending_items" => 2,
+        "workflow_streams.0.error_reason" => "producer_failed",
+        "workflow_streams.0.supports_inbound_workflow_messaging" => false,
+    ];
+}
+foreach ($detailExpectations as $path => $expected) {
+    $actual = $detail;
+    foreach (explode(".", $path) as $segment) {
+        $actual = is_array($actual) && array_key_exists($segment, $actual)
+            ? $actual[$segment]
+            : null;
+    }
+    if ($actual !== $expected) {
+        fwrite(
+            STDERR,
+            "Service image detail field [{$path}] expected "
+                .json_encode($expected, JSON_THROW_ON_ERROR)
+                .", received ".json_encode($actual, JSON_THROW_ON_ERROR).".\n"
+        );
+        exit(1);
+    }
+}
+
 if (($list["data"][0]["instance_id"] ?? null) !== "smoke-order"
     || count($list["data"] ?? []) !== 2
     || ($savedViews["filter_version"] ?? null) !== 6
@@ -324,8 +398,6 @@ if (($list["data"][0]["instance_id"] ?? null) !== "smoke-order"
     || ($filteredList["visibility_filters"]["saved_view_applied"] ?? null) !== true
     || ($filteredList["visibility_filters"]["applied"]["workflow_type"] ?? null) !== "smoke.order"
     || ($filteredList["visibility_filters"]["capability"]["fully_applied"] ?? null) !== true
-    || ($detail["selected_run_id"] ?? null) !== "smoke-run"
-    || ($detail["timeline"][0]["event_type"] ?? null) !== "WorkflowStarted"
     || ($query["query"] ?? null) !== "current"
     || ($query["result"]["state"] ?? null) !== "awaiting_approval"
     || ($query["result"]["selected_run_id"] ?? null) !== "smoke-run"
@@ -333,15 +405,23 @@ if (($list["data"][0]["instance_id"] ?? null) !== "smoke-order"
     || ($signal["signal_name"] ?? null) !== "approve"
     || ($signal["selected_run_id"] ?? null) !== "smoke-run"
     || ($signal["input_received"] ?? null) !== true) {
-    fwrite(STDERR, "Service image selected-run/query/signal contract mismatch.\n");
+    fwrite(STDERR, "Service image list, saved-view, query, or signal contract mismatch.\n");
     exit(1);
 }
-' "$list" "$saved_views" "$selected_saved_view" "$filtered_list" "$detail" "$query" "$signal"
+' "$list" "$saved_views" "$selected_saved_view" "$filtered_list" "$detail" "$query" "$signal" "$workflow_streams_required"
 
 server_requests="$(docker logs "$server_container" 2>&1)"
+if [ "$workflow_streams_required" -eq 1 ]; then
+    printf '%s\n' "$server_requests" | grep -F 'GET /api/workflows/smoke-order/runs/smoke-run/streams' >/dev/null
+fi
 printf '%s\n' "$server_requests" | grep -F 'POST /api/workflows/smoke-order/runs/smoke-run/query/current' >/dev/null
 printf '%s\n' "$server_requests" | grep -F 'POST /api/workflows/smoke-order/runs/smoke-run/signal/approve' >/dev/null
 
+streams_summary='preserved the pre-Streams release contract'
+if [ "$workflow_streams_required" -eq 1 ]; then
+    streams_summary='passed the Workflow Streams route and lifecycle contract'
+fi
 summary="Service image $image_release ($image_revision) rejected DB_DATABASE=:memory:,"\
-" reached /up in ${startup_elapsed}s, and passed saved-view narrowing, selected-run, query, and signal checks."
+" uses PHP SDK ${packaged_sdk_version}, reached /up in ${startup_elapsed}s,"\
+" passed saved-view narrowing, selected-run, query, and signal checks, and ${streams_summary}."
 printf '%s\n' "$summary"

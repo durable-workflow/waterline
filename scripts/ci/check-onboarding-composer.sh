@@ -6,8 +6,22 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 
-authority="$work/qualified-prerelease.json"
-python3 "$root/scripts/resolve-current-prerelease.py" json > "$authority"
+release_authority="$work/current-public-release.txt"
+verify_public_release_authority="${VERIFY_PUBLIC_RELEASE_AUTHORITY:-false}"
+case "$verify_public_release_authority" in
+    true)
+        target_commit="$(git -C "$root" rev-parse HEAD)"
+        python3 "$root/scripts/ci/resolve-current-waterline-release.py" \
+            --target-commit "$target_commit" > "$release_authority"
+        ;;
+    false)
+        : > "$release_authority"
+        ;;
+    *)
+        echo "VERIFY_PUBLIC_RELEASE_AUTHORITY must be true or false" >&2
+        exit 1
+        ;;
+esac
 
 create_graph() {
     graph="$1"
@@ -55,16 +69,24 @@ create_graph() {
 create_graph embedded durable-workflow/workflow
 create_graph service durable-workflow/sdk
 
-python3 - "$authority" "$work/embedded/composer.lock" "$work/service/composer.lock" <<'PY'
+python3 - "$release_authority" "$work/embedded/composer.lock" "$work/service/composer.lock" <<'PY'
 import json
 import re
 import sys
 from pathlib import Path
 
 authority_path, embedded_path, service_path = map(Path, sys.argv[1:])
-authority = json.loads(authority_path.read_text(encoding="utf-8"))
-qualified_waterline = authority["packages"]["waterline"]
+release_authority = authority_path.read_text(encoding="utf-8").split()
 pattern = re.compile(r"^2\.0\.0-rc\.[1-9][0-9]*$")
+commit_pattern = re.compile(r"^[0-9a-f]{40}$")
+if release_authority and (
+    len(release_authority) != 2
+    or pattern.fullmatch(release_authority[0]) is None
+    or commit_pattern.fullmatch(release_authority[1]) is None
+):
+    raise SystemExit("current public Waterline release authority is malformed")
+qualified_waterline = release_authority[0] if release_authority else None
+qualified_source_commit = release_authority[1] if release_authority else None
 expected = {
     "embedded": {
         "durable-workflow/waterline",
@@ -88,7 +110,10 @@ for graph, path in (("embedded", embedded_path), ("service", service_path)):
         raise SystemExit(f"{graph} onboarding graph did not resolve both roots")
     if any(pattern.fullmatch(version) is None for version in packages.values()):
         raise SystemExit(f"{graph} onboarding graph escaped the 2.0 RC channel")
-    if packages["durable-workflow/waterline"] != qualified_waterline:
+    if (
+        qualified_waterline is not None
+        and packages["durable-workflow/waterline"] != qualified_waterline
+    ):
         raise SystemExit(
             f"{graph} onboarding selected Waterline "
             f"{packages['durable-workflow/waterline']}, not qualified "
@@ -96,16 +121,24 @@ for graph, path in (("embedded", embedded_path), ("service", service_path)):
         )
     resolved[graph] = packages
 
-print(
-    json.dumps(
-        {
-            "schema": "durable-workflow.waterline.onboarding-composer-qualification/v1",
-            "channel": "^2.0@RC",
-            "qualified_waterline": qualified_waterline,
-            "graphs": resolved,
-            "outcome": "pass",
-        },
-        sort_keys=True,
-    )
-)
+if qualified_waterline is None:
+    qualified_waterline = resolved["embedded"]["durable-workflow/waterline"]
+    if resolved["service"]["durable-workflow/waterline"] != qualified_waterline:
+        raise SystemExit("public onboarding graphs selected different Waterline releases")
+
+evidence = {
+    "schema": "durable-workflow.waterline.onboarding-composer-qualification/v1",
+    "authority": (
+        "github-public-release"
+        if qualified_source_commit is not None
+        else "registry-graph-consensus"
+    ),
+    "channel": "^2.0@RC",
+    "qualified_waterline": qualified_waterline,
+    "graphs": resolved,
+    "outcome": "pass",
+}
+if qualified_source_commit is not None:
+    evidence["qualified_source_commit"] = qualified_source_commit
+print(json.dumps(evidence, sort_keys=True))
 PY

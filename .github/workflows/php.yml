@@ -212,6 +212,9 @@ jobs:
         "$policy_python" scripts/ci/standalone_lock_contract.py
 
     - name: Solve both public prerelease Composer channels from clean roots
+      env:
+        VERIFY_PUBLIC_RELEASE_AUTHORITY: >-
+          ${{ github.server_url == 'https://github.com' }}
       run: scripts/ci/check-onboarding-composer.sh
 
   conformance-contracts:

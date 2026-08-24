@@ -85,6 +85,23 @@ $payload = match (true) {
             'payload' => [],
         ]],
     ],
+    $method === 'GET' && $path === '/api/workflows/smoke-order/runs/smoke-run/streams' => [
+        'workflow_id' => 'smoke-order',
+        'workflow_run_id' => 'smoke-run',
+        'count' => 1,
+        'streams' => [[
+            'stream_name' => 'receipts',
+            'status' => 'errored',
+            'last_offset' => 4,
+            'total_items' => 5,
+            'pending_items' => 2,
+            'opened_at' => '2026-07-22T12:00:01Z',
+            'last_appended_at' => '2026-07-22T12:00:04Z',
+            'closed_at' => '2026-07-22T12:00:05Z',
+            'error_reason' => 'producer_failed',
+            'retention_seconds' => 600,
+        ]],
+    ],
     $method === 'GET' && $path === '/api/workflows/smoke-order/runs/smoke-run/debug' => ['tasks' => []],
     $method === 'POST' && $path === '/api/workflows/smoke-order/runs/smoke-run/query/current' => [
         'result' => [

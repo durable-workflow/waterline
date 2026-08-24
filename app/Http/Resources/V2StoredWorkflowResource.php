@@ -15,6 +15,7 @@ use Waterline\Support\ObserverStateEnvelope;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\RunDiagnostics;
 use Waterline\Support\SelectedRunCommandContract;
+use Waterline\Support\WorkflowStreamPresenter;
 use Workflow\Serializers\AvroValueJsonProjection;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowCommand;
@@ -58,6 +59,8 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['current_compensation_marker'] = $compensationVisibility['current_marker'];
         $detail['compensation_visibility'] = $compensationVisibility;
         $detail['run_diagnostics'] = $this->runDiagnostics($detail);
+        $detail['workflow_streams'] = app(WorkflowStreamPresenter::class)->embedded($this->resource);
+        $detail['workflow_streams_mode'] = 'embedded';
         $detail = SelectedRunCommandContract::annotateRunDetail($detail, $this->resource);
         $detail = ObserverStateEnvelope::annotateRun($detail, $this->observerPaths($request, $detail));
         $detail = CompatibilitySemantics::annotateRun($detail);

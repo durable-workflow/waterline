@@ -916,11 +916,20 @@ class StandaloneComposerAuditWorkflowContractTest(unittest.TestCase):
                 )
 
     def test_release_contract_solves_both_onboarding_graphs(self) -> None:
-        command = self.named_step(
+        step = self.named_step(
             "Solve both public prerelease Composer channels from clean roots"
-        )["run"]
+        )
+        command = step["run"]
 
         self.assertEqual("scripts/ci/check-onboarding-composer.sh", command)
+        self.assertEqual(
+            "${{ github.server_url == 'https://github.com' }}",
+            step["env"]["VERIFY_PUBLIC_RELEASE_AUTHORITY"],
+        )
+
+        contract = (ROOT / command).read_text(encoding="utf-8")
+        self.assertIn("resolve-current-waterline-release.py", contract)
+        self.assertNotIn("scripts/resolve-current-prerelease.py", contract)
 
 
 class ServiceImageSmokeWorkflowContractTest(unittest.TestCase):
@@ -946,6 +955,28 @@ class ServiceImageSmokeWorkflowContractTest(unittest.TestCase):
         self.assertIn("SERVICE_IMAGE_SKIP_BUILD=1", public)
         self.assertIn("EXPECTED_WATERLINE_VERSION", public)
         self.assertIn('value["service_image"]["pull"]', public)
+
+        smoke = (ROOT / "scripts/ci/service-mode-image-smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("0.0.0-service-smoke|2.0.0", smoke)
+        self.assertIn('if [ "$rc_number" -ge 26 ]', smoke)
+        self.assertIn("Composer\\InstalledVersions::getPrettyVersion", smoke)
+        self.assertIn("WorkflowStreamPresenter::class", smoke)
+        self.assertIn("GET /api/workflows/smoke-order/runs/smoke-run/streams", smoke)
+
+    def test_candidate_classes_are_optimized_into_the_service_image(self) -> None:
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        candidate_copy = dockerfile.index("COPY app /build/standalone/waterline/app")
+        optimized_dump = dockerfile.index("RUN composer dump-autoload")
+
+        self.assertLess(candidate_copy, optimized_dump)
+        self.assertIn("RemoteWorkflowsController::class", dockerfile)
+        self.assertIn("WorkflowStreamPresenter::class", dockerfile)
+        self.assertIn(
+            'method_exists(DurableWorkflow\\Client::class, "listWorkflowStreams")',
+            dockerfile,
+        )
 
 
 class DatabaseQualificationWorkflowContractTest(unittest.TestCase):

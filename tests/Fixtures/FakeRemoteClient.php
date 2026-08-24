@@ -106,6 +106,21 @@ final class FakeRemoteClient
         return ['tasks' => [['id' => 'task-1', 'status' => 'ready']]];
     }
 
+    /** @return list<array<string, mixed>> */
+    public function listWorkflowStreams(string $workflowId, string $runId): array
+    {
+        $this->called(__FUNCTION__, get_defined_vars());
+
+        return [[
+            'stream_name' => 'receipts',
+            'status' => 'errored',
+            'last_offset' => 4,
+            'total_items' => 5,
+            'pending_items' => 2,
+            'error_reason' => 'producer_failed',
+        ]];
+    }
+
     /** @return array<string, mixed> */
     public function systemHealth(): array
     {

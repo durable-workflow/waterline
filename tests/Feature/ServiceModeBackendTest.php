@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Waterline\Tests\Feature;
 
+use Composer\InstalledVersions;
 use DurableWorkflow\Client;
 use DurableWorkflow\Exception\ServerException;
 use DurableWorkflow\Exception\TransportException;
@@ -13,6 +14,7 @@ use Illuminate\Support\Carbon;
 use Orchestra\Testbench\TestCase;
 use function Orchestra\Testbench\artisan;
 use Waterline\Support\Remote\RemoteBackend;
+use Waterline\Support\ServiceModeRequirements;
 use Waterline\Tests\Fixtures\FakeRemoteClient;
 use Waterline\Waterline;
 use Waterline\WaterlineServiceProvider;
@@ -21,7 +23,28 @@ require_once dirname(__DIR__, 2).'/scripts/ci/SqlServerQualificationTls.php';
 
 final class ServiceModeBackendTest extends TestCase
 {
+    /** @var array<string, mixed> */
+    private static array $installedVersions;
+
     private FakeRemoteClient $client;
+
+    public static function setUpBeforeClass(): void
+    {
+        parent::setUpBeforeClass();
+
+        self::$installedVersions = InstalledVersions::getRawData();
+        $planned = self::$installedVersions;
+        $planned['versions']['durable-workflow/sdk']['pretty_version'] = ServiceModeRequirements::SDK_VERSION;
+        $planned['versions']['durable-workflow/sdk']['version'] = '2.0.0.0-RC45';
+        InstalledVersions::reload($planned);
+    }
+
+    public static function tearDownAfterClass(): void
+    {
+        InstalledVersions::reload(self::$installedVersions);
+
+        parent::tearDownAfterClass();
+    }
 
     protected function getPackageProviders($app): array
     {
@@ -87,6 +110,13 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('actionability.actions.query.allowed', true)
             ->assertJsonPath('actionability.actions.signal.allowed', false)
             ->assertJsonPath('actionability.actions.signal.reason', 'waterline_read_only')
+            ->assertJsonPath('workflow_streams_mode', 'service')
+            ->assertJsonPath('workflow_streams.0.stream_name', 'receipts')
+            ->assertJsonPath('workflow_streams.0.status', 'errored')
+            ->assertJsonPath('workflow_streams.0.last_offset', 4)
+            ->assertJsonPath('workflow_streams.0.pending_items', 2)
+            ->assertJsonPath('workflow_streams.0.error_reason', 'producer_failed')
+            ->assertJsonPath('workflow_streams.0.supports_inbound_workflow_messaging', false)
             ->assertJsonPath('read_only', true);
     }
 

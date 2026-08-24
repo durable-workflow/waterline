@@ -940,6 +940,115 @@
             </div>
         </div>
 
+        <div
+            class="card mt-4 workflow-stream-section"
+            id="workflowStreams"
+            v-if="ready && workflowStreamRows().length"
+        >
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <div>
+                    <h5>Message &amp; Workflow Streams</h5>
+                    <div class="small text-muted">
+                        Embedded streams include workflow inbox/outbox messages; service streams are workflow output only.
+                    </div>
+                </div>
+
+                <a data-toggle="collapse" href="#collapseWorkflowStreams" role="button">
+                    Collapse
+                </a>
+            </div>
+
+            <div class="card-body collapse show p-0" id="collapseWorkflowStreams">
+                <div class="table-responsive workflow-stream-desktop-table">
+                    <table class="table detail-workflow-streams-table mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col">Stream</th>
+                                <th scope="col">Mode</th>
+                                <th scope="col">Lifecycle</th>
+                                <th scope="col">Offsets</th>
+                                <th scope="col">Pending</th>
+                                <th scope="col">Direction</th>
+                                <th scope="col">Error</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="stream in workflowStreamRows()" :key="stream.mode + ':' + stream.stream_name">
+                                <td>{{ stream.stream_name }}</td>
+                                <td><span class="badge badge-secondary">{{ stream.mode }}</span></td>
+                                <td>{{ stream.status }}</td>
+                                <td>
+                                    {{ workflowStreamOffsets(stream) }}
+                                    <div class="small text-muted" v-if="hasDetailValue(stream.run_cursor_offset)">
+                                        run cursor / {{ stream.run_cursor_offset }}
+                                    </div>
+                                    <div class="small text-muted">stream origin / {{ stream.offset_origin }}</div>
+                                </td>
+                                <td>{{ stream.pending_items }}</td>
+                                <td>
+                                    {{ workflowStreamDirection(stream) }}
+                                    <div class="small text-muted">{{ stream.delivery }}</div>
+                                </td>
+                                <td>
+                                    <span :class="stream.error_reason ? 'text-danger' : 'text-muted'">
+                                        {{ stream.error_reason || '-' }}
+                                    </span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="workflow-stream-mobile-list">
+                    <dl
+                        class="workflow-stream-mobile-row"
+                        v-for="stream in workflowStreamRows()"
+                        :key="'mobile-' + stream.mode + ':' + stream.stream_name"
+                    >
+                        <div>
+                            <dt>Stream</dt>
+                            <dd>{{ stream.stream_name }}</dd>
+                        </div>
+                        <div>
+                            <dt>Mode</dt>
+                            <dd><span class="badge badge-secondary">{{ stream.mode }}</span></dd>
+                        </div>
+                        <div>
+                            <dt>Lifecycle</dt>
+                            <dd>{{ stream.status }}</dd>
+                        </div>
+                        <div>
+                            <dt>Offsets</dt>
+                            <dd>
+                                <div>{{ workflowStreamOffsets(stream) }}</div>
+                                <div class="small text-muted" v-if="hasDetailValue(stream.run_cursor_offset)">
+                                    run cursor / {{ stream.run_cursor_offset }}
+                                </div>
+                                <div class="small text-muted">stream origin / {{ stream.offset_origin }}</div>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>Pending</dt>
+                            <dd>{{ stream.pending_items }}</dd>
+                        </div>
+                        <div>
+                            <dt>Direction</dt>
+                            <dd>
+                                <div>{{ workflowStreamDirection(stream) }}</div>
+                                <div class="small text-muted">{{ stream.delivery }}</div>
+                            </dd>
+                        </div>
+                        <div>
+                            <dt>Error</dt>
+                            <dd :class="stream.error_reason ? 'text-danger' : 'text-muted'">
+                                {{ stream.error_reason || '-' }}
+                            </dd>
+                        </div>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
         <div class="card mt-4" v-if="ready && linkedIntakeRows().length">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Linked Intakes</h5>
@@ -3361,6 +3470,24 @@ export default {
             return this.flow.tasks || []
         },
 
+        workflowStreamRows() {
+            return Array.isArray(this.flow.workflow_streams) ? this.flow.workflow_streams : []
+        },
+
+        workflowStreamOffsets(stream) {
+            const head = this.hasDetailValue(stream.last_offset) ? stream.last_offset : '-'
+
+            return `stream head ${head}`
+        },
+
+        workflowStreamDirection(stream) {
+            if (stream.mode === 'service') {
+                return 'workflow output'
+            }
+
+            return String(stream.direction || 'inbox/outbox').replace(/_/g, ' ').replace(/\+/g, ' / ')
+        },
+
         runNavigationRows() {
             return this.flow.run_navigation || []
         },
@@ -4499,6 +4626,49 @@ export default {
     min-width: 1620px;
 }
 
+.detail-workflow-streams-table {
+    min-width: 900px;
+}
+
+.workflow-stream-section {
+    scroll-margin-top: 6rem;
+}
+
+.workflow-stream-mobile-list {
+    display: none;
+}
+
+.workflow-stream-mobile-row {
+    margin: 0;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid color-mix(in srgb, var(--wl-text) 8%, transparent);
+}
+
+.workflow-stream-mobile-row:first-child {
+    border-top: 0;
+}
+
+.workflow-stream-mobile-row > div {
+    display: grid;
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+    gap: 0.75rem;
+    padding: 0.35rem 0;
+}
+
+.workflow-stream-mobile-row dt {
+    color: var(--wl-text-soft);
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.workflow-stream-mobile-row dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
 .detail-tasks-table .task-col-type {
     width: 120px;
 }
@@ -4548,6 +4718,18 @@ export default {
 }
 
 @media (max-width: 768px) {
+    .workflow-stream-section {
+        scroll-margin-top: 12rem;
+    }
+
+    .workflow-stream-desktop-table {
+        display: none;
+    }
+
+    .workflow-stream-mobile-list {
+        display: block;
+    }
+
     .wl-flow-detail__summary-body > .row {
         grid-template-columns: minmax(0, 1fr);
         gap: 0.5rem;

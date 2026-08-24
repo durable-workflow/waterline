@@ -8,6 +8,31 @@ RUN composer install \
     --no-progress \
     --no-scripts \
     --optimize-autoloader
+COPY app /build/standalone/waterline/app
+RUN composer dump-autoload \
+    --no-dev \
+    --no-interaction \
+    --no-scripts \
+    --optimize \
+    && php -r '\
+        require "vendor/autoload.php"; \
+        $manifest = json_decode(file_get_contents("composer.json"), true, flags: JSON_THROW_ON_ERROR); \
+        $expectedSdk = $manifest["require"]["durable-workflow/sdk"] ?? null; \
+        $actualSdk = Composer\InstalledVersions::getPrettyVersion("durable-workflow/sdk"); \
+        $controller = new ReflectionClass(Waterline\Http\Controllers\Remote\RemoteWorkflowsController::class); \
+        $presenter = new ReflectionClass(Waterline\Support\WorkflowStreamPresenter::class); \
+        $sourceRoot = realpath("waterline/app").DIRECTORY_SEPARATOR; \
+        foreach ([$controller, $presenter] as $class) { \
+            $file = $class->getFileName(); \
+            if (!is_string($file) || !str_starts_with(realpath($file), $sourceRoot)) { \
+                fwrite(STDERR, "Waterline runtime class escaped the candidate source tree.\n"); \
+                exit(1); \
+            } \
+        } \
+        if ($actualSdk !== $expectedSdk || !method_exists(DurableWorkflow\Client::class, "listWorkflowStreams")) { \
+            fwrite(STDERR, "The packaged SDK does not satisfy the candidate Workflow Streams contract.\n"); \
+            exit(1); \
+        }'
 
 FROM php:8.3-cli-alpine
 
