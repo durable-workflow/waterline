@@ -1,4 +1,5 @@
 <script type="text/ecmascript-6">
+    import _ from 'lodash';
     import FlowRow from './flow-row';
 
     export default {

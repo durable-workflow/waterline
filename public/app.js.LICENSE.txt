@@ -11,13 +11,6 @@
  */
 
 /*!
- * The buffer module from node.js, for the browser.
- *
- * @author   Feross Aboukhadijeh <http://feross.org>
- * @license  MIT
- */
-
-/*!
  * Vue.js v2.7.16
  * (c) 2014-2023 Evan You
  * Released under the MIT License.
@@ -42,8 +35,6 @@
  * Released under the MIT license
  * http://www.opensource.org/licenses/MIT
  */
-
-/*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> */
 
 /*! svg.draggable.js - v2.2.2 - 2019-01-08
   * https://github.com/svgdotjs/svg.draggable.js
