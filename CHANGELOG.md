@@ -9,6 +9,10 @@ while embedded integration targets Workflow `2.0.0-rc.33` without pulling the
 standalone SDK into the host application. Laravel-hosted service mode now
 checks for the optional SDK at its configuration boundary and reports the exact
 installation command when it is absent.
+Run details now present embedded inbox/outbox message streams and service-mode
+Workflow Streams with their lifecycle, offsets, pending work, delivery mode, and
+error state. The operator UI renders the shared diagnostics contract across
+desktop and mobile layouts.
 Namespace-scoped capacity evidence exposes bounded runtime saturation signals
 and guarded, advisory recommendation inputs without treating infrastructure
 telemetry as Waterline-owned measurements.
