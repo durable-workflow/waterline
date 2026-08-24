@@ -45,11 +45,14 @@ jobs:
       qualification-source-run-attempt: ${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        with:
+          fetch-depth: 0
 
       - name: Resolve release tag
         id: release
         shell: bash
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.tag }}
           PUBLISHED_TAG: ${{ github.event.client_payload.tag }}
           PUBLISHED_COMMIT: ${{ github.event.client_payload.commit }}
@@ -65,8 +68,14 @@ jobs:
             tag="$GITHUB_REF_NAME"
             commit=''
           else
-            tag="$(node -e "process.stdout.write(require('./release/current-product-tuple.json').versions.waterline)")"
-            commit=''
+            if [ "$GITHUB_REF" != "refs/heads/v2" ]; then
+              echo "::error::Scheduled docs audit did not run from the Waterline v2 target"
+              exit 1
+            fi
+            read -r tag commit < <(
+              python scripts/ci/resolve-current-waterline-release.py \
+                --target-commit "$GITHUB_SHA"
+            )
           fi
           tag="${tag#v}"
           if ! printf '%s\n' "$tag" | grep -Eq '^2\.0\.0((-(alpha|beta|rc)\.[0-9]+)?)$'; then

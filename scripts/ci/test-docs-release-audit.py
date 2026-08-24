@@ -35,10 +35,11 @@ COMPOSER_VERSIONS = {
 }
 
 
-def audit() -> dict:
+def audit(waterline_version: str = VERSIONS["waterline"]) -> dict:
+    versions = {**VERSIONS, "waterline": waterline_version}
     return {
         "schema": "durable-workflow.docs.page-release-audit",
-        "artifact_versions": VERSIONS,
+        "artifact_versions": versions,
         "artifact_compatibility_evidence": {
             "role": "qualified_aggregate_recommendation",
             "outcome": "pass",
@@ -51,23 +52,23 @@ def audit() -> dict:
             "outcome": "pass",
             "qualifications": [
                 {
-                    "id": f"waterline-{VERSIONS['waterline']}-composer",
+                    "id": f"waterline-{waterline_version}-composer",
                     "component": {
                         "artifact": "waterline",
-                        "version": VERSIONS["waterline"],
+                        "version": waterline_version,
                     },
                     "qualification": {
                         "schema": "durable-workflow.exact-current-composer-qualification/v1",
                         "outcome": "pass",
                         "packages": {
-                            "waterline": VERSIONS["waterline"],
+                            "waterline": waterline_version,
                             "sdk-php": VERSIONS["sdk-php"],
                             "workflow": VERSIONS["workflow"],
                         },
                     },
                     "source": {
                         "repository_url": "https://github.com/durable-workflow/waterline",
-                        "release_tag": VERSIONS["waterline"],
+                        "release_tag": waterline_version,
                         "release_commit": "a" * 40,
                         "workflow_run": {
                             "name": "Release Docs Audit",
@@ -83,7 +84,11 @@ def audit() -> dict:
 
 
 class DocsReleaseAuditTest(unittest.TestCase):
-    def run_audit(self, value: dict) -> tuple[subprocess.CompletedProcess[str], dict]:
+    def run_audit(
+        self,
+        value: dict,
+        expected_version: str = VERSIONS["waterline"],
+    ) -> tuple[subprocess.CompletedProcess[str], dict]:
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             audit_path = directory / "audit.json"
@@ -109,7 +114,7 @@ class DocsReleaseAuditTest(unittest.TestCase):
                 env={
                     **os.environ,
                     "DOCS_RELEASE_AUDIT_ARTIFACT": "waterline",
-                    "DOCS_RELEASE_AUDIT_VERSION": VERSIONS["waterline"],
+                    "DOCS_RELEASE_AUDIT_VERSION": expected_version,
                     "DOCS_RELEASE_AUDIT_URL": audit_path.as_uri(),
                     "DOCS_RELEASE_AUDIT_ATTEMPTS": "1",
                     "DOCS_RELEASE_AUDIT_RETRY_SLEEP": "0",
@@ -141,6 +146,24 @@ class DocsReleaseAuditTest(unittest.TestCase):
 
         self.assertNotEqual(0, process.returncode)
         self.assertEqual("stale", evidence["outcome"])
+
+    def test_current_deployed_release_passes_after_stale_tuple_is_ignored(self) -> None:
+        current = "2.0.0-rc.24"
+
+        process, evidence = self.run_audit(audit(current), current)
+
+        self.assertEqual(0, process.returncode, process.stderr)
+        self.assertEqual("pass", evidence["outcome"])
+
+    def test_deployed_docs_lagging_selected_release_still_fails(self) -> None:
+        deployed = "2.0.0-rc.21"
+        selected = "2.0.0-rc.24"
+
+        process, evidence = self.run_audit(audit(deployed), selected)
+
+        self.assertNotEqual(0, process.returncode)
+        self.assertEqual("stale", evidence["outcome"])
+        self.assertIn(f"expected {selected}", process.stderr)
 
 
 if __name__ == "__main__":

@@ -133,8 +133,18 @@ class ReleaseQualificationAssetTest(unittest.TestCase):
             for step in audit["steps"]
             if step.get("name") == "Resolve release tag"
         )
-        self.assertIn("release/current-product-tuple.json", resolve["run"])
+        self.assertNotIn("release/current-product-tuple.json", resolve["run"])
         self.assertNotIn("require('./composer.json')", resolve["run"])
+        self.assertIn("resolve-current-waterline-release.py", resolve["run"])
+        self.assertIn('GITHUB_REF" != "refs/heads/v2', resolve["run"])
+        self.assertIn('tag="$INPUT_TAG"', resolve["run"])
+        self.assertIn('tag="$PUBLISHED_TAG"', resolve["run"])
+        self.assertIn('commit="$PUBLISHED_COMMIT"', resolve["run"])
+        self.assertIn('tag="$GITHUB_REF_NAME"', resolve["run"])
+        self.assertEqual("${{ github.token }}", resolve["env"]["GITHUB_TOKEN"])
+
+        checkout = audit["steps"][0]
+        self.assertEqual("0", checkout["with"]["fetch-depth"])
 
         self.assertEqual(
             "${{ steps.qualification-ready.outputs.value }}",

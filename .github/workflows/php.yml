@@ -164,6 +164,7 @@ jobs:
         policy_python="$RUNNER_TEMP/recovery-policy/bin/python"
         "$policy_python" -m py_compile \
           scripts/ci/component-release-recovery.py \
+          scripts/ci/resolve-current-waterline-release.py \
           scripts/ci/test-exact-current-composer.py \
           scripts/ci/php_waterline_release_train.py \
           scripts/ci/publish-planned-tag.py \
@@ -173,6 +174,7 @@ jobs:
           scripts/ci/service-image-recovery.py \
           scripts/ci/standalone_lock_contract.py \
           scripts/ci/test-component-release-recovery.py \
+          scripts/ci/test-current-waterline-release.py \
           scripts/ci/test-docs-release-audit.py \
           scripts/ci/test-php-waterline-release-train.py \
           scripts/ci/test-publish-planned-tag.py \
@@ -194,6 +196,7 @@ jobs:
           "${arguments[@]}"
         "$policy_python" scripts/ci/test-publish-planned-tag.py
         "$policy_python" scripts/ci/test-release-qualification-asset.py
+        "$policy_python" scripts/ci/test-current-waterline-release.py
         "$policy_python" scripts/ci/test-docs-release-audit.py
         "$policy_python" scripts/ci/test-exact-current-composer.py
         "$policy_python" scripts/ci/test-php-waterline-release-train.py
