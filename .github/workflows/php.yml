@@ -50,6 +50,12 @@ jobs:
       with:
           fetch-depth: 10
 
+    - name: Install Node 22
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      with:
+          node-version: '22'
+          cache: npm
+
     - name: Install mssql-tools
       if: ${{ github.server_url == 'https://github.com' }}
       run: |
@@ -77,6 +83,13 @@ jobs:
 
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress
+
+    - name: Validate frontend bundle
+      run: |
+        npm ci
+        npm run production
+        npm test
+        git diff --exit-code -- public
 
     - name: Create databases
       if: ${{ github.server_url == 'https://github.com' }}

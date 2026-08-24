@@ -67,7 +67,11 @@
 
                 this.$http.get(Waterline.basePath + '/api/flows/' + this.$route.params.type + '?page=' + page)
                     .then(response => {
-                        if (!this.$root.autoLoadsNewEntries && refreshing && this.flows.length && _.first(response.data.data).id !== _.first(this.flows).id) {
+                        const incomingFirst = response.data.data[0];
+                        const currentFirst = this.flows[0];
+
+                        if (!this.$root.autoLoadsNewEntries && refreshing && currentFirst && incomingFirst
+                            && incomingFirst.id !== currentFirst.id) {
                             this.hasNewEntries = true;
                         } else {
                             this.flows = response.data.data;
@@ -142,7 +146,7 @@
 
 <template>
     <div>
-        <div class="card">
+        <div class="card flow-list">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5 v-if="$route.params.type == 'running'">Running Flows</h5>
                 <h5 v-if="$route.params.type == 'completed'">Completed Flows</h5>
@@ -165,32 +169,34 @@
                 <span>There aren't any flows.</span>
             </div>
 
-            <table v-if="ready && flows.length > 0" class="table table-hover table-sm mb-0">
-                <thead>
-                <tr>
-                    <th>Flow</th>
-                    <th v-if="$route.params.type=='running'" class="text-right">Started At</th>
-                    <th v-if="$route.params.type=='completed' || $route.params.type=='failed'">Started At</th>
-                    <th v-if="$route.params.type=='completed'">Completed At</th>
-                    <th v-if="$route.params.type=='failed'">Failed At</th>
-                    <th v-if="$route.params.type=='completed' || $route.params.type=='failed'" class="text-right">Duration</th>
-                </tr>
-                </thead>
-
-                <tbody>
-                    <tr v-if="hasNewEntries" key="newEntries" class="dontanimate">
-                        <td colspan="100" class="text-center card-bg-secondary py-1">
-                            <small><a href="#" v-on:click.prevent="loadNewEntries" v-if="!loadingNewEntries">Load New
-                                Entries</a></small>
-
-                            <small v-if="loadingNewEntries">Loading...</small>
-                        </td>
+            <div v-if="ready && flows.length > 0" class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                    <thead>
+                    <tr>
+                        <th>Flow</th>
+                        <th v-if="$route.params.type=='running'" class="text-right">Started At</th>
+                        <th v-if="$route.params.type=='completed' || $route.params.type=='failed'">Started At</th>
+                        <th v-if="$route.params.type=='completed'">Completed At</th>
+                        <th v-if="$route.params.type=='failed'">Failed At</th>
+                        <th v-if="$route.params.type=='completed' || $route.params.type=='failed'" class="text-right">Duration</th>
                     </tr>
+                    </thead>
 
-                    <tr v-for="flow in flows" :key="flow.id" :flow="flow" is="flow-row">
-                    </tr>
-                </tbody>
-            </table>
+                    <tbody>
+                        <tr v-if="hasNewEntries" key="newEntries" class="dontanimate">
+                            <td colspan="100" class="text-center card-bg-secondary py-1">
+                                <small><a href="#" v-on:click.prevent="loadNewEntries" v-if="!loadingNewEntries">Load New
+                                    Entries</a></small>
+
+                                <small v-if="loadingNewEntries">Loading...</small>
+                            </td>
+                        </tr>
+
+                        <tr v-for="flow in flows" :key="flow.id" :flow="flow" is="flow-row">
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
 
             <div v-if="ready && flows.length" class="p-3 d-flex justify-content-between border-top">
                 <button @click="previous" class="btn btn-secondary btn-md" :disabled="page==1">Previous</button>

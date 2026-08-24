@@ -5,14 +5,6 @@ body {
     padding-bottom: 20px;
 }
 
-.container {
-    width: 1140px;
-}
-
-html {
-    min-width: 1140px;
-}
-
 [v-cloak] {
     display: none;
 }
@@ -118,6 +110,93 @@ svg.icon {
             width: 1%;
             white-space: nowrap;
         }
+    }
+}
+
+@media (max-width: 991.98px) {
+    .sidebar,
+    .sidebar + .col-10 {
+        flex: 0 0 100%;
+        max-width: 100%;
+    }
+
+    .sidebar .nav {
+        flex-direction: row !important;
+        margin-bottom: 1rem;
+    }
+
+    .sidebar .nav-item {
+        flex: 0 0 25%;
+        max-width: 25%;
+    }
+
+    .flow-list .table-responsive {
+        overflow-x: visible;
+    }
+
+    .flow-list .table {
+        table-layout: auto;
+
+        thead {
+            display: none;
+        }
+
+        tbody,
+        tr,
+        td {
+            display: block;
+            width: 100%;
+        }
+
+        tbody tr {
+            border-top: 1px solid $table-border-color;
+        }
+
+        &.table-sm {
+            td {
+                align-items: flex-start;
+                display: flex;
+                gap: 1rem;
+                justify-content: space-between;
+                overflow-wrap: anywhere;
+                padding: 0.5rem 1rem;
+                text-align: right;
+                white-space: normal;
+            }
+        }
+
+        &:not(.table-borderless) td {
+            border-top: 0;
+        }
+
+        th.table-fit,
+        td.table-fit {
+            width: auto;
+            white-space: normal;
+        }
+
+        td[data-label]::before {
+            content: attr(data-label);
+            flex: 0 0 40%;
+            font-weight: 600;
+            text-align: left;
+        }
+
+        td:not([data-label]) {
+            justify-content: center;
+        }
+
+        td > div {
+            min-width: 0;
+            text-align: right;
+        }
+    }
+}
+
+@media (max-width: 575.98px) {
+    .sidebar .nav-item {
+        flex: 0 0 50%;
+        max-width: 50%;
     }
 }
 
