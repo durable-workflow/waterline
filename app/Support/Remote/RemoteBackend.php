@@ -7,6 +7,7 @@ namespace Waterline\Support\Remote;
 use BadMethodCallException;
 use Carbon\CarbonInterface;
 use DurableWorkflow\Client;
+use DurableWorkflow\Exception\ServerException;
 use Throwable;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\CapacityEvidence;
@@ -15,6 +16,8 @@ final class RemoteBackend
 {
     /** @var array<string, mixed>|null */
     private ?array $operatorMetricsResponse = null;
+
+    private ?bool $workflowStreamsAvailable = null;
 
     public function __construct(private readonly object $client)
     {
@@ -78,6 +81,46 @@ final class RemoteBackend
     }
 
     /**
+     * @return array{available: bool, reason: string|null, streams: iterable<object|array<string, mixed>>}
+     */
+    public function workflowStreams(string $workflowId, string $runId): array
+    {
+        if (! $this->supports('listWorkflowStreams')) {
+            $this->workflowStreamsAvailable = false;
+
+            return [
+                'available' => false,
+                'reason' => 'workflow_streams_sdk_method_missing',
+                'streams' => [],
+            ];
+        }
+
+        try {
+            $streams = $this->client->listWorkflowStreams($workflowId, $runId);
+        } catch (ServerException $exception) {
+            if (! $this->workflowStreamsRouteUnsupported($exception)) {
+                throw $exception;
+            }
+
+            $this->workflowStreamsAvailable = false;
+
+            return [
+                'available' => false,
+                'reason' => 'workflow_streams_route_unsupported',
+                'streams' => [],
+            ];
+        }
+
+        $this->workflowStreamsAvailable = true;
+
+        return [
+            'available' => true,
+            'reason' => null,
+            'streams' => is_iterable($streams) ? $streams : [],
+        ];
+    }
+
+    /**
      * @return array{available: bool, reason: string|null, metrics: array<string, mixed>, window: array<string, mixed>}
      */
     public function capacityEvidenceContract(
@@ -134,6 +177,8 @@ final class RemoteBackend
         $capabilities['dashboard_summary'] = $this->supports('operatorDashboard');
         $capabilities['workers'] = $this->supports('listWorkers');
         $capabilities['task_queues'] = $this->supports('listTaskQueues');
+        $capabilities['workflow_streams'] = $this->workflowStreamsAvailable
+            ?? $this->supports('listWorkflowStreams');
         $capabilities['repair'] = $capabilities['repair'] && $this->supports('repairWorkflow');
         $capabilities['archive'] = $capabilities['archive'] && $this->supports('archiveWorkflow');
 
@@ -144,5 +189,11 @@ final class RemoteBackend
     public function status(?CarbonInterface $requestTime = null): array
     {
         return BackendConfiguration::payload($this->capabilities($requestTime));
+    }
+
+    private function workflowStreamsRouteUnsupported(ServerException $exception): bool
+    {
+        return $exception->status === 404
+            && in_array($exception->reason, [null, '', 'not_found', 'route_not_found'], true);
     }
 }

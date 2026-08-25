@@ -205,7 +205,7 @@ def qualification_asset(
         or run.get("event") != "repository_dispatch"
         or run.get("run_url") != expected_run_url
         or SHA.fullmatch(str(run.get("head_sha", ""))) is None
-        or run.get("run_conclusion") != "success"
+        or run.get("run_conclusion") not in {"success", "failure"}
         or run.get("qualification_outcome") != "pass"
         or match is None
         or int(match.group(1)) != run_id

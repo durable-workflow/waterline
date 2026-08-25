@@ -66,6 +66,7 @@ final class BackendConfiguration
         return [
             'workflows' => true,
             'history' => true,
+            'workflow_streams' => true,
             'health' => true,
             'metrics' => true,
             'capacity_evidence' => true,

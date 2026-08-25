@@ -158,6 +158,52 @@ class CurrentPrereleaseOnboardingTest(unittest.TestCase):
             selected.public_value()["service_image"]["pull"],
         )
 
+    def test_resolves_failed_run_with_passing_immutable_qualification(self) -> None:
+        authority_value, asset_source, _ = self.fixtures()
+        authority_value["qualifications"][0]["source"]["workflow_run"][
+            "run_conclusion"
+        ] = "failure"
+        sources = {
+            resolver.AUTHORITY_URL: encoded(authority_value),
+            ASSET_URL: asset_source,
+        }
+
+        selected = resolver.resolve(sources.__getitem__)
+
+        self.assertEqual(VERSION, selected.version)
+        self.assertEqual(PACKAGES, selected.packages)
+        self.assertEqual(IMAGE_DIGEST, selected.image_digest)
+
+    def test_rejects_failed_run_without_passing_qualification(self) -> None:
+        authority_value, _, _ = self.fixtures()
+        run = authority_value["qualifications"][0]["source"]["workflow_run"]
+        run["run_conclusion"] = "failure"
+        run["qualification_outcome"] = "fail"
+        sources = {
+            resolver.AUTHORITY_URL: encoded(authority_value),
+            ASSET_URL: b"not reached",
+        }
+
+        with self.assertRaisesRegex(
+            resolver.ResolutionError, "source identity is incomplete"
+        ):
+            resolver.resolve(sources.__getitem__)
+
+    def test_rejects_failed_run_without_immutable_evidence(self) -> None:
+        authority_value, asset_source, _ = self.fixtures()
+        source = authority_value["qualifications"][0]["source"]
+        source["workflow_run"]["run_conclusion"] = "failure"
+        source["artifact"]["digest"] = "sha256:mutable"
+        sources = {
+            resolver.AUTHORITY_URL: encoded(authority_value),
+            ASSET_URL: asset_source,
+        }
+
+        with self.assertRaisesRegex(
+            resolver.ResolutionError, "URL or digest is not immutable"
+        ):
+            resolver.resolve(sources.__getitem__)
+
     def test_rejects_changed_qualification_asset_bytes(self) -> None:
         _, _, sources = self.fixtures()
         sources[ASSET_URL] += b"\n"

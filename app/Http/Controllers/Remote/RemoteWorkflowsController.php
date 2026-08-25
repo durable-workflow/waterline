@@ -266,15 +266,20 @@ final class RemoteWorkflowsController extends RemoteController
         $history = $selectedRunId !== '' ? $client->workflowHistory($workflowId, $selectedRunId) : [];
         $diagnostics = [];
         $workflowStreams = [];
+        $workflowStreamsAvailable = false;
+        $workflowStreamsUnavailableReason = 'workflow_streams_run_unavailable';
 
         if ($selectedRunId !== '' && $this->backend->supports('workflowDiagnostics')) {
             $diagnostics = $client->workflowDiagnostics($workflowId, $selectedRunId);
         }
 
         if ($selectedRunId !== '') {
+            $workflowStreamsContract = $this->backend->workflowStreams($workflowId, $selectedRunId);
             $workflowStreams = app(WorkflowStreamPresenter::class)->service(
-                $client->listWorkflowStreams($workflowId, $selectedRunId),
+                $workflowStreamsContract['streams'],
             );
+            $workflowStreamsAvailable = $workflowStreamsContract['available'];
+            $workflowStreamsUnavailableReason = $workflowStreamsContract['reason'];
         }
 
         $payload = array_merge($execution->raw, $diagnostics, [
@@ -313,6 +318,8 @@ final class RemoteWorkflowsController extends RemoteController
             'commands' => is_array($execution->raw['commands'] ?? null) ? $execution->raw['commands'] : [],
             'workflow_streams' => $workflowStreams,
             'workflow_streams_mode' => 'service',
+            'workflow_streams_available' => $workflowStreamsAvailable,
+            'workflow_streams_unavailable_reason' => $workflowStreamsUnavailableReason,
             'logs' => [],
             'exceptions' => [],
             'chartData' => [],

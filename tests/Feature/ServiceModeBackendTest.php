@@ -117,7 +117,74 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('workflow_streams.0.pending_items', 2)
             ->assertJsonPath('workflow_streams.0.error_reason', 'producer_failed')
             ->assertJsonPath('workflow_streams.0.supports_inbound_workflow_messaging', false)
+            ->assertJsonPath('workflow_streams_available', true)
+            ->assertJsonPath('workflow_streams_unavailable_reason', null)
+            ->assertJsonPath('backend.capabilities.workflow_streams', true)
             ->assertJsonPath('read_only', true);
+    }
+
+    public function testSelectedRunPreservesDetailWhenTheRemoteWorkflowStreamsRouteIsUnsupported(): void
+    {
+        $this->client->failures['listWorkflowStreams'] = new ServerException(
+            'The requested route could not be found.',
+            404,
+            'not_found',
+        );
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('instance_id', 'order-1')
+            ->assertJsonPath('selected_run_id', 'run-1')
+            ->assertJsonPath('status', 'running')
+            ->assertJsonPath('timeline.0.event_type', 'WorkflowStarted')
+            ->assertJsonPath('run_navigation.0.is_selected_run', true)
+            ->assertJsonPath('tasks.0.id', 'task-1')
+            ->assertJsonPath('workflow_streams', [])
+            ->assertJsonPath('workflow_streams_mode', 'service')
+            ->assertJsonPath('workflow_streams_available', false)
+            ->assertJsonPath('workflow_streams_unavailable_reason', 'workflow_streams_route_unsupported')
+            ->assertJsonPath('backend.capabilities.workflow_streams', false);
+    }
+
+    public function testSelectedRunPreservesWorkflowStreamsAuthorizationFailures(): void
+    {
+        $this->client->failures['listWorkflowStreams'] = new ServerException(
+            'The server token is not authorized to inspect Workflow Streams.',
+            403,
+            'authorization_failed',
+            ['required_role' => 'operator'],
+        );
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertForbidden()
+            ->assertJsonPath('error', 'remote_authorization_failed')
+            ->assertJsonPath('reason', 'authorization_failed')
+            ->assertJsonPath('remote_details.required_role', 'operator');
+    }
+
+    public function testSelectedRunPreservesWorkflowStreamsNamespaceFailures(): void
+    {
+        $this->client->failures['listWorkflowStreams'] = new ServerException(
+            "Namespace 'orders' does not exist.",
+            404,
+            'namespace_not_found',
+            ['namespace' => 'orders'],
+        );
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertNotFound()
+            ->assertJsonPath('reason', 'namespace_not_found')
+            ->assertJsonPath('remote_details.namespace', 'orders');
+    }
+
+    public function testSelectedRunPreservesWorkflowStreamsTransportFailures(): void
+    {
+        $this->client->failures['listWorkflowStreams'] = new TransportException('Connection reset.');
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertStatus(502)
+            ->assertJsonPath('error', 'remote_transport_failure')
+            ->assertJsonPath('remote_status', 502);
     }
 
     public function testWorkersQueuesHealthMetricsAndSchedulesUseRemoteContracts(): void
