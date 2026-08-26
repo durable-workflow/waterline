@@ -953,12 +953,22 @@
                     </div>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseWorkflowStreams" role="button">
-                    Collapse
-                </a>
+                <button
+                    type="button"
+                    class="wl-flow-detail__section-toggle"
+                    aria-controls="collapseWorkflowStreams"
+                    :aria-expanded="workflowStreamsExpanded"
+                    @click="toggleWorkflowStreams"
+                >
+                    {{ workflowStreamsExpanded ? 'Collapse Workflow Streams' : 'Expand Workflow Streams' }}
+                </button>
             </div>
 
-            <div class="card-body collapse show p-0" id="collapseWorkflowStreams">
+            <div
+                class="card-body collapse p-0"
+                :class="{ show: workflowStreamsExpanded }"
+                id="collapseWorkflowStreams"
+            >
                 <div class="table-responsive workflow-stream-desktop-table">
                     <table class="table detail-workflow-streams-table mb-0">
                         <thead>
@@ -1720,6 +1730,7 @@ export default {
                 tab: 'timeline',
             },
             savingRunDetailPreferences: false,
+            workflowStreamsExpanded: true,
             code: 'console.log("Hello World")',
             series: [
                 {
@@ -1909,6 +1920,7 @@ export default {
                     });
 
                     this.ready = true;
+                    this.scrollToRouteHash();
 
                     return true;
                 })
@@ -1925,6 +1937,46 @@ export default {
             }
 
             return this.fetchFlow(this.lastFlowPath)
+        },
+
+        toggleWorkflowStreams() {
+            this.workflowStreamsExpanded = !this.workflowStreamsExpanded
+        },
+
+        scrollToRouteHash() {
+            const hash = this.$route.hash || ''
+
+            if (!hash.startsWith('#') || hash.length < 2) {
+                return
+            }
+
+            let targetId
+
+            try {
+                targetId = decodeURIComponent(hash.slice(1))
+            } catch {
+                return
+            }
+
+            this.$nextTick(() => {
+                window.requestAnimationFrame(() => {
+                    const target = document.getElementById(targetId)
+
+                    if (!target) {
+                        return
+                    }
+
+                    target.scrollIntoView({ block: 'start' })
+
+                    const topbar = document.querySelector('.wl-topbar')
+                    const chromeOffset = (topbar ? topbar.getBoundingClientRect().height : 0) + 16
+                    const targetTop = target.getBoundingClientRect().top
+
+                    if (targetTop < chromeOffset) {
+                        window.scrollBy({ top: targetTop - chromeOffset, left: 0, behavior: 'auto' })
+                    }
+                })
+            })
         },
 
         flowLoadErrorMessage(error) {
@@ -4416,6 +4468,7 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    padding-bottom: 5rem;
 }
 
 .wl-flow-detail__summary-header {
@@ -4441,7 +4494,7 @@ export default {
     margin: 0;
     font-size: 1.7rem;
     font-weight: 600;
-    letter-spacing: -0.04em;
+    letter-spacing: 0;
     overflow-wrap: anywhere;
     color: var(--wl-text);
 }
@@ -4587,6 +4640,25 @@ export default {
     text-transform: uppercase;
 }
 
+.wl-flow-detail__section-toggle {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    padding: 0.4rem 0.7rem;
+    border: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--wl-text) 5%, transparent);
+    color: var(--wl-text-muted);
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.wl-flow-detail__section-toggle:hover {
+    color: var(--wl-accent);
+}
+
 .wl-flow-detail .card-header a[data-toggle="collapse"]:hover {
     color: var(--wl-accent);
     text-decoration: none;
@@ -4631,7 +4703,11 @@ export default {
 }
 
 .workflow-stream-section {
-    scroll-margin-top: 6rem;
+    scroll-margin-top: 0;
+}
+
+.workflow-stream-section .text-danger {
+    color: color-mix(in srgb, var(--wl-danger) 55%, var(--wl-text)) !important;
 }
 
 .workflow-stream-mobile-list {
@@ -4718,8 +4794,8 @@ export default {
 }
 
 @media (max-width: 768px) {
-    .workflow-stream-section {
-        scroll-margin-top: 12rem;
+    .wl-flow-detail__title {
+        font-size: 1.45rem;
     }
 
     .workflow-stream-desktop-table {

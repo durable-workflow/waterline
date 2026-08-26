@@ -619,6 +619,8 @@ export async function runWorkflowListDialogVisual({
                 await context.addInitScript(() => localStorage.setItem('waterline-theme', 'dark'));
                 const page = await context.newPage();
                 const consoleErrors = [];
+                const requestFailures = [];
+                const errorResponses = [];
                 const name = `${dialog.name}-${viewport.name}`;
                 const screenshot = `${name}.png`;
                 let openedDialog = false;
@@ -633,6 +635,14 @@ export async function runWorkflowListDialogVisual({
                 page.on('console', (message) => {
                     if (message.type() === 'error') {
                         consoleErrors.push(`console: ${message.text()}`);
+                    }
+                });
+                page.on('requestfailed', (request) => {
+                    requestFailures.push(`${request.method()} ${request.url()} ${request.failure()?.errorText || ''}`.trim());
+                });
+                page.on('response', (response) => {
+                    if (response.status() >= 400) {
+                        errorResponses.push(`${response.status()} ${response.request().method()} ${response.url()}`);
                     }
                 });
 
@@ -664,8 +674,12 @@ export async function runWorkflowListDialogVisual({
                         element.scrollTop = 0;
                     });
 
-                    if (consoleErrors.length > 0) {
-                        throw new Error(`Dialog emitted browser errors: ${consoleErrors.join(' | ')}`);
+                    if (consoleErrors.length > 0 || requestFailures.length > 0 || errorResponses.length > 0) {
+                        throw new Error(`Dialog emitted browser or request errors: ${[
+                            ...consoleErrors,
+                            ...requestFailures.map((item) => `requestfailed: ${item}`),
+                            ...errorResponses.map((item) => `response: ${item}`),
+                        ].join(' | ')}`);
                     }
                 } catch (error) {
                     failure = {
@@ -703,6 +717,8 @@ export async function runWorkflowListDialogVisual({
                         screenshot,
                         openedDialog,
                         consoleErrors,
+                        requestFailures,
+                        errorResponses,
                         contrast,
                         geometry,
                         controls,

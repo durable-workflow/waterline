@@ -84,18 +84,36 @@ CONFORMANCE_FOCUSED_CHECKS = (
     "node:test:tests/Unit/WorkerStatus*Test.mjs",
 )
 NON_RUNTIME_FOCUSED_CHECKS = ("documentation-links-and-assets",)
-DIALOG_VISUAL_PATH_PREFIXES = (
+SHARED_VISUAL_PATH_PREFIXES = (
     "public/",
-    "resources/",
+    "resources/js/components/",
+    "resources/sass/",
+    "resources/views/",
 )
 DIALOG_VISUAL_PATHS = frozenset(
     {
+        "resources/js/dialogs.mjs",
+        "resources/js/screens/flows/index.vue",
+        "scripts/ci/workflow-list-dialog-visual.mjs",
+    }
+)
+RUN_DETAIL_VISUAL_PATHS = frozenset(
+    {
+        "resources/js/screens/flows/flow.vue",
+        "scripts/ci/run-detail-visual.mjs",
+    }
+)
+SHARED_VISUAL_PATHS = frozenset(
+    {
         ".github/workflows/php.yml",
+        ".github/workflows/screenshots.yml",
         "package-lock.json",
         "package.json",
+        "resources/js/WaterlineApp.vue",
+        "resources/js/app.js",
+        "resources/js/routes.js",
         "scripts/ci/qualification_policy.py",
         "scripts/ci/test-qualification-policy.py",
-        "scripts/ci/workflow-list-dialog-visual.mjs",
         "scripts/ci/workflow_trust_policy.py",
         "vite.config.mjs",
     }
@@ -226,24 +244,40 @@ def classify_event(
     return git_changed_paths(repository, base, head)
 
 
-def requires_dialog_visual(result: Classification) -> bool:
+def visual_surfaces(result: Classification) -> frozenset[str]:
     if result.reason in {
         "no-changed-paths",
         "non-change-event",
         "unavailable-git-range",
         "unsafe-changed-path",
     }:
-        return True
+        return frozenset({"dialog", "run-detail"})
 
-    return any(
-        path in DIALOG_VISUAL_PATHS or path.startswith(DIALOG_VISUAL_PATH_PREFIXES)
-        for path in result.changed_paths
-    )
+    surfaces: set[str] = set()
+
+    for path in result.changed_paths:
+        if path in DIALOG_VISUAL_PATHS:
+            surfaces.add("dialog")
+        if path in RUN_DETAIL_VISUAL_PATHS:
+            surfaces.add("run-detail")
+        if path in SHARED_VISUAL_PATHS or path.startswith(SHARED_VISUAL_PATH_PREFIXES):
+            surfaces.update({"dialog", "run-detail"})
+
+    return frozenset(surfaces)
+
+
+def requires_dialog_visual(result: Classification) -> bool:
+    return "dialog" in visual_surfaces(result)
+
+
+def requires_run_detail_visual(result: Classification) -> bool:
+    return "run-detail" in visual_surfaces(result)
 
 
 def expected_results(
     classification: str,
     dialog_visual_required: bool = False,
+    run_detail_visual_required: bool = False,
 ) -> Mapping[str, str]:
     if classification == COMPLETE:
         matrix_result = "success"
@@ -261,6 +295,7 @@ def expected_results(
         "release-contracts": "success",
         "conformance-contracts": conformance_result,
         "dialog-visual": "success" if dialog_visual_required else "skipped",
+        "run-detail-visual": "success" if run_detail_visual_required else "skipped",
         "frontend": frontend_result,
         "build": matrix_result,
         "laravel-matrix": matrix_result,
@@ -289,9 +324,14 @@ def evaluate_results(
     classification: str,
     observed: Mapping[str, str],
     dialog_visual_required: bool = False,
+    run_detail_visual_required: bool = False,
 ) -> tuple[str, ...]:
     try:
-        expected = expected_results(classification, dialog_visual_required)
+        expected = expected_results(
+            classification,
+            dialog_visual_required,
+            run_detail_visual_required,
+        )
     except ValueError:
         return ("qualification-class:invalid",)
 
@@ -382,6 +422,8 @@ def classify_command(arguments: argparse.Namespace) -> int:
         "qualification-reason": result.reason,
         "changed-path-count": len(result.changed_paths),
         "dialog-visual-required": str(requires_dialog_visual(result)).lower(),
+        "run-detail-visual-required": str(requires_run_detail_visual(result)).lower(),
+        "visual-surfaces": json.dumps(sorted(visual_surfaces(result)), separators=(",", ":")),
         "focused-checks": json.dumps(
             focused_checks(result.name),
             separators=(",", ":"),
@@ -398,6 +440,8 @@ def classify_command(arguments: argparse.Namespace) -> int:
             f"- Changed paths considered: {len(result.changed_paths)}",
             "- Responsive dialog visual required: "
             f"`{str(requires_dialog_visual(result)).lower()}`",
+            "- Responsive run-detail visual required: "
+            f"`{str(requires_run_detail_visual(result)).lower()}`",
             "- Focused checks: "
             + ", ".join(f"`{check}`" for check in focused_checks(result.name)),
         ),
@@ -413,6 +457,7 @@ def gate_command(arguments: argparse.Namespace) -> int:
         "release-contracts": arguments.release_contracts_result,
         "conformance-contracts": arguments.conformance_contracts_result,
         "dialog-visual": arguments.dialog_visual_result,
+        "run-detail-visual": arguments.run_detail_visual_result,
         "frontend": arguments.frontend_result,
         "build": arguments.build_result,
         "laravel-matrix": arguments.laravel_matrix_result,
@@ -423,6 +468,7 @@ def gate_command(arguments: argparse.Namespace) -> int:
         arguments.classification,
         observed,
         arguments.dialog_visual_required == "true",
+        arguments.run_detail_visual_required == "true",
     )
     selected_checks = (
         focused_checks(arguments.classification)
@@ -504,6 +550,12 @@ def parser() -> argparse.ArgumentParser:
         choices=("true", "false"),
     )
     gate.add_argument("--dialog-visual-result", required=True)
+    gate.add_argument(
+        "--run-detail-visual-required",
+        required=True,
+        choices=("true", "false"),
+    )
+    gate.add_argument("--run-detail-visual-result", required=True)
     gate.add_argument("--frontend-result", required=True)
     gate.add_argument("--build-result", required=True)
     gate.add_argument("--laravel-matrix-result", required=True)

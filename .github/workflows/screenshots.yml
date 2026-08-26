@@ -886,6 +886,24 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Qualify responsive run detail
+        working-directory: sample-app
+        env:
+          OUTPUT_DIR: run-detail-evidence
+        run: >-
+          node ../waterline/scripts/ci/run-detail-visual.mjs
+          --base-url "${APP_URL}"
+          --output-dir "${OUTPUT_DIR}"
+
+      - name: Upload responsive run-detail evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          name: waterline-run-detail-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: sample-app/run-detail-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload screenshots
         id: upload_screenshots
         if: always()

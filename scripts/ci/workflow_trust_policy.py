@@ -112,7 +112,7 @@ def is_cache_action(uses: str) -> bool:
     return uses.startswith("actions/cache@") or uses.startswith("actions/cache/")
 
 
-def is_run_bound_dialog_evidence_upload(
+def is_run_bound_visual_evidence_upload(
     uses: str,
     configuration: object,
 ) -> bool:
@@ -135,11 +135,16 @@ def is_run_bound_dialog_evidence_upload(
 
     candidate = PurePosixPath(configured_path.rstrip("/"))
 
-    return (
-        not candidate.is_absolute()
-        and ".." not in candidate.parts
-        and candidate.as_posix() == "sample-app/dialog-evidence"
-    )
+    if candidate.is_absolute() or ".." in candidate.parts:
+        return False
+
+    allowed = {
+        "sample-app/dialog-evidence": "waterline-dialog-evidence-",
+        "sample-app/run-detail-evidence": "waterline-run-detail-evidence-",
+    }
+    required_prefix = allowed.get(candidate.as_posix())
+
+    return required_prefix is not None and name.startswith(required_prefix)
 
 
 def validate_focused_workflow(
@@ -334,7 +339,7 @@ def validate_document(
                 )
             if uses.startswith(
                 ARTIFACT_ACTIONS
-            ) and not is_run_bound_dialog_evidence_upload(
+            ) and not is_run_bound_visual_evidence_upload(
                 uses,
                 configuration,
             ):
