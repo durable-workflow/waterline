@@ -5,6 +5,7 @@ namespace Waterline\Tests\Feature;
 use Illuminate\Bus\BusServiceProvider;
 use Illuminate\Cache\CacheServiceProvider;
 use Illuminate\Config\Repository as ConfigRepository;
+use Illuminate\Console\Application as Artisan;
 use Illuminate\Container\Container;
 use Illuminate\Cookie\CookieServiceProvider;
 use Illuminate\Database\DatabaseServiceProvider;
@@ -100,6 +101,7 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
 
     protected function tearDown(): void
     {
+        Artisan::forgetBootstrappers();
         Facade::clearResolvedInstances();
         Facade::setFacadeApplication(null);
         Container::setInstance(null);
