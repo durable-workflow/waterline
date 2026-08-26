@@ -4830,6 +4830,18 @@ export default {
         font-size: 1.45rem;
     }
 
+    .workflow-stream-section .card-header {
+        align-items: stretch !important;
+        flex-direction: column;
+    }
+
+    .wl-flow-detail__section-toggle {
+        align-self: flex-start;
+        max-width: 100%;
+        text-align: left;
+        white-space: normal;
+    }
+
     .workflow-stream-desktop-table {
         display: none;
     }

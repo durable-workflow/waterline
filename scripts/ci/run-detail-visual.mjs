@@ -37,6 +37,81 @@ export const STATES = PRESENTATIONS.flatMap((presentation) => [
     },
 ]);
 
+export function workflowStreamHeaderHierarchyFailures(viewportWidth, hierarchy) {
+    if (viewportWidth > 768) {
+        return [];
+    }
+
+    if (!hierarchy?.header || !hierarchy?.context || !hierarchy?.disclosure) {
+        return ['Workflow Streams header hierarchy is incomplete'];
+    }
+
+    const failures = [];
+    const minimumContextWidth = Math.min(240, hierarchy.header.width * 0.72);
+
+    if (hierarchy.disclosure.top < hierarchy.context.bottom - 1) {
+        failures.push('Workflow Streams disclosure compresses the heading context');
+    }
+    if (hierarchy.context.width < minimumContextWidth - 1) {
+        failures.push('Workflow Streams heading context is too narrow');
+    }
+    if (hierarchy.disclosure.width > hierarchy.header.width + 1) {
+        failures.push('Workflow Streams disclosure leaves its header');
+    }
+
+    return failures;
+}
+
+export function simultaneousNavigationFailures(composition) {
+    if (!composition?.sidebar) {
+        return ['responsive navigation is missing'];
+    }
+
+    const failures = [];
+
+    if (composition.sidebar.scrollLeft > 1) {
+        failures.push('responsive navigation did not return to its initial horizontal position');
+    }
+
+    for (const expected of ['Dashboard', 'Workers']) {
+        const link = composition.links?.find(({ name }) => name === expected);
+
+        if (!link?.inViewport) {
+            failures.push(`${expected} is not visible in the simultaneous initial navigation composition`);
+        }
+    }
+
+    return failures;
+}
+
+export function simultaneousTopbarFailures(composition) {
+    if (!composition?.topbar || !composition?.actions) {
+        return ['persistent top bar is missing'];
+    }
+
+    const failures = [];
+
+    if (composition.actions.scrollLeft > 1) {
+        failures.push('persistent top-bar actions did not return to their initial horizontal position');
+    }
+    if (composition.actions.scrollWidth > composition.actions.clientWidth + 1) {
+        failures.push('persistent top-bar actions overflow their simultaneous composition');
+    }
+
+    for (const expected of ['Scope', 'Backend', 'Auto refresh', 'Theme']) {
+        const item = composition.items?.find(({ name }) => name === expected);
+
+        if (!item?.inViewport || !item?.inTopbar) {
+            failures.push(`${expected} is not visible in the simultaneous persistent top-bar composition`);
+        }
+        if (item?.clipped) {
+            failures.push(`${expected} is clipped in the simultaneous persistent top-bar composition`);
+        }
+    }
+
+    return failures;
+}
+
 const INSTANCE_ID = 'waterline-visual-instance';
 const RUN_ID = 'waterline-visual-run';
 
@@ -281,6 +356,38 @@ async function waitForRunDetail(page) {
     await page.waitForTimeout(300);
 }
 
+async function auditBootstrapIdentity(page, expectedPresentation) {
+    const identity = await page.locator('#waterline').evaluate((element) => {
+        const serialized = element.getAttribute('data-waterline-config');
+        const bootstrap = serialized ? JSON.parse(serialized) : null;
+        const backend = bootstrap?.backend;
+
+        return backend ? {
+            mode: backend.mode,
+            label: backend.label,
+            transport: backend.transport,
+            namespace: backend.namespace,
+            accessMode: backend.access_mode,
+            readOnly: backend.read_only,
+        } : null;
+    });
+    const expected = expectedPresentation === 'service'
+        ? { label: 'Standalone service', transport: 'durable-workflow/sdk' }
+        : { label: 'Embedded Laravel', transport: 'workflow-package' };
+
+    if (
+        identity?.mode !== expectedPresentation
+        || identity?.label !== expected.label
+        || identity?.transport !== expected.transport
+    ) {
+        throw new Error(
+            `Run-detail bootstrap identity mismatch: expected ${expectedPresentation}, got ${JSON.stringify(identity)}`,
+        );
+    }
+
+    return identity;
+}
+
 async function applyDisclosureState(page, state) {
     const toggle = page.locator('.wl-flow-detail__section-toggle');
     const body = page.locator('#collapseWorkflowStreams');
@@ -466,44 +573,73 @@ async function auditControls(page) {
     const controls = page.locator('#waterline a[href], #waterline button:not([disabled]), #waterline input:not([disabled]), #waterline select:not([disabled]), #waterline textarea:not([disabled]), #waterline [tabindex]:not([tabindex="-1"])');
     const count = await controls.count();
     const results = [];
+    const scrollSnapshot = await page.evaluateHandle(() => {
+        const candidates = [document.scrollingElement, ...document.querySelectorAll('*')]
+            .filter((element) => element instanceof Element);
 
-    for (let index = 0; index < count; index += 1) {
-        const control = controls.nth(index);
+        return Array.from(new Set(candidates))
+            .filter((element) => (
+                element === document.scrollingElement
+                || element.scrollWidth > element.clientWidth + 1
+                || element.scrollHeight > element.clientHeight + 1
+            ))
+            .map((element) => ({
+                element,
+                left: element.scrollLeft,
+                top: element.scrollTop,
+            }));
+    });
 
-        if (!await control.isVisible()) {
-            continue;
+    try {
+        for (let index = 0; index < count; index += 1) {
+            const control = controls.nth(index);
+
+            if (!await control.isVisible()) {
+                continue;
+            }
+
+            await control.scrollIntoViewIfNeeded();
+            await page.waitForTimeout(20);
+            const result = await control.evaluate((element) => {
+                const rect = element.getBoundingClientRect();
+                const topbar = document.querySelector('.wl-topbar')?.getBoundingClientRect();
+                const x = rect.left + rect.width / 2;
+                const y = rect.top + rect.height / 2;
+                const hit = x >= 0 && x <= window.innerWidth && y >= 0 && y <= window.innerHeight
+                    ? document.elementFromPoint(x, y)
+                    : null;
+                const style = getComputedStyle(element);
+                const clipped = element.scrollWidth > element.clientWidth + 1
+                    || element.scrollHeight > element.clientHeight + 1;
+                const coveredByChrome = topbar
+                    ? rect.top < topbar.bottom - 1 && !element.closest('.wl-topbar')
+                    : false;
+
+                return {
+                    target: element.id || element.getAttribute('aria-label') || (element.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 120),
+                    clipped,
+                    coveredByChrome,
+                    inViewport: rect.left >= -1
+                        && rect.top >= -1
+                        && rect.right <= window.innerWidth + 1
+                        && rect.bottom <= window.innerHeight + 1,
+                    reachable: hit === element || element.contains(hit),
+                };
+            });
+
+            results.push(result);
         }
-
-        await control.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(20);
-        const result = await control.evaluate((element) => {
-            const rect = element.getBoundingClientRect();
-            const topbar = document.querySelector('.wl-topbar')?.getBoundingClientRect();
-            const x = rect.left + rect.width / 2;
-            const y = rect.top + rect.height / 2;
-            const hit = x >= 0 && x <= window.innerWidth && y >= 0 && y <= window.innerHeight
-                ? document.elementFromPoint(x, y)
-                : null;
-            const style = getComputedStyle(element);
-            const clipped = element.scrollWidth > element.clientWidth + 1
-                || element.scrollHeight > element.clientHeight + 1;
-            const coveredByChrome = topbar
-                ? rect.top < topbar.bottom - 1 && !element.closest('.wl-topbar')
-                : false;
-
-            return {
-                target: element.id || element.getAttribute('aria-label') || (element.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 120),
-                clipped,
-                coveredByChrome,
-                inViewport: rect.left >= -1
-                    && rect.top >= -1
-                    && rect.right <= window.innerWidth + 1
-                    && rect.bottom <= window.innerHeight + 1,
-                reachable: hit === element || element.contains(hit),
-            };
+    } finally {
+        await scrollSnapshot.evaluate((entries) => {
+            for (const { element, left, top } of entries) {
+                element.scrollLeft = left;
+                element.scrollTop = top;
+            }
         });
-
-        results.push(result);
+        await scrollSnapshot.dispose();
+        await page.evaluate(() => new Promise((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+        }));
     }
 
     if (results.length === 0) {
@@ -511,6 +647,97 @@ async function auditControls(page) {
     }
 
     return results;
+}
+
+async function auditSimultaneousNavigation(page) {
+    return page.evaluate(() => {
+        const sidebar = document.querySelector('.wl-sidebar');
+        const sidebarRect = sidebar?.getBoundingClientRect() || null;
+        const links = Array.from(document.querySelectorAll('.wl-sidebar__link'))
+            .filter((link) => ['Dashboard', 'Workers'].includes((link.textContent || '').trim()))
+            .map((link) => {
+                const rect = link.getBoundingClientRect();
+
+                return {
+                    name: (link.textContent || '').trim(),
+                    left: rect.left,
+                    right: rect.right,
+                    inViewport: rect.left >= -1
+                        && rect.right <= window.innerWidth + 1
+                        && (!sidebarRect || (
+                            rect.left >= sidebarRect.left - 1
+                            && rect.right <= sidebarRect.right + 1
+                        )),
+                };
+            });
+
+        return {
+            sidebar: sidebar && sidebarRect ? {
+                left: sidebarRect.left,
+                right: sidebarRect.right,
+                scrollLeft: sidebar.scrollLeft,
+                scrollWidth: sidebar.scrollWidth,
+                clientWidth: sidebar.clientWidth,
+            } : null,
+            links,
+        };
+    });
+}
+
+async function auditSimultaneousTopbar(page) {
+    return page.evaluate(() => {
+        const topbar = document.querySelector('.wl-topbar');
+        const actions = document.querySelector('.wl-topbar__actions');
+        const topbarRect = topbar?.getBoundingClientRect() || null;
+        const items = [
+            ...Array.from(document.querySelectorAll('.wl-topbar__scope')).map((element) => ({
+                element,
+                name: element.querySelector('.wl-topbar__scope-label')?.textContent?.trim() || 'Scope',
+            })),
+            ...Array.from(document.querySelectorAll('.wl-topbar__button')).map((element, index) => ({
+                element,
+                name: index === 0 ? 'Auto refresh' : 'Theme',
+            })),
+        ].map(({ element, name }) => {
+            const rect = element.getBoundingClientRect();
+
+            return {
+                name,
+                text: (element.textContent || '').trim().replace(/\s+/g, ' '),
+                left: rect.left,
+                right: rect.right,
+                top: rect.top,
+                bottom: rect.bottom,
+                clipped: element.scrollWidth > element.clientWidth + 1
+                    || element.scrollHeight > element.clientHeight + 1,
+                inViewport: rect.left >= -1
+                    && rect.top >= -1
+                    && rect.right <= window.innerWidth + 1
+                    && rect.bottom <= window.innerHeight + 1,
+                inTopbar: !topbarRect || (
+                    rect.left >= topbarRect.left - 1
+                    && rect.top >= topbarRect.top - 1
+                    && rect.right <= topbarRect.right + 1
+                    && rect.bottom <= topbarRect.bottom + 1
+                ),
+            };
+        });
+
+        return {
+            topbar: topbar && topbarRect ? {
+                left: topbarRect.left,
+                right: topbarRect.right,
+                top: topbarRect.top,
+                bottom: topbarRect.bottom,
+            } : null,
+            actions: actions ? {
+                scrollLeft: actions.scrollLeft,
+                scrollWidth: actions.scrollWidth,
+                clientWidth: actions.clientWidth,
+            } : null,
+            items,
+        };
+    });
 }
 
 async function auditGeometry(page, viewport, navigation) {
@@ -566,6 +793,12 @@ async function auditGeometry(page, viewport, navigation) {
         const sidebar = document.querySelector('.wl-sidebar');
         const sidebarRect = sidebar?.getBoundingClientRect() || null;
         const streamSection = document.getElementById('workflowStreams')?.getBoundingClientRect() || null;
+        const streamHeaderElement = document.querySelector('#workflowStreams > .card-header');
+        const streamHeaderContext = streamHeaderElement?.firstElementChild || null;
+        const streamDisclosure = streamHeaderElement?.querySelector('.wl-flow-detail__section-toggle') || null;
+        const streamHeaderRect = streamHeaderElement?.getBoundingClientRect() || null;
+        const streamContextRect = streamHeaderContext?.getBoundingClientRect() || null;
+        const streamDisclosureRect = streamDisclosure?.getBoundingClientRect() || null;
         const summaryCard = document.querySelector('.wl-flow-detail__summary-card')?.getBoundingClientRect() || null;
         const main = document.querySelector('.wl-main')?.getBoundingClientRect() || null;
         const cards = Array.from(document.querySelectorAll('.wl-main .card'))
@@ -633,6 +866,23 @@ async function auditGeometry(page, viewport, navigation) {
                 overflowY: getComputedStyle(sidebar).overflowY,
             } : null,
             streamSection: streamSection ? { top: streamSection.top, bottom: streamSection.bottom } : null,
+            workflowStreamHeader: {
+                header: streamHeaderRect ? {
+                    top: streamHeaderRect.top,
+                    bottom: streamHeaderRect.bottom,
+                    width: streamHeaderRect.width,
+                } : null,
+                context: streamContextRect ? {
+                    top: streamContextRect.top,
+                    bottom: streamContextRect.bottom,
+                    width: streamContextRect.width,
+                } : null,
+                disclosure: streamDisclosureRect ? {
+                    top: streamDisclosureRect.top,
+                    bottom: streamDisclosureRect.bottom,
+                    width: streamDisclosureRect.width,
+                } : null,
+            },
             summaryCard: summaryCard ? { top: summaryCard.top, bottom: summaryCard.bottom } : null,
             cards,
             overlapping_floating_elements: overlappingFloatingElements,
@@ -640,8 +890,22 @@ async function auditGeometry(page, viewport, navigation) {
         };
     }, navigation.name);
     const controls = await auditControls(page);
+    const simultaneousNavigation = await auditSimultaneousNavigation(page);
+    const simultaneousTopbar = await auditSimultaneousTopbar(page);
+    geometry.simultaneous_navigation = simultaneousNavigation;
+    geometry.simultaneous_topbar = simultaneousTopbar;
     geometry.unreachable_controls = controls.filter((control) => !control.inViewport || !control.reachable || control.coveredByChrome);
     geometry.clipped_controls = controls.filter((control) => control.clipped);
+
+    for (const failure of workflowStreamHeaderHierarchyFailures(viewport.width, geometry.workflowStreamHeader)) {
+        geometry.failures.push(failure);
+    }
+    for (const failure of simultaneousNavigationFailures(simultaneousNavigation)) {
+        geometry.failures.push(failure);
+    }
+    for (const failure of simultaneousTopbarFailures(simultaneousTopbar)) {
+        geometry.failures.push(failure);
+    }
 
     if (geometry.unreachable_controls.length > 0) {
         geometry.failures.push(`unreachable controls: ${JSON.stringify(geometry.unreachable_controls)}`);
@@ -673,6 +937,7 @@ export function summarizeRunDetailReports(baseUrl, reports) {
             presentation: report.presentation,
             result: report.result,
             navigation: report.navigation,
+            bootstrap: report.bootstrap,
             viewport: report.viewport,
             screenshot: report.screenshot,
             status: report.status,
@@ -683,11 +948,20 @@ export function summarizeRunDetailReports(baseUrl, reports) {
 
 export async function runRunDetailVisual({
     baseUrl,
+    serviceBaseUrl,
     outputDirectory,
     email = 'demo@example.com',
     password = 'password',
     chromium = loadPlaywright().chromium,
 }) {
+    if (!baseUrl || !serviceBaseUrl) {
+        throw new Error('Both embedded and service run-detail base URLs are required.');
+    }
+
+    const baseUrls = {
+        embedded: new URL(baseUrl).href,
+        service: new URL(serviceBaseUrl).href,
+    };
     fs.mkdirSync(outputDirectory, { recursive: true });
 
     const launchOptions = { args: ['--no-sandbox'] };
@@ -716,6 +990,7 @@ export async function runRunDetailVisual({
             const name = `${state.name}-${navigation.name}-${viewport.name}`;
             const screenshot = `${name}.png`;
             let disclosure = null;
+            let bootstrap = null;
             let geometry = null;
             let controls = [];
             let contrast = [];
@@ -740,10 +1015,11 @@ export async function runRunDetailVisual({
                 await installFixtureRoutes(page, state.fixture);
                 const targetUrl = new URL(
                     `/waterline/flows/instances/${INSTANCE_ID}/runs/${RUN_ID}${navigation.fragment ? `#${navigation.fragment}` : ''}`,
-                    baseUrl,
+                    baseUrls[state.presentation],
                 ).href;
                 await maybeLogin(page, targetUrl, email, password);
                 await waitForRunDetail(page);
+                bootstrap = await auditBootstrapIdentity(page, state.presentation);
                 disclosure = await applyDisclosureState(page, state);
                 contrast = await auditContrast(page, state);
                 ({ geometry, controls } = await auditGeometry(page, viewport, navigation));
@@ -795,6 +1071,7 @@ export async function runRunDetailVisual({
                     presentation: state.presentation,
                     result: state.result,
                     navigation: navigation.name,
+                    bootstrap,
                     viewport,
                     url: page.url(),
                     screenshot,
@@ -823,7 +1100,8 @@ export async function runRunDetailVisual({
         await browser.close();
     }
 
-    const summary = summarizeRunDetailReports(baseUrl, reports);
+    const summary = summarizeRunDetailReports(baseUrls.embedded, reports);
+    summary.baseUrls = baseUrls;
 
     fs.writeFileSync(
         path.join(outputDirectory, 'summary.json'),
@@ -845,6 +1123,7 @@ const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1]
 if (invokedPath === import.meta.url) {
     await runRunDetailVisual({
         baseUrl: argumentValue('--base-url', process.env.APP_URL || 'http://127.0.0.1:8000'),
+        serviceBaseUrl: argumentValue('--service-base-url', process.env.WATERLINE_SERVICE_VISUAL_URL),
         outputDirectory: path.resolve(argumentValue('--output-dir', process.env.OUTPUT_DIR || 'run-detail-evidence')),
         email: argumentValue('--email', process.env.WATERLINE_VISUAL_EMAIL || 'demo@example.com'),
         password: argumentValue('--password', process.env.WATERLINE_VISUAL_PASSWORD || 'password'),

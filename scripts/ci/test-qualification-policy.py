@@ -86,11 +86,14 @@ class ChangeClassificationTest(unittest.TestCase):
         self,
     ) -> None:
         for path in (
+            "app/Http/Controllers/DashboardController.php",
             "app/Http/Controllers/Remote/RemoteWorkflowsController.php",
             "app/Http/Controllers/WorkflowsController.php",
             "app/Http/Resources/V2StoredWorkflowResource.php",
+            "app/Support/BackendConfiguration.php",
             "app/Support/Remote/RemoteBackend.php",
             "app/Support/WorkflowStreamPresenter.php",
+            "resources/js/bootstrap-config.mjs",
             "resources/js/screens/flows/flow.vue",
             "resources/js/workflow-streams.mjs",
             "scripts/ci/run-detail-visual.mjs",
@@ -888,6 +891,8 @@ class RunDetailVisualQualificationWorkflowContractTest(unittest.TestCase):
     def test_job_qualifies_and_uploads_all_run_detail_cases(self) -> None:
         command = self.named_step("Qualify the complete run-detail matrix")["run"]
         self.assertIn("scripts/ci/run-detail-visual.mjs", command)
+        self.assertIn('--base-url "${APP_URL}"', command)
+        self.assertIn('--service-base-url "${WATERLINE_SERVICE_VISUAL_URL}"', command)
         self.assertIn("--output-dir run-detail-evidence", command)
 
         upload = self.named_step("Upload responsive run-detail evidence")
@@ -896,6 +901,18 @@ class RunDetailVisualQualificationWorkflowContractTest(unittest.TestCase):
         self.assertEqual("error", upload["with"]["if-no-files-found"])
         self.assertIn("${{ github.run_id }}", upload["with"]["name"])
         self.assertIn("${{ github.run_attempt }}", upload["with"]["name"])
+
+    def test_job_starts_matching_embedded_and_service_bootstraps(self) -> None:
+        command = self.named_step("Start Sample App")["run"]
+
+        self.assertEqual(
+            "http://127.0.0.1:8001",
+            self.job()["env"]["WATERLINE_SERVICE_VISUAL_URL"],
+        )
+        self.assertIn("--port=8000", command)
+        self.assertIn("--port=8001", command)
+        self.assertIn("WATERLINE_BACKEND=service", command)
+        self.assertIn("run-detail-service-web.pid", command)
 
     def test_required_target_gate_observes_run_detail_result(self) -> None:
         gate = self.workflow["jobs"]["target-branch-qualification"]

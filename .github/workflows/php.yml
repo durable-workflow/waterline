@@ -495,6 +495,7 @@ jobs:
 
     env:
       APP_URL: http://127.0.0.1:8000
+      WATERLINE_SERVICE_VISUAL_URL: http://127.0.0.1:8001
 
     steps:
     - name: Check out candidate Waterline
@@ -607,13 +608,21 @@ jobs:
       run: |
         php artisan serve --host=127.0.0.1 --port=8000 > ../run-detail-web.log 2>&1 &
         echo $! > ../run-detail-web.pid
+        APP_URL="${WATERLINE_SERVICE_VISUAL_URL}" \
+          WATERLINE_BACKEND=service \
+          WATERLINE_SERVER_ENDPOINT=http://127.0.0.1:1 \
+          WATERLINE_SERVER_TOKEN=run-detail-visual-token \
+          php artisan serve --host=127.0.0.1 --port=8001 > ../run-detail-service-web.log 2>&1 &
+        echo $! > ../run-detail-service-web.pid
         for attempt in $(seq 1 30); do
-          if curl -sf "${APP_URL}/up" > /dev/null; then
+          if curl -sf "${APP_URL}/up" > /dev/null \
+            && curl -sf "${WATERLINE_SERVICE_VISUAL_URL}/up" > /dev/null; then
             exit 0
           fi
           sleep 1
         done
         cat ../run-detail-web.log
+        cat ../run-detail-service-web.log
         exit 1
 
     - name: Install pinned-browser tooling
@@ -627,6 +636,7 @@ jobs:
       run: >-
         node ../waterline/scripts/ci/run-detail-visual.mjs
         --base-url "${APP_URL}"
+        --service-base-url "${WATERLINE_SERVICE_VISUAL_URL}"
         --output-dir run-detail-evidence
 
     - name: Upload responsive run-detail evidence
@@ -640,7 +650,9 @@ jobs:
 
     - name: Stop Sample App
       if: ${{ always() }}
-      run: '[ -f run-detail-web.pid ] && kill "$(cat run-detail-web.pid)" 2>/dev/null || true'
+      run: |
+        [ -f run-detail-web.pid ] && kill "$(cat run-detail-web.pid)" 2>/dev/null || true
+        [ -f run-detail-service-web.pid ] && kill "$(cat run-detail-service-web.pid)" 2>/dev/null || true
 
   frontend:
     name: Frontend dependency and production build

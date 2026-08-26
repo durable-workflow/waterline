@@ -26,7 +26,7 @@ CURRENT_PUBLIC = {
     "workflow": "2.0.0-rc.33",
     "sdk-php": "2.0.0-rc.45",
 }
-CANDIDATE_WATERLINE = "2.0.0-rc.29"
+CANDIDATE_WATERLINE = "2.0.0-rc.30"
 PUBLIC_SDK_REFERENCE = "0123456789abcdef0123456789abcdef01234567"
 
 

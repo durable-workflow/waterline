@@ -70,6 +70,7 @@ jobs:
 
     env:
       APP_URL: http://127.0.0.1:8000
+      WATERLINE_SERVICE_VISUAL_URL: http://127.0.0.1:8001
       SCREENSHOT_DIR: sample-app/screenshots
 
     steps:
@@ -174,17 +175,26 @@ jobs:
         run: |
           php artisan serve --host=127.0.0.1 --port=8000 > ../web.log 2>&1 &
           echo $! > ../web.pid
+          APP_URL="${WATERLINE_SERVICE_VISUAL_URL}" \
+            WATERLINE_BACKEND=service \
+            WATERLINE_SERVER_ENDPOINT=http://127.0.0.1:1 \
+            WATERLINE_SERVER_TOKEN=run-detail-visual-token \
+            php artisan serve --host=127.0.0.1 --port=8001 > ../service-web.log 2>&1 &
+          echo $! > ../service-web.pid
           for attempt in $(seq 1 30); do
-            if curl -sf "${APP_URL}/up" > /dev/null; then
-              echo "Web server up"
+            if curl -sf "${APP_URL}/up" > /dev/null \
+              && curl -sf "${WATERLINE_SERVICE_VISUAL_URL}/up" > /dev/null; then
+              echo "Embedded and service web servers are up"
               break
             fi
-            echo "Waiting for web server (${attempt}/30)"
+            echo "Waiting for web servers (${attempt}/30)"
             sleep 1
           done
-          if ! curl -sf "${APP_URL}/up" > /dev/null; then
-            echo "::error::Web server failed to respond"
+          if ! curl -sf "${APP_URL}/up" > /dev/null \
+            || ! curl -sf "${WATERLINE_SERVICE_VISUAL_URL}/up" > /dev/null; then
+            echo "::error::One or more web servers failed to respond"
             cat ../web.log
+            cat ../service-web.log
             exit 1
           fi
           CSS_STATUS=$(curl -sI -o /dev/null -w "%{http_code}" "${APP_URL}/vendor/waterline/app-dark.css")
@@ -893,6 +903,7 @@ jobs:
         run: >-
           node ../waterline/scripts/ci/run-detail-visual.mjs
           --base-url "${APP_URL}"
+          --service-base-url "${WATERLINE_SERVICE_VISUAL_URL}"
           --output-dir "${OUTPUT_DIR}"
 
       - name: Upload responsive run-detail evidence
@@ -933,6 +944,7 @@ jobs:
         run: |
           mkdir -p ../diagnostics
           cp ../web.log ../diagnostics/ 2>/dev/null || true
+          cp ../service-web.log ../diagnostics/ 2>/dev/null || true
           cp ../worker.log ../diagnostics/ 2>/dev/null || true
           cp storage/logs/laravel.log ../diagnostics/ 2>/dev/null || true
           php artisan about > ../diagnostics/about.txt 2>&1 || true
@@ -950,6 +962,7 @@ jobs:
         if: always()
         run: |
           [ -f web.pid ] && kill "$(cat web.pid)" 2>/dev/null || true
+          [ -f service-web.pid ] && kill "$(cat service-web.pid)" 2>/dev/null || true
           [ -f worker.pid ] && kill "$(cat worker.pid)" 2>/dev/null || true
 
       - name: Package the privileged screenshot handoff as one immutable file
