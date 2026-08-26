@@ -81,7 +81,7 @@ final class RemoteBackend
     }
 
     /**
-     * @return array{available: bool, reason: string|null, streams: iterable<object|array<string, mixed>>}
+     * @return array{state: string, available: bool, reason: string|null, streams: iterable<object|array<string, mixed>>}
      */
     public function workflowStreams(string $workflowId, string $runId): array
     {
@@ -89,6 +89,7 @@ final class RemoteBackend
             $this->workflowStreamsAvailable = false;
 
             return [
+                'state' => 'unavailable',
                 'available' => false,
                 'reason' => 'workflow_streams_sdk_method_missing',
                 'streams' => [],
@@ -105,8 +106,20 @@ final class RemoteBackend
             $this->workflowStreamsAvailable = false;
 
             return [
+                'state' => 'unavailable',
                 'available' => false,
                 'reason' => 'workflow_streams_route_unsupported',
+                'streams' => [],
+            ];
+        }
+
+        if (! is_iterable($streams)) {
+            $this->workflowStreamsAvailable = false;
+
+            return [
+                'state' => 'degraded',
+                'available' => false,
+                'reason' => 'workflow_streams_invalid_response',
                 'streams' => [],
             ];
         }
@@ -114,9 +127,10 @@ final class RemoteBackend
         $this->workflowStreamsAvailable = true;
 
         return [
+            'state' => 'available',
             'available' => true,
             'reason' => null,
-            'streams' => is_iterable($streams) ? $streams : [],
+            'streams' => $streams,
         ];
     }
 

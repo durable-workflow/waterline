@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.28` source identity. Its package metadata
+Waterline advances to the `2.0.0-rc.29` source identity. Its package metadata
 now describes the operational UI across embedded and service-mode deployments.
 The standalone service distribution requires PHP SDK `2.0.0-rc.45`,
 while embedded integration targets Workflow `2.0.0-rc.33` without pulling the
@@ -24,6 +24,12 @@ and control-reachability failures.
 Service-mode run detail now treats a missing remote Workflow Streams route as
 an unavailable capability while preserving the run lifecycle, history, and
 diagnostics. Authorization, namespace, and transport failures remain explicit.
+Embedded Workflow Stream summaries now use direction-specific database
+aggregation, so retained histories stay bounded in application memory and
+outbound mirrors cannot inflate actionable pending work. Run detail exposes
+typed available, degraded, and unavailable states, while the operator UI keeps
+supported-empty and unavailable service responses visibly distinct without
+displaying integration reason codes.
 Namespace-scoped capacity evidence exposes bounded runtime saturation signals
 and guarded, advisory recommendation inputs without treating infrastructure
 telemetry as Waterline-owned measurements.

@@ -25,6 +25,9 @@ final class FakeRemoteClient
     public ?array $workflowRows = null;
 
     /** @var list<array<string, mixed>>|null */
+    public ?array $workflowStreams = null;
+
+    /** @var list<array<string, mixed>>|null */
     public ?array $activeWorkerRows = null;
 
     /** @var list<array<string, mixed>>|null */
@@ -111,7 +114,7 @@ final class FakeRemoteClient
     {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        return [[
+        return $this->workflowStreams ?? [[
             'stream_name' => 'receipts',
             'status' => 'errored',
             'last_offset' => 4,

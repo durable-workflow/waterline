@@ -12,8 +12,11 @@ export const VIEWPORTS = [
 ];
 
 export const STATES = [
-    { name: 'streams-expanded', expanded: true },
-    { name: 'streams-collapsed', expanded: false },
+    { name: 'streams-expanded', expanded: true, fixture: 'embedded-mixed' },
+    { name: 'streams-collapsed', expanded: false, fixture: 'embedded-mixed' },
+    { name: 'service-supported-empty', expanded: true, fixture: 'service-supported-empty' },
+    { name: 'service-unavailable', expanded: true, fixture: 'service-unavailable' },
+    { name: 'embedded-degraded', expanded: true, fixture: 'embedded-degraded' },
 ];
 
 const INSTANCE_ID = 'waterline-visual-instance';
@@ -49,7 +52,82 @@ function loadPlaywright() {
     throw lastError;
 }
 
-export function runDetailFixture() {
+export function runDetailFixture(streamState = 'embedded-mixed') {
+    const workflowStreamContracts = {
+        'embedded-mixed': {
+            workflow_streams_mode: 'embedded',
+            workflow_streams_state: 'available',
+            workflow_streams_available: true,
+            workflow_streams_unavailable_reason: null,
+            workflow_streams: [
+                {
+                    stream_name: 'orders',
+                    mode: 'embedded',
+                    status: 'open',
+                    last_offset: 25,
+                    run_cursor_offset: 19,
+                    offset_origin: 1,
+                    total_items: 13,
+                    pending_items: 5,
+                    direction: 'inbound',
+                    delivery: 'at-least-once',
+                    error_reason: null,
+                },
+                {
+                    stream_name: 'orders',
+                    mode: 'embedded',
+                    status: 'errored',
+                    last_offset: 26,
+                    run_cursor_offset: null,
+                    offset_origin: 1,
+                    total_items: 13,
+                    pending_items: 0,
+                    direction: 'outbound',
+                    delivery: 'at-least-once',
+                    error_reason: 'outbound_delivery_failed_after_retry_budget',
+                },
+                {
+                    stream_name: 'audit-events-with-a-bounded-operator-visible-name',
+                    mode: 'embedded',
+                    status: 'errored',
+                    last_offset: 8,
+                    run_cursor_offset: 8,
+                    offset_origin: 1,
+                    total_items: 9,
+                    pending_items: 1,
+                    direction: 'inbound',
+                    delivery: 'at-least-once',
+                    error_reason: 'delivery_failed_after_retry_budget',
+                },
+            ],
+        },
+        'service-supported-empty': {
+            workflow_streams_mode: 'service',
+            workflow_streams_state: 'available',
+            workflow_streams_available: true,
+            workflow_streams_unavailable_reason: null,
+            workflow_streams: [],
+        },
+        'service-unavailable': {
+            workflow_streams_mode: 'service',
+            workflow_streams_state: 'unavailable',
+            workflow_streams_available: false,
+            workflow_streams_unavailable_reason: 'workflow_streams_route_unsupported',
+            workflow_streams: [],
+        },
+        'embedded-degraded': {
+            workflow_streams_mode: 'embedded',
+            workflow_streams_state: 'degraded',
+            workflow_streams_available: false,
+            workflow_streams_unavailable_reason: 'workflow_streams_collection_failed',
+            workflow_streams: [],
+        },
+    };
+
+    if (!Object.hasOwn(workflowStreamContracts, streamState)) {
+        throw new Error(`Unknown run-detail Workflow Stream fixture: ${streamState}`);
+    }
+
     return {
         id: RUN_ID,
         workflow_instance_id: INSTANCE_ID,
@@ -90,37 +168,7 @@ export function runDetailFixture() {
         linked_intakes: [],
         run_navigation: [],
         run_diagnostics: [],
-        workflow_streams_mode: 'service',
-        workflow_streams_available: true,
-        workflow_streams_unavailable_reason: null,
-        workflow_streams: [
-            {
-                stream_name: 'receipts',
-                mode: 'service',
-                status: 'open',
-                last_offset: 24,
-                run_cursor_offset: 19,
-                offset_origin: 'workflow_run',
-                total_items: 25,
-                pending_items: 5,
-                direction: 'outbound',
-                delivery: 'durable workflow output',
-                error_reason: null,
-            },
-            {
-                stream_name: 'audit-events-with-a-bounded-operator-visible-name',
-                mode: 'service',
-                status: 'errored',
-                last_offset: 8,
-                run_cursor_offset: 8,
-                offset_origin: 'workflow_run',
-                total_items: 9,
-                pending_items: 1,
-                direction: 'outbound',
-                delivery: 'durable workflow output',
-                error_reason: 'producer_failed_after_retry_budget',
-            },
-        ],
+        ...workflowStreamContracts[streamState],
         actionability: {
             actions: {
                 query: { allowed: false, reason: 'workflow_definition_unavailable' },
@@ -136,7 +184,7 @@ export function runDetailFixture() {
     };
 }
 
-async function installFixtureRoutes(page) {
+async function installFixtureRoutes(page, streamState) {
     await page.route('**/waterline/api/preferences/run-detail?**', async (route) => {
         await route.fulfill({
             status: 200,
@@ -153,7 +201,7 @@ async function installFixtureRoutes(page) {
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
-                body: JSON.stringify(runDetailFixture()),
+                body: JSON.stringify(runDetailFixture(streamState)),
             });
         },
     );
@@ -219,18 +267,19 @@ async function applyDisclosureState(page, state) {
 }
 
 async function auditContrast(page, state) {
+    const streamDataSelectors = state.fixture === 'embedded-mixed'
+        ? [
+            '.workflow-stream-section tbody td',
+            '.workflow-stream-mobile-row dd',
+            '.workflow-stream-section .text-muted',
+            '.workflow-stream-section .text-danger',
+        ]
+        : ['.workflow-stream-notice'];
     const categories = {
         title: ['.wl-flow-detail__title'],
         sectionTitle: ['.workflow-stream-section h5'],
         help: ['.workflow-stream-section .small.text-muted'],
-        streamData: state.expanded
-            ? [
-                '.workflow-stream-section tbody td',
-                '.workflow-stream-mobile-row dd',
-                '.workflow-stream-section .text-muted',
-                '.workflow-stream-section .text-danger',
-            ]
-            : [],
+        streamData: state.expanded ? streamDataSelectors : [],
         disclosure: ['.wl-flow-detail__section-toggle'],
         navigation: ['.wl-sidebar__link'],
         persistentAction: ['.wl-topbar__button'],
@@ -577,6 +626,7 @@ export function summarizeRunDetailReports(baseUrl, reports) {
         failedCases: reports.filter((report) => report.status === 'failed').length,
         cases: reports.map((report) => ({
             state: report.state,
+            streamState: report.streamState,
             viewport: report.viewport,
             screenshot: report.screenshot,
             status: report.status,
@@ -639,7 +689,7 @@ export async function runRunDetailVisual({
                 });
 
                 try {
-                    await installFixtureRoutes(page);
+                    await installFixtureRoutes(page, state.fixture);
                     const targetUrl = new URL(
                         `/waterline/flows/instances/${INSTANCE_ID}/runs/${RUN_ID}#workflowStreams`,
                         baseUrl,
@@ -688,6 +738,7 @@ export async function runRunDetailVisual({
                         status: failure ? 'failed' : 'passed',
                         surface: 'run-detail',
                         state: state.name,
+                        streamState: state.fixture,
                         viewport,
                         url: page.url(),
                         screenshot,

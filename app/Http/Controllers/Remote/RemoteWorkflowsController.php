@@ -266,6 +266,7 @@ final class RemoteWorkflowsController extends RemoteController
         $history = $selectedRunId !== '' ? $client->workflowHistory($workflowId, $selectedRunId) : [];
         $diagnostics = [];
         $workflowStreams = [];
+        $workflowStreamsState = 'unavailable';
         $workflowStreamsAvailable = false;
         $workflowStreamsUnavailableReason = 'workflow_streams_run_unavailable';
 
@@ -278,6 +279,7 @@ final class RemoteWorkflowsController extends RemoteController
             $workflowStreams = app(WorkflowStreamPresenter::class)->service(
                 $workflowStreamsContract['streams'],
             );
+            $workflowStreamsState = $workflowStreamsContract['state'];
             $workflowStreamsAvailable = $workflowStreamsContract['available'];
             $workflowStreamsUnavailableReason = $workflowStreamsContract['reason'];
         }
@@ -318,6 +320,7 @@ final class RemoteWorkflowsController extends RemoteController
             'commands' => is_array($execution->raw['commands'] ?? null) ? $execution->raw['commands'] : [],
             'workflow_streams' => $workflowStreams,
             'workflow_streams_mode' => 'service',
+            'workflow_streams_state' => $workflowStreamsState,
             'workflow_streams_available' => $workflowStreamsAvailable,
             'workflow_streams_unavailable_reason' => $workflowStreamsUnavailableReason,
             'logs' => [],

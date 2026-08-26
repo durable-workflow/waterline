@@ -59,8 +59,12 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['current_compensation_marker'] = $compensationVisibility['current_marker'];
         $detail['compensation_visibility'] = $compensationVisibility;
         $detail['run_diagnostics'] = $this->runDiagnostics($detail);
-        $detail['workflow_streams'] = app(WorkflowStreamPresenter::class)->embedded($this->resource);
+        $workflowStreams = app(WorkflowStreamPresenter::class)->embedded($this->resource);
+        $detail['workflow_streams'] = $workflowStreams['streams'];
         $detail['workflow_streams_mode'] = 'embedded';
+        $detail['workflow_streams_state'] = $workflowStreams['state'];
+        $detail['workflow_streams_available'] = $workflowStreams['available'];
+        $detail['workflow_streams_unavailable_reason'] = $workflowStreams['reason'];
         $detail = SelectedRunCommandContract::annotateRunDetail($detail, $this->resource);
         $detail = ObserverStateEnvelope::annotateRun($detail, $this->observerPaths($request, $detail));
         $detail = CompatibilitySemantics::annotateRun($detail);

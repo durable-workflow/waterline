@@ -943,7 +943,7 @@
         <div
             class="card mt-4 workflow-stream-section"
             id="workflowStreams"
-            v-if="ready && workflowStreamRows().length"
+            v-if="ready && workflowStreamsVisible()"
         >
             <div class="card-header d-flex align-items-center justify-content-between">
                 <div>
@@ -969,7 +969,16 @@
                 :class="{ show: workflowStreamsExpanded }"
                 id="collapseWorkflowStreams"
             >
-                <div class="table-responsive workflow-stream-desktop-table">
+                <div
+                    class="alert workflow-stream-notice m-3"
+                    :class="workflowStreamNoticeClass()"
+                    role="status"
+                    v-if="workflowStreamNotice()"
+                >
+                    {{ workflowStreamNotice() }}
+                </div>
+
+                <div class="table-responsive workflow-stream-desktop-table" v-if="workflowStreamRows().length">
                     <table class="table detail-workflow-streams-table mb-0">
                         <thead>
                             <tr>
@@ -983,12 +992,13 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="stream in workflowStreamRows()" :key="stream.mode + ':' + stream.stream_name">
+                            <tr v-for="stream in workflowStreamRows()" :key="workflowStreamKey(stream)">
                                 <td>{{ stream.stream_name }}</td>
                                 <td><span class="badge badge-secondary">{{ stream.mode }}</span></td>
                                 <td>{{ stream.status }}</td>
                                 <td>
                                     {{ workflowStreamOffsets(stream) }}
+                                    <div class="small text-muted">{{ stream.total_items }} retained items</div>
                                     <div class="small text-muted" v-if="hasDetailValue(stream.run_cursor_offset)">
                                         run cursor / {{ stream.run_cursor_offset }}
                                     </div>
@@ -1009,11 +1019,11 @@
                     </table>
                 </div>
 
-                <div class="workflow-stream-mobile-list">
+                <div class="workflow-stream-mobile-list" v-if="workflowStreamRows().length">
                     <dl
                         class="workflow-stream-mobile-row"
                         v-for="stream in workflowStreamRows()"
-                        :key="'mobile-' + stream.mode + ':' + stream.stream_name"
+                        :key="'mobile-' + workflowStreamKey(stream)"
                     >
                         <div>
                             <dt>Stream</dt>
@@ -1031,6 +1041,7 @@
                             <dt>Offsets</dt>
                             <dd>
                                 <div>{{ workflowStreamOffsets(stream) }}</div>
+                                <div class="small text-muted">{{ stream.total_items }} retained items</div>
                                 <div class="small text-muted" v-if="hasDetailValue(stream.run_cursor_offset)">
                                     run cursor / {{ stream.run_cursor_offset }}
                                 </div>
@@ -1703,6 +1714,7 @@ import 'prismjs/components/prism-php'
 import 'prismjs/themes/prism-tomorrow.css'
 import TimelineEventRenderer from '../../components/TimelineEventRenderer.vue'
 import SearchAttributeRenderer from '../../components/SearchAttributeRenderer.vue'
+import { presentWorkflowStreams } from '../../workflow-streams.mjs'
 
 export default {
     components: {
@@ -3523,7 +3535,27 @@ export default {
         },
 
         workflowStreamRows() {
-            return Array.isArray(this.flow.workflow_streams) ? this.flow.workflow_streams : []
+            return this.workflowStreamPresentation().rows
+        },
+
+        workflowStreamPresentation() {
+            return presentWorkflowStreams(this.flow)
+        },
+
+        workflowStreamsVisible() {
+            return this.workflowStreamPresentation().visible
+        },
+
+        workflowStreamNotice() {
+            return this.workflowStreamPresentation().notice
+        },
+
+        workflowStreamNoticeClass() {
+            return this.workflowStreamPresentation().noticeClass
+        },
+
+        workflowStreamKey(stream) {
+            return [stream.mode, stream.stream_name, stream.direction].join(':')
         },
 
         workflowStreamOffsets(stream) {

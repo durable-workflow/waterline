@@ -880,7 +880,7 @@ class RunDetailVisualQualificationWorkflowContractTest(unittest.TestCase):
         self.assertEqual("classify", self.job()["needs"])
 
     def test_job_qualifies_and_uploads_all_run_detail_cases(self) -> None:
-        command = self.named_step("Qualify the eight run-detail cases")["run"]
+        command = self.named_step("Qualify the twenty run-detail cases")["run"]
         self.assertIn("scripts/ci/run-detail-visual.mjs", command)
         self.assertIn("--output-dir run-detail-evidence", command)
 

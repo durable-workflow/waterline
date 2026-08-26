@@ -117,6 +117,7 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('workflow_streams.0.pending_items', 2)
             ->assertJsonPath('workflow_streams.0.error_reason', 'producer_failed')
             ->assertJsonPath('workflow_streams.0.supports_inbound_workflow_messaging', false)
+            ->assertJsonPath('workflow_streams_state', 'available')
             ->assertJsonPath('workflow_streams_available', true)
             ->assertJsonPath('workflow_streams_unavailable_reason', null)
             ->assertJsonPath('backend.capabilities.workflow_streams', true)
@@ -141,9 +142,24 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('tasks.0.id', 'task-1')
             ->assertJsonPath('workflow_streams', [])
             ->assertJsonPath('workflow_streams_mode', 'service')
+            ->assertJsonPath('workflow_streams_state', 'unavailable')
             ->assertJsonPath('workflow_streams_available', false)
             ->assertJsonPath('workflow_streams_unavailable_reason', 'workflow_streams_route_unsupported')
             ->assertJsonPath('backend.capabilities.workflow_streams', false);
+    }
+
+    public function testSelectedRunDistinguishesSupportedEmptyWorkflowStreams(): void
+    {
+        $this->client->workflowStreams = [];
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('workflow_streams', [])
+            ->assertJsonPath('workflow_streams_mode', 'service')
+            ->assertJsonPath('workflow_streams_state', 'available')
+            ->assertJsonPath('workflow_streams_available', true)
+            ->assertJsonPath('workflow_streams_unavailable_reason', null)
+            ->assertJsonPath('backend.capabilities.workflow_streams', true);
     }
 
     public function testSelectedRunPreservesWorkflowStreamsAuthorizationFailures(): void
