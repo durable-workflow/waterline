@@ -86,7 +86,13 @@ class ChangeClassificationTest(unittest.TestCase):
         self,
     ) -> None:
         for path in (
+            "app/Http/Controllers/Remote/RemoteWorkflowsController.php",
+            "app/Http/Controllers/WorkflowsController.php",
+            "app/Http/Resources/V2StoredWorkflowResource.php",
+            "app/Support/Remote/RemoteBackend.php",
+            "app/Support/WorkflowStreamPresenter.php",
             "resources/js/screens/flows/flow.vue",
+            "resources/js/workflow-streams.mjs",
             "scripts/ci/run-detail-visual.mjs",
         ):
             with self.subTest(path=path):
@@ -880,7 +886,7 @@ class RunDetailVisualQualificationWorkflowContractTest(unittest.TestCase):
         self.assertEqual("classify", self.job()["needs"])
 
     def test_job_qualifies_and_uploads_all_run_detail_cases(self) -> None:
-        command = self.named_step("Qualify the twenty run-detail cases")["run"]
+        command = self.named_step("Qualify the complete run-detail matrix")["run"]
         self.assertIn("scripts/ci/run-detail-visual.mjs", command)
         self.assertIn("--output-dir run-detail-evidence", command)
 

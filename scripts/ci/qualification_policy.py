@@ -99,7 +99,13 @@ DIALOG_VISUAL_PATHS = frozenset(
 )
 RUN_DETAIL_VISUAL_PATHS = frozenset(
     {
+        "app/Http/Controllers/Remote/RemoteWorkflowsController.php",
+        "app/Http/Controllers/WorkflowsController.php",
+        "app/Http/Resources/V2StoredWorkflowResource.php",
+        "app/Support/Remote/RemoteBackend.php",
+        "app/Support/WorkflowStreamPresenter.php",
         "resources/js/screens/flows/flow.vue",
+        "resources/js/workflow-streams.mjs",
         "scripts/ci/run-detail-visual.mjs",
     }
 )

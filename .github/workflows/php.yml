@@ -622,7 +622,7 @@ jobs:
         npm install --no-save playwright
         npx playwright install chromium --with-deps
 
-    - name: Qualify the twenty run-detail cases
+    - name: Qualify the complete run-detail matrix
       working-directory: sample-app
       run: >-
         node ../waterline/scripts/ci/run-detail-visual.mjs

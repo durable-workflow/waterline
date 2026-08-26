@@ -6,18 +6,36 @@ import { pathToFileURL } from 'node:url';
 
 export const VIEWPORTS = [
     { name: 'desktop', width: 1440, height: 900 },
-    { name: 'intermediate', width: 900, height: 768 },
+    { name: 'intermediate', width: 768, height: 1024 },
     { name: 'mobile', width: 390, height: 844 },
-    { name: 'short-height', width: 1280, height: 480 },
+    { name: 'short-height', width: 1280, height: 360 },
 ];
 
-export const STATES = [
-    { name: 'streams-expanded', expanded: true, fixture: 'embedded-mixed' },
-    { name: 'streams-collapsed', expanded: false, fixture: 'embedded-mixed' },
-    { name: 'service-supported-empty', expanded: true, fixture: 'service-supported-empty' },
-    { name: 'service-unavailable', expanded: true, fixture: 'service-unavailable' },
-    { name: 'embedded-degraded', expanded: true, fixture: 'embedded-degraded' },
+export const NAVIGATION_STATES = [
+    { name: 'initial', fragment: null },
+    { name: 'deep-section', fragment: 'workflowStreams' },
 ];
+
+export const PRESENTATIONS = ['embedded', 'service'];
+
+export const STREAM_RESULTS = ['populated', 'supported-empty', 'unavailable', 'degraded'];
+
+export const STATES = PRESENTATIONS.flatMap((presentation) => [
+    ...STREAM_RESULTS.map((result) => ({
+        name: `${presentation}-${result}-expanded`,
+        expanded: true,
+        fixture: `${presentation}-${result}`,
+        presentation,
+        result,
+    })),
+    {
+        name: `${presentation}-populated-collapsed`,
+        expanded: false,
+        fixture: `${presentation}-populated`,
+        presentation,
+        result: 'populated',
+    },
+]);
 
 const INSTANCE_ID = 'waterline-visual-instance';
 const RUN_ID = 'waterline-visual-run';
@@ -52,14 +70,17 @@ function loadPlaywright() {
     throw lastError;
 }
 
-export function runDetailFixture(streamState = 'embedded-mixed') {
-    const workflowStreamContracts = {
-        'embedded-mixed': {
-            workflow_streams_mode: 'embedded',
-            workflow_streams_state: 'available',
-            workflow_streams_available: true,
-            workflow_streams_unavailable_reason: null,
-            workflow_streams: [
+export function runDetailFixture(streamState = 'embedded-populated') {
+    const match = /^(embedded|service)-(populated|supported-empty|unavailable|degraded)$/.exec(streamState);
+
+    if (!match) {
+        throw new Error(`Unknown run-detail Workflow Stream fixture: ${streamState}`);
+    }
+
+    const [, presentation, result] = match;
+    const workflowStreams = result === 'populated'
+        ? presentation === 'embedded'
+            ? [
                 {
                     stream_name: 'orders',
                     mode: 'embedded',
@@ -99,34 +120,49 @@ export function runDetailFixture(streamState = 'embedded-mixed') {
                     delivery: 'at-least-once',
                     error_reason: 'delivery_failed_after_retry_budget',
                 },
-            ],
+            ]
+            : [
+                {
+                    stream_name: 'orders',
+                    mode: 'service',
+                    status: 'open',
+                    last_offset: 24,
+                    run_cursor_offset: null,
+                    offset_origin: 0,
+                    total_items: 13,
+                    pending_items: 5,
+                    direction: 'workflow_output',
+                    delivery: 'at-least-once',
+                    error_reason: null,
+                },
+                {
+                    stream_name: 'audit-events-with-a-bounded-operator-visible-name',
+                    mode: 'service',
+                    status: 'errored',
+                    last_offset: 8,
+                    run_cursor_offset: null,
+                    offset_origin: 0,
+                    total_items: 9,
+                    pending_items: 1,
+                    direction: 'workflow_output',
+                    delivery: 'at-least-once',
+                    error_reason: 'delivery_failed_after_retry_budget',
+                },
+            ]
+        : [];
+    const workflowStreamsState = result === 'supported-empty' || result === 'populated'
+        ? 'available'
+        : result;
+    const unavailableReasons = {
+        embedded: {
+            unavailable: 'workflow_streams_schema_unavailable',
+            degraded: 'workflow_streams_collection_failed',
         },
-        'service-supported-empty': {
-            workflow_streams_mode: 'service',
-            workflow_streams_state: 'available',
-            workflow_streams_available: true,
-            workflow_streams_unavailable_reason: null,
-            workflow_streams: [],
-        },
-        'service-unavailable': {
-            workflow_streams_mode: 'service',
-            workflow_streams_state: 'unavailable',
-            workflow_streams_available: false,
-            workflow_streams_unavailable_reason: 'workflow_streams_route_unsupported',
-            workflow_streams: [],
-        },
-        'embedded-degraded': {
-            workflow_streams_mode: 'embedded',
-            workflow_streams_state: 'degraded',
-            workflow_streams_available: false,
-            workflow_streams_unavailable_reason: 'workflow_streams_collection_failed',
-            workflow_streams: [],
+        service: {
+            unavailable: 'workflow_streams_route_unsupported',
+            degraded: 'workflow_streams_request_failed',
         },
     };
-
-    if (!Object.hasOwn(workflowStreamContracts, streamState)) {
-        throw new Error(`Unknown run-detail Workflow Stream fixture: ${streamState}`);
-    }
 
     return {
         id: RUN_ID,
@@ -138,13 +174,13 @@ export function runDetailFixture(streamState = 'embedded-mixed') {
         is_current_run: true,
         class: 'App\\Workflows\\ResponsiveQualificationWorkflow',
         workflow_type: 'sample.responsive-qualification',
-        engine_source: 'v2',
+        engine_source: presentation === 'service' ? 'service' : 'v2',
         engine_version: '2.0',
         status: 'running',
         status_bucket: 'running',
         namespace: 'default',
         queue: 'responsive-qualification',
-        connection: 'service',
+        connection: presentation === 'service' ? 'standalone-server' : 'database',
         compatibility: 'v2',
         created_at: '2026-08-26T00:00:00Z',
         updated_at: '2026-08-26T00:01:00Z',
@@ -168,7 +204,11 @@ export function runDetailFixture(streamState = 'embedded-mixed') {
         linked_intakes: [],
         run_navigation: [],
         run_diagnostics: [],
-        ...workflowStreamContracts[streamState],
+        workflow_streams_mode: presentation,
+        workflow_streams_state: workflowStreamsState,
+        workflow_streams_available: workflowStreamsState === 'available',
+        workflow_streams_unavailable_reason: unavailableReasons[presentation][result] || null,
+        workflow_streams: workflowStreams,
         actionability: {
             actions: {
                 query: { allowed: false, reason: 'workflow_definition_unavailable' },
@@ -246,7 +286,7 @@ async function applyDisclosureState(page, state) {
     const body = page.locator('#collapseWorkflowStreams');
 
     if (!state.expanded) {
-        await toggle.click();
+        await toggle.evaluate((control) => control.click());
     }
 
     await page.waitForFunction((expanded) => {
@@ -267,7 +307,7 @@ async function applyDisclosureState(page, state) {
 }
 
 async function auditContrast(page, state) {
-    const streamDataSelectors = state.fixture === 'embedded-mixed'
+    const streamDataSelectors = state.result === 'populated'
         ? [
             '.workflow-stream-section tbody td',
             '.workflow-stream-mobile-row dd',
@@ -473,8 +513,8 @@ async function auditControls(page) {
     return results;
 }
 
-async function auditGeometry(page, viewport) {
-    const geometry = await page.evaluate(() => {
+async function auditGeometry(page, viewport, navigation) {
+    const geometry = await page.evaluate((navigationName) => {
         const visible = (element) => {
             const style = getComputedStyle(element);
             const rect = element.getBoundingClientRect();
@@ -526,6 +566,7 @@ async function auditGeometry(page, viewport) {
         const sidebar = document.querySelector('.wl-sidebar');
         const sidebarRect = sidebar?.getBoundingClientRect() || null;
         const streamSection = document.getElementById('workflowStreams')?.getBoundingClientRect() || null;
+        const summaryCard = document.querySelector('.wl-flow-detail__summary-card')?.getBoundingClientRect() || null;
         const main = document.querySelector('.wl-main')?.getBoundingClientRect() || null;
         const cards = Array.from(document.querySelectorAll('.wl-main .card'))
             .filter((card) => getComputedStyle(card).display !== 'none')
@@ -554,10 +595,14 @@ async function auditGeometry(page, viewport) {
             }
         }
 
-        if (!topbar || !streamSection) {
-            failures.push('persistent chrome or Workflow Streams section is missing');
-        } else if (streamSection.top < topbar.bottom - 1 || streamSection.top >= window.innerHeight) {
-            failures.push('deep-linked Workflow Streams section is hidden by persistent chrome');
+        if (!topbar || !summaryCard || !streamSection) {
+            failures.push('persistent chrome or run-detail content is missing');
+        } else if (navigationName === 'deep-section') {
+            if (streamSection.top < topbar.bottom - 1 || streamSection.top >= window.innerHeight) {
+                failures.push('deep-linked Workflow Streams section is hidden by persistent chrome');
+            }
+        } else if (summaryCard.top < topbar.bottom - 1 || summaryCard.top >= window.innerHeight) {
+            failures.push('initial run summary is hidden by persistent chrome');
         }
 
         if (window.innerWidth > 1100) {
@@ -577,6 +622,7 @@ async function auditGeometry(page, viewport) {
                 clientWidth: document.documentElement.clientWidth,
                 scrollWidth: document.documentElement.scrollWidth,
                 scrollHeight: document.documentElement.scrollHeight,
+                scrollY: window.scrollY,
             },
             topbar: topbar ? { top: topbar.top, bottom: topbar.bottom } : null,
             sidebar: sidebarRect ? {
@@ -587,11 +633,12 @@ async function auditGeometry(page, viewport) {
                 overflowY: getComputedStyle(sidebar).overflowY,
             } : null,
             streamSection: streamSection ? { top: streamSection.top, bottom: streamSection.bottom } : null,
+            summaryCard: summaryCard ? { top: summaryCard.top, bottom: summaryCard.bottom } : null,
             cards,
             overlapping_floating_elements: overlappingFloatingElements,
             failures,
         };
-    });
+    }, navigation.name);
     const controls = await auditControls(page);
     geometry.unreachable_controls = controls.filter((control) => !control.inViewport || !control.reachable || control.coveredByChrome);
     geometry.clipped_controls = controls.filter((control) => control.clipped);
@@ -609,10 +656,6 @@ async function auditGeometry(page, viewport) {
         geometry.failures.push('browser viewport does not match the requested evidence viewport');
     }
 
-    if (geometry.failures.length > 0) {
-        throw new Error(`Run-detail geometry failed: ${geometry.failures.join('; ')}`);
-    }
-
     return { geometry, controls };
 }
 
@@ -620,13 +663,16 @@ export function summarizeRunDetailReports(baseUrl, reports) {
     return {
         schema: 'durable-workflow.waterline.run-detail-visual-summary.v1',
         baseUrl,
-        expectedCases: VIEWPORTS.length * STATES.length,
+        expectedCases: VIEWPORTS.length * NAVIGATION_STATES.length * STATES.length,
         observedCases: reports.length,
         passedCases: reports.filter((report) => report.status === 'passed').length,
         failedCases: reports.filter((report) => report.status === 'failed').length,
         cases: reports.map((report) => ({
             state: report.state,
             streamState: report.streamState,
+            presentation: report.presentation,
+            result: report.result,
+            navigation: report.navigation,
             viewport: report.viewport,
             screenshot: report.screenshot,
             status: report.status,
@@ -652,116 +698,125 @@ export async function runRunDetailVisual({
 
     const browser = await chromium.launch(launchOptions);
     const reports = [];
+    const evidenceCases = VIEWPORTS.flatMap((viewport) => NAVIGATION_STATES.flatMap((navigation) => (
+        STATES.map((state) => ({ navigation, state, viewport }))
+    )));
 
     try {
-        for (const viewport of VIEWPORTS) {
-            for (const state of STATES) {
-                const context = await browser.newContext({
-                    viewport: { width: viewport.width, height: viewport.height },
-                    deviceScaleFactor: 1,
-                });
-                await context.addInitScript(() => localStorage.setItem('waterline-theme', 'dark'));
-                const page = await context.newPage();
-                const browserErrors = [];
-                const requestFailures = [];
-                const errorResponses = [];
-                const name = `${state.name}-${viewport.name}`;
-                const screenshot = `${name}.png`;
-                let disclosure = null;
-                let geometry = null;
-                let controls = [];
-                let contrast = [];
-                let failure = null;
+        for (const { navigation, state, viewport } of evidenceCases) {
+            const context = await browser.newContext({
+                viewport: { width: viewport.width, height: viewport.height },
+                deviceScaleFactor: 1,
+            });
+            await context.addInitScript(() => localStorage.setItem('waterline-theme', 'dark'));
+            const page = await context.newPage();
+            const browserErrors = [];
+            const requestFailures = [];
+            const errorResponses = [];
+            const name = `${state.name}-${navigation.name}-${viewport.name}`;
+            const screenshot = `${name}.png`;
+            let disclosure = null;
+            let geometry = null;
+            let controls = [];
+            let contrast = [];
+            let failure = null;
 
-                page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`));
-                page.on('console', (message) => {
-                    if (message.type() === 'error') {
-                        browserErrors.push(`console: ${message.text()}`);
-                    }
-                });
-                page.on('requestfailed', (request) => {
-                    requestFailures.push(`${request.method()} ${request.url()} ${request.failure()?.errorText || ''}`.trim());
-                });
-                page.on('response', (response) => {
-                    if (response.status() >= 400) {
-                        errorResponses.push(`${response.status()} ${response.request().method()} ${response.url()}`);
-                    }
-                });
-
-                try {
-                    await installFixtureRoutes(page, state.fixture);
-                    const targetUrl = new URL(
-                        `/waterline/flows/instances/${INSTANCE_ID}/runs/${RUN_ID}#workflowStreams`,
-                        baseUrl,
-                    ).href;
-                    await maybeLogin(page, targetUrl, email, password);
-                    await waitForRunDetail(page);
-                    disclosure = await applyDisclosureState(page, state);
-                    contrast = await auditContrast(page, state);
-                    ({ geometry, controls } = await auditGeometry(page, viewport));
-
-                    if (browserErrors.length > 0 || requestFailures.length > 0 || errorResponses.length > 0) {
-                        throw new Error([
-                            ...browserErrors,
-                            ...requestFailures.map((item) => `requestfailed: ${item}`),
-                            ...errorResponses.map((item) => `response: ${item}`),
-                        ].join(' | '));
-                    }
-                } catch (error) {
-                    failure = {
-                        name: error instanceof Error ? error.name : 'Error',
-                        message: error instanceof Error ? error.message : String(error),
-                        stack: error instanceof Error ? error.stack : null,
-                    };
-                } finally {
-                    try {
-                        await page.screenshot({
-                            path: path.join(outputDirectory, screenshot),
-                            fullPage: false,
-                        });
-                    } catch (error) {
-                        const screenshotFailure = error instanceof Error ? error.message : String(error);
-
-                        if (failure) {
-                            failure.screenshot = screenshotFailure;
-                        } else {
-                            failure = {
-                                name: 'ScreenshotError',
-                                message: screenshotFailure,
-                                stack: error instanceof Error ? error.stack : null,
-                            };
-                        }
-                    }
-
-                    const report = {
-                        schema: 'durable-workflow.waterline.run-detail-visual.v1',
-                        status: failure ? 'failed' : 'passed',
-                        surface: 'run-detail',
-                        state: state.name,
-                        streamState: state.fixture,
-                        viewport,
-                        url: page.url(),
-                        screenshot,
-                        disclosure,
-                        browserErrors,
-                        requestFailures,
-                        errorResponses,
-                        contrast,
-                        geometry,
-                        controls,
-                        failure,
-                    };
-
-                    fs.writeFileSync(
-                        path.join(outputDirectory, `${name}.json`),
-                        `${JSON.stringify(report, null, 2)}\n`,
-                    );
-                    reports.push(report);
-                    console.log(
-                        `RUN_DETAIL_VISUAL ${state.name} ${viewport.name} ${failure ? 'FAIL' : 'PASS'}`,
-                    );
-                    await context.close();
+            page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`));
+            page.on('console', (message) => {
+                if (message.type() === 'error') {
+                    browserErrors.push(`console: ${message.text()}`);
                 }
+            });
+            page.on('requestfailed', (request) => {
+                requestFailures.push(`${request.method()} ${request.url()} ${request.failure()?.errorText || ''}`.trim());
+            });
+            page.on('response', (response) => {
+                if (response.status() >= 400) {
+                    errorResponses.push(`${response.status()} ${response.request().method()} ${response.url()}`);
+                }
+            });
+
+            try {
+                await installFixtureRoutes(page, state.fixture);
+                const targetUrl = new URL(
+                    `/waterline/flows/instances/${INSTANCE_ID}/runs/${RUN_ID}${navigation.fragment ? `#${navigation.fragment}` : ''}`,
+                    baseUrl,
+                ).href;
+                await maybeLogin(page, targetUrl, email, password);
+                await waitForRunDetail(page);
+                disclosure = await applyDisclosureState(page, state);
+                contrast = await auditContrast(page, state);
+                ({ geometry, controls } = await auditGeometry(page, viewport, navigation));
+                await page.evaluate((scrollY) => window.scrollTo(0, scrollY), geometry.document.scrollY);
+
+                if (geometry.failures.length > 0) {
+                    throw new Error(`Run-detail geometry failed: ${geometry.failures.join('; ')}`);
+                }
+
+                if (browserErrors.length > 0 || requestFailures.length > 0 || errorResponses.length > 0) {
+                    throw new Error([
+                        ...browserErrors,
+                        ...requestFailures.map((item) => `requestfailed: ${item}`),
+                        ...errorResponses.map((item) => `response: ${item}`),
+                    ].join(' | '));
+                }
+            } catch (error) {
+                failure = {
+                    name: error instanceof Error ? error.name : 'Error',
+                    message: error instanceof Error ? error.message : String(error),
+                    stack: error instanceof Error ? error.stack : null,
+                };
+            } finally {
+                try {
+                    await page.screenshot({
+                        path: path.join(outputDirectory, screenshot),
+                        fullPage: false,
+                    });
+                } catch (error) {
+                    const screenshotFailure = error instanceof Error ? error.message : String(error);
+
+                    if (failure) {
+                        failure.screenshot = screenshotFailure;
+                    } else {
+                        failure = {
+                            name: 'ScreenshotError',
+                            message: screenshotFailure,
+                            stack: error instanceof Error ? error.stack : null,
+                        };
+                    }
+                }
+
+                const report = {
+                    schema: 'durable-workflow.waterline.run-detail-visual.v1',
+                    status: failure ? 'failed' : 'passed',
+                    surface: 'run-detail',
+                    state: state.name,
+                    streamState: state.fixture,
+                    presentation: state.presentation,
+                    result: state.result,
+                    navigation: navigation.name,
+                    viewport,
+                    url: page.url(),
+                    screenshot,
+                    disclosure,
+                    browserErrors,
+                    requestFailures,
+                    errorResponses,
+                    contrast,
+                    geometry,
+                    controls,
+                    failure,
+                };
+
+                fs.writeFileSync(
+                    path.join(outputDirectory, `${name}.json`),
+                    `${JSON.stringify(report, null, 2)}\n`,
+                );
+                reports.push(report);
+                console.log(
+                    `RUN_DETAIL_VISUAL ${state.name} ${navigation.name} ${viewport.name} ${failure ? 'FAIL' : 'PASS'}`,
+                );
+                await context.close();
             }
         }
     } finally {
