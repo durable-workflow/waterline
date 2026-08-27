@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+    DEEP_LINK_STABILITY,
     NAVIGATION_STATES,
     PRESENTATIONS,
     STATES,
     STREAM_RESULTS,
     VIEWPORTS,
+    deepLinkedWorkflowStreamFailures,
+    deepLinkStabilityAttempts,
     runDetailFixture,
     simultaneousNavigationFailures,
     simultaneousTopbarFailures,
@@ -44,6 +47,32 @@ test('run-detail qualification covers presentation, result, navigation, and view
     }
 
     assert.equal(VIEWPORTS.length * NAVIGATION_STATES.length * STATES.length, 80);
+});
+
+test('direct populated Workflow Streams navigation repeats at regression viewports', () => {
+    const state = STATES.find(({ name }) => name === DEEP_LINK_STABILITY.state);
+    const navigation = NAVIGATION_STATES.find(({ name }) => name === 'deep-section');
+
+    assert.ok(state);
+    assert.ok(navigation);
+    assert.equal(DEEP_LINK_STABILITY.attempts, 3);
+    assert.deepEqual(DEEP_LINK_STABILITY.viewports, ['intermediate', 'short-height']);
+
+    for (const viewport of VIEWPORTS) {
+        assert.equal(
+            deepLinkStabilityAttempts(state, navigation, viewport),
+            DEEP_LINK_STABILITY.viewports.includes(viewport.name) ? 3 : 1,
+        );
+    }
+
+    assert.deepEqual(
+        deepLinkedWorkflowStreamFailures({ bottom: 132 }, { top: -252 }, 1024),
+        ['deep-linked Workflow Streams section is hidden by persistent chrome'],
+    );
+    assert.deepEqual(
+        deepLinkedWorkflowStreamFailures({ bottom: 132 }, { top: 148 }, 1024),
+        [],
+    );
 });
 
 test('run-detail fixtures exercise every material result in embedded and service presentations', () => {

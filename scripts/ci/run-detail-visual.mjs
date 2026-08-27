@@ -20,6 +20,12 @@ export const PRESENTATIONS = ['embedded', 'service'];
 
 export const STREAM_RESULTS = ['populated', 'supported-empty', 'unavailable', 'degraded'];
 
+export const DEEP_LINK_STABILITY = {
+    attempts: 3,
+    state: 'embedded-populated-expanded',
+    viewports: ['intermediate', 'short-height'],
+};
+
 export const STATES = PRESENTATIONS.flatMap((presentation) => [
     ...STREAM_RESULTS.map((result) => ({
         name: `${presentation}-${result}-expanded`,
@@ -110,6 +116,26 @@ export function simultaneousTopbarFailures(composition) {
     }
 
     return failures;
+}
+
+export function deepLinkedWorkflowStreamFailures(topbar, streamSection, viewportHeight) {
+    if (!topbar || !streamSection) {
+        return ['persistent chrome or Workflow Streams section is missing'];
+    }
+
+    if (streamSection.top < topbar.bottom - 1 || streamSection.top >= viewportHeight) {
+        return ['deep-linked Workflow Streams section is hidden by persistent chrome'];
+    }
+
+    return [];
+}
+
+export function deepLinkStabilityAttempts(state, navigation, viewport) {
+    return navigation.name === 'deep-section'
+        && state.name === DEEP_LINK_STABILITY.state
+        && DEEP_LINK_STABILITY.viewports.includes(viewport.name)
+        ? DEEP_LINK_STABILITY.attempts
+        : 1;
 }
 
 const INSTANCE_ID = 'waterline-visual-instance';
@@ -830,11 +856,7 @@ async function auditGeometry(page, viewport, navigation) {
 
         if (!topbar || !summaryCard || !streamSection) {
             failures.push('persistent chrome or run-detail content is missing');
-        } else if (navigationName === 'deep-section') {
-            if (streamSection.top < topbar.bottom - 1 || streamSection.top >= window.innerHeight) {
-                failures.push('deep-linked Workflow Streams section is hidden by persistent chrome');
-            }
-        } else if (summaryCard.top < topbar.bottom - 1 || summaryCard.top >= window.innerHeight) {
+        } else if (navigationName !== 'deep-section' && (summaryCard.top < topbar.bottom - 1 || summaryCard.top >= window.innerHeight)) {
             failures.push('initial run summary is hidden by persistent chrome');
         }
 
@@ -892,6 +914,15 @@ async function auditGeometry(page, viewport, navigation) {
     const controls = await auditControls(page);
     const simultaneousNavigation = await auditSimultaneousNavigation(page);
     const simultaneousTopbar = await auditSimultaneousTopbar(page);
+
+    if (navigation.name === 'deep-section') {
+        geometry.failures.push(...deepLinkedWorkflowStreamFailures(
+            geometry.topbar,
+            geometry.streamSection,
+            viewport.height,
+        ));
+    }
+
     geometry.simultaneous_navigation = simultaneousNavigation;
     geometry.simultaneous_topbar = simultaneousTopbar;
     geometry.unreachable_controls = controls.filter((control) => !control.inViewport || !control.reachable || control.coveredByChrome);
@@ -942,6 +973,7 @@ export function summarizeRunDetailReports(baseUrl, reports) {
             screenshot: report.screenshot,
             status: report.status,
             failure: report.failure,
+            deepLinkStability: report.deepLinkStability,
         })),
     };
 }
@@ -994,6 +1026,7 @@ export async function runRunDetailVisual({
             let geometry = null;
             let controls = [];
             let contrast = [];
+            const deepLinkStability = [];
             let failure = null;
 
             page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.message}`));
@@ -1019,14 +1052,33 @@ export async function runRunDetailVisual({
                 ).href;
                 await maybeLogin(page, targetUrl, email, password);
                 await waitForRunDetail(page);
-                bootstrap = await auditBootstrapIdentity(page, state.presentation);
-                disclosure = await applyDisclosureState(page, state);
-                contrast = await auditContrast(page, state);
-                ({ geometry, controls } = await auditGeometry(page, viewport, navigation));
-                await page.evaluate((scrollY) => window.scrollTo(0, scrollY), geometry.document.scrollY);
+                const attempts = deepLinkStabilityAttempts(state, navigation, viewport);
 
-                if (geometry.failures.length > 0) {
-                    throw new Error(`Run-detail geometry failed: ${geometry.failures.join('; ')}`);
+                for (let attempt = 1; attempt <= attempts; attempt += 1) {
+                    if (attempt > 1) {
+                        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30_000 });
+                        await waitForRunDetail(page);
+                    }
+
+                    bootstrap = await auditBootstrapIdentity(page, state.presentation);
+                    disclosure = await applyDisclosureState(page, state);
+                    contrast = await auditContrast(page, state);
+                    ({ geometry, controls } = await auditGeometry(page, viewport, navigation));
+                    await page.evaluate((scrollY) => window.scrollTo(0, scrollY), geometry.document.scrollY);
+
+                    if (attempts > 1) {
+                        deepLinkStability.push({
+                            attempt,
+                            scrollY: geometry.document.scrollY,
+                            topbarBottom: geometry.topbar?.bottom ?? null,
+                            workflowStreamsTop: geometry.streamSection?.top ?? null,
+                            failures: geometry.failures,
+                        });
+                    }
+
+                    if (geometry.failures.length > 0) {
+                        throw new Error(`Run-detail geometry failed: ${geometry.failures.join('; ')}`);
+                    }
                 }
 
                 if (browserErrors.length > 0 || requestFailures.length > 0 || errorResponses.length > 0) {
@@ -1082,6 +1134,7 @@ export async function runRunDetailVisual({
                     contrast,
                     geometry,
                     controls,
+                    deepLinkStability,
                     failure,
                 };
 

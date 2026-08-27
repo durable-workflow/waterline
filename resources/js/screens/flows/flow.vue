@@ -1743,6 +1743,7 @@ export default {
             },
             savingRunDetailPreferences: false,
             workflowStreamsExpanded: true,
+            routeHashScrollRequest: 0,
             code: 'console.log("Hello World")',
             series: [
                 {
@@ -1855,6 +1856,8 @@ export default {
 
     methods: {
         handleRouteChange() {
+            this.routeHashScrollRequest += 1
+
             const preferences = this.loadRunDetailPreferences()
             const flow = this.loadRouteFlow()
 
@@ -1955,7 +1958,7 @@ export default {
             this.workflowStreamsExpanded = !this.workflowStreamsExpanded
         },
 
-        scrollToRouteHash() {
+        async scrollToRouteHash() {
             const hash = this.$route.hash || ''
 
             if (!hash.startsWith('#') || hash.length < 2) {
@@ -1970,25 +1973,91 @@ export default {
                 return
             }
 
-            this.$nextTick(() => {
-                window.requestAnimationFrame(() => {
-                    const target = document.getElementById(targetId)
+            const request = ++this.routeHashScrollRequest
+            const routeFullPath = this.$route.fullPath
 
-                    if (!target) {
-                        return
-                    }
+            await this.$nextTick()
 
-                    target.scrollIntoView({ block: 'start' })
+            if (document.fonts?.ready) {
+                await document.fonts.ready
+            }
 
-                    const topbar = document.querySelector('.wl-topbar')
-                    const chromeOffset = (topbar ? topbar.getBoundingClientRect().height : 0) + 16
-                    const targetTop = target.getBoundingClientRect().top
+            let previousLayout = null
+            let stableFrames = 0
 
-                    if (targetTop < chromeOffset) {
-                        window.scrollBy({ top: targetTop - chromeOffset, left: 0, behavior: 'auto' })
-                    }
-                })
-            })
+            for (let frame = 0; frame < 12; frame += 1) {
+                await this.nextRouteHashFrame()
+
+                if (!this.routeHashScrollIsCurrent(request, routeFullPath)) {
+                    return
+                }
+
+                const target = document.getElementById(targetId)
+                const topbar = document.querySelector('.wl-topbar')
+
+                if (!target) {
+                    return
+                }
+
+                const targetRect = target.getBoundingClientRect()
+                const layout = [
+                    Math.round(targetRect.top + window.scrollY),
+                    Math.round(targetRect.height),
+                    Math.round(topbar ? topbar.getBoundingClientRect().height : 0),
+                    document.documentElement.scrollHeight,
+                ].join(':')
+
+                stableFrames = layout === previousLayout ? stableFrames + 1 : 0
+                previousLayout = layout
+
+                if (stableFrames >= 2) {
+                    break
+                }
+            }
+
+            for (const delay of [0, 0, 120]) {
+                if (delay > 0) {
+                    await new Promise(resolve => window.setTimeout(resolve, delay))
+                } else {
+                    await this.nextRouteHashFrame()
+                }
+
+                if (!this.routeHashScrollIsCurrent(request, routeFullPath)) {
+                    return
+                }
+
+                const target = document.getElementById(targetId)
+
+                if (!target) {
+                    return
+                }
+
+                this.positionRouteHashTarget(target)
+            }
+        },
+
+        nextRouteHashFrame() {
+            return new Promise(resolve => window.requestAnimationFrame(resolve))
+        },
+
+        routeHashScrollIsCurrent(request, routeFullPath) {
+            return request === this.routeHashScrollRequest
+                && routeFullPath === this.$route.fullPath
+        },
+
+        positionRouteHashTarget(target) {
+            const topbar = document.querySelector('.wl-topbar')
+            const topbarBottom = topbar ? topbar.getBoundingClientRect().bottom : 0
+            const chromeOffset = Math.ceil(Math.max(0, topbarBottom) + 16)
+
+            target.style.setProperty('--wl-run-detail-fragment-offset', `${chromeOffset}px`)
+            target.scrollIntoView({ block: 'start' })
+
+            const correction = target.getBoundingClientRect().top - chromeOffset
+
+            if (Math.abs(correction) > 1) {
+                window.scrollBy({ top: correction, left: 0, behavior: 'auto' })
+            }
         },
 
         flowLoadErrorMessage(error) {
@@ -4735,7 +4804,9 @@ export default {
 }
 
 .workflow-stream-section {
-    scroll-margin-top: 0;
+    --wl-run-detail-fragment-offset: 6rem;
+
+    scroll-margin-top: var(--wl-run-detail-fragment-offset);
 }
 
 .workflow-stream-section .text-danger {
@@ -4826,6 +4897,10 @@ export default {
 }
 
 @media (max-width: 768px) {
+    .workflow-stream-section {
+        --wl-run-detail-fragment-offset: 9rem;
+    }
+
     .wl-flow-detail__title {
         font-size: 1.45rem;
     }
@@ -4858,6 +4933,12 @@ export default {
     .wl-flow-detail__header-actions {
         width: 100%;
         justify-content: flex-start !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .workflow-stream-section {
+        --wl-run-detail-fragment-offset: 13rem;
     }
 }
 </style>

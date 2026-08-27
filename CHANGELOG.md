@@ -4,8 +4,8 @@
 
 Waterline advances to the `2.0.0-rc.31` source identity. Its package metadata
 now describes the operational UI across embedded and service-mode deployments.
-The standalone service distribution requires PHP SDK `2.0.0-rc.45`,
-while embedded integration targets Workflow `2.0.0-rc.33` without pulling the
+The standalone service distribution requires PHP SDK `2.0.0-rc.47`,
+while embedded integration targets Workflow `2.0.0-rc.46` without pulling the
 standalone SDK into the host application. Laravel-hosted service mode now
 checks for the optional SDK at its configuration boundary and reports the exact
 installation command when it is absent.
@@ -14,9 +14,10 @@ Workflow Streams with their lifecycle, offsets, pending work, delivery mode, and
 error state. The operator UI renders the shared diagnostics contract across
 desktop and mobile layouts.
 Workflow Streams now expose synchronized expanded and collapsed labels and
-accessibility state. Deep-linked run sections clear the persistent header,
-compact navigation remains horizontally reachable without displacing run
-content, and stream error text retains readable dark-theme contrast.
+accessibility state. Deep-linked run sections clear the persistent header and
+wait for asynchronously rendered detail to settle before positioning. Compact
+navigation remains horizontally reachable without displacing run content, and
+stream error text retains readable dark-theme contrast.
 Visual qualification now classifies workflow-list dialogs and run detail as
 separate product surfaces, runs the material responsive states for each affected
 surface, and rejects browser, request, contrast, overflow, clipping, overlap,

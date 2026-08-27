@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "5d07332b5aaa7b1de94ed4b74aa9c496",
+    "content-hash": "d822d3a823359feacb0ddaf624ba298a",
     "packages": [
         {
             "name": "apache/avro",
@@ -505,16 +505,16 @@
         },
         {
             "name": "durable-workflow/sdk",
-            "version": "2.0.0-rc.45",
+            "version": "2.0.0-rc.47",
             "source": {
                 "type": "git",
                 "url": "https://github.com/durable-workflow/sdk-php.git",
-                "reference": "07ab8fea3e89871a51c076ed27d892c02a54f97d"
+                "reference": "180c32ae0599dc460fbef4d6fee832176eecbd78"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/07ab8fea3e89871a51c076ed27d892c02a54f97d",
-                "reference": "07ab8fea3e89871a51c076ed27d892c02a54f97d",
+                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/180c32ae0599dc460fbef4d6fee832176eecbd78",
+                "reference": "180c32ae0599dc460fbef4d6fee832176eecbd78",
                 "shasum": ""
             },
             "require": {
@@ -555,7 +555,7 @@
                         "laravel": "^9.0|^10.0|^11.0|^12.0|^13.0",
                         "symfony": "^6.4|^7.0|^8.0"
                     },
-                    "product-train": "2.0.0-rc.45",
+                    "product-train": "2.0.0-rc.47",
                     "payload-codecs": [
                         "avro"
                     ],
@@ -581,8 +581,8 @@
                         "patched",
                         "deprecatePatch"
                     ],
-                    "worker-protocol-version": "1.15",
-                    "supported-server-versions": "2.0.0-rc.42",
+                    "worker-protocol-version": "1.16",
+                    "supported-server-versions": "2.0.0-rc.50",
                     "version-marker-history-event": "VersionMarkerRecorded",
                     "message-streams-minimum-worker-protocol-version": "1.15"
                 }
@@ -615,7 +615,7 @@
                 "issues": "https://github.com/durable-workflow/sdk-php/issues",
                 "source": "https://github.com/durable-workflow/sdk-php"
             },
-            "time": "2026-08-24T21:13:42+00:00"
+            "time": "2026-08-26T14:36:52+00:00"
         },
         {
             "name": "egulias/email-validator",
