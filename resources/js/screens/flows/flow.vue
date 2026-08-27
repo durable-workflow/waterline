@@ -1975,64 +1975,93 @@ export default {
 
             const request = ++this.routeHashScrollRequest
             const routeFullPath = this.$route.fullPath
-
-            await this.$nextTick()
-
-            if (document.fonts?.ready) {
-                await document.fonts.ready
+            let interrupted = false
+            const interruptKeys = new Set([
+                'ArrowDown',
+                'ArrowUp',
+                'End',
+                'Home',
+                'PageDown',
+                'PageUp',
+                ' ',
+            ])
+            const interrupt = () => {
+                interrupted = true
             }
-
-            let previousLayout = null
-            let stableFrames = 0
-
-            for (let frame = 0; frame < 12; frame += 1) {
-                await this.nextRouteHashFrame()
-
-                if (!this.routeHashScrollIsCurrent(request, routeFullPath)) {
-                    return
-                }
-
-                const target = document.getElementById(targetId)
-                const topbar = document.querySelector('.wl-topbar')
-
-                if (!target) {
-                    return
-                }
-
-                const targetRect = target.getBoundingClientRect()
-                const layout = [
-                    Math.round(targetRect.top + window.scrollY),
-                    Math.round(targetRect.height),
-                    Math.round(topbar ? topbar.getBoundingClientRect().height : 0),
-                    document.documentElement.scrollHeight,
-                ].join(':')
-
-                stableFrames = layout === previousLayout ? stableFrames + 1 : 0
-                previousLayout = layout
-
-                if (stableFrames >= 2) {
-                    break
+            const interruptOnKey = (event) => {
+                if (interruptKeys.has(event.key)) {
+                    interrupt()
                 }
             }
 
-            for (const delay of [0, 0, 120]) {
-                if (delay > 0) {
-                    await new Promise(resolve => window.setTimeout(resolve, delay))
-                } else {
+            window.addEventListener('wheel', interrupt, { passive: true })
+            window.addEventListener('touchstart', interrupt, { passive: true })
+            window.addEventListener('pointerdown', interrupt, { passive: true })
+            window.addEventListener('keydown', interruptOnKey)
+
+            try {
+                await this.$nextTick()
+
+                if (document.fonts?.ready) {
+                    await document.fonts.ready
+                }
+
+                const startedAt = performance.now()
+                const settleFor = 600
+                const stopAfter = 2000
+                let lastChangeAt = startedAt
+                let previousLayout = null
+
+                while (performance.now() - startedAt < stopAfter) {
                     await this.nextRouteHashFrame()
-                }
 
-                if (!this.routeHashScrollIsCurrent(request, routeFullPath)) {
-                    return
+                    if (interrupted || !this.routeHashScrollIsCurrent(request, routeFullPath)) {
+                        return
+                    }
+
+                    const target = document.getElementById(targetId)
+                    const topbar = document.querySelector('.wl-topbar')
+
+                    if (!target) {
+                        return
+                    }
+
+                    target.dataset.waterlineFragmentPosition = 'settling'
+
+                    const targetRect = target.getBoundingClientRect()
+                    const layout = [
+                        Math.round(targetRect.top + window.scrollY),
+                        Math.round(targetRect.height),
+                        Math.round(topbar ? topbar.getBoundingClientRect().bottom : 0),
+                        document.documentElement.scrollHeight,
+                    ].join(':')
+                    const now = performance.now()
+
+                    if (layout !== previousLayout) {
+                        previousLayout = layout
+                        lastChangeAt = now
+                    }
+
+                    if (this.positionRouteHashTarget(target)) {
+                        lastChangeAt = now
+                    }
+
+                    if (document.readyState === 'complete' && now - lastChangeAt >= settleFor) {
+                        break
+                    }
                 }
 
                 const target = document.getElementById(targetId)
 
-                if (!target) {
-                    return
+                if (target && this.routeHashScrollIsCurrent(request, routeFullPath) && !interrupted) {
+                    this.positionRouteHashTarget(target)
+                    target.dataset.waterlineFragmentPosition = 'settled'
                 }
-
-                this.positionRouteHashTarget(target)
+            } finally {
+                window.removeEventListener('wheel', interrupt)
+                window.removeEventListener('touchstart', interrupt)
+                window.removeEventListener('pointerdown', interrupt)
+                window.removeEventListener('keydown', interruptOnKey)
             }
         },
 
@@ -2051,13 +2080,15 @@ export default {
             const chromeOffset = Math.ceil(Math.max(0, topbarBottom) + 16)
 
             target.style.setProperty('--wl-run-detail-fragment-offset', `${chromeOffset}px`)
-            target.scrollIntoView({ block: 'start' })
-
             const correction = target.getBoundingClientRect().top - chromeOffset
 
             if (Math.abs(correction) > 1) {
                 window.scrollBy({ top: correction, left: 0, behavior: 'auto' })
+
+                return true
             }
+
+            return false
         },
 
         flowLoadErrorMessage(error) {

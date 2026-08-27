@@ -22,11 +22,11 @@ SPEC.loader.exec_module(identity)
 
 
 CURRENT_PUBLIC = {
-    "waterline": "2.0.0-rc.30",
+    "waterline": "2.0.0-rc.31",
     "workflow": "2.0.0-rc.46",
     "sdk-php": "2.0.0-rc.47",
 }
-CANDIDATE_WATERLINE = "2.0.0-rc.31"
+CANDIDATE_WATERLINE = "2.0.0-rc.32"
 PUBLIC_SDK_REFERENCE = "0123456789abcdef0123456789abcdef01234567"
 
 

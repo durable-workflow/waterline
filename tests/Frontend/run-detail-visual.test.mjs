@@ -50,19 +50,32 @@ test('run-detail qualification covers presentation, result, navigation, and view
 });
 
 test('direct populated Workflow Streams navigation repeats at regression viewports', () => {
-    const state = STATES.find(({ name }) => name === DEEP_LINK_STABILITY.state);
     const navigation = NAVIGATION_STATES.find(({ name }) => name === 'deep-section');
 
-    assert.ok(state);
     assert.ok(navigation);
-    assert.equal(DEEP_LINK_STABILITY.attempts, 3);
-    assert.deepEqual(DEEP_LINK_STABILITY.viewports, ['intermediate', 'short-height']);
+    assert.deepEqual(DEEP_LINK_STABILITY, [
+        {
+            attempts: 3,
+            state: 'embedded-populated-expanded',
+            viewports: ['intermediate', 'short-height'],
+        },
+        {
+            attempts: 3,
+            state: 'service-populated-expanded',
+            viewports: ['mobile'],
+        },
+    ]);
 
-    for (const viewport of VIEWPORTS) {
-        assert.equal(
-            deepLinkStabilityAttempts(state, navigation, viewport),
-            DEEP_LINK_STABILITY.viewports.includes(viewport.name) ? 3 : 1,
-        );
+    for (const qualification of DEEP_LINK_STABILITY) {
+        const state = STATES.find(({ name }) => name === qualification.state);
+
+        assert.ok(state);
+        for (const viewport of VIEWPORTS) {
+            assert.equal(
+                deepLinkStabilityAttempts(state, navigation, viewport),
+                qualification.viewports.includes(viewport.name) ? qualification.attempts : 1,
+            );
+        }
     }
 
     assert.deepEqual(

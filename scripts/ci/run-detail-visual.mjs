@@ -20,11 +20,18 @@ export const PRESENTATIONS = ['embedded', 'service'];
 
 export const STREAM_RESULTS = ['populated', 'supported-empty', 'unavailable', 'degraded'];
 
-export const DEEP_LINK_STABILITY = {
-    attempts: 3,
-    state: 'embedded-populated-expanded',
-    viewports: ['intermediate', 'short-height'],
-};
+export const DEEP_LINK_STABILITY = [
+    {
+        attempts: 3,
+        state: 'embedded-populated-expanded',
+        viewports: ['intermediate', 'short-height'],
+    },
+    {
+        attempts: 3,
+        state: 'service-populated-expanded',
+        viewports: ['mobile'],
+    },
+];
 
 export const STATES = PRESENTATIONS.flatMap((presentation) => [
     ...STREAM_RESULTS.map((result) => ({
@@ -131,11 +138,14 @@ export function deepLinkedWorkflowStreamFailures(topbar, streamSection, viewport
 }
 
 export function deepLinkStabilityAttempts(state, navigation, viewport) {
-    return navigation.name === 'deep-section'
-        && state.name === DEEP_LINK_STABILITY.state
-        && DEEP_LINK_STABILITY.viewports.includes(viewport.name)
-        ? DEEP_LINK_STABILITY.attempts
-        : 1;
+    if (navigation.name !== 'deep-section') {
+        return 1;
+    }
+
+    return DEEP_LINK_STABILITY.find((qualification) => (
+        state.name === qualification.state
+        && qualification.viewports.includes(viewport.name)
+    ))?.attempts ?? 1;
 }
 
 const INSTANCE_ID = 'waterline-visual-instance';
@@ -379,7 +389,15 @@ async function waitForRunDetail(page) {
         return stylesheet instanceof HTMLLinkElement
             && stylesheet.href.includes('/vendor/waterline/app-dark.css');
     }, { timeout: 10_000 });
-    await page.waitForTimeout(300);
+    await page.waitForFunction(() => {
+        if (!window.location.hash) {
+            return true;
+        }
+
+        const target = document.getElementById(decodeURIComponent(window.location.hash.slice(1)));
+
+        return target?.dataset.waterlineFragmentPosition === 'settled';
+    }, { timeout: 5_000 });
 }
 
 async function auditBootstrapIdentity(page, expectedPresentation) {

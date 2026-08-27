@@ -2,7 +2,12 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.31` source identity. Its package metadata
+Waterline advances to the `2.0.0-rc.32` source identity. Deep-linked run-detail
+sections remain pinned below persistent chrome through late browser scroll
+restoration and asynchronous service-mode layout settling, while direct user
+scrolling or keyboard navigation cancels that bounded positioning window.
+Repeated visual qualification now includes the populated service presentation
+at the mobile viewport that exposed the late fragment drift. Its package metadata
 now describes the operational UI across embedded and service-mode deployments.
 The standalone service distribution requires PHP SDK `2.0.0-rc.47`,
 while embedded integration targets Workflow `2.0.0-rc.46` without pulling the
