@@ -25,6 +25,10 @@ and control-reachability failures.
 Service-mode run detail now treats a missing remote Workflow Streams route as
 an unavailable capability while preserving the run lifecycle, history, and
 diagnostics. Authorization, namespace, and transport failures remain explicit.
+Embedded run detail now preserves configured summary fields, typed visibility
+data, declared command contracts, and the recorded workflow fingerprint when
+the selected-run projection is unavailable, while explicitly marking the
+operator view as degraded.
 Embedded Workflow Stream summaries now use direction-specific database
 aggregation, so retained histories stay bounded in application memory and
 outbound mirrors cannot inflate actionable pending work. Run detail exposes
