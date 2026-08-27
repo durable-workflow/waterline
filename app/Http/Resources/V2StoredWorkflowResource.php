@@ -22,8 +22,11 @@ use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowFailure;
 use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowRun;
+use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowUpdate;
 use Workflow\V2\Support\CommandPayloadPreview;
+use Workflow\V2\Support\RunCommandContract;
+use Workflow\V2\Support\WorkflowDefinitionFingerprint;
 
 /**
  * @mixin WorkflowRun
@@ -271,9 +274,12 @@ class V2StoredWorkflowResource extends JsonResource
      */
     private function fallbackRunDetail(): array
     {
-        $status = $this->statusValue($this->resource->status);
+        $summary = $this->fallbackRunSummary();
+        $status = $this->statusValue($summary?->status ?? $this->resource->status);
         $activities = CompensationVisibility::durableHistoryActivitiesForRun($this->resource);
         $updateFallback = $this->durableUpdateFallbackRows();
+        $commandContract = $this->fallbackRunCommandContract();
+        $visibilityLabels = $summary?->visibility_labels ?? $this->resource->visibility_labels;
 
         return [
             'id' => $this->resource->id,
@@ -289,26 +295,45 @@ class V2StoredWorkflowResource extends JsonResource
             'class' => $this->resource->workflow_class,
             'workflow_type' => $this->resource->workflow_type,
             'namespace' => $this->resource->namespace,
-            'business_key' => $this->resource->business_key,
-            'compatibility' => $this->resource->compatibility,
+            'business_key' => $summary?->business_key ?? $this->resource->business_key,
+            'compatibility' => $summary?->compatibility ?? $this->resource->compatibility,
             'connection' => $this->resource->connection,
             'queue' => $this->resource->queue,
-            'visibility_labels' => is_array($this->resource->visibility_labels)
-                ? $this->resource->visibility_labels
-                : [],
+            'visibility_labels' => is_array($visibilityLabels) ? $visibilityLabels : [],
+            'memo' => $this->fallbackMemos(),
             'search_attributes' => $this->selectedRunSearchAttributes(),
+            'workflow_definition_fingerprint' => $this->fallbackRecordedDefinitionFingerprint(),
             'status' => $status,
-            'status_bucket' => $this->statusBucket($status),
+            'status_bucket' => $this->stringValue($summary?->status_bucket) ?? $this->statusBucket($status),
             'is_terminal' => $this->isTerminalStatus($status),
-            'closed_reason' => $this->resource->closed_reason,
-            'closed_at' => $this->resource->closed_at,
-            'created_at' => $this->resource->started_at ?? $this->resource->created_at,
-            'updated_at' => $this->resource->last_progress_at ?? $this->resource->updated_at,
-            'history_event_count' => is_numeric($this->resource->last_history_sequence)
-                ? (int) $this->resource->last_history_sequence
-                : count($activities),
-            'history_size_bytes' => 0,
-            'history_fan_out' => 0,
+            'closed_reason' => $summary?->closed_reason ?? $this->resource->closed_reason,
+            'closed_at' => $summary?->closed_at ?? $this->resource->closed_at,
+            'created_at' => $summary?->created_at ?? $this->resource->started_at ?? $this->resource->created_at,
+            'updated_at' => $summary?->updated_at ?? $this->resource->last_progress_at ?? $this->resource->updated_at,
+            'declared_queries' => $commandContract['queries'],
+            'declared_query_contracts' => $commandContract['query_contracts'],
+            'declared_signals' => $commandContract['signals'],
+            'declared_signal_contracts' => $commandContract['signal_contracts'],
+            'declared_updates' => $commandContract['updates'],
+            'declared_update_contracts' => $commandContract['update_contracts'],
+            'declared_entry_method' => $commandContract['entry_method'],
+            'declared_entry_mode' => $commandContract['entry_mode'],
+            'declared_entry_declaring_class' => $commandContract['entry_declaring_class'],
+            'declared_contract_source' => $commandContract['source'],
+            'declared_contract_backfill_needed' => $commandContract['backfill_needed'],
+            'declared_contract_backfill_available' => $commandContract['backfill_available'],
+            'history_event_count' => is_numeric($summary?->history_event_count)
+                ? (int) $summary->history_event_count
+                : (is_numeric($this->resource->last_history_sequence)
+                    ? (int) $this->resource->last_history_sequence
+                    : count($activities)),
+            'history_size_bytes' => is_numeric($summary?->history_size_bytes)
+                ? (int) $summary->history_size_bytes
+                : 0,
+            'history_fan_out' => is_numeric($summary?->history_fan_out)
+                ? (int) $summary->history_fan_out
+                : 0,
+            'continue_as_new_recommended' => (bool) ($summary?->continue_as_new_recommended ?? false),
             'activities_scope' => 'selected_run',
             'activities' => $activities,
             'updates_scope' => 'selected_run',
@@ -323,6 +348,77 @@ class V2StoredWorkflowResource extends JsonResource
                 'message' => 'Waterline rendered durable run state and activity history because selected-run projections were unavailable.',
             ],
         ];
+    }
+
+    private function fallbackRunSummary(): ?WorkflowRunSummary
+    {
+        try {
+            $this->resource->loadMissing(['summary']);
+            $summary = $this->resource->getRelation('summary');
+
+            return $summary instanceof WorkflowRunSummary ? $summary : null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fallbackMemos(): array
+    {
+        try {
+            return $this->resource->typedMemos();
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @return array{
+     *     queries: list<string>,
+     *     query_contracts: list<array<string, mixed>>,
+     *     signals: list<string>,
+     *     signal_contracts: list<array<string, mixed>>,
+     *     updates: list<string>,
+     *     update_contracts: list<array<string, mixed>>,
+     *     entry_method: string|null,
+     *     entry_mode: string|null,
+     *     entry_declaring_class: string|null,
+     *     source: string,
+     *     backfill_needed: bool,
+     *     backfill_available: bool
+     * }
+     */
+    private function fallbackRunCommandContract(): array
+    {
+        try {
+            return RunCommandContract::forRun($this->resource);
+        } catch (Throwable) {
+            return [
+                'queries' => [],
+                'query_contracts' => [],
+                'signals' => [],
+                'signal_contracts' => [],
+                'updates' => [],
+                'update_contracts' => [],
+                'entry_method' => null,
+                'entry_mode' => null,
+                'entry_declaring_class' => null,
+                'source' => RunCommandContract::SOURCE_UNAVAILABLE,
+                'backfill_needed' => false,
+                'backfill_available' => false,
+            ];
+        }
+    }
+
+    private function fallbackRecordedDefinitionFingerprint(): ?string
+    {
+        try {
+            return WorkflowDefinitionFingerprint::recordedForRun($this->resource);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**

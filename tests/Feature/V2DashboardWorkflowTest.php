@@ -1451,23 +1451,25 @@ class V2DashboardWorkflowTest extends TestCase
 
         $instance->update(['current_run_id' => $run->id]);
 
-        WorkflowMemo::query()->create([
+        $customerMemo = new WorkflowMemo([
             'workflow_run_id' => $run->id,
             'workflow_instance_id' => $instance->id,
             'key' => 'customer',
-            'value' => ['name' => 'Taylor'],
             'upserted_at_sequence' => 1,
             'inherited_from_parent' => false,
         ]);
+        $customerMemo->setValue(['name' => 'Taylor']);
+        $customerMemo->save();
 
-        WorkflowMemo::query()->create([
+        $orderMemo = new WorkflowMemo([
             'workflow_run_id' => $run->id,
             'workflow_instance_id' => $instance->id,
             'key' => 'order',
-            'value' => ['id' => 123],
             'upserted_at_sequence' => 1,
             'inherited_from_parent' => false,
         ]);
+        $orderMemo->setValue(['id' => 123]);
+        $orderMemo->save();
 
         ConfiguredWaterlineDetailRunSummary::create([
             'id' => $run->id,
@@ -1531,7 +1533,21 @@ class V2DashboardWorkflowTest extends TestCase
             ->assertJsonPath('search_attributes.customer_tier', 'gold')
             ->assertJsonPath('declared_contract_source', 'durable_history')
             ->assertJsonPath('declared_signals.0', 'configured-waterline-signal')
-            ->assertJsonPath('workflow_definition_fingerprint', 'configured-waterline-fingerprint');
+            ->assertJsonPath('workflow_definition_fingerprint', 'configured-waterline-fingerprint')
+            ->assertJsonMissingPath('operator_visibility_degraded');
+
+        $customerMemo->forceFill(['value' => ['invalid' => 'memo-envelope']])->save();
+
+        $this->get('/waterline/api/flows/' . $run->id)
+            ->assertOk()
+            ->assertJsonPath('status_bucket', 'running')
+            ->assertJsonPath('business_key', 'configured-waterline-business')
+            ->assertJsonPath('memo', [])
+            ->assertJsonPath('search_attributes.customer_tier', 'gold')
+            ->assertJsonPath('declared_contract_source', 'durable_history')
+            ->assertJsonPath('declared_signals.0', 'configured-waterline-signal')
+            ->assertJsonPath('workflow_definition_fingerprint', 'configured-waterline-fingerprint')
+            ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable');
     }
 
     public function testShowIgnoresLegacyVisibilityJsonWhenTypedRowsAreMissing(): void
