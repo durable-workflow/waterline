@@ -669,7 +669,8 @@ function parseCliVersionOutput(output) {
 }
 
 function installCli() {
-  fs.mkdirSync(path.join(CLI_DIR, 'bin'), { recursive: true });
+  const binDir = path.join(CLI_DIR, 'bin');
+  fs.mkdirSync(binDir, { recursive: true });
   const installer = path.join(CLI_DIR, 'install.sh');
   let sourceUrl = '';
   for (const tag of [CLI_VERSION, `v${CLI_VERSION}`]) {
@@ -689,14 +690,15 @@ function installCli() {
   run('sh', [installer], {
     env: {
       ...process.env,
+      PATH: [binDir, process.env.PATH ?? ''].filter(Boolean).join(path.delimiter),
       VERSION: CLI_VERSION,
-      DURABLE_WORKFLOW_INSTALL_DIR: path.join(CLI_DIR, 'bin'),
+      DURABLE_WORKFLOW_INSTALL_DIR: binDir,
       DURABLE_WORKFLOW_INSTALL_VERIFY_ATTESTATIONS: '0',
     },
     display: `install official dw ${CLI_VERSION}`,
     timeout: 180_000,
   });
-  const binary = path.join(CLI_DIR, 'bin', os.platform() === 'win32' ? 'dw.exe' : 'dw');
+  const binary = path.join(binDir, os.platform() === 'win32' ? 'dw.exe' : 'dw');
   const version = run(binary, ['--version'], { display: 'dw --version', timeout: 30_000 });
   const output = String(version.stdout || version.stderr).trim();
   const installedVersion = parseCliVersionOutput(output);

@@ -223,6 +223,79 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
         $this->assertStringNotContainsString('fixture_response', $node);
     }
 
+    public function testPinnedCliInstallerPrefersThePrivateExactBinaryOverAnAmbientOlderDw(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $runner = (string) file_get_contents($root.'/scripts/conformance/worker-status-published-artifacts.mjs');
+        $testDirectory = sys_get_temp_dir().'/waterline-cli-install-path-'.bin2hex(random_bytes(6));
+        $ambientBin = $testDirectory.'/ambient-bin';
+        $privateBin = $testDirectory.'/private-bin';
+        mkdir($ambientBin, 0777, true);
+        mkdir($privateBin, 0777, true);
+
+        $ambientDw = $ambientBin.'/dw';
+        $exactDw = $testDirectory.'/exact-dw';
+        $installedDw = $privateBin.'/dw';
+        $installer = $testDirectory.'/install.sh';
+        $beforePath = $testDirectory.'/before-path';
+        $afterPath = $testDirectory.'/after-path';
+        file_put_contents($ambientDw, "#!/bin/sh\nprintf '%s\\n' 'dw 2.0.0-rc.35'\n");
+        file_put_contents($exactDw, "#!/bin/sh\nprintf '%s\\n' 'dw 2.0.0-rc.36'\n");
+        file_put_contents($installer, <<<'SH'
+#!/bin/sh
+set -eu
+command -v dw > "$BEFORE_PATH"
+cp "$EXACT_DW" "$DURABLE_WORKFLOW_INSTALL_DIR/dw"
+chmod +x "$DURABLE_WORKFLOW_INSTALL_DIR/dw"
+hash -r 2>/dev/null || :
+command -v dw > "$AFTER_PATH"
+test "$(cat "$AFTER_PATH")" = "$DURABLE_WORKFLOW_INSTALL_DIR/dw"
+SH);
+        chmod($ambientDw, 0755);
+        chmod($exactDw, 0755);
+        chmod($installer, 0755);
+
+        try {
+            $this->assertMatchesRegularExpression(
+                <<<'REGEX'
+~const binDir = path\.join\(CLI_DIR, 'bin'\);.*?env: \{.*?PATH: \[binDir, process\.env\.PATH \?\? ''\]\.filter\(Boolean\)\.join\(path\.delimiter\),.*?DURABLE_WORKFLOW_INSTALL_DIR: binDir,.*?const binary = path\.join\(binDir,~s
+REGEX,
+                $runner,
+                'The runner must give its private install directory precedence for the installer subprocess.',
+            );
+            $this->assertStringContainsString("run(binary, ['--version']", $runner);
+            $this->assertStringContainsString('if (installedVersion !== CLI_VERSION)', $runner);
+
+            $process = new Process(['/bin/sh', $installer], $root, [
+                'AFTER_PATH' => $afterPath,
+                'BEFORE_PATH' => $beforePath,
+                'DURABLE_WORKFLOW_INSTALL_DIR' => $privateBin,
+                'EXACT_DW' => $exactDw,
+                'PATH' => implode(PATH_SEPARATOR, [
+                    $privateBin,
+                    $ambientBin,
+                    '/usr/local/bin',
+                    '/usr/bin',
+                    '/bin',
+                ]),
+            ]);
+            $process->run();
+
+            $this->assertSame(0, $process->getExitCode(), $process->getErrorOutput());
+            $this->assertSame($ambientDw, trim((string) file_get_contents($beforePath)));
+            $this->assertSame($installedDw, trim((string) file_get_contents($afterPath)));
+
+            $ambientVersion = new Process([$ambientDw, '--version']);
+            $ambientVersion->mustRun();
+            $installedVersion = new Process([$installedDw, '--version']);
+            $installedVersion->mustRun();
+            $this->assertSame('dw 2.0.0-rc.35', trim($ambientVersion->getOutput()));
+            $this->assertSame('dw 2.0.0-rc.36', trim($installedVersion->getOutput()));
+        } finally {
+            $this->removeTestDirectory($testDirectory);
+        }
+    }
+
     public function testReleaseRunnerCanJoinTheVerifiedSharedHeartbeatWave(): void
     {
         $root = dirname(__DIR__, 2);
