@@ -16,8 +16,8 @@
         "illuminate/support": "^9.0|^10.0|^11.0|^12.0|^13.0"
     },
     "require-dev": {
-        "durable-workflow/sdk": "2.0.0-rc.47",
-        "durable-workflow/workflow": "2.0.0-rc.46",
+        "durable-workflow/sdk": "2.0.0-rc.53",
+        "durable-workflow/workflow": "2.0.0-rc.52",
         "fakerphp/faker": "^1.9.1",
         "mockery/mockery": "^1.4.4",
         "orchestra/testbench": "^10.11",
@@ -73,7 +73,7 @@
     },
     "extra": {
         "durable-workflow": {
-            "product-train": "2.0.0-rc.32",
+            "product-train": "2.0.0-rc.33",
             "service-capacity-evidence": {
                 "schema": "durable-workflow.v2.namespace-capacity-evidence",
                 "schema-version": 1,
