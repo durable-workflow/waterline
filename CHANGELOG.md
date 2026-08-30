@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Waterline advances to the `2.0.0-rc.33` source identity. Deep-linked run-detail
+Waterline advances to the `2.0.0-rc.34` source identity. Deep-linked run-detail
 sections remain pinned below persistent chrome through late browser scroll
 restoration and asynchronous service-mode layout settling, while direct user
 scrolling or keyboard navigation cancels that bounded positioning window.
@@ -72,7 +72,9 @@ Worker-status conformance now kills its designated stale worker without giving
 the managed SDK an opportunity to deregister. It proves the child process is
 gone, anchors the stale deadline to the final accepted heartbeat, and separately
 proves that an orderly peer shutdown deregisters across server, CLI, and
-Waterline projections.
+Waterline projections. Sequential projections compare stable process identity
+exactly while validating mutable gauges and optional sticky-cache counters by
+shape, bounds, and heartbeat order.
 
 The standalone service now bundles `league/commonmark` 2.9.0, resolving six
 security advisories present in the previously locked dependency version.

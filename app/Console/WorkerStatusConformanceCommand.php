@@ -1064,7 +1064,7 @@ final class WorkerStatusConformanceCommand extends Command
      */
     private function projectionsAgree(array $waterline, array $authority): bool
     {
-        return $this->projectionFieldsAgree($waterline, $authority, [
+        if (! $this->projectionFieldsAgree($waterline, $authority, [
             'worker_id',
             'namespace',
             'task_queue',
@@ -1079,8 +1079,166 @@ final class WorkerStatusConformanceCommand extends Command
             'max_concurrent_worker_sessions',
             'heartbeat_interval_seconds',
             'task_slots',
-            'process_metrics',
-        ]);
+        ])) {
+            return false;
+        }
+
+        return $this->processMetricsAgree($waterline, $authority);
+    }
+
+    /**
+     * Process identity is stable for a worker registration, while gauges and
+     * optional telemetry may change between the sequential authority reads.
+     *
+     * @param  array<string, mixed>  $left
+     * @param  array<string, mixed>  $right
+     */
+    private function processMetricsAgree(array $left, array $right): bool
+    {
+        $leftMetrics = $left['process_metrics'] ?? null;
+        $rightMetrics = $right['process_metrics'] ?? null;
+
+        if (! is_array($leftMetrics)
+            || ! is_array($rightMetrics)
+            || ! $this->validProcessMetrics($leftMetrics)
+            || ! $this->validProcessMetrics($rightMetrics)
+            || $leftMetrics['process_id'] !== $rightMetrics['process_id']) {
+            return false;
+        }
+
+        foreach (['host', 'process_started_at'] as $identityField) {
+            if (array_key_exists($identityField, $leftMetrics)
+                && array_key_exists($identityField, $rightMetrics)
+                && $leftMetrics[$identityField] !== $rightMetrics[$identityField]) {
+                return false;
+            }
+        }
+
+        $leftHeartbeat = strtotime((string) ($left['last_heartbeat_at'] ?? ''));
+        $rightHeartbeat = strtotime((string) ($right['last_heartbeat_at'] ?? ''));
+        if ($leftHeartbeat === false || $rightHeartbeat === false || $leftHeartbeat === $rightHeartbeat) {
+            return $leftHeartbeat !== false && $rightHeartbeat !== false;
+        }
+
+        [$earlier, $later] = $leftHeartbeat < $rightHeartbeat
+            ? [$leftMetrics, $rightMetrics]
+            : [$rightMetrics, $leftMetrics];
+
+        if (array_key_exists('process_uptime_seconds', $earlier)
+            && array_key_exists('process_uptime_seconds', $later)
+            && $later['process_uptime_seconds'] < $earlier['process_uptime_seconds']) {
+            return false;
+        }
+
+        $earlierSticky = $earlier['sticky_cache'] ?? null;
+        $laterSticky = $later['sticky_cache'] ?? null;
+        if (is_array($earlierSticky) && is_array($laterSticky)) {
+            foreach (['hit', 'miss', 'eviction', 'forced_cold_replay'] as $counter) {
+                if (array_key_exists($counter, $earlierSticky)
+                    && array_key_exists($counter, $laterSticky)
+                    && $laterSticky[$counter] < $earlierSticky[$counter]) {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /** @param array<string, mixed> $metrics */
+    private function validProcessMetrics(array $metrics): bool
+    {
+        if (! array_key_exists('process_id', $metrics)
+            || ! is_int($metrics['process_id'])
+            || $metrics['process_id'] < 0) {
+            return false;
+        }
+
+        foreach ($metrics as $name => $value) {
+            if (! is_string($name) || trim($name) === '') {
+                return false;
+            }
+
+            if (in_array($name, ['memory_bytes', 'process_uptime_seconds'], true)) {
+                if (! is_int($value) || $value < 0) {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if ($name === 'cpu_percent') {
+                if ((! is_int($value) && ! is_float($value))
+                    || ! is_finite((float) $value)
+                    || $value < 0) {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if ($name === 'host') {
+                if (! is_string($value) || trim($value) === '') {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if ($name === 'process_started_at') {
+                if (! $this->timestamp($value)) {
+                    return false;
+                }
+
+                continue;
+            }
+
+            if ($name === 'sticky_cache') {
+                if (! is_array($value) || ! $this->validMetricMap($value)) {
+                    return false;
+                }
+
+                foreach (['hit', 'miss', 'eviction', 'forced_cold_replay'] as $counter) {
+                    if (array_key_exists($counter, $value)
+                        && (! is_int($value[$counter]) || $value[$counter] < 0)) {
+                        return false;
+                    }
+                }
+
+                continue;
+            }
+
+            if ($name !== 'process_id' && ! $this->validMetricValue($value)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** @param array<mixed> $metrics */
+    private function validMetricMap(array $metrics): bool
+    {
+        foreach ($metrics as $name => $value) {
+            if (! is_string($name) || trim($name) === '' || ! $this->validMetricValue($value)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function validMetricValue(mixed $value): bool
+    {
+        if (is_array($value)) {
+            return $this->validMetricMap($value);
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return is_finite((float) $value) && $value >= 0;
+        }
+
+        return is_string($value) || is_bool($value);
     }
 
     /**

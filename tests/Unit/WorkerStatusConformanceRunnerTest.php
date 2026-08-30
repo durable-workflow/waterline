@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Waterline\Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Process\Process;
 use Waterline\Support\WorkerStatusObservationGate;
 
@@ -127,6 +128,129 @@ final class WorkerStatusConformanceRunnerTest extends TestCase
             '2026-08-09T02:00:09Z',
             7,
         ));
+    }
+
+    public function testSequentialProjectionMetricsAllowOptionalStickyCacheToAppearOrDisappear(): void
+    {
+        $agreement = new \ReflectionMethod(
+            \Waterline\Console\WorkerStatusConformanceCommand::class,
+            'projectionsAgree',
+        );
+        $command = $this->workerStatusCommand();
+        $earlier = $this->workerProjection([
+            'cpu_percent' => 8.5,
+            'memory_bytes' => 134217728,
+            'process_uptime_seconds' => 40,
+            'process_id' => 37,
+            'host' => 'worker-host',
+            'process_started_at' => '2026-08-30T06:00:00Z',
+            'sticky_cache' => [
+                'hit' => 2,
+                'miss' => 1,
+                'eviction' => 0,
+                'forced_cold_replay' => 0,
+            ],
+        ], '2026-08-30T06:10:00Z');
+        $later = $this->workerProjection([
+            'cpu_percent' => 7.25,
+            'memory_bytes' => 132120576,
+            'process_uptime_seconds' => 43,
+            'process_id' => 37,
+            'host' => 'worker-host',
+            'process_started_at' => '2026-08-30T06:00:00Z',
+        ], '2026-08-30T06:10:03Z');
+
+        $this->assertTrue($agreement->invoke($command, $earlier, $later));
+        $this->assertTrue($agreement->invoke($command, $later, $earlier));
+
+        $outsideHeartbeatTolerance = $later;
+        $outsideHeartbeatTolerance['last_heartbeat_at'] = '2026-08-30T06:10:05Z';
+        $this->assertFalse($agreement->invoke($command, $earlier, $outsideHeartbeatTolerance));
+
+        unset($earlier['process_metrics']['sticky_cache']);
+        $later['process_metrics']['sticky_cache'] = [
+            'hit' => 3,
+            'miss' => 1,
+            'eviction' => 0,
+            'forced_cold_replay' => 0,
+        ];
+
+        $this->assertTrue($agreement->invoke($command, $earlier, $later));
+    }
+
+    public function testSequentialProjectionMetricsRejectProcessIdentityMismatch(): void
+    {
+        $agreement = new \ReflectionMethod(
+            \Waterline\Console\WorkerStatusConformanceCommand::class,
+            'projectionsAgree',
+        );
+        $earlier = $this->workerProjection([
+            'process_id' => 37,
+            'host' => 'worker-host',
+            'process_started_at' => '2026-08-30T06:00:00Z',
+        ], '2026-08-30T06:10:00Z');
+        $later = $this->workerProjection([
+            'process_id' => 38,
+            'host' => 'worker-host',
+            'process_started_at' => '2026-08-30T06:00:00Z',
+        ], '2026-08-30T06:10:03Z');
+
+        $this->assertFalse($agreement->invoke(
+            $this->workerStatusCommand(),
+            $earlier,
+            $later,
+        ));
+
+        $later['process_metrics']['process_id'] = 37;
+        $later['process_metrics']['host'] = 'replacement-host';
+        $this->assertFalse($agreement->invoke($this->workerStatusCommand(), $earlier, $later));
+
+        $later['process_metrics']['host'] = 'worker-host';
+        $later['process_metrics']['process_started_at'] = '2026-08-30T06:01:00Z';
+        $this->assertFalse($agreement->invoke($this->workerStatusCommand(), $earlier, $later));
+    }
+
+    public function testSequentialProjectionMetricsRejectInvalidOrRegressingTelemetry(): void
+    {
+        $agreement = new \ReflectionMethod(
+            \Waterline\Console\WorkerStatusConformanceCommand::class,
+            'projectionsAgree',
+        );
+        $command = $this->workerStatusCommand();
+        $earlier = $this->workerProjection([
+            'memory_bytes' => 1024,
+            'process_uptime_seconds' => 40,
+            'process_id' => 37,
+            'sticky_cache' => ['hit' => 4],
+        ], '2026-08-30T06:10:00Z');
+
+        $invalid = $this->workerProjection([
+            'memory_bytes' => -1,
+            'process_uptime_seconds' => 43,
+            'process_id' => 37,
+        ], '2026-08-30T06:10:03Z');
+        $regressingUptime = $this->workerProjection([
+            'memory_bytes' => 2048,
+            'process_uptime_seconds' => 39,
+            'process_id' => 37,
+        ], '2026-08-30T06:10:03Z');
+        $regressingCounter = $this->workerProjection([
+            'memory_bytes' => 2048,
+            'process_uptime_seconds' => 43,
+            'process_id' => 37,
+            'sticky_cache' => ['hit' => 3],
+        ], '2026-08-30T06:10:03Z');
+        $wrongCounterType = $this->workerProjection([
+            'memory_bytes' => 2048,
+            'process_uptime_seconds' => 43,
+            'process_id' => 37,
+            'sticky_cache' => ['hit' => '5'],
+        ], '2026-08-30T06:10:03Z');
+
+        $this->assertFalse($agreement->invoke($command, $earlier, $invalid));
+        $this->assertFalse($agreement->invoke($command, $earlier, $regressingUptime));
+        $this->assertFalse($agreement->invoke($command, $earlier, $regressingCounter));
+        $this->assertFalse($agreement->invoke($command, $earlier, $wrongCounterType));
     }
 
     public function testFixtureAndPlanSuppliedProjectionsCannotManufactureAPass(): void
@@ -449,7 +573,7 @@ REGEX,
         $runner = (string) file_get_contents($root.'/app/Console/WorkerStatusConformanceCommand.php');
         $worker = (string) file_get_contents($root.'/app/Console/WorkerStatusSdkWorkerCommand.php');
 
-        $this->assertSame('2.0.0-rc.33', $manifest['extra']['durable-workflow']['product-train'] ?? null);
+        $this->assertSame('2.0.0-rc.34', $manifest['extra']['durable-workflow']['product-train'] ?? null);
         $this->assertSame('2.0.0-rc.52', $manifest['require-dev']['durable-workflow/workflow'] ?? null);
         $this->assertSame('2.0.0-rc.53', $manifest['require-dev']['durable-workflow/sdk'] ?? null);
         $this->assertStringContainsString('use DurableWorkflow\\Client as SdkClient;', $runner);
@@ -821,6 +945,29 @@ printf '%s' '{"schema":' >"$RESULT_DIR/waterline-worker-status-result.json"
 exit 13
 BASH);
         chmod($path, 0755);
+    }
+
+    /**
+     * @param  array<string, mixed>  $processMetrics
+     * @return array<string, mixed>
+     */
+    private function workerProjection(array $processMetrics, string $lastHeartbeatAt): array
+    {
+        return [
+            'worker_id' => 'worker-a',
+            'last_heartbeat_at' => $lastHeartbeatAt,
+            'process_metrics' => $processMetrics,
+        ];
+    }
+
+    private function workerStatusCommand(): \Waterline\Console\WorkerStatusConformanceCommand
+    {
+        $command = new \Waterline\Console\WorkerStatusConformanceCommand();
+        $command->setInput(new ArrayInput([
+            '--heartbeat-interval' => '2',
+        ], $command->getDefinition()));
+
+        return $command;
     }
 
     private function removeTestDirectory(string $directory): void
