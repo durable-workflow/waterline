@@ -43,7 +43,7 @@ final class ServiceModeRequirementsTest extends TestCase
     {
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage(
-            'Waterline service mode requires durable-workflow/sdk 2.0.0-rc.53 exactly; installed 2.0.0-rc.40.',
+            'Waterline service mode requires durable-workflow/sdk 2.0.0-rc.54 exactly; installed 2.0.0-rc.40.',
         );
 
         ServiceModeRequirements::assertSdkInstalled(
