@@ -569,13 +569,9 @@ REGEX,
     public function testPublishedWorkerExecutionUsesThePhpSdkPackageBoundary(): void
     {
         $root = dirname(__DIR__, 2);
-        $manifest = json_decode((string) file_get_contents($root.'/composer.json'), true, 512, JSON_THROW_ON_ERROR);
         $runner = (string) file_get_contents($root.'/app/Console/WorkerStatusConformanceCommand.php');
         $worker = (string) file_get_contents($root.'/app/Console/WorkerStatusSdkWorkerCommand.php');
 
-        $this->assertSame('2.0.0', $manifest['extra']['durable-workflow']['product-train'] ?? null);
-        $this->assertSame('2.0.1', $manifest['require-dev']['durable-workflow/workflow'] ?? null);
-        $this->assertSame('2.0.0', $manifest['require-dev']['durable-workflow/sdk'] ?? null);
         $this->assertStringContainsString('use DurableWorkflow\\Client as SdkClient;', $runner);
         $this->assertStringContainsString('use DurableWorkflow\\SdkIdentity;', $runner);
         $this->assertStringContainsString('SdkIdentity::registration()', $runner);

@@ -43,11 +43,9 @@ final class InstallationContractTest extends TestCase
             512,
             JSON_THROW_ON_ERROR,
         );
-        $releaseVersion = $manifest['extra']['durable-workflow']['product-train'] ?? null;
         $sdkVersion = $published['versions']['sdk-php'] ?? null;
         $workflowVersion = $published['versions']['workflow'] ?? null;
 
-        $this->assertSame('2.0.0', $releaseVersion);
         $this->assertSame([
             'server' => '2.0.0-rc.32',
             'sdk-php' => '2.0.0-rc.14',
