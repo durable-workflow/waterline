@@ -22,11 +22,11 @@ SPEC.loader.exec_module(identity)
 
 
 CURRENT_PUBLIC = {
-    "waterline": "2.0.0-rc.34",
-    "workflow": "2.0.0-rc.53",
-    "sdk-php": "2.0.0-rc.54",
+    "waterline": "2.0.0-rc.35",
+    "workflow": "2.0.1",
+    "sdk-php": "2.0.0",
 }
-CANDIDATE_WATERLINE = "2.0.0-rc.35"
+CANDIDATE_WATERLINE = "2.0.0"
 PUBLIC_SDK_REFERENCE = "0123456789abcdef0123456789abcdef01234567"
 
 
@@ -190,6 +190,13 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
 
         with self.assertRaisesRegex(identity.IdentityError, "does not match source-declared"):
             validate(release_version="2.0.0-rc.14")
+
+    def test_release_identity_rejects_versions_outside_the_supported_2_0_line(self) -> None:
+        unsupported = manifest()
+        unsupported["extra"]["durable-workflow"]["product-train"] = "2.1.0"
+
+        with self.assertRaisesRegex(identity.IdentityError, "exact supported 2.0 release"):
+            validate(candidate_manifest=unsupported)
 
     def test_every_branch_route_runs_current_identity_qualification(self) -> None:
         document = workflow("php.yml")

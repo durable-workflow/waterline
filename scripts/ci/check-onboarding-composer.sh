@@ -77,11 +77,13 @@ from pathlib import Path
 
 authority_path, embedded_path, service_path = map(Path, sys.argv[1:])
 release_authority = authority_path.read_text(encoding="utf-8").split()
-pattern = re.compile(r"^2\.0\.0-rc\.[1-9][0-9]*$")
+version_pattern = re.compile(
+    r"^2\.0\.(?:0|[1-9][0-9]*)(?:-rc\.[1-9][0-9]*)?$"
+)
 commit_pattern = re.compile(r"^[0-9a-f]{40}$")
 if release_authority and (
     len(release_authority) != 2
-    or pattern.fullmatch(release_authority[0]) is None
+    or version_pattern.fullmatch(release_authority[0]) is None
     or commit_pattern.fullmatch(release_authority[1]) is None
 ):
     raise SystemExit("current public Waterline release authority is malformed")
@@ -108,8 +110,8 @@ for graph, path in (("embedded", embedded_path), ("service", service_path)):
     }
     if set(packages) != expected[graph]:
         raise SystemExit(f"{graph} onboarding graph did not resolve both roots")
-    if any(pattern.fullmatch(version) is None for version in packages.values()):
-        raise SystemExit(f"{graph} onboarding graph escaped the 2.0 RC channel")
+    if any(version_pattern.fullmatch(version) is None for version in packages.values()):
+        raise SystemExit(f"{graph} onboarding graph escaped the supported 2.0 line")
     if (
         qualified_waterline is not None
         and packages["durable-workflow/waterline"] != qualified_waterline
@@ -133,7 +135,8 @@ evidence = {
         if qualified_source_commit is not None
         else "registry-graph-consensus"
     ),
-    "channel": "^2.0@RC",
+    "channel": "2.0",
+    "composer_constraint": "^2.0@RC",
     "qualified_waterline": qualified_waterline,
     "graphs": resolved,
     "outcome": "pass",

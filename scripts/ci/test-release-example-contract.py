@@ -30,9 +30,9 @@ contract = load_contract()
 
 
 RELEASE = contract.ReleaseTuple(
-    waterline="2.0.0-rc.91",
-    workflow="2.0.0-rc.120",
-    sdk="2.0.0-rc.63",
+    waterline="2.0.0",
+    workflow="2.0.1",
+    sdk="2.0.2",
 )
 
 
@@ -136,10 +136,10 @@ The install command can move and use indented Markdown instead.
                 minimum=1,
             )
 
-    def test_accepts_resolver_backed_image_without_prose_coupling(self) -> None:
+    def test_accepts_exact_stable_image_without_prose_coupling(self) -> None:
         document = f"""
 ```bash
-WATERLINE_IMAGE="$(python3 {contract.PRERELEASE_RESOLVER} image)"
+WATERLINE_IMAGE="{contract.STABLE_IMAGE}"
 docker run --rm "$WATERLINE_IMAGE"
 ```
 
@@ -181,15 +181,15 @@ Retained compatibility evidence names
                 f"services:\n  waterline:\n    image: {contract.SERVICE_IMAGE}:latest\n",
             )
 
-    def test_accepts_compose_image_required_from_resolver(self) -> None:
+    def test_accepts_compose_image_required_from_release_input(self) -> None:
         compose = (
             "services:\n"
             "  waterline:\n"
-            "    image: ${WATERLINE_IMAGE:?run-prerelease-resolver}\n"
+            "    image: ${WATERLINE_IMAGE:?set-exact-waterline-image}\n"
         )
 
         self.assertEqual(
-            "${WATERLINE_IMAGE:?run-prerelease-resolver}",
+            "${WATERLINE_IMAGE:?set-exact-waterline-image}",
             contract.validate_default_image(
                 "deploy/docker-compose.service.yml",
                 compose,

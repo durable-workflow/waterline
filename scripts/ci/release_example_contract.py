@@ -18,8 +18,8 @@ WATERLINE_PACKAGE = "durable-workflow/waterline"
 WORKFLOW_PACKAGE = "durable-workflow/workflow"
 SDK_PACKAGE = "durable-workflow/sdk"
 SERVICE_IMAGE = "durableworkflow/waterline"
-ONBOARDING_CONSTRAINT = "^2.0@RC"
-PRERELEASE_RESOLVER = "scripts/resolve-current-prerelease.py"
+ONBOARDING_CONSTRAINT = "^2.0"
+STABLE_IMAGE = f"{SERVICE_IMAGE}:2.0.0"
 EXACT_VERSION = re.compile(
     r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$"
 )
@@ -316,8 +316,8 @@ def validate_documented_images(
             for token in tokens
         ):
             raise ContractError(
-                f"{source} copies a service image reference; use the "
-                f"machine-owned {PRERELEASE_RESOLVER} output"
+                f"{source} copies a service image reference directly; assign "
+                "the exact stable image to WATERLINE_IMAGE"
             )
 
     if resolved < minimum:
@@ -325,14 +325,17 @@ def validate_documented_images(
             f"{source} must contain at least {minimum} Docker example using "
             "$WATERLINE_IMAGE"
         )
-    resolver_commands = [
+    image_assignments = [
         command
         for command in shell_commands(document)
-        if PRERELEASE_RESOLVER in command and command.endswith(' image)"')
+        if command in {
+            f'WATERLINE_IMAGE="{STABLE_IMAGE}"',
+            f"WATERLINE_IMAGE={STABLE_IMAGE}",
+        }
     ]
-    if not resolver_commands:
+    if not image_assignments:
         raise ContractError(
-            f"{source} must obtain WATERLINE_IMAGE from {PRERELEASE_RESOLVER}"
+            f"{source} must assign WATERLINE_IMAGE to {STABLE_IMAGE}"
         )
     return resolved
 

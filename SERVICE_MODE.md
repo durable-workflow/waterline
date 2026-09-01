@@ -12,7 +12,7 @@ The host needs Docker, but does not need PHP, Laravel, Composer, or
 `durable-workflow/workflow`.
 
 ```bash
-WATERLINE_IMAGE="$(python3 scripts/resolve-current-prerelease.py image)"
+WATERLINE_IMAGE="durableworkflow/waterline:2.0.0"
 
 docker run --rm -p 8080:8080 \
   -v waterline-data:/data \
@@ -24,12 +24,8 @@ docker run --rm -p 8080:8080 \
   "$WATERLINE_IMAGE"
 ```
 
-Run the resolver from a Waterline `v2` checkout. It reads the public retained
-Waterline qualification, verifies the immutable qualification asset digest,
-and returns the qualified multi-platform image digest. The result is the
-reproducible qualified tuple, rather than a hand-maintained current tag. The
-resolver fails closed instead of selecting stable 1.x or an unqualified
-`latest` image.
+The exact `2.0.0` image keeps the deployment reproducible. Stable rolling tags
+are also published for users who deliberately opt into patch updates.
 
 Open `http://localhost:8080/waterline`. Bind the port to a private interface or
 put an authenticating reverse proxy in front of it when
@@ -122,10 +118,10 @@ registration summary without contributing rows or leases.
 [`deploy/docker-compose.service.yml`](deploy/docker-compose.service.yml) is a
 ready-to-edit service deployment. It keeps Waterline state in its own volume
 and accepts the standalone endpoint and token from the deployment environment.
-Resolve the qualified image before starting it:
+Select the stable image before starting it:
 
 ```bash
-WATERLINE_IMAGE="$(python3 scripts/resolve-current-prerelease.py image)" \
+WATERLINE_IMAGE="durableworkflow/waterline:2.0.0" \
   docker compose -f deploy/docker-compose.service.yml up -d
 ```
 
@@ -137,13 +133,13 @@ the PHP SDK, but not the embedded Workflow runtime:
 
 ```bash
 composer require \
-  "durable-workflow/waterline:^2.0@RC" \
-  "durable-workflow/sdk:^2.0@RC"
+  "durable-workflow/waterline:^2.0" \
+  "durable-workflow/sdk:^2.0"
 ```
 
 Set `WATERLINE_BACKEND=service` together with the endpoint, token, namespace,
 and access-mode inputs above. If service mode is selected without the SDK,
-Waterline stops during package boot and reports the prerelease-channel Composer
+Waterline stops during package boot and reports the stable-channel Composer
 command needed to add it.
 
 ## Embedded mode
@@ -153,8 +149,8 @@ the optional Workflow integration:
 
 ```bash
 composer require \
-  "durable-workflow/waterline:^2.0@RC" \
-  "durable-workflow/workflow:^2.0@RC"
+  "durable-workflow/waterline:^2.0" \
+  "durable-workflow/workflow:^2.0"
 
 php artisan waterline:install
 ```

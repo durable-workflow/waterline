@@ -27,18 +27,13 @@ This UI is installable via [Composer](https://getcomposer.org).
 
 ```bash
 composer require \
-    "durable-workflow/waterline:^2.0@RC" \
-    "durable-workflow/workflow:^2.0@RC"
+    "durable-workflow/waterline:^2.0" \
+    "durable-workflow/workflow:^2.0"
 
 php artisan waterline:install
 ```
 
-The `^2.0@RC` constraints follow the supported 2.0 prerelease channel without
-selecting an RC sequence number. Composer only honors prerelease stability
-allowances from the root project, so default-stable applications must allow
-both packages explicitly. The standalone PHP SDK is not part of the embedded
-dependency graph. Use a clean Composer solve when changing the channel, and
-drop the stability flags after `2.0.0` is tagged stable for both packages.
+The standalone PHP SDK is not part of the embedded dependency graph.
 
 ## Authorization
 
@@ -94,13 +89,13 @@ values in `effective_preferences` without mutating the stored preferences.
 
 ## Upgrading Waterline
 
-When upgrading into or within the 2.0 prerelease channel, let Composer resolve
-the supported channel together and publish the latest assets.
+When upgrading to 2.0, let Composer resolve the supported package graph together
+and publish the latest assets.
 
 ```bash
 composer require --with-all-dependencies \
-    "durable-workflow/waterline:^2.0@RC" \
-    "durable-workflow/workflow:^2.0@RC"
+    "durable-workflow/waterline:^2.0" \
+    "durable-workflow/workflow:^2.0"
 
 php artisan waterline:publish
 ```

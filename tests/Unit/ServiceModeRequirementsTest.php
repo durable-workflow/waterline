@@ -20,7 +20,7 @@ final class ServiceModeRequirementsTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
-    public function testServiceModeReportsPrereleaseChannelRemediationWhenThePhpSdkIsMissing(): void
+    public function testServiceModeReportsStableChannelRemediationWhenThePhpSdkIsMissing(): void
     {
         try {
             ServiceModeRequirements::assertSdkInstalled(static fn (string $class): bool => false);
@@ -29,7 +29,7 @@ final class ServiceModeRequirementsTest extends TestCase
             $message = $exception->getMessage();
 
             $this->assertStringContainsString(
-                'composer require --with-all-dependencies "durable-workflow/sdk:^2.0@RC"',
+                'composer require --with-all-dependencies "durable-workflow/sdk:^2.0"',
                 $message,
             );
             $this->assertDoesNotMatchRegularExpression(
@@ -39,16 +39,16 @@ final class ServiceModeRequirementsTest extends TestCase
         }
     }
 
-    public function testServiceModeRejectsAnOlderPrereleaseWithoutACompatibilityShim(): void
+    public function testServiceModeRejectsAnOlderReleaseWithoutACompatibilityShim(): void
     {
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage(
-            'Waterline service mode requires durable-workflow/sdk 2.0.0-rc.54 exactly; installed 2.0.0-rc.40.',
+            'Waterline service mode requires durable-workflow/sdk 2.0.0 exactly; installed 2.0.0-rc.54.',
         );
 
         ServiceModeRequirements::assertSdkInstalled(
             static fn (string $class): bool => true,
-            static fn (): string => '2.0.0-rc.40',
+            static fn (): string => '2.0.0-rc.54',
         );
     }
 }
