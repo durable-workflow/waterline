@@ -16,7 +16,9 @@ SCHEMA = "durable-workflow.waterline-current-product-tuple/v1"
 PACKAGE = "durable-workflow/waterline"
 SDK_PACKAGE = "durable-workflow/sdk"
 WORKFLOW_PACKAGE = "durable-workflow/workflow"
-PRERELEASE = re.compile(r"^2\.0\.0-(?:alpha|beta|rc)\.[1-9][0-9]*$")
+SUPPORTED_2_0 = re.compile(
+    r"^2\.0\.(?:0|[1-9][0-9]*)(?:-(?:alpha|beta|rc)\.[1-9][0-9]*)?$"
+)
 PUBLIC_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -36,8 +38,8 @@ def load_json(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
 
 
 def exact_version(value: object, label: str) -> str:
-    if not isinstance(value, str) or PRERELEASE.fullmatch(value) is None:
-        raise IdentityError(f"{label} must be an exact supported 2.0 prerelease")
+    if not isinstance(value, str) or SUPPORTED_2_0.fullmatch(value) is None:
+        raise IdentityError(f"{label} must be an exact supported 2.0 release")
     return value
 
 

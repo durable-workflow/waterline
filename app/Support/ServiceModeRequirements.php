@@ -9,9 +9,9 @@ use LogicException;
 
 final class ServiceModeRequirements
 {
-    public const SDK_VERSION = '2.0.0-rc.54';
+    public const SDK_VERSION = '2.0.0';
 
-    public const SDK_ONBOARDING_CONSTRAINT = '^2.0@RC';
+    public const SDK_ONBOARDING_CONSTRAINT = '^2.0';
 
     /**
      * @param  (callable(class-string): bool)|null  $classExists
