@@ -3,7 +3,7 @@ name: Screenshots
 # Disabled while sample-app upgrades to Laravel 13 + Durable Workflow 2.0-alpha.
 # The composer override path that backed this workflow assumed sample-app was on
 # Laravel 12 + DW 1.x with composer.json accepting workflow ^1.0 || ^2.0. Once
-# sample-app stabilizes on the v2 baseline this workflow needs reworking
+# sample-app stabilizes on the 2.x baseline this workflow needs reworking
 # (override targets, ref defaults, and possibly which branch of sample-app to
 # screenshot — main or Laravel-12).
 on:
@@ -14,13 +14,13 @@ on:
         required: false
         default: 'main'
       waterline_ref:
-        description: 'Waterline branch/SHA to screenshot. Default v2 is where active development lives; its composer.json accepts workflow ^1.0 || ^2.0 so the override path resolves.'
+        description: 'Waterline branch/SHA to screenshot. Default main is where active development lives; its composer.json accepts workflow ^1.0 || ^2.0 so the override path resolves.'
         required: false
-        default: 'v2'
+        default: 'main'
       workflow_ref:
         description: 'durable-workflow/workflow branch/SHA to override into sample-app'
         required: false
-        default: 'v2'
+        default: 'main'
       waterline_override:
         description: 'Override sample-app composer to use this checkout of Waterline'
         required: false
@@ -73,7 +73,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: waterline
-          ref: ${{ inputs.waterline_ref || 'v2' }}
+          ref: ${{ inputs.waterline_ref || 'main' }}
 
       - name: Checkout sample-app
         uses: actions/checkout@v4
@@ -88,7 +88,7 @@ jobs:
         with:
           repository: durable-workflow/workflow
           path: workflow
-          ref: ${{ inputs.workflow_ref || 'v2' }}
+          ref: ${{ inputs.workflow_ref || 'main' }}
 
       - name: Set up PHP 8.4
         uses: shivammathur/setup-php@v2
