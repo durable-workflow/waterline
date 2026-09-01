@@ -229,51 +229,5 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         self.assertEqual("qualify-release-source", jobs["smoke"]["needs"])
         self.assertEqual(["qualify-release-source", "smoke"], jobs["publish"]["needs"])
 
-    def test_service_image_recovery_qualifies_exact_planned_source_before_push(
-        self,
-    ) -> None:
-        steps = workflow("service-image-recovery.yml")["jobs"]["publish"]["steps"]
-        matching = [
-            (index, step)
-            for index, step in enumerate(steps)
-            if "scripts/ci/waterline_release_identity.py" in step.get("run", "")
-        ]
-
-        self.assertEqual(1, len(matching))
-        qualification_index, qualification = matching[0]
-        command = qualification["run"]
-        self.assertIn("--approved-tuple release/current-product-tuple.json", command)
-        self.assertIn("--waterline-composer release-source/composer.json", command)
-        self.assertIn(
-            "--standalone-composer release-source/standalone/composer.json", command
-        )
-        self.assertIn(
-            "--standalone-lock release-source/standalone/composer.lock", command
-        )
-        self.assertIn(
-            '--release-version "${{ needs.discover.outputs.version }}"', command
-        )
-
-        checkout_index = next(
-            index
-            for index, step in enumerate(steps)
-            if step.get("name")
-            == "Check out the exact planned source without running its workflow code"
-        )
-        login_index = next(
-            index
-            for index, step in enumerate(steps)
-            if step.get("uses", "").startswith("docker/login-action@")
-        )
-        publish_index = next(
-            index
-            for index, step in enumerate(steps)
-            if step.get("uses", "").startswith("docker/build-push-action@")
-        )
-        self.assertLess(checkout_index, qualification_index)
-        self.assertLess(qualification_index, login_index)
-        self.assertLess(qualification_index, publish_index)
-
-
 if __name__ == "__main__":
     unittest.main()

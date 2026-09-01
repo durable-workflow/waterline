@@ -19,16 +19,11 @@ jobs:
           persist-credentials: false
       - name: Exercise service mode through the PHP SDK
         run: scripts/ci/service-mode-image-smoke.sh
-      - name: Exercise the resolver-selected public service image
+      - name: Exercise the current stable public service image
         run: |
-          tuple="$(mktemp)"
-          trap 'rm -f "$tuple"' EXIT
-          python3 scripts/resolve-current-prerelease.py json > "$tuple"
-          WATERLINE_IMAGE="$(
-            python3 -c 'import json, pathlib, sys; value = json.loads(pathlib.Path(sys.argv[1]).read_text()); print(value["service_image"]["pull"])' "$tuple"
-          )"
           EXPECTED_WATERLINE_VERSION="$(
-            python3 -c 'import json, pathlib, sys; value = json.loads(pathlib.Path(sys.argv[1]).read_text()); print(value["release"])' "$tuple"
+            python3 -c 'import json, pathlib; value = json.loads(pathlib.Path("release/current-product-tuple.json").read_text()); print(value["versions"]["waterline"])'
           )"
+          WATERLINE_IMAGE="durableworkflow/waterline:${EXPECTED_WATERLINE_VERSION}"
           export WATERLINE_IMAGE EXPECTED_WATERLINE_VERSION
           SERVICE_IMAGE_SKIP_BUILD=1 scripts/ci/service-mode-image-smoke.sh

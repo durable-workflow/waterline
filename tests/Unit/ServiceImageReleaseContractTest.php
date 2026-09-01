@@ -109,7 +109,7 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringNotContainsString('workflow_dispatch:', $workflow);
         $this->assertStringNotContainsString('branches: [v2]', $workflow);
         $this->assertStringContainsString("if: startsWith(github.ref, 'refs/tags/2.')", $workflow);
-        $this->assertStringContainsString('environment: release-plan-publication', $workflow);
+        $this->assertStringContainsString('environment: release-publication', $workflow);
         $this->assertStringContainsString('SERVICE_IMAGE_PLATFORMS: linux/amd64,linux/arm64', $workflow);
         $this->assertStringContainsString('platforms: ${{ env.SERVICE_IMAGE_PLATFORMS }}', $workflow);
         $this->assertStringContainsString("SERVICE_IMAGE_SKIP_BUILD: '1'", $workflow);
@@ -131,7 +131,7 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringContainsString('run: test "$MEETS_REPEAT_BUDGET" = true', $workflow);
         $this->assertStringContainsString('path: service-image-build-evidence.json', $workflow);
 
-        $environment = strpos($workflow, 'environment: release-plan-publication');
+        $environment = strpos($workflow, 'environment: release-publication');
         $login = strpos($workflow, 'docker/login-action@');
         $cache = strpos($workflow, 'name: Resolve the protected publication cache');
         $publish = strpos($workflow, 'name: Build and publish immutable version tag');

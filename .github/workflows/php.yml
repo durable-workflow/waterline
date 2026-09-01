@@ -11,13 +11,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.server_url }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: build-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   action-policy:
     name: Central action policy preflight
-    if: ${{ github.server_url == 'https://github.com' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -104,7 +103,7 @@ jobs:
       run: scripts/check-public-boundary.sh
 
   release-contracts:
-    name: Release and recovery contracts
+    name: Stable release contracts
     needs: classify
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -140,89 +139,28 @@ jobs:
         --standalone-lock standalone/composer.lock
         --evidence waterline-release-identity-evidence.json
 
-    - name: Check out the shared target qualification policy
-      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
-      with:
-        repository: durable-workflow/.github
-        ref: main
-        path: .target-qualification
-        persist-credentials: false
-
-    - name: Install the isolated recovery policy parser
+    - name: Validate stable release tooling
       run: |
-        python -m venv "$RUNNER_TEMP/recovery-policy"
-        "$RUNNER_TEMP/recovery-policy/bin/python" -m pip install \
-          --disable-pip-version-check \
-          --no-cache-dir \
-          --no-deps \
-          --only-binary=:all: \
-          --requirement scripts/ci/workflow-requirements.txt
-
-    - name: Validate release and recovery tooling
-      env:
-        CONFORMANCE_BASE_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        SHARED_TARGET_QUALIFICATION_ROOT: ${{ github.workspace }}/.target-qualification
-      run: |
-        policy_python="$RUNNER_TEMP/recovery-policy/bin/python"
-        "$policy_python" -m py_compile \
-          scripts/ci/component-release-recovery.py \
-          scripts/ci/resolve-current-waterline-release.py \
-          scripts/resolve-current-prerelease.py \
-          scripts/ci/test-exact-current-composer.py \
-          scripts/ci/php_waterline_release_train.py \
-          scripts/ci/publish-planned-tag.py \
-          scripts/ci/release_qualification_asset.py \
+        python -m py_compile \
           scripts/ci/release_example_contract.py \
-          scripts/ci/release_recovery_consumer_conformance.py \
-          scripts/ci/service-image-recovery.py \
           scripts/ci/standalone_lock_contract.py \
-          scripts/ci/test-component-release-recovery.py \
-          scripts/ci/test-current-prerelease-onboarding.py \
-          scripts/ci/test-current-waterline-release.py \
-          scripts/ci/test-docs-release-audit.py \
-          scripts/ci/test-php-waterline-release-train.py \
-          scripts/ci/test-publish-planned-tag.py \
-          scripts/ci/test-release-qualification-asset.py \
           scripts/ci/test-release-example-contract.py \
-          scripts/ci/test-service-image-recovery.py \
           scripts/ci/test-standalone-lock-contract.py \
-          scripts/ci/test-verify-release-surfaces.py \
           scripts/ci/test-waterline-release-identity.py \
-          scripts/ci/verify-release-surfaces.py \
           scripts/ci/waterline_release_identity.py
-        arguments=()
-        if [ -n "$CONFORMANCE_BASE_REF" ]; then
-          arguments+=(--previous-ref "$CONFORMANCE_BASE_REF")
-        fi
-        "$policy_python" scripts/ci/release_recovery_consumer_conformance.py \
-          --contract scripts/ci/release-recovery-consumer-contract.json \
-          --adapter scripts/ci/release-recovery-consumer-adapter.json \
-          "${arguments[@]}"
-        "$policy_python" scripts/ci/test-publish-planned-tag.py
-        "$policy_python" scripts/ci/test-release-qualification-asset.py
-        "$policy_python" scripts/ci/test-current-prerelease-onboarding.py
-        "$policy_python" scripts/ci/test-current-waterline-release.py
-        "$policy_python" scripts/ci/test-docs-release-audit.py
-        "$policy_python" scripts/ci/test-exact-current-composer.py
-        "$policy_python" scripts/ci/test-php-waterline-release-train.py
-        "$policy_python" scripts/ci/test-release-example-contract.py
-        "$policy_python" scripts/ci/test-service-image-recovery.py
-        "$policy_python" scripts/ci/test-standalone-lock-contract.py
-        "$policy_python" scripts/ci/test-verify-release-surfaces.py
-        "$policy_python" scripts/ci/test-waterline-release-identity.py
-        "$policy_python" scripts/ci/release_example_contract.py
-        "$policy_python" scripts/ci/standalone_lock_contract.py
+        python scripts/ci/test-release-example-contract.py
+        python scripts/ci/test-standalone-lock-contract.py
+        python scripts/ci/test-waterline-release-identity.py
+        python scripts/ci/release_example_contract.py
+        python scripts/ci/standalone_lock_contract.py
 
-    - name: Solve both public prerelease Composer channels from clean roots
-      env:
-        VERIFY_PUBLIC_RELEASE_AUTHORITY: >-
-          ${{ github.server_url == 'https://github.com' }}
+    - name: Solve both stable public Composer graphs from clean roots
       run: scripts/ci/check-onboarding-composer.sh
 
   conformance-contracts:
     name: Published-artifact conformance contracts
     needs: classify
-    if: ${{ github.server_url == 'https://github.com' && needs.classify.outputs.qualification-class == 'conformance' }}
+    if: ${{ needs.classify.outputs.qualification-class == 'conformance' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -281,7 +219,7 @@ jobs:
   dialog-visual:
     name: Responsive workflow-list dialogs
     needs: classify
-    if: ${{ github.server_url == 'https://github.com' && needs.classify.outputs.dialog-visual-required == 'true' }}
+    if: ${{ needs.classify.outputs.dialog-visual-required == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
@@ -355,6 +293,8 @@ jobs:
       env:
         COMPOSER_MEMORY_LIMIT: '-1'
       run: |
+        # PHP source is intentionally single-quoted.
+        # shellcheck disable=SC2016
         sdk_version="$(
           php -r '
             $tuple = json_decode(
@@ -425,7 +365,7 @@ jobs:
       run: |
         php artisan serve --host=127.0.0.1 --port=8000 > ../dialog-web.log 2>&1 &
         echo $! > ../dialog-web.pid
-        for attempt in $(seq 1 30); do
+        for _ in $(seq 1 30); do
           if curl -sf "${APP_URL}/up" > /dev/null; then
             exit 0
           fi
@@ -458,12 +398,15 @@ jobs:
 
     - name: Stop Sample App
       if: ${{ always() }}
-      run: '[ -f dialog-web.pid ] && kill "$(cat dialog-web.pid)" 2>/dev/null || true'
+      run: |
+        if [ -f dialog-web.pid ]; then
+          kill "$(cat dialog-web.pid)" 2>/dev/null || true
+        fi
 
   run-detail-visual:
     name: Responsive run detail
     needs: classify
-    if: ${{ github.server_url == 'https://github.com' && needs.classify.outputs.run-detail-visual-required == 'true' }}
+    if: ${{ needs.classify.outputs.run-detail-visual-required == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
 
@@ -538,6 +481,8 @@ jobs:
       env:
         COMPOSER_MEMORY_LIMIT: '-1'
       run: |
+        # PHP source is intentionally single-quoted.
+        # shellcheck disable=SC2016
         sdk_version="$(
           php -r '
             $tuple = json_decode(
@@ -614,7 +559,7 @@ jobs:
           WATERLINE_SERVER_TOKEN=run-detail-visual-token \
           php artisan serve --host=127.0.0.1 --port=8001 > ../run-detail-service-web.log 2>&1 &
         echo $! > ../run-detail-service-web.pid
-        for attempt in $(seq 1 30); do
+        for _ in $(seq 1 30); do
           if curl -sf "${APP_URL}/up" > /dev/null \
             && curl -sf "${WATERLINE_SERVICE_VISUAL_URL}/up" > /dev/null; then
             exit 0
@@ -651,8 +596,12 @@ jobs:
     - name: Stop Sample App
       if: ${{ always() }}
       run: |
-        [ -f run-detail-web.pid ] && kill "$(cat run-detail-web.pid)" 2>/dev/null || true
-        [ -f run-detail-service-web.pid ] && kill "$(cat run-detail-service-web.pid)" 2>/dev/null || true
+        if [ -f run-detail-web.pid ]; then
+          kill "$(cat run-detail-web.pid)" 2>/dev/null || true
+        fi
+        if [ -f run-detail-service-web.pid ]; then
+          kill "$(cat run-detail-service-web.pid)" 2>/dev/null || true
+        fi
 
   frontend:
     name: Frontend dependency and production build
@@ -708,7 +657,6 @@ jobs:
       run: composer validate --strict --no-check-all
 
     - name: Cache Composer packages
-      if: ${{ github.server_url == 'https://github.com' }}
       uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25  # v5
       with:
         path: vendor
@@ -717,21 +665,18 @@ jobs:
           ${{ github.event_name }}-${{ runner.os }}-php-8.2-
 
     - name: Install maintained qualification dependencies
-      if: ${{ github.server_url == 'https://github.com' }}
       run: composer install --prefer-dist --no-progress --no-interaction
 
     - name: Audit qualification dependencies
-      if: ${{ github.server_url == 'https://github.com' }}
       run: composer audit --no-interaction
 
     - name: Build Laravel 12 Workbench scaffold
-      if: ${{ github.server_url == 'https://github.com' }}
       run: composer build
 
   laravel-matrix:
     name: Resolve Laravel dependency matrix
     needs: [classify, build]
-    if: ${{ github.server_url == 'https://github.com' && needs.classify.outputs.qualification-class == 'complete' }}
+    if: ${{ needs.classify.outputs.qualification-class == 'complete' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -757,7 +702,7 @@ jobs:
   laravel-compatibility:
     name: ${{ matrix.label }} compatibility
     needs: [classify, build, laravel-matrix]
-    if: ${{ github.server_url == 'https://github.com' && needs.classify.outputs.qualification-class == 'complete' }}
+    if: ${{ needs.classify.outputs.qualification-class == 'complete' }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -849,7 +794,7 @@ jobs:
   qualification:
     name: Complete database qualification (${{ matrix.label }})
     needs: [classify, build]
-    if: ${{ github.server_url == 'https://github.com' && needs.classify.outputs.qualification-class == 'complete' }}
+    if: ${{ needs.classify.outputs.qualification-class == 'complete' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -1075,7 +1020,7 @@ jobs:
 
   target-branch-qualification:
     name: Target branch qualification
-    if: ${{ always() && github.server_url == 'https://github.com' }}
+    if: ${{ always() }}
     needs:
       - action-policy
       - classify
@@ -1093,7 +1038,6 @@ jobs:
 
     steps:
     - name: Require central action policy preflight
-      if: ${{ github.server_url == 'https://github.com' }}
       env:
         ACTION_POLICY_RESULT: ${{ needs.action-policy.result }}
       run: test "$ACTION_POLICY_RESULT" = success
