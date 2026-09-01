@@ -2,9 +2,9 @@ name: build
 
 on:
   push:
-    branches: [v2]
+    branches: [v2, main]
   pull_request:
-    branches: [v2]
+    branches: [v2, main]
   workflow_dispatch:
 
 permissions:
@@ -273,7 +273,7 @@ jobs:
         repository: durable-workflow/workflow
         path: workflow
         persist-credentials: false
-        ref: v2
+        ref: main
 
     - name: Install PHP 8.4 and Composer
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
@@ -461,7 +461,7 @@ jobs:
         repository: durable-workflow/workflow
         path: workflow
         persist-credentials: false
-        ref: v2
+        ref: main
 
     - name: Install PHP 8.4 and Composer
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2

@@ -1,7 +1,7 @@
 # Waterline
 
 <p align="center">
-  <a href="https://github.com/durable-workflow/waterline/actions/workflows/php.yml?query=branch%3Av2"><img src="https://github.com/durable-workflow/waterline/actions/workflows/php.yml/badge.svg?branch=v2" alt="Build status"></a>
+  <a href="https://github.com/durable-workflow/waterline/actions/workflows/php.yml?query=branch%3Amain"><img src="https://github.com/durable-workflow/waterline/actions/workflows/php.yml/badge.svg?branch=main" alt="Build status"></a>
   <a href="https://packagist.org/packages/durable-workflow/waterline"><img src="https://img.shields.io/packagist/v/durable-workflow/waterline" alt="Latest Packagist version"></a>
   <a href="https://hub.docker.com/r/durableworkflow/waterline"><img src="https://img.shields.io/docker/pulls/durableworkflow/waterline" alt="Docker pulls"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/durable-workflow/waterline" alt="MIT license"></a>
