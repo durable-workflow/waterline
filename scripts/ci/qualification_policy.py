@@ -102,7 +102,6 @@ RUN_DETAIL_VISUAL_PATHS = frozenset(
 SHARED_VISUAL_PATHS = frozenset(
     {
         ".github/workflows/php.yml",
-        ".github/workflows/screenshots.yml",
         "package-lock.json",
         "package.json",
         "resources/js/WaterlineApp.vue",

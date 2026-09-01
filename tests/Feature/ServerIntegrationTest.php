@@ -13,7 +13,7 @@ use Waterline\Support\ServiceModeRequirements;
 use Waterline\Tests\TestCase;
 
 /**
- * Phase 0 Integration Test: Waterline <-> Server Container
+ * Waterline service integration test against a Server container.
  *
  * This test validates that Waterline can query and render workflow data from a
  * running durableworkflow/server container using the current v2 HTTP and table

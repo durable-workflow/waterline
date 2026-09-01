@@ -1,4 +1,4 @@
-# Docker Compose for Waterline Phase 0 Integration Test
+# Docker Compose for the Waterline service integration test
 # Spins up durableworkflow/server for end-to-end validation
 #
 # Usage:
