@@ -117,10 +117,10 @@ def validate_focused_workflow(
             ):
                 violations.add(Violation(workflow_name, "filtered-focused-trigger"))
             branches = trigger_configuration.get("branches")
-            if isinstance(branches, str) and branches != "v2":
-                violations.add(Violation(workflow_name, "focused-trigger-misses-v2"))
-            if isinstance(branches, list) and "v2" not in branches:
-                violations.add(Violation(workflow_name, "focused-trigger-misses-v2"))
+            if isinstance(branches, str) and branches != "main":
+                violations.add(Violation(workflow_name, "focused-trigger-misses-main"))
+            if isinstance(branches, list) and "main" not in branches:
+                violations.add(Violation(workflow_name, "focused-trigger-misses-main"))
 
     command = str(contract["command"])
     jobs = document.get("jobs", {})
