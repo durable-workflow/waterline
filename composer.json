@@ -76,7 +76,7 @@
             "dev-main": "2.0.x-dev"
         },
         "durable-workflow": {
-            "product-train": "2.0.0",
+            "product-train": "2.0.1",
             "service-capacity-evidence": {
                 "schema": "durable-workflow.v2.namespace-capacity-evidence",
                 "schema-version": 1,
