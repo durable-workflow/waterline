@@ -3,7 +3,7 @@ name: Service image smoke
 on:
   pull_request:
   push:
-    branches: [v2]
+    branches: [v2, main]
 
 permissions:
   contents: read

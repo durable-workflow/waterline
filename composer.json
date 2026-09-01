@@ -72,6 +72,9 @@
         "prepare": "@php vendor/bin/testbench package:discover --ansi"
     },
     "extra": {
+        "branch-alias": {
+            "dev-main": "2.0.x-dev"
+        },
         "durable-workflow": {
             "product-train": "2.0.0",
             "service-capacity-evidence": {
