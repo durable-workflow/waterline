@@ -22,11 +22,12 @@ SPEC.loader.exec_module(identity)
 
 
 CURRENT_PUBLIC = {
-    "waterline": "2.0.0-rc.35",
+    "waterline": "2.0.1",
     "workflow": "2.0.1",
     "sdk-php": "2.0.0",
 }
-CANDIDATE_WATERLINE = "2.0.0"
+CANDIDATE_WATERLINE = "2.0.2"
+CANDIDATE_SDK = "2.0.1"
 PUBLIC_SDK_REFERENCE = "0123456789abcdef0123456789abcdef01234567"
 
 
@@ -39,7 +40,7 @@ def manifest() -> dict:
         "name": identity.PACKAGE,
         "require": {},
         "require-dev": {
-            identity.SDK_PACKAGE: CURRENT_PUBLIC["sdk-php"],
+            identity.SDK_PACKAGE: CANDIDATE_SDK,
             identity.WORKFLOW_PACKAGE: CURRENT_PUBLIC["workflow"],
         },
         "extra": {"durable-workflow": {"product-train": CANDIDATE_WATERLINE}},
@@ -47,11 +48,11 @@ def manifest() -> dict:
 
 
 def standalone() -> dict:
-    return {"require": {identity.SDK_PACKAGE: CURRENT_PUBLIC["sdk-php"]}}
+    return {"require": {identity.SDK_PACKAGE: CANDIDATE_SDK}}
 
 
 def lock() -> dict:
-    version = CURRENT_PUBLIC["sdk-php"]
+    version = CANDIDATE_SDK
     return {
         "packages": [
             {
@@ -115,7 +116,7 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
             {
                 "waterline": CANDIDATE_WATERLINE,
                 "workflow": CURRENT_PUBLIC["workflow"],
-                "sdk-php": CURRENT_PUBLIC["sdk-php"],
+                "sdk-php": CANDIDATE_SDK,
             },
             evidence["candidate_source"],
         )
@@ -126,7 +127,7 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         stale["require-dev"][identity.SDK_PACKAGE] = "2.0.0-rc.11"
 
         with self.assertRaisesRegex(
-            identity.IdentityError, "do not match the current public dependency selection"
+            identity.IdentityError, "precedes the current public dependency"
         ):
             validate(candidate_manifest=stale)
 
@@ -135,7 +136,7 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         stale["require-dev"][identity.WORKFLOW_PACKAGE] = "2.0.0-rc.13"
 
         with self.assertRaisesRegex(
-            identity.IdentityError, "do not match the current public dependency selection"
+            identity.IdentityError, "precedes the current public dependency"
         ):
             validate(candidate_manifest=stale)
 

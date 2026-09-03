@@ -9,7 +9,7 @@ use LogicException;
 
 final class ServiceModeRequirements
 {
-    public const SDK_VERSION = '2.0.0';
+    public const SDK_QUALIFIED_VERSION = '2.0.1';
 
     public const SDK_ONBOARDING_CONSTRAINT = '^2.0';
 
@@ -32,12 +32,18 @@ final class ServiceModeRequirements
 
         $installedVersion ??= static fn (): ?string => InstalledVersions::getPrettyVersion('durable-workflow/sdk');
         $actual = $installedVersion();
-        if ($actual !== self::SDK_VERSION) {
+        if (! self::supportsSdkVersion($actual)) {
             throw new LogicException(sprintf(
-                'Waterline service mode requires durable-workflow/sdk %s exactly; installed %s. Update the SDK before starting Waterline service mode.',
-                self::SDK_VERSION,
+                'Waterline service mode requires a stable durable-workflow/sdk release matching %s; installed %s. Update the SDK before starting Waterline service mode.',
+                self::SDK_ONBOARDING_CONSTRAINT,
                 $actual ?? '<unknown>',
             ));
         }
+    }
+
+    private static function supportsSdkVersion(?string $version): bool
+    {
+        return is_string($version)
+            && preg_match('/\A2\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\z/D', $version) === 1;
     }
 }

@@ -43,7 +43,8 @@ final class InstallationContractTest extends TestCase
             512,
             JSON_THROW_ON_ERROR,
         );
-        $sdkVersion = $published['versions']['sdk-php'] ?? null;
+        $publishedSdkVersion = $published['versions']['sdk-php'] ?? null;
+        $qualifiedSdkVersion = $manifest['require-dev']['durable-workflow/sdk'] ?? null;
         $workflowVersion = $published['versions']['workflow'] ?? null;
 
         $this->assertSame([
@@ -57,11 +58,16 @@ final class InstallationContractTest extends TestCase
         );
         $this->assertArrayNotHasKey('durable-workflow/sdk', $manifest['require'] ?? []);
         $this->assertArrayNotHasKey('durable-workflow/workflow', $manifest['require'] ?? []);
-        $this->assertSame($sdkVersion, $manifest['require-dev']['durable-workflow/sdk'] ?? null);
+        $this->assertIsString($publishedSdkVersion);
+        $this->assertIsString($qualifiedSdkVersion);
+        $this->assertGreaterThanOrEqual(0, version_compare($qualifiedSdkVersion, $publishedSdkVersion));
         $this->assertSame($workflowVersion, $manifest['require-dev']['durable-workflow/workflow'] ?? null);
         $this->assertArrayHasKey('durable-workflow/sdk', $manifest['suggest'] ?? []);
         $this->assertArrayHasKey('durable-workflow/workflow', $manifest['suggest'] ?? []);
-        $this->assertSame($sdkVersion, \Waterline\Support\ServiceModeRequirements::SDK_VERSION);
+        $this->assertSame(
+            $qualifiedSdkVersion,
+            \Waterline\Support\ServiceModeRequirements::SDK_QUALIFIED_VERSION,
+        );
     }
 
     public function testCurrentCandidateAdvancesWithoutRewritingFirstSupportedCapacityEvidence(): void
