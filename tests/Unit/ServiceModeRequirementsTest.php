@@ -14,10 +14,21 @@ final class ServiceModeRequirementsTest extends TestCase
     {
         ServiceModeRequirements::assertSdkInstalled(
             static fn (string $class): bool => true,
-            static fn (): string => ServiceModeRequirements::SDK_VERSION,
+            static fn (): string => ServiceModeRequirements::SDK_QUALIFIED_VERSION,
         );
 
         $this->addToAssertionCount(1);
+    }
+
+    public function testServiceModeAcceptsCompatibleStablePhpSdkReleases(): void
+    {
+        foreach (['2.0.0', '2.0.2', '2.1.0', '2.99.99'] as $version) {
+            ServiceModeRequirements::assertSdkInstalled(
+                static fn (string $class): bool => true,
+                static fn (): string => $version,
+            );
+            $this->addToAssertionCount(1);
+        }
     }
 
     public function testServiceModeReportsStableChannelRemediationWhenThePhpSdkIsMissing(): void
@@ -39,16 +50,21 @@ final class ServiceModeRequirementsTest extends TestCase
         }
     }
 
-    public function testServiceModeRejectsAnOlderReleaseWithoutACompatibilityShim(): void
+    public function testServiceModeRejectsPrereleaseAndIncompatiblePhpSdkVersions(): void
     {
-        $this->expectException(LogicException::class);
-        $this->expectExceptionMessage(
-            'Waterline service mode requires durable-workflow/sdk 2.0.0 exactly; installed 2.0.0-rc.54.',
-        );
-
-        ServiceModeRequirements::assertSdkInstalled(
-            static fn (string $class): bool => true,
-            static fn (): string => '2.0.0-rc.54',
-        );
+        foreach (['2.0.0-rc.54', '1.99.0', '3.0.0', '2.0.x-dev', 'invalid'] as $version) {
+            try {
+                ServiceModeRequirements::assertSdkInstalled(
+                    static fn (string $class): bool => true,
+                    static fn (): string => $version,
+                );
+                $this->fail("Incompatible PHP SDK {$version} must be rejected.");
+            } catch (LogicException $exception) {
+                $this->assertStringContainsString(
+                    "requires a stable durable-workflow/sdk release matching ^2.0; installed {$version}",
+                    $exception->getMessage(),
+                );
+            }
+        }
     }
 }

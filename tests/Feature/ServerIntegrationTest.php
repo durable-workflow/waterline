@@ -216,7 +216,7 @@ class ServerIntegrationTest extends TestCase
         $currentSdk = $waterlineManifest['require-dev']['durable-workflow/sdk'] ?? null;
         $this->assertIsString($currentSdk);
         $installedSdk = InstalledVersions::getPrettyVersion('durable-workflow/sdk');
-        $this->assertSame(ServiceModeRequirements::SDK_VERSION, $installedSdk);
+        $this->assertSame(ServiceModeRequirements::SDK_QUALIFIED_VERSION, $installedSdk);
         $this->assertSame($currentSdk, $installedSdk);
         $this->assertGreaterThanOrEqual(
             0,

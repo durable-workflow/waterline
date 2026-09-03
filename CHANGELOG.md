@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.0.2 - 2026-09-03
+
+Waterline service mode now treats stable PHP SDK `2.x` releases as the
+SemVer-compatible line instead of requiring exact patch lockstep. The package
+and standalone service are qualified against PHP SDK `2.0.1`; prerelease and
+incompatible major versions still fail at startup with actionable guidance.
+
 ## 2.0.0 - 2026-09-01
 
 Waterline 2.0.0 is the stable operator UI for embedded and service-mode Durable

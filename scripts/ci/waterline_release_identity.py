@@ -17,7 +17,7 @@ PACKAGE = "durable-workflow/waterline"
 SDK_PACKAGE = "durable-workflow/sdk"
 WORKFLOW_PACKAGE = "durable-workflow/workflow"
 SUPPORTED_2_0 = re.compile(
-    r"^2\.0\.(?:0|[1-9][0-9]*)(?:-(?:alpha|beta|rc)\.[1-9][0-9]*)?$"
+    r"^2\.0\.(?P<patch>0|[1-9][0-9]*)(?:-(?P<stage>alpha|beta|rc)\.(?P<number>[1-9][0-9]*))?$"
 )
 PUBLIC_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 
@@ -41,6 +41,19 @@ def exact_version(value: object, label: str) -> str:
     if not isinstance(value, str) or SUPPORTED_2_0.fullmatch(value) is None:
         raise IdentityError(f"{label} must be an exact supported 2.0 release")
     return value
+
+
+def version_order(value: str) -> tuple[int, int, int]:
+    match = SUPPORTED_2_0.fullmatch(value)
+    if match is None:
+        raise IdentityError(f"cannot order unsupported release {value!r}")
+    stage = match.group("stage")
+    stage_order = {"alpha": 0, "beta": 1, "rc": 2, None: 3}
+    return (
+        int(match.group("patch")),
+        stage_order[stage],
+        int(match.group("number") or 0),
+    )
 
 
 def approved_versions(approved: Mapping[str, Any]) -> dict[str, str]:
@@ -154,32 +167,26 @@ def validate(
             manifest, "require-dev", SDK_PACKAGE, "release source composer.json"
         ),
     }
-    candidate_dependencies = {
-        name: candidate[name] for name in ("workflow", "sdk-php")
-    }
-    published_dependencies = {
-        name: published[name] for name in ("workflow", "sdk-php")
-    }
-    if candidate_dependencies != published_dependencies:
-        raise IdentityError(
-            "candidate source dependency pins do not match the current public "
-            f"dependency selection: expected {published_dependencies}, "
-            f"observed {candidate_dependencies}"
-        )
+    for name in ("workflow", "sdk-php"):
+        if version_order(candidate[name]) < version_order(published[name]):
+            raise IdentityError(
+                f"candidate source {name} dependency {candidate[name]} precedes "
+                f"the current public dependency {published[name]}"
+            )
 
     standalone_sdk = required_version(
         standalone, "require", SDK_PACKAGE, "standalone/composer.json"
     )
-    if standalone_sdk != published["sdk-php"]:
+    if standalone_sdk != candidate["sdk-php"]:
         raise IdentityError(
-            "standalone service PHP SDK identity does not match the current public "
-            "dependency selection"
+            "standalone service PHP SDK identity does not match the candidate "
+            "source dependency selection"
         )
     locked_sdk = locked_version(lock, SDK_PACKAGE)
-    if locked_sdk != published["sdk-php"]:
+    if locked_sdk != candidate["sdk-php"]:
         raise IdentityError(
-            "standalone service lock PHP SDK identity does not match the current "
-            "public dependency selection"
+            "standalone service lock PHP SDK identity does not match the candidate "
+            "source dependency selection"
         )
     require_locked_public_route(lock, SDK_PACKAGE)
 
@@ -244,9 +251,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
         else f"candidate Waterline source {candidate['waterline']}"
     )
     print(
-        f"Verified {subject} with current public dependencies Workflow "
-        f"{published['workflow']} and PHP SDK {published['sdk-php']}; current "
-        f"published Waterline is {published['waterline']}"
+        f"Verified {subject} with candidate dependencies Workflow "
+        f"{candidate['workflow']} and PHP SDK {candidate['sdk-php']}; current "
+        f"public tuple is Waterline {published['waterline']}, Workflow "
+        f"{published['workflow']}, and PHP SDK {published['sdk-php']}"
     )
     return 0
 
