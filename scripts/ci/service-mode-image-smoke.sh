@@ -355,6 +355,9 @@ $signal = json_decode($signal, true, flags: JSON_THROW_ON_ERROR);
 $detailExpectations = [
     "selected_run_id" => "smoke-run",
     "timeline.0.event_type" => "WorkflowStarted",
+    "timeline.0.type" => "WorkflowStarted",
+    "timeline.0.recorded_at" => "2026-07-22T12:00:00Z",
+    "timeline.0.id" => "smoke-run:history:1",
 ];
 if ($workflowStreamsRequired === "1") {
     $detailExpectations += [

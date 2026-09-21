@@ -8,6 +8,7 @@
             </div>
             <div class="flex-grow-1">
                 <div class="event-summary mb-1">
+                    <span v-if="event.sequence !== undefined && event.sequence !== null" class="text-muted small mr-2">#{{ event.sequence }}</span>
                     <strong>{{ event.summary || event.type }}</strong>
                     <span v-if="event.recorded_at" class="text-muted small ml-2">
                         {{ formatTimestamp(event.recorded_at) }}

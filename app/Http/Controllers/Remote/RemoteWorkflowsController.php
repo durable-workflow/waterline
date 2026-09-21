@@ -264,6 +264,7 @@ final class RemoteWorkflowsController extends RemoteController
         $selectedRunId = (string) ($execution->runId ?? $runId ?? '');
         $runs = $client->listWorkflowRuns($workflowId);
         $history = $selectedRunId !== '' ? $client->workflowHistory($workflowId, $selectedRunId) : [];
+        $timeline = $this->historyEvents($history, $selectedRunId);
         $diagnostics = [];
         $workflowStreams = [];
         $workflowStreamsState = 'unavailable';
@@ -306,10 +307,10 @@ final class RemoteWorkflowsController extends RemoteController
             'arguments' => $execution->input,
             'output' => $execution->output,
             'search_attributes' => $execution->searchAttributes ?? [],
-            'timeline' => $this->historyEvents($history),
-            'timeline_total_count' => count($this->historyEvents($history)),
-            'timeline_returned_count' => count($this->historyEvents($history)),
-            'history_event_count' => count($this->historyEvents($history)),
+            'timeline' => $timeline,
+            'timeline_total_count' => count($timeline),
+            'timeline_returned_count' => count($timeline),
+            'history_event_count' => count($timeline),
             'run_navigation' => $this->runNavigation($runs, $execution->workflowId, $selectedRunId),
             'activities' => is_array($diagnostics['activities'] ?? null) ? $diagnostics['activities'] : [],
             'tasks' => is_array($diagnostics['tasks'] ?? null) ? $diagnostics['tasks'] : [],
@@ -514,11 +515,20 @@ final class RemoteWorkflowsController extends RemoteController
     /** @param array<string, mixed> $history
      * @return list<array<string, mixed>>
      */
-    private function historyEvents(array $history): array
+    private function historyEvents(array $history, string $runId): array
     {
         $events = $history['events'] ?? $history['history_events'] ?? [];
 
-        return is_array($events) ? array_values(array_filter($events, 'is_array')) : [];
+        if (! is_array($events)) {
+            return [];
+        }
+
+        // Server history stays intact; add the aliases used by both history views.
+        return array_map(static fn (array $event): array => array_merge($event, [
+            'id' => $event['id'] ?? $runId.':history:'.($event['sequence'] ?? ''),
+            'type' => $event['type'] ?? $event['event_type'] ?? null,
+            'recorded_at' => $event['recorded_at'] ?? $event['timestamp'] ?? null,
+        ]), array_values(array_filter($events, 'is_array')));
     }
 
     /** @return list<mixed> */

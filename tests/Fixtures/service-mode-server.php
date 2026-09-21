@@ -79,9 +79,10 @@ $payload = match (true) {
     ],
     $method === 'GET' && $path === '/api/workflows/smoke-order/runs/smoke-run/history' => [
         'events' => [[
-            'id' => 'event-1',
             'sequence' => 1,
             'event_type' => 'WorkflowStarted',
+            'timestamp' => '2026-07-22T12:00:00Z',
+            'principal' => null,
             'payload' => [],
         ]],
     ],
