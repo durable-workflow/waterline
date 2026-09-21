@@ -36,6 +36,9 @@ final class FakeRemoteClient
     /** @var array<string, mixed>|null */
     public ?array $capacityEvidence = null;
 
+    /** @var array<string, mixed>|null */
+    public ?array $history = null;
+
     public function listWorkflows(
         ?string $workflowType = null,
         ?string $status = null,
@@ -84,12 +87,12 @@ final class FakeRemoteClient
     {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        return ['events' => [[
-            'id' => 'event-1',
+        return $this->history ?? ['events' => [[
             'sequence' => 1,
             'event_type' => 'WorkflowStarted',
             'payload' => [],
-            'recorded_at' => '2026-07-22T12:00:00Z',
+            'timestamp' => '2026-07-22T12:00:00Z',
+            'principal' => null,
         ]]];
     }
 

@@ -626,6 +626,9 @@ jobs:
     - name: Audit the frontend graph
       run: npm audit
 
+    - name: Run frontend regression tests
+      run: npm test
+
     - name: Build production frontend assets
       run: npm run production
 

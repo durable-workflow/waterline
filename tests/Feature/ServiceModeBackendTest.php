@@ -106,6 +106,9 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('instance_id', 'order-1')
             ->assertJsonPath('selected_run_id', 'run-1')
             ->assertJsonPath('timeline.0.event_type', 'WorkflowStarted')
+            ->assertJsonPath('timeline.0.type', 'WorkflowStarted')
+            ->assertJsonPath('timeline.0.recorded_at', '2026-07-22T12:00:00Z')
+            ->assertJsonPath('timeline.0.id', 'run-1:history:1')
             ->assertJsonPath('run_navigation.0.is_selected_run', true)
             ->assertJsonPath('actionability.actions.query.allowed', true)
             ->assertJsonPath('actionability.actions.signal.allowed', false)
@@ -122,6 +125,55 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('workflow_streams_unavailable_reason', null)
             ->assertJsonPath('backend.capabilities.workflow_streams', true)
             ->assertJsonPath('read_only', true);
+    }
+
+    public function testServiceHistoryAddsDisplayFieldsWithoutChangingTheServerEvent(): void
+    {
+        $types = ['StartAccepted', 'WorkflowStarted', 'ActivityScheduled', 'ActivityStarted',
+            'ActivityHeartbeatRecorded', 'ActivityCompleted', 'WorkflowCompleted'];
+        $events = [];
+        foreach ($types as $index => $type) {
+            $events[] = [
+                'sequence' => $index + 1,
+                'event_type' => $type,
+                'timestamp' => '2026-07-22T12:00:0'.$index.'Z',
+                'principal' => ['type' => 'sdk', 'id' => 'worker-1'],
+                'payload' => ['note' => '<untrusted payload>', 'sequence' => 99],
+            ];
+        }
+        $this->client->history = ['events' => $events, 'next_page_token' => null];
+
+        $response = $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('timeline_returned_count', 7);
+
+        foreach ($events as $index => $event) {
+            $response->assertJsonPath("timeline.$index.id", 'run-1:history:'.$event['sequence'])
+                ->assertJsonPath("timeline.$index.type", $event['event_type'])
+                ->assertJsonPath("timeline.$index.recorded_at", $event['timestamp']);
+            foreach ($event as $key => $value) {
+                $response->assertJsonPath("timeline.$index.$key", $value);
+            }
+        }
+
+        $this->assertSame($events, $this->client->history['events']);
+    }
+
+    public function testServiceHistoryPreservesAlreadyPresentedFieldsAndUnknownEvents(): void
+    {
+        $this->client->history = ['history_events' => [
+            null,
+            ['id' => 'durable-event', 'sequence' => 8, 'type' => 'FutureEvent',
+                'recorded_at' => '2026-07-22T12:00:08Z', 'summary' => 'Preserve summary'],
+        ]];
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('timeline_returned_count', 1)
+            ->assertJsonPath('timeline.0.id', 'durable-event')
+            ->assertJsonPath('timeline.0.type', 'FutureEvent')
+            ->assertJsonPath('timeline.0.summary', 'Preserve summary')
+            ->assertJsonPath('timeline.0.recorded_at', '2026-07-22T12:00:08Z');
     }
 
     public function testSelectedRunPreservesDetailWhenTheRemoteWorkflowStreamsRouteIsUnsupported(): void

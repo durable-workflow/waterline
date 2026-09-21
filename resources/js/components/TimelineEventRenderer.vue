@@ -1,13 +1,14 @@
 <template>
     <div class="timeline-event border-left pl-3 py-2" :class="eventKindClass">
-        <div class="d-flex align-items-start">
-            <div class="flex-shrink-0 mr-2">
+        <div class="d-flex flex-wrap align-items-start">
+            <div class="timeline-event-label mr-2">
                 <span class="badge" :class="eventBadgeClass">
                     {{ event.type }}
                 </span>
             </div>
-            <div class="flex-grow-1">
+            <div class="timeline-event-content flex-grow-1">
                 <div class="event-summary mb-1">
+                    <span v-if="event.sequence !== undefined && event.sequence !== null" class="text-muted small mr-2">#{{ event.sequence }}</span>
                     <strong>{{ event.summary || event.type }}</strong>
                     <span v-if="event.recorded_at" class="text-muted small ml-2">
                         {{ formatTimestamp(event.recorded_at) }}
@@ -341,6 +342,21 @@ export default {
 
 .timeline-event:hover {
     background-color: rgba(0, 0, 0, 0.02);
+}
+
+.timeline-event-label {
+    max-width: 100%;
+}
+
+.timeline-event-label .badge {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.timeline-event-content {
+    min-width: 0;
+    flex-basis: 12rem;
+    overflow-wrap: anywhere;
 }
 
 .event-kind-activity {
