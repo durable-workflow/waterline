@@ -343,7 +343,7 @@ request 200 \
 signal="$response_content"
 
 php -r '
-[$list, $savedViews, $selectedSavedView, $filteredList, $detail, $query, $signal, $workflowStreamsRequired] = array_slice($argv, 1);
+[$list, $savedViews, $selectedSavedView, $filteredList, $detail, $query, $signal, $workflowStreamsRequired, $imageRelease] = array_slice($argv, 1);
 $list = json_decode($list, true, flags: JSON_THROW_ON_ERROR);
 $savedViews = json_decode($savedViews, true, flags: JSON_THROW_ON_ERROR);
 $selectedSavedView = json_decode($selectedSavedView, true, flags: JSON_THROW_ON_ERROR);
@@ -355,10 +355,15 @@ $signal = json_decode($signal, true, flags: JSON_THROW_ON_ERROR);
 $detailExpectations = [
     "selected_run_id" => "smoke-run",
     "timeline.0.event_type" => "WorkflowStarted",
-    "timeline.0.type" => "WorkflowStarted",
-    "timeline.0.recorded_at" => "2026-07-22T12:00:00Z",
-    "timeline.0.id" => "smoke-run:history:1",
 ];
+// The previous stable image predates the history presentation fix (#111).
+if ($imageRelease === "0.0.0-service-smoke" || version_compare($imageRelease, "2.0.3", ">=")) {
+    $detailExpectations += [
+        "timeline.0.type" => "WorkflowStarted",
+        "timeline.0.recorded_at" => "2026-07-22T12:00:00Z",
+        "timeline.0.id" => "smoke-run:history:1",
+    ];
+}
 if ($workflowStreamsRequired === "1") {
     $detailExpectations += [
         "workflow_streams_mode" => "service",
@@ -411,7 +416,7 @@ if (($list["data"][0]["instance_id"] ?? null) !== "smoke-order"
     fwrite(STDERR, "Service image list, saved-view, query, or signal contract mismatch.\n");
     exit(1);
 }
-' "$list" "$saved_views" "$selected_saved_view" "$filtered_list" "$detail" "$query" "$signal" "$workflow_streams_required"
+' "$list" "$saved_views" "$selected_saved_view" "$filtered_list" "$detail" "$query" "$signal" "$workflow_streams_required" "$image_release"
 
 server_requests="$(docker logs "$server_container" 2>&1)"
 if [ "$workflow_streams_required" -eq 1 ]; then
