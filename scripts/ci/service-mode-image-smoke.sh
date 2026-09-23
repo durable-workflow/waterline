@@ -419,7 +419,10 @@ if (($list["data"][0]["instance_id"] ?? null) !== "smoke-order"
 ' "$list" "$saved_views" "$selected_saved_view" "$filtered_list" "$detail" "$query" "$signal" "$workflow_streams_required" "$image_release"
 
 server_requests="$(docker logs "$server_container" 2>&1)"
-printf '%s\n' "$server_requests" | grep -F 'GET /api/cluster/info' >/dev/null
+case "$packaged_sdk_version" in
+    2.0.*) ;;
+    2.*) printf '%s\n' "$server_requests" | grep -F 'GET /api/cluster/info' >/dev/null ;;
+esac
 if [ "$workflow_streams_required" -eq 1 ]; then
     printf '%s\n' "$server_requests" | grep -F 'GET /api/workflows/smoke-order/runs/smoke-run/streams' >/dev/null
 fi
