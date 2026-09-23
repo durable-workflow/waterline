@@ -1484,6 +1484,12 @@
                                 <div v-if="activity.history_authority" class="small text-muted">
                                     {{ historyAuthorityLabel(activity.history_authority) }}
                                 </div>
+                                <div v-if="activity.reused_from_run_id" class="small text-muted text-break">
+                                    Reused from run {{ activity.reused_from_run_id }}
+                                </div>
+                                <div v-else-if="hasReusedActivities()" class="small text-muted">
+                                    Executed in this run
+                                </div>
                                 <div v-if="activity.diagnostic_only === true" class="small text-muted">
                                     diagnostic only
                                 </div>
@@ -2726,6 +2732,10 @@ export default {
             return this.flow.activities && this.flow.activities.length
                 ? this.flow.activities
                 : (this.flow.logs || [])
+        },
+
+        hasReusedActivities() {
+            return this.activityRows().some(activity => activity.reused_from_run_id)
         },
 
         timelineRows() {

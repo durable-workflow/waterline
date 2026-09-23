@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Waterline\Http\Controllers\Remote;
 
+use DurableWorkflow\Exception\ServerException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
@@ -266,6 +267,7 @@ final class RemoteWorkflowsController extends RemoteController
         $history = $selectedRunId !== '' ? $client->workflowHistory($workflowId, $selectedRunId) : [];
         $timeline = $this->historyEvents($history, $selectedRunId);
         $diagnostics = [];
+        $activityResponse = [];
         $workflowStreams = [];
         $workflowStreamsState = 'unavailable';
         $workflowStreamsAvailable = false;
@@ -273,6 +275,17 @@ final class RemoteWorkflowsController extends RemoteController
 
         if ($selectedRunId !== '' && $this->backend->supports('workflowDiagnostics')) {
             $diagnostics = $client->workflowDiagnostics($workflowId, $selectedRunId);
+        }
+
+        if ($selectedRunId !== '' && $this->backend->supports('workflowActivities')) {
+            try {
+                $activityResponse = $client->workflowActivities($workflowId, $selectedRunId);
+            } catch (ServerException $exception) {
+                if ($exception->status !== 404
+                    || ! in_array($exception->reason, [null, '', 'not_found', 'route_not_found'], true)) {
+                    throw $exception;
+                }
+            }
         }
 
         if ($selectedRunId !== '') {
@@ -312,7 +325,9 @@ final class RemoteWorkflowsController extends RemoteController
             'timeline_returned_count' => count($timeline),
             'history_event_count' => count($timeline),
             'run_navigation' => $this->runNavigation($runs, $execution->workflowId, $selectedRunId),
-            'activities' => is_array($diagnostics['activities'] ?? null) ? $diagnostics['activities'] : [],
+            'activities' => is_array($activityResponse['activities'] ?? null)
+                ? $activityResponse['activities']
+                : (is_array($diagnostics['activities'] ?? null) ? $diagnostics['activities'] : []),
             'tasks' => is_array($diagnostics['tasks'] ?? null) ? $diagnostics['tasks'] : [],
             'waits' => is_array($diagnostics['waits'] ?? null) ? $diagnostics['waits'] : [],
             'timers' => is_array($diagnostics['timers'] ?? null) ? $diagnostics['timers'] : [],

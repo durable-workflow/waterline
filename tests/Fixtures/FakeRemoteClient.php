@@ -39,6 +39,9 @@ final class FakeRemoteClient
     /** @var array<string, mixed>|null */
     public ?array $history = null;
 
+    /** @var list<array<string, mixed>>|null */
+    public ?array $activities = null;
+
     public function listWorkflows(
         ?string $workflowType = null,
         ?string $status = null,
@@ -94,6 +97,14 @@ final class FakeRemoteClient
             'timestamp' => '2026-07-22T12:00:00Z',
             'principal' => null,
         ]]];
+    }
+
+    /** @return array<string, mixed> */
+    public function workflowActivities(string $workflowId, string $runId): array
+    {
+        $this->called(__FUNCTION__, get_defined_vars());
+
+        return ['workflow_id' => $workflowId, 'run_id' => $runId, 'activities' => $this->activities ?? []];
     }
 
     /** @return array<string, mixed> */

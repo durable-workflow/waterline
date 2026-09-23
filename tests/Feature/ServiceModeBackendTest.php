@@ -159,6 +159,67 @@ final class ServiceModeBackendTest extends TestCase
         $this->assertSame($events, $this->client->history['events']);
     }
 
+    public function testServiceRunShowsReusedAndFreshActivitiesFromTheActivityContract(): void
+    {
+        $this->client->activities = [
+            [
+                'id' => 'activity-reused',
+                'type' => 'orders.price',
+                'status' => 'completed',
+                'history_authority' => 'typed_history',
+                'reused_from_run_id' => 'run-source',
+                'reused_activity_execution_id' => 'activity-source',
+            ],
+            [
+                'id' => 'activity-fresh',
+                'type' => 'orders.charge',
+                'status' => 'completed',
+                'history_authority' => 'typed_history',
+                'reused_from_run_id' => null,
+            ],
+        ];
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonCount(2, 'activities')
+            ->assertJsonPath('activities.0.reused_from_run_id', 'run-source')
+            ->assertJsonPath('activities.0.reused_activity_execution_id', 'activity-source')
+            ->assertJsonPath('activities.1.reused_from_run_id', null);
+
+        $this->assertTrue(collect($this->client->calls)->contains(
+            static fn (array $call): bool => $call['method'] === 'workflowActivities'
+                && $call['arguments']['workflowId'] === 'order-1'
+                && $call['arguments']['runId'] === 'run-1',
+        ));
+    }
+
+    public function testServiceRunToleratesAnOlderServerWithoutTheActivityRoute(): void
+    {
+        $this->client->failures['workflowActivities'] = new ServerException(
+            'The requested route could not be found.',
+            404,
+            'route_not_found',
+        );
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('activities', [])
+            ->assertJsonPath('timeline.0.event_type', 'WorkflowStarted');
+    }
+
+    public function testServiceRunPreservesActivityRouteAuthorizationFailure(): void
+    {
+        $this->client->failures['workflowActivities'] = new ServerException(
+            'Not authorized.',
+            403,
+            'authorization_failed',
+        );
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertForbidden()
+            ->assertJsonPath('reason', 'authorization_failed');
+    }
+
     public function testServiceHistoryPreservesAlreadyPresentedFieldsAndUnknownEvents(): void
     {
         $this->client->history = ['history_events' => [
