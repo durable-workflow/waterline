@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 2.0.4 - 2026-09-23
+
+Service-mode run detail now shows activities reused by failed-run redrive and
+activities executed in the successor run. The standalone service includes PHP
+SDK 2.1.0; hosts with older compatible SDKs retain the existing run view.
+
 ## 2.0.2 - 2026-09-03
 
 Waterline service mode now treats stable PHP SDK `2.x` releases as the

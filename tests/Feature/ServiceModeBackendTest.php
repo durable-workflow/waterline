@@ -35,7 +35,7 @@ final class ServiceModeBackendTest extends TestCase
         self::$installedVersions = InstalledVersions::getRawData();
         $planned = self::$installedVersions;
         $planned['versions']['durable-workflow/sdk']['pretty_version'] = ServiceModeRequirements::SDK_QUALIFIED_VERSION;
-        $planned['versions']['durable-workflow/sdk']['version'] = '2.0.1.0';
+        $planned['versions']['durable-workflow/sdk']['version'] = '2.1.0.0';
         InstalledVersions::reload($planned);
     }
 

@@ -79,6 +79,7 @@ release_authority = authority_path.read_text(encoding="utf-8").split()
 version_pattern = re.compile(
     r"^2\.0\.(?:0|[1-9][0-9]*)$"
 )
+peer_version_pattern = re.compile(r"^2\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$")
 if release_authority and (
     len(release_authority) != 1
     or version_pattern.fullmatch(release_authority[0]) is None
@@ -106,8 +107,10 @@ for graph, path in (("embedded", embedded_path), ("service", service_path)):
     }
     if set(packages) != expected[graph]:
         raise SystemExit(f"{graph} onboarding graph did not resolve both roots")
-    if any(version_pattern.fullmatch(version) is None for version in packages.values()):
-        raise SystemExit(f"{graph} onboarding graph escaped the supported 2.0 line")
+    for package, version in packages.items():
+        pattern = version_pattern if package == "durable-workflow/waterline" else peer_version_pattern
+        if pattern.fullmatch(version) is None:
+            raise SystemExit(f"{graph} onboarding graph escaped the supported release line")
     if (
         qualified_waterline is not None
         and packages["durable-workflow/waterline"] != qualified_waterline
