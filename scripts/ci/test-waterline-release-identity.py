@@ -27,7 +27,7 @@ CURRENT_PUBLIC = {
     "sdk-php": "2.0.0",
 }
 CANDIDATE_WATERLINE = "2.0.2"
-CANDIDATE_SDK = "2.0.1"
+CANDIDATE_SDK = "2.1.0"
 PUBLIC_SDK_REFERENCE = "0123456789abcdef0123456789abcdef01234567"
 
 
@@ -130,6 +130,25 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
             identity.IdentityError, "precedes the current public dependency"
         ):
             validate(candidate_manifest=stale)
+
+    def test_php_sdk_minor_downgrade_is_rejected(self) -> None:
+        current = approved()
+        current["versions"] = {**current["versions"], "sdk-php": "2.1.0"}
+        candidate = manifest()
+        candidate["require-dev"][identity.SDK_PACKAGE] = "2.0.1"
+
+        with self.assertRaisesRegex(
+            identity.IdentityError, "precedes the current public dependency"
+        ):
+            identity.validate(
+                current,
+                candidate,
+                b"waterline-composer-source",
+                standalone(),
+                b"standalone-composer-source",
+                lock(),
+                b"standalone-lock-source",
+            )
 
     def test_deliberately_stale_workflow_pin_is_rejected(self) -> None:
         stale = manifest()

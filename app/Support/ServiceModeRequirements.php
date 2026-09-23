@@ -9,7 +9,7 @@ use LogicException;
 
 final class ServiceModeRequirements
 {
-    public const SDK_QUALIFIED_VERSION = '2.0.1';
+    public const SDK_QUALIFIED_VERSION = '2.1.0';
 
     public const SDK_ONBOARDING_CONSTRAINT = '^2.0';
 
