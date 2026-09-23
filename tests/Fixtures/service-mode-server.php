@@ -117,6 +117,7 @@ $payload = match (true) {
         'input_received' => is_array($requestBody['input'] ?? null),
     ],
     $method === 'GET' && $path === '/api/system/health' => ['health' => ['status' => 'healthy', 'checks' => []]],
+    $method === 'GET' && $path === '/api/cluster/info' => ['limits' => ['max_payload_bytes' => 2097152]],
     $method === 'GET' && $path === '/api/system/operator-metrics' => ['operator_metrics' => ['runs' => ['total' => 1, 'running' => 1]]],
     $method === 'GET' && $path === '/api/system/operator-dashboard' => ['dashboard' => [
         'flows' => 1,
