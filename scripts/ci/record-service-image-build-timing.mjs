@@ -4,7 +4,7 @@ import { appendFileSync, writeFileSync } from 'node:fs';
 
 const startedAt = positiveInteger('BUILD_STARTED_AT');
 const finishedAt = optionalPositiveInteger('BUILD_FINISHED_AT') ?? Math.floor(Date.now() / 1000);
-const nativeArmPrewarmSeconds = optionalNonnegativeInteger('NATIVE_ARM_PREWARM_SECONDS') ?? 0;
+const nativeArmPrewarmSeconds = nonnegativeInteger('NATIVE_ARM_PREWARM_SECONDS');
 const baselineFloorSeconds = positiveInteger('UNCACHED_BASELINE_FLOOR_SECONDS');
 const warmCacheTargetSeconds = positiveInteger('WARM_CACHE_TARGET_SECONDS');
 const buildOutcome = required('BUILD_OUTCOME');
@@ -101,7 +101,7 @@ if (process.env.GITHUB_STEP_SUMMARY) {
       '### Protected Waterline service image build',
       '',
       `- Uncached beta.5 baseline: more than ${baselineFloorSeconds}s`,
-      `- Current ${cacheState}-cache build: ${durationSeconds}s`,
+      `- Current ${cacheState}-cache native arm64 preparation and publication: ${durationSeconds}s`,
       `- Minimum measured improvement: ${improvement}`,
       `- Warm-cache ${warmCacheTargetSeconds}s budget: ${budgetResult}`,
       `- Cache: \`${cacheRef}\``,
@@ -140,13 +140,10 @@ function optionalPositiveInteger(name) {
   return Number(value);
 }
 
-function optionalNonnegativeInteger(name) {
-  const value = process.env[name]?.trim() ?? '';
-  if (value === '') {
-    return null;
-  }
+function nonnegativeInteger(name) {
+  const value = required(name);
   if (!/^(0|[1-9][0-9]*)$/u.test(value)) {
-    throw new Error(`${name} must be a nonnegative integer when provided.`);
+    throw new Error(`${name} must be a nonnegative integer.`);
   }
 
   return Number(value);

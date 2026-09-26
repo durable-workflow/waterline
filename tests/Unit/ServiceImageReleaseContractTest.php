@@ -212,6 +212,10 @@ final class ServiceImageReleaseContractTest extends TestCase
             $this->assertSame(631, $slowEvidence['timing']['build_seconds']);
             $this->assertFalse($slowEvidence['timing']['meets_repeat_budget']);
             $this->assertNull($slowEvidence['timing']['minimum_improvement_seconds']);
+
+            $missingArmTime = str_replace('NATIVE_ARM_PREWARM_SECONDS=30 ', '', $command);
+            exec($missingArmTime.' 2>/dev/null', $missingOutput, $missingStatus);
+            $this->assertNotSame(0, $missingStatus, 'Missing arm64 preparation time must not undercount a release build.');
         } finally {
             @unlink($temporary);
             @unlink($output);
