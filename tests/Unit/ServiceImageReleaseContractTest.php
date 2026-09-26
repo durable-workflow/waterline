@@ -121,8 +121,11 @@ final class ServiceImageReleaseContractTest extends TestCase
         $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/service-image.yml');
 
         $this->assertSame(1, substr_count($workflow, 'SERVICE_IMAGE_CACHE: durableworkflow/waterline:buildcache-v1'));
+        $this->assertStringContainsString('SERVICE_IMAGE_ARM_CACHE: durableworkflow/waterline:buildcache-arm64-v1', $workflow);
+        $this->assertStringContainsString('runs-on: ubuntu-24.04-arm', $workflow);
+        $this->assertStringContainsString('needs: [qualify-release-source, smoke, prewarm_arm64]', $workflow);
         $this->assertStringContainsString('docker buildx imagetools inspect "$CACHE_REF"', $workflow);
-        $this->assertStringContainsString('cache-from: ${{ steps.cache.outputs.cache_from }}', $workflow);
+        $this->assertStringContainsString('type=registry,ref=${{ env.SERVICE_IMAGE_ARM_CACHE }}', $workflow);
         $this->assertStringContainsString('cache-to: ${{ steps.cache.outputs.cache_to }}', $workflow);
         $this->assertStringContainsString('mode=max,ignore-error=true', $workflow);
         $this->assertStringContainsString('pull: true', $workflow);
@@ -157,7 +160,7 @@ final class ServiceImageReleaseContractTest extends TestCase
 
         try {
             $command = sprintf(
-                'BUILD_STARTED_AT=100 BUILD_FINISHED_AT=220 BUILD_OUTCOME=success '.
+                'BUILD_STARTED_AT=100 BUILD_FINISHED_AT=220 NATIVE_ARM_PREWARM_SECONDS=30 BUILD_OUTCOME=success '.
                 'CACHE_REF=durableworkflow/waterline:buildcache-v1 CACHE_STATE=warm '.
                 'RELEASE_TAG=2.0.0-beta.6 SOURCE_COMMIT=%s '.
                 'IMAGE_DIGEST=sha256:%s SERVICE_IMAGE_PLATFORMS=linux/amd64,linux/arm64 '.
@@ -185,13 +188,15 @@ final class ServiceImageReleaseContractTest extends TestCase
                 $evidence['platforms'],
             );
             $this->assertSame('protected-tag-publication', $evidence['cache']['write_scope']);
-            $this->assertSame(120, $evidence['timing']['build_seconds']);
-            $this->assertSame(480, $evidence['timing']['minimum_improvement_seconds']);
-            $this->assertSame(80, $evidence['timing']['minimum_improvement_percent']);
+            $this->assertSame(30, $evidence['timing']['native_arm64_prewarm_seconds']);
+            $this->assertSame(120, $evidence['timing']['multiarch_publish_seconds']);
+            $this->assertSame(150, $evidence['timing']['build_seconds']);
+            $this->assertSame(450, $evidence['timing']['minimum_improvement_seconds']);
+            $this->assertSame(75, $evidence['timing']['minimum_improvement_percent']);
             $this->assertTrue($evidence['timing']['meets_repeat_budget']);
             $this->assertStringContainsString('meets_repeat_budget=true', (string) file_get_contents($output));
             $this->assertStringContainsString(
-                'Minimum measured improvement: at least 480s (80%)',
+                'Minimum measured improvement: at least 450s (75%)',
                 (string) file_get_contents($summary),
             );
 
@@ -204,9 +209,13 @@ final class ServiceImageReleaseContractTest extends TestCase
                 true,
                 flags: JSON_THROW_ON_ERROR,
             );
-            $this->assertSame(601, $slowEvidence['timing']['build_seconds']);
+            $this->assertSame(631, $slowEvidence['timing']['build_seconds']);
             $this->assertFalse($slowEvidence['timing']['meets_repeat_budget']);
             $this->assertNull($slowEvidence['timing']['minimum_improvement_seconds']);
+
+            $missingArmTime = str_replace('NATIVE_ARM_PREWARM_SECONDS=30 ', '', $command);
+            exec($missingArmTime.' 2>/dev/null', $missingOutput, $missingStatus);
+            $this->assertNotSame(0, $missingStatus, 'Missing arm64 preparation time must not undercount a release build.');
         } finally {
             @unlink($temporary);
             @unlink($output);
