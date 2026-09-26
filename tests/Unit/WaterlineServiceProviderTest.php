@@ -19,6 +19,7 @@ use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLite;
 use Waterline\Repositories\Workflow\Infrastructure\WorkflowRepositorySQLServer;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\RuntimeConfiguration;
+use Waterline\Support\WorkflowEngineSourceResolver;
 use Waterline\Tests\TestCase;
 use Waterline\WaterlineServiceProvider;
 
@@ -94,6 +95,7 @@ class WaterlineServiceProviderTest extends TestCase
             'WATERLINE_HEALTH_TASK_DISPATCH_MODE' => 'poll',
             'WATERLINE_ALLOW_UNAUTHENTICATED' => 'true',
         ], function (): void {
+            config()->set('waterline.backend', 'service');
             config()->set('waterline.path', 'stale-waterline');
             config()->set('waterline.engine_source', 'auto');
             config()->set('waterline.namespace', null);
@@ -119,6 +121,7 @@ class WaterlineServiceProviderTest extends TestCase
             'WATERLINE_HEALTH_TASK_DISPATCH_MODE' => 'poll',
             'WATERLINE_ALLOW_UNAUTHENTICATED' => 'true',
         ], function (): void {
+            config()->set('waterline.backend', 'service');
             config()->set('waterline.path', 'stale-waterline');
             config()->set('waterline.engine_source', 'auto');
             config()->set('waterline.namespace', null);
@@ -132,6 +135,65 @@ class WaterlineServiceProviderTest extends TestCase
             $this->assertSame('worker-versioning-conformance', config('waterline.namespace'));
             $this->assertSame('poll', config('waterline.health.task_dispatch_mode'));
             $this->assertTrue(config('waterline.allow_unauthenticated'));
+        });
+    }
+
+    public function testEmbeddedHostConfigurationSurvivesProviderBootstrapAndRepeatedResolution(): void
+    {
+        $this->withEnvironment([
+            'WATERLINE_ENGINE_SOURCE' => 'v1',
+            'WATERLINE_HYBRID_MIGRATION_VIEW' => 'true',
+            'WATERLINE_RUNTIME_ENVIRONMENT_OVERRIDES' => null,
+        ], function (): void {
+            config()->set('waterline.backend', 'embedded');
+            config()->set('waterline.runtime_environment_overrides', false);
+            config()->set('waterline.engine_source', 'v2');
+            config()->set('waterline.hybrid_migration_view', false);
+            config()->set('workflows.v1.enabled', false);
+
+            $provider = new WaterlineServiceProvider($this->app);
+            $provider->register();
+            $provider->boot();
+            WorkflowEngineSourceResolver::status();
+            WorkflowEngineSourceResolver::status();
+
+            $this->assertSame('v2', config('waterline.engine_source'));
+            $this->assertFalse(config('waterline.hybrid_migration_view'));
+            $this->assertFalse(config('workflows.v1.enabled'));
+        });
+    }
+
+    public function testEmbeddedConfigurationStillReadsEnvironmentThroughItsConfigFile(): void
+    {
+        $this->withEnvironment([
+            'WATERLINE_ENGINE_SOURCE' => 'v2',
+            'WATERLINE_HYBRID_MIGRATION_VIEW' => 'false',
+            'WATERLINE_RUNTIME_ENVIRONMENT_OVERRIDES' => null,
+        ], function (): void {
+            config()->set('waterline', require dirname(__DIR__, 2).'/config/waterline.php');
+
+            RuntimeConfiguration::hydrate();
+
+            $this->assertSame('v2', config('waterline.engine_source'));
+            $this->assertFalse(config('waterline.hybrid_migration_view'));
+        });
+    }
+
+    public function testEmbeddedHostCanExplicitlyOptIntoRuntimeEnvironmentOverrides(): void
+    {
+        $this->withEnvironment([
+            'WATERLINE_ENGINE_SOURCE' => 'v1',
+            'WATERLINE_HYBRID_MIGRATION_VIEW' => 'true',
+        ], function (): void {
+            config()->set('waterline.backend', 'embedded');
+            config()->set('waterline.runtime_environment_overrides', true);
+            config()->set('waterline.engine_source', 'v2');
+            config()->set('waterline.hybrid_migration_view', false);
+
+            RuntimeConfiguration::hydrate();
+
+            $this->assertSame('v1', config('waterline.engine_source'));
+            $this->assertTrue(config('waterline.hybrid_migration_view'));
         });
     }
 
@@ -151,6 +213,7 @@ class WaterlineServiceProviderTest extends TestCase
             'WATERLINE_ALLOW_UNAUTHENTICATED' => 'true',
             'DW_V2_TASK_DISPATCH_MODE' => 'poll',
         ], function (): void {
+            config()->set('waterline.backend', 'service');
             config()->set('waterline.engine_source', 'auto');
             config()->set('waterline.namespace', null);
             config()->set('waterline.health.task_dispatch_mode', 'queue');
@@ -213,6 +276,7 @@ class WaterlineServiceProviderTest extends TestCase
             $this->assertContains('WATERLINE_NAMESPACE', $serveCommand::$passthroughVariables);
             $this->assertContains('WATERLINE_HEALTH_TASK_DISPATCH_MODE', $serveCommand::$passthroughVariables);
             $this->assertContains('WATERLINE_HYBRID_MIGRATION_VIEW', $serveCommand::$passthroughVariables);
+            $this->assertContains('WATERLINE_RUNTIME_ENVIRONMENT_OVERRIDES', $serveCommand::$passthroughVariables);
             $this->assertContains('WATERLINE_WORKER_STALE_AFTER_SECONDS', $serveCommand::$passthroughVariables);
             $this->assertContains('DW_V2_TASK_DISPATCH_MODE', $serveCommand::$passthroughVariables);
             $this->assertContains('DW_WV_WATERLINE_DB_DATABASE', $serveCommand::$passthroughVariables);
@@ -227,6 +291,7 @@ class WaterlineServiceProviderTest extends TestCase
         $this->withEnvironment([
             'WATERLINE_WORKER_STALE_AFTER_SECONDS' => '9',
         ], function (): void {
+            config()->set('waterline.backend', 'service');
             config()->set('waterline.worker_stale_after_seconds', null);
 
             RuntimeConfiguration::hydrate();
@@ -255,6 +320,7 @@ class WaterlineServiceProviderTest extends TestCase
             'DB_HOST' => 'runtime-host',
             'DB_PASSWORD' => null,
         ], function (): void {
+            config()->set('waterline.backend', 'service');
             config()->set('database.default', 'sqlite');
             config()->set('database.connections.mysql.host', 'cached-host');
             config()->set('database.connections.mysql.password', 'cached-password');
@@ -273,6 +339,7 @@ class WaterlineServiceProviderTest extends TestCase
             'DB_CONNECTION' => 'mysql',
             'DB_PASSWORD' => '',
         ], function (): void {
+            config()->set('waterline.backend', 'service');
             config()->set('database.default', 'sqlite');
             config()->set('database.connections.mysql.password', 'cached-password');
 
@@ -300,6 +367,7 @@ class WaterlineServiceProviderTest extends TestCase
             'DW_WV_WATERLINE_DB_USERNAME' => 'workflow_user',
             'DW_WV_WATERLINE_DB_PASSWORD' => '',
         ], function (): void {
+            config()->set('waterline.backend', 'service');
             config()->set('database.default', 'sqlite');
             config()->set('database.connections.mysql.host', 'stale-host');
             config()->set('database.connections.mysql.port', '3306');

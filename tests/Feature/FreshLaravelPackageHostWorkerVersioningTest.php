@@ -302,6 +302,11 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
     private function baseConfig(): array
     {
         return [
+            // This hand-built host intentionally supplies its workflow storage
+            // connection through the process environment after config loading.
+            'waterline' => [
+                'runtime_environment_overrides' => true,
+            ],
             'app' => [
                 'debug' => false,
                 'env' => 'local',

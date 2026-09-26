@@ -278,6 +278,9 @@ final class RealComposerLaravelPackageHostWorkerVersioningTest extends TestCase
                 'DB_DATABASE' => $appDirectory.'/database/database.sqlite',
                 'DW_V2_TASK_DISPATCH_MODE' => 'queue',
                 'WATERLINE_ALLOW_UNAUTHENTICATED' => 'false',
+                // This legacy env-only host intentionally changes runtime
+                // settings after caching; ordinary embedded hosts do not.
+                'WATERLINE_RUNTIME_ENVIRONMENT_OVERRIDES' => 'true',
                 'WATERLINE_ENGINE_SOURCE' => 'auto',
                 'WATERLINE_HEALTH_TASK_DISPATCH_MODE' => 'queue',
                 'WATERLINE_NAMESPACE' => '',
