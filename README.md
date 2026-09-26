@@ -42,6 +42,13 @@ php artisan waterline:install
 
 The standalone PHP SDK is not part of the embedded dependency graph.
 
+In embedded Laravel mode, Waterline uses the host application's resolved
+configuration. Set `WATERLINE_*` values before running `php artisan config:cache`
+when the host's config files use `env()`. A later process environment change
+does not override the cached configuration or an explicit literal value in
+`config/waterline.php`. The standalone service image continues to apply its
+documented runtime environment settings.
+
 ## Authorization
 
 Waterline exposes a dashboard at the `/waterline` URL. By default, you will only be able to access this dashboard in the local environment. However, within your `app/Providers/WaterlineServiceProvider.php` file, there is an authorization gate definition. This authorization gate controls access to Waterline in non-local environments.

@@ -82,6 +82,13 @@ final class RuntimeConfiguration
         self::allowLaravelServeEnvironmentPassthrough();
         self::promoteProcessEnvironmentForServe();
 
+        // Embedded hosts own their resolved Laravel configuration, including
+        // values loaded from a configuration cache. The standalone service
+        // intentionally applies runtime environment overrides after boot.
+        if (! BackendConfiguration::serviceMode()) {
+            return;
+        }
+
         self::hydrateLaravelRuntimeConfig();
         self::hydrateWorkflowRuntimeConfig();
         self::hydrateWaterlineRuntimeConfig();
