@@ -247,7 +247,8 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         self.assertEqual(1, len(matching))
         self.assertIn('--release-version "$GITHUB_REF_NAME"', matching[0]["run"])
         self.assertEqual("qualify-release-source", jobs["smoke"]["needs"])
-        self.assertEqual(["qualify-release-source", "smoke"], jobs["publish"]["needs"])
+        self.assertEqual(["qualify-release-source", "smoke"], jobs["prewarm_arm64"]["needs"])
+        self.assertEqual(["qualify-release-source", "smoke", "prewarm_arm64"], jobs["publish"]["needs"])
 
 if __name__ == "__main__":
     unittest.main()
