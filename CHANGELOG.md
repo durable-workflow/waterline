@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 2.0.6 - 2026-09-26
+
+The versioned service image now prepares its arm64 build cache on a native
+runner before publishing the amd64/arm64 image. The release records both build
+phases against the 600-second repeat budget and still smokes the exact published
+image. This patch changes the release path without changing Waterline's runtime
+behavior or stored data.
+
 ## 2.0.5 - 2026-09-26
 
 Embedded Laravel hosts now keep their resolved configuration, including values
