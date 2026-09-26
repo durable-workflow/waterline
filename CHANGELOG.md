@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 2.0.5 - 2026-09-26
+
+Embedded Laravel hosts now keep their resolved configuration, including values
+stored by `artisan config:cache`, when process environment variables disagree.
+This fixes explicit `engine_source` and `hybrid_migration_view` settings being
+silently replaced. Normal `env()` expressions in host configuration still work.
+
+Hosts that intentionally relied on Waterline changing configuration from the
+process environment *after* Laravel loaded or cached it can set
+`waterline.runtime_environment_overrides=true` before generating the cache.
+Standalone service-mode environment configuration is unchanged. No database
+migration or asset republish is required for this backend configuration fix.
+
 ## 2.0.4 - 2026-09-23
 
 Service-mode run detail now shows activities reused by failed-run redrive and
