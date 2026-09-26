@@ -4,6 +4,7 @@ import { appendFileSync, writeFileSync } from 'node:fs';
 
 const startedAt = positiveInteger('BUILD_STARTED_AT');
 const finishedAt = optionalPositiveInteger('BUILD_FINISHED_AT') ?? Math.floor(Date.now() / 1000);
+const nativeArmPrewarmSeconds = optionalNonnegativeInteger('NATIVE_ARM_PREWARM_SECONDS') ?? 0;
 const baselineFloorSeconds = positiveInteger('UNCACHED_BASELINE_FLOOR_SECONDS');
 const warmCacheTargetSeconds = positiveInteger('WARM_CACHE_TARGET_SECONDS');
 const buildOutcome = required('BUILD_OUTCOME');
@@ -32,7 +33,8 @@ if (imageDigest !== '' && !/^sha256:[0-9a-f]{64}$/u.test(imageDigest)) {
   throw new Error('IMAGE_DIGEST must be an sha256 digest when provided.');
 }
 
-const durationSeconds = finishedAt - startedAt;
+const multiarchPublishSeconds = finishedAt - startedAt;
+const durationSeconds = nativeArmPrewarmSeconds + multiarchPublishSeconds;
 const measuredWarmBuild = cacheState === 'warm' && buildOutcome === 'success';
 const meetsRepeatBudget = measuredWarmBuild
   ? durationSeconds <= warmCacheTargetSeconds
@@ -45,7 +47,7 @@ const minimumImprovementPercent = minimumImprovementSeconds === null
   : Number(((minimumImprovementSeconds / baselineFloorSeconds) * 100).toFixed(1));
 
 const evidence = {
-  schema: 'durable-workflow.waterline.service-image-build.v1',
+  schema: 'durable-workflow.waterline.service-image-build.v2',
   release_tag: releaseTag,
   source_commit: sourceCommit,
   image_digest: imageDigest || null,
@@ -57,6 +59,8 @@ const evidence = {
     write_scope: 'protected-tag-publication',
   },
   timing: {
+    native_arm64_prewarm_seconds: nativeArmPrewarmSeconds,
+    multiarch_publish_seconds: multiarchPublishSeconds,
     uncached_baseline: {
       relation: 'greater_than',
       seconds: baselineFloorSeconds,
@@ -131,6 +135,18 @@ function optionalPositiveInteger(name) {
   }
   if (!/^[1-9][0-9]*$/u.test(value)) {
     throw new Error(`${name} must be a positive integer when provided.`);
+  }
+
+  return Number(value);
+}
+
+function optionalNonnegativeInteger(name) {
+  const value = process.env[name]?.trim() ?? '';
+  if (value === '') {
+    return null;
+  }
+  if (!/^(0|[1-9][0-9]*)$/u.test(value)) {
+    throw new Error(`${name} must be a nonnegative integer when provided.`);
   }
 
   return Number(value);
