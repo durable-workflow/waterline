@@ -49,6 +49,12 @@ does not override the cached configuration or an explicit literal value in
 `config/waterline.php`. The standalone service image continues to apply its
 documented runtime environment settings.
 
+An embedded host that deliberately depends on the older post-cache behavior
+can opt in with `waterline.runtime_environment_overrides=true` (or
+`WATERLINE_RUNTIME_ENVIRONMENT_OVERRIDES=true` when its config file uses `env()`).
+This permits process variables to replace resolved application values, so keep
+it disabled when pinning an engine or migration view in Laravel config.
+
 ## Authorization
 
 Waterline exposes a dashboard at the `/waterline` URL. By default, you will only be able to access this dashboard in the local environment. However, within your `app/Providers/WaterlineServiceProvider.php` file, there is an authorization gate definition. This authorization gate controls access to Waterline in non-local environments.

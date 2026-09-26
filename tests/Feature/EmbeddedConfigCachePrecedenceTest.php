@@ -12,6 +12,10 @@ final class EmbeddedConfigCachePrecedenceTest extends TestCase
 {
     public function testLiteralHostConfigurationSurvivesCacheGenerationAndCachedBootstrap(): void
     {
+        if (! method_exists(\Illuminate\Foundation\Application::class, 'configure')) {
+            $this->markTestSkipped('This real Laravel host fixture uses the Laravel 11+ application builder.');
+        }
+
         $root = sys_get_temp_dir().'/waterline-embedded-config-'.bin2hex(random_bytes(8));
         $files = new Filesystem();
         $files->ensureDirectoryExists($root.'/bootstrap/cache');
@@ -58,6 +62,7 @@ PHP);
                 'DB_DATABASE' => ':memory:',
                 'WATERLINE_ENGINE_SOURCE' => 'v1',
                 'WATERLINE_HYBRID_MIGRATION_VIEW' => 'true',
+                'WATERLINE_RUNTIME_ENVIRONMENT_OVERRIDES' => 'false',
             ];
             $expected = [
                 'v1_enabled' => false,

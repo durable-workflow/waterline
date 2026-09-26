@@ -82,6 +82,11 @@ return [
 
     'backend' => env('WATERLINE_BACKEND', 'embedded'),
 
+    // Embedded Laravel normally keeps its resolved configuration authoritative.
+    // Set true only when this host intentionally accepts process environment
+    // overrides after configuration loading (including after config:cache).
+    'runtime_environment_overrides' => env('WATERLINE_RUNTIME_ENVIRONMENT_OVERRIDES', false),
+
     'service' => [
         'endpoint' => env('WATERLINE_SERVER_ENDPOINT'),
         'token' => env('WATERLINE_SERVER_TOKEN'),

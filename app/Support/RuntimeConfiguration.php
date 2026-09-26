@@ -72,6 +72,7 @@ final class RuntimeConfiguration
         'WATERLINE_HYBRID_MIGRATION_VIEW',
         'WATERLINE_NAMESPACE',
         'WATERLINE_PATH',
+        'WATERLINE_RUNTIME_ENVIRONMENT_OVERRIDES',
         'WATERLINE_SERVER_ENDPOINT',
         'WATERLINE_SERVER_TOKEN',
         'WATERLINE_WORKER_STALE_AFTER_SECONDS',
@@ -83,9 +84,10 @@ final class RuntimeConfiguration
         self::promoteProcessEnvironmentForServe();
 
         // Embedded hosts own their resolved Laravel configuration, including
-        // values loaded from a configuration cache. The standalone service
-        // intentionally applies runtime environment overrides after boot.
-        if (! BackendConfiguration::serviceMode()) {
+        // cached values, unless they explicitly opt into legacy runtime
+        // overrides. The standalone service always applies its environment.
+        if (! BackendConfiguration::serviceMode()
+            && config('waterline.runtime_environment_overrides') !== true) {
             return;
         }
 
