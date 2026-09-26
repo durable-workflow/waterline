@@ -582,7 +582,9 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.workers.active_workers_supporting_required', 1)
             ->assertJsonPath('operator_metrics.backend.queue.connection', 'sync')
             ->assertJsonPath('operator_metrics.backend.queue.driver', 'sync')
-            ->assertJsonPath('operator_metrics.backend.supported', true)
+            // The explicit queue dispatch mode remains authoritative; a sync
+            // queue cannot satisfy that backend contract.
+            ->assertJsonPath('operator_metrics.backend.supported', false)
             ->assertJsonFragment(['code' => 'queue_sync_unsupported'])
             ->assertJsonPath('operator_metrics.update_wait.completion_timeout_seconds', 9)
             ->assertJsonPath('operator_metrics.update_wait.poll_interval_milliseconds', 25)
