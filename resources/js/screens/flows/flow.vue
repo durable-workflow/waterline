@@ -171,6 +171,12 @@
                     </div>
                 </div>
 
+                <div class="alert alert-info mt-3" role="status" v-if="hasDetailValue(flow.details_pruned_at)">
+                    <strong>Details removed by retention.</strong>
+                    History and error details were removed at {{ timestamp(flow.details_pruned_at) }}.
+                    The run's {{ flow.status }} status is retained.
+                </div>
+
                 <div class="row mb-2" v-if="actionStateRows().length">
                     <div class="col-md-2"><strong>Actions</strong></div>
                     <div class="col">
@@ -485,12 +491,20 @@
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.history_event_count) || hasDetailValue(flow.history_size_bytes)">
-                    <div class="col-md-2"><strong>History</strong></div>
+                    <div class="col-md-2"><strong>History Budget</strong></div>
                     <div class="col">
                         {{ historyBudgetSummary(flow) }}
                         <span v-if="flow.continue_as_new_recommended" class="badge badge-warning ml-1">
                             Continue as new recommended
                         </span>
+                    </div>
+                </div>
+
+                <div class="row mb-2" v-if="hasDetailValue(flow.retained_history_event_count) && hasDetailValue(flow.retained_exception_count)">
+                    <div class="col-md-2"><strong>Retained Details</strong></div>
+                    <div class="col">
+                        {{ Number(flow.retained_history_event_count).toLocaleString() }} history events,
+                        {{ Number(flow.retained_exception_count).toLocaleString() }} failure records
                     </div>
                 </div>
 
