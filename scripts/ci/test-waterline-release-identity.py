@@ -159,34 +159,6 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         ):
             validate(candidate_manifest=stale)
 
-    def test_published_workflow_2_x_minor_can_advance_independently(self) -> None:
-        candidate = manifest()
-        candidate["require-dev"][identity.WORKFLOW_PACKAGE] = "2.2.12"
-
-        evidence = validate(candidate_manifest=candidate)
-
-        self.assertEqual("2.2.12", evidence["candidate_source"]["workflow"])
-        self.assertEqual("2.0.1", evidence["current_public_artifacts"]["workflow"])
-
-    def test_workflow_minor_downgrade_is_rejected(self) -> None:
-        current = approved()
-        current["versions"] = {**current["versions"], "workflow": "2.2.12"}
-        candidate = manifest()
-        candidate["require-dev"][identity.WORKFLOW_PACKAGE] = "2.1.9"
-
-        with self.assertRaisesRegex(
-            identity.IdentityError, "precedes the current public dependency"
-        ):
-            identity.validate(
-                current,
-                candidate,
-                b"waterline-composer-source",
-                standalone(),
-                b"standalone-composer-source",
-                lock(),
-                b"standalone-lock-source",
-            )
-
     def test_stale_service_image_sdk_source_is_rejected(self) -> None:
         stale_manifest = standalone()
         stale_manifest["require"][identity.SDK_PACKAGE] = "2.0.0-rc.11"

@@ -296,6 +296,7 @@ def expected_results(
         "laravel-matrix": matrix_result,
         "laravel-compatibility": matrix_result,
         "database": matrix_result,
+        "workflow-current-retention": matrix_result,
     }
 
 
@@ -311,6 +312,7 @@ def focused_checks(classification: str) -> tuple[str, ...]:
             "frontend-production-build",
             "laravel-compatibility-matrix",
             "complete-database-matrix",
+            "published-workflow-retention-integration",
         )
     raise ValueError(f"unknown qualification class: {classification}")
 
@@ -458,6 +460,7 @@ def gate_command(arguments: argparse.Namespace) -> int:
         "laravel-matrix": arguments.laravel_matrix_result,
         "laravel-compatibility": arguments.laravel_compatibility_result,
         "database": arguments.database_result,
+        "workflow-current-retention": arguments.workflow_current_retention_result,
     }
     failures = evaluate_results(
         arguments.classification,
@@ -556,6 +559,7 @@ def parser() -> argparse.ArgumentParser:
     gate.add_argument("--laravel-matrix-result", required=True)
     gate.add_argument("--laravel-compatibility-result", required=True)
     gate.add_argument("--database-result", required=True)
+    gate.add_argument("--workflow-current-retention-result", required=True)
     gate.add_argument("--started-at", required=True, type=int)
     gate.add_argument("--benchmark", required=True)
     gate.add_argument(
