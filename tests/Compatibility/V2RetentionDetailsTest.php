@@ -1,6 +1,6 @@
 <?php
 
-namespace Waterline\Tests\Feature;
+namespace Waterline\Tests\Compatibility;
 
 use Illuminate\Support\Str;
 use Waterline\Tests\TestCase;
@@ -26,8 +26,8 @@ final class V2RetentionDetailsTest extends TestCase
             $this->getJson($url)
                 ->assertOk()
                 ->assertJsonPath('details_pruned_at', null)
-                ->assertJsonPath('retained_history_event_count', 1)
-                ->assertJsonPath('retained_exception_count', $status === 'failed' ? 1 : 0);
+                ->assertJsonPath('retained_history_event_count', null)
+                ->assertJsonPath('retained_exception_count', null);
 
             WorkflowRunRetentionCleanup::pruneRun($run->id);
             $prunedAt = $run->fresh()->details_pruned_at;
@@ -59,13 +59,13 @@ final class V2RetentionDetailsTest extends TestCase
         $this->getJson('/waterline/api/instances/'.$archived->workflow_instance_id.'/runs/'.$archived->id)
             ->assertOk()
             ->assertJsonPath('details_pruned_at', null)
-            ->assertJsonPath('retained_history_event_count', 1);
+            ->assertJsonPath('retained_history_event_count', null);
 
         $this->getJson('/waterline/api/instances/'.$empty->workflow_instance_id.'/runs/'.$empty->id)
             ->assertOk()
             ->assertJsonPath('details_pruned_at', null)
-            ->assertJsonPath('retained_history_event_count', 0)
-            ->assertJsonPath('retained_exception_count', 0);
+            ->assertJsonPath('retained_history_event_count', null)
+            ->assertJsonPath('retained_exception_count', null);
     }
 
     private function createArchivedRun(string $status): WorkflowRun

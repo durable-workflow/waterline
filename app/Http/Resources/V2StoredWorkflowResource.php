@@ -133,8 +133,12 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['details_pruned_at'] = $prunedAt instanceof CarbonInterface
             ? $prunedAt->toIso8601String()
             : null;
-        $detail['retained_history_event_count'] = $this->resource->historyEvents()->count();
-        $detail['retained_exception_count'] = $this->resource->failures()->count();
+        $detail['retained_history_event_count'] = $prunedAt instanceof CarbonInterface
+            ? $this->resource->historyEvents()->count()
+            : null;
+        $detail['retained_exception_count'] = $prunedAt instanceof CarbonInterface
+            ? $this->resource->failures()->count()
+            : null;
 
         return $detail;
     }
