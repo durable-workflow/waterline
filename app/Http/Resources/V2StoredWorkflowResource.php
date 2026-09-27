@@ -55,6 +55,7 @@ class V2StoredWorkflowResource extends JsonResource
         $detail = $this->withDurableCompensationActivities($detail);
         $detail = $this->withSelectedRunIdentity($detail);
         $detail = $this->withSelectedRunStatus($detail);
+        $detail = $this->withRetentionDetails($detail);
         $detail = $this->withSelectedRunCompatibility($detail);
         $detail = $this->withSelectedRunSearchAttributes($detail);
         $detail = $this->withUpdateDiagnostics($detail);
@@ -117,6 +118,27 @@ class V2StoredWorkflowResource extends JsonResource
         if (! is_bool($detail['is_terminal'] ?? null)) {
             $detail['is_terminal'] = $this->isTerminalStatus($status);
         }
+
+        return $detail;
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     * @return array<string, mixed>
+     */
+    private function withRetentionDetails(array $detail): array
+    {
+        $prunedAt = $this->resource->getAttribute('details_pruned_at');
+
+        $detail['details_pruned_at'] = $prunedAt instanceof CarbonInterface
+            ? $prunedAt->toIso8601String()
+            : null;
+        $detail['retained_history_event_count'] = $prunedAt instanceof CarbonInterface
+            ? $this->resource->historyEvents()->count()
+            : null;
+        $detail['retained_exception_count'] = $prunedAt instanceof CarbonInterface
+            ? $this->resource->failures()->count()
+            : null;
 
         return $detail;
     }

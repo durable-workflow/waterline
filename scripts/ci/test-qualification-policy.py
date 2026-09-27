@@ -120,6 +120,15 @@ class ChangeClassificationTest(unittest.TestCase):
                     qualification.evaluate_results(classification, expected),
                 )
 
+    def test_complete_gate_requires_published_workflow_retention_integration(self) -> None:
+        expected = qualification.expected_results(qualification.COMPLETE)
+        observed = {**expected, "workflow-current-retention": "failure"}
+
+        self.assertIn(
+            "workflow-current-retention:expected-success:observed-failure",
+            qualification.evaluate_results(qualification.COMPLETE, observed),
+        )
+
 
 class WorkflowContractTest(unittest.TestCase):
     @classmethod
@@ -182,6 +191,7 @@ class WorkflowContractTest(unittest.TestCase):
 
         self.assertEqual("${{ always() }}", gate["if"])
         self.assertIn("release-contracts", gate["needs"])
+        self.assertIn("workflow-current-retention", gate["needs"])
         self.assertIn("classification", qualification.expected_results("release"))
 
 

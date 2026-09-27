@@ -46,6 +46,7 @@ final class V2ConfiguredCoreModelsDashboardWorkflowTest extends TestCase
             ->assertJsonPath('instance_id', $workflow->id())
             ->assertJsonPath('run_id', $workflow->runId())
             ->assertJsonPath('selected_run_id', $workflow->runId())
+            ->assertJsonPath('details_pruned_at', null)
             ->assertJsonPath('status', 'completed');
     }
 
@@ -112,6 +113,7 @@ final class V2ConfiguredCoreModelsDashboardWorkflowTest extends TestCase
             $table->timestamp('started_at', 6)->nullable();
             $table->timestamp('closed_at', 6)->nullable();
             $table->timestamp('archived_at', 6)->nullable();
+            $table->timestamp('details_pruned_at', 6)->nullable();
             $table->string('archive_command_id', 26)->nullable();
             $table->string('archive_reason')->nullable();
             $table->timestamp('last_progress_at', 6)->nullable();

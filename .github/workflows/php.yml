@@ -676,6 +676,36 @@ jobs:
     - name: Build Laravel 12 Workbench scaffold
       run: composer build
 
+  workflow-current-retention:
+    name: Published Workflow 2.2.12 retention integration
+    needs: classify
+    if: ${{ needs.classify.outputs.qualification-class == 'complete' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+      with:
+        persist-credentials: false
+
+    - name: Install PHP 8.4
+      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
+      with:
+        php-version: '8.4'
+        extensions: pdo_sqlite
+        coverage: none
+
+    - name: Install published Workflow 2.2.12
+      run: |
+        composer install --prefer-dist --no-progress --no-interaction --no-scripts
+        composer require --dev --prefer-dist --no-progress --no-interaction --no-scripts durable-workflow/workflow:2.2.12
+        php -r 'require "vendor/autoload.php"; if (Composer\InstalledVersions::getPrettyVersion("durable-workflow/workflow") !== "2.2.12" || Workflow\V2\Support\PlatformConformanceSuite::workflowSourceRelease() !== "2.2.12") { exit(1); }'
+
+    - name: Verify retained-run pruning in embedded mode
+      run: |
+        composer build
+        vendor/bin/phpunit --configuration=phpunit-sqlite.xml tests/Compatibility/V2RetentionDetailsTest.php
+
   laravel-matrix:
     name: Resolve Laravel dependency matrix
     needs: [classify, build]
@@ -1033,6 +1063,7 @@ jobs:
       - run-detail-visual
       - frontend
       - build
+      - workflow-current-retention
       - laravel-matrix
       - laravel-compatibility
       - qualification
@@ -1061,6 +1092,7 @@ jobs:
         RUN_DETAIL_VISUAL_RESULT: ${{ needs.run-detail-visual.result }}
         FRONTEND_RESULT: ${{ needs.frontend.result }}
         BUILD_RESULT: ${{ needs.build.result }}
+        WORKFLOW_CURRENT_RETENTION_RESULT: ${{ needs.workflow-current-retention.result }}
         MATRIX_RESULT: ${{ needs.laravel-matrix.result }}
         LARAVEL_RESULT: ${{ needs.laravel-compatibility.result }}
         DATABASE_RESULT: ${{ needs.qualification.result }}
@@ -1077,6 +1109,7 @@ jobs:
         --run-detail-visual-result="$RUN_DETAIL_VISUAL_RESULT"
         --frontend-result="$FRONTEND_RESULT"
         --build-result="$BUILD_RESULT"
+        --workflow-current-retention-result="$WORKFLOW_CURRENT_RETENTION_RESULT"
         --laravel-matrix-result="$MATRIX_RESULT"
         --laravel-compatibility-result="$LARAVEL_RESULT"
         --database-result="$DATABASE_RESULT"

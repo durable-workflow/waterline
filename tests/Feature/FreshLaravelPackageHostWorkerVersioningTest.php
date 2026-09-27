@@ -748,6 +748,12 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
         $this->assertSame($compatibility, $payload['compatibility'] ?? null);
         $this->assertSame('redis', $payload['connection'] ?? null);
         $this->assertSame('worker-versioning-shared', $payload['queue'] ?? null);
+        $this->assertArrayHasKey('details_pruned_at', $payload);
+        $this->assertNull($payload['details_pruned_at']);
+        $this->assertArrayHasKey('retained_history_event_count', $payload);
+        $this->assertNull($payload['retained_history_event_count']);
+        $this->assertArrayHasKey('retained_exception_count', $payload);
+        $this->assertNull($payload['retained_exception_count']);
 
         return $payload;
     }
