@@ -19,7 +19,7 @@ WORKFLOW_PACKAGE = "durable-workflow/workflow"
 SUPPORTED_2_0 = re.compile(
     r"^2\.0\.(?P<patch>0|[1-9][0-9]*)(?:-(?P<stage>alpha|beta|rc)\.(?P<number>[1-9][0-9]*))?$"
 )
-SUPPORTED_SDK_2_X = re.compile(
+SUPPORTED_DEPENDENCY_2_X = re.compile(
     r"^2\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)(?:-(?P<stage>alpha|beta|rc)\.(?P<number>[1-9][0-9]*))?$"
 )
 PUBLIC_COMMIT = re.compile(r"^[0-9a-f]{40}$")
@@ -40,16 +40,16 @@ def load_json(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
     return value, raw
 
 
-def exact_version(value: object, label: str, *, sdk: bool = False) -> str:
-    pattern = SUPPORTED_SDK_2_X if sdk else SUPPORTED_2_0
+def exact_version(value: object, label: str, *, dependency: bool = False) -> str:
+    pattern = SUPPORTED_DEPENDENCY_2_X if dependency else SUPPORTED_2_0
     if not isinstance(value, str) or pattern.fullmatch(value) is None:
-        line = "2.x" if sdk else "2.0"
+        line = "2.x" if dependency else "2.0"
         raise IdentityError(f"{label} must be an exact supported {line} release")
     return value
 
 
 def version_order(value: str) -> tuple[int, int, int, int]:
-    match = SUPPORTED_SDK_2_X.fullmatch(value)
+    match = SUPPORTED_DEPENDENCY_2_X.fullmatch(value)
     if match is None:
         raise IdentityError(f"cannot order unsupported release {value!r}")
     stage = match.group("stage")
@@ -76,7 +76,9 @@ def approved_versions(approved: Mapping[str, Any]) -> dict[str, str]:
         )
     return {
         name: exact_version(
-            versions[name], f"approved {name} version", sdk=name == "sdk-php"
+            versions[name],
+            f"approved {name} version",
+            dependency=name in ("workflow", "sdk-php"),
         )
         for name in ("waterline", "workflow", "sdk-php")
     }
@@ -88,7 +90,9 @@ def required_version(
     requirements = manifest.get(table)
     requirement = requirements.get(package) if isinstance(requirements, dict) else None
     return exact_version(
-        requirement, f"{label} {table}.{package}", sdk=package == SDK_PACKAGE
+        requirement,
+        f"{label} {table}.{package}",
+        dependency=package in (WORKFLOW_PACKAGE, SDK_PACKAGE),
     )
 
 
@@ -113,7 +117,7 @@ def locked_version(lock: Mapping[str, Any], package: str) -> str:
     return exact_version(
         candidate.get("version"),
         f"standalone Composer lock {package} version",
-        sdk=package == SDK_PACKAGE,
+        dependency=package in (WORKFLOW_PACKAGE, SDK_PACKAGE),
     )
 
 
