@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.0.7 - 2026-09-27
+
+Embedded run detail now identifies when Workflow retention removed history and
+error details. A confirmed pruning timestamp gives operators an explicit notice
+and the counts of detail rows still retained, while the original terminal status
+and history budget remain distinct. Older Workflow packages and runs without a
+confirmed pruning marker show no removal notice. The standalone service and its
+published Workflow 2.0.1 peer remain compatible; Workflow 2.2.12 is qualified
+separately for the new embedded retention detail.
+
 ## 2.0.6 - 2026-09-26
 
 The versioned service image now prepares its arm64 build cache on a native
