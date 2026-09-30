@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { createSSRApp } from 'vue';
+import { renderToString } from '@vue/server-renderer';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const componentPath = path.join(root, 'resources/js/components/WorkerHealth.vue');
@@ -96,5 +98,42 @@ test('embedded and service snapshots render and aggregate equivalent worker flee
             activeRoster.reduce((total, worker) => total + worker.current_leases, 0),
             name,
         );
+    }
+});
+
+test('an empty fleet distinguishes stale registrations from a first worker setup', async () => {
+    const source = fs.readFileSync(componentPath, 'utf8');
+    const template = source.match(/<template>([\s\S]*)<\/template>\s*<script>/)?.[1];
+    assert.ok(template, 'WorkerHealth must expose its rendered template.');
+
+    for (const backend of ['embedded', 'service']) {
+        for (const stale of [[], [{worker_id: 'worker-stale', status: 'stale'}]]) {
+            const component = componentOptions();
+            const healthData = healthSnapshot(backend, [], stale);
+            const html = await renderToString(createSSRApp({
+                ...component,
+                template,
+                data() {
+                    return {
+                        ...component.data(),
+                        loading: false,
+                        healthData,
+                        workers: [],
+                    };
+                },
+            }));
+
+            if (stale.length > 0) {
+                assert.match(html, /No active workers/);
+                assert.match(html, /workers are stale/);
+                assert.match(html, /fresh heartbeat/);
+                assert.doesNotMatch(html, /No workers registered/);
+                assert.doesNotMatch(html, /not observed any worker registrations/);
+            } else {
+                assert.match(html, /No workers registered/);
+                assert.match(html, /not observed any worker registrations/);
+                assert.doesNotMatch(html, /No active workers/);
+            }
+        }
     }
 });

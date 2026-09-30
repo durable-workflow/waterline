@@ -280,8 +280,14 @@
                         </div>
 
                         <div v-else class="worker-health__empty-state">
-                            <strong>No workers registered</strong>
-                            <p class="mb-0 text-muted">Waterline has not observed any worker registrations for this scope yet.</p>
+                            <template v-if="staleRegistrationCount > 0">
+                                <strong>No active workers</strong>
+                                <p class="mb-0 text-muted">Previously registered workers are stale. Check their processes and task queues, then verify a fresh heartbeat.</p>
+                            </template>
+                            <template v-else>
+                                <strong>No workers registered</strong>
+                                <p class="mb-0 text-muted">Waterline has not observed any worker registrations for this scope yet.</p>
+                            </template>
                         </div>
                     </div>
                 </article>
