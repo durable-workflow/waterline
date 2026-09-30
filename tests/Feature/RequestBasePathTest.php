@@ -4,6 +4,7 @@ namespace Waterline\Tests\Feature;
 
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
+use Illuminate\Contracts\Http\Kernel;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Models\WorkflowInstance;
@@ -16,7 +17,7 @@ class RequestBasePathTest extends TestCase
         parent::setUp();
 
         config()->set('waterline.engine_source', 'v2');
-        $this->app['router']->prependMiddlewareToGroup('web', WaterlinePrefixTrustProxies::class);
+        $this->app->make(Kernel::class)->pushMiddleware(WaterlinePrefixTrustProxies::class);
     }
 
     public function testRootDeploymentKeepsItsObserverLinksAndDashboardPath(): void
@@ -87,7 +88,7 @@ class RequestBasePathTest extends TestCase
         $apiPath = '/'.$waterlinePath.'/api';
         $instancePath = '/instances/'.$instance->id;
         $runPath = $instancePath.'/runs/'.$run->id;
-        $this->getJson($requestPrefix.$apiPath.$runPath)
+        $this->getJson('http://localhost'.$requestPrefix.$apiPath.$runPath)
             ->assertOk()
             ->assertJsonPath('observer_state.paths', [
                 'selected_run_detail' => $baseUrl.$apiPath.$runPath,
@@ -100,7 +101,7 @@ class RequestBasePathTest extends TestCase
                 'instance_update_lookup_template' => $baseUrl.$apiPath.$instancePath.'/updates/{updateId}',
             ]);
 
-        $this->get($requestPrefix.'/'.$waterlinePath)
+        $this->get('http://localhost'.$requestPrefix.'/'.$waterlinePath)
             ->assertOk()
             ->assertViewHas('waterlineBootstrap', function (array $bootstrap) use ($baseUrl, $waterlinePath): bool {
                 return $bootstrap['path'] === ltrim($baseUrl.'/'.$waterlinePath, '/');

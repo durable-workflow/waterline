@@ -2,6 +2,7 @@
 
 namespace Waterline\Http\Controllers;
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
 use RuntimeException;
 use Waterline\Support\BackendConfiguration;
@@ -23,7 +24,7 @@ class DashboardController extends Controller
         '#ffc107' => 'yellow',
     ];
 
-    public function index()
+    public function index(Request $request)
     {
         $operatorScope = OperatorScope::payload();
         $backend = BackendConfiguration::serviceMode()
@@ -38,7 +39,7 @@ class DashboardController extends Controller
             'componentsCssUrl' => $this->assetUrl('components.css'),
             'jsUrl' => $this->assetUrl('app.js'),
             'waterlineBootstrap' => [
-                'path' => config('waterline.path', 'waterline'),
+                'path' => trim($request->getBaseUrl().'/'.trim((string) config('waterline.path', 'waterline'), '/'), '/'),
                 'operator_scope' => $operatorScope,
                 'backend' => $backend,
                 'app_name' => config('app.name') ?: 'Workflow Operations',
