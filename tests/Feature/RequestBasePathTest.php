@@ -5,6 +5,7 @@ namespace Waterline\Tests\Feature;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Contracts\Http\Kernel;
+use Illuminate\Support\Str;
 use Waterline\Tests\TestCase;
 use Workflow\Serializers\Serializer;
 use Workflow\V2\Models\WorkflowInstance;
@@ -72,7 +73,7 @@ class RequestBasePathTest extends TestCase
             'started_at' => now(),
         ]);
         $run = WorkflowRun::create([
-            'id' => '01JPREFIX000000000000000001',
+            'id' => (string) Str::ulid(),
             'workflow_instance_id' => $instance->id,
             'run_number' => 1,
             'workflow_class' => 'PrefixWorkflow',
