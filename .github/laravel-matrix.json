@@ -36,7 +36,7 @@
         {
             "label": "Laravel 12",
             "boundary": "intermediate",
-            "laravel": "12.64.0",
+            "laravel": "12.69.3",
             "testbench": "10.11.0",
             "workbench": "10.1.0",
             "php": "8.2",
@@ -47,7 +47,7 @@
         {
             "label": "Laravel 13",
             "boundary": "highest",
-            "laravel": "13.20.0",
+            "laravel": "13.34.0",
             "testbench": "11.1.0",
             "workbench": "11.1.0",
             "php": "8.3",
