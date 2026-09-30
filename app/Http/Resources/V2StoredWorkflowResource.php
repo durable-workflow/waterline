@@ -722,12 +722,13 @@ class V2StoredWorkflowResource extends JsonResource
     private function observerPaths($request, array $detail): array
     {
         $waterlinePath = trim((string) config('waterline.path', 'waterline'), '/');
-        $basePath = ($waterlinePath === '' ? '' : '/'.$waterlinePath).'/api';
+        $applicationBasePath = rtrim($request->getBaseUrl(), '/');
+        $basePath = $applicationBasePath.($waterlinePath === '' ? '' : '/'.$waterlinePath).'/api';
         $instanceId = $this->pathValue($detail['instance_id'] ?? null);
         $runId = $this->pathValue($detail['run_id'] ?? $detail['selected_run_id'] ?? null);
 
         return [
-            'selected_run_detail' => '/'.ltrim((string) $request->path(), '/'),
+            'selected_run_detail' => $applicationBasePath.'/'.ltrim((string) $request->path(), '/'),
             'selected_run_history_export' => $instanceId === null || $runId === null
                 ? null
                 : sprintf('%s/instances/%s/runs/%s/history-export', $basePath, $instanceId, $runId),
