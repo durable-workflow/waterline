@@ -1186,6 +1186,12 @@ export async function runRunDetailVisual({
                         path: path.join(outputDirectory, screenshot),
                         fullPage: false,
                     });
+                    if (cancellation?.present) {
+                        cancellation.screenshot = `${name}-cancellation.png`;
+                        await page.locator('section[aria-labelledby="cancellationCascadeTitle"]').screenshot({
+                            path: path.join(outputDirectory, cancellation.screenshot),
+                        });
+                    }
                 } catch (error) {
                     const screenshotFailure = error instanceof Error ? error.message : String(error);
 
