@@ -5,7 +5,7 @@
             <p v-if="!view" class="mb-0">{{ emptyNotice }}</p>
             <p v-else-if="!recognized" class="mb-0">These cancellation details require a newer Waterline version.</p>
             <template v-else>
-                <dl class="row mb-2">
+                <dl class="row mb-2 wl-cancellation-detail">
                     <dt class="col-sm-3">Root request</dt><dd class="col-sm-9 wl-cancellation-value">{{ label(root.root_request_id) }}</dd>
                     <dt class="col-sm-3">Requested</dt><dd class="col-sm-9">{{ label(root.requested_at) }}</dd>
                     <dt class="col-sm-3">Original cleanup deadline</dt><dd class="col-sm-9">{{ label(root.cleanup_deadline_at) }}</dd>
@@ -24,7 +24,7 @@
                         <span class="badge badge-secondary ml-2">{{ phase(run.lifecycle) }}</span>
                         <span v-if="run.run_id === view.selected_run_id" class="badge badge-info ml-2">Selected run</span>
                     </h6>
-                    <dl class="row mb-1 small">
+                    <dl class="row mb-1 small wl-cancellation-detail">
                         <dt class="col-sm-3">Workflow / run</dt><dd class="col-sm-9 wl-cancellation-value">{{ label(run.workflow_id) }} / {{ label(run.run_id) }}</dd>
                         <dt class="col-sm-3">Local request / parent</dt><dd class="col-sm-9 wl-cancellation-value">{{ label(object(run.request).request_id) }} / {{ label(object(run.request).parent_request_id) }}</dd>
                         <dt class="col-sm-3">Budget</dt><dd class="col-sm-9">{{ budget(run) }} · {{ label(object(run.request).cleanup_deadline_at) }}</dd>
@@ -91,4 +91,9 @@ export default {
 
 <style scoped>
 .wl-cancellation-value { overflow-wrap: anywhere; }
+@media (max-width: 575.98px) {
+    .wl-cancellation-detail > dt,
+    .wl-cancellation-detail > dd { flex: 0 0 100%; max-width: 100%; }
+    .wl-cancellation-detail > dt { overflow-wrap: normal; word-break: normal; }
+}
 </style>

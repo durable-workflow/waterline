@@ -398,6 +398,16 @@ async function auditCancellationCascade(page, state) {
     if (await panel.evaluate(element => element.scrollWidth > element.clientWidth + 1)) {
         throw new Error('Cancellation evidence overflows its panel.');
     }
+    if (page.viewportSize().width <= 575) {
+        const stacked = await panel.locator('dl').evaluateAll(lists => lists.every(list => {
+            const label = list.querySelector('dt').getBoundingClientRect();
+            const value = list.querySelector('dd').getBoundingClientRect();
+            return Math.abs(label.x - value.x) <= 1
+                && Math.abs(label.width - value.width) <= 1
+                && value.y >= label.bottom - 1;
+        }));
+        if (!stacked) throw new Error('Mobile cancellation labels and values do not occupy separate rows.');
+    }
     return { present: true, runs: 2, originalDeadline: fixture.root.cleanup_deadline_at };
 }
 
@@ -1188,8 +1198,16 @@ export async function runRunDetailVisual({
                     });
                     if (cancellation?.present) {
                         cancellation.screenshot = `${name}-cancellation.png`;
-                        await page.locator('section[aria-labelledby="cancellationCascadeTitle"]').screenshot({
+                        await page.evaluate(() => window.scrollTo(0, 0));
+                        const clip = await page.locator('section[aria-labelledby="cancellationCascadeTitle"]').evaluate(element => {
+                            const bounds = element.getBoundingClientRect();
+                            return { x: bounds.x + window.scrollX, y: bounds.y + window.scrollY,
+                                width: bounds.width, height: bounds.height };
+                        });
+                        await page.screenshot({
                             path: path.join(outputDirectory, cancellation.screenshot),
+                            fullPage: true,
+                            clip,
                         });
                     }
                 } catch (error) {
