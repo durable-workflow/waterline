@@ -127,6 +127,34 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('read_only', true);
     }
 
+    public function testSelectedRunPreservesTheServersCanonicalCancellationCascade(): void
+    {
+        $view = [
+            'schema' => 'durable-workflow.cancellation-cascade/v1',
+            'selected_run_id' => 'run-1',
+            'root' => ['root_request_id' => 'root-request', 'cleanup_deadline_at' => '2026-10-02T00:00:30Z'],
+            'runs' => [['run_id' => 'run-1', 'lifecycle' => 'cleaning_up', 'cleanup_recovery' => [
+                ['history_event_id' => 17, 'attempt' => ['callback_stop_state' => 'unknown']],
+            ]]],
+            'edges' => [], 'inspection_complete' => false, 'truncated' => false,
+            'findings' => [['code' => 'related_run_unavailable', 'run_id' => 'run-1', 'message' => 'A related run is unavailable.']],
+        ];
+        $this->client->diagnostics = ['cancellation_cascade_supported' => true, 'cancellation_cascade' => $view];
+        $response = $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()->assertJsonPath('selected_run_id', 'run-1')
+            ->assertJsonPath('cancellation_cascade_supported', true)
+            ->assertJsonPath('cancellation_cascade', $view);
+        $this->assertSame($view, $response->json('cancellation_cascade'));
+        $this->assertSame($view, $this->client->diagnostics['cancellation_cascade']);
+    }
+
+    public function testSelectedRunRetainsTheServersExplicitUnsupportedCancellationDiagnostic(): void
+    {
+        $this->client->diagnostics = ['cancellation_cascade_supported' => false, 'cancellation_cascade' => null];
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')->assertOk()
+            ->assertJsonPath('cancellation_cascade_supported', false)->assertJsonPath('cancellation_cascade', null);
+    }
+
     public function testServiceHistoryAddsDisplayFieldsWithoutChangingTheServerEvent(): void
     {
         $types = ['StartAccepted', 'WorkflowStarted', 'ActivityScheduled', 'ActivityStarted',

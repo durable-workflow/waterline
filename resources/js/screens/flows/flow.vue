@@ -566,6 +566,8 @@
             </div>
         </div>
 
+        <CancellationCascadeView v-if="ready" :diagnostics="flow" />
+
         <div :class="diagnosticsBannerClass()" v-if="ready && diagnosticRows().length" role="alert">
             <div class="d-flex align-items-center justify-content-between">
                 <div>
@@ -1734,12 +1736,14 @@ import 'prismjs/components/prism-php'
 import 'prismjs/themes/prism-tomorrow.css'
 import TimelineEventRenderer from '../../components/TimelineEventRenderer.vue'
 import SearchAttributeRenderer from '../../components/SearchAttributeRenderer.vue'
+import CancellationCascadeView from '../../components/CancellationCascadeView.vue'
 import { presentWorkflowStreams } from '../../workflow-streams.mjs'
 
 export default {
     components: {
         TimelineEventRenderer,
         SearchAttributeRenderer,
+        CancellationCascadeView,
     },
     /**
      * The component's data.

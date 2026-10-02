@@ -298,6 +298,8 @@ class V2DashboardWorkflowTest extends TestCase
         $this->get('/waterline/api/flows/' . $run->id)
             ->assertOk()
             ->assertJsonPath('contract_boundary', 'detail')
+            ->assertJsonPath('cancellation_cascade_supported', class_exists(\Workflow\V2\Support\CancellationCascadeView::class))
+            ->assertJsonPath('cancellation_cascade', null)
             ->assertJsonPath('timeline_limit', 200)
             ->assertJsonPath('run_id', $run->id)
             ->assertJsonPath('observer_state.schema', 'waterline.observer-state')
@@ -10896,6 +10898,7 @@ class V2DashboardWorkflowTest extends TestCase
             $table->string('event_type');
             $table->json('payload')->nullable();
             $table->timestamp('recorded_at', 6)->nullable();
+            $table->dateTime('recorded_at_utc', 6)->nullable();
             $table->timestamps(6);
         });
     }

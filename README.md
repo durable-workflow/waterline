@@ -107,6 +107,24 @@ URL query parameters still win for shared links. For example,
 `?tab=timeline&sort=asc&density=dense&columns=workflow_id,status` returns those
 values in `effective_preferences` without mutating the stored preferences.
 
+### Cancellation Cascade
+
+The candidate cancellation inspection view joins the original root request and
+cleanup deadline with each run's local request, delivery boundary, lifecycle,
+child policy outcome, activity stop receipts and cleanup recovery. Embedded
+mode uses the shared Native reader. Service mode preserves Server's diagnostic
+view. Selecting a historical run preserves that selection.
+
+Callback fencing and reported callback exit are shown separately. A missing
+stop receipt stays unverified, and a recovery grant does not identify the cause
+of worker loss. Independent cancellation roots keep their own deadlines.
+Missing or clipped evidence is shown with its findings.
+
+This view requires an installed Native or Server runtime supplying
+`durable-workflow.cancellation-cascade/v1`. Older runtimes report unavailable
+details. This candidate contract is not a statement about currently published
+runtime capabilities.
+
 ## Upgrading Waterline
 
 When upgrading to 2.0, let Composer resolve the supported package graph together
