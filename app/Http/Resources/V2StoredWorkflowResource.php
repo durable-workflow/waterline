@@ -24,6 +24,7 @@ use Workflow\V2\Models\WorkflowHistoryEvent;
 use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowUpdate;
+use Workflow\V2\Support\CancellationCascadeView;
 use Workflow\V2\Support\CommandPayloadPreview;
 use Workflow\V2\Support\RunCommandContract;
 use Workflow\V2\Support\WorkflowDefinitionFingerprint;
@@ -63,6 +64,10 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['current_compensation_marker'] = $compensationVisibility['current_marker'];
         $detail['compensation_visibility'] = $compensationVisibility;
         $detail['run_diagnostics'] = $this->runDiagnostics($detail);
+        $detail['cancellation_cascade_supported'] = class_exists(CancellationCascadeView::class);
+        $detail['cancellation_cascade'] = class_exists(CancellationCascadeView::class)
+            ? CancellationCascadeView::forRun($this->resource)
+            : null;
         $workflowStreams = app(WorkflowStreamPresenter::class)->embedded($this->resource);
         $detail['workflow_streams'] = $workflowStreams['streams'];
         $detail['workflow_streams_mode'] = 'embedded';

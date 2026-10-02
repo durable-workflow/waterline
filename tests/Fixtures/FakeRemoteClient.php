@@ -24,6 +24,9 @@ final class FakeRemoteClient
     /** @var list<array<string, mixed>>|null */
     public ?array $workflowRows = null;
 
+    /** @var array<string, mixed>|null */
+    public ?array $diagnostics = null;
+
     /** @var list<array<string, mixed>>|null */
     public ?array $workflowStreams = null;
 
@@ -120,7 +123,7 @@ final class FakeRemoteClient
     {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        return ['tasks' => [['id' => 'task-1', 'status' => 'ready']]];
+        return $this->diagnostics ?? ['tasks' => [['id' => 'task-1', 'status' => 'ready']]];
     }
 
     /** @return list<array<string, mixed>> */

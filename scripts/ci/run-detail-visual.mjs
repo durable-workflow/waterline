@@ -276,6 +276,10 @@ export function runDetailFixture(streamState = 'embedded-populated') {
     };
 
     return {
+        ...(result === 'populated' ? {
+            cancellation_cascade_supported: true,
+            cancellation_cascade: cancellationCascadeFixture(),
+        } : {}),
         id: RUN_ID,
         workflow_instance_id: INSTANCE_ID,
         instance_id: INSTANCE_ID,
@@ -333,6 +337,68 @@ export function runDetailFixture(streamState = 'embedded-populated') {
         },
         can_issue_terminal_commands: false,
     };
+}
+
+// Rendering evidence only. Runtime cancellation is qualified separately.
+export function cancellationCascadeFixture() {
+    const context = {
+        root_request_id: 'visual-root-request-01M3ZZZZZZZZZZZZZZZZZZ', request_id: 'visual-root-request-01M3ZZZZZZZZZZZZZZZZZZ',
+        parent_request_id: null, reason: 'Deployment maintenance', requester: { id: 'visual-operator' }, source: 'operator',
+        requested_at: '2026-10-02T00:00:00Z', cleanup_deadline_at: '2026-10-02T00:00:30Z',
+    };
+    const stop = {
+        activity_execution_id: 'visual-php-local-work-01M3ZZZZZZZZZZZZZZZZZZ', activity_attempt_id: 'visual-original-attempt',
+        activity_type: 'php.local.work', execution_mode: 'local', callback_state: 'reported_stopped',
+        fence_history_event_id: 8, stop_history_event_id: 9, evidence_source: 'joined_callback',
+    };
+    const parent = {
+        run_id: RUN_ID, workflow_id: INSTANCE_ID, workflow_type: 'visual.php.parent', projected_status: 'waiting',
+        lifecycle: 'cleaning_up', request: context, same_root_budget: true,
+        delivery: { history_event_id: 13, sequence: 1, sequence_span: 2, call_kind: 'parallel' }, cleanup: null,
+        activity_stops: [stop], cleanup_recovery: [{ history_event_id: 17, activity_execution_id: 'visual-php-cleanup',
+            recorded_at: '2026-10-02T00:00:12Z', attempt: { original_lease_owner: 'visual-old-worker',
+                original_workflow_task_attempt: 1, lease_owner: 'visual-replacement-worker', workflow_task_attempt: 2,
+                callback_stop_state: 'unknown' } }],
+        child_propagation: [{ history_event_id: 10, child_run_id: 'visual-python-child-run-01M3ZZZZZZZZZZZZZZZZZZ',
+            policy: 'wait_cancellation_completed', request_outcome: 'requested' }],
+    };
+    const child = { ...parent, run_id: 'visual-python-child-run-01M3ZZZZZZZZZZZZZZZZZZ',
+        workflow_id: 'visual-python-child-workflow-01M3ZZZZZZZZZZZZZZZZZZ', workflow_type: 'visual.python.child',
+        projected_status: 'cancelled', lifecycle: 'cancelled',
+        request: { ...context, request_id: 'visual-child-request', parent_request_id: context.request_id },
+        cleanup: { outcome: 'completed', finished_at: '2026-10-02T00:00:03Z' },
+        terminal_event_type: 'WorkflowCancelled', terminal_history_event_id: 11,
+        activity_stops: [{ ...stop, activity_type: 'rust.remote.work', execution_mode: 'remote' }],
+        cleanup_recovery: [], child_propagation: [],
+    };
+
+    return { schema: 'durable-workflow.cancellation-cascade/v1', selected_run_id: RUN_ID, root: context,
+        runs: [parent, child], edges: [{ parent_run_id: RUN_ID, child_run_id: child.run_id, kind: 'child_workflow', reference_state: 'resolved' }],
+        inspection_complete: true, truncated: false, findings: [],
+    };
+}
+
+async function auditCancellationCascade(page, state) {
+    const panel = page.locator('section[aria-labelledby="cancellationCascadeTitle"]');
+    const present = await panel.count();
+    if (state.result !== 'populated') {
+        if (present !== 0) throw new Error('Legacy run detail unexpectedly shows cancellation evidence.');
+        return { present: false };
+    }
+    if (present !== 1) throw new Error('The cancellation cascade is missing from populated run detail.');
+    const fixture = cancellationCascadeFixture();
+    const text = await panel.innerText();
+    for (const expected of [fixture.root.root_request_id, fixture.root.cleanup_deadline_at,
+        'visual.php.parent', 'visual.python.child', 'php.local.work', 'rust.remote.work',
+        'Callback reported stopped', 'Previous callback stop: unknown',
+        'visual-old-worker', 'visual-replacement-worker', 'wait cancellation completed']) {
+        if (!text.includes(expected)) throw new Error(`Cancellation evidence is missing: ${expected}`);
+    }
+    if (await panel.locator('article').count() !== 2) throw new Error('The cascade does not show both runs.');
+    if (await panel.evaluate(element => element.scrollWidth > element.clientWidth + 1)) {
+        throw new Error('Cancellation evidence overflows its panel.');
+    }
+    return { present: true, runs: 2, originalDeadline: fixture.root.cleanup_deadline_at };
 }
 
 async function installFixtureRoutes(page, streamState) {
@@ -1042,6 +1108,7 @@ export async function runRunDetailVisual({
             let disclosure = null;
             let bootstrap = null;
             let geometry = null;
+            let cancellation = null;
             let controls = [];
             let contrast = [];
             const deepLinkStability = [];
@@ -1079,6 +1146,7 @@ export async function runRunDetailVisual({
                     }
 
                     bootstrap = await auditBootstrapIdentity(page, state.presentation);
+                    cancellation = await auditCancellationCascade(page, state);
                     disclosure = await applyDisclosureState(page, state);
                     contrast = await auditContrast(page, state);
                     ({ geometry, controls } = await auditGeometry(page, viewport, navigation));
@@ -1153,6 +1221,7 @@ export async function runRunDetailVisual({
                     geometry,
                     controls,
                     deepLinkStability,
+                    cancellation,
                     failure,
                 };
 
