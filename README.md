@@ -170,7 +170,10 @@ audit information is never presented as a verified zero.
 
 Run details show up to 20 recent reported failures with compact messages and
 source identifiers. A history link opens and highlights the supporting event
-when it is in the loaded history window. Loading another service history page
+when it is in the loaded history window. Supporting Server references also
+provide a direct, shareable link to a retained failure event outside that window.
+The original opaque cursor is preserved and a selected window does not imply
+that the whole history has been loaded. Loading another service history page
 can make that evidence available. Pruned, unavailable and unloaded history are
 labelled explicitly. An empty view does not establish that a run never failed.
 

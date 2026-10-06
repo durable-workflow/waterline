@@ -27,13 +27,21 @@ export function failureSummary(flow) {
     const pruned = Boolean(flow.details_pruned_at)
     return {
         state: pruned ? 'pruned' : Array.isArray(source) ? 'available' : 'unavailable',
-        truncated: known.length > 20 || (service && known.length === 20),
+        truncated: known.length > 20 || (service && (flow.recent_failures_truncated === true || known.length === 20)),
         rows: selected.map(failure => {
             const id = failure.failure_id || failure.id
             const event = events.get(id)
             const exception = failure.exception && typeof failure.exception === 'object'
                 ? failure.exception : {}
             const payload = event?.payload || {}
+            const reference = service && failure.supporting_event?.state === 'retained'
+                && Number.isInteger(failure.supporting_event.sequence)
+                && failure.supporting_event.sequence > 0
+                && FAILURE_EVENTS.has(failure.supporting_event.event_type)
+                && typeof failure.supporting_event.next_page_token === 'string'
+                && failure.supporting_event.next_page_token.length > 0
+                && failure.supporting_event.next_page_token.length <= 4096
+                ? failure.supporting_event : null
             return {
                 id,
                 type: scalar(failure.exception_class || exception.__constructor || exception.class),
@@ -41,10 +49,12 @@ export function failureSummary(flow) {
                 source_kind: scalar(failure.source_kind || payload.source_kind),
                 source_id: scalar(failure.source_id || payload.source_id || payload.activity_execution_id),
                 handled: typeof failure.handled === 'boolean' ? failure.handled : null,
-                recorded_at: failure.created_at || event?.recorded_at || event?.timestamp || null,
-                event_sequence: event?.sequence || null,
+                recorded_at: failure.created_at || event?.recorded_at || event?.timestamp || reference?.recorded_at || null,
+                event_sequence: event?.sequence || reference?.sequence || null,
+                history_page_token: reference?.next_page_token || null,
                 evidence_state: event ? 'available' : pruned ? 'pruned'
-                    : flow.timeline_truncated ? 'outside_window' : 'unavailable',
+                    : failure.supporting_event?.state === 'pruned' ? 'pruned'
+                    : reference || flow.timeline_truncated ? 'outside_window' : 'unavailable',
             }
         }),
     }

@@ -36,3 +36,17 @@ test('a late response cannot append events from another instance or selected run
     assert.throws(() => appendRunHistoryPage(current, { ...run, selected_run_id: 'run-2', timeline: [completed] }))
     assert.deepEqual(current.timeline, [started])
 })
+
+test('reaching the end after a direct failure jump leaves the total history unknown', () => {
+    const current = {
+        ...run, timeline: [activity], history_window_from_start: false,
+        history_start_page_token: 'opaque-failure-cursor', history_next_page_token: 'last',
+    }
+    const page = { ...run, timeline: [completed], history_next_page_token: null }
+    const combined = appendRunHistoryPage(current, page)
+    assert.equal(combined.history_window_from_start, false)
+    assert.equal(combined.history_start_page_token, 'opaque-failure-cursor')
+    assert.equal(combined.timeline_total_count, null)
+    assert.equal(combined.history_event_count, null)
+    assert.equal(combined.timeline_returned_count, 2)
+})

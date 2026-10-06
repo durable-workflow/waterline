@@ -43,6 +43,23 @@ test('pruned and unavailable summaries never imply an execution had no failures'
     assert.equal(failureSummary({ exceptions: [] }).state, 'available')
 })
 
+test('retained service references link past the loaded window using the original opaque cursor', () => {
+    const flow = {
+        engine_source: 'service', timeline: [], recent_failures_truncated: true,
+        recent_failures: [{ failure_id: 'failure-1', supporting_event: {
+            state: 'retained', sequence: 9001, event_type: 'ActivityFailed',
+            next_page_token: 'opaque+/cursor=', recorded_at: '2026-10-06',
+        } }],
+    }
+    const summary = failureSummary(flow)
+    assert.equal(summary.rows[0].event_sequence, 9001)
+    assert.equal(summary.rows[0].history_page_token, 'opaque+/cursor=')
+    assert.equal(summary.rows[0].evidence_state, 'outside_window')
+    assert.equal(summary.truncated, true)
+    flow.recent_failures[0].supporting_event.event_type = 'FailureHandled'
+    assert.equal(failureSummary(flow).rows[0].event_sequence, null)
+})
+
 test('many retained failures show the latest twenty with a bounded message and a visible truncation marker', () => {
     const failures = Array.from({ length: 500 }, (_, i) => ({ id: String(i), message: 'x'.repeat(600) }))
     const embedded = failureSummary({ exceptions: failures })

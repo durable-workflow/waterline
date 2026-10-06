@@ -319,11 +319,13 @@ final class ServiceModeBackendTest extends TestCase
             ->assertOk()->assertJsonPath('history_next_page_token', 'opaque+/cursor=')
             ->assertJsonPath('timeline_total_count', null)->assertJsonPath('history_event_count', null)
             ->assertJsonPath('timeline_returned_count', 1)->assertJsonPath('timeline_truncated', true)
+            ->assertJsonPath('history_window_from_start', true)->assertJsonPath('history_start_page_token', null)
             ->assertJsonPath('timeline_window_direction', 'forward');
 
         $this->getJson('/waterline/api/instances/order-1/runs/run-1?history_limit=25&history_page_token='.rawurlencode('opaque+/cursor='))
             ->assertOk()->assertJsonPath('history_page_token', 'opaque+/cursor=')
             ->assertJsonPath('history_next_page_token', null)->assertJsonPath('timeline_total_count', null)
+            ->assertJsonPath('history_window_from_start', false)->assertJsonPath('history_start_page_token', 'opaque+/cursor=')
             ->assertJsonPath('timeline.0.sequence', 2)->assertJsonPath('timeline_truncated', false);
 
         $calls = collect($this->client->calls)->where('method', 'workflowHistory')->values()->all();

@@ -624,14 +624,14 @@
                         {{ failure.source_kind || 'Source' }} / {{ failure.source_id }}
                     </div>
                     <div class="small text-muted" v-if="failure.recorded_at">{{ timestamp(failure.recorded_at) }}</div>
-                    <a v-if="failure.event_sequence" :href="'#history-event-' + failure.event_sequence"
-                        class="small" @click.prevent="focusFailureEvent(failure.event_sequence)">
+                    <a v-if="failure.event_sequence" :href="failureEventHref(failure)"
+                        class="small" @click.prevent="focusFailureEvent(failure)">
                         View history event #{{ failure.event_sequence }}
                     </a>
                     <div v-else class="small text-muted">{{ failureEvidenceLabel(failure.evidence_state) }}</div>
                 </div>
                 <div class="small text-muted" v-if="failureSummaryView().truncated">
-                    Showing up to 20 recent failures. Additional failures may exist.
+                    Showing {{ failureSummaryView().rows.length }} recent failures. Additional failures may exist.
                 </div>
             </div>
         </div>
@@ -2009,7 +2009,11 @@ export default {
                 ? '/api/instances/' + instanceId + '/runs/' + runId
                 : '/api/instances/' + instanceId
 
-            return this.fetchFlow(Waterline.basePath + path)
+            const token = this.$route.query.history_page_token
+            const query = typeof token === 'string' && token
+                ? '?history_page_token=' + encodeURIComponent(token) : ''
+
+            return this.fetchFlow(Waterline.basePath + path + query)
         },
 
         loadLegacyFlow(id) {
@@ -2418,7 +2422,30 @@ export default {
             }[state] || 'Supporting history is unavailable in this view.'
         },
 
-        async focusFailureEvent(sequence) {
+        failureEventLocation(failure) {
+            const route = this.canonicalRoute(this.flow.instance_id, this.flow.selected_run_id)
+            return {
+                ...(route || { path: this.$route.path }),
+                query: failure.history_page_token ? { history_page_token: failure.history_page_token } : {},
+                hash: '#history-event-' + failure.event_sequence,
+            }
+        },
+
+        failureEventHref(failure) {
+            return failure.history_page_token
+                ? this.$router.resolve(this.failureEventLocation(failure)).href
+                : '#history-event-' + failure.event_sequence
+        },
+
+        async focusFailureEvent(failure) {
+            const sequence = failure.event_sequence
+            if (failure.history_page_token) {
+                const route = this.failureEventLocation(failure)
+                if (this.$router.resolve(route).fullPath !== this.$route.fullPath) {
+                    await this.$router.push(route)
+                    return
+                }
+            }
             if (failureEventIndex(this.flow, sequence) < 0) {
                 return
             }
@@ -2973,7 +3000,8 @@ export default {
         timelineWindowSummary() {
             const returned = this.timelineReturnedCount().toLocaleString()
             if (this.flow.engine_source === 'service' && !this.hasDetailValue(this.flow.timeline_total_count)) {
-                return 'Showing ' + returned + ' events' + (this.timelineHasOlder() ? ' / more available' : '')
+                const scope = this.flow.history_window_from_start === false ? ' in a selected history window' : ''
+                return 'Showing ' + returned + ' events' + scope + (this.timelineHasOlder() ? ' / more available' : '')
             }
             const total = this.timelineTotalCount().toLocaleString()
             const direction = this.flow.timeline_window_direction === 'latest'

@@ -10,10 +10,13 @@ export function appendRunHistoryPage(current, page) {
         bySequence.set(event.sequence, event)
     }
     const timeline = [...bySequence.values()].sort((a, b) => a.sequence - b.sequence)
-    const complete = !page.history_next_page_token
+    const fromStart = current.history_window_from_start !== false && !current.history_start_page_token
+    const complete = fromStart && !page.history_next_page_token
 
     return {
         ...page,
+        history_window_from_start: fromStart,
+        history_start_page_token: current.history_start_page_token || null,
         timeline,
         timeline_returned_count: timeline.length,
         timeline_total_count: complete ? timeline.length : null,

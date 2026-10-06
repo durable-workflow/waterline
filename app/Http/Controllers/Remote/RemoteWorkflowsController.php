@@ -349,6 +349,8 @@ final class RemoteWorkflowsController extends RemoteController
             'timeline_window_start_sequence' => $timeline[0]['sequence'] ?? null,
             'timeline_window_end_sequence' => $timeline === [] ? null : $timeline[array_key_last($timeline)]['sequence'],
             'history_page_token' => $pageToken,
+            'history_window_from_start' => $pageToken === null,
+            'history_start_page_token' => $pageToken,
             'history_next_page_token' => $nextPageToken,
             'run_navigation' => $this->runNavigation($runs, $execution->workflowId, $selectedRunId),
             'activities' => is_array($activityResponse['activities'] ?? null)
