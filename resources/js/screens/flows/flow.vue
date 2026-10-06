@@ -148,6 +148,33 @@
                     <div class="col">{{ flow.namespace }}</div>
                 </div>
 
+                <div class="row mb-2" v-if="flow.workflow_classification">
+                    <div class="col-md-2"><strong>Classification</strong></div>
+                    <div class="col">{{ flow.workflow_classification }}</div>
+                </div>
+
+                <div class="alert alert-info mt-3" role="status"
+                    v-if="flow.workflow_classification === 'coordinator' && flow.status === 'completed'">
+                    Completed describes this coordinator run. Related executions have their own outcomes.
+                </div>
+
+                <template v-if="flow.application_context">
+                    <div class="row mb-2" v-for="field in flow.application_context.fields" :key="'context-' + field.name">
+                        <div class="col-md-2"><strong>{{ field.label }}</strong></div>
+                        <div class="col">
+                            {{ field.state === 'available' ? field.value : 'Unavailable' }}
+                            <span v-if="field.truncated" class="text-muted">(shortened)</span>
+                        </div>
+                    </div>
+                    <div class="row mb-2" v-if="flow.application_context.links.length">
+                        <div class="col-md-2"><strong>Application</strong></div>
+                        <div class="col">
+                            <a v-for="link in flow.application_context.links" :key="link.name" :href="link.url"
+                                class="mr-3" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>
+                        </div>
+                    </div>
+                </template>
+
                 <div class="row mb-2" v-if="taskProblemBadge(flow)">
                     <div class="col-md-2"><strong>Task Problems</strong></div>
                     <div class="col">

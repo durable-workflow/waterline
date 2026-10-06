@@ -14,6 +14,7 @@ use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ServiceVisibilityFilters;
 use Waterline\Support\RunWaitSummary;
+use Waterline\Support\RunApplicationContext;
 use Waterline\Support\WorkflowStreamPresenter;
 
 final class RemoteWorkflowsController extends RemoteController
@@ -347,6 +348,7 @@ final class RemoteWorkflowsController extends RemoteController
 
         $payload = $this->applyActions($payload);
         $payload = RunWaitSummary::annotate($payload);
+        $payload = RunApplicationContext::annotate($payload);
         $payload = ActionabilityContract::annotateRun($payload);
 
         return response()->json($this->scoped($payload));

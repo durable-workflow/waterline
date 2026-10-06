@@ -127,6 +127,26 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('read_only', true);
     }
 
+    public function testServiceDetailDisplaysOnlyTheHostsConfiguredApplicationContext(): void
+    {
+        config()->set('waterline.observability.workflow_types', [
+            'orders.process' => [
+                'classification' => 'business_operation',
+                'fields' => ['order' => ['source' => 'visibility_labels', 'key' => 'order']],
+                'links' => ['order' => ['url' => 'https://app.example/orders/{order}']],
+            ],
+        ]);
+        $this->client->diagnostics = ['visibility_labels' => ['order' => '42/receipt', 'secret' => 'private']];
+        $response = $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('workflow_classification', 'business_operation')
+            ->assertJsonPath('application_context.state', 'configured')
+            ->assertJsonPath('application_context.fields.0.value', '42/receipt')
+            ->assertJsonPath('application_context.links.0.url', 'https://app.example/orders/42%2Freceipt')
+            ->assertJsonCount(1, 'application_context.fields');
+        self::assertStringNotContainsString('private', json_encode($response->json('application_context')));
+    }
+
     public function testSelectedRunPreservesTheServersCanonicalCancellationCascade(): void
     {
         $view = [

@@ -93,6 +93,47 @@ If your workflow IDs are strings (for example UUIDs) and do not sort in a useful
 'workflow_sort_column' => 'created_at',
 ```
 
+### Application Context
+
+An application can opt in to a classification and display context for each exact
+workflow type in its published `config/waterline.php`:
+
+```php
+'observability' => [
+    'workflow_types' => [
+        'orders.import' => [
+            'classification' => 'business_operation',
+            'fields' => [
+                'order_id' => [
+                    'label' => 'Order',
+                    'source' => 'search_attributes',
+                    'key' => 'order_id',
+                ],
+            ],
+            'links' => [
+                'order' => [
+                    'label' => 'Open order',
+                    'url' => 'https://app.example/orders/{order_id}',
+                ],
+            ],
+        ],
+    ],
+],
+```
+
+The run detail displays only explicitly configured scalar visibility labels or
+search attributes. Inputs, outputs and arbitrary metadata are not sources for
+application context. Missing fields show `Unavailable`. The context is limited
+to 20 fields, 10 links and 512 characters per value. Links require an absolute
+HTTP(S) URL with a configured host and no credentials. Placeholder values are
+URL encoded, and missing or shortened identifiers do not produce entity links.
+The host application's Waterline authorization still controls who can see it.
+
+Useful classifications include `maintenance`, `coordinator` and
+`business_operation`. Classification changes presentation only. A coordinator's
+completed status describes that run, while related executions retain their own
+outcomes. The same configuration applies to embedded and service observers.
+
 ### Operator Preferences
 
 Waterline persists small operator view preferences through
