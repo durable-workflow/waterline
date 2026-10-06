@@ -448,6 +448,7 @@ class FreshLaravelPackageHostWorkerVersioningTest extends TestCase
             $table->string('event_type');
             $table->json('payload')->nullable();
             $table->timestamp('recorded_at', 6)->nullable();
+            $table->timestamp('recorded_at_utc', 6)->nullable();
             $table->timestamps(6);
         });
 
