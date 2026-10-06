@@ -690,7 +690,13 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('data.0.workflow_type', 'orders.process');
     }
 
-    public function testCapacityEvidenceUsesTheOfficialRemoteMetricsContractWithoutLeakingExecutionIds(): void
+    public static function capacityDashboardAvailability(): array
+    {
+        return ['bounded Server' => [true], 'older Server' => [false]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('capacityDashboardAvailability')]
+    public function testCapacityEvidenceUsesTheOfficialRemoteMetricsContractWithoutLeakingExecutionIds(bool $boundedAvailable): void
     {
         config()->set('waterline.capacity_evidence.allowed_window_seconds', [300, 3600]);
         config()->set('waterline.capacity_evidence.default_window_seconds', 3600);
@@ -702,19 +708,34 @@ final class ServiceModeBackendTest extends TestCase
             300 => $this->serverCapacityWindow(300, 12, 8),
             3600 => $this->serverCapacityWindow(3600, 44, 21),
         ]);
-        $transport = new class($capacityEvidence) implements Transport
+        $transport = new class($capacityEvidence, $boundedAvailable) implements Transport
         {
             /** @var list<array<string, mixed>> */
             public array $requests = [];
 
             /** @param array<string, mixed> $capacityEvidence */
-            public function __construct(private readonly array $capacityEvidence)
+            public function __construct(private readonly array $capacityEvidence, private readonly bool $boundedAvailable)
             {
             }
 
             public function send(string $method, string $uri, array $headers, ?array $body = null): ?array
             {
                 $this->requests[] = compact('method', 'uri', 'headers', 'body');
+
+                if (str_ends_with($uri, '/operator-dashboard/bounded')) {
+                    if (! $this->boundedAvailable) {
+                        throw new ServerException('Route unavailable', 404, 'not_found');
+                    }
+
+                    return [
+                        'namespace' => 'orders',
+                        'dashboard' => ['operator_metrics' => [
+                            'history_audit_evaluation' => 'not_requested',
+                            'runs' => ['total' => 1, 'running' => 1, 'failed' => 0],
+                            'capacity_evidence' => $this->capacityEvidence,
+                        ]],
+                    ];
+                }
 
                 return [
                     'namespace' => 'orders',
@@ -779,9 +800,13 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('runtime_evidence.throughput.workflow_starts.value', 44)
             ->assertJsonPath('runtime_evidence.throughput.queries.value', 21);
 
-        $this->assertCount(1, $transport->requests);
+        $this->assertSame($boundedAvailable ? [
+            'https://server.example/api/system/operator-dashboard/bounded',
+        ] : [
+            'https://server.example/api/system/operator-dashboard/bounded',
+            'https://server.example/api/system/operator-metrics',
+        ], array_column($transport->requests, 'uri'));
         $this->assertSame('GET', $transport->requests[0]['method']);
-        $this->assertSame('https://server.example/api/system/operator-metrics', $transport->requests[0]['uri']);
         $this->assertSame('orders', $transport->requests[0]['headers']['X-Namespace']);
     }
 
