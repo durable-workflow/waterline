@@ -109,9 +109,25 @@
                 <button class="btn btn-outline-primary btn-sm mt-3" @click="retryFlowLoad">
                     Retry
                 </button>
+                <button v-if="isCanonicalRoute()" class="btn btn-outline-secondary btn-sm mt-2" @click="loadCompleteDetails">
+                    Open complete details
+                </button>
             </div>
 
             <div class="card-body card-bg-secondary collapse show wl-flow-detail__summary-body" id="collapseDetails" v-if="ready">
+                <div v-if="flow.read_mode === 'bounded'" class="mb-3" role="status">
+                    <div class="small text-muted mb-2">
+                        Status, current waits, related runs and recent failures are loaded first.
+                        Inspect the full details for inputs, results, actions and recovery diagnostics.
+                    </div>
+                    <div class="small text-muted mb-2">
+                        {{ flow.operator_scope && flow.operator_scope.label }}
+                        / observed {{ timestamp(flow.observed_at) }}
+                    </div>
+                    <button class="btn btn-outline-secondary btn-sm" @click="loadCompleteDetails">
+                        Inspect full details
+                    </button>
+                </div>
                 <div class="row mb-2">
                     <div class="col-md-2"><strong>ID</strong></div>
                     <div class="col">{{ flow.id }}</div>
@@ -550,6 +566,9 @@
                         <div class="small text-muted mb-1" v-if="hasDetailValue(flow.lineage_projection_source)">
                             {{ projectionSourceLabel(flow.lineage_projection_source) }}
                         </div>
+                        <div class="small text-muted mb-1" v-if="flow.read_mode === 'bounded'">
+                            Related runs have independent outcomes. {{ relationshipWindowSummary() }}
+                        </div>
                         <div v-for="entry in lineageEntries()" :key="entry.key">
                             <strong>{{ entry.label }}:</strong>
                             <router-link v-if="entry.instance_id && entry.run_id"
@@ -574,7 +593,7 @@
             </div>
         </div>
 
-        <div class="card mt-4" v-if="ready">
+        <div class="card mt-4" v-if="ready && flow.read_mode !== 'bounded'">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Arguments</h5>
 
@@ -588,7 +607,7 @@
             </div>
         </div>
 
-        <div class="card mt-4" v-if="ready && isClosed(flow)">
+        <div class="card mt-4" v-if="ready && flow.read_mode !== 'bounded' && isClosed(flow)">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Output</h5>
 
@@ -602,7 +621,7 @@
             </div>
         </div>
 
-        <CancellationCascadeView v-if="ready" :diagnostics="flow" />
+        <CancellationCascadeView v-if="ready && flow.read_mode !== 'bounded'" :diagnostics="flow" />
 
         <div class="card mt-4" v-if="ready" id="failureSummary">
             <div class="card-header"><h5>Recent failures</h5></div>
@@ -739,7 +758,7 @@
                         class="btn btn-outline-secondary btn-sm mr-2"
                         :disabled="loadingMoreHistory"
                         @click="loadOlderHistory">
-                        {{ flow.engine_source === 'service' ? 'Load more' : 'Load older' }}
+                        {{ flow.engine_source === 'service' || flow.read_mode === 'bounded' ? 'Load more' : 'Load older' }}
                     </button>
 
                     <a v-if="historyExportEndpoint()"
@@ -1054,7 +1073,7 @@
         <div
             class="card mt-4 workflow-stream-section"
             id="workflowStreams"
-            v-if="ready && workflowStreamsVisible()"
+            v-if="ready && flow.read_mode !== 'bounded' && workflowStreamsVisible()"
         >
             <div class="card-header d-flex align-items-center justify-content-between">
                 <div>
@@ -2029,7 +2048,7 @@ export default {
          * Load a flow by the given ID.
          */
         fetchFlow(path) {
-            this.historyPageRequest += 1;
+            const requestId = ++this.historyPageRequest;
             this.loadingMoreHistory = false;
             this.historyLoadError = null;
             this.ready = false;
@@ -2038,6 +2057,9 @@ export default {
 
             return this.$http.get(this.withHistoryLimit(path), { timeout: 15000 })
                 .then(response => {
+                    if (requestId !== this.historyPageRequest) {
+                        return false;
+                    }
                     this.flow = response.data;
                     this.resetHistoryVirtualWindow();
                     this.series[0].data = Array.isArray(response.data.chartData) ? response.data.chartData : [];
@@ -2073,7 +2095,9 @@ export default {
                     return true;
                 })
                 .catch(error => {
-                    this.loadingError = this.flowLoadErrorMessage(error);
+                    if (requestId === this.historyPageRequest) {
+                        this.loadingError = this.flowLoadErrorMessage(error);
+                    }
 
                     return false;
                 });
@@ -2334,8 +2358,23 @@ export default {
 
         withHistoryLimit(path) {
             const separator = path.includes('?') ? '&' : '?'
+            const bounded = Waterline.backend?.mode !== 'service'
+                && path.includes('/api/instances/') && !/[?&]observation=/.test(path)
+                ? '&observation=bounded' : ''
 
-            return path + separator + 'history_limit=' + encodeURIComponent(this.historyLimit)
+            return path + separator + 'history_limit=' + encodeURIComponent(this.historyLimit) + bounded
+        },
+
+        loadCompleteDetails() {
+            const endpoint = this.currentFlowEndpoint() || (this.isCanonicalRoute()
+                ? Waterline.basePath + '/api/instances/' + this.$route.params.instanceId
+                    + (this.$route.params.runId ? '/runs/' + this.$route.params.runId : '')
+                : null)
+            if (!endpoint) {
+                return null
+            }
+            this.historyLimit = this.historyPageSize
+            return this.fetchFlow(endpoint + '?observation=complete')
         },
 
         currentFlowEndpoint() {
@@ -2363,17 +2402,17 @@ export default {
                 return null
             }
 
-            if (this.flow.engine_source === 'service') {
-                return this.loadServiceHistoryPage(endpoint)
+            if (this.flow.engine_source === 'service' || this.flow.read_mode === 'bounded') {
+                return this.loadHistoryPage(endpoint)
             }
 
             const total = this.timelineTotalCount()
             this.historyLimit = Math.min(total, this.historyLimit + this.historyPageSize)
 
-            return this.fetchFlow(endpoint)
+            return this.fetchFlow(endpoint + (endpoint.includes('/api/instances/') ? '?observation=complete' : ''))
         },
 
-        loadServiceHistoryPage(endpoint) {
+        loadHistoryPage(endpoint) {
             const token = this.flow.history_next_page_token
             if (!token || this.loadingMoreHistory) {
                 return null
@@ -2999,7 +3038,8 @@ export default {
 
         timelineWindowSummary() {
             const returned = this.timelineReturnedCount().toLocaleString()
-            if (this.flow.engine_source === 'service' && !this.hasDetailValue(this.flow.timeline_total_count)) {
+            if ((this.flow.engine_source === 'service' || this.flow.read_mode === 'bounded')
+                && !this.hasDetailValue(this.flow.timeline_total_count)) {
                 const scope = this.flow.history_window_from_start === false ? ' in a selected history window' : ''
                 return 'Showing ' + returned + ' events' + scope + (this.timelineHasOlder() ? ' / more available' : '')
             }
@@ -3753,6 +3793,9 @@ export default {
         },
 
         canAction(name, fallback = false) {
+            if (this.flow.read_mode === 'bounded') {
+                return false
+            }
             const action = this.actionabilityAction(name)
 
             if (action && this.hasDetailValue(action.allowed)) {
@@ -3852,7 +3895,8 @@ export default {
         waitRows() {
             const current = new Map((this.flow.current_waits || []).map((wait) => [wait.id, wait]))
 
-            if (!Array.isArray(this.flow.waits) && this.flow.current_waits_source === 'server_diagnostics') {
+            if (!Array.isArray(this.flow.waits)
+                && (this.flow.current_waits_source === 'server_diagnostics' || this.flow.read_mode === 'bounded')) {
                 return (this.flow.current_waits || []).map((wait) => ({
                     id: wait.id,
                     kind: wait.kind,
@@ -4589,6 +4633,20 @@ export default {
         },
 
         lineageEntries() {
+            if (this.flow.read_mode === 'bounded') {
+                return ['parents', 'children'].flatMap((direction) => (
+                    this.flow.relationships?.[direction]?.relationships || []
+                ).map((link) => ({
+                    key: direction + '-' + link.link_id,
+                    label: this.lineageLabel(link, direction === 'parents' ? 'parent' : 'child'),
+                    display_id: link.run_id || link.instance_id || link.link_id,
+                    instance_id: link.instance_id,
+                    run_id: link.run_id,
+                    status: link.status,
+                    history_authority: 'relationship_metadata',
+                    metadata_state: link.metadata_state,
+                })))
+            }
             const parents = (this.flow.parents || []).map((parent) => ({
                 key: 'parent-' + (parent.id || parent.parent_workflow_run_id || parent.parent_workflow_id),
                 label: this.lineageLabel(parent, 'parent'),
@@ -4628,6 +4686,14 @@ export default {
             }))
 
             return [...parents, ...continued]
+        },
+
+        relationshipWindowSummary() {
+            return ['parents', 'children'].map((direction) => {
+                const page = this.flow.relationships?.[direction]
+                return page ? page.returned_count + ' ' + direction
+                    + (page.has_more ? ' shown, more available in full details' : ' shown') : null
+            }).filter(Boolean).join(' / ')
         },
 
         isContinuedParent(parent) {
@@ -4837,7 +4903,7 @@ export default {
             }
 
             if (this.flow.instance_id) {
-                if (this.flow.is_current_run) {
+                if (this.flow.is_current_run && this.flow.read_mode !== 'bounded') {
                     return Waterline.basePath + '/api/instances/' + this.flow.instance_id + '/history-export'
                 }
 
