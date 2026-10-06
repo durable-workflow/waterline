@@ -774,8 +774,22 @@
                         <tr v-for="wait in waitRows()" :key="wait.id">
                             <td>
                                 <div>
-                                    {{ wait.summary }}
+                                    {{ wait.current_summary && wait.current_summary.kind === 'activity_retry' ? wait.current_summary.reason : wait.summary }}
                                     <span v-if="isCurrentWait(wait)" class="badge badge-info ml-1">Current</span>
+                                </div>
+                                <div class="small mt-1" v-if="wait.current_summary">
+                                    <strong>{{ waitResumeStateLabel(wait.current_summary.state) }}</strong>
+                                    <div v-if="wait.current_summary.next_scheduled_resume_at">
+                                        Scheduled resume: {{ timestamp(wait.current_summary.next_scheduled_resume_at) }}
+                                    </div>
+                                    <div v-if="Number(wait.current_summary.attempt_number) > 0">
+                                        {{ wait.current_summary.kind === 'activity_retry' ? 'Next attempt' : 'Attempt' }}
+                                        {{ wait.current_summary.attempt_number }}
+                                        <span v-if="Number(wait.current_summary.attempt_limit) > 0">of {{ wait.current_summary.attempt_limit }}</span>
+                                    </div>
+                                    <div v-if="wait.current_summary.unavailable_reason" class="text-muted">
+                                        {{ historyUnsupportedReasonLabel(wait.current_summary.unavailable_reason) }}
+                                    </div>
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.target_name) || hasDetailValue(wait.target_type)">
                                     {{ wait.kind }}
@@ -3645,7 +3659,22 @@ export default {
         },
 
         waitRows() {
-            return this.flow.waits || []
+            const current = new Map((this.flow.current_waits || []).map((wait) => [wait.id, wait]))
+
+            return (this.flow.waits || []).map((wait) => ({
+                ...wait,
+                current_summary: current.get(wait.id) || null,
+            }))
+        },
+
+        waitResumeStateLabel(state) {
+            return {
+                planned: 'Planned wait',
+                eligible: 'Resume is due',
+                resume_time_unknown: 'Resume time unknown',
+                deadline_elapsed: 'Wait deadline has passed',
+                unavailable: 'Wait details unavailable',
+            }[state] || 'Resume time unknown'
         },
 
         openWaitCount() {
