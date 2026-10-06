@@ -335,6 +335,26 @@ final class ServiceModeBackendTest extends TestCase
         $this->assertSame($events, $this->client->historyPages['']['events']);
     }
 
+    public function testClassificationListsUseTheBackendVisibilityQueryWithoutPostFiltering(): void
+    {
+        config()->set('waterline.observability.workflow_types', [
+            'orders.process' => ['classification' => 'business_operation'],
+            'orders.retry' => ['classification' => 'business_operation'],
+            'orders.maintenance' => ['classification' => 'maintenance'],
+        ]);
+        $this->getJson('/waterline/api/flows/running?classification=business_operation')
+            ->assertOk()->assertJsonPath('classification_scope.workflow_types', ['orders.process', 'orders.retry'])
+            ->assertJsonPath('classification_scope.available', true)
+            ->assertJsonPath('operator_scope.namespace', 'orders');
+        $calls = collect($this->client->calls)->where('method', 'listWorkflows')->values();
+        $this->assertCount(1, $calls);
+        $this->assertSame('WorkflowType IN ("orders.process", "orders.retry")', $calls[0]['arguments']['query']);
+        $this->assertSame('running', $calls[0]['arguments']['status']);
+        $this->getJson('/waterline/api/flows/running?classification=not_configured')
+            ->assertUnprocessable()->assertJsonValidationErrors('classification');
+        $this->assertCount(1, collect($this->client->calls)->where('method', 'listWorkflows'));
+    }
+
     public function testServiceHistoryRequestsRemainBoundedForEveryDetailRoute(): void
     {
         foreach ([

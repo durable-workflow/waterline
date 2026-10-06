@@ -11,6 +11,7 @@ use Throwable;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\CompensationVisibility;
+use Waterline\Support\WorkflowClassification;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
@@ -72,6 +73,9 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function bucketFlows(string $bucket, int $perPage = 50, ?int $page = null)
     {
+        // Validate before fallback handling, so an invalid selection cannot
+        // silently become an unfiltered durable-run list.
+        WorkflowClassification::selection(request());
         $perPage = max(1, $perPage);
         $page ??= LengthAwarePaginator::resolveCurrentPage();
 
@@ -390,6 +394,8 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
             $this->visibilityFiltersForQuery($context['applied_filters']),
         );
 
+        $this->applyClassificationScope($query);
+
         return $query;
     }
 
@@ -411,6 +417,14 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
             'childLinks.childRun.historyEvents',
             'instance.runs.summary',
         ];
+    }
+
+    private function applyClassificationScope($query): void
+    {
+        $types = WorkflowClassification::selection(request())['workflow_types'];
+        if ($types !== null) {
+            $query->whereIn('workflow_type', $types);
+        }
     }
 
     private function namespace(): ?string
@@ -662,18 +676,19 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     private function shouldMergeDurableRunningRows(): bool
     {
-        return $this->requestHasOnlyPaginationAndSort();
+        return $this->requestSupportsDurableMerge();
     }
 
     private function shouldMergeDurableStatusRows(): bool
     {
-        return $this->requestHasOnlyPaginationAndSort();
+        return $this->requestSupportsDurableMerge();
     }
 
-    private function requestHasOnlyPaginationAndSort(): bool
+    private function requestSupportsDurableMerge(): bool
     {
         $query = array_keys(request()->query());
-        $nonFilterKeys = ['page', 'sort', 'sort_direction'];
+        // Classification is applied to both summary and durable-run queries.
+        $nonFilterKeys = ['page', 'sort', 'sort_direction', 'classification'];
 
         foreach ($query as $key) {
             if (! in_array($key, $nonFilterKeys, true)) {
@@ -695,6 +710,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
                 ->whereNotIn('id', $this->runningSummaryRunIdsQuery());
 
             $this->applyRunNamespaceScope($query);
+            $this->applyClassificationScope($query);
 
             $total = (int) (clone $query)->count();
             $runs = $limit === 0
@@ -733,6 +749,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
                 ->whereNotIn('id', $this->statusSummaryRunIdsQuery($status));
 
             $this->applyRunNamespaceScope($query);
+            $this->applyClassificationScope($query);
 
             $total = (int) (clone $query)->count();
             $runs = $limit === 0
@@ -788,6 +805,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
                 ->whereIn('status', ['pending', 'running', 'waiting']);
 
             $this->applyRunNamespaceScope($query);
+            $this->applyClassificationScope($query);
 
             $total = (clone $query)->count();
             $runs = $query
@@ -831,6 +849,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
                 ->where('status', $status);
 
             $this->applyRunNamespaceScope($query);
+            $this->applyClassificationScope($query);
 
             $total = (clone $query)->count();
             $runs = $query

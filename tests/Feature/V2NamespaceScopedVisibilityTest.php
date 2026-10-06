@@ -26,6 +26,37 @@ use Workflow\V2\Models\WorkflowSearchAttribute;
 
 class V2NamespaceScopedVisibilityTest extends TestCase
 {
+    public function testClassificationScopesProjectedAndMissingSummaryRowsWithoutLosingNamespace(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+        config()->set('waterline.observability.workflow_types', [
+            'workflow.namespace-scope' => ['classification' => 'business_operation'],
+            'workflow.maintenance' => ['classification' => 'maintenance'],
+        ]);
+        $projected = $this->createCompletedRun('classification-projected', 'billing');
+        $fallback = $this->createCompletedRun('classification-unprojected', 'billing');
+        WorkflowRunSummary::query()->whereKey($fallback->id)->delete();
+        $maintenance = $this->createCompletedRun('classification-maintenance', 'billing');
+        $maintenance->forceFill(['workflow_type' => 'workflow.maintenance'])->save();
+        WorkflowRunSummary::query()->whereKey($maintenance->id)->update(['workflow_type' => 'workflow.maintenance']);
+        $otherNamespace = $this->createCompletedRun('classification-other-namespace', 'shipping');
+
+        $response = $this->getJson('/waterline/api/flows/completed?classification=business_operation')
+            ->assertOk()->assertJsonCount(2, 'data')->assertJsonPath('total', 2)
+            ->assertJsonPath('classification_scope.workflow_types', ['workflow.namespace-scope'])
+            ->assertJsonPath('classification_scope.available', true)
+            ->assertJsonPath('operator_scope.namespace', 'billing');
+        $ids = collect($response->json('data'))->pluck('id')->all();
+        $this->assertContains($projected->id, $ids);
+        $this->assertContains($fallback->id, $ids);
+        $this->assertNotContains($maintenance->id, $ids);
+        $this->assertNotContains($otherNamespace->id, $ids);
+        $this->getJson('/waterline/api/flows/completed')->assertOk()->assertJsonPath('total', 3);
+        $this->getJson('/waterline/api/flows/completed?classification=not_configured')
+            ->assertUnprocessable()->assertJsonValidationErrors('classification');
+    }
+
     public function testListRoutesAreScopedToConfiguredNamespace(): void
     {
         config()->set('waterline.engine_source', 'v2');

@@ -16,6 +16,7 @@ use Waterline\Support\ServiceVisibilityFilters;
 use Waterline\Support\RunWaitSummary;
 use Waterline\Support\RunApplicationContext;
 use Waterline\Support\WorkflowStreamPresenter;
+use Waterline\Support\WorkflowClassification;
 
 final class RemoteWorkflowsController extends RemoteController
 {
@@ -206,12 +207,14 @@ final class RemoteWorkflowsController extends RemoteController
 
     private function list(string $bucket, Request $request): JsonResponse
     {
+        $classification = WorkflowClassification::selection($request);
         $pageNumber = max(1, (int) $request->query('page', 1));
         $context = V2VisibilityFilterContext::resolve($request, $bucket);
         $filterPlan = ServiceVisibilityFilters::plan(
             $context['applied_filters'],
             $bucket,
             $this->stringQuery($request, 'query'),
+            $classification['workflow_types'],
         );
         $savedViewPlan = ServiceVisibilityFilters::plan($context['saved_filters'], $bucket);
         $savedViewApplied = $context['saved_view'] === null
@@ -247,6 +250,8 @@ final class RemoteWorkflowsController extends RemoteController
             'per_page' => self::PAGE_SIZE,
             'total' => (($pageNumber - 1) * self::PAGE_SIZE) + count($items) + ($token === null ? 0 : 1),
             'next_page_token' => $token,
+            'classification_scope' => [...$classification, 'available' => true],
+            'time_windows' => ['generated_at' => now()->toJSON(), 'status_bucket' => $bucket, 'retention_scope' => 'all_retained_runs'],
             'visibility_filters' => [
                 'version' => ActionabilityVisibilityFilters::VERSION,
                 'supported_versions' => ActionabilityVisibilityFilters::supportedVersions(),

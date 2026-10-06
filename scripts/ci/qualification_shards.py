@@ -19,14 +19,17 @@ PHPUNIT_CLASS = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_]*(?:\\[A-Za-z_][A-Za-z0-9_]*)+$"
 )
 
-# Creating a real Laravel application and resolving its Composer graph is
-# intentionally much more expensive than an ordinary database-backed test.
-# The floor keeps that class from landing on an otherwise full shard.
+# Keep costly integration classes from landing on an otherwise full shard.
+# The dashboard floors reflect measured MySQL schema setup and observer work:
+# 407 seconds for 112 detail cases and 132 seconds for 39 stats cases on two CPUs.
+# These are allocation weights, not performance or completion guarantees.
 CLASS_WEIGHT_FLOORS: Mapping[str, int] = {
     (
         "Waterline\\Tests\\Feature\\"
         "RealComposerLaravelPackageHostWorkerVersioningTest"
     ): 120,
+    "Waterline\\Tests\\Feature\\V2DashboardWorkflowTest": 220,
+    "Waterline\\Tests\\Feature\\V2DashboardStatsControllerTest": 80,
 }
 
 

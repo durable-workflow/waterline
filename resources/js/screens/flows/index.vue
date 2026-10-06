@@ -19,6 +19,11 @@
                 savedViewsEnabled: false,
                 selectedSavedView: null,
                 visibilityFilters: null,
+                classificationScope: null,
+                listOperatorScope: null,
+                listTimeWindows: null,
+                listLoadError: null,
+                listRequest: 0,
                 filterDefinition: null,
                 operatorPreferences: {},
                 effectiveOperatorPreferences: {},
@@ -189,12 +194,18 @@
              * Load the flows of the given tag.
              */
             loadFlows(page = 1, refreshing = false) {
+                const request = ++this.listRequest
+                this.listLoadError = null
                 if (!refreshing) {
                     this.ready = false;
                 }
 
                 return this.$http.get(Waterline.basePath + '/api/flows/' + this.$route.params.type + '?' + this.apiQueryString(page))
                     .then(response => {
+                        if (request !== this.listRequest) return
+                        this.classificationScope = response.data.classification_scope || null
+                        this.listOperatorScope = response.data.operator_scope || null
+                        this.listTimeWindows = response.data.time_windows || null
                         this.visibilityFilters = response.data.visibility_filters || null;
                         this.filterDefinition = response.data.visibility_filters && response.data.visibility_filters.definition
                             ? response.data.visibility_filters.definition
@@ -214,7 +225,12 @@
 
                         this.ready = true;
                     })
-                    .catch(() => {
+                    .catch(error => {
+                        if (request !== this.listRequest) return
+                        this.listLoadError = error.response?.data?.message || 'The selected execution list could not be loaded.'
+                        if (error.response?.data?.classification_scope) {
+                            this.classificationScope = error.response.data.classification_scope
+                        }
                         if (!refreshing) {
                             this.flows = [];
                             this.totalPages = 1;
@@ -223,6 +239,14 @@
 
                         this.ready = true;
                     });
+            },
+
+            changeClassification(value) {
+                const query = { ...this.$route.query }
+                if (value) query.classification = value
+                else delete query.classification
+                delete query.page
+                return this.$router.push({ name: this.$route.name, params: this.$route.params, query })
             },
 
             loadSavedViews() {
@@ -1657,6 +1681,19 @@
                     </select>
 
                     <div class="flow-index__toolbar-actions">
+                        <label v-if="classificationScope && classificationScope.options.length" class="mb-0 mr-2">
+                            <span class="small text-muted mr-2">Workflow classification</span>
+                            <select class="custom-select custom-select-sm w-auto"
+                                    :value="$route.query.classification || ''"
+                                    :disabled="classificationScope.available === false"
+                                    @change="changeClassification($event.target.value)">
+                                <option value="">All workflow types</option>
+                                <option v-for="option in classificationScope.options" :key="option.value" :value="option.value">
+                                    {{ option.label }}
+                                </option>
+                            </select>
+                        </label>
+
                         <button v-if="hasVisibilityFilterContract()"
                                 class="btn btn-outline-secondary btn-sm"
                                 data-waterline-dialog-trigger="filters"
@@ -1708,6 +1745,16 @@
         </section>
 
         <section class="flow-index__panel card">
+            <div v-if="listLoadError" class="alert alert-warning m-3" role="alert">
+                {{ listLoadError }}
+                <button v-if="$route.query.classification" class="btn btn-sm btn-outline-secondary ml-2"
+                        @click="changeClassification('')">Show all workflow types</button>
+            </div>
+            <div v-if="ready && !listLoadError && classificationScope" class="small text-muted px-4 pt-3">
+                {{ classificationScope.label }}
+                <span v-if="listOperatorScope && listOperatorScope.namespace"> / namespace {{ listOperatorScope.namespace }}</span>
+                <span v-if="listTimeWindows"> / {{ listTimeWindows.status_bucket }} runs matching the current filters</span>
+            </div>
             <div class="card-body flow-index__registry-head">
                 <div>
                     <p class="flow-index__section-kicker">Registry</p>
