@@ -1272,7 +1272,9 @@ export async function runRunDetailVisual({
 
                 for (let attempt = 1; attempt <= attempts; attempt += 1) {
                     if (attempt > 1) {
-                        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30_000 });
+                        // Fragment navigation can retain the previous interaction's
+                        // completed history page. Each attempt needs a fresh load.
+                        await page.reload({ waitUntil: 'networkidle', timeout: 30_000 });
                         await waitForRunDetail(page);
                     }
 
