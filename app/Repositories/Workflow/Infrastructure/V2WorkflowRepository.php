@@ -111,6 +111,40 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         }
     }
 
+    public function findObservation(string $id, ?string $runId = null, bool $instanceSelection = false): WorkflowRun
+    {
+        $namespace = $this->namespace();
+        $query = $this->runModel::query()->setEagerLoads([])->select([
+            'id', 'workflow_instance_id', 'namespace', 'workflow_class', 'workflow_type',
+            'run_number', 'status', 'closed_reason', 'business_key', 'visibility_labels',
+            'compatibility', 'connection', 'queue', 'started_at', 'closed_at', 'archived_at',
+            'details_pruned_at', 'created_at', 'updated_at', 'execution_deadline_at', 'run_deadline_at',
+        ]);
+        if ($namespace !== null) {
+            $query->where('namespace', $namespace);
+        }
+        if (! $instanceSelection) {
+            $run = (clone $query)->find($id);
+            if ($run instanceof WorkflowRun) {
+                return $run;
+            }
+        }
+        if ($runId !== null) {
+            return $query->where('workflow_instance_id', $id)->whereKey($runId)->firstOrFail();
+        }
+
+        $instanceQuery = $this->instanceModel::query()->setEagerLoads([]);
+        if ($namespace !== null) {
+            $instanceQuery->where('namespace', $namespace);
+        }
+        $instance = $instanceQuery->findOrFail($id, ['id', 'namespace', 'current_run_id']);
+
+        // Read the stored pointer without resolving every continuation. The
+        // observation labels its authority; commands still use canonical intake.
+        return $query->where('workflow_instance_id', $instance->id)
+            ->where('namespace', $instance->namespace)->whereKey($instance->current_run_id)->firstOrFail();
+    }
+
     public function findFlowSelection(string $instanceId, ?string $runId = null)
     {
         try {

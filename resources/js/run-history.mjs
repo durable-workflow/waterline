@@ -12,6 +12,7 @@ export function appendRunHistoryPage(current, page) {
     const timeline = [...bySequence.values()].sort((a, b) => a.sequence - b.sequence)
     const fromStart = current.history_window_from_start !== false && !current.history_start_page_token
     const complete = fromStart && !page.history_next_page_token
+        && !page.details_pruned_at && page.history_state !== 'pruned'
 
     return {
         ...page,
@@ -20,7 +21,8 @@ export function appendRunHistoryPage(current, page) {
         timeline,
         timeline_returned_count: timeline.length,
         timeline_total_count: complete ? timeline.length : null,
-        history_event_count: complete ? timeline.length : null,
+        history_event_count: page.read_mode === 'bounded'
+            ? page.history_event_count ?? null : complete ? timeline.length : null,
         timeline_window_start_sequence: timeline[0]?.sequence ?? null,
         timeline_window_end_sequence: timeline.at(-1)?.sequence ?? null,
     }

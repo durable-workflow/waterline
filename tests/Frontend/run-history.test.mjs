@@ -50,3 +50,16 @@ test('reaching the end after a direct failure jump leaves the total history unkn
     assert.equal(combined.history_event_count, null)
     assert.equal(combined.timeline_returned_count, 2)
 })
+
+test('ending a bounded or pruned window does not replace original history counters with the loaded count', () => {
+    const current = { ...run, read_mode: 'bounded', timeline: [started], history_event_count: 50 }
+    const page = { ...run, read_mode: 'bounded', timeline: [completed], history_next_page_token: null, history_event_count: 50 }
+    const complete = appendRunHistoryPage(current, page)
+    assert.equal(complete.timeline_total_count, 2)
+    assert.equal(complete.history_event_count, 50)
+    const pruned = appendRunHistoryPage(current, {
+        ...page, details_pruned_at: '2026-10-06', history_state: 'pruned', timeline: [], history_event_count: null,
+    })
+    assert.equal(pruned.timeline_total_count, null)
+    assert.equal(pruned.history_event_count, null)
+})

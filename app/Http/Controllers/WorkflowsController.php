@@ -32,6 +32,7 @@ use Workflow\V2\WorkflowStub as V2WorkflowStub;
 use Waterline\Http\Resources\StoredWorkflowResource;
 use Waterline\Http\Resources\HybridStoredWorkflowResource;
 use Waterline\Http\Resources\V2StoredWorkflowResource;
+use Waterline\Http\Resources\V2RunObservationResource;
 use Waterline\Repositories\Workflow\Infrastructure\HybridWorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
@@ -75,6 +76,10 @@ class WorkflowsController extends Controller
 
     public function show(string $id, WorkflowRepositoryInterface $repository)
     {
+        if (request()->query('observation') === 'bounded') {
+            return $this->boundedObservation($repository, $id);
+        }
+
         $flow = $repository->findFlow($id);
 
         if ($flow instanceof WorkflowRun) {
@@ -90,9 +95,27 @@ class WorkflowsController extends Controller
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
+        if (request()->query('observation') === 'bounded') {
+            return $this->boundedObservation($repository, $instanceId, $runId, true);
+        }
+
         $flow = $repository->findFlowSelection($instanceId, $runId);
 
         return V2StoredWorkflowResource::make($flow);
+    }
+
+    private function boundedObservation(
+        WorkflowRepositoryInterface $repository,
+        string $id,
+        ?string $runId = null,
+        bool $instanceSelection = false,
+    ) {
+        abort_unless($repository->engineSource() === 'v2' && method_exists($repository, 'findObservation'), 501,
+            'This repository does not support bounded run observations.');
+
+        return V2RunObservationResource::make(
+            $repository->findObservation($id, $runId, $instanceSelection),
+        );
     }
 
     public function historyExport(

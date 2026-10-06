@@ -71,3 +71,20 @@ test('many retained failures show the latest twenty with a bounded message and a
     assert.equal(service.rows[0].id, '0')
     assert.equal(service.truncated, true)
 })
+
+test('bounded embedded observations retain a direct failure reference and partial coverage', () => {
+    const flow = {
+        engine_source: 'v2', read_mode: 'bounded', recent_failures_state: 'partial', timeline: [],
+        recent_failures: [{ id: 'failure-1', message: 'Failed activity', supporting_event: {
+            state: 'retained', sequence: 1002, event_type: 'ActivityFailed',
+            next_page_token: 'authenticated-embedded-cursor',
+        } }],
+    }
+    const summary = failureSummary(flow)
+    assert.equal(summary.state, 'partial')
+    assert.equal(summary.rows[0].event_sequence, 1002)
+    assert.equal(summary.rows[0].history_page_token, 'authenticated-embedded-cursor')
+    assert.equal(summary.rows[0].evidence_state, 'outside_window')
+    flow.recent_failures = []
+    assert.equal(failureSummary(flow).state, 'partial')
+})
