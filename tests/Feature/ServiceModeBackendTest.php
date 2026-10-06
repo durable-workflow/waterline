@@ -132,11 +132,15 @@ final class ServiceModeBackendTest extends TestCase
         config()->set('waterline.observability.workflow_types', [
             'orders.process' => [
                 'classification' => 'business_operation',
-                'fields' => ['order' => ['source' => 'visibility_labels', 'key' => 'order']],
+                'fields' => ['order' => ['source' => 'search_attributes', 'key' => 'order']],
                 'links' => ['order' => ['url' => 'https://app.example/orders/{order}']],
             ],
         ]);
-        $this->client->diagnostics = ['visibility_labels' => ['order' => '42/receipt', 'secret' => 'private']];
+        $this->client->workflowDescription = [
+            'workflow_id' => 'order-1', 'run_id' => 'run-1', 'workflow_type' => 'orders.process',
+            'status' => 'running', 'namespace' => 'orders',
+            'search_attributes' => ['order' => '42/receipt', 'secret' => 'private'],
+        ];
         $response = $this->getJson('/waterline/api/instances/order-1/runs/run-1')
             ->assertOk()
             ->assertJsonPath('workflow_classification', 'business_operation')
@@ -145,6 +149,14 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('application_context.links.0.url', 'https://app.example/orders/42%2Freceipt')
             ->assertJsonCount(1, 'application_context.fields');
         self::assertStringNotContainsString('private', json_encode($response->json('application_context')));
+    }
+
+    public function testServiceWithoutWaitProjectionsReportsUnavailableInsteadOfAnEmptyKnownWaitSet(): void
+    {
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('current_waits_state', 'unavailable')
+            ->assertJsonCount(0, 'current_waits');
     }
 
     public function testSelectedRunPreservesTheServersCanonicalCancellationCascade(): void

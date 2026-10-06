@@ -153,6 +153,11 @@
                     <div class="col">{{ flow.workflow_classification }}</div>
                 </div>
 
+                <div class="row mb-2" v-if="flow.current_waits_state === 'unavailable'">
+                    <div class="col-md-2"><strong>Current wait</strong></div>
+                    <div class="col text-muted">Current wait information is unavailable from this backend.</div>
+                </div>
+
                 <div class="alert alert-info mt-3" role="status"
                     v-if="flow.workflow_classification === 'coordinator' && flow.status === 'completed'">
                     Completed describes this coordinator run. Related executions have their own outcomes.

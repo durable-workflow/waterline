@@ -25,6 +25,9 @@ final class FakeRemoteClient
     public ?array $workflowRows = null;
 
     /** @var array<string, mixed>|null */
+    public ?array $workflowDescription = null;
+
+    /** @var array<string, mixed>|null */
     public ?array $diagnostics = null;
 
     /** @var list<array<string, mixed>>|null */
@@ -72,7 +75,7 @@ final class FakeRemoteClient
     {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        return WorkflowExecution::fromArray($this->workflowRaw('running'), $workflowId, $runId);
+        return WorkflowExecution::fromArray($this->workflowDescription ?? $this->workflowRaw('running'), $workflowId, $runId);
     }
 
     /** @return list<WorkflowRun> */

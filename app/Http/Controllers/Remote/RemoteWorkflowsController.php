@@ -331,7 +331,7 @@ final class RemoteWorkflowsController extends RemoteController
                 ? $activityResponse['activities']
                 : (is_array($diagnostics['activities'] ?? null) ? $diagnostics['activities'] : []),
             'tasks' => is_array($diagnostics['tasks'] ?? null) ? $diagnostics['tasks'] : [],
-            'waits' => is_array($diagnostics['waits'] ?? null) ? $diagnostics['waits'] : [],
+            'waits' => is_array($diagnostics['waits'] ?? null) ? $diagnostics['waits'] : null,
             'timers' => is_array($diagnostics['timers'] ?? null) ? $diagnostics['timers'] : [],
             'signals' => is_array($execution->raw['signals'] ?? null) ? $execution->raw['signals'] : [],
             'updates' => is_array($execution->raw['updates'] ?? null) ? $execution->raw['updates'] : [],
