@@ -487,6 +487,7 @@
                             <span v-if="entry.status">
                                 - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
                             </span>
+                            <span v-else-if="entry.metadata_state === 'unavailable'" class="text-muted"> / status unavailable</span>
                         </div>
                     </div>
                 </div>
@@ -2029,10 +2030,20 @@ export default {
                 : '/api/instances/' + instanceId
 
             const token = this.$route.query.history_page_token
-            const query = typeof token === 'string' && token
-                ? '?history_page_token=' + encodeURIComponent(token) : ''
+            const parameters = []
+            if (typeof token === 'string' && token) {
+                parameters.push('history_page_token=' + encodeURIComponent(token))
+            }
+            if (this.routeRequestsCompleteDetails()) {
+                parameters.push('observation=complete')
+            }
+            const query = parameters.length ? '?' + parameters.join('&') : ''
 
             return this.fetchFlow(Waterline.basePath + path + query)
+        },
+
+        routeRequestsCompleteDetails() {
+            return /^#(workflowStreams|cancellationCascadeTitle|collapse(?:Arguments|Output|RunDiagnostics|Timeline|Tasks|WorkflowStreams|LinkedIntakes|Commands|Signals|Updates|Activities|Timers|Exceptions))$/.test(this.$route.hash || '')
         },
 
         loadLegacyFlow(id) {

@@ -48,6 +48,19 @@ test('bounded observation never grants command authority and exports the selecte
     assert.equal(context.historyExportEndpoint(), '/waterline/api/instances/order/runs/run/history-export')
 })
 
+test('explicit deep inspection bookmarks remain usable while failure-event bookmarks preserve bounded reads', async () => {
+    const requests = []
+    const context = detail({ fetchFlow: async (path) => requests.push(path) })
+    context.$route.hash = '#workflowStreams'
+    await context.loadCanonicalFlow('order', 'run')
+    assert.equal(requests.at(-1), '/waterline/api/instances/order/runs/run?observation=complete')
+    context.$route.hash = '#history-event-1002'
+    context.$route.query.history_page_token = 'opaque-failure'
+    await context.loadCanonicalFlow('order', 'run')
+    assert.equal(requests.at(-1), '/waterline/api/instances/order/runs/run?history_page_token=opaque-failure')
+    assert.ok(context.withHistoryLimit(requests.at(-1)).endsWith('&observation=bounded'))
+})
+
 test('related child outcomes and wait timing render independently of the completed parent', () => {
     const context = detail({ flow: {
         ...run, status: 'completed',
