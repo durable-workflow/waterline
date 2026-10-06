@@ -552,6 +552,117 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('remote_status', 502);
     }
 
+    public function testBoundedDashboardAndCapabilityChecksShareOneReadWithoutTheFullAudit(): void
+    {
+        config()->set('waterline.capacity_evidence.allowed_window_seconds', [300]);
+        config()->set('waterline.capacity_evidence.default_window_seconds', 300);
+        $response = ['namespace' => 'orders', 'dashboard' => [
+            'flows' => 17,
+            'operator_metrics' => [
+                'history_audit_evaluation' => 'not_requested',
+                'projections' => ['run_waits' => ['needs_rebuild' => null]],
+                'capacity_evidence' => $this->serverCapacityEvidence([
+                    300 => $this->serverCapacityWindow(300, 12, 8),
+                ]),
+            ],
+        ]];
+        $client = new class($response)
+        {
+            public array $calls = [];
+
+            public function __construct(private readonly array $response) {}
+
+            public function boundedOperatorDashboard(): array
+            {
+                $this->calls[] = 'bounded';
+
+                return $this->response;
+            }
+
+            public function operatorDashboard(): array
+            {
+                $this->calls[] = 'full_dashboard';
+                throw new \LogicException('A bounded dashboard must not fetch the full audit.');
+            }
+
+            public function operatorMetrics(): array
+            {
+                $this->calls[] = 'full_metrics';
+                throw new \LogicException('Capability discovery must not fetch the full audit.');
+            }
+        };
+        $backend = new RemoteBackend($client);
+        $this->app->instance(RemoteBackend::class, $backend);
+
+        $this->getJson('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('flows', 17)
+            ->assertJsonPath('operator_metrics.projections.run_waits.needs_rebuild', null)
+            ->assertJsonPath('backend.capabilities.bounded_dashboard_summary', true)
+            ->assertJsonPath('backend.capabilities.capacity_evidence', true);
+        $this->assertTrue($backend->capabilities()['capacity_evidence']);
+        $this->assertSame(['bounded'], $client->calls);
+    }
+
+    public function testMissingBoundedRouteFallsBackOnceAndDoesNotClaimBoundedReads(): void
+    {
+        $client = new class
+        {
+            public array $calls = [];
+
+            public function boundedOperatorDashboard(): array
+            {
+                $this->calls[] = 'bounded';
+                throw new ServerException('Not found', 404, 'not_found');
+            }
+
+            public function operatorDashboard(): array
+            {
+                $this->calls[] = 'full_dashboard';
+
+                return ['dashboard' => ['flows' => 1]];
+            }
+
+            public function operatorMetrics(): array
+            {
+                $this->calls[] = 'full_metrics';
+
+                return ['operator_metrics' => []];
+            }
+        };
+        $backend = new RemoteBackend($client);
+
+        $this->assertSame(1, $backend->operatorDashboard()['dashboard']['flows']);
+        $this->assertFalse($backend->capabilities()['bounded_dashboard_summary']);
+        $this->assertSame(['bounded', 'full_dashboard', 'full_metrics'], $client->calls);
+    }
+
+    public function testBoundedDashboardPermissionRefusalDoesNotFetchAnotherDashboard(): void
+    {
+        $refusal = new ServerException('Permission denied', 403, 'authorization_failed');
+        $client = new class($refusal)
+        {
+            public function __construct(private readonly ServerException $refusal) {}
+
+            public function boundedOperatorDashboard(): array
+            {
+                throw $this->refusal;
+            }
+
+            public function operatorDashboard(): array
+            {
+                throw new \LogicException('An authorization refusal must not trigger a fallback.');
+            }
+        };
+
+        try {
+            (new RemoteBackend($client))->operatorDashboard();
+            $this->fail('A permission refusal must retain its original evidence.');
+        } catch (ServerException $exception) {
+            $this->assertSame($refusal, $exception);
+        }
+    }
+
     public function testWorkersQueuesHealthMetricsAndSchedulesUseRemoteContracts(): void
     {
         $this->getJson('/waterline/api/v2/health')

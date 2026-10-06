@@ -17,8 +17,8 @@ final class RemoteStatsController extends RemoteController
 
     public function index(): JsonResponse
     {
-        if ($this->backend->supports('operatorDashboard')) {
-            $response = $this->backend->client()->operatorDashboard();
+        if ($this->backend->supports('boundedOperatorDashboard') || $this->backend->supports('operatorDashboard')) {
+            $response = $this->backend->operatorDashboard();
             $summary = is_array($response['dashboard'] ?? null)
                 ? $response['dashboard']
                 : $response;
