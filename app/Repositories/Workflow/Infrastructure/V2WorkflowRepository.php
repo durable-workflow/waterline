@@ -143,7 +143,10 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
     {
         $namespace = $this->namespace();
         $now = now();
-        $summary = app(OperatorObservabilityRepository::class)->dashboardSummary($now, $namespace);
+        $observability = app(OperatorObservabilityRepository::class);
+        $summary = method_exists($observability, 'boundedDashboardSummary')
+            ? $observability->boundedDashboardSummary($now, $namespace)
+            : $observability->dashboardSummary($now, $namespace);
         $summary['operator_metrics'] = $this->annotateOperatorMetrics(
             $summary['operator_metrics'] ?? null,
             $namespace,

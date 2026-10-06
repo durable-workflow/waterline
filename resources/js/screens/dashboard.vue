@@ -607,6 +607,7 @@
 
 <script>
 import moment from 'moment';
+import { projectionMetric, projectionMetricLabel, projectionRebuildTotal } from '../projection-metrics.mjs';
 
 export default {
     data() {
@@ -715,8 +716,10 @@ export default {
                 },
                 {
                     label: 'Projection rebuilds needed',
-                    value: this.operatorProjectionNeedsRebuild().toLocaleString(),
-                    meta: 'Outstanding projection normalization work',
+                    value: projectionMetricLabel(this.operatorProjectionNeedsRebuild()),
+                    meta: this.operatorProjectionNeedsRebuild() === null
+                        ? 'Open a workflow to inspect its history'
+                        : 'Outstanding projection normalization work',
                 },
             ];
         },
@@ -1091,28 +1094,17 @@ export default {
         },
 
         operatorProjectionMetric(group, key = null) {
-            let normalizedGroup = group;
-            let normalizedKey = key;
-
-            if (normalizedKey === null) {
-                normalizedKey = normalizedGroup;
-                normalizedGroup = 'run_summaries';
-            }
-
-            const projections = (this.operatorMetrics && this.operatorMetrics.projections) || {};
-            const projection = projections[normalizedGroup] || {};
-
-            return projection[normalizedKey] || 0;
+            return projectionMetric(this.operatorMetrics, group, key);
         },
 
         operatorProjectionMetricLabel(group, key = null) {
-            return this.operatorProjectionMetric(group, key).toLocaleString();
+            return projectionMetricLabel(this.operatorProjectionMetric(group, key));
         },
 
         operatorProjectionDurationMetricLabel(group, key) {
             const value = this.operatorProjectionMetric(group, key);
 
-            return value > 0 ? moment.duration(value).humanize() : '-';
+            return value === null ? 'Unknown' : (value > 0 ? moment.duration(value).humanize() : '-');
         },
 
         operatorRunSummaryMissingAgeAvailable() {
@@ -1136,11 +1128,7 @@ export default {
         },
 
         operatorProjectionNeedsRebuild() {
-            return this.operatorProjectionMetric('run_summaries', 'needs_rebuild')
-                + this.operatorProjectionMetric('run_waits', 'needs_rebuild')
-                + this.operatorProjectionMetric('run_timeline_entries', 'needs_rebuild')
-                + this.operatorProjectionMetric('run_timer_entries', 'needs_rebuild')
-                + this.operatorProjectionMetric('run_lineage_entries', 'needs_rebuild');
+            return projectionRebuildTotal(this.operatorMetrics);
         },
 
         operatorBackend() {

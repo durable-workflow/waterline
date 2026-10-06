@@ -29,6 +29,69 @@ use Workflow\V2\Support\WorkerCompatibilityFleet;
 
 class V2DashboardStatsControllerTest extends TestCase
 {
+    public function testDashboardUsesBoundedReadsWhenTheEngineSupportsThem(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+
+        $observability = new class implements OperatorObservabilityRepository
+        {
+            public ?string $requestedNamespace = null;
+
+            public function boundedDashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                $this->requestedNamespace = $namespace;
+
+                return [
+                    'flows' => 17,
+                    'operator_metrics' => [
+                        'history_audit_evaluation' => 'not_requested',
+                        'projections' => [
+                            'run_waits' => ['rows' => 0, 'needs_rebuild' => null],
+                        ],
+                    ],
+                ];
+            }
+
+            public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                throw new \LogicException('A supported bounded dashboard must not use the full fleet audit.');
+            }
+
+            public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+            {
+                return [];
+            }
+
+            public function listItem(WorkflowRunSummary $summary): array
+            {
+                return [];
+            }
+
+            public function runHistoryExport(
+                WorkflowRun $run,
+                ?\Carbon\CarbonInterface $exportedAt = null,
+                \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+            ): array {
+                return [];
+            }
+
+            public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+        };
+        $this->app->instance(OperatorObservabilityRepository::class, $observability);
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('flows', 17)
+            ->assertJsonPath('operator_metrics.history_audit_evaluation', 'not_requested')
+            ->assertJsonPath('operator_metrics.projections.run_waits.rows', 0)
+            ->assertJsonPath('operator_metrics.projections.run_waits.needs_rebuild', null);
+        $this->assertSame('billing', $observability->requestedNamespace);
+    }
+
     public function testIndexUsesV2RunSummaries()
     {
         config()->set('waterline.engine_source', 'v2');
