@@ -540,9 +540,10 @@ class V2DashboardWorkflowTest extends TestCase
             'activity_heartbeat_timeout_not_effective',
         )['docs_url']);
         $this->assertContains(
-            'SLA / 300s',
+            'Review threshold / 300s',
             $diagnostics->firstWhere('code', 'condition_wait_stuck')['evidence_summary'],
         );
+        $this->assertSame('info', $diagnostics->firstWhere('code', 'condition_wait_stuck')['severity']);
 
         foreach ($diagnostics as $diagnostic) {
             $this->assertArrayHasKey(
