@@ -598,46 +598,46 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.projections.run_waits.runs', 3)
             ->assertJsonPath('operator_metrics.projections.run_waits.rows', 1)
             ->assertJsonPath('operator_metrics.projections.run_waits.projected_runs', 1)
-            ->assertJsonPath('operator_metrics.projections.run_waits.runs_with_waits', 1)
-            ->assertJsonPath('operator_metrics.projections.run_waits.projected_runs_with_waits', 0)
-            ->assertJsonPath('operator_metrics.projections.run_waits.missing_runs_with_waits', 1)
+            ->assertJsonPath('operator_metrics.projections.run_waits.runs_with_waits', null)
+            ->assertJsonPath('operator_metrics.projections.run_waits.projected_runs_with_waits', null)
+            ->assertJsonPath('operator_metrics.projections.run_waits.missing_runs_with_waits', null)
             ->assertJsonPath('operator_metrics.projections.run_waits.summaries_with_open_waits', 1)
             ->assertJsonPath('operator_metrics.projections.run_waits.projected_current_open_waits', 0)
             ->assertJsonPath('operator_metrics.projections.run_waits.missing_current_open_waits', 1)
-            ->assertJsonPath('operator_metrics.projections.run_waits.stale_projected_runs', 0)
+            ->assertJsonPath('operator_metrics.projections.run_waits.stale_projected_runs', null)
             ->assertJsonPath('operator_metrics.projections.run_waits.orphaned', 1)
-            ->assertJsonPath('operator_metrics.projections.run_waits.needs_rebuild', 2)
+            ->assertJsonPath('operator_metrics.projections.run_waits.needs_rebuild', null)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.runs', 3)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.history_events', 2)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.rows', 1)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.projected_runs', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.runs_with_history', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.projected_runs_with_history', 0)
-            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.missing_runs_with_history', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.runs_with_history', null)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.projected_runs_with_history', null)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.missing_runs_with_history', null)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.missing_history_events', 2)
-            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.stale_projected_runs', 0)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.stale_projected_runs', null)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.orphaned', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.needs_rebuild', 2)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.needs_rebuild', null)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.runs', 3)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.rows', 1)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.projected_runs', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.runs_with_timers', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.projected_runs_with_timers', 0)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.missing_runs_with_timers', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.stale_projected_runs', 0)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.schema_version_mismatch_runs', 0)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.runs_with_timers', null)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.projected_runs_with_timers', null)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.missing_runs_with_timers', null)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.stale_projected_runs', null)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.schema_version_mismatch_runs', null)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.schema_version_mismatch_rows', 1)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.orphaned', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.needs_rebuild', 2)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.needs_rebuild', null)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.runs', 3)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.rows', 2)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.projected_runs', 2)
-            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.runs_with_lineage', 2)
-            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.projected_runs_with_lineage', 1)
-            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.missing_runs_with_lineage', 1)
-            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.stale_projected_runs', 1)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.runs_with_lineage', null)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.projected_runs_with_lineage', null)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.missing_runs_with_lineage', null)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.stale_projected_runs', null)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.orphaned', 1)
-            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.needs_rebuild', 3)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.needs_rebuild', null)
             ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'waterline-metrics-test')
             ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
             ->assertJsonPath('operator_metrics.workers.active_workers', 1)
@@ -657,6 +657,12 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.repair_policy.scan_strategy', 'scope_fair_round_robin')
             ->assertJsonPath('operator_metrics.repair_policy.failure_backoff_max_seconds', 32)
             ->assertJsonPath('operator_metrics.repair_policy.failure_backoff_strategy', 'exponential_by_repair_count');
+
+        $audited = app(OperatorObservabilityRepository::class)->metrics();
+        self::assertSame(2, $audited['projections']['run_waits']['needs_rebuild']);
+        self::assertSame(2, $audited['projections']['run_timeline_entries']['needs_rebuild']);
+        self::assertSame(2, $audited['projections']['run_timer_entries']['needs_rebuild']);
+        self::assertSame(3, $audited['projections']['run_lineage_entries']['needs_rebuild']);
     }
 
     public function testIndexScopesWorkerFleetMetricsToConfiguredNamespace(): void
@@ -1843,9 +1849,15 @@ class V2DashboardStatsControllerTest extends TestCase
 
         $this->get('/waterline/api/stats')
             ->assertStatus(200)
-            ->assertJsonPath('operator_metrics.command_contracts.backfill_needed_runs', 2)
-            ->assertJsonPath('operator_metrics.command_contracts.backfill_available_runs', 1)
-            ->assertJsonPath('operator_metrics.command_contracts.backfill_unavailable_runs', 1);
+            ->assertJsonPath('operator_metrics.history_audit_evaluation', 'not_requested')
+            ->assertJsonPath('operator_metrics.command_contracts.backfill_needed_runs', null)
+            ->assertJsonPath('operator_metrics.command_contracts.backfill_available_runs', null)
+            ->assertJsonPath('operator_metrics.command_contracts.backfill_unavailable_runs', null);
+
+        $audited = app(OperatorObservabilityRepository::class)->metrics();
+        self::assertSame(2, $audited['command_contracts']['backfill_needed_runs']);
+        self::assertSame(1, $audited['command_contracts']['backfill_available_runs']);
+        self::assertSame(1, $audited['command_contracts']['backfill_unavailable_runs']);
     }
 
     public function testIndexExposesSchedulerRoleMetrics(): void
