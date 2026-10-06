@@ -34,7 +34,7 @@ final class ServiceModeRequirements
         $actual = $installedVersion();
         if (! self::supportsSdkVersion($actual)) {
             throw new LogicException(sprintf(
-                'Waterline service mode requires a stable durable-workflow/sdk release matching %s; installed %s. Update the SDK before starting Waterline service mode.',
+                'Waterline service mode requires a compatible durable-workflow/sdk release matching %s, including cancellation release candidates; installed %s. Update the SDK before starting Waterline service mode.',
                 self::SDK_ONBOARDING_CONSTRAINT,
                 $actual ?? '<unknown>',
             ));
@@ -43,7 +43,12 @@ final class ServiceModeRequirements
 
     private static function supportsSdkVersion(?string $version): bool
     {
-        return is_string($version)
-            && preg_match('/\A2\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\z/D', $version) === 1;
+        if (! is_string($version)) {
+            return false;
+        }
+
+        return preg_match('/\A2\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\z/D', $version) === 1
+            || (preg_match('/\A2\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-rc\.[1-9][0-9]*\z/D', $version) === 1
+                && version_compare($version, '2.2.0-rc.1', '>='));
     }
 }

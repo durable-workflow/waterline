@@ -50,9 +50,21 @@ final class ServiceModeRequirementsTest extends TestCase
         }
     }
 
-    public function testServiceModeRejectsPrereleaseAndIncompatiblePhpSdkVersions(): void
+    public function testServiceModeAcceptsCancellationReleaseCandidates(): void
     {
-        foreach (['2.0.0-rc.54', '1.99.0', '3.0.0', '2.0.x-dev', 'invalid'] as $version) {
+        foreach (['2.2.0-rc.1', '2.3.0-rc.2'] as $version) {
+            ServiceModeRequirements::assertSdkInstalled(
+                static fn (string $class): bool => true,
+                static fn (): string => $version,
+            );
+            $this->addToAssertionCount(1);
+        }
+    }
+
+    public function testServiceModeRejectsHistoricalPrereleaseAndIncompatiblePhpSdkVersions(): void
+    {
+        foreach (['2.0.0-rc.54', '2.1.0-rc.1', '2.2.0-beta.1', '2.2.0-rc.0', '2.2.0-rc.01',
+            '1.99.0', '3.0.0', '2.0.x-dev', 'invalid'] as $version) {
             try {
                 ServiceModeRequirements::assertSdkInstalled(
                     static fn (string $class): bool => true,
@@ -61,7 +73,7 @@ final class ServiceModeRequirementsTest extends TestCase
                 $this->fail("Incompatible PHP SDK {$version} must be rejected.");
             } catch (LogicException $exception) {
                 $this->assertStringContainsString(
-                    "requires a stable durable-workflow/sdk release matching ^2.0; installed {$version}",
+                    "requires a compatible durable-workflow/sdk release matching ^2.0, including cancellation release candidates; installed {$version}",
                     $exception->getMessage(),
                 );
             }
