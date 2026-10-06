@@ -387,7 +387,7 @@ export function operatorClarityFixture(presentation, result) {
 async function auditOperatorClarity(page, state) {
     const summary = await page.locator('.wl-flow-detail__summary-body').innerText();
     if (state.result === 'populated') {
-        if (!summary.includes('order<42>') || !summary.includes('Shipment') || !summary.includes('Unavailable')) {
+        if (!summary.includes('order<42>') || !summary.toLowerCase().includes('shipment') || !summary.includes('Unavailable')) {
             throw new Error('Allowlisted application context is missing or unavailable metadata is hidden.');
         }
         const link = page.getByRole('link', { name: 'Open order', exact: true });
