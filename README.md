@@ -109,7 +109,7 @@ values in `effective_preferences` without mutating the stored preferences.
 
 ### Cancellation Cascade
 
-The candidate cancellation inspection view joins the original root request and
+The cancellation inspection view joins the original root request and
 cleanup deadline with each run's local request, delivery boundary, lifecycle,
 child policy outcome, activity stop receipts and cleanup recovery. Embedded
 mode uses the shared Native reader. Service mode preserves Server's diagnostic
@@ -121,9 +121,9 @@ of worker loss. Independent cancellation roots keep their own deadlines.
 Missing or clipped evidence is shown with its findings.
 
 This view requires an installed Native or Server runtime supplying
-`durable-workflow.cancellation-cascade/v1`. Older runtimes report unavailable
-details. This candidate contract is not a statement about currently published
-runtime capabilities.
+`durable-workflow.cancellation-cascade/v1`, available in Native 2.4.0 and Server
+2.5.0. Service mode uses PHP SDK 2.2.0 or newer. Older runtimes report unavailable
+details.
 
 ## Upgrading Waterline
 
