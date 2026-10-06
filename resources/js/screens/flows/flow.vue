@@ -157,6 +157,10 @@
                     <div class="col-md-2"><strong>Current wait</strong></div>
                     <div class="col text-muted">Current wait information is unavailable from this backend.</div>
                 </div>
+                <div class="row mb-2" v-if="flow.current_waits_state === 'partial'">
+                    <div class="col-md-2"><strong>Current wait</strong></div>
+                    <div class="col text-muted">A wait summary is available. Additional waits and dependency details may be unavailable.</div>
+                </div>
 
                 <div class="alert alert-info mt-3" role="status"
                     v-if="flow.workflow_classification === 'coordinator' && flow.status === 'completed'">
@@ -792,6 +796,9 @@
             </div>
 
             <div class="card-body collapse show" id="collapseWaits">
+                <div class="small text-muted mb-2" v-if="flow.current_waits_truncated">
+                    Showing up to {{ flow.current_waits_limit }} current waits. Additional waits may exist.
+                </div>
                 <table class="table">
                     <thead>
                         <tr>
@@ -813,6 +820,9 @@
                                     <strong>{{ waitResumeStateLabel(wait.current_summary.state) }}</strong>
                                     <div v-if="wait.current_summary.next_scheduled_resume_at">
                                         Scheduled resume: {{ timestamp(wait.current_summary.next_scheduled_resume_at) }}
+                                    </div>
+                                    <div v-if="wait.current_summary.deadline_at">
+                                        Deadline: {{ timestamp(wait.current_summary.deadline_at) }}
                                     </div>
                                     <div v-if="Number(wait.current_summary.attempt_number) > 0">
                                         {{ wait.current_summary.kind === 'activity_retry' ? 'Next attempt' : 'Attempt' }}
@@ -3693,6 +3703,20 @@ export default {
         waitRows() {
             const current = new Map((this.flow.current_waits || []).map((wait) => [wait.id, wait]))
 
+            if (!Array.isArray(this.flow.waits) && this.flow.current_waits_source === 'server_diagnostics') {
+                return (this.flow.current_waits || []).map((wait) => ({
+                    id: wait.id,
+                    kind: wait.kind,
+                    status: 'open',
+                    summary: wait.reason,
+                    target_type: wait.dependency_type,
+                    resume_source_id: wait.dependency_id,
+                    deadline_at: wait.deadline_at,
+                    summary_only: true,
+                    current_summary: wait,
+                }))
+            }
+
             return (this.flow.waits || []).map((wait) => ({
                 ...wait,
                 current_summary: current.get(wait.id) || null,
@@ -3788,6 +3812,9 @@ export default {
         },
 
         waitBacking(wait) {
+            if (wait.summary_only) {
+                return 'Summary only'
+            }
             if (wait.diagnostic_only) {
                 return 'diagnostic only'
             }

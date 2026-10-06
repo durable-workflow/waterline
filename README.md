@@ -134,6 +134,19 @@ Useful classifications include `maintenance`, `coordinator` and
 completed status describes that run, while related executions retain their own
 outcomes. The same configuration applies to embedded and service observers.
 
+### Current Waits
+
+Run details distinguish a future scheduled resume, work eligible to resume,
+unknown resume timing and a recorded deadline that has passed. A timer's fire
+time is a resume boundary. Elapsed age alone does not make an indefinite signal
+wait overdue. Activity retry timing and attempt limits are shown when recorded.
+
+Service mode uses Server's bounded diagnostic summary when full wait projections
+are unavailable. The view displays known run timing and each reported activity's
+own attempt and deadlines. A run's next task time is not assigned to an activity
+without a recorded connection. Partial coverage, unknown totals and unavailable
+details remain explicit. Current wait summaries contain at most 50 rows.
+
 ### Operator Preferences
 
 Waterline persists small operator view preferences through

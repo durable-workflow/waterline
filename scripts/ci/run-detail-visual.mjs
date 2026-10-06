@@ -347,17 +347,24 @@ export function operatorClarityFixture(presentation, result) {
             { id: 'approval', kind: 'signal', status: 'open', summary: 'Wait for approval.' },
             { id: 'deadline', kind: 'condition', status: 'open', summary: 'Wait for shipment.' },
             { id: 'unsupported', kind: 'activity', status: 'open', summary: 'Inspect legacy activity.' },
-        ] : [];
+        ] : null;
         return {
             waits,
-            current_waits_state: presentation === 'embedded' ? 'available' : 'unavailable',
+            current_waits_state: presentation === 'embedded' ? 'available' : 'partial',
+            current_waits_source: presentation === 'embedded' ? 'workflow_run_waits' : 'server_diagnostics',
             current_waits: presentation === 'embedded' ? [
                 { id: 'retry', kind: 'activity_retry', state: 'planned', reason: 'Retry Import after attempt 2.',
                     next_scheduled_resume_at: '2030-01-01T18:00:00Z', attempt_number: 3, attempt_limit: 5 },
                 { id: 'approval', kind: 'signal', state: 'resume_time_unknown' },
                 { id: 'deadline', kind: 'condition', state: 'deadline_elapsed' },
                 { id: 'unsupported', kind: 'activity', state: 'unavailable' },
-            ] : [],
+            ] : [
+                { id: 'summary:run', kind: 'activity', state: 'planned', reason: 'Waiting for activities.',
+                    next_scheduled_resume_at: '2030-01-01T18:00:00Z' },
+                { id: 'activity:import', kind: 'activity', state: 'resume_time_unknown', reason: 'Import',
+                    dependency_id: 'import', dependency_type: 'Import', attempt_number: 2, attempt_limit: 5,
+                    deadline_at: '2030-01-02T18:00:00Z' },
+            ],
             workflow_classification: 'business_operation',
             application_context: {
                 state: 'configured',
@@ -403,8 +410,16 @@ async function auditOperatorClarity(page, state) {
                     throw new Error(`Current wait presentation is missing: ${text}`);
                 }
             }
-        } else if (!summary.includes('Current wait information is unavailable from this backend.')) {
-            throw new Error('Service wait capability unavailability is hidden.');
+        } else {
+            if (!summary.includes('Additional waits and dependency details may be unavailable.')) {
+                throw new Error('Partial service wait coverage is hidden.');
+            }
+            const waits = await page.locator('#collapseWaits').innerText();
+            for (const text of ['Planned wait', 'Scheduled resume:', 'Resume time unknown', 'Deadline:', 'Attempt', 'of 5']) {
+                if (!waits.includes(text)) {
+                    throw new Error(`Service wait presentation is missing: ${text}`);
+                }
+            }
         }
     } else if (state.result === 'supported-empty') {
         if (!summary.includes('Completed describes this coordinator run.') || !summary.includes('import-run')

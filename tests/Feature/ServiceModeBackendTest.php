@@ -159,6 +159,92 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonCount(0, 'current_waits');
     }
 
+    public function testServiceSummaryPreservesRunTimingWithoutAssigningItToUnrelatedActivities(): void
+    {
+        Carbon::setTestNow('2026-10-06T15:00:00Z');
+        $this->client->diagnostics = [
+            'execution' => [
+                'is_terminal' => false, 'wait_kind' => 'activity', 'wait_reason' => 'Waiting for activities.',
+                'next_scheduled_event' => [
+                    'task_id' => 'retry-task', 'task_type' => 'activity', 'task_status' => 'ready',
+                    'available_at' => '2026-10-06T18:00:00Z',
+                ],
+            ],
+            'pending_activities' => [
+                ['activity_execution_id' => 'import', 'activity_type' => 'Import', 'status' => 'pending',
+                    'attempt_count' => 2, 'schedule_to_close_deadline_at' => '2026-10-07T15:00:00Z'],
+                ['activity_execution_id' => 'ship', 'activity_type' => 'Ship', 'status' => 'running',
+                    'attempt_count' => 1, 'close_deadline_at' => '2026-10-06T14:59:00Z',
+                    'current_attempt' => ['attempt_number' => 1]],
+            ],
+        ];
+        $this->client->activities = [['id' => 'import', 'retry_policy' => ['max_attempts' => 5]]];
+
+        try {
+            $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+                ->assertOk()
+                ->assertJsonPath('current_waits_state', 'partial')
+                ->assertJsonPath('current_waits_count', null)
+                ->assertJsonPath('current_waits_returned_count', 3)
+                ->assertJsonPath('current_waits.0.state', 'planned')
+                ->assertJsonPath('current_waits.0.next_scheduled_resume_at', '2026-10-06T18:00:00+00:00')
+                ->assertJsonPath('current_waits.0.dependency_id', null)
+                ->assertJsonPath('current_waits.1.dependency_id', 'import')
+                ->assertJsonPath('current_waits.1.next_scheduled_resume_at', null)
+                ->assertJsonPath('current_waits.1.state', 'resume_time_unknown')
+                ->assertJsonPath('current_waits.1.attempt_number', 2)
+                ->assertJsonPath('current_waits.1.attempt_limit', 5)
+                ->assertJsonPath('current_waits.2.state', 'deadline_elapsed');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function testServiceTimerFireTimeIsNotAnExpiredDeadlineAndLeasedTasksDoNotPromiseAResume(): void
+    {
+        Carbon::setTestNow('2026-10-06T15:00:00Z');
+        $this->client->diagnostics = ['execution' => [
+            'wait_kind' => 'timer', 'next_scheduled_event' => [
+                'task_status' => 'ready', 'available_at' => '2026-10-06T14:59:00Z',
+                'wait_deadline_at' => '2026-10-06T14:59:00Z',
+            ],
+        ]];
+        try {
+            $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+                ->assertOk()
+                ->assertJsonPath('current_waits.0.state', 'eligible')
+                ->assertJsonPath('current_waits.0.deadline_at', null);
+            $this->client->diagnostics['execution']['next_scheduled_event']['task_status'] = 'leased';
+            $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+                ->assertOk()
+                ->assertJsonPath('current_waits.0.state', 'resume_time_unknown')
+                ->assertJsonPath('current_waits.0.next_scheduled_resume_at', null);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function testServicePrunedWaitsAreExplicitAndLargeDiagnosticInputsStayBounded(): void
+    {
+        $this->client->diagnostics = [
+            'execution' => ['wait_kind' => 'signal'],
+            'pending_activities' => array_map(static fn (int $id): array => [
+                'activity_execution_id' => 'import-'.$id, 'activity_type' => 'Import', 'status' => 'pending',
+            ], range(1, 60)),
+        ];
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonCount(50, 'current_waits')
+            ->assertJsonPath('current_waits_truncated', true)
+            ->assertJsonPath('current_waits_count', null);
+
+        $this->client->diagnostics['details_pruned_at'] = '2026-10-01T00:00:00Z';
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('current_waits_state', 'pruned')
+            ->assertJsonCount(0, 'current_waits');
+    }
+
     public function testSelectedRunPreservesTheServersCanonicalCancellationCascade(): void
     {
         $view = [
