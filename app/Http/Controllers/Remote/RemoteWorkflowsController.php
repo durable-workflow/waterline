@@ -15,6 +15,7 @@ use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ServiceVisibilityFilters;
 use Waterline\Support\RunWaitSummary;
 use Waterline\Support\RunApplicationContext;
+use Waterline\Support\RunObservationPresenter;
 use Waterline\Support\WorkflowStreamPresenter;
 use Waterline\Support\WorkflowClassification;
 
@@ -271,6 +272,9 @@ final class RemoteWorkflowsController extends RemoteController
 
     private function detail(Request $request, string $workflowId, ?string $runId): JsonResponse
     {
+        if ($request->query('observation') === 'bounded') {
+            return $this->observation($request, $workflowId, $runId);
+        }
         $validated = $request->validate([
             'history_page_token' => ['nullable', 'string', 'max:4096'],
         ]);
@@ -381,6 +385,33 @@ final class RemoteWorkflowsController extends RemoteController
         $payload = RunWaitSummary::annotate($payload);
         $payload = RunApplicationContext::annotate($payload);
         $payload = ActionabilityContract::annotateRun($payload);
+
+        return response()->json($this->scoped($payload));
+    }
+
+    private function observation(Request $request, string $workflowId, ?string $runId): JsonResponse
+    {
+        $validated = $request->validate([
+            'history_limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'history_page_token' => ['nullable', 'string', 'max:4096'],
+        ]);
+        if ($response = $this->requireCapability('workflowObservation', 'bounded run observation')) {
+            return $response;
+        }
+        $client = $this->backend->client();
+        $token = $validated['history_page_token'] ?? null;
+        $detail = $client->workflowObservation($workflowId, $runId,
+            historyPageSize: (int) ($validated['history_limit'] ?? self::HISTORY_PAGE_SIZE), historyPageToken: $token);
+        $keys = RunApplicationContext::searchAttributeKeys($detail['workflow_type']);
+        if ($keys !== []) {
+            // Resolve the host's opt-in profile from the observed type, then pin
+            // the context read to this exact run. Preserve the first history window.
+            $context = $client->workflowObservation($workflowId, $detail['run_id'], $keys, historyPageSize: 1);
+            $detail['search_attributes'] = $context['search_attributes'];
+        }
+        $payload = RunObservationPresenter::present($detail, $detail['history'], 'service', $token);
+        $payload = RunApplicationContext::annotate($payload);
+        unset($payload['search_attributes'], $payload['visibility_labels']);
 
         return response()->json($this->scoped($payload));
     }

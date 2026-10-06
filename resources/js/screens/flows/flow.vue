@@ -2369,8 +2369,7 @@ export default {
 
         withHistoryLimit(path) {
             const separator = path.includes('?') ? '&' : '?'
-            const bounded = Waterline.backend?.mode !== 'service'
-                && path.includes('/api/instances/') && !/[?&]observation=/.test(path)
+            const bounded = path.includes('/api/instances/') && !/[?&]observation=/.test(path)
                 ? '&observation=bounded' : ''
 
             return path + separator + 'history_limit=' + encodeURIComponent(this.historyLimit) + bounded

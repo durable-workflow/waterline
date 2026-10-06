@@ -10,6 +10,25 @@ final class RunApplicationContext
     private const LINK_LIMIT = 10;
     private const VALUE_LIMIT = 512;
 
+    /** @return list<string> */
+    public static function searchAttributeKeys(string $type): array
+    {
+        $profiles = config('waterline.observability.workflow_types', []);
+        $profile = is_array($profiles) && is_array($profiles[$type] ?? null) ? $profiles[$type] : [];
+        $keys = [];
+        foreach (is_array($profile['fields'] ?? null) ? $profile['fields'] : [] as $field) {
+            if (count($keys) >= self::FIELD_LIMIT) {
+                break;
+            }
+            if (is_array($field) && ($field['source'] ?? null) === 'search_attributes'
+                && is_string($field['key'] ?? null) && $field['key'] !== '' && strlen($field['key']) <= 255) {
+                $keys[$field['key']] = true;
+            }
+        }
+
+        return array_map('strval', array_keys($keys));
+    }
+
     /** @param array<string, mixed> $detail */
     public static function annotate(array $detail): array
     {

@@ -29,7 +29,7 @@ function detail(overrides = {}, backend = 'embedded') {
 
 const run = { instance_id: 'order', selected_run_id: 'run', run_id: 'run', read_mode: 'bounded', engine_source: 'v2' }
 
-test('initial embedded selection and cursor pages stay bounded, while full inspection and service reads keep their contracts', () => {
+test('initial embedded and service selections stay bounded, while full inspection remains explicit', () => {
     const embedded = detail()
     const endpoint = '/waterline/api/instances/order/runs/run'
     assert.equal(embedded.withHistoryLimit(endpoint), endpoint + '?history_limit=200&observation=bounded')
@@ -37,7 +37,7 @@ test('initial embedded selection and cursor pages stay bounded, while full inspe
         endpoint + '?history_page_token=opaque&history_limit=200&observation=bounded')
     assert.equal(embedded.withHistoryLimit(endpoint + '?observation=complete'),
         endpoint + '?observation=complete&history_limit=200')
-    assert.equal(detail({}, 'service').withHistoryLimit(endpoint), endpoint + '?history_limit=200')
+    assert.equal(detail({}, 'service').withHistoryLimit(endpoint), endpoint + '?history_limit=200&observation=bounded')
     assert.equal(embedded.withHistoryLimit('/waterline/api/flows/legacy'), '/waterline/api/flows/legacy?history_limit=200')
 })
 
