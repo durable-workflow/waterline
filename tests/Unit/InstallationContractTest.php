@@ -46,6 +46,7 @@ final class InstallationContractTest extends TestCase
         $publishedSdkVersion = $published['versions']['sdk-php'] ?? null;
         $qualifiedSdkVersion = $manifest['require-dev']['durable-workflow/sdk'] ?? null;
         $workflowVersion = $published['versions']['workflow'] ?? null;
+        $qualifiedWorkflowVersion = $manifest['require-dev']['durable-workflow/workflow'] ?? null;
 
         $this->assertSame([
             'server' => '2.0.0-rc.32',
@@ -61,12 +62,14 @@ final class InstallationContractTest extends TestCase
         $this->assertIsString($publishedSdkVersion);
         $this->assertIsString($qualifiedSdkVersion);
         $this->assertGreaterThanOrEqual(0, version_compare($qualifiedSdkVersion, $publishedSdkVersion));
-        $this->assertSame($workflowVersion, $manifest['require-dev']['durable-workflow/workflow'] ?? null);
+        $this->assertIsString($workflowVersion);
+        $this->assertIsString($qualifiedWorkflowVersion);
+        $this->assertGreaterThanOrEqual(0, version_compare($qualifiedWorkflowVersion, $workflowVersion));
         $this->assertArrayHasKey('durable-workflow/sdk', $manifest['suggest'] ?? []);
         $this->assertArrayHasKey('durable-workflow/workflow', $manifest['suggest'] ?? []);
-        $this->assertSame(
-            $qualifiedSdkVersion,
-            \Waterline\Support\ServiceModeRequirements::SDK_QUALIFIED_VERSION,
+        \Waterline\Support\ServiceModeRequirements::assertSdkInstalled(
+            static fn (string $class): bool => true,
+            static fn (): string => $qualifiedSdkVersion,
         );
     }
 

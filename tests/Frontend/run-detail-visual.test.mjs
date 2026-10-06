@@ -11,6 +11,7 @@ import {
     deepLinkedWorkflowStreamFailures,
     deepLinkStabilityAttempts,
     runDetailFixture,
+    cancellationCascadeFixture,
     simultaneousNavigationFailures,
     simultaneousTopbarFailures,
     summarizeRunDetailReports,
@@ -47,6 +48,18 @@ test('run-detail qualification covers presentation, result, navigation, and view
     }
 
     assert.equal(VIEWPORTS.length * NAVIGATION_STATES.length * STATES.length, 80);
+});
+
+test('populated visual cases cover the cancellation cascade in both presentations while legacy cases omit it', () => {
+    const expected = cancellationCascadeFixture();
+    for (const presentation of PRESENTATIONS) {
+        const populated = runDetailFixture(`${presentation}-populated`);
+        assert.deepEqual(populated.cancellation_cascade, expected);
+        assert.equal(populated.cancellation_cascade.selected_run_id, populated.run_id);
+        assert.equal(expected.runs.length, 2);
+        assert.equal(expected.runs[0].cleanup_recovery[0].attempt.callback_stop_state, 'unknown');
+        assert.ok(!Object.hasOwn(runDetailFixture(`${presentation}-supported-empty`), 'cancellation_cascade'));
+    }
 });
 
 test('direct populated Workflow Streams navigation repeats at regression viewports', () => {

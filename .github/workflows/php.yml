@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      cancellation_workflow_commit:
+        description: Optional immutable Native source for cancellation inspection qualification. Published package lanes remain unchanged.
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -1050,6 +1055,95 @@ jobs:
 
         timeout --foreground --signal=TERM --kill-after=30s "$COMMAND_TIMEOUT" \
           composer "$COMPOSER_SCRIPT" -- "${arguments[@]}"
+
+  cancellation-source:
+    name: Candidate cancellation inspection source
+    needs: [action-policy, classify]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.cancellation_workflow_commit != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql@sha256:679e7e924f38a3cbb62a3d7df32924b83f7321a602d3f9f967c01b3df18495d6
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: testing
+          MYSQL_USER: testing
+          MYSQL_PASSWORD: password
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin --silent --host=127.0.0.1 --password=password ping"
+          --health-interval=2s --health-timeout=5s --health-retries=30
+      postgres:
+        image: postgres@sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94
+        env:
+          POSTGRES_DB: testing
+          POSTGRES_USER: testing
+          POSTGRES_PASSWORD: password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready --host=127.0.0.1 --username=testing"
+          --health-interval=2s --health-timeout=5s --health-retries=30
+    env:
+      DW_CANCELLATION_WORKFLOW_COMMIT: ${{ inputs.cancellation_workflow_commit }}
+      DB_HOST: 127.0.0.1
+    steps:
+    - name: Require immutable Native source
+      run: |
+        set -euo pipefail
+        [[ "$DW_CANCELLATION_WORKFLOW_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+        [[ ! "$DW_CANCELLATION_WORKFLOW_COMMIT" =~ ^0+$ ]]
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      with:
+        persist-credentials: false
+    - name: Check out exact Native source
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      with:
+        repository: durable-workflow/workflow
+        ref: ${{ inputs.cancellation_workflow_commit }}
+        path: candidate-workflow
+        persist-credentials: false
+    - name: Install PHP and Composer
+      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+      with:
+        php-version: '8.4'
+        extensions: pdo_sqlite, pdo_mysql, pdo_pgsql
+        coverage: none
+    - name: Install the locked baseline and bind exact candidate source
+      run: |
+        set -euo pipefail
+        test "$(git -C candidate-workflow rev-parse HEAD)" = "$DW_CANCELLATION_WORKFLOW_COMMIT"
+        mkdir -p cancellation-evidence
+        {
+          echo "Candidate source only. No release, published artifact or mixed-language qualification claim."
+          echo "Waterline commit: $(git rev-parse HEAD)"
+          echo "Native source overlay: $DW_CANCELLATION_WORKFLOW_COMMIT"
+        } > cancellation-evidence/provenance.txt
+        composer install --prefer-dist --no-progress --no-interaction
+        mv vendor/durable-workflow/workflow "$RUNNER_TEMP/locked-workflow"
+        cp -a candidate-workflow vendor/durable-workflow/workflow
+    - name: Qualify embedded and service inspection on all supported Native databases
+      run: |
+        set -euo pipefail
+        qualification_status=0
+        for database in sqlite mysql pgsql; do
+          php scripts/ci/preflight-databases.php "$database" "$DB_HOST"
+          if ! vendor/bin/phpunit --configuration="phpunit-$database.xml" \
+            tests/Source/CancellationCascadeVisibilityTest.php tests/Feature/ServiceModeBackendTest.php \
+            --filter '/CancellationCascadeVisibilityTest|testSelectedRunPreservesTheServersCanonicalCancellationCascade|testSelectedRunRetainsTheServersExplicitUnsupportedCancellationDiagnostic/' \
+            --fail-on-skipped --log-junit "cancellation-evidence/$database.xml" --colors=never \
+            > "cancellation-evidence/$database.log" 2>&1; then
+            qualification_status=1
+          fi
+        done
+        test "$qualification_status" = 0
+    - name: Retain source provenance and raw inspection evidence
+      if: ${{ always() }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: candidate-cancellation-inspection
+        path: cancellation-evidence/
+        retention-days: 90
 
   target-branch-qualification:
     name: Target branch qualification

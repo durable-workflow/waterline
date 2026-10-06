@@ -211,12 +211,28 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         with self.assertRaisesRegex(identity.IdentityError, "does not match source-declared"):
             validate(release_version="2.0.0-rc.14")
 
-    def test_release_identity_rejects_versions_outside_the_supported_2_0_line(self) -> None:
-        unsupported = manifest()
-        unsupported["extra"]["durable-workflow"]["product-train"] = "2.1.0"
+    def test_forward_minor_candidate_preserves_current_published_authority(self) -> None:
+        candidate = manifest()
+        candidate["extra"]["durable-workflow"]["product-train"] = "2.1.0-rc.1"
+        candidate["require-dev"][identity.WORKFLOW_PACKAGE] = "2.4.0-rc.1"
+        candidate["require-dev"][identity.SDK_PACKAGE] = "2.2.0-rc.1"
+        service = standalone()
+        service["require"][identity.SDK_PACKAGE] = "2.2.0-rc.1"
+        service_lock = lock()
+        service_lock["packages"][0]["version"] = "2.2.0-rc.1"
 
-        with self.assertRaisesRegex(identity.IdentityError, "exact supported 2.0 release"):
-            validate(candidate_manifest=unsupported)
+        evidence = validate(candidate, service, service_lock, release_version="2.1.0-rc.1")
+        self.assertEqual(CURRENT_PUBLIC, evidence["current_public_artifacts"])
+        self.assertEqual("2.4.0-rc.1", evidence["candidate_source"]["workflow"])
+        self.assertEqual("2.2.0-rc.1", evidence["candidate_source"]["sdk-php"])
+
+    def test_release_identity_rejects_versions_outside_supported_2_x(self) -> None:
+        for version in ("3.0.0", "2.1", "2.1.0-rc.0", "2.1.0-preview.1", "2.01.0"):
+            with self.subTest(version=version):
+                unsupported = manifest()
+                unsupported["extra"]["durable-workflow"]["product-train"] = version
+                with self.assertRaisesRegex(identity.IdentityError, "exact supported 2.x release"):
+                    validate(candidate_manifest=unsupported)
 
     def test_every_branch_route_runs_current_identity_qualification(self) -> None:
         document = workflow("php.yml")

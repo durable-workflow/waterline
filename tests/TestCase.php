@@ -131,9 +131,11 @@ abstract class TestCase extends BaseTestCase
      */
     private function sqlServerMigrationPaths(): array
     {
-        $workflowMigrations = glob(
-            dirname(__DIR__).'/vendor/durable-workflow/workflow/src/migrations/2022_*.php'
-        );
+        $workflowSource = dirname(__DIR__).'/vendor/durable-workflow/workflow/src';
+        $legacyMigrations = is_dir($workflowSource.'/migrations-v1')
+            ? $workflowSource.'/migrations-v1'
+            : $workflowSource.'/migrations';
+        $workflowMigrations = glob($legacyMigrations.'/2022_*.php');
         $waterlineMigrations = glob(dirname(__DIR__).'/database/migrations/*.php');
 
         return array_values(array_merge(
