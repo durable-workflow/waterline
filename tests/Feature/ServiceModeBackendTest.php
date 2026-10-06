@@ -690,13 +690,17 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('data.0.workflow_type', 'orders.process');
     }
 
-    public static function capacityDashboardAvailability(): array
+    public function testCapacityEvidenceUsesTheOfficialRemoteMetricsContractWithoutLeakingExecutionIds(): void
     {
-        return ['bounded Server' => [true], 'older Server' => [false]];
+        $this->assertCapacityDashboardAvailability(true);
     }
 
-    #[\PHPUnit\Framework\Attributes\DataProvider('capacityDashboardAvailability')]
-    public function testCapacityEvidenceUsesTheOfficialRemoteMetricsContractWithoutLeakingExecutionIds(bool $boundedAvailable): void
+    public function testCapacityEvidenceFallsBackToTheOlderServerMetricsContractWithoutLeakingExecutionIds(): void
+    {
+        $this->assertCapacityDashboardAvailability(false);
+    }
+
+    private function assertCapacityDashboardAvailability(bool $boundedAvailable): void
     {
         config()->set('waterline.capacity_evidence.allowed_window_seconds', [300, 3600]);
         config()->set('waterline.capacity_evidence.default_window_seconds', 3600);
