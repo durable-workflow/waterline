@@ -448,19 +448,6 @@ async function auditOperatorClarity(page, state) {
             }
             await page.evaluate((value) => window.scrollTo(0, value), scrollY);
         }
-        const failureScrollY = await page.evaluate(() => window.scrollY);
-        const failures = page.locator('#failureSummary');
-        if (!(await failures.innerText()).includes('Import <failed> without exposing a trace.')) {
-            throw new Error('Recent failure summary is absent or its text was interpreted as HTML.');
-        }
-        await failures.getByRole('link', { name: 'View history event #3', exact: true }).click();
-        const event = page.locator('#history-event-3');
-        await event.waitFor({ state: 'visible' });
-        if (!(await event.innerText()).includes('ActivityFailed')
-            || !(await event.getAttribute('class')).includes('table-warning')) {
-            throw new Error('Failure history link did not reveal and highlight its supporting event.');
-        }
-        await page.evaluate((value) => window.scrollTo(0, value), failureScrollY);
     } else if (state.result === 'supported-empty') {
         if (!summary.includes('Completed describes this coordinator run.') || !summary.includes('import-run')
             || !summary.includes('waiting / running')) {
@@ -471,6 +458,22 @@ async function auditOperatorClarity(page, state) {
     }
 
     return { status: 'pass', result: state.result, presentation: state.presentation };
+}
+
+async function auditFailureHistoryLink(page, state) {
+    if (state.result !== 'populated') return null;
+    const failures = page.locator('#failureSummary');
+    if (!(await failures.innerText()).includes('Import <failed> without exposing a trace.')) {
+        throw new Error('Recent failure summary is absent or its text was interpreted as HTML.');
+    }
+    await failures.getByRole('link', { name: 'View history event #3', exact: true }).click();
+    const event = page.locator('#history-event-3');
+    await event.waitFor({ state: 'visible' });
+    if (!(await event.innerText()).includes('ActivityFailed')
+        || !(await event.getAttribute('class')).includes('table-warning')) {
+        throw new Error('Failure history link did not reveal and highlight its supporting event.');
+    }
+    return { sequence: 3, state: 'visible', highlighted: true };
 }
 
 // Rendering evidence only. Runtime cancellation is qualified separately.
@@ -1359,6 +1362,17 @@ export async function runRunDetailVisual({
                             path: path.join(outputDirectory, cancellation.screenshot),
                             fullPage: true,
                             clip,
+                        });
+                    }
+                    // Initial fragment geometry and its screenshot are already
+                    // recorded. A failure link intentionally changes the history
+                    // tab and scroll position; qualify that interaction separately.
+                    if (!failure && state.result === 'populated') {
+                        operatorClarity.failureEvidence = await auditFailureHistoryLink(page, state);
+                        operatorClarity.failureEvidence.screenshot = `${name}-failure-history.png`;
+                        await page.screenshot({
+                            path: path.join(outputDirectory, operatorClarity.failureEvidence.screenshot),
+                            fullPage: false,
                         });
                     }
                 } catch (error) {
