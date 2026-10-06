@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Waterline\Http\Controllers\Remote;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Waterline\Support\BackendConfiguration;
+use Waterline\Support\WorkflowClassification;
 use Waterline\Support\Remote\RemoteBackend;
 
 final class RemoteStatsController extends RemoteController
@@ -15,10 +17,21 @@ final class RemoteStatsController extends RemoteController
         parent::__construct($backend);
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
-        if ($this->backend->supports('operatorDashboard')) {
-            $response = $this->backend->client()->operatorDashboard();
+        $selection = WorkflowClassification::selection($request);
+        if ($selection['workflow_types'] !== null) {
+            if ($response = $this->requireCapability('workflowTypeOperatorDashboard', 'workflow_type_dashboard')) {
+                return $response;
+            }
+            $response = $this->backend->operatorDashboard($selection['workflow_types']);
+            $summary = is_array($response['dashboard'] ?? null) ? $response['dashboard'] : [];
+            if (($summary['workflow_scope']['workflow_types'] ?? null) !== $selection['workflow_types']
+                || ($summary['workflow_scope']['namespace'] ?? null) !== BackendConfiguration::namespace()) {
+                return $this->capabilityUnavailable('workflow_type_dashboard', 'workflowTypeOperatorDashboard');
+            }
+        } elseif ($this->backend->supports('boundedOperatorDashboard') || $this->backend->supports('operatorDashboard')) {
+            $response = $this->backend->operatorDashboard();
             $summary = is_array($response['dashboard'] ?? null)
                 ? $response['dashboard']
                 : $response;
@@ -34,8 +47,11 @@ final class RemoteStatsController extends RemoteController
             $summary = $this->summaryFromMetrics($metrics);
         }
 
+        $selection['available'] = $this->backend->capabilities()['workflow_type_dashboard_summary'];
+
         return response()->json($this->scoped([
             ...$summary,
+            'classification_scope' => $selection,
             'engine_source' => [
                 'configured' => 'service',
                 'resolved' => 'service',

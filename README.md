@@ -93,6 +93,106 @@ If your workflow IDs are strings (for example UUIDs) and do not sort in a useful
 'workflow_sort_column' => 'created_at',
 ```
 
+### Application Context
+
+An application can opt in to a classification and display context for each exact
+workflow type in its published `config/waterline.php`:
+
+```php
+'observability' => [
+    'workflow_types' => [
+        'orders.import' => [
+            'classification' => 'business_operation',
+            'fields' => [
+                'order_id' => [
+                    'label' => 'Order',
+                    'source' => 'search_attributes',
+                    'key' => 'order_id',
+                ],
+            ],
+            'links' => [
+                'order' => [
+                    'label' => 'Open order',
+                    'url' => 'https://app.example/orders/{order_id}',
+                ],
+            ],
+        ],
+    ],
+],
+```
+
+The run detail displays only explicitly configured scalar visibility labels or
+search attributes. Inputs, outputs and arbitrary metadata are not sources for
+application context. Missing fields show `Unavailable`. The context is limited
+to 20 fields, 10 links and 512 characters per value. Links require an absolute
+HTTP(S) URL with a configured host and no credentials. Placeholder values are
+URL encoded, and missing or shortened identifiers do not produce entity links.
+The host application's Waterline authorization still controls who can see it.
+
+Useful classifications include `maintenance`, `coordinator` and
+`business_operation`. The dashboard and execution-list selectors apply the
+application's exact type groups. Dashboard totals, trends and alerts use that
+selection. Lists apply it together with the current status, namespace, saved
+view and other filters. Selecting a group resets pagination and preserves those
+other filters. All workflow types remain available, including maintenance.
+The selected classification, namespace and time windows are displayed beside
+the selector. Lists show retained runs matching the filters and their observation
+time. Worker, queue and storage
+metrics keep the full operator scope. A backend without the filtering capability
+disables the selector and refuses a manually requested filter with HTTP 501.
+Unknown classifications return HTTP 422.
+
+Filtered embedded dashboards require Native 2.4.4 or newer. Filtered service
+dashboards require Server 2.5.4 and PHP SDK 2.2.2 or newer. An unsupported selected
+filter offers a return to all workflow types.
+
+Classification changes observation only. A coordinator's
+completed status describes that run, while related executions retain their own
+outcomes. The same configuration applies to embedded and service observers.
+
+### Current Waits
+
+Run details distinguish a future scheduled resume, work eligible to resume,
+unknown resume timing and a recorded deadline that has passed. A timer's fire
+time is a resume boundary. Elapsed age alone does not make an indefinite signal
+wait overdue. Activity retry timing and attempt limits are shown when recorded.
+
+Service mode uses Server's bounded diagnostic summary when full wait projections
+are unavailable. The view displays known run timing and each reported activity's
+own attempt and deadlines. A run's next task time is not assigned to an activity
+without a recorded connection. Partial coverage, unknown totals and unavailable
+details remain explicit. Current wait summaries contain at most 50 rows.
+
+### Dashboard History Audits
+
+Canonical run views start with a bounded observation: up to 200 history events,
+50 relationships in each direction and ten recent failure references. This
+requires Native 2.4.5 in embedded mode, or Server 2.5.5 and PHP SDK 2.2.3 in
+service mode. **Inspect full details** loads inputs, results, actions and deeper
+diagnostics explicitly. Older runtimes and custom observers without this
+capability offer **Open complete details** when the initial summary is unavailable.
+Existing full-inspection bookmarks continue to work.
+
+With Native 2.4.3, the dashboard reads aggregate execution data and defers full
+history audits. Deferred audit counts display `Unknown`, including the rebuild
+total. Open an execution to inspect its history and diagnostics, or request the
+runtime's full operator metrics when you need a complete audit.
+
+Service mode uses the same dashboard behavior with Server 2.5.3 and PHP SDK
+2.2.1. Older runtimes keep their supported dashboard path. Missing or unavailable
+audit information is never presented as a verified zero.
+
+### Recent Failures
+
+Full run details show up to 20 recent reported failures with compact messages and
+source identifiers. A history link opens and highlights the supporting event
+when it is in the loaded history window. Supporting Server references also
+provide a direct, shareable link to a retained failure event outside that window.
+The original opaque cursor is preserved and a selected window does not imply
+that the whole history has been loaded. Loading another service history page
+can make that evidence available. Pruned, unavailable and unloaded history are
+labelled explicitly. An empty view does not establish that a run never failed.
+
 ### Operator Preferences
 
 Waterline persists small operator view preferences through

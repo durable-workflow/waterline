@@ -13,6 +13,8 @@
             <strong>Dashboard unavailable</strong>
             <span class="text-muted mt-2">{{ loadingError }}</span>
             <button class="btn btn-outline-primary btn-sm mt-3" @click="refreshNow">Retry</button>
+            <button v-if="selectedClassification" class="btn btn-outline-secondary btn-sm mt-2"
+                @click="clearClassification">Show all workflow types</button>
         </div>
 
         <div v-else class="wl-dashboard-stack">
@@ -36,6 +38,37 @@
                 </div>
             </section>
 
+            <section class="card">
+                <div class="card-body card-bg-secondary">
+                    <label v-if="classificationOptions.length" for="dashboard-classification" class="d-block">
+                        Workflow classification
+                        <select id="dashboard-classification" v-model="selectedClassification"
+                            class="form-control mt-2" :disabled="!classificationAvailable" @change="changeClassification">
+                            <option value="">All workflow types</option>
+                            <option v-for="option in classificationOptions" :key="option.value" :value="option.value">
+                                {{ option.label }}
+                            </option>
+                        </select>
+                    </label>
+                    <p class="mb-1">
+                        {{ classificationScopeLabel }} · {{ dashboardNamespaceLabel }}
+                    </p>
+                    <p class="text-muted mb-1">
+                        Totals include all retained runs. Recent volume uses the last hour, day and seven days.
+                        Trends use hourly buckets over seven days.
+                    </p>
+                    <p v-if="stats.time_windows" class="text-muted mb-1">
+                        As of {{ stats.time_windows.generated_at }}
+                    </p>
+                    <p class="text-muted mb-0">
+                        Worker, queue and storage metrics cover the full operator scope.
+                        <span v-if="classificationOptions.length && !classificationAvailable">
+                            This backend does not support classification filters yet.
+                        </span>
+                    </p>
+                </div>
+            </section>
+
             <section v-if="needsAttention.total_alerts > 0" class="card wl-dashboard-alerts">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
@@ -56,6 +89,7 @@
                         :class="`is-${alert.severity || 'info'}`">
                         <div class="wl-dashboard-alert__title">{{ alert.message }}</div>
                         <div class="wl-dashboard-alert__action">{{ alert.action }}</div>
+                        <small v-if="alert.scope === 'operator_workers'" class="text-muted">Operator worker scope</small>
                     </article>
                 </div>
             </section>
@@ -607,6 +641,7 @@
 
 <script>
 import moment from 'moment';
+import { projectionMetric, projectionMetricLabel, projectionRebuildTotal } from '../projection-metrics.mjs';
 
 export default {
     data() {
@@ -615,10 +650,29 @@ export default {
             ready: false,
             loadingError: null,
             timeout: null,
+            selectedClassification: typeof this.$route.query.classification === 'string'
+                ? this.$route.query.classification : '',
+            statsRequest: 0,
         };
     },
 
     computed: {
+        classificationOptions() {
+            return this.stats.classification_scope?.options || [];
+        },
+
+        classificationAvailable() {
+            return this.stats.classification_scope?.available === true;
+        },
+
+        classificationScopeLabel() {
+            return this.stats.classification_scope?.label || 'All workflow types';
+        },
+
+        dashboardNamespaceLabel() {
+            return this.stats.operator_scope?.label || 'Operator scope';
+        },
+
         needsAttention() {
             return this.stats.needs_attention || {
                 total_alerts: 0,
@@ -695,7 +749,7 @@ export default {
                 {
                     label: 'Max wait time',
                     value: this.stats.max_wait_time_workflow ? this.waitAge(this.stats.max_wait_time_workflow) : '-',
-                    meta: this.stats.max_wait_time_workflow ? 'Most delayed open run' : 'No waiting runs',
+                    meta: this.stats.max_wait_time_workflow ? 'Oldest recorded open wait' : 'No waiting runs',
                     route: this.stats.max_wait_time_workflow ? { name: this.routeName(this.stats.max_wait_time_workflow), params: { flowId: this.stats.max_wait_time_workflow.id } } : null,
                     linkLabel: this.stats.max_wait_time_workflow ? this.workflowLabel(this.stats.max_wait_time_workflow.class) : null,
                 },
@@ -715,8 +769,10 @@ export default {
                 },
                 {
                     label: 'Projection rebuilds needed',
-                    value: this.operatorProjectionNeedsRebuild().toLocaleString(),
-                    meta: 'Outstanding projection normalization work',
+                    value: projectionMetricLabel(this.operatorProjectionNeedsRebuild()),
+                    meta: this.operatorProjectionNeedsRebuild() === null
+                        ? 'Open a workflow to inspect its history'
+                        : 'Outstanding projection normalization work',
                 },
             ];
         },
@@ -917,18 +973,40 @@ export default {
 
     methods: {
         loadStats() {
-            return this.$http.get(Waterline.basePath + '/api/stats')
+            const request = ++this.statsRequest;
+            const params = this.selectedClassification ? { classification: this.selectedClassification } : {};
+            return this.$http.get(Waterline.basePath + '/api/stats', { params })
                 .then((response) => {
+                    if (request !== this.statsRequest) return false;
                     this.stats = response.data || {};
                     this.loadingError = null;
+                    return true;
+                })
+                .catch((error) => {
+                    if (request !== this.statsRequest) return false;
+                    throw error;
                 });
+        },
+
+        changeClassification() {
+            const query = { ...this.$route.query };
+            if (this.selectedClassification) query.classification = this.selectedClassification;
+            else delete query.classification;
+            this.$router.replace({ query });
+            return this.refreshNow();
+        },
+
+        clearClassification() {
+            this.selectedClassification = '';
+            return this.changeClassification();
         },
 
         refreshStatsPeriodically() {
             clearTimeout(this.timeout);
 
             return this.loadStats()
-                .then(() => {
+                .then((applied) => {
+                    if (!applied) return;
                     this.ready = true;
 
                     if (this.$root.autoLoadsNewEntries) {
@@ -1091,28 +1169,17 @@ export default {
         },
 
         operatorProjectionMetric(group, key = null) {
-            let normalizedGroup = group;
-            let normalizedKey = key;
-
-            if (normalizedKey === null) {
-                normalizedKey = normalizedGroup;
-                normalizedGroup = 'run_summaries';
-            }
-
-            const projections = (this.operatorMetrics && this.operatorMetrics.projections) || {};
-            const projection = projections[normalizedGroup] || {};
-
-            return projection[normalizedKey] || 0;
+            return projectionMetric(this.operatorMetrics, group, key);
         },
 
         operatorProjectionMetricLabel(group, key = null) {
-            return this.operatorProjectionMetric(group, key).toLocaleString();
+            return projectionMetricLabel(this.operatorProjectionMetric(group, key));
         },
 
         operatorProjectionDurationMetricLabel(group, key) {
             const value = this.operatorProjectionMetric(group, key);
 
-            return value > 0 ? moment.duration(value).humanize() : '-';
+            return value === null ? 'Unknown' : (value > 0 ? moment.duration(value).humanize() : '-');
         },
 
         operatorRunSummaryMissingAgeAvailable() {
@@ -1136,11 +1203,7 @@ export default {
         },
 
         operatorProjectionNeedsRebuild() {
-            return this.operatorProjectionMetric('run_summaries', 'needs_rebuild')
-                + this.operatorProjectionMetric('run_waits', 'needs_rebuild')
-                + this.operatorProjectionMetric('run_timeline_entries', 'needs_rebuild')
-                + this.operatorProjectionMetric('run_timer_entries', 'needs_rebuild')
-                + this.operatorProjectionMetric('run_lineage_entries', 'needs_rebuild');
+            return projectionRebuildTotal(this.operatorMetrics);
         },
 
         operatorBackend() {

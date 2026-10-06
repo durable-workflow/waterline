@@ -127,6 +127,124 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('read_only', true);
     }
 
+    public function testServiceDetailDisplaysOnlyTheHostsConfiguredApplicationContext(): void
+    {
+        config()->set('waterline.observability.workflow_types', [
+            'orders.process' => [
+                'classification' => 'business_operation',
+                'fields' => ['order' => ['source' => 'search_attributes', 'key' => 'order']],
+                'links' => ['order' => ['url' => 'https://app.example/orders/{order}']],
+            ],
+        ]);
+        $this->client->workflowDescription = [
+            'workflow_id' => 'order-1', 'run_id' => 'run-1', 'workflow_type' => 'orders.process',
+            'status' => 'running', 'namespace' => 'orders',
+            'search_attributes' => ['order' => '42/receipt', 'secret' => 'private'],
+        ];
+        $response = $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('workflow_classification', 'business_operation')
+            ->assertJsonPath('application_context.state', 'configured')
+            ->assertJsonPath('application_context.fields.0.value', '42/receipt')
+            ->assertJsonPath('application_context.links.0.url', 'https://app.example/orders/42%2Freceipt')
+            ->assertJsonCount(1, 'application_context.fields');
+        self::assertStringNotContainsString('private', json_encode($response->json('application_context')));
+    }
+
+    public function testServiceWithoutWaitProjectionsReportsUnavailableInsteadOfAnEmptyKnownWaitSet(): void
+    {
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('current_waits_state', 'unavailable')
+            ->assertJsonCount(0, 'current_waits');
+    }
+
+    public function testServiceSummaryPreservesRunTimingWithoutAssigningItToUnrelatedActivities(): void
+    {
+        Carbon::setTestNow('2026-10-06T15:00:00Z');
+        $this->client->diagnostics = [
+            'execution' => [
+                'is_terminal' => false, 'wait_kind' => 'activity', 'wait_reason' => 'Waiting for activities.',
+                'next_scheduled_event' => [
+                    'task_id' => 'retry-task', 'task_type' => 'activity', 'task_status' => 'ready',
+                    'available_at' => '2026-10-06T18:00:00Z',
+                ],
+            ],
+            'pending_activities' => [
+                ['activity_execution_id' => 'import', 'activity_type' => 'Import', 'status' => 'pending',
+                    'attempt_count' => 2, 'schedule_to_close_deadline_at' => '2026-10-07T15:00:00Z'],
+                ['activity_execution_id' => 'ship', 'activity_type' => 'Ship', 'status' => 'running',
+                    'attempt_count' => 1, 'close_deadline_at' => '2026-10-06T14:59:00Z',
+                    'current_attempt' => ['attempt_number' => 1]],
+            ],
+        ];
+        $this->client->activities = [['id' => 'import', 'retry_policy' => ['max_attempts' => 5]]];
+
+        try {
+            $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+                ->assertOk()
+                ->assertJsonPath('current_waits_state', 'partial')
+                ->assertJsonPath('current_waits_count', null)
+                ->assertJsonPath('current_waits_returned_count', 3)
+                ->assertJsonPath('current_waits.0.state', 'planned')
+                ->assertJsonPath('current_waits.0.next_scheduled_resume_at', '2026-10-06T18:00:00+00:00')
+                ->assertJsonPath('current_waits.0.dependency_id', null)
+                ->assertJsonPath('current_waits.1.dependency_id', 'import')
+                ->assertJsonPath('current_waits.1.next_scheduled_resume_at', null)
+                ->assertJsonPath('current_waits.1.state', 'resume_time_unknown')
+                ->assertJsonPath('current_waits.1.attempt_number', 2)
+                ->assertJsonPath('current_waits.1.attempt_limit', 5)
+                ->assertJsonPath('current_waits.2.state', 'deadline_elapsed');
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function testServiceTimerFireTimeIsNotAnExpiredDeadlineAndLeasedTasksDoNotPromiseAResume(): void
+    {
+        Carbon::setTestNow('2026-10-06T15:00:00Z');
+        $this->client->diagnostics = ['execution' => [
+            'wait_kind' => 'timer', 'next_scheduled_event' => [
+                'task_status' => 'ready', 'available_at' => '2026-10-06T14:59:00Z',
+                'wait_deadline_at' => '2026-10-06T14:59:00Z',
+            ],
+        ]];
+        try {
+            $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+                ->assertOk()
+                ->assertJsonPath('current_waits.0.state', 'eligible')
+                ->assertJsonPath('current_waits.0.deadline_at', null);
+            $this->client->diagnostics['execution']['next_scheduled_event']['task_status'] = 'leased';
+            $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+                ->assertOk()
+                ->assertJsonPath('current_waits.0.state', 'resume_time_unknown')
+                ->assertJsonPath('current_waits.0.next_scheduled_resume_at', null);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    public function testServicePrunedWaitsAreExplicitAndLargeDiagnosticInputsStayBounded(): void
+    {
+        $this->client->diagnostics = [
+            'execution' => ['wait_kind' => 'signal'],
+            'pending_activities' => array_map(static fn (int $id): array => [
+                'activity_execution_id' => 'import-'.$id, 'activity_type' => 'Import', 'status' => 'pending',
+            ], range(1, 60)),
+        ];
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonCount(50, 'current_waits')
+            ->assertJsonPath('current_waits_truncated', true)
+            ->assertJsonPath('current_waits_count', null);
+
+        $this->client->diagnostics['details_pruned_at'] = '2026-10-01T00:00:00Z';
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('current_waits_state', 'pruned')
+            ->assertJsonCount(0, 'current_waits');
+    }
+
     public function testSelectedRunPreservesTheServersCanonicalCancellationCascade(): void
     {
         $view = [
@@ -185,6 +303,118 @@ final class ServiceModeBackendTest extends TestCase
         }
 
         $this->assertSame($events, $this->client->history['events']);
+    }
+
+    public function testServiceHistoryRetainsItsOpaqueCursorAndDoesNotInventATotal(): void
+    {
+        $events = [['sequence' => 1, 'event_type' => 'WorkflowStarted', 'payload' => []]];
+        $this->client->historyPages = [
+            '' => ['events' => $events, 'next_page_token' => 'opaque+/cursor='],
+            'opaque+/cursor=' => ['events' => [
+                ['sequence' => 2, 'event_type' => 'WorkflowCompleted', 'payload' => []],
+            ], 'next_page_token' => null],
+        ];
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1?history_limit=25')
+            ->assertOk()->assertJsonPath('history_next_page_token', 'opaque+/cursor=')
+            ->assertJsonPath('timeline_total_count', null)->assertJsonPath('history_event_count', null)
+            ->assertJsonPath('timeline_returned_count', 1)->assertJsonPath('timeline_truncated', true)
+            ->assertJsonPath('history_window_from_start', true)->assertJsonPath('history_start_page_token', null)
+            ->assertJsonPath('timeline_window_direction', 'forward');
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1?history_limit=25&history_page_token='.rawurlencode('opaque+/cursor='))
+            ->assertOk()->assertJsonPath('history_page_token', 'opaque+/cursor=')
+            ->assertJsonPath('history_next_page_token', null)->assertJsonPath('timeline_total_count', null)
+            ->assertJsonPath('history_window_from_start', false)->assertJsonPath('history_start_page_token', 'opaque+/cursor=')
+            ->assertJsonPath('timeline.0.sequence', 2)->assertJsonPath('timeline_truncated', false);
+
+        $calls = collect($this->client->calls)->where('method', 'workflowHistory')->values()->all();
+        $this->assertCount(2, $calls);
+        $this->assertSame(['workflowId' => 'order-1', 'runId' => 'run-1', 'pageSize' => 25, 'nextPageToken' => null], $calls[0]['arguments']);
+        $this->assertSame(['workflowId' => 'order-1', 'runId' => 'run-1', 'pageSize' => 25, 'nextPageToken' => 'opaque+/cursor='], $calls[1]['arguments']);
+        $this->assertSame($events, $this->client->historyPages['']['events']);
+    }
+
+    public function testClassificationListsUseTheBackendVisibilityQueryWithoutPostFiltering(): void
+    {
+        config()->set('waterline.observability.workflow_types', [
+            'orders.process' => ['classification' => 'business_operation'],
+            'orders.retry' => ['classification' => 'business_operation'],
+            'orders.maintenance' => ['classification' => 'maintenance'],
+        ]);
+        $this->getJson('/waterline/api/flows/running?classification=business_operation')
+            ->assertOk()->assertJsonPath('classification_scope.workflow_types', ['orders.process', 'orders.retry'])
+            ->assertJsonPath('classification_scope.available', true)
+            ->assertJsonPath('operator_scope.namespace', 'orders');
+        $calls = collect($this->client->calls)->where('method', 'listWorkflows')->values();
+        $this->assertCount(1, $calls);
+        $this->assertSame('WorkflowType IN ("orders.process", "orders.retry")', $calls[0]['arguments']['query']);
+        $this->assertSame('running', $calls[0]['arguments']['status']);
+        $this->getJson('/waterline/api/flows/running?classification=not_configured')
+            ->assertUnprocessable()->assertJsonValidationErrors('classification');
+        $this->assertCount(1, collect($this->client->calls)->where('method', 'listWorkflows'));
+    }
+
+    public function testServiceHistoryRequestsRemainBoundedForEveryDetailRoute(): void
+    {
+        foreach ([
+            '/waterline/api/instances/order-1/runs/run-1?history_limit=50000' => 1000,
+            '/waterline/api/instances/order-1?history_limit=all' => 200,
+            '/waterline/api/flows/order-1?history_limit=-10' => 1,
+        ] as $url => $expectedSize) {
+            $this->getJson($url)->assertOk()->assertJsonPath('timeline_window_limit', $expectedSize);
+            $call = collect($this->client->calls)->last(static fn (array $call): bool => $call['method'] === 'workflowHistory');
+            $this->assertSame($expectedSize, $call['arguments']['pageSize']);
+        }
+    }
+
+    public function testInvalidHistoryCursorsAreRejectedBeforeAnyRemoteRead(): void
+    {
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1?history_page_token[]=bad')
+            ->assertUnprocessable()->assertJsonValidationErrors('history_page_token');
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1?history_page_token='.str_repeat('x', 4097))
+            ->assertUnprocessable()->assertJsonValidationErrors('history_page_token');
+        $this->assertSame([], $this->client->calls);
+    }
+
+    public function testHistoryPaginationUsesTheInstalledPublishedSdkAndNamespace(): void
+    {
+        $transport = new class implements Transport
+        {
+            /** @var list<array<string, mixed>> */
+            public array $requests = [];
+
+            public function send(string $method, string $uri, array $headers, ?array $body = null): ?array
+            {
+                $this->requests[] = compact('method', 'uri', 'headers', 'body');
+                $path = parse_url($uri, PHP_URL_PATH);
+                if (str_ends_with($path, '/history')) {
+                    return ['events' => [['sequence' => 201, 'event_type' => 'SignalReceived', 'payload' => []]], 'next_page_token' => 'next-cursor'];
+                }
+                if (str_ends_with($path, '/runs')) {
+                    return ['runs' => []];
+                }
+
+                return [
+                    'workflow_id' => 'order-1', 'run_id' => 'run-1', 'workflow_type' => 'orders.process',
+                    'task_queue' => 'orders', 'namespace' => 'orders', 'status' => 'running', 'streams' => [],
+                ];
+            }
+        };
+        $this->app->instance(RemoteBackend::class, new RemoteBackend(new Client(
+            'https://server.example', namespace: 'orders', transport: $transport, controlToken: 'secret',
+        )));
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1?history_limit=200&history_page_token='.rawurlencode('opaque+/cursor='))
+            ->assertOk()->assertJsonPath('history_next_page_token', 'next-cursor')
+            ->assertJsonPath('timeline.0.sequence', 201)->assertJsonPath('timeline_total_count', null);
+
+        $historyRequests = array_values(array_filter($transport->requests, static fn (array $request): bool => str_contains($request['uri'], '/history?')));
+        $this->assertCount(1, $historyRequests);
+        parse_str(parse_url($historyRequests[0]['uri'], PHP_URL_QUERY), $query);
+        $this->assertSame(['page_size' => '200', 'next_page_token' => 'opaque+/cursor='], $query);
+        $this->assertSame('orders', $historyRequests[0]['headers']['X-Namespace']);
+        $this->assertStringEndsWith('/workflows/order-1/runs/run-1/history', parse_url($historyRequests[0]['uri'], PHP_URL_PATH));
     }
 
     public function testServiceRunShowsReusedAndFreshActivitiesFromTheActivityContract(): void
@@ -344,6 +574,197 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('remote_status', 502);
     }
 
+    public function testBoundedDashboardAndCapabilityChecksShareOneReadWithoutTheFullAudit(): void
+    {
+        config()->set('waterline.capacity_evidence.allowed_window_seconds', [300]);
+        config()->set('waterline.capacity_evidence.default_window_seconds', 300);
+        $response = ['namespace' => 'orders', 'dashboard' => [
+            'flows' => 17,
+            'operator_metrics' => [
+                'history_audit_evaluation' => 'not_requested',
+                'projections' => ['run_waits' => ['needs_rebuild' => null]],
+                'capacity_evidence' => $this->serverCapacityEvidence([
+                    300 => $this->serverCapacityWindow(300, 12, 8),
+                ]),
+            ],
+        ]];
+        $client = new class($response)
+        {
+            public array $calls = [];
+
+            public function __construct(private readonly array $response) {}
+
+            public function boundedOperatorDashboard(): array
+            {
+                $this->calls[] = 'bounded';
+
+                return $this->response;
+            }
+
+            public function operatorDashboard(): array
+            {
+                $this->calls[] = 'full_dashboard';
+                throw new \LogicException('A bounded dashboard must not fetch the full audit.');
+            }
+
+            public function operatorMetrics(): array
+            {
+                $this->calls[] = 'full_metrics';
+                throw new \LogicException('Capability discovery must not fetch the full audit.');
+            }
+        };
+        $backend = new RemoteBackend($client);
+        $this->app->instance(RemoteBackend::class, $backend);
+
+        $this->getJson('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('flows', 17)
+            ->assertJsonPath('operator_metrics.projections.run_waits.needs_rebuild', null)
+            ->assertJsonPath('backend.capabilities.bounded_dashboard_summary', true)
+            ->assertJsonPath('backend.capabilities.capacity_evidence', true);
+        $this->assertTrue($backend->capabilities()['capacity_evidence']);
+        $this->assertSame(['bounded'], $client->calls);
+    }
+
+    public function testClassificationUsesExactRemoteTypesAndSharesTheBoundedResponse(): void
+    {
+        config()->set('waterline.observability.workflow_types', [
+            'orders.import' => ['classification' => 'business_operation'],
+            'invoices.send' => ['classification' => 'business_operation'],
+            'maintenance.scan' => ['classification' => 'maintenance'],
+        ]);
+        $client = new class
+        {
+            public array $calls = [];
+
+            public function workflowTypeOperatorDashboard(array $types): array
+            {
+                $this->calls[] = $types;
+
+                return ['namespace' => 'orders', 'dashboard' => [
+                    'flows' => 3,
+                    'workflow_scope' => ['namespace' => 'orders', 'workflow_types' => $types],
+                    'time_windows' => ['total_runs' => 'all_retained_runs', 'generated_at' => '2026-10-06T12:00:00Z'],
+                    'operator_metrics' => ['history_audit_evaluation' => 'not_requested'],
+                ]];
+            }
+
+            public function operatorMetrics(): array
+            {
+                throw new \LogicException('Classification capability checks must reuse the bounded response.');
+            }
+        };
+        $this->app->instance(RemoteBackend::class, new RemoteBackend($client));
+
+        $this->getJson('/waterline/api/stats?classification=business_operation')
+            ->assertOk()
+            ->assertJsonPath('flows', 3)
+            ->assertJsonPath('classification_scope.classification', 'business_operation')
+            ->assertJsonPath('classification_scope.available', true)
+            ->assertJsonPath('operator_scope.namespace', 'orders')
+            ->assertJsonPath('time_windows.total_runs', 'all_retained_runs');
+        $this->assertSame([['invoices.send', 'orders.import']], $client->calls);
+    }
+
+    public function testOlderSdkRefusesClassificationInsteadOfShowingUnfilteredCounts(): void
+    {
+        config()->set('waterline.observability.workflow_types', [
+            'orders.import' => ['classification' => 'business_operation'],
+        ]);
+
+        $this->getJson('/waterline/api/stats?classification=business_operation')
+            ->assertStatus(501)
+            ->assertJsonPath('reason', 'backend_capability_unavailable')
+            ->assertJsonPath('capability', 'workflow_type_dashboard')
+            ->assertJsonPath('required_sdk_method', 'workflowTypeOperatorDashboard');
+    }
+
+    public function testBackendMustConfirmTheSelectedTypesBeforeFilteredCountsAreDisplayed(): void
+    {
+        config()->set('waterline.observability.workflow_types', [
+            'orders.import' => ['classification' => 'business_operation'],
+        ]);
+        $client = new class
+        {
+            public int $calls = 0;
+
+            public function workflowTypeOperatorDashboard(array $types): array
+            {
+                ++$this->calls;
+
+                return ['namespace' => 'orders', 'dashboard' => [
+                    'flows' => 501,
+                    'operator_metrics' => ['history_audit_evaluation' => 'not_requested'],
+                ]];
+            }
+        };
+        $this->app->instance(RemoteBackend::class, new RemoteBackend($client));
+
+        $this->getJson('/waterline/api/stats?classification=business_operation')
+            ->assertStatus(501)
+            ->assertJsonPath('capability', 'workflow_type_dashboard');
+        $this->assertSame(1, $client->calls);
+    }
+
+    public function testMissingBoundedRouteFallsBackOnceAndDoesNotClaimBoundedReads(): void
+    {
+        $client = new class
+        {
+            public array $calls = [];
+
+            public function boundedOperatorDashboard(): array
+            {
+                $this->calls[] = 'bounded';
+                throw new ServerException('Not found', 404, 'not_found');
+            }
+
+            public function operatorDashboard(): array
+            {
+                $this->calls[] = 'full_dashboard';
+
+                return ['dashboard' => ['flows' => 1]];
+            }
+
+            public function operatorMetrics(): array
+            {
+                $this->calls[] = 'full_metrics';
+
+                return ['operator_metrics' => []];
+            }
+        };
+        $backend = new RemoteBackend($client);
+
+        $this->assertSame(1, $backend->operatorDashboard()['dashboard']['flows']);
+        $this->assertFalse($backend->capabilities()['bounded_dashboard_summary']);
+        $this->assertSame(['bounded', 'full_dashboard', 'full_metrics'], $client->calls);
+    }
+
+    public function testBoundedDashboardPermissionRefusalDoesNotFetchAnotherDashboard(): void
+    {
+        $refusal = new ServerException('Permission denied', 403, 'authorization_failed');
+        $client = new class($refusal)
+        {
+            public function __construct(private readonly ServerException $refusal) {}
+
+            public function boundedOperatorDashboard(): array
+            {
+                throw $this->refusal;
+            }
+
+            public function operatorDashboard(): array
+            {
+                throw new \LogicException('An authorization refusal must not trigger a fallback.');
+            }
+        };
+
+        try {
+            (new RemoteBackend($client))->operatorDashboard();
+            $this->fail('A permission refusal must retain its original evidence.');
+        } catch (ServerException $exception) {
+            $this->assertSame($refusal, $exception);
+        }
+    }
+
     public function testWorkersQueuesHealthMetricsAndSchedulesUseRemoteContracts(): void
     {
         $this->getJson('/waterline/api/v2/health')
@@ -373,6 +794,16 @@ final class ServiceModeBackendTest extends TestCase
 
     public function testCapacityEvidenceUsesTheOfficialRemoteMetricsContractWithoutLeakingExecutionIds(): void
     {
+        $this->assertCapacityDashboardAvailability(true);
+    }
+
+    public function testCapacityEvidenceFallsBackToTheOlderServerMetricsContractWithoutLeakingExecutionIds(): void
+    {
+        $this->assertCapacityDashboardAvailability(false);
+    }
+
+    private function assertCapacityDashboardAvailability(bool $boundedAvailable): void
+    {
         config()->set('waterline.capacity_evidence.allowed_window_seconds', [300, 3600]);
         config()->set('waterline.capacity_evidence.default_window_seconds', 3600);
         config()->set('waterline.capacity_evidence.plan', [
@@ -383,19 +814,34 @@ final class ServiceModeBackendTest extends TestCase
             300 => $this->serverCapacityWindow(300, 12, 8),
             3600 => $this->serverCapacityWindow(3600, 44, 21),
         ]);
-        $transport = new class($capacityEvidence) implements Transport
+        $transport = new class($capacityEvidence, $boundedAvailable) implements Transport
         {
             /** @var list<array<string, mixed>> */
             public array $requests = [];
 
             /** @param array<string, mixed> $capacityEvidence */
-            public function __construct(private readonly array $capacityEvidence)
+            public function __construct(private readonly array $capacityEvidence, private readonly bool $boundedAvailable)
             {
             }
 
             public function send(string $method, string $uri, array $headers, ?array $body = null): ?array
             {
                 $this->requests[] = compact('method', 'uri', 'headers', 'body');
+
+                if (str_ends_with($uri, '/operator-dashboard/bounded')) {
+                    if (! $this->boundedAvailable) {
+                        throw new ServerException('Route unavailable', 404, 'not_found');
+                    }
+
+                    return [
+                        'namespace' => 'orders',
+                        'dashboard' => ['operator_metrics' => [
+                            'history_audit_evaluation' => 'not_requested',
+                            'runs' => ['total' => 1, 'running' => 1, 'failed' => 0],
+                            'capacity_evidence' => $this->capacityEvidence,
+                        ]],
+                    ];
+                }
 
                 return [
                     'namespace' => 'orders',
@@ -460,9 +906,13 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('runtime_evidence.throughput.workflow_starts.value', 44)
             ->assertJsonPath('runtime_evidence.throughput.queries.value', 21);
 
-        $this->assertCount(1, $transport->requests);
+        $this->assertSame($boundedAvailable ? [
+            'https://server.example/api/system/operator-dashboard/bounded',
+        ] : [
+            'https://server.example/api/system/operator-dashboard/bounded',
+            'https://server.example/api/system/operator-metrics',
+        ], array_column($transport->requests, 'uri'));
         $this->assertSame('GET', $transport->requests[0]['method']);
-        $this->assertSame('https://server.example/api/system/operator-metrics', $transport->requests[0]['uri']);
         $this->assertSame('orders', $transport->requests[0]['headers']['X-Namespace']);
     }
 

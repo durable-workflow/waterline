@@ -82,6 +82,26 @@ operator metrics can require its admin role. A 401, 403, unavailable SDK
 capability, namespace error, or transport failure is returned as typed JSON and
 shown as an explicit unavailable state by the shared UI.
 
+### History pages
+
+Canonical run views use the bounded observation route supplied by Server 2.5.5
+and PHP SDK 2.2.3 or newer. Inputs, results, activity listings and full diagnostics
+load through **Inspect full details**. If an older Server cannot supply the
+summary, use **Open complete details** or upgrade the runtime. Waterline does
+not silently issue complete reads after a refused observation.
+
+Run details initially request at most 200 history events. **Load more** follows
+the Server's continuation cursor and preserves the events already displayed.
+Waterline shows that more events are available instead of treating the first
+page as the whole history. Switching runs discards pending page responses.
+
+Observer API consumers can use `history_limit` and `history_page_token` on the
+selected-run detail route. Each request is capped at 1,000 events. The response
+returns `history_next_page_token`, and the total count remains unknown while
+only part of the history has been read. `history_limit=all` still uses a bounded
+page in service mode. Use the explicit history export for a closed run's complete
+replay bundle.
+
 ### Capacity-evidence compatibility
 
 Service-mode capacity evidence is supported starting with Server

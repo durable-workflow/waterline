@@ -109,9 +109,25 @@
                 <button class="btn btn-outline-primary btn-sm mt-3" @click="retryFlowLoad">
                     Retry
                 </button>
+                <button v-if="isCanonicalRoute()" class="btn btn-outline-secondary btn-sm mt-2" @click="loadCompleteDetails">
+                    Open complete details
+                </button>
             </div>
 
             <div class="card-body card-bg-secondary collapse show wl-flow-detail__summary-body" id="collapseDetails" v-if="ready">
+                <div v-if="flow.read_mode === 'bounded'" class="mb-3" role="status">
+                    <div class="small text-muted mb-2">
+                        Status, current waits, related runs and recent failures are loaded first.
+                        Inspect the full details for inputs, results, actions and recovery diagnostics.
+                    </div>
+                    <div class="small text-muted mb-2">
+                        {{ flow.operator_scope && flow.operator_scope.label }}
+                        / observed {{ timestamp(flow.observed_at) }}
+                    </div>
+                    <button class="btn btn-outline-secondary btn-sm" @click="loadCompleteDetails">
+                        Inspect full details
+                    </button>
+                </div>
                 <div class="row mb-2">
                     <div class="col-md-2"><strong>ID</strong></div>
                     <div class="col">{{ flow.id }}</div>
@@ -147,6 +163,42 @@
                     <div class="col-md-2"><strong>Namespace</strong></div>
                     <div class="col">{{ flow.namespace }}</div>
                 </div>
+
+                <div class="row mb-2" v-if="flow.workflow_classification">
+                    <div class="col-md-2"><strong>Classification</strong></div>
+                    <div class="col">{{ flow.workflow_classification }}</div>
+                </div>
+
+                <div class="row mb-2" v-if="flow.current_waits_state === 'unavailable'">
+                    <div class="col-md-2"><strong>Current wait</strong></div>
+                    <div class="col text-muted">Current wait information is unavailable from this backend.</div>
+                </div>
+                <div class="row mb-2" v-if="flow.current_waits_state === 'partial'">
+                    <div class="col-md-2"><strong>Current wait</strong></div>
+                    <div class="col text-muted">A wait summary is available. Additional waits and dependency details may be unavailable.</div>
+                </div>
+
+                <div class="alert alert-info mt-3" role="status"
+                    v-if="flow.workflow_classification === 'coordinator' && flow.status === 'completed'">
+                    Completed describes this coordinator run. Related executions have their own outcomes.
+                </div>
+
+                <template v-if="flow.application_context">
+                    <div class="row mb-2" v-for="field in flow.application_context.fields" :key="'context-' + field.name">
+                        <div class="col-md-2"><strong>{{ field.label }}</strong></div>
+                        <div class="col">
+                            {{ field.state === 'available' ? field.value : 'Unavailable' }}
+                            <span v-if="field.truncated" class="text-muted">(shortened)</span>
+                        </div>
+                    </div>
+                    <div class="row mb-2" v-if="flow.application_context.links.length">
+                        <div class="col-md-2"><strong>Application</strong></div>
+                        <div class="col">
+                            <a v-for="link in flow.application_context.links" :key="link.name" :href="link.url"
+                                class="mr-3" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>
+                        </div>
+                    </div>
+                </template>
 
                 <div class="row mb-2" v-if="taskProblemBadge(flow)">
                     <div class="col-md-2"><strong>Task Problems</strong></div>
@@ -435,6 +487,7 @@
                             <span v-if="entry.status">
                                 - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
                             </span>
+                            <span v-else-if="entry.metadata_state === 'unavailable'" class="text-muted"> / status unavailable</span>
                         </div>
                     </div>
                 </div>
@@ -473,7 +526,7 @@
                     <div class="col">{{ resumeSourceSummary(flow.resume_source_kind, flow.resume_source_id) }}</div>
                 </div>
 
-                <div class="row mb-2" v-if="hasDetailValue(flow.liveness_reason)">
+                <div class="row mb-2" v-if="flow.read_mode !== 'bounded' && hasDetailValue(flow.liveness_reason)">
                     <div class="col-md-2"><strong>Liveness</strong></div>
                     <div class="col">
                         {{ flow.liveness_reason }}
@@ -514,6 +567,9 @@
                         <div class="small text-muted mb-1" v-if="hasDetailValue(flow.lineage_projection_source)">
                             {{ projectionSourceLabel(flow.lineage_projection_source) }}
                         </div>
+                        <div class="small text-muted mb-1" v-if="flow.read_mode === 'bounded'">
+                            Related runs have independent outcomes. {{ relationshipWindowSummary() }}
+                        </div>
                         <div v-for="entry in lineageEntries()" :key="entry.key">
                             <strong>{{ entry.label }}:</strong>
                             <router-link v-if="entry.instance_id && entry.run_id"
@@ -538,7 +594,7 @@
             </div>
         </div>
 
-        <div class="card mt-4" v-if="ready">
+        <div class="card mt-4" v-if="ready && flow.read_mode !== 'bounded'">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Arguments</h5>
 
@@ -552,7 +608,7 @@
             </div>
         </div>
 
-        <div class="card mt-4" v-if="ready && isClosed(flow)">
+        <div class="card mt-4" v-if="ready && flow.read_mode !== 'bounded' && isClosed(flow)">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>Output</h5>
 
@@ -566,7 +622,39 @@
             </div>
         </div>
 
-        <CancellationCascadeView v-if="ready" :diagnostics="flow" />
+        <CancellationCascadeView v-if="ready && flow.read_mode !== 'bounded'" :diagnostics="flow" />
+
+        <div class="card mt-4" v-if="ready" id="failureSummary">
+            <div class="card-header"><h5>Recent failures</h5></div>
+            <div class="card-body">
+                <div class="small text-muted mb-2" v-if="failureSummaryView().state === 'pruned'">
+                    Execution details have been pruned. Retained failures may have incomplete history evidence.
+                </div>
+                <div v-if="failureSummaryView().state === 'unavailable'">
+                    Failure information is unavailable for this run.
+                </div>
+                <div v-else-if="!failureSummaryView().rows.length">
+                    {{ failureSummaryView().state === 'pruned' ? 'No retained failure details.' : 'No failures reported in this view.' }}
+                </div>
+                <div v-for="failure in failureSummaryView().rows" :key="failure.id" class="mb-3">
+                    <strong>{{ failure.type || 'Failure' }}</strong>
+                    <span v-if="failure.handled === true" class="badge badge-secondary ml-2">Handled</span>
+                    <div v-if="failure.message" class="wl-failure-message">{{ failure.message }}</div>
+                    <div class="small text-muted" v-if="failure.source_id">
+                        {{ failure.source_kind || 'Source' }} / {{ failure.source_id }}
+                    </div>
+                    <div class="small text-muted" v-if="failure.recorded_at">{{ timestamp(failure.recorded_at) }}</div>
+                    <a v-if="failure.event_sequence" :href="failureEventHref(failure)"
+                        class="small" @click.prevent="focusFailureEvent(failure)">
+                        View history event #{{ failure.event_sequence }}
+                    </a>
+                    <div v-else class="small text-muted">{{ failureEvidenceLabel(failure.evidence_state) }}</div>
+                </div>
+                <div class="small text-muted" v-if="failureSummaryView().truncated">
+                    Showing {{ failureSummaryView().rows.length }} recent failures. Additional failures may exist.
+                </div>
+            </div>
+        </div>
 
         <div :class="diagnosticsBannerClass()" v-if="ready && diagnosticRows().length" role="alert">
             <div class="d-flex align-items-center justify-content-between">
@@ -669,8 +757,9 @@
                     <button
                         v-if="timelineHasOlder()"
                         class="btn btn-outline-secondary btn-sm mr-2"
+                        :disabled="loadingMoreHistory"
                         @click="loadOlderHistory">
-                        Load older
+                        {{ flow.engine_source === 'service' || flow.read_mode === 'bounded' ? 'Load more' : 'Load older' }}
                     </button>
 
                     <a v-if="historyExportEndpoint()"
@@ -685,6 +774,10 @@
                         Collapse
                     </a>
                 </div>
+            </div>
+
+            <div v-if="historyLoadError" class="alert alert-danger" role="alert">
+                {{ historyLoadError }}
             </div>
 
             <div class="card-body collapse show" id="collapseHistory">
@@ -729,7 +822,9 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="event in timelineRows()" :key="event.id || event.sequence">
+                            <tr v-for="event in timelineRows()" :key="event.id || event.sequence" tabindex="-1"
+                                :id="'history-event-' + event.sequence"
+                                :class="{ 'table-warning': focusedHistorySequence === event.sequence }">
                                 <td>{{ event.sequence || '-' }}</td>
                                 <td>{{ event.type || event.event_type || '-' }}</td>
                                 <td>{{ event.summary || '-' }}</td>
@@ -760,6 +855,9 @@
             </div>
 
             <div class="card-body collapse show" id="collapseWaits">
+                <div class="small text-muted mb-2" v-if="flow.current_waits_truncated">
+                    Showing up to {{ flow.current_waits_limit }} current waits. Additional waits may exist.
+                </div>
                 <table class="table">
                     <thead>
                         <tr>
@@ -774,8 +872,25 @@
                         <tr v-for="wait in waitRows()" :key="wait.id">
                             <td>
                                 <div>
-                                    {{ wait.summary }}
+                                    {{ wait.current_summary && wait.current_summary.kind === 'activity_retry' ? wait.current_summary.reason : wait.summary }}
                                     <span v-if="isCurrentWait(wait)" class="badge badge-info ml-1">Current</span>
+                                </div>
+                                <div class="small mt-1" v-if="wait.current_summary">
+                                    <strong>{{ waitResumeStateLabel(wait.current_summary.state) }}</strong>
+                                    <div v-if="wait.current_summary.next_scheduled_resume_at">
+                                        Scheduled resume: {{ timestamp(wait.current_summary.next_scheduled_resume_at) }}
+                                    </div>
+                                    <div v-if="wait.current_summary.deadline_at">
+                                        Deadline: {{ timestamp(wait.current_summary.deadline_at) }}
+                                    </div>
+                                    <div v-if="Number(wait.current_summary.attempt_number) > 0">
+                                        {{ wait.current_summary.kind === 'activity_retry' ? 'Next attempt' : 'Attempt' }}
+                                        {{ wait.current_summary.attempt_number }}
+                                        <span v-if="Number(wait.current_summary.attempt_limit) > 0">of {{ wait.current_summary.attempt_limit }}</span>
+                                    </div>
+                                    <div v-if="wait.current_summary.unavailable_reason" class="text-muted">
+                                        {{ historyUnsupportedReasonLabel(wait.current_summary.unavailable_reason) }}
+                                    </div>
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.target_name) || hasDetailValue(wait.target_type)">
                                     {{ wait.kind }}
@@ -959,7 +1074,7 @@
         <div
             class="card mt-4 workflow-stream-section"
             id="workflowStreams"
-            v-if="ready && workflowStreamsVisible()"
+            v-if="ready && flow.read_mode !== 'bounded' && workflowStreamsVisible()"
         >
             <div class="card-header d-flex align-items-center justify-content-between">
                 <div>
@@ -1738,6 +1853,8 @@ import TimelineEventRenderer from '../../components/TimelineEventRenderer.vue'
 import SearchAttributeRenderer from '../../components/SearchAttributeRenderer.vue'
 import CancellationCascadeView from '../../components/CancellationCascadeView.vue'
 import { presentWorkflowStreams } from '../../workflow-streams.mjs'
+import { appendRunHistoryPage } from '../../run-history.mjs'
+import { failureSummary, failureEventIndex } from '../../failure-summary.mjs'
 
 export default {
     components: {
@@ -1757,6 +1874,9 @@ export default {
             exception: null,
             historyPageSize: 200,
             historyLimit: 200,
+            loadingMoreHistory: false,
+            historyLoadError: null,
+            historyPageRequest: 0,
             historyVirtualStart: 0,
             historyRowHeight: 92,
             historyViewportHeight: 620,
@@ -1768,6 +1888,7 @@ export default {
             savingRunDetailPreferences: false,
             workflowStreamsExpanded: true,
             routeHashScrollRequest: 0,
+            focusedHistorySequence: null,
             code: 'console.log("Hello World")',
             series: [
                 {
@@ -1890,6 +2011,7 @@ export default {
 
         loadRouteFlow() {
             this.historyLimit = this.historyPageSize
+            this.focusedHistorySequence = null
 
             if (this.isCanonicalRoute()) {
                 return this.loadCanonicalFlow(this.$route.params.instanceId, this.$route.params.runId || null)
@@ -1907,7 +2029,21 @@ export default {
                 ? '/api/instances/' + instanceId + '/runs/' + runId
                 : '/api/instances/' + instanceId
 
-            return this.fetchFlow(Waterline.basePath + path)
+            const token = this.$route.query.history_page_token
+            const parameters = []
+            if (typeof token === 'string' && token) {
+                parameters.push('history_page_token=' + encodeURIComponent(token))
+            }
+            if (this.routeRequestsCompleteDetails()) {
+                parameters.push('observation=complete')
+            }
+            const query = parameters.length ? '?' + parameters.join('&') : ''
+
+            return this.fetchFlow(Waterline.basePath + path + query)
+        },
+
+        routeRequestsCompleteDetails() {
+            return /^#(workflowStreams|cancellationCascadeTitle|collapse(?:Arguments|Output|RunDiagnostics|Timeline|Tasks|WorkflowStreams|LinkedIntakes|Commands|Signals|Updates|Activities|Timers|Exceptions))$/.test(this.$route.hash || '')
         },
 
         loadLegacyFlow(id) {
@@ -1923,12 +2059,18 @@ export default {
          * Load a flow by the given ID.
          */
         fetchFlow(path) {
+            const requestId = ++this.historyPageRequest;
+            this.loadingMoreHistory = false;
+            this.historyLoadError = null;
             this.ready = false;
             this.loadingError = null;
             this.lastFlowPath = path;
 
             return this.$http.get(this.withHistoryLimit(path), { timeout: 15000 })
                 .then(response => {
+                    if (requestId !== this.historyPageRequest) {
+                        return false;
+                    }
                     this.flow = response.data;
                     this.resetHistoryVirtualWindow();
                     this.series[0].data = Array.isArray(response.data.chartData) ? response.data.chartData : [];
@@ -1964,7 +2106,9 @@ export default {
                     return true;
                 })
                 .catch(error => {
-                    this.loadingError = this.flowLoadErrorMessage(error);
+                    if (requestId === this.historyPageRequest) {
+                        this.loadingError = this.flowLoadErrorMessage(error);
+                    }
 
                     return false;
                 });
@@ -1995,6 +2139,11 @@ export default {
                 targetId = decodeURIComponent(hash.slice(1))
             } catch {
                 return
+            }
+
+            const historyTarget = /^history-event-([1-9][0-9]*)$/.exec(targetId)
+            if (historyTarget && failureEventIndex(this.flow, Number(historyTarget[1])) >= 0) {
+                this.focusedHistorySequence = Number(historyTarget[1])
             }
 
             const request = ++this.routeHashScrollRequest
@@ -2175,12 +2324,13 @@ export default {
         },
 
         runDetailTab() {
-            return this.effectiveRunDetailPreferences.tab === 'events'
+            return this.focusedHistorySequence !== null || this.effectiveRunDetailPreferences.tab === 'events'
                 ? 'events'
                 : 'timeline'
         },
 
         setRunDetailTab(tab) {
+            this.focusedHistorySequence = null
             const normalized = tab === 'events' ? 'events' : 'timeline'
 
             if (this.$route.query && this.$route.query.tab !== undefined && this.$route.query.tab !== normalized) {
@@ -2219,8 +2369,22 @@ export default {
 
         withHistoryLimit(path) {
             const separator = path.includes('?') ? '&' : '?'
+            const bounded = path.includes('/api/instances/') && !/[?&]observation=/.test(path)
+                ? '&observation=bounded' : ''
 
-            return path + separator + 'history_limit=' + encodeURIComponent(this.historyLimit)
+            return path + separator + 'history_limit=' + encodeURIComponent(this.historyLimit) + bounded
+        },
+
+        loadCompleteDetails() {
+            const endpoint = this.currentFlowEndpoint() || (this.isCanonicalRoute()
+                ? Waterline.basePath + '/api/instances/' + this.$route.params.instanceId
+                    + (this.$route.params.runId ? '/runs/' + this.$route.params.runId : '')
+                : null)
+            if (!endpoint) {
+                return null
+            }
+            this.historyLimit = this.historyPageSize
+            return this.fetchFlow(endpoint + '?observation=complete')
         },
 
         currentFlowEndpoint() {
@@ -2248,14 +2412,100 @@ export default {
                 return null
             }
 
+            if (this.flow.engine_source === 'service' || this.flow.read_mode === 'bounded') {
+                return this.loadHistoryPage(endpoint)
+            }
+
             const total = this.timelineTotalCount()
             this.historyLimit = Math.min(total, this.historyLimit + this.historyPageSize)
 
-            return this.fetchFlow(endpoint)
+            return this.fetchFlow(endpoint + (endpoint.includes('/api/instances/') ? '?observation=complete' : ''))
+        },
+
+        loadHistoryPage(endpoint) {
+            const token = this.flow.history_next_page_token
+            if (!token || this.loadingMoreHistory) {
+                return null
+            }
+
+            const requestId = ++this.historyPageRequest
+            this.loadingMoreHistory = true
+            this.historyLoadError = null
+            const separator = endpoint.includes('?') ? '&' : '?'
+            const path = endpoint + separator + 'history_page_token=' + encodeURIComponent(token)
+
+            return this.$http.get(this.withHistoryLimit(path), { timeout: 15000 })
+                .then(response => {
+                    if (requestId !== this.historyPageRequest) {
+                        return false
+                    }
+                    this.flow = appendRunHistoryPage(this.flow, response.data)
+                    return true
+                })
+                .catch(error => {
+                    if (requestId === this.historyPageRequest) {
+                        this.historyLoadError = this.flowLoadErrorMessage(error)
+                    }
+                    return false
+                })
+                .finally(() => {
+                    if (requestId === this.historyPageRequest) {
+                        this.loadingMoreHistory = false
+                    }
+                })
         },
 
         resetHistoryVirtualWindow() {
             this.historyVirtualStart = 0
+        },
+
+        failureSummaryView() {
+            return failureSummary(this.flow)
+        },
+
+        failureEvidenceLabel(state) {
+            return {
+                pruned: 'Supporting history has been pruned.',
+                outside_window: 'Supporting history is outside the loaded window. Load more history to inspect it.',
+                unavailable: 'Supporting history is unavailable in this view.',
+            }[state] || 'Supporting history is unavailable in this view.'
+        },
+
+        failureEventLocation(failure) {
+            const route = this.canonicalRoute(this.flow.instance_id, this.flow.selected_run_id)
+            return {
+                ...(route || { path: this.$route.path }),
+                query: failure.history_page_token ? { history_page_token: failure.history_page_token } : {},
+                hash: '#history-event-' + failure.event_sequence,
+            }
+        },
+
+        failureEventHref(failure) {
+            return failure.history_page_token
+                ? this.$router.resolve(this.failureEventLocation(failure)).href
+                : '#history-event-' + failure.event_sequence
+        },
+
+        async focusFailureEvent(failure) {
+            const sequence = failure.event_sequence
+            if (failure.history_page_token) {
+                const route = this.failureEventLocation(failure)
+                if (this.$router.resolve(route).fullPath !== this.$route.fullPath) {
+                    await this.$router.push(route)
+                    return
+                }
+            }
+            if (failureEventIndex(this.flow, sequence) < 0) {
+                return
+            }
+            this.focusedHistorySequence = sequence
+            await this.$nextTick()
+            document.getElementById('collapseHistory')?.classList.add('show')
+            const event = document.getElementById('history-event-' + sequence)
+            if (event) {
+                this.positionRouteHashTarget(event)
+                event.focus({ preventScroll: true })
+            }
         },
 
         replaceWithCanonicalRoute(flow) {
@@ -2798,6 +3048,11 @@ export default {
 
         timelineWindowSummary() {
             const returned = this.timelineReturnedCount().toLocaleString()
+            if ((this.flow.engine_source === 'service' || this.flow.read_mode === 'bounded')
+                && !this.hasDetailValue(this.flow.timeline_total_count)) {
+                const scope = this.flow.history_window_from_start === false ? ' in a selected history window' : ''
+                return 'Showing ' + returned + ' events' + scope + (this.timelineHasOlder() ? ' / more available' : '')
+            }
             const total = this.timelineTotalCount().toLocaleString()
             const direction = this.flow.timeline_window_direction === 'latest'
                 ? 'latest'
@@ -3548,6 +3803,9 @@ export default {
         },
 
         canAction(name, fallback = false) {
+            if (this.flow.read_mode === 'bounded') {
+                return false
+            }
             const action = this.actionabilityAction(name)
 
             if (action && this.hasDetailValue(action.allowed)) {
@@ -3645,7 +3903,37 @@ export default {
         },
 
         waitRows() {
-            return this.flow.waits || []
+            const current = new Map((this.flow.current_waits || []).map((wait) => [wait.id, wait]))
+
+            if (!Array.isArray(this.flow.waits)
+                && (this.flow.current_waits_source === 'server_diagnostics' || this.flow.read_mode === 'bounded')) {
+                return (this.flow.current_waits || []).map((wait) => ({
+                    id: wait.id,
+                    kind: wait.kind,
+                    status: 'open',
+                    summary: wait.reason,
+                    target_type: wait.dependency_type,
+                    resume_source_id: wait.dependency_id,
+                    deadline_at: wait.deadline_at,
+                    summary_only: true,
+                    current_summary: wait,
+                }))
+            }
+
+            return (this.flow.waits || []).map((wait) => ({
+                ...wait,
+                current_summary: current.get(wait.id) || null,
+            }))
+        },
+
+        waitResumeStateLabel(state) {
+            return {
+                planned: 'Planned wait',
+                eligible: 'Resume is due',
+                resume_time_unknown: 'Resume time unknown',
+                deadline_elapsed: 'Wait deadline has passed',
+                unavailable: 'Wait details unavailable',
+            }[state] || 'Resume time unknown'
         },
 
         openWaitCount() {
@@ -3727,6 +4015,9 @@ export default {
         },
 
         waitBacking(wait) {
+            if (wait.summary_only) {
+                return 'Summary only'
+            }
             if (wait.diagnostic_only) {
                 return 'diagnostic only'
             }
@@ -4352,6 +4643,20 @@ export default {
         },
 
         lineageEntries() {
+            if (this.flow.read_mode === 'bounded') {
+                return ['parents', 'children'].flatMap((direction) => (
+                    this.flow.relationships?.[direction]?.relationships || []
+                ).map((link) => ({
+                    key: direction + '-' + link.link_id,
+                    label: this.lineageLabel(link, direction === 'parents' ? 'parent' : 'child'),
+                    display_id: link.run_id || link.instance_id || link.link_id,
+                    instance_id: link.instance_id,
+                    run_id: link.run_id,
+                    status: link.status,
+                    history_authority: 'relationship_metadata',
+                    metadata_state: link.metadata_state,
+                })))
+            }
             const parents = (this.flow.parents || []).map((parent) => ({
                 key: 'parent-' + (parent.id || parent.parent_workflow_run_id || parent.parent_workflow_id),
                 label: this.lineageLabel(parent, 'parent'),
@@ -4391,6 +4696,14 @@ export default {
             }))
 
             return [...parents, ...continued]
+        },
+
+        relationshipWindowSummary() {
+            return ['parents', 'children'].map((direction) => {
+                const page = this.flow.relationships?.[direction]
+                return page ? page.returned_count + ' ' + direction
+                    + (page.has_more ? ' shown, more available in full details' : ' shown') : null
+            }).filter(Boolean).join(' / ')
         },
 
         isContinuedParent(parent) {
@@ -4600,7 +4913,7 @@ export default {
             }
 
             if (this.flow.instance_id) {
-                if (this.flow.is_current_run) {
+                if (this.flow.is_current_run && this.flow.read_mode !== 'bounded') {
                     return Waterline.basePath + '/api/instances/' + this.flow.instance_id + '/history-export'
                 }
 
@@ -4953,6 +5266,14 @@ export default {
 
 .detail-cell-muted {
     overflow-wrap: anywhere;
+}
+
+#failureSummary {
+    overflow-wrap: anywhere;
+}
+
+tr.table-warning > td {
+    color: #212529;
 }
 
 @media (max-width: 768px) {

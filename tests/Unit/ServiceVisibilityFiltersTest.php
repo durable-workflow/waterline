@@ -9,6 +9,13 @@ use Waterline\Support\ServiceVisibilityFilters;
 
 final class ServiceVisibilityFiltersTest extends TestCase
 {
+    public function testClassificationRemainsConjunctiveWithAQueryContainingOrAndEscapedTypes(): void
+    {
+        $plan = ServiceVisibilityFilters::plan([], 'running', 'WorkflowId = "one" OR WorkflowId = "two"', ['orders/quote"+']);
+        $this->assertSame('(WorkflowId = "one" OR WorkflowId = "two") AND (WorkflowType IN ("orders/quote\\"+"))', $plan['query']);
+        $this->assertSame('WorkflowType = ""', ServiceVisibilityFilters::plan([], 'running', null, [])['query']);
+    }
+
     public function testDefinitionClassifiesEverySavedViewFilterForServiceMode(): void
     {
         $definition = ServiceVisibilityFilters::definition();

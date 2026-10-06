@@ -25,7 +25,16 @@ final class FakeRemoteClient
     public ?array $workflowRows = null;
 
     /** @var array<string, mixed>|null */
+    public ?array $workflowDescription = null;
+
+    /** @var array<string, mixed>|null */
     public ?array $diagnostics = null;
+
+    /** @var array<string, mixed>|null */
+    public ?array $observation = null;
+
+    /** @var array<string, array<string, mixed>> */
+    public array $observationPages = [];
 
     /** @var list<array<string, mixed>>|null */
     public ?array $workflowStreams = null;
@@ -41,6 +50,9 @@ final class FakeRemoteClient
 
     /** @var array<string, mixed>|null */
     public ?array $history = null;
+
+    /** @var array<string, array<string, mixed>> */
+    public array $historyPages = [];
 
     /** @var list<array<string, mixed>>|null */
     public ?array $activities = null;
@@ -72,7 +84,7 @@ final class FakeRemoteClient
     {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        return WorkflowExecution::fromArray($this->workflowRaw('running'), $workflowId, $runId);
+        return WorkflowExecution::fromArray($this->workflowDescription ?? $this->workflowRaw('running'), $workflowId, $runId);
     }
 
     /** @return list<WorkflowRun> */
@@ -89,11 +101,11 @@ final class FakeRemoteClient
     }
 
     /** @return array<string, mixed> */
-    public function workflowHistory(string $workflowId, string $runId): array
+    public function workflowHistory(string $workflowId, string $runId, ?int $pageSize = null, ?string $nextPageToken = null): array
     {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        return $this->history ?? ['events' => [[
+        return $this->historyPages[$nextPageToken ?? ''] ?? $this->history ?? ['events' => [[
             'sequence' => 1,
             'event_type' => 'WorkflowStarted',
             'payload' => [],
@@ -124,6 +136,24 @@ final class FakeRemoteClient
         $this->called(__FUNCTION__, get_defined_vars());
 
         return $this->diagnostics ?? ['tasks' => [['id' => 'task-1', 'status' => 'ready']]];
+    }
+
+    /** @return array<string, mixed> */
+    public function workflowObservation(
+        string $workflowId,
+        ?string $runId = null,
+        array $searchAttributeKeys = [],
+        ?int $historyPageSize = null,
+        ?string $historyPageToken = null,
+    ): array {
+        $this->called(__FUNCTION__, get_defined_vars());
+        $response = $this->observationPages[$historyPageToken ?? ''] ?? $this->observation;
+        if ($response === null) {
+            throw new \LogicException('The bounded observation fixture is not configured.');
+        }
+        $response['search_attributes'] = array_intersect_key($response['search_attributes'] ?? [], array_flip($searchAttributeKeys));
+
+        return $response;
     }
 
     /** @return list<array<string, mixed>> */

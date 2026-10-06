@@ -29,6 +29,109 @@ use Workflow\V2\Support\WorkerCompatibilityFleet;
 
 class V2DashboardStatsControllerTest extends TestCase
 {
+    public function testDashboardUsesBoundedReadsWhenTheEngineSupportsThem(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.namespace', 'billing');
+
+        $observability = new class implements OperatorObservabilityRepository
+        {
+            public ?string $requestedNamespace = null;
+            public ?array $requestedTypes = null;
+
+            public function workflowTypeDashboardSummary(array $types, ?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                $this->requestedTypes = $types;
+                $this->requestedNamespace = $namespace;
+
+                return ['flows' => 3, 'workflow_scope' => ['workflow_types' => $types, 'namespace' => $namespace]];
+            }
+
+            public function boundedDashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                $this->requestedNamespace = $namespace;
+
+                return [
+                    'flows' => 17,
+                    'operator_metrics' => [
+                        'history_audit_evaluation' => 'not_requested',
+                        'projections' => [
+                            'run_waits' => ['rows' => 0, 'needs_rebuild' => null],
+                        ],
+                    ],
+                ];
+            }
+
+            public function dashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                throw new \LogicException('A supported bounded dashboard must not use the full fleet audit.');
+            }
+
+            public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+            {
+                return [];
+            }
+
+            public function listItem(WorkflowRunSummary $summary): array
+            {
+                return [];
+            }
+
+            public function runHistoryExport(
+                WorkflowRun $run,
+                ?\Carbon\CarbonInterface $exportedAt = null,
+                \Workflow\V2\Contracts\HistoryExportRedactor|callable|null $redactor = null,
+            ): array {
+                return [];
+            }
+
+            public function metrics(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+        };
+        $this->app->instance(OperatorObservabilityRepository::class, $observability);
+
+        $this->get('/waterline/api/stats')
+            ->assertOk()
+            ->assertJsonPath('flows', 17)
+            ->assertJsonPath('operator_metrics.history_audit_evaluation', 'not_requested')
+            ->assertJsonPath('operator_metrics.projections.run_waits.rows', 0)
+            ->assertJsonPath('operator_metrics.projections.run_waits.needs_rebuild', null);
+        $this->assertSame('billing', $observability->requestedNamespace);
+
+        config()->set('waterline.observability.workflow_types', [
+            'orders.import' => ['classification' => 'business_operation'],
+            'invoices.send' => ['classification' => 'business_operation'],
+            'maintenance.scan' => ['classification' => 'maintenance'],
+        ]);
+        $this->getJson('/waterline/api/stats?classification=business_operation')
+            ->assertOk()
+            ->assertJsonPath('flows', 3)
+            ->assertJsonPath('classification_scope.classification', 'business_operation')
+            ->assertJsonPath('classification_scope.available', true)
+            ->assertJsonPath('workflow_scope.namespace', 'billing');
+        $this->assertSame(['invoices.send', 'orders.import'], $observability->requestedTypes);
+        $this->assertSame('billing', $observability->requestedNamespace);
+    }
+
+    public function testOlderEmbeddedObserverRefusesClassificationBeforeReadingBroadTotals(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.observability.workflow_types', [
+            'orders.import' => ['classification' => 'business_operation'],
+        ]);
+        $observer = \Mockery::mock(OperatorObservabilityRepository::class);
+        $observer->shouldNotReceive('dashboardSummary');
+        $this->app->instance(OperatorObservabilityRepository::class, $observer);
+
+        $this->getJson('/waterline/api/stats?classification=business_operation')
+            ->assertStatus(501)
+            ->assertJsonPath('reason', 'backend_capability_unavailable')
+            ->assertJsonPath('capability', 'workflow_type_dashboard')
+            ->assertJsonPath('classification_scope.available', false);
+    }
+
     public function testIndexUsesV2RunSummaries()
     {
         config()->set('waterline.engine_source', 'v2');
@@ -535,46 +638,46 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.projections.run_waits.runs', 3)
             ->assertJsonPath('operator_metrics.projections.run_waits.rows', 1)
             ->assertJsonPath('operator_metrics.projections.run_waits.projected_runs', 1)
-            ->assertJsonPath('operator_metrics.projections.run_waits.runs_with_waits', 1)
-            ->assertJsonPath('operator_metrics.projections.run_waits.projected_runs_with_waits', 0)
-            ->assertJsonPath('operator_metrics.projections.run_waits.missing_runs_with_waits', 1)
+            ->assertJsonPath('operator_metrics.projections.run_waits.runs_with_waits', null)
+            ->assertJsonPath('operator_metrics.projections.run_waits.projected_runs_with_waits', null)
+            ->assertJsonPath('operator_metrics.projections.run_waits.missing_runs_with_waits', null)
             ->assertJsonPath('operator_metrics.projections.run_waits.summaries_with_open_waits', 1)
             ->assertJsonPath('operator_metrics.projections.run_waits.projected_current_open_waits', 0)
             ->assertJsonPath('operator_metrics.projections.run_waits.missing_current_open_waits', 1)
-            ->assertJsonPath('operator_metrics.projections.run_waits.stale_projected_runs', 0)
+            ->assertJsonPath('operator_metrics.projections.run_waits.stale_projected_runs', null)
             ->assertJsonPath('operator_metrics.projections.run_waits.orphaned', 1)
-            ->assertJsonPath('operator_metrics.projections.run_waits.needs_rebuild', 2)
+            ->assertJsonPath('operator_metrics.projections.run_waits.needs_rebuild', null)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.runs', 3)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.history_events', 2)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.rows', 1)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.projected_runs', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.runs_with_history', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.projected_runs_with_history', 0)
-            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.missing_runs_with_history', 1)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.runs_with_history', null)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.projected_runs_with_history', null)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.missing_runs_with_history', null)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.missing_history_events', 2)
-            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.stale_projected_runs', 0)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.stale_projected_runs', null)
             ->assertJsonPath('operator_metrics.projections.run_timeline_entries.orphaned', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.needs_rebuild', 2)
+            ->assertJsonPath('operator_metrics.projections.run_timeline_entries.needs_rebuild', null)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.runs', 3)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.rows', 1)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.projected_runs', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.runs_with_timers', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.projected_runs_with_timers', 0)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.missing_runs_with_timers', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.stale_projected_runs', 0)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.schema_version_mismatch_runs', 0)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.runs_with_timers', null)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.projected_runs_with_timers', null)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.missing_runs_with_timers', null)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.stale_projected_runs', null)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.schema_version_mismatch_runs', null)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.schema_version_mismatch_rows', 1)
             ->assertJsonPath('operator_metrics.projections.run_timer_entries.orphaned', 1)
-            ->assertJsonPath('operator_metrics.projections.run_timer_entries.needs_rebuild', 2)
+            ->assertJsonPath('operator_metrics.projections.run_timer_entries.needs_rebuild', null)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.runs', 3)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.rows', 2)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.projected_runs', 2)
-            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.runs_with_lineage', 2)
-            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.projected_runs_with_lineage', 1)
-            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.missing_runs_with_lineage', 1)
-            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.stale_projected_runs', 1)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.runs_with_lineage', null)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.projected_runs_with_lineage', null)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.missing_runs_with_lineage', null)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.stale_projected_runs', null)
             ->assertJsonPath('operator_metrics.projections.run_lineage_entries.orphaned', 1)
-            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.needs_rebuild', 3)
+            ->assertJsonPath('operator_metrics.projections.run_lineage_entries.needs_rebuild', null)
             ->assertJsonPath('operator_metrics.workers.compatibility_namespace', 'waterline-metrics-test')
             ->assertJsonPath('operator_metrics.workers.required_compatibility', 'build-a')
             ->assertJsonPath('operator_metrics.workers.active_workers', 1)
@@ -594,6 +697,12 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.repair_policy.scan_strategy', 'scope_fair_round_robin')
             ->assertJsonPath('operator_metrics.repair_policy.failure_backoff_max_seconds', 32)
             ->assertJsonPath('operator_metrics.repair_policy.failure_backoff_strategy', 'exponential_by_repair_count');
+
+        $audited = app(OperatorObservabilityRepository::class)->metrics();
+        self::assertSame(2, $audited['projections']['run_waits']['needs_rebuild']);
+        self::assertSame(2, $audited['projections']['run_timeline_entries']['needs_rebuild']);
+        self::assertSame(2, $audited['projections']['run_timer_entries']['needs_rebuild']);
+        self::assertSame(3, $audited['projections']['run_lineage_entries']['needs_rebuild']);
     }
 
     public function testIndexScopesWorkerFleetMetricsToConfiguredNamespace(): void
@@ -1780,9 +1889,15 @@ class V2DashboardStatsControllerTest extends TestCase
 
         $this->get('/waterline/api/stats')
             ->assertStatus(200)
-            ->assertJsonPath('operator_metrics.command_contracts.backfill_needed_runs', 2)
-            ->assertJsonPath('operator_metrics.command_contracts.backfill_available_runs', 1)
-            ->assertJsonPath('operator_metrics.command_contracts.backfill_unavailable_runs', 1);
+            ->assertJsonPath('operator_metrics.history_audit_evaluation', 'not_requested')
+            ->assertJsonPath('operator_metrics.command_contracts.backfill_needed_runs', null)
+            ->assertJsonPath('operator_metrics.command_contracts.backfill_available_runs', null)
+            ->assertJsonPath('operator_metrics.command_contracts.backfill_unavailable_runs', null);
+
+        $audited = app(OperatorObservabilityRepository::class)->metrics();
+        self::assertSame(2, $audited['command_contracts']['backfill_needed_runs']);
+        self::assertSame(1, $audited['command_contracts']['backfill_available_runs']);
+        self::assertSame(1, $audited['command_contracts']['backfill_unavailable_runs']);
     }
 
     public function testIndexExposesSchedulerRoleMetrics(): void

@@ -239,6 +239,13 @@ return [
     |
     */
 
+    // Exact workflow types may opt in to classification and application context.
+    // Fields read only explicitly named visibility labels or search attributes.
+    // Entity link templates use those permitted fields, never workflow inputs.
+    'observability' => [
+        'workflow_types' => [],
+    ],
+
     'run_diagnostics' => [
         'activity_failure_repeat_threshold' => env('WATERLINE_RUN_DIAGNOSTICS_ACTIVITY_FAILURE_REPEAT_THRESHOLD', 3),
         'workflow_task_failure_attempt_threshold' => env('WATERLINE_RUN_DIAGNOSTICS_WORKFLOW_TASK_FAILURE_ATTEMPT_THRESHOLD', 3),

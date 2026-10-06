@@ -56,6 +56,12 @@ final class V2ConditionWaitDashboardWorkflowTest extends TestCase
             ->assertJsonPath('tasks.0.condition_wait_id', $response->json('waits.0.condition_wait_id'))
             ->assertJsonPath('tasks.0.timer_sequence', 1);
 
+        $response
+            ->assertJsonPath('current_waits_state', 'available')
+            ->assertJsonPath('current_waits.0.kind', 'condition')
+            ->assertJsonPath('current_waits.0.state', 'planned')
+            ->assertJsonPath('current_waits.0.deadline_at', $response->json('current_waits.0.next_scheduled_resume_at'));
+
         $this->assertIsString($response->json('waits.0.condition_definition_fingerprint'));
         $this->assertSame(
             $response->json('waits.0.condition_definition_fingerprint'),

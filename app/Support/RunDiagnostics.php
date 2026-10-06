@@ -380,6 +380,11 @@ class RunDiagnostics
                 continue;
             }
 
+            $deadline = $this->timestamp($wait['deadline_at'] ?? null);
+            if ($deadline !== null && $deadline->greaterThan($now)) {
+                continue;
+            }
+
             $waitId = $this->stringValue($wait['id'] ?? null) ?? 'summary';
 
             if (isset($seen[$waitId])) {
@@ -393,9 +398,11 @@ class RunDiagnostics
 
             $diagnostics[] = $this->diagnostic(
                 'condition_wait_stuck',
-                'warning',
-                'Condition wait has been open past its SLA',
-                sprintf('The selected run has waited on %s for %d seconds.', $target, $ageSeconds),
+                $deadline === null ? 'info' : 'warning',
+                $deadline === null ? 'Condition wait has no scheduled resume' : 'Condition wait deadline has passed',
+                $deadline === null
+                    ? sprintf('The selected run has waited on %s for %d seconds. Its next resume time is unknown.', $target, $ageSeconds)
+                    : sprintf('The selected run is still waiting on %s after its recorded deadline of %s.', $target, $deadline->toIso8601String()),
                 '/docs/2.0/features/condition-waits',
                 [
                     'wait_id' => $waitId,
@@ -403,11 +410,13 @@ class RunDiagnostics
                     'age_seconds' => $ageSeconds,
                     'sla_seconds' => $slaSeconds,
                     'opened_at' => $openedAt->toJSON(),
+                    'deadline_at' => $deadline?->toIso8601String(),
+                    'resume_time_known' => $deadline !== null,
                 ],
                 [
                     'wait / ' . $target,
                     'age / ' . $ageSeconds . 's',
-                    'SLA / ' . $slaSeconds . 's',
+                    'Review threshold / ' . $slaSeconds . 's',
                 ],
             );
         }
@@ -860,7 +869,11 @@ class RunDiagnostics
         }
 
         if (is_string($value) && $value !== '') {
-            return Carbon::parse($value);
+            try {
+                return Carbon::parse($value);
+            } catch (Throwable) {
+                return null;
+            }
         }
 
         return null;

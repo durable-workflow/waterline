@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Waterline\Tests\Unit;
 
-use Waterline\Tests\TestCase;
+use PHPUnit\Framework\TestCase;
 
 final class ServiceImageReleaseContractTest extends TestCase
 {

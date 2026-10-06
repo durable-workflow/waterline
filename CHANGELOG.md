@@ -1,6 +1,17 @@
 # Changelog
 
-## Unreleased
+## 2.2.0 - 2026-10-06
+
+Applications can classify workflow types and opt in to permitted display metadata
+and entity links. Dashboard and execution-list filters show their scope and time
+window. Maintenance remains accessible outside business-operation views.
+
+Canonical run details begin with a bounded observation in embedded and service
+modes. Current waits distinguish scheduled retries, eligible work, unknown timing
+and known expired deadlines. Related runs keep their own outcomes. Recent failures
+link directly to retained supporting events, with explicit missing/pruned evidence.
+History cursors preserve the original run and sequence boundary. Input/output,
+actions and full diagnostics remain available through explicit inspection.
 
 ## 2.0.7 - 2026-09-27
 

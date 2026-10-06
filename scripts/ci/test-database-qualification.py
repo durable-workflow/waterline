@@ -116,6 +116,29 @@ class QualificationShardTest(unittest.TestCase):
         )
         self.assertEqual("", shards.test_filter(shard, 1))
 
+    def test_large_dashboard_class_keeps_its_complete_scope_without_overcrowding(self) -> None:
+        dashboard = shards.TestClass(
+            "Waterline\\Tests\\Feature\\V2DashboardWorkflowTest", 112
+        )
+        inventory = (
+            dashboard,
+            shards.TestClass(next(iter(shards.CLASS_WEIGHT_FLOORS)), 1),
+            shards.TestClass(
+                "Waterline\\Tests\\Feature\\V2DashboardStatsControllerTest", 39
+            ),
+            *(shards.TestClass(f"Waterline\\Tests\\Feature\\Small{index}Test", 5)
+              for index in range(40)),
+        )
+        planned = shards.plan_shards(inventory, 4)
+        dashboard_shard = next(
+            shard for shard in planned if dashboard in shard.classes
+        )
+        self.assertEqual((dashboard,), dashboard_shard.classes)
+        self.assertEqual(
+            sum(item.test_cases for item in inventory),
+            sum(shard.test_cases for shard in planned),
+        )
+
     def test_invalid_shard_count_fails_closed(self) -> None:
         inventory = (shards.TestClass("Waterline\\Tests\\Unit\\OnlyTest", 1),)
 

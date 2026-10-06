@@ -125,6 +125,11 @@ final class HybridWorkflowRepository implements WorkflowRepositoryInterface
         return $this->v2->findFlowSelection($instanceId, $runId);
     }
 
+    public function findObservation(string $id, ?string $runId = null, bool $instanceSelection = false)
+    {
+        return $this->v2->findObservation($id, $runId, $instanceSelection);
+    }
+
     public function dashboardStats(): array
     {
         return $this->v2->dashboardStats();

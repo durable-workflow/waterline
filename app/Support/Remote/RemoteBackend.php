@@ -17,6 +17,11 @@ final class RemoteBackend
     /** @var array<string, mixed>|null */
     private ?array $operatorMetricsResponse = null;
 
+    /** @var array<string, mixed>|null */
+    private ?array $boundedDashboardResponse = null;
+
+    private ?bool $boundedDashboardAvailable = null;
+
     private ?bool $workflowStreamsAvailable = null;
 
     public function __construct(private readonly object $client)
@@ -76,6 +81,55 @@ final class RemoteBackend
         /** @var array<string, mixed> $response */
         $response = $this->client->operatorMetrics();
         $this->operatorMetricsResponse = $response;
+
+        return $response;
+    }
+
+    /**
+     * @param list<string>|null $workflowTypes
+     * @return array<string, mixed>
+     */
+    public function operatorDashboard(?array $workflowTypes = null): array
+    {
+        if ($workflowTypes !== null) {
+            $this->require('workflowTypeOperatorDashboard', 'workflow type dashboard');
+            $response = $this->client->workflowTypeOperatorDashboard($workflowTypes);
+            $this->boundedDashboardResponse = $response;
+            $this->boundedDashboardAvailable = ($response['dashboard']['operator_metrics']['history_audit_evaluation'] ?? null)
+                === 'not_requested';
+
+            return $response;
+        }
+
+        return $this->boundedDashboard() ?? $this->client->operatorDashboard();
+    }
+
+    /** @return array<string, mixed>|null */
+    private function boundedDashboard(): ?array
+    {
+        if ($this->boundedDashboardResponse !== null) {
+            return $this->boundedDashboardResponse;
+        }
+        if ($this->boundedDashboardAvailable === false || ! $this->supports('boundedOperatorDashboard')) {
+            return null;
+        }
+
+        try {
+            $response = $this->client->boundedOperatorDashboard();
+        } catch (ServerException $exception) {
+            // Older Servers lack this additive route. Other refusals retain
+            // their original evidence and must not trigger another read.
+            if ($exception->status !== 404 || ! in_array($exception->reason, [null, 'not_found'], true)) {
+                throw $exception;
+            }
+            $this->boundedDashboardAvailable = false;
+
+            return null;
+        }
+
+        $this->boundedDashboardResponse = $response;
+        $this->boundedDashboardAvailable = ($response['dashboard']['operator_metrics']['history_audit_evaluation'] ?? null)
+            === 'not_requested';
 
         return $response;
     }
@@ -151,8 +205,16 @@ final class RemoteBackend
             ];
         }
 
+        $dashboard = $this->boundedDashboard();
+        $metricsResponse = $dashboard === null
+            ? $this->operatorMetrics()
+            : [
+                'namespace' => $dashboard['namespace'] ?? null,
+                'operator_metrics' => $dashboard['dashboard']['operator_metrics'] ?? [],
+            ];
+
         return app(RemoteCapacityEvidenceContract::class)->inspect(
-            $this->operatorMetrics(),
+            $metricsResponse,
             BackendConfiguration::namespace(),
             $windowSeconds,
             $requestTime ?? now(),
@@ -189,6 +251,10 @@ final class RemoteBackend
         $capabilities['metrics'] = $this->supports('operatorMetrics');
         $capabilities['capacity_evidence'] = $this->supportsCapacityEvidence($requestTime);
         $capabilities['dashboard_summary'] = $this->supports('operatorDashboard');
+        $capabilities['bounded_dashboard_summary'] = $this->boundedDashboardAvailable === true;
+        $capabilities['workflow_type_dashboard_summary'] = $this->boundedDashboardAvailable === true
+            && is_array($this->boundedDashboardResponse['dashboard']['workflow_scope'] ?? null)
+            && $this->supports('workflowTypeOperatorDashboard');
         $capabilities['workers'] = $this->supports('listWorkers');
         $capabilities['task_queues'] = $this->supports('listTaskQueues');
         $capabilities['workflow_streams'] = $this->workflowStreamsAvailable

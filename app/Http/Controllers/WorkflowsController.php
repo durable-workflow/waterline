@@ -32,7 +32,9 @@ use Workflow\V2\WorkflowStub as V2WorkflowStub;
 use Waterline\Http\Resources\StoredWorkflowResource;
 use Waterline\Http\Resources\HybridStoredWorkflowResource;
 use Waterline\Http\Resources\V2StoredWorkflowResource;
+use Waterline\Http\Resources\V2RunObservationResource;
 use Waterline\Repositories\Workflow\Infrastructure\HybridWorkflowRepository;
+use Waterline\Repositories\Workflow\Infrastructure\V2WorkflowRepository;
 use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityContract;
@@ -41,6 +43,7 @@ use Waterline\Support\CompatibilitySemantics;
 use Waterline\Support\CompensationVisibility;
 use Waterline\Support\HybridMigrationView;
 use Waterline\Support\OperatorScope;
+use Waterline\Support\WorkflowClassification;
 use Waterline\Support\SelectedRunCommandContract;
 use Waterline\Waterline;
 
@@ -48,31 +51,35 @@ class WorkflowsController extends Controller
 {
     public function completed(WorkflowRepositoryInterface $repository)
     {
-        return $this->listResponse('completed', $repository, $repository->completedFlows());
+        return $this->listResponse('completed', $repository);
     }
 
     public function failed(WorkflowRepositoryInterface $repository)
     {
-        return $this->listResponse('failed', $repository, $repository->failedFlows());
+        return $this->listResponse('failed', $repository);
     }
 
     public function cancelled(WorkflowRepositoryInterface $repository)
     {
-        return $this->listResponse('cancelled', $repository, $repository->cancelledFlows());
+        return $this->listResponse('cancelled', $repository);
     }
 
     public function terminated(WorkflowRepositoryInterface $repository)
     {
-        return $this->listResponse('terminated', $repository, $repository->terminatedFlows());
+        return $this->listResponse('terminated', $repository);
     }
 
     public function running(WorkflowRepositoryInterface $repository)
     {
-        return $this->listResponse('running', $repository, $repository->runningFlows());
+        return $this->listResponse('running', $repository);
     }
 
     public function show(string $id, WorkflowRepositoryInterface $repository)
     {
+        if (request()->query('observation') === 'bounded') {
+            return $this->boundedObservation($repository, $id);
+        }
+
         $flow = $repository->findFlow($id);
 
         if ($flow instanceof WorkflowRun) {
@@ -88,9 +95,27 @@ class WorkflowsController extends Controller
     {
         abort_unless($repository->engineSource() === 'v2', 404);
 
+        if (request()->query('observation') === 'bounded') {
+            return $this->boundedObservation($repository, $instanceId, $runId, true);
+        }
+
         $flow = $repository->findFlowSelection($instanceId, $runId);
 
         return V2StoredWorkflowResource::make($flow);
+    }
+
+    private function boundedObservation(
+        WorkflowRepositoryInterface $repository,
+        string $id,
+        ?string $runId = null,
+        bool $instanceSelection = false,
+    ) {
+        abort_unless($repository->engineSource() === 'v2' && method_exists($repository, 'findObservation'), 501,
+            'This repository does not support bounded run observations.');
+
+        return V2RunObservationResource::make(
+            $repository->findObservation($id, $runId, $instanceSelection),
+        );
     }
 
     public function historyExport(
@@ -614,8 +639,21 @@ class WorkflowsController extends Controller
         );
     }
 
-    private function listResponse(string $bucket, WorkflowRepositoryInterface $repository, mixed $result)
+    private function listResponse(string $bucket, WorkflowRepositoryInterface $repository)
     {
+        $classification = WorkflowClassification::selection(request());
+        $classificationAvailable = $repository instanceof V2WorkflowRepository;
+        if ($classification['workflow_types'] !== null && ! $classificationAvailable) {
+            return response()->json([
+                'message' => 'This observer cannot apply workflow classifications to its execution list.',
+                'reason' => 'backend_capability_unavailable',
+                'capability' => 'classification_workflow_list',
+                'classification_scope' => [...$classification, 'available' => false],
+            ], 501);
+        }
+        $method = $bucket.'Flows';
+        $result = $repository->{$method}();
+
         if ($repository->engineSource() !== 'v2' || ! $result instanceof Arrayable) {
             return $result;
         }
@@ -646,6 +684,8 @@ class WorkflowsController extends Controller
             'actionability_contract' => ActionabilityContract::definition(),
         ];
         $payload['operator_scope'] = OperatorScope::payload();
+        $payload['classification_scope'] = [...$classification, 'available' => $classificationAvailable];
+        $payload['time_windows'] = ['generated_at' => now()->toJSON(), 'status_bucket' => $bucket, 'retention_scope' => 'all_retained_runs'];
 
         if ($repository instanceof HybridWorkflowRepository) {
             $payload['hybrid_migration_view'] = [

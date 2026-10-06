@@ -310,7 +310,7 @@ export function runDetailFixture(streamState = 'embedded-populated') {
         activities: [],
         logs: [],
         timeline: [],
-        waits: [],
+        ...operatorClarityFixture(presentation, result),
         tasks: [],
         commands: [],
         signals: [],
@@ -337,6 +337,143 @@ export function runDetailFixture(streamState = 'embedded-populated') {
         },
         can_issue_terminal_commands: false,
     };
+}
+
+// Presentation fixtures. Runtime timing and retention have separate API tests.
+export function operatorClarityFixture(presentation, result) {
+    if (result === 'populated') {
+        const failure = { id: 'visual-failure', exception_class: 'ImportError',
+            exception: { __constructor: 'ImportError', message: 'Import <failed> without exposing a trace.' },
+            message: 'Import <failed> without exposing a trace.', created_at: '2026-08-26T00:01:00Z' };
+        const failureEvent = { id: `${RUN_ID}:history:3`, sequence: 3, type: 'ActivityFailed',
+            event_type: 'ActivityFailed', recorded_at: '2026-08-26T00:01:00Z',
+            payload: { failure_id: 'visual-failure', activity_execution_id: 'import' } };
+        const waits = presentation === 'embedded' ? [
+            { id: 'retry', kind: 'activity', status: 'open', summary: 'Retry Import after attempt 2.' },
+            { id: 'approval', kind: 'signal', status: 'open', summary: 'Wait for approval.' },
+            { id: 'deadline', kind: 'condition', status: 'open', summary: 'Wait for shipment.' },
+            { id: 'unsupported', kind: 'activity', status: 'open', summary: 'Inspect legacy activity.' },
+        ] : null;
+        return {
+            waits,
+            ...(presentation === 'embedded' ? {
+                exceptions: [failure], timeline: [failureEvent],
+            } : { recent_failures: [{ ...failure, failure_id: failure.id }] }),
+            ...(presentation === 'service' ? {
+                timeline: [{ id: `${RUN_ID}:history:1`, sequence: 1, type: 'WorkflowStarted',
+                    event_type: 'WorkflowStarted', recorded_at: '2026-08-26T00:00:00Z', payload: {} }],
+                timeline_returned_count: 1,
+                timeline_total_count: null,
+                timeline_truncated: true,
+                timeline_window_direction: 'forward',
+                history_next_page_token: 'visual+/history=',
+            } : {}),
+            current_waits_state: presentation === 'embedded' ? 'available' : 'partial',
+            current_waits_source: presentation === 'embedded' ? 'workflow_run_waits' : 'server_diagnostics',
+            current_waits: presentation === 'embedded' ? [
+                { id: 'retry', kind: 'activity_retry', state: 'planned', reason: 'Retry Import after attempt 2.',
+                    next_scheduled_resume_at: '2030-01-01T18:00:00Z', attempt_number: 3, attempt_limit: 5 },
+                { id: 'approval', kind: 'signal', state: 'resume_time_unknown' },
+                { id: 'deadline', kind: 'condition', state: 'deadline_elapsed' },
+                { id: 'unsupported', kind: 'activity', state: 'unavailable' },
+            ] : [
+                { id: 'summary:run', kind: 'activity', state: 'planned', reason: 'Waiting for activities.',
+                    next_scheduled_resume_at: '2030-01-01T18:00:00Z' },
+                { id: 'activity:import', kind: 'activity', state: 'resume_time_unknown', reason: 'Import',
+                    dependency_id: 'import', dependency_type: 'Import', attempt_number: 2, attempt_limit: 5,
+                    deadline_at: '2030-01-02T18:00:00Z' },
+            ],
+            workflow_classification: 'business_operation',
+            application_context: {
+                state: 'configured',
+                fields: [
+                    { name: 'order', label: 'Order', value: 'order<42>', state: 'available', truncated: false },
+                    { name: 'shipment', label: 'Shipment', value: null, state: 'unavailable', truncated: false },
+                ],
+                links: [{ name: 'order', label: 'Open order', url: 'https://app.example/orders/order%3C42%3E' }],
+            },
+        };
+    }
+    if (result === 'supported-empty') {
+        return {
+            waits: [], status: 'completed', status_bucket: 'completed', closed_at: '2026-08-26T00:01:00Z',
+            workflow_classification: 'coordinator',
+            continuedWorkflows: [{ id: 'declared-child', workflow_instance_id: 'import-order',
+                workflow_run_id: 'import-run', link_type: 'child', status: 'waiting', status_bucket: 'running' }],
+        };
+    }
+    if (result === 'degraded') {
+        return { waits: [], details_pruned_at: '2026-09-01T00:00:00Z', current_waits_state: 'pruned' };
+    }
+
+    return { waits: [] };
+}
+
+async function auditOperatorClarity(page, state) {
+    const summary = await page.locator('.wl-flow-detail__summary-body').innerText();
+    if (state.result === 'populated') {
+        if (!summary.includes('order<42>') || !summary.toLowerCase().includes('shipment') || !summary.includes('Unavailable')) {
+            throw new Error('Allowlisted application context is missing or unavailable metadata is hidden.');
+        }
+        const link = page.getByRole('link', { name: 'Open order', exact: true });
+        if (await link.getAttribute('href') !== 'https://app.example/orders/order%3C42%3E'
+            || await link.getAttribute('rel') !== 'noopener noreferrer') {
+            throw new Error('Application entity link did not preserve its encoded identifier and browsing isolation.');
+        }
+        if (state.presentation === 'embedded') {
+            const waits = await page.locator('#collapseWaits').innerText();
+            for (const text of ['Planned wait', 'Scheduled resume:', 'Next attempt', '3', 'of 5',
+                'Resume time unknown', 'Wait deadline has passed', 'Wait details unavailable']) {
+                if (!waits.includes(text)) {
+                    throw new Error(`Current wait presentation is missing: ${text}`);
+                }
+            }
+        } else {
+            if (!summary.includes('Additional waits and dependency details may be unavailable.')) {
+                throw new Error('Partial service wait coverage is hidden.');
+            }
+            const waits = await page.locator('#collapseWaits').innerText();
+            for (const text of ['Planned wait', 'Scheduled resume:', 'Resume time unknown', 'Deadline:', 'Attempt', 'of 5']) {
+                if (!waits.includes(text)) {
+                    throw new Error(`Service wait presentation is missing: ${text}`);
+                }
+            }
+            const scrollY = await page.evaluate(() => window.scrollY);
+            const loadMore = page.getByRole('button', { name: 'Load more', exact: true });
+            await loadMore.click();
+            await page.waitForFunction(() => document.querySelector('#collapseHistory')?.innerText.includes('SignalReceived'));
+            const history = await page.locator('#collapseHistory').innerText();
+            if (!history.includes('WorkflowStarted') || await loadMore.count() !== 0) {
+                throw new Error('History continuation lost the first page or retained a completed cursor.');
+            }
+            await page.evaluate((value) => window.scrollTo(0, value), scrollY);
+        }
+    } else if (state.result === 'supported-empty') {
+        if (!summary.includes('Completed describes this coordinator run.') || !summary.includes('import-run')
+            || !summary.includes('waiting / running')) {
+            throw new Error('Coordinator completion is not distinguished from its declared open child.');
+        }
+    } else if (state.result === 'degraded' && !summary.includes('Details removed by retention.')) {
+        throw new Error('Pruned history is not labelled explicitly.');
+    }
+
+    return { status: 'pass', result: state.result, presentation: state.presentation };
+}
+
+async function auditFailureHistoryLink(page, state) {
+    if (state.result !== 'populated') return null;
+    const failures = page.locator('#failureSummary');
+    if (!(await failures.innerText()).includes('Import <failed> without exposing a trace.')) {
+        throw new Error('Recent failure summary is absent or its text was interpreted as HTML.');
+    }
+    await failures.getByRole('link', { name: 'View history event #3', exact: true }).click();
+    const event = page.locator('#history-event-3');
+    await event.waitFor({ state: 'visible' });
+    if (!(await event.innerText()).includes('ActivityFailed')
+        || !(await event.getAttribute('class')).includes('table-warning')) {
+        throw new Error('Failure history link did not reveal and highlight its supporting event.');
+    }
+    return { sequence: 3, state: 'visible', highlighted: true };
 }
 
 // Rendering evidence only. Runtime cancellation is qualified separately.
@@ -425,10 +562,23 @@ async function installFixtureRoutes(page, streamState) {
     await page.route(
         `**/waterline/api/instances/${INSTANCE_ID}/runs/${RUN_ID}?**`,
         async (route) => {
+            const fixture = runDetailFixture(streamState);
+            const token = new URL(route.request().url()).searchParams.get('history_page_token');
+            if (token === 'visual+/history=') {
+                fixture.timeline = [
+                    { id: `${RUN_ID}:history:2`, sequence: 2, type: 'SignalReceived',
+                        event_type: 'SignalReceived', recorded_at: '2026-08-26T00:01:00Z', payload: {} },
+                    { id: `${RUN_ID}:history:3`, sequence: 3, type: 'ActivityFailed',
+                        event_type: 'ActivityFailed', recorded_at: '2026-08-26T00:01:00Z',
+                        payload: { failure_id: 'visual-failure', activity_execution_id: 'import' } },
+                ];
+                fixture.history_next_page_token = null;
+                fixture.timeline_truncated = false;
+            }
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
-                body: JSON.stringify(runDetailFixture(streamState)),
+                body: JSON.stringify(fixture),
             });
         },
     );
@@ -1119,6 +1269,7 @@ export async function runRunDetailVisual({
             let bootstrap = null;
             let geometry = null;
             let cancellation = null;
+            let operatorClarity = null;
             let controls = [];
             let contrast = [];
             const deepLinkStability = [];
@@ -1151,11 +1302,14 @@ export async function runRunDetailVisual({
 
                 for (let attempt = 1; attempt <= attempts; attempt += 1) {
                     if (attempt > 1) {
-                        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30_000 });
+                        // Fragment navigation can retain the previous interaction's
+                        // completed history page. Each attempt needs a fresh load.
+                        await page.reload({ waitUntil: 'networkidle', timeout: 30_000 });
                         await waitForRunDetail(page);
                     }
 
                     bootstrap = await auditBootstrapIdentity(page, state.presentation);
+                    operatorClarity = await auditOperatorClarity(page, state);
                     cancellation = await auditCancellationCascade(page, state);
                     disclosure = await applyDisclosureState(page, state);
                     contrast = await auditContrast(page, state);
@@ -1210,6 +1364,17 @@ export async function runRunDetailVisual({
                             clip,
                         });
                     }
+                    // Initial fragment geometry and its screenshot are already
+                    // recorded. A failure link intentionally changes the history
+                    // tab and scroll position; qualify that interaction separately.
+                    if (!failure && state.result === 'populated') {
+                        operatorClarity.failureEvidence = await auditFailureHistoryLink(page, state);
+                        operatorClarity.failureEvidence.screenshot = `${name}-failure-history.png`;
+                        await page.screenshot({
+                            path: path.join(outputDirectory, operatorClarity.failureEvidence.screenshot),
+                            fullPage: false,
+                        });
+                    }
                 } catch (error) {
                     const screenshotFailure = error instanceof Error ? error.message : String(error);
 
@@ -1234,6 +1399,7 @@ export async function runRunDetailVisual({
                     result: state.result,
                     navigation: navigation.name,
                     bootstrap,
+                    operatorClarity,
                     viewport,
                     url: page.url(),
                     screenshot,

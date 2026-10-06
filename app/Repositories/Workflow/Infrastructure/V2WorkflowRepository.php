@@ -11,6 +11,7 @@ use Throwable;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\CompensationVisibility;
+use Waterline\Support\WorkflowClassification;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowInstance;
 use Workflow\V2\Models\WorkflowRun;
@@ -72,6 +73,9 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     public function bucketFlows(string $bucket, int $perPage = 50, ?int $page = null)
     {
+        // Validate before fallback handling, so an invalid selection cannot
+        // silently become an unfiltered durable-run list.
+        WorkflowClassification::selection(request());
         $perPage = max(1, $perPage);
         $page ??= LengthAwarePaginator::resolveCurrentPage();
 
@@ -107,6 +111,40 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         }
     }
 
+    public function findObservation(string $id, ?string $runId = null, bool $instanceSelection = false): WorkflowRun
+    {
+        $namespace = $this->namespace();
+        $query = $this->runModel::query()->setEagerLoads([])->select([
+            'id', 'workflow_instance_id', 'namespace', 'workflow_class', 'workflow_type',
+            'run_number', 'status', 'closed_reason', 'business_key', 'visibility_labels',
+            'compatibility', 'connection', 'queue', 'started_at', 'closed_at', 'archived_at',
+            'details_pruned_at', 'created_at', 'updated_at', 'execution_deadline_at', 'run_deadline_at',
+        ]);
+        if ($namespace !== null) {
+            $query->where('namespace', $namespace);
+        }
+        if (! $instanceSelection) {
+            $run = (clone $query)->find($id);
+            if ($run instanceof WorkflowRun) {
+                return $run;
+            }
+        }
+        if ($runId !== null) {
+            return $query->where('workflow_instance_id', $id)->whereKey($runId)->firstOrFail();
+        }
+
+        $instanceQuery = $this->instanceModel::query()->setEagerLoads([]);
+        if ($namespace !== null) {
+            $instanceQuery->where('namespace', $namespace);
+        }
+        $instance = $instanceQuery->findOrFail($id, ['id', 'namespace', 'current_run_id']);
+
+        // Read the stored pointer without resolving every continuation. The
+        // observation labels its authority; commands still use canonical intake.
+        return $query->where('workflow_instance_id', $instance->id)
+            ->where('namespace', $instance->namespace)->whereKey($instance->current_run_id)->firstOrFail();
+    }
+
     public function findFlowSelection(string $instanceId, ?string $runId = null)
     {
         try {
@@ -139,11 +177,22 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         }
     }
 
-    public function dashboardStats(): array
+    public function supportsWorkflowTypeDashboard(): bool
+    {
+        return method_exists(app(OperatorObservabilityRepository::class), 'workflowTypeDashboardSummary');
+    }
+
+    /** @param list<string>|null $workflowTypes */
+    public function dashboardStats(?array $workflowTypes = null): array
     {
         $namespace = $this->namespace();
         $now = now();
-        $summary = app(OperatorObservabilityRepository::class)->dashboardSummary($now, $namespace);
+        $observability = app(OperatorObservabilityRepository::class);
+        $summary = $workflowTypes !== null
+            ? $observability->workflowTypeDashboardSummary($workflowTypes, $now, $namespace)
+            : (method_exists($observability, 'boundedDashboardSummary')
+                ? $observability->boundedDashboardSummary($now, $namespace)
+                : $observability->dashboardSummary($now, $namespace));
         $summary['operator_metrics'] = $this->annotateOperatorMetrics(
             $summary['operator_metrics'] ?? null,
             $namespace,
@@ -379,6 +428,8 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
             $this->visibilityFiltersForQuery($context['applied_filters']),
         );
 
+        $this->applyClassificationScope($query);
+
         return $query;
     }
 
@@ -400,6 +451,14 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
             'childLinks.childRun.historyEvents',
             'instance.runs.summary',
         ];
+    }
+
+    private function applyClassificationScope($query): void
+    {
+        $types = WorkflowClassification::selection(request())['workflow_types'];
+        if ($types !== null) {
+            $query->whereIn('workflow_type', $types);
+        }
     }
 
     private function namespace(): ?string
@@ -651,18 +710,19 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
     private function shouldMergeDurableRunningRows(): bool
     {
-        return $this->requestHasOnlyPaginationAndSort();
+        return $this->requestSupportsDurableMerge();
     }
 
     private function shouldMergeDurableStatusRows(): bool
     {
-        return $this->requestHasOnlyPaginationAndSort();
+        return $this->requestSupportsDurableMerge();
     }
 
-    private function requestHasOnlyPaginationAndSort(): bool
+    private function requestSupportsDurableMerge(): bool
     {
         $query = array_keys(request()->query());
-        $nonFilterKeys = ['page', 'sort', 'sort_direction'];
+        // Classification is applied to both summary and durable-run queries.
+        $nonFilterKeys = ['page', 'sort', 'sort_direction', 'classification'];
 
         foreach ($query as $key) {
             if (! in_array($key, $nonFilterKeys, true)) {
@@ -684,6 +744,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
                 ->whereNotIn('id', $this->runningSummaryRunIdsQuery());
 
             $this->applyRunNamespaceScope($query);
+            $this->applyClassificationScope($query);
 
             $total = (int) (clone $query)->count();
             $runs = $limit === 0
@@ -722,6 +783,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
                 ->whereNotIn('id', $this->statusSummaryRunIdsQuery($status));
 
             $this->applyRunNamespaceScope($query);
+            $this->applyClassificationScope($query);
 
             $total = (int) (clone $query)->count();
             $runs = $limit === 0
@@ -777,6 +839,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
                 ->whereIn('status', ['pending', 'running', 'waiting']);
 
             $this->applyRunNamespaceScope($query);
+            $this->applyClassificationScope($query);
 
             $total = (clone $query)->count();
             $runs = $query
@@ -820,6 +883,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
                 ->where('status', $status);
 
             $this->applyRunNamespaceScope($query);
+            $this->applyClassificationScope($query);
 
             $total = (clone $query)->count();
             $runs = $query

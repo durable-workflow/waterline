@@ -134,7 +134,7 @@ final class ServiceVisibilityFilters
      *     capability: array<string, mixed>
      * }
      */
-    public static function plan(array $filters, string $bucket, ?string $genericQuery = null): array
+    public static function plan(array $filters, string $bucket, ?string $genericQuery = null, ?array $workflowTypes = null): array
     {
         $normalized = ActionabilityVisibilityFilters::normalize($filters);
         $applied = [];
@@ -184,6 +184,13 @@ final class ServiceVisibilityFilters
             $unavailable['query'] = $genericQuery;
         } elseif ($genericQuery !== null) {
             $applied['query'] = $genericQuery;
+        }
+
+        if ($workflowTypes !== null) {
+            $typeQuery = $workflowTypes === []
+                ? 'WorkflowType = ""'
+                : 'WorkflowType IN ('.implode(', ', array_map(static fn (string $type): string => self::literal($type), $workflowTypes)).')';
+            $query = $query === null ? $typeQuery : '('.$query.') AND ('.$typeQuery.')';
         }
 
         $warning = self::warning($unavailable);

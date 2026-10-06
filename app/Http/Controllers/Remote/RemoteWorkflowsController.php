@@ -13,11 +13,19 @@ use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ServiceVisibilityFilters;
+use Waterline\Support\RunWaitSummary;
+use Waterline\Support\RunApplicationContext;
+use Waterline\Support\RunObservationPresenter;
 use Waterline\Support\WorkflowStreamPresenter;
+use Waterline\Support\WorkflowClassification;
 
 final class RemoteWorkflowsController extends RemoteController
 {
     private const PAGE_SIZE = 50;
+
+    private const HISTORY_PAGE_SIZE = 200;
+
+    private const MAX_HISTORY_PAGE_SIZE = 1000;
 
     public function __construct(RemoteBackend $backend)
     {
@@ -49,14 +57,14 @@ final class RemoteWorkflowsController extends RemoteController
         return $this->list('running', $request);
     }
 
-    public function show(string $id): JsonResponse
+    public function show(Request $request, string $id): JsonResponse
     {
-        return $this->detail($id, null);
+        return $this->detail($request, $id, null);
     }
 
-    public function showSelection(string $instanceId, ?string $runId = null): JsonResponse
+    public function showSelection(Request $request, string $instanceId, ?string $runId = null): JsonResponse
     {
-        return $this->detail($instanceId, $runId);
+        return $this->detail($request, $instanceId, $runId);
     }
 
     public function historyExport(string $id): JsonResponse
@@ -200,12 +208,14 @@ final class RemoteWorkflowsController extends RemoteController
 
     private function list(string $bucket, Request $request): JsonResponse
     {
+        $classification = WorkflowClassification::selection($request);
         $pageNumber = max(1, (int) $request->query('page', 1));
         $context = V2VisibilityFilterContext::resolve($request, $bucket);
         $filterPlan = ServiceVisibilityFilters::plan(
             $context['applied_filters'],
             $bucket,
             $this->stringQuery($request, 'query'),
+            $classification['workflow_types'],
         );
         $savedViewPlan = ServiceVisibilityFilters::plan($context['saved_filters'], $bucket);
         $savedViewApplied = $context['saved_view'] === null
@@ -241,6 +251,8 @@ final class RemoteWorkflowsController extends RemoteController
             'per_page' => self::PAGE_SIZE,
             'total' => (($pageNumber - 1) * self::PAGE_SIZE) + count($items) + ($token === null ? 0 : 1),
             'next_page_token' => $token,
+            'classification_scope' => [...$classification, 'available' => true],
+            'time_windows' => ['generated_at' => now()->toJSON(), 'status_bucket' => $bucket, 'retention_scope' => 'all_retained_runs'],
             'visibility_filters' => [
                 'version' => ActionabilityVisibilityFilters::VERSION,
                 'supported_versions' => ActionabilityVisibilityFilters::supportedVersions(),
@@ -258,14 +270,30 @@ final class RemoteWorkflowsController extends RemoteController
         ]));
     }
 
-    private function detail(string $workflowId, ?string $runId): JsonResponse
+    private function detail(Request $request, string $workflowId, ?string $runId): JsonResponse
     {
+        if ($request->query('observation') === 'bounded') {
+            return $this->observation($request, $workflowId, $runId);
+        }
+        $validated = $request->validate([
+            'history_page_token' => ['nullable', 'string', 'max:4096'],
+        ]);
+        $pageToken = $validated['history_page_token'] ?? null;
+        $requestedLimit = filter_var($request->query('history_limit'), FILTER_VALIDATE_INT);
+        $pageSize = $requestedLimit === false
+            ? self::HISTORY_PAGE_SIZE
+            : min(self::MAX_HISTORY_PAGE_SIZE, max(1, $requestedLimit));
         $client = $this->backend->client();
         $execution = $client->describeWorkflow($workflowId, $runId);
         $selectedRunId = (string) ($execution->runId ?? $runId ?? '');
         $runs = $client->listWorkflowRuns($workflowId);
-        $history = $selectedRunId !== '' ? $client->workflowHistory($workflowId, $selectedRunId) : [];
+        $history = $selectedRunId !== ''
+            ? $client->workflowHistory($workflowId, $selectedRunId, $pageSize, $pageToken)
+            : [];
         $timeline = $this->historyEvents($history, $selectedRunId);
+        $nextPageToken = is_string($history['next_page_token'] ?? null)
+            && $history['next_page_token'] !== '' ? $history['next_page_token'] : null;
+        $totalHistoryCount = $pageToken === null && $nextPageToken === null ? count($timeline) : null;
         $diagnostics = [];
         $activityResponse = [];
         $workflowStreams = [];
@@ -321,15 +349,24 @@ final class RemoteWorkflowsController extends RemoteController
             'output' => $execution->output,
             'search_attributes' => $execution->searchAttributes ?? [],
             'timeline' => $timeline,
-            'timeline_total_count' => count($timeline),
+            'timeline_total_count' => $totalHistoryCount,
             'timeline_returned_count' => count($timeline),
-            'history_event_count' => count($timeline),
+            'history_event_count' => $totalHistoryCount,
+            'timeline_window_limit' => $pageSize,
+            'timeline_window_direction' => 'forward',
+            'timeline_truncated' => $nextPageToken !== null,
+            'timeline_window_start_sequence' => $timeline[0]['sequence'] ?? null,
+            'timeline_window_end_sequence' => $timeline === [] ? null : $timeline[array_key_last($timeline)]['sequence'],
+            'history_page_token' => $pageToken,
+            'history_window_from_start' => $pageToken === null,
+            'history_start_page_token' => $pageToken,
+            'history_next_page_token' => $nextPageToken,
             'run_navigation' => $this->runNavigation($runs, $execution->workflowId, $selectedRunId),
             'activities' => is_array($activityResponse['activities'] ?? null)
                 ? $activityResponse['activities']
                 : (is_array($diagnostics['activities'] ?? null) ? $diagnostics['activities'] : []),
             'tasks' => is_array($diagnostics['tasks'] ?? null) ? $diagnostics['tasks'] : [],
-            'waits' => is_array($diagnostics['waits'] ?? null) ? $diagnostics['waits'] : [],
+            'waits' => is_array($diagnostics['waits'] ?? null) ? $diagnostics['waits'] : null,
             'timers' => is_array($diagnostics['timers'] ?? null) ? $diagnostics['timers'] : [],
             'signals' => is_array($execution->raw['signals'] ?? null) ? $execution->raw['signals'] : [],
             'updates' => is_array($execution->raw['updates'] ?? null) ? $execution->raw['updates'] : [],
@@ -345,7 +382,36 @@ final class RemoteWorkflowsController extends RemoteController
         ]);
 
         $payload = $this->applyActions($payload);
+        $payload = RunWaitSummary::annotate($payload);
+        $payload = RunApplicationContext::annotate($payload);
         $payload = ActionabilityContract::annotateRun($payload);
+
+        return response()->json($this->scoped($payload));
+    }
+
+    private function observation(Request $request, string $workflowId, ?string $runId): JsonResponse
+    {
+        $validated = $request->validate([
+            'history_limit' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'history_page_token' => ['nullable', 'string', 'max:4096'],
+        ]);
+        if ($response = $this->requireCapability('workflowObservation', 'bounded run observation')) {
+            return $response;
+        }
+        $client = $this->backend->client();
+        $token = $validated['history_page_token'] ?? null;
+        $detail = $client->workflowObservation($workflowId, $runId,
+            historyPageSize: (int) ($validated['history_limit'] ?? self::HISTORY_PAGE_SIZE), historyPageToken: $token);
+        $keys = RunApplicationContext::searchAttributeKeys($detail['workflow_type']);
+        if ($keys !== []) {
+            // Resolve the host's opt-in profile from the observed type, then pin
+            // the context read to this exact run. Preserve the first history window.
+            $context = $client->workflowObservation($workflowId, $detail['run_id'], $keys, historyPageSize: 1);
+            $detail['search_attributes'] = $context['search_attributes'];
+        }
+        $payload = RunObservationPresenter::present($detail, $detail['history'], 'service', $token);
+        $payload = RunApplicationContext::annotate($payload);
+        unset($payload['search_attributes'], $payload['visibility_labels']);
 
         return response()->json($this->scoped($payload));
     }
