@@ -158,6 +158,14 @@ Service mode uses the same dashboard behavior with Server 2.5.3 and PHP SDK
 2.2.1. Older runtimes keep their supported dashboard path. Missing or unavailable
 audit information is never presented as a verified zero.
 
+### Recent Failures
+
+Run details show up to 20 recent reported failures with compact messages and
+source identifiers. A history link opens and highlights the supporting event
+when it is in the loaded history window. Loading another service history page
+can make that evidence available. Pruned, unavailable and unloaded history are
+labelled explicitly. An empty view does not establish that a run never failed.
+
 ### Operator Preferences
 
 Waterline persists small operator view preferences through

@@ -342,6 +342,12 @@ export function runDetailFixture(streamState = 'embedded-populated') {
 // Presentation fixtures. Runtime timing and retention have separate API tests.
 export function operatorClarityFixture(presentation, result) {
     if (result === 'populated') {
+        const failure = { id: 'visual-failure', exception_class: 'ImportError',
+            exception: { __constructor: 'ImportError', message: 'Import <failed> without exposing a trace.' },
+            message: 'Import <failed> without exposing a trace.', created_at: '2026-08-26T00:01:00Z' };
+        const failureEvent = { id: `${RUN_ID}:history:3`, sequence: 3, type: 'ActivityFailed',
+            event_type: 'ActivityFailed', recorded_at: '2026-08-26T00:01:00Z',
+            payload: { failure_id: 'visual-failure', activity_execution_id: 'import' } };
         const waits = presentation === 'embedded' ? [
             { id: 'retry', kind: 'activity', status: 'open', summary: 'Retry Import after attempt 2.' },
             { id: 'approval', kind: 'signal', status: 'open', summary: 'Wait for approval.' },
@@ -350,6 +356,9 @@ export function operatorClarityFixture(presentation, result) {
         ] : null;
         return {
             waits,
+            ...(presentation === 'embedded' ? {
+                exceptions: [failure], timeline: [failureEvent],
+            } : { recent_failures: [{ ...failure, failure_id: failure.id }] }),
             ...(presentation === 'service' ? {
                 timeline: [{ id: `${RUN_ID}:history:1`, sequence: 1, type: 'WorkflowStarted',
                     event_type: 'WorkflowStarted', recorded_at: '2026-08-26T00:00:00Z', payload: {} }],
@@ -439,6 +448,19 @@ async function auditOperatorClarity(page, state) {
             }
             await page.evaluate((value) => window.scrollTo(0, value), scrollY);
         }
+        const failureScrollY = await page.evaluate(() => window.scrollY);
+        const failures = page.locator('#failureSummary');
+        if (!(await failures.innerText()).includes('Import <failed> without exposing a trace.')) {
+            throw new Error('Recent failure summary is absent or its text was interpreted as HTML.');
+        }
+        await failures.getByRole('link', { name: 'View history event #3', exact: true }).click();
+        const event = page.locator('#history-event-3');
+        await event.waitFor({ state: 'visible' });
+        if (!(await event.innerText()).includes('ActivityFailed')
+            || !(await event.getAttribute('class')).includes('table-warning')) {
+            throw new Error('Failure history link did not reveal and highlight its supporting event.');
+        }
+        await page.evaluate((value) => window.scrollTo(0, value), failureScrollY);
     } else if (state.result === 'supported-empty') {
         if (!summary.includes('Completed describes this coordinator run.') || !summary.includes('import-run')
             || !summary.includes('waiting / running')) {
@@ -540,8 +562,13 @@ async function installFixtureRoutes(page, streamState) {
             const fixture = runDetailFixture(streamState);
             const token = new URL(route.request().url()).searchParams.get('history_page_token');
             if (token === 'visual+/history=') {
-                fixture.timeline = [{ id: `${RUN_ID}:history:2`, sequence: 2, type: 'SignalReceived',
-                    event_type: 'SignalReceived', recorded_at: '2026-08-26T00:01:00Z', payload: {} }];
+                fixture.timeline = [
+                    { id: `${RUN_ID}:history:2`, sequence: 2, type: 'SignalReceived',
+                        event_type: 'SignalReceived', recorded_at: '2026-08-26T00:01:00Z', payload: {} },
+                    { id: `${RUN_ID}:history:3`, sequence: 3, type: 'ActivityFailed',
+                        event_type: 'ActivityFailed', recorded_at: '2026-08-26T00:01:00Z',
+                        payload: { failure_id: 'visual-failure', activity_execution_id: 'import' } },
+                ];
                 fixture.history_next_page_token = null;
                 fixture.timeline_truncated = false;
             }

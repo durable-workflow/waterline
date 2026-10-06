@@ -69,6 +69,7 @@ final class V2ConfiguredCoreModelsDashboardWorkflowTest extends TestCase
             $table->string('id', 191)->primary();
             $table->string('workflow_class');
             $table->string('workflow_type');
+            $table->string('namespace', 191)->nullable()->index();
             $table->string('business_key', 191)->nullable();
             $table->json('visibility_labels')->nullable();
             $table->json('memo')->nullable();

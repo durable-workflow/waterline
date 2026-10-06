@@ -604,6 +604,38 @@
 
         <CancellationCascadeView v-if="ready" :diagnostics="flow" />
 
+        <div class="card mt-4" v-if="ready" id="failureSummary">
+            <div class="card-header"><h5>Recent failures</h5></div>
+            <div class="card-body">
+                <div class="small text-muted mb-2" v-if="failureSummaryView().state === 'pruned'">
+                    Execution details have been pruned. Retained failures may have incomplete history evidence.
+                </div>
+                <div v-if="failureSummaryView().state === 'unavailable'">
+                    Failure information is unavailable for this run.
+                </div>
+                <div v-else-if="!failureSummaryView().rows.length">
+                    {{ failureSummaryView().state === 'pruned' ? 'No retained failure details.' : 'No failures reported in this view.' }}
+                </div>
+                <div v-for="failure in failureSummaryView().rows" :key="failure.id" class="mb-3">
+                    <strong>{{ failure.type || 'Failure' }}</strong>
+                    <span v-if="failure.handled === true" class="badge badge-secondary ml-2">Handled</span>
+                    <div v-if="failure.message" class="wl-failure-message">{{ failure.message }}</div>
+                    <div class="small text-muted" v-if="failure.source_id">
+                        {{ failure.source_kind || 'Source' }} / {{ failure.source_id }}
+                    </div>
+                    <div class="small text-muted" v-if="failure.recorded_at">{{ timestamp(failure.recorded_at) }}</div>
+                    <a v-if="failure.event_sequence" :href="'#history-event-' + failure.event_sequence"
+                        class="small" @click.prevent="focusFailureEvent(failure.event_sequence)">
+                        View history event #{{ failure.event_sequence }}
+                    </a>
+                    <div v-else class="small text-muted">{{ failureEvidenceLabel(failure.evidence_state) }}</div>
+                </div>
+                <div class="small text-muted" v-if="failureSummaryView().truncated">
+                    Showing up to 20 recent failures. Additional failures may exist.
+                </div>
+            </div>
+        </div>
+
         <div :class="diagnosticsBannerClass()" v-if="ready && diagnosticRows().length" role="alert">
             <div class="d-flex align-items-center justify-content-between">
                 <div>
@@ -770,7 +802,9 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="event in timelineRows()" :key="event.id || event.sequence">
+                            <tr v-for="event in timelineRows()" :key="event.id || event.sequence" tabindex="-1"
+                                :id="'history-event-' + event.sequence"
+                                :class="{ 'table-warning': focusedHistorySequence === event.sequence }">
                                 <td>{{ event.sequence || '-' }}</td>
                                 <td>{{ event.type || event.event_type || '-' }}</td>
                                 <td>{{ event.summary || '-' }}</td>
@@ -1800,6 +1834,7 @@ import SearchAttributeRenderer from '../../components/SearchAttributeRenderer.vu
 import CancellationCascadeView from '../../components/CancellationCascadeView.vue'
 import { presentWorkflowStreams } from '../../workflow-streams.mjs'
 import { appendRunHistoryPage } from '../../run-history.mjs'
+import { failureSummary, failureEventIndex } from '../../failure-summary.mjs'
 
 export default {
     components: {
@@ -1833,6 +1868,7 @@ export default {
             savingRunDetailPreferences: false,
             workflowStreamsExpanded: true,
             routeHashScrollRequest: 0,
+            focusedHistorySequence: null,
             code: 'console.log("Hello World")',
             series: [
                 {
@@ -1955,6 +1991,7 @@ export default {
 
         loadRouteFlow() {
             this.historyLimit = this.historyPageSize
+            this.focusedHistorySequence = null
 
             if (this.isCanonicalRoute()) {
                 return this.loadCanonicalFlow(this.$route.params.instanceId, this.$route.params.runId || null)
@@ -2063,6 +2100,11 @@ export default {
                 targetId = decodeURIComponent(hash.slice(1))
             } catch {
                 return
+            }
+
+            const historyTarget = /^history-event-([1-9][0-9]*)$/.exec(targetId)
+            if (historyTarget && failureEventIndex(this.flow, Number(historyTarget[1])) >= 0) {
+                this.focusedHistorySequence = Number(historyTarget[1])
             }
 
             const request = ++this.routeHashScrollRequest
@@ -2243,12 +2285,13 @@ export default {
         },
 
         runDetailTab() {
-            return this.effectiveRunDetailPreferences.tab === 'events'
+            return this.focusedHistorySequence !== null || this.effectiveRunDetailPreferences.tab === 'events'
                 ? 'events'
                 : 'timeline'
         },
 
         setRunDetailTab(tab) {
+            this.focusedHistorySequence = null
             const normalized = tab === 'events' ? 'events' : 'timeline'
 
             if (this.$route.query && this.$route.query.tab !== undefined && this.$route.query.tab !== normalized) {
@@ -2361,6 +2404,32 @@ export default {
 
         resetHistoryVirtualWindow() {
             this.historyVirtualStart = 0
+        },
+
+        failureSummaryView() {
+            return failureSummary(this.flow)
+        },
+
+        failureEvidenceLabel(state) {
+            return {
+                pruned: 'Supporting history has been pruned.',
+                outside_window: 'Supporting history is outside the loaded window. Load more history to inspect it.',
+                unavailable: 'Supporting history is unavailable in this view.',
+            }[state] || 'Supporting history is unavailable in this view.'
+        },
+
+        async focusFailureEvent(sequence) {
+            if (failureEventIndex(this.flow, sequence) < 0) {
+                return
+            }
+            this.focusedHistorySequence = sequence
+            await this.$nextTick()
+            document.getElementById('collapseHistory')?.classList.add('show')
+            const event = document.getElementById('history-event-' + sequence)
+            if (event) {
+                this.positionRouteHashTarget(event)
+                event.focus({ preventScroll: true })
+            }
         },
 
         replaceWithCanonicalRoute(flow) {
@@ -5093,6 +5162,14 @@ export default {
 
 .detail-cell-muted {
     overflow-wrap: anywhere;
+}
+
+#failureSummary {
+    overflow-wrap: anywhere;
+}
+
+tr.table-warning > td {
+    color: #212529;
 }
 
 @media (max-width: 768px) {
