@@ -310,7 +310,7 @@ export function runDetailFixture(streamState = 'embedded-populated') {
         activities: [],
         logs: [],
         timeline: [],
-        waits: [],
+        ...operatorClarityFixture(presentation, result),
         tasks: [],
         commands: [],
         signals: [],
@@ -337,6 +337,85 @@ export function runDetailFixture(streamState = 'embedded-populated') {
         },
         can_issue_terminal_commands: false,
     };
+}
+
+// Presentation fixtures. Runtime timing and retention have separate API tests.
+export function operatorClarityFixture(presentation, result) {
+    if (result === 'populated') {
+        const waits = presentation === 'embedded' ? [
+            { id: 'retry', kind: 'activity', status: 'open', summary: 'Retry Import after attempt 2.' },
+            { id: 'approval', kind: 'signal', status: 'open', summary: 'Wait for approval.' },
+            { id: 'deadline', kind: 'condition', status: 'open', summary: 'Wait for shipment.' },
+            { id: 'unsupported', kind: 'activity', status: 'open', summary: 'Inspect legacy activity.' },
+        ] : [];
+        return {
+            waits,
+            current_waits_state: presentation === 'embedded' ? 'available' : 'unavailable',
+            current_waits: presentation === 'embedded' ? [
+                { id: 'retry', kind: 'activity_retry', state: 'planned', reason: 'Retry Import after attempt 2.',
+                    next_scheduled_resume_at: '2030-01-01T18:00:00Z', attempt_number: 3, attempt_limit: 5 },
+                { id: 'approval', kind: 'signal', state: 'resume_time_unknown' },
+                { id: 'deadline', kind: 'condition', state: 'deadline_elapsed' },
+                { id: 'unsupported', kind: 'activity', state: 'unavailable' },
+            ] : [],
+            workflow_classification: 'business_operation',
+            application_context: {
+                state: 'configured',
+                fields: [
+                    { name: 'order', label: 'Order', value: 'order<42>', state: 'available', truncated: false },
+                    { name: 'shipment', label: 'Shipment', value: null, state: 'unavailable', truncated: false },
+                ],
+                links: [{ name: 'order', label: 'Open order', url: 'https://app.example/orders/order%3C42%3E' }],
+            },
+        };
+    }
+    if (result === 'supported-empty') {
+        return {
+            waits: [], status: 'completed', status_bucket: 'completed', closed_at: '2026-08-26T00:01:00Z',
+            workflow_classification: 'coordinator',
+            continuedWorkflows: [{ id: 'declared-child', workflow_instance_id: 'import-order',
+                workflow_run_id: 'import-run', link_type: 'child', status: 'waiting', status_bucket: 'running' }],
+        };
+    }
+    if (result === 'degraded') {
+        return { waits: [], details_pruned_at: '2026-09-01T00:00:00Z', current_waits_state: 'pruned' };
+    }
+
+    return { waits: [] };
+}
+
+async function auditOperatorClarity(page, state) {
+    const summary = await page.locator('.wl-flow-detail__summary-body').innerText();
+    if (state.result === 'populated') {
+        if (!summary.includes('order<42>') || !summary.includes('Shipment') || !summary.includes('Unavailable')) {
+            throw new Error('Allowlisted application context is missing or unavailable metadata is hidden.');
+        }
+        const link = page.getByRole('link', { name: 'Open order', exact: true });
+        if (await link.getAttribute('href') !== 'https://app.example/orders/order%3C42%3E'
+            || await link.getAttribute('rel') !== 'noopener noreferrer') {
+            throw new Error('Application entity link did not preserve its encoded identifier and browsing isolation.');
+        }
+        if (state.presentation === 'embedded') {
+            const waits = await page.locator('#collapseWaits').innerText();
+            for (const text of ['Planned wait', 'Scheduled resume:', 'Next attempt', '3', 'of 5',
+                'Resume time unknown', 'Wait deadline has passed', 'Wait details unavailable']) {
+                if (!waits.includes(text)) {
+                    throw new Error(`Current wait presentation is missing: ${text}`);
+                }
+            }
+        } else if (!summary.includes('Current wait information is unavailable from this backend.')) {
+            throw new Error('Service wait capability unavailability is hidden.');
+        }
+    } else if (state.result === 'supported-empty') {
+        if (!summary.includes('Completed describes this coordinator run.') || !summary.includes('import-run')
+            || !summary.includes('waiting / running')) {
+            throw new Error('Coordinator completion is not distinguished from its declared open child.');
+        }
+    } else if (state.result === 'degraded' && !summary.includes('Details removed by retention.')) {
+        throw new Error('Pruned history is not labelled explicitly.');
+    }
+
+    return { status: 'pass', result: state.result, presentation: state.presentation };
 }
 
 // Rendering evidence only. Runtime cancellation is qualified separately.
@@ -1119,6 +1198,7 @@ export async function runRunDetailVisual({
             let bootstrap = null;
             let geometry = null;
             let cancellation = null;
+            let operatorClarity = null;
             let controls = [];
             let contrast = [];
             const deepLinkStability = [];
@@ -1156,6 +1236,7 @@ export async function runRunDetailVisual({
                     }
 
                     bootstrap = await auditBootstrapIdentity(page, state.presentation);
+                    operatorClarity = await auditOperatorClarity(page, state);
                     cancellation = await auditCancellationCascade(page, state);
                     disclosure = await applyDisclosureState(page, state);
                     contrast = await auditContrast(page, state);
@@ -1234,6 +1315,7 @@ export async function runRunDetailVisual({
                     result: state.result,
                     navigation: navigation.name,
                     bootstrap,
+                    operatorClarity,
                     viewport,
                     url: page.url(),
                     screenshot,
