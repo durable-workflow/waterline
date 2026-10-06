@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "01c7b704bd6672b449d6e5ff9d02dcc3",
+    "content-hash": "7b0ca6538f845b65feb4aa984ee2689b",
     "packages": [
         {
             "name": "apache/avro",
@@ -505,16 +505,16 @@
         },
         {
             "name": "durable-workflow/sdk",
-            "version": "2.2.2",
+            "version": "2.2.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/durable-workflow/sdk-php.git",
-                "reference": "7064b63bf1630fd0b4fc334b0546395353c09a8b"
+                "reference": "b16e13418b4f9a569e4733b21e5ae4fd336e1508"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/7064b63bf1630fd0b4fc334b0546395353c09a8b",
-                "reference": "7064b63bf1630fd0b4fc334b0546395353c09a8b",
+                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/b16e13418b4f9a569e4733b21e5ae4fd336e1508",
+                "reference": "b16e13418b4f9a569e4733b21e5ae4fd336e1508",
                 "shasum": ""
             },
             "require": {
@@ -555,7 +555,7 @@
                         "laravel": "^9.0|^10.0|^11.0|^12.0|^13.0",
                         "symfony": "^6.4|^7.0|^8.0"
                     },
-                    "product-train": "2.2.2",
+                    "product-train": "2.2.3",
                     "payload-codecs": [
                         "avro"
                     ],
@@ -621,7 +621,7 @@
                 "issues": "https://github.com/durable-workflow/sdk-php/issues",
                 "source": "https://github.com/durable-workflow/sdk-php"
             },
-            "time": "2026-10-06T19:21:56+00:00"
+            "time": "2026-10-06T21:45:15+00:00"
         },
         {
             "name": "egulias/email-validator",
