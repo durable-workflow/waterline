@@ -14,6 +14,7 @@ use Waterline\Support\DurableCommandAttribution;
 use Waterline\Support\ObserverStateEnvelope;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\RunDiagnostics;
+use Waterline\Support\RunWaitSummary;
 use Waterline\Support\SelectedRunCommandContract;
 use Waterline\Support\WorkflowStreamPresenter;
 use Workflow\Serializers\AvroValueJsonProjection;
@@ -64,6 +65,7 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['current_compensation_marker'] = $compensationVisibility['current_marker'];
         $detail['compensation_visibility'] = $compensationVisibility;
         $detail['run_diagnostics'] = $this->runDiagnostics($detail);
+        $detail = RunWaitSummary::annotate($detail);
         $detail['cancellation_cascade_supported'] = class_exists(CancellationCascadeView::class);
         $detail['cancellation_cascade'] = class_exists(CancellationCascadeView::class)
             ? CancellationCascadeView::forRun($this->resource)
