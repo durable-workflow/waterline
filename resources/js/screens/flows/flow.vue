@@ -526,7 +526,7 @@
                     <div class="col">{{ resumeSourceSummary(flow.resume_source_kind, flow.resume_source_id) }}</div>
                 </div>
 
-                <div class="row mb-2" v-if="hasDetailValue(flow.liveness_reason)">
+                <div class="row mb-2" v-if="flow.read_mode !== 'bounded' && hasDetailValue(flow.liveness_reason)">
                     <div class="col-md-2"><strong>Liveness</strong></div>
                     <div class="col">
                         {{ flow.liveness_reason }}
