@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.2.0 - 2026-10-06
 
 Applications can classify workflow types and opt in to permitted display metadata
 and entity links. Dashboard and execution-list filters show their scope and time
