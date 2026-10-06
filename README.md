@@ -165,6 +165,14 @@ details remain explicit. Current wait summaries contain at most 50 rows.
 
 ### Dashboard History Audits
 
+Canonical run views start with a bounded observation: up to 200 history events,
+50 relationships in each direction and ten recent failure references. This
+requires Native 2.4.5 in embedded mode, or Server 2.5.5 and PHP SDK 2.2.3 in
+service mode. **Inspect full details** loads inputs, results, actions and deeper
+diagnostics explicitly. Older runtimes and custom observers without this
+capability offer **Open complete details** when the initial summary is unavailable.
+Existing full-inspection bookmarks continue to work.
+
 With Native 2.4.3, the dashboard reads aggregate execution data and defers full
 history audits. Deferred audit counts display `Unknown`, including the rebuild
 total. Open an execution to inspect its history and diagnostics, or request the
@@ -176,7 +184,7 @@ audit information is never presented as a verified zero.
 
 ### Recent Failures
 
-Run details show up to 20 recent reported failures with compact messages and
+Full run details show up to 20 recent reported failures with compact messages and
 source identifiers. A history link opens and highlights the supporting event
 when it is in the loaded history window. Supporting Server references also
 provide a direct, shareable link to a retained failure event outside that window.

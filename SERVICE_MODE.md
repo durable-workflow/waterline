@@ -84,6 +84,12 @@ shown as an explicit unavailable state by the shared UI.
 
 ### History pages
 
+Canonical run views use the bounded observation route supplied by Server 2.5.5
+and PHP SDK 2.2.3 or newer. Inputs, results, activity listings and full diagnostics
+load through **Inspect full details**. If an older Server cannot supply the
+summary, use **Open complete details** or upgrade the runtime. Waterline does
+not silently issue complete reads after a refused observation.
+
 Run details initially request at most 200 history events. **Load more** follows
 the Server's continuation cursor and preserves the events already displayed.
 Waterline shows that more events are available instead of treating the first
