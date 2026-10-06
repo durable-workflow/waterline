@@ -45,6 +45,9 @@ final class FakeRemoteClient
     /** @var array<string, mixed>|null */
     public ?array $history = null;
 
+    /** @var array<string, array<string, mixed>> */
+    public array $historyPages = [];
+
     /** @var list<array<string, mixed>>|null */
     public ?array $activities = null;
 
@@ -92,11 +95,11 @@ final class FakeRemoteClient
     }
 
     /** @return array<string, mixed> */
-    public function workflowHistory(string $workflowId, string $runId): array
+    public function workflowHistory(string $workflowId, string $runId, ?int $pageSize = null, ?string $nextPageToken = null): array
     {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        return $this->history ?? ['events' => [[
+        return $this->historyPages[$nextPageToken ?? ''] ?? $this->history ?? ['events' => [[
             'sequence' => 1,
             'event_type' => 'WorkflowStarted',
             'payload' => [],

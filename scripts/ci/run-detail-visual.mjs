@@ -350,6 +350,15 @@ export function operatorClarityFixture(presentation, result) {
         ] : null;
         return {
             waits,
+            ...(presentation === 'service' ? {
+                timeline: [{ id: `${RUN_ID}:history:1`, sequence: 1, type: 'WorkflowStarted',
+                    event_type: 'WorkflowStarted', recorded_at: '2026-08-26T00:00:00Z', payload: {} }],
+                timeline_returned_count: 1,
+                timeline_total_count: null,
+                timeline_truncated: true,
+                timeline_window_direction: 'forward',
+                history_next_page_token: 'visual+/history=',
+            } : {}),
             current_waits_state: presentation === 'embedded' ? 'available' : 'partial',
             current_waits_source: presentation === 'embedded' ? 'workflow_run_waits' : 'server_diagnostics',
             current_waits: presentation === 'embedded' ? [
@@ -420,6 +429,15 @@ async function auditOperatorClarity(page, state) {
                     throw new Error(`Service wait presentation is missing: ${text}`);
                 }
             }
+            const scrollY = await page.evaluate(() => window.scrollY);
+            const loadMore = page.getByRole('button', { name: 'Load more', exact: true });
+            await loadMore.click();
+            await page.waitForFunction(() => document.querySelector('#collapseHistory')?.innerText.includes('SignalReceived'));
+            const history = await page.locator('#collapseHistory').innerText();
+            if (!history.includes('WorkflowStarted') || await loadMore.count() !== 0) {
+                throw new Error('History continuation lost the first page or retained a completed cursor.');
+            }
+            await page.evaluate((value) => window.scrollTo(0, value), scrollY);
         }
     } else if (state.result === 'supported-empty') {
         if (!summary.includes('Completed describes this coordinator run.') || !summary.includes('import-run')
@@ -519,10 +537,18 @@ async function installFixtureRoutes(page, streamState) {
     await page.route(
         `**/waterline/api/instances/${INSTANCE_ID}/runs/${RUN_ID}?**`,
         async (route) => {
+            const fixture = runDetailFixture(streamState);
+            const token = new URL(route.request().url()).searchParams.get('history_page_token');
+            if (token === 'visual+/history=') {
+                fixture.timeline = [{ id: `${RUN_ID}:history:2`, sequence: 2, type: 'SignalReceived',
+                    event_type: 'SignalReceived', recorded_at: '2026-08-26T00:01:00Z', payload: {} }];
+                fixture.history_next_page_token = null;
+                fixture.timeline_truncated = false;
+            }
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
-                body: JSON.stringify(runDetailFixture(streamState)),
+                body: JSON.stringify(fixture),
             });
         },
     );

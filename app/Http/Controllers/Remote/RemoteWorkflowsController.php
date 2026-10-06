@@ -21,6 +21,10 @@ final class RemoteWorkflowsController extends RemoteController
 {
     private const PAGE_SIZE = 50;
 
+    private const HISTORY_PAGE_SIZE = 200;
+
+    private const MAX_HISTORY_PAGE_SIZE = 1000;
+
     public function __construct(RemoteBackend $backend)
     {
         parent::__construct($backend);
@@ -51,14 +55,14 @@ final class RemoteWorkflowsController extends RemoteController
         return $this->list('running', $request);
     }
 
-    public function show(string $id): JsonResponse
+    public function show(Request $request, string $id): JsonResponse
     {
-        return $this->detail($id, null);
+        return $this->detail($request, $id, null);
     }
 
-    public function showSelection(string $instanceId, ?string $runId = null): JsonResponse
+    public function showSelection(Request $request, string $instanceId, ?string $runId = null): JsonResponse
     {
-        return $this->detail($instanceId, $runId);
+        return $this->detail($request, $instanceId, $runId);
     }
 
     public function historyExport(string $id): JsonResponse
@@ -260,14 +264,27 @@ final class RemoteWorkflowsController extends RemoteController
         ]));
     }
 
-    private function detail(string $workflowId, ?string $runId): JsonResponse
+    private function detail(Request $request, string $workflowId, ?string $runId): JsonResponse
     {
+        $validated = $request->validate([
+            'history_page_token' => ['nullable', 'string', 'max:4096'],
+        ]);
+        $pageToken = $validated['history_page_token'] ?? null;
+        $requestedLimit = filter_var($request->query('history_limit'), FILTER_VALIDATE_INT);
+        $pageSize = $requestedLimit === false
+            ? self::HISTORY_PAGE_SIZE
+            : min(self::MAX_HISTORY_PAGE_SIZE, max(1, $requestedLimit));
         $client = $this->backend->client();
         $execution = $client->describeWorkflow($workflowId, $runId);
         $selectedRunId = (string) ($execution->runId ?? $runId ?? '');
         $runs = $client->listWorkflowRuns($workflowId);
-        $history = $selectedRunId !== '' ? $client->workflowHistory($workflowId, $selectedRunId) : [];
+        $history = $selectedRunId !== ''
+            ? $client->workflowHistory($workflowId, $selectedRunId, $pageSize, $pageToken)
+            : [];
         $timeline = $this->historyEvents($history, $selectedRunId);
+        $nextPageToken = is_string($history['next_page_token'] ?? null)
+            && $history['next_page_token'] !== '' ? $history['next_page_token'] : null;
+        $totalHistoryCount = $pageToken === null && $nextPageToken === null ? count($timeline) : null;
         $diagnostics = [];
         $activityResponse = [];
         $workflowStreams = [];
@@ -323,9 +340,16 @@ final class RemoteWorkflowsController extends RemoteController
             'output' => $execution->output,
             'search_attributes' => $execution->searchAttributes ?? [],
             'timeline' => $timeline,
-            'timeline_total_count' => count($timeline),
+            'timeline_total_count' => $totalHistoryCount,
             'timeline_returned_count' => count($timeline),
-            'history_event_count' => count($timeline),
+            'history_event_count' => $totalHistoryCount,
+            'timeline_window_limit' => $pageSize,
+            'timeline_window_direction' => 'forward',
+            'timeline_truncated' => $nextPageToken !== null,
+            'timeline_window_start_sequence' => $timeline[0]['sequence'] ?? null,
+            'timeline_window_end_sequence' => $timeline === [] ? null : $timeline[array_key_last($timeline)]['sequence'],
+            'history_page_token' => $pageToken,
+            'history_next_page_token' => $nextPageToken,
             'run_navigation' => $this->runNavigation($runs, $execution->workflowId, $selectedRunId),
             'activities' => is_array($activityResponse['activities'] ?? null)
                 ? $activityResponse['activities']

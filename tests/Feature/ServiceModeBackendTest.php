@@ -305,6 +305,96 @@ final class ServiceModeBackendTest extends TestCase
         $this->assertSame($events, $this->client->history['events']);
     }
 
+    public function testServiceHistoryRetainsItsOpaqueCursorAndDoesNotInventATotal(): void
+    {
+        $events = [['sequence' => 1, 'event_type' => 'WorkflowStarted', 'payload' => []]];
+        $this->client->historyPages = [
+            '' => ['events' => $events, 'next_page_token' => 'opaque+/cursor='],
+            'opaque+/cursor=' => ['events' => [
+                ['sequence' => 2, 'event_type' => 'WorkflowCompleted', 'payload' => []],
+            ], 'next_page_token' => null],
+        ];
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1?history_limit=25')
+            ->assertOk()->assertJsonPath('history_next_page_token', 'opaque+/cursor=')
+            ->assertJsonPath('timeline_total_count', null)->assertJsonPath('history_event_count', null)
+            ->assertJsonPath('timeline_returned_count', 1)->assertJsonPath('timeline_truncated', true)
+            ->assertJsonPath('timeline_window_direction', 'forward');
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1?history_limit=25&history_page_token='.rawurlencode('opaque+/cursor='))
+            ->assertOk()->assertJsonPath('history_page_token', 'opaque+/cursor=')
+            ->assertJsonPath('history_next_page_token', null)->assertJsonPath('timeline_total_count', null)
+            ->assertJsonPath('timeline.0.sequence', 2)->assertJsonPath('timeline_truncated', false);
+
+        $calls = collect($this->client->calls)->where('method', 'workflowHistory')->values()->all();
+        $this->assertCount(2, $calls);
+        $this->assertSame(['workflowId' => 'order-1', 'runId' => 'run-1', 'pageSize' => 25, 'nextPageToken' => null], $calls[0]['arguments']);
+        $this->assertSame(['workflowId' => 'order-1', 'runId' => 'run-1', 'pageSize' => 25, 'nextPageToken' => 'opaque+/cursor='], $calls[1]['arguments']);
+        $this->assertSame($events, $this->client->historyPages['']['events']);
+    }
+
+    public function testServiceHistoryRequestsRemainBoundedForEveryDetailRoute(): void
+    {
+        foreach ([
+            '/waterline/api/instances/order-1/runs/run-1?history_limit=50000' => 1000,
+            '/waterline/api/instances/order-1?history_limit=all' => 200,
+            '/waterline/api/flows/order-1?history_limit=-10' => 1,
+        ] as $url => $expectedSize) {
+            $this->getJson($url)->assertOk()->assertJsonPath('timeline_window_limit', $expectedSize);
+            $call = collect($this->client->calls)->last(static fn (array $call): bool => $call['method'] === 'workflowHistory');
+            $this->assertSame($expectedSize, $call['arguments']['pageSize']);
+        }
+    }
+
+    public function testInvalidHistoryCursorsAreRejectedBeforeAnyRemoteRead(): void
+    {
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1?history_page_token[]=bad')
+            ->assertUnprocessable()->assertJsonValidationErrors('history_page_token');
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1?history_page_token='.str_repeat('x', 4097))
+            ->assertUnprocessable()->assertJsonValidationErrors('history_page_token');
+        $this->assertSame([], $this->client->calls);
+    }
+
+    public function testHistoryPaginationUsesTheInstalledPublishedSdkAndNamespace(): void
+    {
+        $transport = new class implements Transport
+        {
+            /** @var list<array<string, mixed>> */
+            public array $requests = [];
+
+            public function send(string $method, string $uri, array $headers, ?array $body = null): ?array
+            {
+                $this->requests[] = compact('method', 'uri', 'headers', 'body');
+                $path = parse_url($uri, PHP_URL_PATH);
+                if (str_ends_with($path, '/history')) {
+                    return ['events' => [['sequence' => 201, 'event_type' => 'SignalReceived', 'payload' => []]], 'next_page_token' => 'next-cursor'];
+                }
+                if (str_ends_with($path, '/runs')) {
+                    return ['runs' => []];
+                }
+
+                return [
+                    'workflow_id' => 'order-1', 'run_id' => 'run-1', 'workflow_type' => 'orders.process',
+                    'task_queue' => 'orders', 'namespace' => 'orders', 'status' => 'running', 'streams' => [],
+                ];
+            }
+        };
+        $this->app->instance(RemoteBackend::class, new RemoteBackend(new Client(
+            'https://server.example', namespace: 'orders', transport: $transport, controlToken: 'secret',
+        )));
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1?history_limit=200&history_page_token='.rawurlencode('opaque+/cursor='))
+            ->assertOk()->assertJsonPath('history_next_page_token', 'next-cursor')
+            ->assertJsonPath('timeline.0.sequence', 201)->assertJsonPath('timeline_total_count', null);
+
+        $historyRequests = array_values(array_filter($transport->requests, static fn (array $request): bool => str_contains($request['uri'], '/history?')));
+        $this->assertCount(1, $historyRequests);
+        parse_str(parse_url($historyRequests[0]['uri'], PHP_URL_QUERY), $query);
+        $this->assertSame(['page_size' => '200', 'next_page_token' => 'opaque+/cursor='], $query);
+        $this->assertSame('orders', $historyRequests[0]['headers']['X-Namespace']);
+        $this->assertStringEndsWith('/workflows/order-1/runs/run-1/history', parse_url($historyRequests[0]['uri'], PHP_URL_PATH));
+    }
+
     public function testServiceRunShowsReusedAndFreshActivitiesFromTheActivityContract(): void
     {
         $this->client->activities = [

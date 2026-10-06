@@ -705,8 +705,9 @@
                     <button
                         v-if="timelineHasOlder()"
                         class="btn btn-outline-secondary btn-sm mr-2"
+                        :disabled="loadingMoreHistory"
                         @click="loadOlderHistory">
-                        Load older
+                        {{ flow.engine_source === 'service' ? 'Load more' : 'Load older' }}
                     </button>
 
                     <a v-if="historyExportEndpoint()"
@@ -721,6 +722,10 @@
                         Collapse
                     </a>
                 </div>
+            </div>
+
+            <div v-if="historyLoadError" class="alert alert-danger" role="alert">
+                {{ historyLoadError }}
             </div>
 
             <div class="card-body collapse show" id="collapseHistory">
@@ -1794,6 +1799,7 @@ import TimelineEventRenderer from '../../components/TimelineEventRenderer.vue'
 import SearchAttributeRenderer from '../../components/SearchAttributeRenderer.vue'
 import CancellationCascadeView from '../../components/CancellationCascadeView.vue'
 import { presentWorkflowStreams } from '../../workflow-streams.mjs'
+import { appendRunHistoryPage } from '../../run-history.mjs'
 
 export default {
     components: {
@@ -1813,6 +1819,9 @@ export default {
             exception: null,
             historyPageSize: 200,
             historyLimit: 200,
+            loadingMoreHistory: false,
+            historyLoadError: null,
+            historyPageRequest: 0,
             historyVirtualStart: 0,
             historyRowHeight: 92,
             historyViewportHeight: 620,
@@ -1979,6 +1988,9 @@ export default {
          * Load a flow by the given ID.
          */
         fetchFlow(path) {
+            this.historyPageRequest += 1;
+            this.loadingMoreHistory = false;
+            this.historyLoadError = null;
             this.ready = false;
             this.loadingError = null;
             this.lastFlowPath = path;
@@ -2304,10 +2316,47 @@ export default {
                 return null
             }
 
+            if (this.flow.engine_source === 'service') {
+                return this.loadServiceHistoryPage(endpoint)
+            }
+
             const total = this.timelineTotalCount()
             this.historyLimit = Math.min(total, this.historyLimit + this.historyPageSize)
 
             return this.fetchFlow(endpoint)
+        },
+
+        loadServiceHistoryPage(endpoint) {
+            const token = this.flow.history_next_page_token
+            if (!token || this.loadingMoreHistory) {
+                return null
+            }
+
+            const requestId = ++this.historyPageRequest
+            this.loadingMoreHistory = true
+            this.historyLoadError = null
+            const separator = endpoint.includes('?') ? '&' : '?'
+            const path = endpoint + separator + 'history_page_token=' + encodeURIComponent(token)
+
+            return this.$http.get(this.withHistoryLimit(path), { timeout: 15000 })
+                .then(response => {
+                    if (requestId !== this.historyPageRequest) {
+                        return false
+                    }
+                    this.flow = appendRunHistoryPage(this.flow, response.data)
+                    return true
+                })
+                .catch(error => {
+                    if (requestId === this.historyPageRequest) {
+                        this.historyLoadError = this.flowLoadErrorMessage(error)
+                    }
+                    return false
+                })
+                .finally(() => {
+                    if (requestId === this.historyPageRequest) {
+                        this.loadingMoreHistory = false
+                    }
+                })
         },
 
         resetHistoryVirtualWindow() {
@@ -2854,6 +2903,9 @@ export default {
 
         timelineWindowSummary() {
             const returned = this.timelineReturnedCount().toLocaleString()
+            if (this.flow.engine_source === 'service' && !this.hasDetailValue(this.flow.timeline_total_count)) {
+                return 'Showing ' + returned + ' events' + (this.timelineHasOlder() ? ' / more available' : '')
+            }
             const total = this.timelineTotalCount().toLocaleString()
             const direction = this.flow.timeline_window_direction === 'latest'
                 ? 'latest'
