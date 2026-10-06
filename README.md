@@ -147,6 +147,17 @@ own attempt and deadlines. A run's next task time is not assigned to an activity
 without a recorded connection. Partial coverage, unknown totals and unavailable
 details remain explicit. Current wait summaries contain at most 50 rows.
 
+### Dashboard History Audits
+
+With Native 2.4.3, the dashboard reads aggregate execution data and defers full
+history audits. Deferred audit counts display `Unknown`, including the rebuild
+total. Open an execution to inspect its history and diagnostics, or request the
+runtime's full operator metrics when you need a complete audit.
+
+Service mode uses the same dashboard behavior with Server 2.5.3 and PHP SDK
+2.2.1. Older runtimes keep their supported dashboard path. Missing or unavailable
+audit information is never presented as a verified zero.
+
 ### Operator Preferences
 
 Waterline persists small operator view preferences through
