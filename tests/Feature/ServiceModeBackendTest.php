@@ -604,6 +604,86 @@ final class ServiceModeBackendTest extends TestCase
         $this->assertSame(['bounded'], $client->calls);
     }
 
+    public function testClassificationUsesExactRemoteTypesAndSharesTheBoundedResponse(): void
+    {
+        config()->set('waterline.observability.workflow_types', [
+            'orders.import' => ['classification' => 'business_operation'],
+            'invoices.send' => ['classification' => 'business_operation'],
+            'maintenance.scan' => ['classification' => 'maintenance'],
+        ]);
+        $client = new class
+        {
+            public array $calls = [];
+
+            public function workflowTypeOperatorDashboard(array $types): array
+            {
+                $this->calls[] = $types;
+
+                return ['namespace' => 'orders', 'dashboard' => [
+                    'flows' => 3,
+                    'workflow_scope' => ['namespace' => 'orders', 'workflow_types' => $types],
+                    'time_windows' => ['total_runs' => 'all_retained_runs', 'generated_at' => '2026-10-06T12:00:00Z'],
+                    'operator_metrics' => ['history_audit_evaluation' => 'not_requested'],
+                ]];
+            }
+
+            public function operatorMetrics(): array
+            {
+                throw new \LogicException('Classification capability checks must reuse the bounded response.');
+            }
+        };
+        $this->app->instance(RemoteBackend::class, new RemoteBackend($client));
+
+        $this->getJson('/waterline/api/stats?classification=business_operation')
+            ->assertOk()
+            ->assertJsonPath('flows', 3)
+            ->assertJsonPath('classification_scope.classification', 'business_operation')
+            ->assertJsonPath('classification_scope.available', true)
+            ->assertJsonPath('operator_scope.namespace', 'orders')
+            ->assertJsonPath('time_windows.total_runs', 'all_retained_runs');
+        $this->assertSame([['invoices.send', 'orders.import']], $client->calls);
+    }
+
+    public function testOlderSdkRefusesClassificationInsteadOfShowingUnfilteredCounts(): void
+    {
+        config()->set('waterline.observability.workflow_types', [
+            'orders.import' => ['classification' => 'business_operation'],
+        ]);
+
+        $this->getJson('/waterline/api/stats?classification=business_operation')
+            ->assertStatus(501)
+            ->assertJsonPath('reason', 'backend_capability_unavailable')
+            ->assertJsonPath('capability', 'workflow_type_dashboard')
+            ->assertJsonPath('required_sdk_method', 'workflowTypeOperatorDashboard');
+    }
+
+    public function testBackendMustConfirmTheSelectedTypesBeforeFilteredCountsAreDisplayed(): void
+    {
+        config()->set('waterline.observability.workflow_types', [
+            'orders.import' => ['classification' => 'business_operation'],
+        ]);
+        $client = new class
+        {
+            public int $calls = 0;
+
+            public function workflowTypeOperatorDashboard(array $types): array
+            {
+                ++$this->calls;
+
+                return ['namespace' => 'orders', 'dashboard' => [
+                    'flows' => 501,
+                    'operator_metrics' => ['history_audit_evaluation' => 'not_requested'],
+                ]];
+            }
+        };
+        $this->app->instance(RemoteBackend::class, new RemoteBackend($client));
+
+        $this->getJson('/waterline/api/stats?classification=business_operation')
+            ->assertStatus(501)
+            ->assertJsonPath('capability', 'workflow_type_dashboard');
+        $this->assertSame(1, $client->calls);
+    }
+
     public function testMissingBoundedRouteFallsBackOnceAndDoesNotClaimBoundedReads(): void
     {
         $client = new class

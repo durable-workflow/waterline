@@ -17,11 +17,7 @@ final class RunApplicationContext
         $profiles = config('waterline.observability.workflow_types', []);
         $profile = is_string($type) && is_array($profiles) ? ($profiles[$type] ?? []) : [];
         $profile = is_array($profile) ? $profile : [];
-        $classification = $profile['classification'] ?? null;
-        $detail['workflow_classification'] = is_string($classification)
-            && preg_match('/^[a-z][a-z0-9_]{0,63}$/D', $classification) === 1
-            ? $classification
-            : null;
+        $detail['workflow_classification'] = WorkflowClassification::forType($type);
 
         $fields = [];
         $values = [];

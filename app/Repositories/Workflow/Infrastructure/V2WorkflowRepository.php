@@ -139,14 +139,22 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         }
     }
 
-    public function dashboardStats(): array
+    public function supportsWorkflowTypeDashboard(): bool
+    {
+        return method_exists(app(OperatorObservabilityRepository::class), 'workflowTypeDashboardSummary');
+    }
+
+    /** @param list<string>|null $workflowTypes */
+    public function dashboardStats(?array $workflowTypes = null): array
     {
         $namespace = $this->namespace();
         $now = now();
         $observability = app(OperatorObservabilityRepository::class);
-        $summary = method_exists($observability, 'boundedDashboardSummary')
-            ? $observability->boundedDashboardSummary($now, $namespace)
-            : $observability->dashboardSummary($now, $namespace);
+        $summary = $workflowTypes !== null
+            ? $observability->workflowTypeDashboardSummary($workflowTypes, $now, $namespace)
+            : (method_exists($observability, 'boundedDashboardSummary')
+                ? $observability->boundedDashboardSummary($now, $namespace)
+                : $observability->dashboardSummary($now, $namespace));
         $summary['operator_metrics'] = $this->annotateOperatorMetrics(
             $summary['operator_metrics'] ?? null,
             $namespace,

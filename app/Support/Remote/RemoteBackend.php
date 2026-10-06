@@ -85,9 +85,22 @@ final class RemoteBackend
         return $response;
     }
 
-    /** @return array<string, mixed> */
-    public function operatorDashboard(): array
+    /**
+     * @param list<string>|null $workflowTypes
+     * @return array<string, mixed>
+     */
+    public function operatorDashboard(?array $workflowTypes = null): array
     {
+        if ($workflowTypes !== null) {
+            $this->require('workflowTypeOperatorDashboard', 'workflow type dashboard');
+            $response = $this->client->workflowTypeOperatorDashboard($workflowTypes);
+            $this->boundedDashboardResponse = $response;
+            $this->boundedDashboardAvailable = ($response['dashboard']['operator_metrics']['history_audit_evaluation'] ?? null)
+                === 'not_requested';
+
+            return $response;
+        }
+
         return $this->boundedDashboard() ?? $this->client->operatorDashboard();
     }
 
@@ -239,6 +252,9 @@ final class RemoteBackend
         $capabilities['capacity_evidence'] = $this->supportsCapacityEvidence($requestTime);
         $capabilities['dashboard_summary'] = $this->supports('operatorDashboard');
         $capabilities['bounded_dashboard_summary'] = $this->boundedDashboardAvailable === true;
+        $capabilities['workflow_type_dashboard_summary'] = $this->boundedDashboardAvailable === true
+            && is_array($this->boundedDashboardResponse['dashboard']['workflow_scope'] ?? null)
+            && $this->supports('workflowTypeOperatorDashboard');
         $capabilities['workers'] = $this->supports('listWorkers');
         $capabilities['task_queues'] = $this->supports('listTaskQueues');
         $capabilities['workflow_streams'] = $this->workflowStreamsAvailable

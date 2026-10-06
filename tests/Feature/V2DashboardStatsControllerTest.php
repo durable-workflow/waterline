@@ -37,6 +37,15 @@ class V2DashboardStatsControllerTest extends TestCase
         $observability = new class implements OperatorObservabilityRepository
         {
             public ?string $requestedNamespace = null;
+            public ?array $requestedTypes = null;
+
+            public function workflowTypeDashboardSummary(array $types, ?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                $this->requestedTypes = $types;
+                $this->requestedNamespace = $namespace;
+
+                return ['flows' => 3, 'workflow_scope' => ['workflow_types' => $types, 'namespace' => $namespace]];
+            }
 
             public function boundedDashboardSummary(?\Carbon\CarbonInterface $now = null, ?string $namespace = null): array
             {
@@ -90,6 +99,37 @@ class V2DashboardStatsControllerTest extends TestCase
             ->assertJsonPath('operator_metrics.projections.run_waits.rows', 0)
             ->assertJsonPath('operator_metrics.projections.run_waits.needs_rebuild', null);
         $this->assertSame('billing', $observability->requestedNamespace);
+
+        config()->set('waterline.observability.workflow_types', [
+            'orders.import' => ['classification' => 'business_operation'],
+            'invoices.send' => ['classification' => 'business_operation'],
+            'maintenance.scan' => ['classification' => 'maintenance'],
+        ]);
+        $this->getJson('/waterline/api/stats?classification=business_operation')
+            ->assertOk()
+            ->assertJsonPath('flows', 3)
+            ->assertJsonPath('classification_scope.classification', 'business_operation')
+            ->assertJsonPath('classification_scope.available', true)
+            ->assertJsonPath('workflow_scope.namespace', 'billing');
+        $this->assertSame(['invoices.send', 'orders.import'], $observability->requestedTypes);
+        $this->assertSame('billing', $observability->requestedNamespace);
+    }
+
+    public function testOlderEmbeddedObserverRefusesClassificationBeforeReadingBroadTotals(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        config()->set('waterline.observability.workflow_types', [
+            'orders.import' => ['classification' => 'business_operation'],
+        ]);
+        $observer = \Mockery::mock(OperatorObservabilityRepository::class);
+        $observer->shouldNotReceive('dashboardSummary');
+        $this->app->instance(OperatorObservabilityRepository::class, $observer);
+
+        $this->getJson('/waterline/api/stats?classification=business_operation')
+            ->assertStatus(501)
+            ->assertJsonPath('reason', 'backend_capability_unavailable')
+            ->assertJsonPath('capability', 'workflow_type_dashboard')
+            ->assertJsonPath('classification_scope.available', false);
     }
 
     public function testIndexUsesV2RunSummaries()

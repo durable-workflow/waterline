@@ -130,7 +130,15 @@ URL encoded, and missing or shortened identifiers do not produce entity links.
 The host application's Waterline authorization still controls who can see it.
 
 Useful classifications include `maintenance`, `coordinator` and
-`business_operation`. Classification changes presentation only. A coordinator's
+`business_operation`. The dashboard selector applies the application's exact
+type groups to workflow totals, trends and alerts. All workflow types remain
+available, including maintenance. The selected classification, namespace and
+time windows are displayed beside the selector. Worker, queue and storage
+metrics keep the full operator scope. A backend without the filtering capability
+disables the selector and refuses a manually requested filter with HTTP 501.
+Unknown classifications return HTTP 422.
+
+Classification changes observation only. A coordinator's
 completed status describes that run, while related executions retain their own
 outcomes. The same configuration applies to embedded and service observers.
 
