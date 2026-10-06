@@ -130,13 +130,21 @@ URL encoded, and missing or shortened identifiers do not produce entity links.
 The host application's Waterline authorization still controls who can see it.
 
 Useful classifications include `maintenance`, `coordinator` and
-`business_operation`. The dashboard selector applies the application's exact
-type groups to workflow totals, trends and alerts. All workflow types remain
-available, including maintenance. The selected classification, namespace and
-time windows are displayed beside the selector. Worker, queue and storage
+`business_operation`. The dashboard and execution-list selectors apply the
+application's exact type groups. Dashboard totals, trends and alerts use that
+selection. Lists apply it together with the current status, namespace, saved
+view and other filters. Selecting a group resets pagination and preserves those
+other filters. All workflow types remain available, including maintenance.
+The selected classification, namespace and time windows are displayed beside
+the selector. Lists show retained runs matching the filters and their observation
+time. Worker, queue and storage
 metrics keep the full operator scope. A backend without the filtering capability
 disables the selector and refuses a manually requested filter with HTTP 501.
 Unknown classifications return HTTP 422.
+
+Filtered embedded dashboards require Native 2.4.4 or newer. Filtered service
+dashboards require Server 2.5.4 and PHP SDK 2.2.2 or newer. An unsupported selected
+filter offers a return to all workflow types.
 
 Classification changes observation only. A coordinator's
 completed status describes that run, while related executions retain their own

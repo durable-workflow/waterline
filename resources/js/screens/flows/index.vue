@@ -1753,7 +1753,9 @@
             <div v-if="ready && !listLoadError && classificationScope" class="small text-muted px-4 pt-3">
                 {{ classificationScope.label }}
                 <span v-if="listOperatorScope && listOperatorScope.namespace"> / namespace {{ listOperatorScope.namespace }}</span>
-                <span v-if="listTimeWindows"> / {{ listTimeWindows.status_bucket }} runs matching the current filters</span>
+                <span v-else-if="listOperatorScope && listOperatorScope.mode === 'cluster'"> / all namespaces</span>
+                <span v-if="listTimeWindows"> / retained {{ listTimeWindows.status_bucket }} runs matching the current filters</span>
+                <span v-if="listTimeWindows && listTimeWindows.generated_at"> / as of {{ listTimeWindows.generated_at }}</span>
             </div>
             <div class="card-body flow-index__registry-head">
                 <div>
