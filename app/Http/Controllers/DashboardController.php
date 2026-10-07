@@ -4,6 +4,7 @@ namespace Waterline\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
+use Waterline\Support\UiLocale;
 use RuntimeException;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\OperatorScope;
@@ -42,11 +43,13 @@ class DashboardController extends Controller
                 'path' => trim($request->getBaseUrl().'/'.trim((string) config('waterline.path', 'waterline'), '/'), '/'),
                 'operator_scope' => $operatorScope,
                 'backend' => $backend,
-                'app_name' => config('app.name') ?: 'Workflow Operations',
+                'app_name' => config('app.name') ?: UiLocale::text('Workflow Operations'),
+                'locale' => UiLocale::resolve(),
                 'assets_current' => $assetsAreCurrent,
                 'maintenance' => App::isDownForMaintenance(),
             ],
             'operatorScope' => $operatorScope,
+            'uiLocale' => UiLocale::resolve(),
             'backend' => $backend,
             'environmentBanner' => $this->environmentBanner(),
             'isDownForMaintenance' => App::isDownForMaintenance(),

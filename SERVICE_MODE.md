@@ -61,6 +61,7 @@ within 30 seconds.
 | `WATERLINE_ACCESS_MODE` | `read_only` blocks mutations locally; `operator` enables server-authorized commands | `read_only` |
 | `WATERLINE_ALLOW_UNAUTHENTICATED` | Allows access to the Waterline UI without host-Laravel users | `false` |
 | `WATERLINE_PATH` | UI route prefix | `waterline` |
+| `WATERLINE_LOCALE` | Interface language, `en` or `uk`, with English fallback | `en` |
 | `APP_URL` / `APP_KEY` | Public URL and optional persistent Laravel application key | generated at container start |
 | `DATABASE_URL` | Waterline-owned MySQL or PostgreSQL persistence URL | none |
 | `DB_CONNECTION` / `DB_*` | Waterline-owned persistence connection settings | SQLite at `/data/waterline.sqlite` |

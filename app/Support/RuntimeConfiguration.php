@@ -70,6 +70,7 @@ final class RuntimeConfiguration
         'WATERLINE_ENGINE_SOURCE',
         'WATERLINE_HEALTH_TASK_DISPATCH_MODE',
         'WATERLINE_HYBRID_MIGRATION_VIEW',
+        'WATERLINE_LOCALE',
         'WATERLINE_NAMESPACE',
         'WATERLINE_PATH',
         'WATERLINE_RUNTIME_ENVIRONMENT_OVERRIDES',
@@ -100,6 +101,7 @@ final class RuntimeConfiguration
     {
         self::setStringConfigFromEnvironment('WATERLINE_DOMAIN', 'waterline.domain');
         self::setStringConfigFromEnvironment('WATERLINE_PATH', 'waterline.path');
+        self::setStringConfigFromEnvironment('WATERLINE_LOCALE', 'waterline.locale');
         self::setStringConfigFromEnvironment('WATERLINE_BACKEND', 'waterline.backend');
         self::setStringConfigFromEnvironment('WATERLINE_SERVER_ENDPOINT', 'waterline.service.endpoint');
         self::setStringConfigFromEnvironment('WATERLINE_SERVER_TOKEN', 'waterline.service.token');

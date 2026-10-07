@@ -4,12 +4,13 @@ import test from 'node:test'
 import { parse } from '@vue/compiler-sfc'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import { createWaterlineI18n } from '../../resources/js/localization.mjs'
 
 const source = fs.readFileSync(new URL('../../resources/js/components/CancellationCascadeView.vue', import.meta.url), 'utf8')
 const { descriptor } = parse(source)
 const component = Function(descriptor.script.content.replace('export default', 'return'))()
 component.template = descriptor.template.content
-const render = diagnostics => renderToString(createSSRApp(component, { diagnostics }))
+const render = (diagnostics, locale = 'en') => renderToString(createSSRApp(component, { diagnostics }).use(createWaterlineI18n(locale)))
 
 // A display fixture. Connected runtime evidence is qualified separately.
 function fixture() {

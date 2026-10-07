@@ -11,6 +11,7 @@ import Popper from 'popper.js';
 import $ from 'jquery';
 import { readBootstrapConfig } from './bootstrap-config.mjs';
 import WaterlineApp from './WaterlineApp.vue';
+import { createWaterlineI18n } from './localization.mjs';
 
 import 'bootstrap';
 import 'vue-json-pretty/lib/styles.css';
@@ -47,6 +48,7 @@ if (mountElement && waterline) {
     };
 
     app.use(router);
+    app.use(createWaterlineI18n(waterline.locale));
     app.component('apexchart', VueApexCharts);
     app.component('vue-json-pretty', VueJsonPretty);
     app.component('PrismEditor', PrismEditor);
@@ -68,6 +70,6 @@ if (mountElement && waterline) {
     const message = document.createElement('div');
     message.className = 'alert alert-danger';
     message.setAttribute('role', 'alert');
-    message.textContent = 'Waterline could not start because its page configuration is missing or invalid.';
+    message.textContent = createWaterlineI18n(document.documentElement.lang).global.t('Waterline could not start because its page configuration is missing or invalid.');
     mountElement.appendChild(message);
 }

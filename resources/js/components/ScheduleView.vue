@@ -2,30 +2,30 @@
     <div class="schedule-view">
         <section class="schedule-view__hero">
             <div>
-                <p class="schedule-view__eyebrow">Operator surface</p>
-                <h1 class="schedule-view__title">Schedules</h1>
+                <p class="schedule-view__eyebrow">{{ $t("Operator surface") }}</p>
+                <h1 class="schedule-view__title">{{ $t("Schedules") }}</h1>
                 <p class="schedule-view__subtitle">
-                    Trigger posture, backfills, and next-fire timing for recurring workflow schedules.
+                    {{ $t("Trigger posture, backfills, and next-fire timing for recurring workflow schedules.") }}
                 </p>
             </div>
 
             <div class="schedule-view__actions">
                 <select v-model="statusFilter" class="form-control form-control-sm schedule-view__filter">
-                    <option value="">All statuses</option>
-                    <option value="active">Active</option>
-                    <option value="paused">Paused</option>
-                    <option value="deleted">Deleted</option>
+                    <option value="">{{ $t("All statuses") }}</option>
+                    <option value="active">{{ $t("Active") }}</option>
+                    <option value="paused">{{ $t("Paused") }}</option>
+                    <option value="deleted">{{ $t("Deleted") }}</option>
                 </select>
 
                 <button class="btn btn-sm btn-outline-secondary" @click="editViewOptions" :disabled="savingOperatorPreferences">
-                    View Options
+                    {{ $t("View Options") }}
                 </button>
 
                 <button class="btn btn-sm btn-outline-secondary" @click="refresh">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon fill-text-color schedule-view__button-icon">
                         <path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"></path>
                     </svg>
-                    Refresh
+                    {{ $t("Refresh") }}
                 </button>
             </div>
         </section>
@@ -34,46 +34,46 @@
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color schedule-view__state-icon">
                 <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
             </svg>
-            <p class="schedule-view__state-copy">Loading schedules…</p>
+            <p class="schedule-view__state-copy">{{ $t("Loading schedules…") }}</p>
         </div>
 
         <div v-else-if="error" class="schedule-view__state card card-bg-secondary schedule-view__state--error">
-            <strong>Schedules unavailable</strong>
+            <strong>{{ $t("Schedules unavailable") }}</strong>
             <p class="schedule-view__state-copy">{{ error }}</p>
-            <button class="btn btn-sm btn-outline-primary" @click="refresh">Retry</button>
+            <button class="btn btn-sm btn-outline-primary" @click="refresh">{{ $t("Retry") }}</button>
         </div>
 
         <div v-else class="schedule-view__content">
             <section class="schedule-view__summary-grid">
                 <article class="card schedule-view__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="schedule-view__summary-label">Returned schedules</div>
+                        <div class="schedule-view__summary-label">{{ $t("Returned schedules") }}</div>
                         <div class="schedule-view__summary-value">{{ totalSchedules.toLocaleString() }}</div>
-                        <div class="schedule-view__summary-meta">{{ pagination ? pagination.total.toLocaleString() : schedules.length.toLocaleString() }} total in the filtered result set.</div>
+                        <div class="schedule-view__summary-meta">{{ pagination ? pagination.total.toLocaleString() : schedules.length.toLocaleString() }} {{ $t("total in the filtered result set.") }}</div>
                     </div>
                 </article>
 
                 <article class="card schedule-view__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="schedule-view__summary-label">Active</div>
+                        <div class="schedule-view__summary-label">{{ $t("Active") }}</div>
                         <div class="schedule-view__summary-value is-success">{{ activeScheduleCount.toLocaleString() }}</div>
-                        <div class="schedule-view__summary-meta">Schedules currently dispatching on cadence.</div>
+                        <div class="schedule-view__summary-meta">{{ $t("Schedules currently dispatching on cadence.") }}</div>
                     </div>
                 </article>
 
                 <article class="card schedule-view__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="schedule-view__summary-label">Paused</div>
+                        <div class="schedule-view__summary-label">{{ $t("Paused") }}</div>
                         <div class="schedule-view__summary-value is-warning">{{ pausedScheduleCount.toLocaleString() }}</div>
-                        <div class="schedule-view__summary-meta">Schedules waiting for operator resume.</div>
+                        <div class="schedule-view__summary-meta">{{ $t("Schedules waiting for operator resume.") }}</div>
                     </div>
                 </article>
 
                 <article class="card schedule-view__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="schedule-view__summary-label">Overdue next fires</div>
+                        <div class="schedule-view__summary-label">{{ $t("Overdue next fires") }}</div>
                         <div class="schedule-view__summary-value" :class="overdueScheduleCount > 0 ? 'is-danger' : ''">{{ overdueScheduleCount.toLocaleString() }}</div>
-                        <div class="schedule-view__summary-meta">Active schedules whose next fire time is already behind.</div>
+                        <div class="schedule-view__summary-meta">{{ $t("Active schedules whose next fire time is already behind.") }}</div>
                     </div>
                 </article>
             </section>
@@ -81,8 +81,8 @@
             <article class="card schedule-view__panel">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
-                        <h5 class="mb-0">Schedule registry</h5>
-                        <small class="text-muted">Specification, state, next fire time, and operational controls.</small>
+                        <h5 class="mb-0">{{ $t("Schedule registry") }}</h5>
+                        <small class="text-muted">{{ $t("Specification, state, next fire time, and operational controls.") }}</small>
                     </div>
 
                     <span class="schedule-view__pill schedule-view__pill--muted">
@@ -95,13 +95,13 @@
                         <table :class="schedulesTableClass">
                             <thead>
                                 <tr>
-                                    <th v-if="columnEnabled('schedule_id')">Schedule</th>
-                                    <th v-if="columnEnabled('workflow_type')">Workflow Type</th>
-                                    <th v-if="columnEnabled('spec')">Spec</th>
-                                    <th v-if="columnEnabled('status')">Status</th>
-                                    <th v-if="columnEnabled('next_fire')">Next Fire</th>
-                                    <th v-if="columnEnabled('last_result')">Last Result</th>
-                                    <th v-if="columnEnabled('actions')">Actions</th>
+                                    <th v-if="columnEnabled('schedule_id')">{{ $t("Schedule") }}</th>
+                                    <th v-if="columnEnabled('workflow_type')">{{ $t("Workflow Type") }}</th>
+                                    <th v-if="columnEnabled('spec')">{{ $t("Spec") }}</th>
+                                    <th v-if="columnEnabled('status')">{{ $t("Status") }}</th>
+                                    <th v-if="columnEnabled('next_fire')">{{ $t("Next Fire") }}</th>
+                                    <th v-if="columnEnabled('last_result')">{{ $t("Last Result") }}</th>
+                                    <th v-if="columnEnabled('actions')">{{ $t("Actions") }}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -125,15 +125,15 @@
                                     <td v-if="columnEnabled('spec')">
                                         <div class="schedule-view__cell-main">
                                             <span v-if="schedule.spec && schedule.spec.cron" class="schedule-view__pill schedule-view__pill--muted">
-                                                Cron {{ schedule.spec.cron }}
+                                                {{ $t("Cron") }} {{ schedule.spec.cron }}
                                             </span>
                                             <span v-else-if="schedule.spec && schedule.spec.interval" class="schedule-view__pill schedule-view__pill--muted">
-                                                Every {{ formatInterval(schedule.spec.interval) }}
+                                                {{ $t("Every") }} {{ formatInterval(schedule.spec.interval) }}
                                             </span>
-                                            <span v-else class="text-muted">Custom</span>
+                                            <span v-else class="text-muted">{{ $t("Custom") }}</span>
 
                                             <div class="schedule-view__cell-meta" v-if="schedule.spec && schedule.spec.timezone">
-                                                Timezone {{ schedule.spec.timezone }}
+                                                {{ $t("Timezone") }} {{ schedule.spec.timezone }}
                                             </div>
                                         </div>
                                     </td>
@@ -150,7 +150,7 @@
                                                 {{ schedule.next_fire_at ? formatTimestamp(schedule.next_fire_at) : '—' }}
                                             </span>
                                             <div class="schedule-view__cell-meta" v-if="schedule.next_fire_at && isOverdue(schedule)">
-                                                Overdue trigger window
+                                                {{ $t("Overdue trigger window") }}
                                             </div>
                                         </div>
                                     </td>
@@ -160,7 +160,7 @@
                                             <span v-if="schedule.last_fire_at">
                                                 {{ formatTimestamp(schedule.last_fire_at) }}
                                             </span>
-                                            <span v-else class="text-muted">Never</span>
+                                            <span v-else class="text-muted">{{ $t("Never") }}</span>
                                             <div class="schedule-view__cell-meta" v-if="schedule.last_fire_result">
                                                 <span :class="resultClass(schedule.last_fire_result)">{{ schedule.last_fire_result }}</span>
                                             </div>
@@ -173,28 +173,28 @@
                                                 v-if="schedule.status === 'active'"
                                                 class="btn btn-sm btn-outline-warning"
                                                 @click="pauseSchedule(schedule.id)">
-                                                Pause
+                                                {{ $t("Pause") }}
                                             </button>
                                             <button
                                                 v-if="schedule.status === 'paused'"
                                                 class="btn btn-sm btn-outline-success"
                                                 @click="resumeSchedule(schedule.id)">
-                                                Resume
+                                                {{ $t("Resume") }}
                                             </button>
                                             <button
                                                 class="btn btn-sm btn-outline-primary"
                                                 @click="triggerNow(schedule.id)">
-                                                Trigger
+                                                {{ $t("Trigger") }}
                                             </button>
                                             <button
                                                 class="btn btn-sm btn-outline-info"
                                                 @click="showBackfillDialog(schedule)">
-                                                Backfill
+                                                {{ $t("Backfill") }}
                                             </button>
                                             <button
                                                 class="btn btn-sm btn-outline-secondary"
                                                 @click="showHistoryDialog(schedule)">
-                                                History
+                                                {{ $t("History") }}
                                             </button>
                                         </div>
                                     </td>
@@ -204,14 +204,14 @@
                     </div>
 
                     <div v-else class="schedule-view__empty-state">
-                        <strong>No schedules found</strong>
-                        <p class="mb-0 text-muted">No schedule rows matched the current filter state.</p>
+                        <strong>{{ $t("No schedules found") }}</strong>
+                        <p class="mb-0 text-muted">{{ $t("No schedule rows matched the current filter state.") }}</p>
                     </div>
                 </div>
 
                 <div v-if="pagination && pagination.last_page > 1" class="card-footer schedule-view__pagination">
                     <button class="btn btn-secondary btn-sm" @click="goToPage(pagination.current_page - 1)" :disabled="pagination.current_page === 1">
-                        Previous
+                        {{ $t("Previous") }}
                     </button>
 
                     <div class="schedule-view__pagination-pages">
@@ -228,7 +228,7 @@
                     </div>
 
                     <button class="btn btn-secondary btn-sm" @click="goToPage(pagination.current_page + 1)" :disabled="pagination.current_page === pagination.last_page">
-                        Next
+                        {{ $t("Next") }}
                     </button>
                 </div>
             </article>
@@ -238,45 +238,45 @@
             <div class="schedule-view__dialog card">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
-                        <h5 class="mb-0">Backfill schedule</h5>
-                        <small class="text-muted">Trigger missed executions across a historical window.</small>
+                        <h5 class="mb-0">{{ $t("Backfill schedule") }}</h5>
+                        <small class="text-muted">{{ $t("Trigger missed executions across a historical window.") }}</small>
                     </div>
 
                     <button type="button" class="btn btn-sm btn-outline-secondary" @click="showBackfill = false">
-                        Close
+                        {{ $t("Close") }}
                     </button>
                 </div>
 
                 <div class="card-body card-bg-secondary">
                     <p class="schedule-view__dialog-copy">
-                        Backfill will trigger workflow executions for missed schedule times between the supplied timestamps.
+                        {{ $t("Backfill will trigger workflow executions for missed schedule times between the supplied timestamps.") }}
                     </p>
 
                     <div class="form-group">
-                        <label class="schedule-view__field-label">From</label>
+                        <label class="schedule-view__field-label">{{ $t("From") }}</label>
                         <input v-model="backfillFrom" type="datetime-local" class="form-control schedule-view__field" />
                     </div>
 
                     <div class="form-group">
-                        <label class="schedule-view__field-label">To</label>
+                        <label class="schedule-view__field-label">{{ $t("To") }}</label>
                         <input v-model="backfillTo" type="datetime-local" class="form-control schedule-view__field" />
                     </div>
 
                     <div class="form-group mb-0">
-                        <label class="schedule-view__field-label">Overlap Policy</label>
+                        <label class="schedule-view__field-label">{{ $t("Overlap Policy") }}</label>
                         <select v-model="backfillOverlapPolicy" class="form-control schedule-view__field">
-                            <option value="">Use schedule default</option>
-                            <option value="skip">Skip</option>
-                            <option value="allow">Allow</option>
-                            <option value="terminate">Terminate</option>
-                            <option value="cancel">Cancel</option>
+                            <option value="">{{ $t("Use schedule default") }}</option>
+                            <option value="skip">{{ $t("Skip") }}</option>
+                            <option value="allow">{{ $t("Allow") }}</option>
+                            <option value="terminate">{{ $t("Terminate") }}</option>
+                            <option value="cancel">{{ $t("Cancel") }}</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="card-footer d-flex justify-content-end schedule-view__dialog-actions">
-                    <button class="btn btn-secondary" @click="showBackfill = false">Cancel</button>
-                    <button class="btn btn-primary" @click="executeBackfill">Backfill</button>
+                    <button class="btn btn-secondary" @click="showBackfill = false">{{ $t("Cancel") }}</button>
+                    <button class="btn btn-primary" @click="executeBackfill">{{ $t("Backfill") }}</button>
                 </div>
             </div>
         </div>
@@ -285,15 +285,15 @@
             <div class="schedule-view__dialog schedule-view__dialog--wide card">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
-                        <h5 class="mb-0">Schedule audit history</h5>
+                        <h5 class="mb-0">{{ $t("Schedule audit history") }}</h5>
                         <small class="text-muted">
-                            Lifecycle events recorded for
+                            {{ $t("Lifecycle events recorded for") }}
                             <code>{{ historyScheduleId || '—' }}</code>.
                         </small>
                     </div>
 
                     <button type="button" class="btn btn-sm btn-outline-secondary" @click="closeHistoryDialog">
-                        Close
+                        {{ $t("Close") }}
                     </button>
                 </div>
 
@@ -302,19 +302,19 @@
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color schedule-view__state-icon">
                             <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
                         </svg>
-                        <p class="schedule-view__state-copy">Loading audit history…</p>
+                        <p class="schedule-view__state-copy">{{ $t("Loading audit history…") }}</p>
                     </div>
 
                     <div v-else-if="historyError" class="schedule-view__state schedule-view__state--error">
-                        <strong>Unable to load audit history</strong>
+                        <strong>{{ $t("Unable to load audit history") }}</strong>
                         <p class="schedule-view__state-copy">{{ historyError }}</p>
-                        <button class="btn btn-sm btn-outline-primary" @click="loadHistoryEvents(true)">Retry</button>
+                        <button class="btn btn-sm btn-outline-primary" @click="loadHistoryEvents(true)">{{ $t("Retry") }}</button>
                     </div>
 
                     <div v-else-if="historyEvents.length === 0" class="schedule-view__empty-state">
-                        <strong>No audit events recorded</strong>
+                        <strong>{{ $t("No audit events recorded") }}</strong>
                         <p class="mb-0 text-muted">
-                            The audit stream begins at the next lifecycle transition (create, pause, resume, trigger, or delete).
+                            {{ $t("The audit stream begins at the next lifecycle transition (create, pause, resume, trigger, or delete).") }}
                         </p>
                     </div>
 
@@ -335,10 +335,10 @@
 
                             <div class="schedule-view__history-meta" v-if="event.workflow_instance_id || event.workflow_run_id">
                                 <span v-if="event.workflow_instance_id">
-                                    instance <code>{{ truncateId(event.workflow_instance_id) }}</code>
+                                    {{ $t("instance") }} <code>{{ truncateId(event.workflow_instance_id) }}</code>
                                 </span>
                                 <span v-if="event.workflow_run_id">
-                                    run <code>{{ truncateId(event.workflow_run_id) }}</code>
+                                    {{ $t("run") }} <code>{{ truncateId(event.workflow_run_id) }}</code>
                                 </span>
                             </div>
 
@@ -352,7 +352,7 @@
 
                 <div class="card-footer d-flex justify-content-between schedule-view__dialog-actions">
                     <small class="text-muted">
-                        Showing {{ historyEvents.length.toLocaleString() }} event{{ historyEvents.length === 1 ? '' : 's' }}{{ historyHasMore ? ' (more available)' : '' }}.
+                        {{ $t("Showing") }} {{ historyEvents.length.toLocaleString() }} {{ $t("event") }}{{ historyEvents.length === 1 ? '' : 's' }}{{ historyHasMore ? ' (more available)' : '' }}.
                     </small>
 
                     <div>
@@ -363,7 +363,7 @@
                             @click="loadMoreHistoryEvents">
                             {{ historyLoadingMore ? 'Loading…' : 'Load more' }}
                         </button>
-                        <button class="btn btn-sm btn-secondary" @click="closeHistoryDialog">Close</button>
+                        <button class="btn btn-sm btn-secondary" @click="closeHistoryDialog">{{ $t("Close") }}</button>
                     </div>
                 </div>
             </div>

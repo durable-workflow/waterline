@@ -5,25 +5,25 @@
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin mr-2 fill-text-color">
                     <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
                 </svg>
-                <span>Loading dashboard…</span>
+                <span>{{ $t("Loading dashboard…") }}</span>
             </div>
         </div>
 
         <div v-else-if="loadingError" class="wl-screen-state card card-bg-secondary wl-screen-state--error">
-            <strong>Dashboard unavailable</strong>
+            <strong>{{ $t("Dashboard unavailable") }}</strong>
             <span class="text-muted mt-2">{{ loadingError }}</span>
-            <button class="btn btn-outline-primary btn-sm mt-3" @click="refreshNow">Retry</button>
+            <button class="btn btn-outline-primary btn-sm mt-3" @click="refreshNow">{{ $t("Retry") }}</button>
             <button v-if="selectedClassification" class="btn btn-outline-secondary btn-sm mt-2"
-                @click="clearClassification">Show all workflow types</button>
+                @click="clearClassification">{{ $t("Show all workflow types") }}</button>
         </div>
 
         <div v-else class="wl-dashboard-stack">
             <section class="wl-screen-hero">
                 <div>
-                    <p class="wl-screen-eyebrow">Workflow operations</p>
-                    <h1 class="wl-screen-title">Dashboard</h1>
+                    <p class="wl-screen-eyebrow">{{ $t("Workflow operations") }}</p>
+                    <h1 class="wl-screen-title">{{ $t("Dashboard") }}</h1>
                     <p class="wl-screen-subtitle">
-                        Fleet health, queue pressure, and repair posture for {{ engineSourceLabel() }} workflows.
+                        {{ $t("Fleet health, queue pressure, and repair posture for") }} {{ engineSourceLabel() }} {{ $t("workflows.") }}
                     </p>
                 </div>
 
@@ -33,7 +33,7 @@
                     </span>
 
                     <button class="btn btn-outline-secondary btn-sm" @click="refreshNow">
-                        Refresh
+                        {{ $t("Refresh") }}
                     </button>
                 </div>
             </section>
@@ -41,10 +41,10 @@
             <section class="card">
                 <div class="card-body card-bg-secondary">
                     <label v-if="classificationOptions.length" for="dashboard-classification" class="d-block">
-                        Workflow classification
+                        {{ $t("Workflow classification") }}
                         <select id="dashboard-classification" v-model="selectedClassification"
                             class="form-control mt-2" :disabled="!classificationAvailable" @change="changeClassification">
-                            <option value="">All workflow types</option>
+                            <option value="">{{ $t("All workflow types") }}</option>
                             <option v-for="option in classificationOptions" :key="option.value" :value="option.value">
                                 {{ option.label }}
                             </option>
@@ -54,16 +54,15 @@
                         {{ classificationScopeLabel }} · {{ dashboardNamespaceLabel }}
                     </p>
                     <p class="text-muted mb-1">
-                        Totals include all retained runs. Recent volume uses the last hour, day and seven days.
-                        Trends use hourly buckets over seven days.
+                        {{ $t("Totals include all retained runs. Recent volume uses the last hour, day and seven days. Trends use hourly buckets over seven days.") }}
                     </p>
                     <p v-if="stats.time_windows" class="text-muted mb-1">
-                        As of {{ stats.time_windows.generated_at }}
+                        {{ $t("As of") }} {{ stats.time_windows.generated_at }}
                     </p>
                     <p class="text-muted mb-0">
-                        Worker, queue and storage metrics cover the full operator scope.
+                        {{ $t("Worker, queue and storage metrics cover the full operator scope.") }}
                         <span v-if="classificationOptions.length && !classificationAvailable">
-                            This backend does not support classification filters yet.
+                            {{ $t("This backend does not support classification filters yet.") }}
                         </span>
                     </p>
                 </div>
@@ -72,13 +71,13 @@
             <section v-if="needsAttention.total_alerts > 0" class="card wl-dashboard-alerts">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
-                        <h5>Needs attention</h5>
+                        <h5>{{ $t("Needs attention") }}</h5>
                         <small class="text-muted">
-                            {{ needsAttention.total_alerts }} active alert<span v-if="needsAttention.total_alerts !== 1">s</span>
+                            {{ needsAttention.total_alerts }} {{ $t("active alert") }}<span v-if="needsAttention.total_alerts !== 1">{{ $t("s") }}</span>
                         </small>
                     </div>
 
-                    <span class="wl-chip wl-chip--warning" v-if="needsAttention.has_critical">Critical</span>
+                    <span class="wl-chip wl-chip--warning" v-if="needsAttention.has_critical">{{ $t("Critical") }}</span>
                 </div>
 
                 <div class="card-body card-bg-secondary wl-dashboard-alerts__body">
@@ -89,7 +88,7 @@
                         :class="`is-${alert.severity || 'info'}`">
                         <div class="wl-dashboard-alert__title">{{ alert.message }}</div>
                         <div class="wl-dashboard-alert__action">{{ alert.action }}</div>
-                        <small v-if="alert.scope === 'operator_workers'" class="text-muted">Operator worker scope</small>
+                        <small v-if="alert.scope === 'operator_workers'" class="text-muted">{{ $t("Operator worker scope") }}</small>
                     </article>
                 </div>
             </section>
@@ -108,15 +107,15 @@
                 <article class="card wl-dashboard-card wl-dashboard-card--wide">
                     <div class="card-header d-flex align-items-center justify-content-between">
                         <div>
-                            <h5>Fleet trends</h5>
-                            <small class="text-muted">Last 7 days, hourly resolution</small>
+                            <h5>{{ $t("Fleet trends") }}</h5>
+                            <small class="text-muted">{{ $t("Last 7 days, hourly resolution") }}</small>
                         </div>
 
-                        <span class="wl-chip">Completed vs. failed</span>
+                        <span class="wl-chip">{{ $t("Completed vs. failed") }}</span>
                     </div>
 
                     <div class="card-body card-bg-secondary">
-                        <div v-if="fleetTrendsChartSeries.length" role="img" aria-label="Fleet trends chart showing completed and failed workflow volume over time.">
+                        <div v-if="fleetTrendsChartSeries.length" role="img" :aria-label="$t('Fleet trends chart showing completed and failed workflow volume over time.')">
                             <apexchart
                                 type="area"
                                 height="320"
@@ -124,15 +123,15 @@
                                 :series="fleetTrendsChartSeries">
                             </apexchart>
                         </div>
-                        <div v-else class="wl-empty-state">No trend data available yet.</div>
+                        <div v-else class="wl-empty-state">{{ $t("No trend data available yet.") }}</div>
                     </div>
                 </article>
 
                 <article class="card wl-dashboard-card">
                     <div class="card-header d-flex align-items-center justify-content-between">
                         <div>
-                            <h5>Fleet overview</h5>
-                            <small class="text-muted">Current posture and recent volume</small>
+                            <h5>{{ $t("Fleet overview") }}</h5>
+                            <small class="text-muted">{{ $t("Current posture and recent volume") }}</small>
                         </div>
 
                         <span class="wl-chip" :class="operatorBackend().supported ? 'wl-chip--success' : 'wl-chip--warning'">
@@ -142,15 +141,15 @@
 
                     <div class="card-body card-bg-secondary wl-dashboard-split">
                         <div>
-                            <div class="wl-panel-subtitle">Current status</div>
+                            <div class="wl-panel-subtitle">{{ $t("Current status") }}</div>
                             <table class="table table-sm mb-0">
                                 <tbody>
                                     <tr>
-                                        <td>Running</td>
+                                        <td>{{ $t("Running") }}</td>
                                         <td class="text-right">{{ fleetMetric('current', 'running').toLocaleString() }}</td>
                                     </tr>
                                     <tr>
-                                        <td>Failed</td>
+                                        <td>{{ $t("Failed") }}</td>
                                         <td class="text-right text-danger">{{ fleetMetric('current', 'failed').toLocaleString() }}</td>
                                     </tr>
                                 </tbody>
@@ -158,28 +157,28 @@
                         </div>
 
                         <div>
-                            <div class="wl-panel-subtitle">Recent trends</div>
+                            <div class="wl-panel-subtitle">{{ $t("Recent trends") }}</div>
                             <table class="table table-sm mb-0">
                                 <thead>
                                     <tr>
-                                        <th>Period</th>
-                                        <th class="text-right">Completed</th>
-                                        <th class="text-right">Failed</th>
+                                        <th>{{ $t("Period") }}</th>
+                                        <th class="text-right">{{ $t("Completed") }}</th>
+                                        <th class="text-right">{{ $t("Failed") }}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td>Last hour</td>
+                                        <td>{{ $t("Last hour") }}</td>
                                         <td class="text-right text-success">{{ fleetMetric('trends', 'hour', 'completed').toLocaleString() }}</td>
                                         <td class="text-right text-danger">{{ fleetMetric('trends', 'hour', 'failed').toLocaleString() }}</td>
                                     </tr>
                                     <tr>
-                                        <td>Last day</td>
+                                        <td>{{ $t("Last day") }}</td>
                                         <td class="text-right text-success">{{ fleetMetric('trends', 'day', 'completed').toLocaleString() }}</td>
                                         <td class="text-right text-danger">{{ fleetMetric('trends', 'day', 'failed').toLocaleString() }}</td>
                                     </tr>
                                     <tr>
-                                        <td>Last week</td>
+                                        <td>{{ $t("Last week") }}</td>
                                         <td class="text-right text-success">{{ fleetMetric('trends', 'week', 'completed').toLocaleString() }}</td>
                                         <td class="text-right text-danger">{{ fleetMetric('trends', 'week', 'failed').toLocaleString() }}</td>
                                     </tr>
@@ -188,15 +187,15 @@
                         </div>
 
                         <div class="wl-operator-backend">
-                            <div class="wl-panel-subtitle">Backend capability</div>
+                            <div class="wl-panel-subtitle">{{ $t("Backend capability") }}</div>
                             <div v-if="operatorBackendSeverity()" class="wl-operator-backend__summary">
-                                Severity {{ operatorBackendSeverity() }}
+                                {{ $t("Severity") }} {{ operatorBackendSeverity() }}
                             </div>
                             <div class="wl-operator-backend__summary">
-                                Database {{ operatorBackendComponentLabel('database') }}
+                                {{ $t("Database") }} {{ operatorBackendComponentLabel('database') }}
                             </div>
                             <div class="wl-operator-backend__summary">
-                                Cache {{ operatorBackendComponentLabel('cache') }}
+                                {{ $t("Cache") }} {{ operatorBackendComponentLabel('cache') }}
                             </div>
                             <div v-if="operatorBackendIssues().length" class="wl-operator-backend__issues">
                                 <div v-for="(issue, index) in operatorBackendIssues()" :key="index">
@@ -210,11 +209,11 @@
                 <article class="card wl-dashboard-card wl-dashboard-card--wide">
                     <div class="card-header d-flex align-items-center justify-content-between">
                         <div>
-                            <h5>Workflow type health</h5>
-                            <small class="text-muted">Top workflow types by volume</small>
+                            <h5>{{ $t("Workflow type health") }}</h5>
+                            <small class="text-muted">{{ $t("Top workflow types by volume") }}</small>
                         </div>
 
-                        <span class="wl-chip">{{ topWorkflowTypes.length }} tracked types</span>
+                        <span class="wl-chip">{{ topWorkflowTypes.length }} {{ $t("tracked types") }}</span>
                     </div>
 
                     <div class="card-body card-bg-secondary">
@@ -222,11 +221,11 @@
                             <table class="table table-sm mb-0">
                                 <thead>
                                     <tr>
-                                        <th>Workflow type</th>
-                                        <th class="text-right">Runs</th>
-                                        <th class="text-right">Pass rate</th>
-                                        <th class="text-right">Median duration</th>
-                                        <th class="text-right">Errors</th>
+                                        <th>{{ $t("Workflow type") }}</th>
+                                        <th class="text-right">{{ $t("Runs") }}</th>
+                                        <th class="text-right">{{ $t("Pass rate") }}</th>
+                                        <th class="text-right">{{ $t("Median duration") }}</th>
+                                        <th class="text-right">{{ $t("Errors") }}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -253,22 +252,22 @@
                                 </tbody>
                             </table>
                         </div>
-                        <div v-else class="wl-empty-state">No workflow type health data available yet.</div>
+                        <div v-else class="wl-empty-state">{{ $t("No workflow type health data available yet.") }}</div>
                     </div>
                 </article>
 
                 <article class="card wl-dashboard-card">
                     <div class="card-header d-flex align-items-center justify-content-between">
                         <div>
-                            <h5>Type breakdown</h5>
-                            <small class="text-muted">Pass rate and latency for the busiest workflows</small>
+                            <h5>{{ $t("Type breakdown") }}</h5>
+                            <small class="text-muted">{{ $t("Pass rate and latency for the busiest workflows") }}</small>
                         </div>
                     </div>
 
                     <div class="card-body card-bg-secondary">
                         <div v-if="topWorkflowTypes.length" class="wl-dashboard-chart-stack">
                             <div>
-                                <div class="wl-panel-subtitle">Pass rate</div>
+                                <div class="wl-panel-subtitle">{{ $t("Pass rate") }}</div>
                                 <apexchart
                                     type="bar"
                                     height="220"
@@ -278,7 +277,7 @@
                             </div>
 
                             <div>
-                                <div class="wl-panel-subtitle">Median duration</div>
+                                <div class="wl-panel-subtitle">{{ $t("Median duration") }}</div>
                                 <apexchart
                                     type="bar"
                                     height="220"
@@ -287,15 +286,15 @@
                                 </apexchart>
                             </div>
                         </div>
-                        <div v-else class="wl-empty-state">No workflow health charts available yet.</div>
+                        <div v-else class="wl-empty-state">{{ $t("No workflow health charts available yet.") }}</div>
                     </div>
                 </article>
 
                 <article class="card wl-dashboard-card">
                     <div class="card-header d-flex align-items-center justify-content-between">
                         <div>
-                            <h5>Overview</h5>
-                            <small class="text-muted">Throughput, outliers, and exception hotspots</small>
+                            <h5>{{ $t("Overview") }}</h5>
+                            <small class="text-muted">{{ $t("Throughput, outliers, and exception hotspots") }}</small>
                         </div>
                     </div>
 
@@ -318,8 +317,8 @@
                 <article class="card wl-dashboard-card wl-dashboard-card--wide" v-if="operatorMetrics">
                     <div class="card-header d-flex align-items-center justify-content-between">
                         <div>
-                            <h5>Operator metrics</h5>
-                            <small class="text-muted">Backlog, projection health, and recovery posture</small>
+                            <h5>{{ $t("Operator metrics") }}</h5>
+                            <small class="text-muted">{{ $t("Backlog, projection health, and recovery posture") }}</small>
                         </div>
 
                         <span class="wl-chip" v-if="operatorMetrics.generated_at">{{ operatorMetrics.generated_at }}</span>
@@ -328,187 +327,182 @@
                     <div class="card-body card-bg-secondary wl-operator-grid">
                         <div class="wl-operator-metrics-grid">
                             <div class="wl-operator-metric">
-                                <div class="wl-operator-metric__label">Runnable tasks</div>
+                                <div class="wl-operator-metric__label">{{ $t("Runnable tasks") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'runnable_tasks') }}</div>
                                 <div class="wl-operator-metric__meta">
-                                    {{ operatorMetricLabel('backlog', 'delayed_tasks') }} delayed,
-                                    {{ operatorMetricLabel('backlog', 'leased_tasks') }} leased
+                                    {{ operatorMetricLabel('backlog', 'delayed_tasks') }} {{ $t("delayed,") }}
+                                    {{ operatorMetricLabel('backlog', 'leased_tasks') }} {{ $t("leased") }}
                                 </div>
                                 <div class="wl-operator-metric__meta">
-                                    {{ operatorMetricLabel('backlog', 'tasks_added_last_minute') }} added last minute,
-                                    {{ operatorMetricLabel('backlog', 'tasks_dispatched_last_minute') }} dispatched last minute
+                                    {{ operatorMetricLabel('backlog', 'tasks_added_last_minute') }} {{ $t("added last minute,") }}
+                                    {{ operatorMetricLabel('backlog', 'tasks_dispatched_last_minute') }} {{ $t("dispatched last minute") }}
                                 </div>
                                 <div v-if="operatorReadyDueAgeAvailable()" class="wl-operator-metric__meta">
-                                    oldest ready {{ operatorDurationMetricLabel('tasks', 'max_ready_due_age_ms') }} waiting
+                                    {{ $t("oldest ready") }} {{ operatorDurationMetricLabel('tasks', 'max_ready_due_age_ms') }} {{ $t("waiting") }}
                                     <template v-if="operatorReadyDueOldestAt()">
-                                        (since {{ operatorReadyDueOldestAt() }})
+                                        {{ $t("(since") }} {{ operatorReadyDueOldestAt() }})
                                     </template>
                                 </div>
                             </div>
                             <div class="wl-operator-metric">
-                                <div class="wl-operator-metric__label">Unhealthy tasks</div>
+                                <div class="wl-operator-metric__label">{{ $t("Unhealthy tasks") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'unhealthy_tasks') }}</div>
                                 <div class="wl-operator-metric__meta">
-                                    {{ operatorMetricLabel('tasks', 'dispatch_overdue') }} dispatch overdue,
-                                    {{ operatorMetricLabel('tasks', 'lease_expired') }} lease expired
+                                    {{ operatorMetricLabel('tasks', 'dispatch_overdue') }} {{ $t("dispatch overdue,") }}
+                                    {{ operatorMetricLabel('tasks', 'lease_expired') }} {{ $t("lease expired") }}
                                 </div>
                                 <div v-if="operatorUnhealthyAgeAvailable()" class="wl-operator-metric__meta">
-                                    worst {{ operatorDurationMetricLabel('tasks', 'max_unhealthy_age_ms') }} unhealthy
+                                    {{ $t("worst") }} {{ operatorDurationMetricLabel('tasks', 'max_unhealthy_age_ms') }} {{ $t("unhealthy") }}
                                     <template v-if="operatorUnhealthyOldestAt()">
-                                        (since {{ operatorUnhealthyOldestAt() }})
+                                        {{ $t("(since") }} {{ operatorUnhealthyOldestAt() }})
                                     </template>
                                 </div>
                                 <div v-if="operatorStuckLeaseAgeAvailable()" class="wl-operator-metric__meta">
-                                    oldest lease {{ operatorDurationMetricLabel('tasks', 'max_lease_expired_age_ms') }} expired
+                                    {{ $t("oldest lease") }} {{ operatorDurationMetricLabel('tasks', 'max_lease_expired_age_ms') }} {{ $t("expired") }}
                                     <template v-if="operatorStuckLeaseOldestExpiredAt()">
-                                        (since {{ operatorStuckLeaseOldestExpiredAt() }})
+                                        {{ $t("(since") }} {{ operatorStuckLeaseOldestExpiredAt() }})
                                     </template>
                                 </div>
                                 <div v-if="operatorDispatchOverdueAgeAvailable()" class="wl-operator-metric__meta">
-                                    oldest overdue {{ operatorDurationMetricLabel('tasks', 'max_dispatch_overdue_age_ms') }} waiting dispatch
+                                    {{ $t("oldest overdue") }} {{ operatorDurationMetricLabel('tasks', 'max_dispatch_overdue_age_ms') }} {{ $t("waiting dispatch") }}
                                     <template v-if="operatorDispatchOverdueOldestSince()">
-                                        (since {{ operatorDispatchOverdueOldestSince() }})
+                                        {{ $t("(since") }} {{ operatorDispatchOverdueOldestSince() }})
                                     </template>
                                 </div>
                                 <div v-if="operatorDispatchFailedAgeAvailable()" class="wl-operator-metric__meta">
-                                    oldest dispatch {{ operatorDurationMetricLabel('tasks', 'max_dispatch_failed_age_ms') }} failed
+                                    {{ $t("oldest dispatch") }} {{ operatorDurationMetricLabel('tasks', 'max_dispatch_failed_age_ms') }} {{ $t("failed") }}
                                     <template v-if="operatorDispatchFailedOldestAt()">
-                                        (since {{ operatorDispatchFailedOldestAt() }})
+                                        {{ $t("(since") }} {{ operatorDispatchFailedOldestAt() }})
                                     </template>
                                 </div>
                             </div>
                             <div class="wl-operator-metric">
-                                <div class="wl-operator-metric__label">Repair needed runs</div>
+                                <div class="wl-operator-metric__label">{{ $t("Repair needed runs") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'repair_needed_runs') }}</div>
                                 <div v-if="operatorRunRepairNeededAgeAvailable()" class="wl-operator-metric__meta">
-                                    oldest {{ operatorDurationMetricLabel('runs', 'max_repair_needed_age_ms') }} stuck
+                                    {{ $t("oldest") }} {{ operatorDurationMetricLabel('runs', 'max_repair_needed_age_ms') }} {{ $t("stuck") }}
                                     <template v-if="operatorRunRepairNeededOldestAt()">
-                                        (since {{ operatorRunRepairNeededOldestAt() }})
+                                        {{ $t("(since") }} {{ operatorRunRepairNeededOldestAt() }})
                                     </template>
                                 </div>
                             </div>
                             <div class="wl-operator-metric">
-                                <div class="wl-operator-metric__label">Claim failed runs</div>
+                                <div class="wl-operator-metric__label">{{ $t("Claim failed runs") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'claim_failed_runs') }}</div>
                                 <div v-if="operatorClaimFailedAgeAvailable()" class="wl-operator-metric__meta">
-                                    oldest claim {{ operatorDurationMetricLabel('tasks', 'max_claim_failed_age_ms') }} failed
+                                    {{ $t("oldest claim") }} {{ operatorDurationMetricLabel('tasks', 'max_claim_failed_age_ms') }} {{ $t("failed") }}
                                     <template v-if="operatorClaimFailedOldestAt()">
-                                        (since {{ operatorClaimFailedOldestAt() }})
+                                        {{ $t("(since") }} {{ operatorClaimFailedOldestAt() }})
                                     </template>
                                 </div>
                             </div>
                             <div class="wl-operator-metric">
-                                <div class="wl-operator-metric__label">Compatibility blocked</div>
+                                <div class="wl-operator-metric__label">{{ $t("Compatibility blocked") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'compatibility_blocked_runs') }}</div>
                                 <div v-if="operatorCompatibilityBlockedAgeAvailable()" class="wl-operator-metric__meta">
-                                    oldest {{ operatorDurationMetricLabel('backlog', 'max_compatibility_blocked_age_ms') }} behind
+                                    {{ $t("oldest") }} {{ operatorDurationMetricLabel('backlog', 'max_compatibility_blocked_age_ms') }} {{ $t("behind") }}
                                     <template v-if="operatorCompatibilityBlockedOldestStartedAt()">
-                                        (since {{ operatorCompatibilityBlockedOldestStartedAt() }})
+                                        {{ $t("(since") }} {{ operatorCompatibilityBlockedOldestStartedAt() }})
                                     </template>
                                 </div>
                             </div>
                             <div class="wl-operator-metric" v-if="operatorRunWaitAvailable()">
-                                <div class="wl-operator-metric__label">Waiting runs</div>
+                                <div class="wl-operator-metric__label">{{ $t("Waiting runs") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('runs', 'waiting') }}</div>
                                 <div v-if="operatorRunWaitAgeAvailable()" class="wl-operator-metric__meta">
-                                    oldest {{ operatorDurationMetricLabel('runs', 'max_wait_age_ms') }} parked
+                                    {{ $t("oldest") }} {{ operatorDurationMetricLabel('runs', 'max_wait_age_ms') }} {{ $t("parked") }}
                                     <template v-if="operatorRunWaitOldestStartedAt()">
-                                        (since {{ operatorRunWaitOldestStartedAt() }})
+                                        {{ $t("(since") }} {{ operatorRunWaitOldestStartedAt() }})
                                     </template>
                                 </div>
                             </div>
                             <div class="wl-operator-metric">
-                                <div class="wl-operator-metric__label">Active workers</div>
+                                <div class="wl-operator-metric__label">{{ $t("Active workers") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('workers', 'active_workers') }}</div>
-                                <div class="wl-operator-metric__meta">{{ operatorMetricLabel('workers', 'active_worker_scopes') }} queue scopes</div>
+                                <div class="wl-operator-metric__meta">{{ operatorMetricLabel('workers', 'active_worker_scopes') }} {{ $t("queue scopes") }}</div>
                             </div>
                             <div class="wl-operator-metric">
-                                <div class="wl-operator-metric__label">Pending starts</div>
+                                <div class="wl-operator-metric__label">{{ $t("Pending starts") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('starts', 'pending_runs') }}</div>
                             </div>
                             <div class="wl-operator-metric">
-                                <div class="wl-operator-metric__label">Start commands</div>
+                                <div class="wl-operator-metric__label">{{ $t("Start commands") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('starts', 'pending_commands') }}</div>
                             </div>
                             <div class="wl-operator-metric">
-                                <div class="wl-operator-metric__label">Due start tasks</div>
+                                <div class="wl-operator-metric__label">{{ $t("Due start tasks") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('starts', 'ready_tasks') }}</div>
                             </div>
                             <div class="wl-operator-metric">
-                                <div class="wl-operator-metric__label">Max start latency</div>
+                                <div class="wl-operator-metric__label">{{ $t("Max start latency") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorDurationMetricLabel('starts', 'max_pending_ms') }}</div>
                             </div>
                         </div>
 
                         <section class="wl-operator-section">
-                            <div class="wl-panel-subtitle">Activity attempts</div>
+                            <div class="wl-panel-subtitle">{{ $t("Activity attempts") }}</div>
                             <p>
-                                {{ operatorMetricLabel('activities', 'retrying') }} retrying,
-                                {{ operatorMetricLabel('activities', 'running') }} running,
-                                {{ operatorMetricLabel('activities', 'failed_attempts') }} failed attempts,
-                                max {{ operatorMetricLabel('activities', 'max_attempt_count') }} attempts.
+                                {{ operatorMetricLabel('activities', 'retrying') }} {{ $t("retrying,") }}
+                                {{ operatorMetricLabel('activities', 'running') }} {{ $t("running,") }}
+                                {{ operatorMetricLabel('activities', 'failed_attempts') }} {{ $t("failed attempts, max") }} {{ operatorMetricLabel('activities', 'max_attempt_count') }} {{ $t("attempts.") }}
                             </p>
                             <p v-if="operatorRetryingActivityAgeAvailable()">
-                                Oldest retrying activity {{ operatorDurationMetricLabel('activities', 'max_retrying_age_ms') }} behind
+                                {{ $t("Oldest retrying activity") }} {{ operatorDurationMetricLabel('activities', 'max_retrying_age_ms') }} {{ $t("behind") }}
                                 <template v-if="operatorRetryingActivityOldestStartedAt()">
-                                    (since {{ operatorRetryingActivityOldestStartedAt() }})
+                                    {{ $t("(since") }} {{ operatorRetryingActivityOldestStartedAt() }})
                                 </template>.
                             </p>
                             <p v-if="operatorActivityTimeoutOverdueAvailable()">
-                                {{ operatorMetricLabel('activities', 'timeout_overdue') }} timeout overdue,
-                                worst {{ operatorDurationMetricLabel('activities', 'max_timeout_overdue_age_ms') }} past deadline
+                                {{ operatorMetricLabel('activities', 'timeout_overdue') }} {{ $t("timeout overdue, worst") }} {{ operatorDurationMetricLabel('activities', 'max_timeout_overdue_age_ms') }} {{ $t("past deadline") }}
                                 <template v-if="operatorActivityTimeoutOverdueOldestAt()">
-                                    (since {{ operatorActivityTimeoutOverdueOldestAt() }})
+                                    {{ $t("(since") }} {{ operatorActivityTimeoutOverdueOldestAt() }})
                                 </template>.
                             </p>
                         </section>
 
                         <section class="wl-operator-section">
-                            <div class="wl-panel-subtitle">Projection health</div>
+                            <div class="wl-panel-subtitle">{{ $t("Projection health") }}</div>
                             <p>
-                                Run summaries: {{ operatorProjectionMetricLabel('summaries') }} summaries for
-                                {{ operatorProjectionMetricLabel('runs') }} runs,
-                                {{ operatorProjectionMetricLabel('missing') }} missing,
-                                {{ operatorProjectionMetricLabel('orphaned') }} orphaned,
-                                {{ operatorProjectionMetricLabel('stale') }} stale.
+                                {{ $t("Run summaries:") }} {{ operatorProjectionMetricLabel('summaries') }} {{ $t("summaries for") }}
+                                {{ operatorProjectionMetricLabel('runs') }} {{ $t("runs,") }}
+                                {{ operatorProjectionMetricLabel('missing') }} {{ $t("missing,") }}
+                                {{ operatorProjectionMetricLabel('orphaned') }} {{ $t("orphaned,") }}
+                                {{ operatorProjectionMetricLabel('stale') }} {{ $t("stale.") }}
                             </p>
                             <p v-if="operatorRunSummaryMissingAgeAvailable()">
-                                Oldest run-summary missing run {{ operatorProjectionDurationMetricLabel('run_summaries', 'max_missing_run_age_ms') }} behind
+                                {{ $t("Oldest run-summary missing run") }} {{ operatorProjectionDurationMetricLabel('run_summaries', 'max_missing_run_age_ms') }} {{ $t("behind") }}
                                 <template v-if="operatorRunSummaryMissingOldestStartedAt()">
-                                    (since {{ operatorRunSummaryMissingOldestStartedAt() }})
+                                    {{ $t("(since") }} {{ operatorRunSummaryMissingOldestStartedAt() }})
                                 </template>.
                             </p>
                             <p>
-                                Wait rows: {{ operatorProjectionMetricLabel('run_waits', 'rows') }} rows across
-                                {{ operatorProjectionMetricLabel('run_waits', 'projected_runs') }} runs,
-                                {{ operatorProjectionMetricLabel('run_waits', 'runs_with_waits') }} canonical waits,
-                                {{ operatorProjectionMetricLabel('run_waits', 'missing_runs_with_waits') }} missing,
-                                {{ operatorProjectionMetricLabel('run_waits', 'stale_projected_runs') }} stale,
-                                {{ operatorProjectionMetricLabel('run_waits', 'orphaned') }} orphaned.
+                                {{ $t("Wait rows:") }} {{ operatorProjectionMetricLabel('run_waits', 'rows') }} {{ $t("rows across") }}
+                                {{ operatorProjectionMetricLabel('run_waits', 'projected_runs') }} {{ $t("runs,") }}
+                                {{ operatorProjectionMetricLabel('run_waits', 'runs_with_waits') }} {{ $t("canonical waits,") }}
+                                {{ operatorProjectionMetricLabel('run_waits', 'missing_runs_with_waits') }} {{ $t("missing,") }}
+                                {{ operatorProjectionMetricLabel('run_waits', 'stale_projected_runs') }} {{ $t("stale,") }}
+                                {{ operatorProjectionMetricLabel('run_waits', 'orphaned') }} {{ $t("orphaned.") }}
                             </p>
                             <p>
-                                Timeline rows: {{ operatorProjectionMetricLabel('run_timeline_entries', 'rows') }} rows for
-                                {{ operatorProjectionMetricLabel('run_timeline_entries', 'history_events') }} history events,
-                                {{ operatorProjectionMetricLabel('run_timeline_entries', 'missing_runs_with_history') }} missing,
-                                {{ operatorProjectionMetricLabel('run_timeline_entries', 'stale_projected_runs') }} stale,
-                                {{ operatorProjectionMetricLabel('run_timeline_entries', 'orphaned') }} orphaned.
+                                {{ $t("Timeline rows:") }} {{ operatorProjectionMetricLabel('run_timeline_entries', 'rows') }} {{ $t("rows for") }}
+                                {{ operatorProjectionMetricLabel('run_timeline_entries', 'history_events') }} {{ $t("history events,") }}
+                                {{ operatorProjectionMetricLabel('run_timeline_entries', 'missing_runs_with_history') }} {{ $t("missing,") }}
+                                {{ operatorProjectionMetricLabel('run_timeline_entries', 'stale_projected_runs') }} {{ $t("stale,") }}
+                                {{ operatorProjectionMetricLabel('run_timeline_entries', 'orphaned') }} {{ $t("orphaned.") }}
                             </p>
                             <p>
-                                Timer rows: {{ operatorProjectionMetricLabel('run_timer_entries', 'rows') }} rows across
-                                {{ operatorProjectionMetricLabel('run_timer_entries', 'projected_runs') }} projected runs,
-                                {{ operatorProjectionMetricLabel('run_timer_entries', 'missing_runs_with_timers') }} missing,
-                                {{ operatorProjectionMetricLabel('run_timer_entries', 'stale_projected_runs') }} stale,
-                                {{ operatorProjectionMetricLabel('run_timer_entries', 'orphaned') }} orphaned.
+                                {{ $t("Timer rows:") }} {{ operatorProjectionMetricLabel('run_timer_entries', 'rows') }} {{ $t("rows across") }}
+                                {{ operatorProjectionMetricLabel('run_timer_entries', 'projected_runs') }} {{ $t("projected runs,") }}
+                                {{ operatorProjectionMetricLabel('run_timer_entries', 'missing_runs_with_timers') }} {{ $t("missing,") }}
+                                {{ operatorProjectionMetricLabel('run_timer_entries', 'stale_projected_runs') }} {{ $t("stale,") }}
+                                {{ operatorProjectionMetricLabel('run_timer_entries', 'orphaned') }} {{ $t("orphaned.") }}
                             </p>
                         </section>
 
                         <section class="wl-operator-section">
-                            <div class="wl-panel-subtitle">Repair policy</div>
+                            <div class="wl-panel-subtitle">{{ $t("Repair policy") }}</div>
                             <p>
-                                Redispatch after {{ operatorPolicyMetricLabel('redispatch_after_seconds') }} seconds,
-                                throttle worker sweeps for {{ operatorPolicyMetricLabel('loop_throttle_seconds') }} seconds,
-                                scan {{ operatorPolicyMetricLabel('scan_limit') }} rows per pass,
-                                backoff capped at {{ operatorPolicyMetricLabel('failure_backoff_max_seconds') }} seconds.
+                                {{ $t("Redispatch after") }} {{ operatorPolicyMetricLabel('redispatch_after_seconds') }} {{ $t("seconds, throttle worker sweeps for") }} {{ operatorPolicyMetricLabel('loop_throttle_seconds') }} {{ $t("seconds, scan") }} {{ operatorPolicyMetricLabel('scan_limit') }} {{ $t("rows per pass, backoff capped at") }} {{ operatorPolicyMetricLabel('failure_backoff_max_seconds') }} {{ $t("seconds.") }}
                             </p>
                             <div v-if="operatorRepairScopes().length" class="wl-inline-list">
                                 <span v-for="scope in operatorRepairScopes()" :key="operatorRepairScopeLabel(scope)">
@@ -518,83 +512,72 @@
                         </section>
 
                         <section class="wl-operator-section">
-                            <div class="wl-panel-subtitle">Stuck-run detectors</div>
+                            <div class="wl-panel-subtitle">{{ $t("Stuck-run detectors") }}</div>
                             <p>
-                                {{ operatorMetricLabel('repair', 'missing_task_candidates') }} runs missing a next task
-                                ({{ operatorMetricLabel('repair', 'selected_missing_task_candidates') }} selected this pass),
-                                oldest {{ operatorDurationMetricLabel('repair', 'max_missing_run_age_ms') }} behind.
+                                {{ operatorMetricLabel('repair', 'missing_task_candidates') }} {{ $t("runs missing a next task (") }}{{ operatorMetricLabel('repair', 'selected_missing_task_candidates') }} {{ $t("selected this pass), oldest") }} {{ operatorDurationMetricLabel('repair', 'max_missing_run_age_ms') }} {{ $t("behind.") }}
                             </p>
                             <p v-if="operatorRepairOldestStartedAt()">
-                                Oldest missing-task run started at {{ operatorRepairOldestStartedAt() }}.
+                                {{ $t("Oldest missing-task run started at") }} {{ operatorRepairOldestStartedAt() }}.
                             </p>
                         </section>
 
                         <section class="wl-operator-section">
-                            <div class="wl-panel-subtitle">Scheduler-role health</div>
+                            <div class="wl-panel-subtitle">{{ $t("Scheduler-role health") }}</div>
                             <p v-if="!operatorSchedulesAvailable()" class="text-muted">
-                                No scheduler-role metrics exposed by the current workflow engine.
+                                {{ $t("No scheduler-role metrics exposed by the current workflow engine.") }}
                             </p>
                             <template v-else>
                                 <p>
-                                    {{ operatorMetricLabel('schedules', 'active') }} active schedules,
-                                    {{ operatorMetricLabel('schedules', 'paused') }} paused,
-                                    {{ operatorMetricLabel('schedules', 'missed') }} overdue this tick,
-                                    oldest {{ operatorDurationMetricLabel('schedules', 'max_overdue_ms') }} behind.
+                                    {{ operatorMetricLabel('schedules', 'active') }} {{ $t("active schedules,") }}
+                                    {{ operatorMetricLabel('schedules', 'paused') }} {{ $t("paused,") }}
+                                    {{ operatorMetricLabel('schedules', 'missed') }} {{ $t("overdue this tick, oldest") }} {{ operatorDurationMetricLabel('schedules', 'max_overdue_ms') }} {{ $t("behind.") }}
                                 </p>
                                 <p v-if="operatorScheduleOldestOverdueAt()">
-                                    Oldest overdue fire due at {{ operatorScheduleOldestOverdueAt() }}.
+                                    {{ $t("Oldest overdue fire due at") }} {{ operatorScheduleOldestOverdueAt() }}.
                                 </p>
                                 <p>
-                                    {{ operatorMetricLabel('schedules', 'fires_total') }} fires recorded against active schedules,
-                                    {{ operatorMetricLabel('schedules', 'failures_total') }} failures.
+                                    {{ operatorMetricLabel('schedules', 'fires_total') }} {{ $t("fires recorded against active schedules,") }}
+                                    {{ operatorMetricLabel('schedules', 'failures_total') }} {{ $t("failures.") }}
                                 </p>
                             </template>
                         </section>
 
                         <section class="wl-operator-section">
-                            <div class="wl-panel-subtitle">Matching-role (this node)</div>
+                            <div class="wl-panel-subtitle">{{ $t("Matching-role (this node)") }}</div>
                             <p v-if="!operatorMatchingRoleAvailable()" class="text-muted">
-                                No matching-role metrics exposed by the current workflow engine.
+                                {{ $t("No matching-role metrics exposed by the current workflow engine.") }}
                             </p>
                             <template v-else>
                                 <p>
-                                    Shape <code>{{ operatorMatchingRoleShape() }}</code>,
-                                    wake owner <code>{{ operatorMatchingRoleWakeOwner() }}</code>,
-                                    queue-wake {{ operatorMatchingRoleQueueWakeEnabled() ? 'enabled' : 'disabled' }},
-                                    task dispatch <code>{{ operatorMatchingRoleTaskDispatchMode() }}</code>.
+                                    {{ $t("Shape") }} <code>{{ operatorMatchingRoleShape() }}</code>{{ $t(", wake owner") }} <code>{{ operatorMatchingRoleWakeOwner() }}</code>{{ $t(", queue-wake") }} {{ operatorMatchingRoleQueueWakeEnabled() ? 'enabled' : 'disabled' }}{{ $t(", task dispatch") }} <code>{{ operatorMatchingRoleTaskDispatchMode() }}</code>.
                                 </p>
                                 <p v-if="operatorMatchingRoleContractAvailable()">
-                                    Partitions by <code>{{ operatorMatchingRolePartitionPrimitivesLabel() }}</code>,
-                                    backpressure <code>{{ operatorMatchingRoleBackpressureModel() }}</code>.
+                                    {{ $t("Partitions by") }} <code>{{ operatorMatchingRolePartitionPrimitivesLabel() }}</code>{{ $t(", backpressure") }} <code>{{ operatorMatchingRoleBackpressureModel() }}</code>.
                                 </p>
                                 <p v-if="operatorMatchingRoleDiscoveryLimitsAvailable()">
-                                    Discovery limits: poll batch cap <code>{{ operatorMatchingRoleDiscoveryLimit('poll_batch_cap') }}</code>,
-                                    availability ceiling <code>{{ operatorMatchingRoleDiscoveryLimit('availability_ceiling_seconds') }}s</code>,
-                                    wake signal TTL <code>{{ operatorMatchingRoleDiscoveryLimit('wake_signal_ttl_seconds') }}s</code>,
-                                    workflow task lease <code>{{ operatorMatchingRoleDiscoveryLimit('workflow_task_lease_seconds') }}s</code>,
-                                    activity task lease <code>{{ operatorMatchingRoleDiscoveryLimit('activity_task_lease_seconds') }}s</code>.
+                                    {{ $t("Discovery limits: poll batch cap") }} <code>{{ operatorMatchingRoleDiscoveryLimit('poll_batch_cap') }}</code>{{ $t(", availability ceiling") }} <code>{{ operatorMatchingRoleDiscoveryLimit('availability_ceiling_seconds') }}s</code>{{ $t(", wake signal TTL") }} <code>{{ operatorMatchingRoleDiscoveryLimit('wake_signal_ttl_seconds') }}s</code>{{ $t(", workflow task lease") }} <code>{{ operatorMatchingRoleDiscoveryLimit('workflow_task_lease_seconds') }}s</code>{{ $t(", activity task lease") }} <code>{{ operatorMatchingRoleDiscoveryLimit('activity_task_lease_seconds') }}s</code>.
                                 </p>
                                 <p class="text-muted">
-                                    Single-process scope &mdash; read one snapshot per node to see the full deployment.
+                                    {{ $t("Single-process scope — read one snapshot per node to see the full deployment.") }}
                                 </p>
                             </template>
                         </section>
 
                         <section class="wl-operator-section">
-                            <div class="wl-panel-subtitle">Worker compatibility fleet</div>
+                            <div class="wl-panel-subtitle">{{ $t("Worker compatibility fleet") }}</div>
                             <p v-if="!operatorWorkerFleet().length" class="text-muted">
-                                No active worker compatibility heartbeats in this namespace.
+                                {{ $t("No active worker compatibility heartbeats in this namespace.") }}
                             </p>
                             <div v-else class="table-responsive">
                                 <table class="table table-sm mb-0">
                                     <thead>
                                         <tr>
-                                            <th>Worker</th>
-                                            <th>Queue scope</th>
-                                            <th>Supports</th>
-                                            <th>Required</th>
-                                            <th>Source</th>
-                                            <th>Heartbeat</th>
+                                            <th>{{ $t("Worker") }}</th>
+                                            <th>{{ $t("Queue scope") }}</th>
+                                            <th>{{ $t("Supports") }}</th>
+                                            <th>{{ $t("Required") }}</th>
+                                            <th>{{ $t("Source") }}</th>
+                                            <th>{{ $t("Heartbeat") }}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -603,8 +586,8 @@
                                             <td>{{ operatorWorkerFleetScope(entry) }}</td>
                                             <td>{{ (entry.supported || []).join(', ') || '—' }}</td>
                                             <td>
-                                                <span v-if="entry.supports_required" class="wl-chip">yes</span>
-                                                <span v-else class="wl-chip wl-chip--warning">no</span>
+                                                <span v-if="entry.supports_required" class="wl-chip">{{ $t("yes") }}</span>
+                                                <span v-else class="wl-chip wl-chip--warning">{{ $t("no") }}</span>
                                             </td>
                                             <td>{{ entry.source || '—' }}</td>
                                             <td>{{ entry.recorded_at || '—' }}</td>
@@ -615,22 +598,21 @@
                         </section>
 
                         <section class="wl-operator-section">
-                            <div class="wl-panel-subtitle">Update wait policy</div>
+                            <div class="wl-panel-subtitle">{{ $t("Update wait policy") }}</div>
                             <p>
-                                Wait up to {{ operatorUpdateWaitMetricLabel('completion_timeout_ms') }} ms for completion responses,
-                                polling every {{ operatorUpdateWaitMetricLabel('poll_interval_ms') }} ms before returning an accepted lifecycle.
+                                {{ $t("Wait up to") }} {{ operatorUpdateWaitMetricLabel('completion_timeout_ms') }} {{ $t("ms for completion responses, polling every") }} {{ operatorUpdateWaitMetricLabel('poll_interval_ms') }} {{ $t("ms before returning an accepted lifecycle.") }}
                             </p>
                         </section>
 
                         <section class="wl-operator-section">
-                            <div class="wl-panel-subtitle">Structural limits</div>
+                            <div class="wl-panel-subtitle">{{ $t("Structural limits") }}</div>
                             <div v-if="structuralLimitRows().length" class="wl-structural-limits">
                                 <div v-for="entry in structuralLimitRows()" :key="entry.key" class="wl-structural-limits__row">
                                     <span>{{ entry.label }}</span>
                                     <span>{{ entry.value }}</span>
                                 </div>
                             </div>
-                            <p v-else>No structural limit snapshot available.</p>
+                            <p v-else>{{ $t("No structural limit snapshot available.") }}</p>
                         </section>
                     </div>
                 </article>

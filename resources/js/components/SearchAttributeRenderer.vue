@@ -9,7 +9,7 @@
             </div>
         </div>
         <div v-else class="text-muted small">
-            (no search attributes)
+            {{ $t("(no search attributes)") }}
         </div>
     </div>
 </template>

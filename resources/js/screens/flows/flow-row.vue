@@ -8,20 +8,20 @@
 
                 <div class="flow-row__meta">
                     <template v-if="flow.engine_source === 'v1'">
-                        <span class="flow-row__mono">legacy workflow {{ flow.legacy_id || flow.id }}</span>
+                        <span class="flow-row__mono">{{ $t("legacy workflow") }} {{ flow.legacy_id || flow.id }}</span>
                     </template>
                     <template v-else>
-                        <span class="flow-row__mono">workflow {{ flow.instance_id || flow.workflow_instance_id || flow.id }}</span>
-                        <span class="flow-row__mono">run {{ flow.run_id || flow.id }}</span>
+                        <span class="flow-row__mono">{{ $t("workflow") }} {{ flow.instance_id || flow.workflow_instance_id || flow.id }}</span>
+                        <span class="flow-row__mono">{{ $t("run") }} {{ flow.run_id || flow.id }}</span>
                     </template>
                 </div>
 
                 <div class="flow-row__badges">
                     <span v-if="flow.engine_source" class="badge badge-secondary">
-                        Engine {{ flow.engine_source.toUpperCase() }}<template v-if="flow.engine_version"> {{ flow.engine_version }}</template>
+                        {{ $t("Engine") }} {{ flow.engine_source.toUpperCase() }}<template v-if="flow.engine_version"> {{ flow.engine_version }}</template>
                     </span>
-                    <span v-if="flow.namespace" class="badge badge-light">Namespace {{ flow.namespace }}</span>
-                    <span v-if="flow.status === 'continued' || flow.closed_reason === 'continued'" class="badge badge-info">Continued</span>
+                    <span v-if="flow.namespace" class="badge badge-light">{{ $t("Namespace") }} {{ flow.namespace }}</span>
+                    <span v-if="flow.status === 'continued' || flow.closed_reason === 'continued'" class="badge badge-info">{{ $t("Continued") }}</span>
                     <span v-if="showStatusBadge(flow)" :class="statusBadgeClass(flow)" class="badge">{{ statusBadgeLabel(flow) }}</span>
                     <span v-if="showRepairBadge(flow)"
                           :class="repairBadgeClass(flow)"
@@ -38,7 +38,7 @@
                     <span v-if="showCompatibilityEntryBadge(flow)"
                           class="badge badge-info"
                           :title="compatibilityEntryBadgeTitle(flow)">
-                        Entry Review
+                        {{ $t("Entry Review") }}
                     </span>
                     <span v-if="showCompatibilitySemanticsBadge(flow)"
                           :class="compatibilitySemanticsBadgeClass(flow)"
@@ -76,7 +76,7 @@
 
         <td v-if="columnEnabled('actions')" class="table-fit text-right flow-row__actions-cell">
             <router-link class="btn btn-sm btn-outline-primary flow-row__open" :to="detailRoute(flow)">
-                Open
+                {{ $t("Open") }}
             </router-link>
         </td>
     </tr>

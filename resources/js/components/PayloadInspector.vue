@@ -10,8 +10,8 @@
                     class="btn btn-sm btn-link p-0 text-muted"
                     @click="collapsed = !collapsed"
                     :aria-expanded="!collapsed">
-                    <span v-if="collapsed">▶ Show payload ({{ payloadSize }})</span>
-                    <span v-else>▼ Hide payload</span>
+                    <span v-if="collapsed">{{ $t("▶ Show payload (") }}{{ payloadSize }})</span>
+                    <span v-else>{{ $t("▼ Hide payload") }}</span>
                 </button>
             </div>
 
@@ -25,7 +25,7 @@
         </div>
 
         <div v-else class="text-muted">
-            <small>(empty)</small>
+            <small>{{ $t("(empty)") }}</small>
         </div>
     </div>
 </template>

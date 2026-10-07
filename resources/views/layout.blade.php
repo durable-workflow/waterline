@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ $uiLocale }}">
 <head>
     <!-- Meta Information -->
     <meta charset="utf-8">
@@ -16,7 +16,7 @@
 <body>
 <!-- Skip to main content link for keyboard navigation (WCAG 2.4.1) -->
 <a href="#main-content" class="skip-link sr-only sr-only-focusable">
-    Skip to main content
+    {{ \Waterline\Support\UiLocale::text('Skip to main content') }}
 </a>
 
 @if ($environmentBanner)

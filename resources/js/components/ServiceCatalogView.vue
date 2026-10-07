@@ -2,10 +2,10 @@
     <div class="service-catalog-view">
         <section class="service-catalog-view__hero">
             <div>
-                <p class="service-catalog-view__eyebrow">Operator surface</p>
-                <h1 class="service-catalog-view__title">Services</h1>
+                <p class="service-catalog-view__eyebrow">{{ $t("Operator surface") }}</p>
+                <h1 class="service-catalog-view__title">{{ $t("Services") }}</h1>
                 <p class="service-catalog-view__subtitle">
-                    Namespace-scoped catalog entries and durable service-call outcomes.
+                    {{ $t("Namespace-scoped catalog entries and durable service-call outcomes.") }}
                 </p>
             </div>
 
@@ -23,7 +23,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon fill-text-color service-catalog-view__button-icon">
                         <path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"></path>
                     </svg>
-                    Refresh
+                    {{ $t("Refresh") }}
                 </button>
             </div>
         </section>
@@ -32,43 +32,43 @@
             <div class="card-body card-bg-secondary">
                 <div class="service-catalog-view__filter-grid">
                     <label>
-                        <span>Scope</span>
+                        <span>{{ $t("Scope") }}</span>
                         <select v-model="callFilters.scope" class="form-control form-control-sm" @change="reloadFromFirstPage">
-                            <option value="relevant">Relevant</option>
-                            <option value="owned">Owned</option>
-                            <option value="caller">Caller</option>
-                            <option value="target">Target</option>
+                            <option value="relevant">{{ $t("Relevant") }}</option>
+                            <option value="owned">{{ $t("Owned") }}</option>
+                            <option value="caller">{{ $t("Caller") }}</option>
+                            <option value="target">{{ $t("Target") }}</option>
                         </select>
                     </label>
 
                     <label>
-                        <span>Status</span>
+                        <span>{{ $t("Status") }}</span>
                         <select v-model="callFilters.status" class="form-control form-control-sm" @change="onSpecificStatusChanged">
-                            <option value="">Any status</option>
+                            <option value="">{{ $t("Any status") }}</option>
                             <option v-for="status in statusOptions" :key="status" :value="status">{{ formatLabel(status) }}</option>
                         </select>
                     </label>
 
                     <label>
-                        <span>Status Bucket</span>
+                        <span>{{ $t("Status Bucket") }}</span>
                         <select v-model="callFilters.status_bucket" class="form-control form-control-sm" @change="reloadFromFirstPage" :disabled="!!callFilters.status">
-                            <option value="">Any status bucket</option>
+                            <option value="">{{ $t("Any status bucket") }}</option>
                             <option v-for="bucket in statusBucketOptions" :key="bucket" :value="bucket">{{ formatLabel(bucket) }}</option>
                         </select>
                     </label>
 
                     <label>
-                        <span>Outcome</span>
+                        <span>{{ $t("Outcome") }}</span>
                         <select v-model="callFilters.outcome" class="form-control form-control-sm" @change="onSpecificOutcomeChanged">
-                            <option value="">Any outcome</option>
+                            <option value="">{{ $t("Any outcome") }}</option>
                             <option v-for="outcome in outcomeOptions" :key="outcome" :value="outcome">{{ formatLabel(outcome) }}</option>
                         </select>
                     </label>
 
                     <label>
-                        <span>Outcome Bucket</span>
+                        <span>{{ $t("Outcome Bucket") }}</span>
                         <select v-model="callFilters.outcome_bucket" class="form-control form-control-sm" @change="reloadFromFirstPage" :disabled="!!callFilters.outcome">
-                            <option value="">Any outcome bucket</option>
+                            <option value="">{{ $t("Any outcome bucket") }}</option>
                             <option v-for="bucket in outcomeBucketOptions" :key="bucket" :value="bucket">{{ formatLabel(bucket) }}</option>
                         </select>
                     </label>
@@ -92,46 +92,46 @@
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color service-catalog-view__state-icon">
                 <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
             </svg>
-            <p class="service-catalog-view__state-copy">Loading {{ activeTabDefinition.label.toLowerCase() }}...</p>
+            <p class="service-catalog-view__state-copy">{{ $t("Loading") }} {{ activeTabDefinition.label.toLowerCase() }}...</p>
         </div>
 
         <div v-else-if="error" class="service-catalog-view__state card card-bg-secondary service-catalog-view__state--error">
-            <strong>Services unavailable</strong>
+            <strong>{{ $t("Services unavailable") }}</strong>
             <p class="service-catalog-view__state-copy">{{ error }}</p>
-            <button class="btn btn-sm btn-outline-primary" @click="refresh">Retry</button>
+            <button class="btn btn-sm btn-outline-primary" @click="refresh">{{ $t("Retry") }}</button>
         </div>
 
         <div v-else class="service-catalog-view__content">
             <section class="service-catalog-view__summary-grid">
                 <article class="card service-catalog-view__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="service-catalog-view__summary-label">Returned rows</div>
+                        <div class="service-catalog-view__summary-label">{{ $t("Returned rows") }}</div>
                         <div class="service-catalog-view__summary-value">{{ totalRows.toLocaleString() }}</div>
-                        <div class="service-catalog-view__summary-meta">{{ pagination ? pagination.total.toLocaleString() : rows.length.toLocaleString() }} total in this result set.</div>
+                        <div class="service-catalog-view__summary-meta">{{ pagination ? pagination.total.toLocaleString() : rows.length.toLocaleString() }} {{ $t("total in this result set.") }}</div>
                     </div>
                 </article>
 
                 <article v-if="activeTab === 'calls'" class="card service-catalog-view__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="service-catalog-view__summary-label">Open calls</div>
+                        <div class="service-catalog-view__summary-label">{{ $t("Open calls") }}</div>
                         <div class="service-catalog-view__summary-value">{{ openCallCount.toLocaleString() }}</div>
-                        <div class="service-catalog-view__summary-meta">Calls accepted but not terminal.</div>
+                        <div class="service-catalog-view__summary-meta">{{ $t("Calls accepted but not terminal.") }}</div>
                     </div>
                 </article>
 
                 <article v-if="activeTab === 'calls'" class="card service-catalog-view__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="service-catalog-view__summary-label">Policy outcomes</div>
+                        <div class="service-catalog-view__summary-label">{{ $t("Policy outcomes") }}</div>
                         <div class="service-catalog-view__summary-value" :class="policyOutcomeCount > 0 ? 'is-warning' : ''">{{ policyOutcomeCount.toLocaleString() }}</div>
-                        <div class="service-catalog-view__summary-meta">Boundary rejections in the returned page.</div>
+                        <div class="service-catalog-view__summary-meta">{{ $t("Boundary rejections in the returned page.") }}</div>
                     </div>
                 </article>
 
                 <article v-if="activeTab === 'calls'" class="card service-catalog-view__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="service-catalog-view__summary-label">Terminal calls</div>
+                        <div class="service-catalog-view__summary-label">{{ $t("Terminal calls") }}</div>
                         <div class="service-catalog-view__summary-value">{{ terminalCallCount.toLocaleString() }}</div>
-                        <div class="service-catalog-view__summary-meta">Completed, failed, or cancelled calls.</div>
+                        <div class="service-catalog-view__summary-meta">{{ $t("Completed, failed, or cancelled calls.") }}</div>
                     </div>
                 </article>
             </section>
@@ -153,36 +153,36 @@
                         <table class="table table-hover table-sm mb-0">
                             <thead>
                                 <tr v-if="activeTab === 'endpoints'">
-                                    <th>Endpoint</th>
-                                    <th>Namespace</th>
-                                    <th>Description</th>
-                                    <th class="text-right">Created</th>
-                                    <th class="text-right">Action</th>
+                                    <th>{{ $t("Endpoint") }}</th>
+                                    <th>{{ $t("Namespace") }}</th>
+                                    <th>{{ $t("Description") }}</th>
+                                    <th class="text-right">{{ $t("Created") }}</th>
+                                    <th class="text-right">{{ $t("Action") }}</th>
                                 </tr>
                                 <tr v-else-if="activeTab === 'services'">
-                                    <th>Service</th>
-                                    <th>Endpoint</th>
-                                    <th>Namespace</th>
-                                    <th>Description</th>
-                                    <th class="text-right">Action</th>
+                                    <th>{{ $t("Service") }}</th>
+                                    <th>{{ $t("Endpoint") }}</th>
+                                    <th>{{ $t("Namespace") }}</th>
+                                    <th>{{ $t("Description") }}</th>
+                                    <th class="text-right">{{ $t("Action") }}</th>
                                 </tr>
                                 <tr v-else-if="activeTab === 'operations'">
-                                    <th>Operation</th>
-                                    <th>Service</th>
-                                    <th>Mode</th>
-                                    <th>Binding</th>
-                                    <th>Namespace</th>
-                                    <th class="text-right">Action</th>
+                                    <th>{{ $t("Operation") }}</th>
+                                    <th>{{ $t("Service") }}</th>
+                                    <th>{{ $t("Mode") }}</th>
+                                    <th>{{ $t("Binding") }}</th>
+                                    <th>{{ $t("Namespace") }}</th>
+                                    <th class="text-right">{{ $t("Action") }}</th>
                                 </tr>
                                 <tr v-else>
-                                    <th>Call</th>
-                                    <th>Operation</th>
-                                    <th>Caller</th>
-                                    <th>Target</th>
-                                    <th>Status</th>
-                                    <th>Outcome</th>
-                                    <th class="text-right">Accepted</th>
-                                    <th class="text-right">Action</th>
+                                    <th>{{ $t("Call") }}</th>
+                                    <th>{{ $t("Operation") }}</th>
+                                    <th>{{ $t("Caller") }}</th>
+                                    <th>{{ $t("Target") }}</th>
+                                    <th>{{ $t("Status") }}</th>
+                                    <th>{{ $t("Outcome") }}</th>
+                                    <th class="text-right">{{ $t("Accepted") }}</th>
+                                    <th class="text-right">{{ $t("Action") }}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -196,7 +196,7 @@
                                         <td>{{ row.description || '-' }}</td>
                                         <td class="text-right">{{ timestamp(row.created_at) }}</td>
                                         <td class="text-right">
-                                            <button class="btn btn-sm btn-outline-primary" @click="openDetail('endpoints', row)">View</button>
+                                            <button class="btn btn-sm btn-outline-primary" @click="openDetail('endpoints', row)">{{ $t("View") }}</button>
                                         </td>
                                     </template>
 
@@ -209,7 +209,7 @@
                                         <td>{{ row.namespace || '-' }}</td>
                                         <td>{{ row.description || '-' }}</td>
                                         <td class="text-right">
-                                            <button class="btn btn-sm btn-outline-primary" @click="openDetail('services', row)">View</button>
+                                            <button class="btn btn-sm btn-outline-primary" @click="openDetail('services', row)">{{ $t("View") }}</button>
                                         </td>
                                     </template>
 
@@ -223,7 +223,7 @@
                                         <td>{{ formatLabel(row.handler_binding_kind) }}</td>
                                         <td>{{ row.namespace || '-' }}</td>
                                         <td class="text-right">
-                                            <button class="btn btn-sm btn-outline-primary" @click="openDetail('operations', row)">View</button>
+                                            <button class="btn btn-sm btn-outline-primary" @click="openDetail('operations', row)">{{ $t("View") }}</button>
                                         </td>
                                     </template>
 
@@ -263,7 +263,7 @@
                                         </td>
                                         <td class="text-right">{{ timestamp(row.accepted_at || row.created_at) }}</td>
                                         <td class="text-right">
-                                            <button class="btn btn-sm btn-outline-primary" @click="openDetail('calls', row)">View</button>
+                                            <button class="btn btn-sm btn-outline-primary" @click="openDetail('calls', row)">{{ $t("View") }}</button>
                                         </td>
                                     </template>
                                 </tr>
@@ -272,14 +272,14 @@
                     </div>
 
                     <div v-else class="service-catalog-view__empty-state">
-                        <strong>No {{ activeTabDefinition.emptyLabel }} found</strong>
-                        <p class="mb-0 text-muted">No rows matched the current namespace and filters.</p>
+                        <strong>{{ $t("No") }} {{ activeTabDefinition.emptyLabel }} {{ $t("found") }}</strong>
+                        <p class="mb-0 text-muted">{{ $t("No rows matched the current namespace and filters.") }}</p>
                     </div>
                 </div>
 
                 <div v-if="pagination && pagination.last_page > 1" class="card-footer service-catalog-view__pagination">
                     <button class="btn btn-secondary btn-sm" @click="goToPage(pagination.current_page - 1)" :disabled="pagination.current_page === 1">
-                        Previous
+                        {{ $t("Previous") }}
                     </button>
 
                     <div class="service-catalog-view__pagination-pages">
@@ -296,7 +296,7 @@
                     </div>
 
                     <button class="btn btn-secondary btn-sm" @click="goToPage(pagination.current_page + 1)" :disabled="pagination.current_page === pagination.last_page">
-                        Next
+                        {{ $t("Next") }}
                     </button>
                 </div>
             </article>
@@ -308,7 +308,7 @@
                         <small class="text-muted" v-if="detail && detail.id"><code>{{ detail.id }}</code></small>
                     </div>
 
-                    <button class="btn btn-sm btn-outline-secondary" @click="closeDetail">Close</button>
+                    <button class="btn btn-sm btn-outline-secondary" @click="closeDetail">{{ $t("Close") }}</button>
                 </div>
 
                 <div class="card-body card-bg-secondary">
@@ -316,17 +316,17 @@
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color service-catalog-view__state-icon">
                             <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
                         </svg>
-                        <p class="service-catalog-view__state-copy">Loading detail...</p>
+                        <p class="service-catalog-view__state-copy">{{ $t("Loading detail...") }}</p>
                     </div>
 
                     <div v-else-if="detailError" class="service-catalog-view__state service-catalog-view__state--inline service-catalog-view__state--error">
-                        <strong>Detail unavailable</strong>
+                        <strong>{{ $t("Detail unavailable") }}</strong>
                         <p class="service-catalog-view__state-copy">{{ detailError }}</p>
                     </div>
 
                     <div v-else-if="detail" class="service-catalog-view__detail-grid">
                         <section class="service-catalog-view__detail-section">
-                            <h6>Summary</h6>
+                            <h6>{{ $t("Summary") }}</h6>
                             <dl>
                                 <template v-for="row in detailRows" :key="row.key">
                                     <dt>{{ row.label }}</dt>
@@ -339,10 +339,10 @@
                         </section>
 
                         <section v-if="detailType === 'calls'" class="service-catalog-view__detail-section">
-                            <h6>References</h6>
+                            <h6>{{ $t("References") }}</h6>
                             <div class="service-catalog-view__reference-list">
                                 <div v-if="detail.caller_link" class="service-catalog-view__reference">
-                                    <strong>Caller</strong>
+                                    <strong>{{ $t("Caller") }}</strong>
                                     <span>{{ detail.caller_link.namespace || '-' }}</span>
                                     <router-link v-if="referenceRoute(detail.caller_link)" :to="referenceRoute(detail.caller_link)">
                                         {{ referenceLabel(detail.caller_link) }}
@@ -351,7 +351,7 @@
                                 </div>
 
                                 <div v-if="detail.linked_run_ref" class="service-catalog-view__reference">
-                                    <strong>Target Run</strong>
+                                    <strong>{{ $t("Target Run") }}</strong>
                                     <span>{{ detail.linked_run_ref.namespace || '-' }}</span>
                                     <router-link v-if="referenceRoute(detail.linked_run_ref)" :to="referenceRoute(detail.linked_run_ref)">
                                         {{ referenceLabel(detail.linked_run_ref) }}
@@ -360,7 +360,7 @@
                                 </div>
 
                                 <div v-if="detail.linked_update_ref" class="service-catalog-view__reference">
-                                    <strong>Target Update</strong>
+                                    <strong>{{ $t("Target Update") }}</strong>
                                     <span>{{ detail.linked_update_ref.namespace || '-' }}</span>
                                     <router-link v-if="referenceRoute(detail.linked_update_ref)" :to="referenceRoute(detail.linked_update_ref)">
                                         {{ updateReferenceLabel(detail.linked_update_ref) }}
@@ -371,28 +371,28 @@
                         </section>
 
                         <section v-if="detail.endpoint || detail.service || nestedServices.length || nestedOperations.length" class="service-catalog-view__detail-section service-catalog-view__detail-section--wide">
-                            <h6>Catalog Links</h6>
+                            <h6>{{ $t("Catalog Links") }}</h6>
                             <div class="service-catalog-view__nested-grid">
                                 <div v-if="detail.endpoint" class="service-catalog-view__nested-row">
-                                    <strong>Endpoint</strong>
+                                    <strong>{{ $t("Endpoint") }}</strong>
                                     <span>{{ detail.endpoint.endpoint_name || '-' }}</span>
                                     <code>{{ shortId(detail.endpoint.id) }}</code>
                                 </div>
 
                                 <div v-if="detail.service" class="service-catalog-view__nested-row">
-                                    <strong>Service</strong>
+                                    <strong>{{ $t("Service") }}</strong>
                                     <span>{{ detail.service.service_name || '-' }}</span>
                                     <code>{{ shortId(detail.service.id) }}</code>
                                 </div>
 
                                 <div v-for="service in nestedServices" :key="'service-' + service.id" class="service-catalog-view__nested-row">
-                                    <strong>Service</strong>
+                                    <strong>{{ $t("Service") }}</strong>
                                     <span>{{ service.service_name || '-' }}</span>
                                     <code>{{ shortId(service.id) }}</code>
                                 </div>
 
                                 <div v-for="operation in nestedOperations" :key="'operation-' + operation.id" class="service-catalog-view__nested-row">
-                                    <strong>Operation</strong>
+                                    <strong>{{ $t("Operation") }}</strong>
                                     <span>{{ operation.operation_name || '-' }}</span>
                                     <code>{{ shortId(operation.id) }}</code>
                                 </div>
@@ -400,7 +400,7 @@
                         </section>
 
                         <section v-if="hasObjectEntries(detail.boundary_policy) || hasObjectEntries(detail.metadata) || hasObjectEntries(detail.retry_policy)" class="service-catalog-view__detail-section service-catalog-view__detail-section--wide">
-                            <h6>Policy Snapshot</h6>
+                            <h6>{{ $t("Policy Snapshot") }}</h6>
                             <pre v-if="hasObjectEntries(detail.boundary_policy)">{{ prettyJson(detail.boundary_policy) }}</pre>
                             <pre v-if="hasObjectEntries(detail.retry_policy)">{{ prettyJson(detail.retry_policy) }}</pre>
                             <pre v-if="hasObjectEntries(detail.metadata)">{{ prettyJson(detail.metadata) }}</pre>

@@ -1616,14 +1616,14 @@
     <div class="flow-index">
         <section class="flow-index__hero">
             <div>
-                <p class="flow-index__eyebrow">Workflow Operations</p>
-                <h1 class="flow-index__title">{{ flowCollectionLabel() }} Flows</h1>
+                <p class="flow-index__eyebrow">{{ $t("Workflow Operations") }}</p>
+                <h1 class="flow-index__title">{{ flowCollectionLabel() }} {{ $t("Flows") }}</h1>
                 <p class="flow-index__subtitle">{{ flowCollectionDescription }}</p>
             </div>
 
             <div class="flow-index__summary-grid">
                 <article class="flow-index__metric">
-                    <span class="flow-index__metric-label">Visible On Page</span>
+                    <span class="flow-index__metric-label">{{ $t("Visible On Page") }}</span>
                     <strong class="flow-index__metric-value">{{ ready ? flows.length : '...' }}</strong>
                     <p class="flow-index__metric-copy">
                         {{ hasNewEntries ? 'Fresh runs are waiting at the top of the queue.' : 'Current registry slice loaded for review.' }}
@@ -1631,7 +1631,7 @@
                 </article>
 
                 <article class="flow-index__metric">
-                    <span class="flow-index__metric-label">Queue Window</span>
+                    <span class="flow-index__metric-label">{{ $t("Queue Window") }}</span>
                     <strong class="flow-index__metric-value">{{ flowPageSummary }}</strong>
                     <p class="flow-index__metric-copy">
                         {{ workflowListSortDirection() === 'desc' ? 'Newest runs first for fast triage.' : 'Oldest runs first for chronological review.' }}
@@ -1639,7 +1639,7 @@
                 </article>
 
                 <article class="flow-index__metric">
-                    <span class="flow-index__metric-label">Applied Filters</span>
+                    <span class="flow-index__metric-label">{{ $t("Applied Filters") }}</span>
                     <strong class="flow-index__metric-value">{{ activeFilterCount }}</strong>
                     <p class="flow-index__metric-copy">
                         {{ hasActiveFilters ? 'This collection is narrowed by a saved view or manual filters.' : 'The default collection is currently in view.' }}
@@ -1647,7 +1647,7 @@
                 </article>
 
                 <article class="flow-index__metric">
-                    <span class="flow-index__metric-label">Presentation</span>
+                    <span class="flow-index__metric-label">{{ $t("Presentation") }}</span>
                     <strong class="flow-index__metric-value">{{ selectedViewDisplay }}</strong>
                     <p class="flow-index__metric-copy">
                         {{ workflowListDensity() === 'dense' ? 'Dense rows keep more history visible at once.' : 'Comfortable spacing favors deeper inspection.' }}
@@ -1659,10 +1659,10 @@
         <section class="flow-index__panel card">
             <div class="card-body flow-index__controls">
                 <div class="flow-index__controls-copy">
-                    <p class="flow-index__section-kicker">Views And Filters</p>
-                    <h2 class="flow-index__section-title">Shape the operator queue</h2>
+                    <p class="flow-index__section-kicker">{{ $t("Views And Filters") }}</p>
+                    <h2 class="flow-index__section-title">{{ $t("Shape the operator queue") }}</h2>
                     <p class="flow-index__section-copy">
-                        Saved views, visibility filters, and display options stay wired to Waterline's existing preference contract.
+                        {{ $t("Saved views, visibility filters, and display options stay wired to Waterline's existing preference contract.") }}
                     </p>
                 </div>
 
@@ -1671,7 +1671,7 @@
                             v-model="selectedSavedView"
                             @change="selectSavedView"
                             class="custom-select custom-select-sm flow-index__view-select">
-                        <option :value="null">Default View</option>
+                        <option :value="null">{{ $t("Default View") }}</option>
                         <option v-for="view in savedViews"
                                 :key="view.id"
                                 :value="view.id"
@@ -1682,12 +1682,12 @@
 
                     <div class="flow-index__toolbar-actions">
                         <label v-if="classificationScope && classificationScope.options.length" class="mb-0 mr-2">
-                            <span class="small text-muted mr-2">Workflow classification</span>
+                            <span class="small text-muted mr-2">{{ $t("Workflow classification") }}</span>
                             <select class="custom-select custom-select-sm w-auto"
                                     :value="$route.query.classification || ''"
                                     :disabled="classificationScope.available === false"
                                     @change="changeClassification($event.target.value)">
-                                <option value="">All workflow types</option>
+                                <option value="">{{ $t("All workflow types") }}</option>
                                 <option v-for="option in classificationScope.options" :key="option.value" :value="option.value">
                                     {{ option.label }}
                                 </option>
@@ -1698,32 +1698,32 @@
                                 class="btn btn-outline-secondary btn-sm"
                                 data-waterline-dialog-trigger="filters"
                                 @click="editFilters">
-                            Filters
+                            {{ $t("Filters") }}
                         </button>
 
                         <button v-if="hasVisibilityFilterContract() && hasActiveFilters"
                                 class="btn btn-outline-secondary btn-sm"
                                 @click="clearFilters">
-                            Clear
+                            {{ $t("Clear") }}
                         </button>
 
                         <button v-if="savedViewsEnabled && hasVisibilityFilterContract()"
                                 class="btn btn-outline-secondary btn-sm"
                                 @click="saveCurrentView">
-                            Save View
+                            {{ $t("Save View") }}
                         </button>
 
                         <button v-if="canManageSelectedCustomView()"
                                 class="btn btn-outline-secondary btn-sm"
                                 @click="manageCurrentView">
-                            Manage View
+                            {{ $t("Manage View") }}
                         </button>
 
                         <button class="btn btn-outline-secondary btn-sm"
                                 data-waterline-dialog-trigger="view-options"
                                 :disabled="savingOperatorPreferences"
                                 @click="editViewOptions">
-                            View Options
+                            {{ $t("View Options") }}
                         </button>
                     </div>
                 </div>
@@ -1731,7 +1731,7 @@
 
             <div v-if="hasFilterContext" class="flow-index__chips">
                 <span v-if="visibilityFilters && visibilityFilters.saved_view" class="badge badge-primary">
-                    View: {{ visibilityFilters.saved_view.name }}
+                    {{ $t("View:") }} {{ visibilityFilters.saved_view.name }}
                 </span>
 
                 <span v-if="selectedSavedViewWarning()" class="badge badge-dark">
@@ -1748,19 +1748,19 @@
             <div v-if="listLoadError" class="alert alert-warning m-3" role="alert">
                 {{ listLoadError }}
                 <button v-if="$route.query.classification" class="btn btn-sm btn-outline-secondary ml-2"
-                        @click="changeClassification('')">Show all workflow types</button>
+                        @click="changeClassification('')">{{ $t("Show all workflow types") }}</button>
             </div>
             <div v-if="ready && !listLoadError && classificationScope" class="small text-muted px-4 pt-3">
                 {{ classificationScope.label }}
-                <span v-if="listOperatorScope && listOperatorScope.namespace"> / namespace {{ listOperatorScope.namespace }}</span>
-                <span v-else-if="listOperatorScope && listOperatorScope.mode === 'cluster'"> / all namespaces</span>
-                <span v-if="listTimeWindows"> / retained {{ listTimeWindows.status_bucket }} runs matching the current filters</span>
-                <span v-if="listTimeWindows && listTimeWindows.generated_at"> / as of {{ listTimeWindows.generated_at }}</span>
+                <span v-if="listOperatorScope && listOperatorScope.namespace"> {{ $t("/ namespace") }} {{ listOperatorScope.namespace }}</span>
+                <span v-else-if="listOperatorScope && listOperatorScope.mode === 'cluster'"> {{ $t("/ all namespaces") }}</span>
+                <span v-if="listTimeWindows"> {{ $t("/ retained") }} {{ listTimeWindows.status_bucket }} {{ $t("runs matching the current filters") }}</span>
+                <span v-if="listTimeWindows && listTimeWindows.generated_at"> {{ $t("/ as of") }} {{ listTimeWindows.generated_at }}</span>
             </div>
             <div class="card-body flow-index__registry-head">
                 <div>
-                    <p class="flow-index__section-kicker">Registry</p>
-                    <h2 class="flow-index__section-title">{{ flowCollectionLabel() }} flow registry</h2>
+                    <p class="flow-index__section-kicker">{{ $t("Registry") }}</p>
+                    <h2 class="flow-index__section-title">{{ flowCollectionLabel() }} {{ $t("flow registry") }}</h2>
                     <p class="flow-index__section-copy">
                         {{ ready ? `Showing ${flows.length} ${flows.length === 1 ? 'flow' : 'flows'} on the current page.` : 'Loading the current workflow collection.' }}
                     </p>
@@ -1778,7 +1778,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin flow-index__state-icon fill-text-color">
                     <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
                 </svg>
-                <p class="flow-index__state-copy">Loading the registry, current filters, and saved views.</p>
+                <p class="flow-index__state-copy">{{ $t("Loading the registry, current filters, and saved views.") }}</p>
             </div>
 
             <div v-else-if="flows.length === 0" class="flow-index__state flow-index__state--empty">
@@ -1792,14 +1792,14 @@
                 <table :class="[workflowListTableClass, 'flow-index__table']">
                     <thead>
                     <tr>
-                        <th v-if="columnEnabled('flow')">Flow</th>
+                        <th v-if="columnEnabled('flow')">{{ $t("Flow") }}</th>
                         <th v-if="columnEnabled('started_at')"
                             :class="$route.params.type=='running' ? 'text-right' : ''">
-                            Started At
+                            {{ $t("Started At") }}
                         </th>
                         <th v-if="isTerminalCollection() && columnEnabled('closed_at')">{{ closedAtLabel() }}</th>
-                        <th v-if="isTerminalCollection() && columnEnabled('duration')" class="text-right">Duration</th>
-                        <th v-if="columnEnabled('actions')" class="text-right">Actions</th>
+                        <th v-if="isTerminalCollection() && columnEnabled('duration')" class="text-right">{{ $t("Duration") }}</th>
+                        <th v-if="columnEnabled('actions')" class="text-right">{{ $t("Actions") }}</th>
                     </tr>
                     </thead>
 
@@ -1807,11 +1807,11 @@
                         <tr v-if="hasNewEntries" key="newEntries" class="dontanimate flow-index__new-entries">
                             <td colspan="100">
                                 <div class="flow-index__new-entries-inner">
-                                    <span>New runs are waiting.</span>
+                                    <span>{{ $t("New runs are waiting.") }}</span>
                                     <small v-if="!loadingNewEntries">
-                                        <a href="#" v-on:click.prevent="loadNewEntries">Load new entries</a>
+                                        <a href="#" v-on:click.prevent="loadNewEntries">{{ $t("Load new entries") }}</a>
                                     </small>
-                                    <small v-else>Loading...</small>
+                                    <small v-else>{{ $t("Loading...") }}</small>
                                 </div>
                             </td>
                         </tr>
@@ -1824,12 +1824,12 @@
 
             <div v-if="ready && flows.length" class="flow-index__pagination">
                 <p class="flow-index__pagination-copy">
-                    Showing {{ flows.length }} {{ flows.length === 1 ? 'flow' : 'flows' }} on {{ flowPageSummary.toLowerCase() }}.
+                    {{ $t("Showing") }} {{ flows.length }} {{ flows.length === 1 ? 'flow' : 'flows' }} {{ $t("on") }} {{ flowPageSummary.toLowerCase() }}.
                 </p>
 
                 <div class="flow-index__pagination-actions">
-                    <button @click="previous" class="btn btn-secondary btn-md" :disabled="page==1">Previous</button>
-                    <button @click="next" class="btn btn-secondary btn-md" :disabled="page>=totalPages">Next</button>
+                    <button @click="previous" class="btn btn-secondary btn-md" :disabled="page==1">{{ $t("Previous") }}</button>
+                    <button @click="next" class="btn btn-secondary btn-md" :disabled="page>=totalPages">{{ $t("Next") }}</button>
                 </div>
             </div>
         </section>
