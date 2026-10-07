@@ -25,7 +25,7 @@ export function dashboardFixture() {
             backlog: { runnable_tasks: 1234567, unhealthy_tasks: 234567, delayed_tasks: 345678, leased_tasks: 456789, repair_needed_runs: 567890, claim_failed_runs: 678901, compatibility_blocked_runs: 789012 },
             tasks: { dispatch_overdue: 123456, lease_expired: 234567, max_ready_due_age_ms: 3600000, oldest_ready_due_at: timestamp, max_unhealthy_age_ms: 7200000, oldest_unhealthy_at: timestamp },
             runs: { waiting: 1234567, max_wait_age_ms: 3600000, oldest_wait_started_at: timestamp },
-            workers: { active_workers: 1234, active_worker_scopes: 567, fleet: [{ worker_id: 'orders-worker-'.repeat(8), connection: 'workflow_postgresql', queue: 'orders-'.repeat(12), supported: [1, 2, 3], required: 3, recorded_at: timestamp, source: 'compatibility_heartbeat' }] },
+            workers: { active_workers: 1234, active_worker_scopes: 567, fleet: [{ worker_id: 'orders-worker-'.repeat(8), connection: 'workflow_postgresql', queue: 'orders-'.repeat(12), supported: ['orders-build-v1', 'workflow-protocol-v2'], supports_required: true, recorded_at: timestamp, source: 'database' }] },
             starts: { pending_runs: 123456, pending_commands: 234567, ready_tasks: 345678, max_pending_ms: 3600000 },
             projections: { run_summaries: { summaries: 1234567, runs: 2345678, missing: 123, orphaned: 234, stale: 345, max_missing_run_age_ms: 3600000, oldest_missing_run_started_at: timestamp } },
             structural_limits: { long_diagnostic_identifier: diagnostic },
