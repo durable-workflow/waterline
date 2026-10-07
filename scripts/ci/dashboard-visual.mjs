@@ -130,6 +130,11 @@ export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirect
                 await page.goto(target, { waitUntil: 'networkidle' });
             }
             await page.locator('.wl-operator-metrics-grid').waitFor();
+            assert.equal(
+                (await page.locator('.wl-operator-metric__value').last().textContent()).trim(),
+                locale === 'uk' ? 'годину' : 'an hour',
+                'Dashboard durations must use the configured interface language.',
+            );
             const tab = await worker.evaluate(async url => (await chrome.tabs.query({})).find(tab => tab.url === url), page.url());
             assert.ok(tab, 'The zoom extension must identify the actual dashboard tab.');
             const cdp = await context.newCDPSession(page);

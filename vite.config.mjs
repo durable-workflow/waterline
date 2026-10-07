@@ -74,10 +74,13 @@ export default defineConfig({
         copyAssetsAndWriteManifest(),
     ],
     resolve: {
-        alias: {
-            '@': path.join(root, 'resources/js'),
-            vue: 'vue/dist/vue.runtime.esm-bundler.js',
-        },
+        alias: [
+            { find: '@', replacement: path.join(root, 'resources/js') },
+            { find: 'vue', replacement: 'vue/dist/vue.runtime.esm-bundler.js' },
+            // Moment's locale modules use its CommonJS entry. Keep timezone
+            // formatting on that same instance so locale registration applies.
+            { find: /^moment$/, replacement: path.join(root, 'node_modules/moment/moment.js') },
+        ],
     },
     define: {
         __VUE_OPTIONS_API__: true,
