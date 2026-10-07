@@ -240,12 +240,17 @@ class WaterlineServiceProvider extends ServiceProvider
      */
     protected function registerCommands()
     {
-        if ($this->app->runningInConsole() && ! BackendConfiguration::serviceMode()) {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        $this->commands([Console\PublishCommand::class]);
+
+        if (! BackendConfiguration::serviceMode()) {
             $this->commands([
                 Console\InstallCommand::class,
                 Console\NamespaceConformanceCommand::class,
                 Console\PrincipalAttributionConformanceCommand::class,
-                Console\PublishCommand::class,
                 Console\SearchAttributesConformanceCommand::class,
                 Console\SignalsQueriesConformanceCommand::class,
                 Console\WorkflowUpdatesConformanceCommand::class,

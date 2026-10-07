@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Waterline\Tests\Feature;
 
 use Orchestra\Testbench\TestCase;
+use function Orchestra\Testbench\artisan;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\RuntimeConfiguration;
 use Waterline\Tests\Fixtures\FakeRemoteClient;
@@ -42,6 +43,14 @@ final class ServiceUiLocaleTest extends TestCase
 
         try {
             RuntimeConfiguration::hydrate();
+            artisan($this, 'waterline:publish');
+            self::assertTrue(Waterline::assetsAreCurrent());
+            $catalogs = glob(WATERLINE_PATH.'/public/chunks/ui-messages-*.js');
+            self::assertCount(1, $catalogs);
+            self::assertSame(
+                hash_file('sha256', $catalogs[0]),
+                hash_file('sha256', public_path('vendor/waterline/chunks/'.basename($catalogs[0]))),
+            );
             $this->get('/waterline')->assertOk()
                 ->assertSee('<html lang="uk">', false)
                 ->assertSee('Перейти до основного вмісту')
