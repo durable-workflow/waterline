@@ -1069,6 +1069,15 @@ jobs:
         timeout --foreground --signal=TERM --kill-after=30s "$COMMAND_TIMEOUT" \
           composer "$COMPOSER_SCRIPT" -- "${arguments[@]}"
 
+    - name: Retain database timing report
+      if: ${{ always() }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: database-timing-${{ matrix.database }}-${{ matrix.shard-index }}
+        path: ${{ runner.temp }}/qualification-${{ matrix.database }}-${{ matrix.shard-index }}.xml
+        if-no-files-found: ignore
+        retention-days: 14
+
   cancellation-source:
     name: Candidate cancellation inspection source
     needs: [action-policy, classify]

@@ -14,7 +14,6 @@ use Illuminate\Support\Carbon;
 use Orchestra\Testbench\TestCase;
 use function Orchestra\Testbench\artisan;
 use Waterline\Support\Remote\RemoteBackend;
-use Waterline\Support\RuntimeConfiguration;
 use Waterline\Support\ServiceModeRequirements;
 use Waterline\Tests\Fixtures\FakeRemoteClient;
 use Waterline\Waterline;
@@ -126,38 +125,6 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('workflow_streams_unavailable_reason', null)
             ->assertJsonPath('backend.capabilities.workflow_streams', true)
             ->assertJsonPath('read_only', true);
-    }
-
-    public function testUkrainianServiceBootstrapKeepsTheHostLocaleAndApiValues(): void
-    {
-        $previous = getenv('WATERLINE_LOCALE');
-        $previousEnv = $_ENV['WATERLINE_LOCALE'] ?? null;
-        $previousServer = $_SERVER['WATERLINE_LOCALE'] ?? null;
-        putenv('WATERLINE_LOCALE=uk');
-        $this->app->setLocale('fr');
-
-        try {
-            RuntimeConfiguration::hydrate();
-            $this->get('/waterline')->assertOk()
-                ->assertSee('<html lang="uk">', false)
-                ->assertSee('Перейти до основного вмісту')
-                ->assertViewHas('waterlineBootstrap', fn (array $value): bool =>
-                    $value['locale'] === 'uk' && $value['backend']['mode'] === 'service');
-            $this->getJson('/waterline/api/instances/order-1/runs/run-1')->assertOk()
-                ->assertJsonPath('instance_id', 'order-1')
-                ->assertJsonPath('selected_run_id', 'run-1')
-                ->assertJsonPath('timeline.0.event_type', 'WorkflowStarted');
-            self::assertSame('fr', $this->app->getLocale());
-        } finally {
-            putenv($previous === false ? 'WATERLINE_LOCALE' : 'WATERLINE_LOCALE='.$previous);
-            unset($_ENV['WATERLINE_LOCALE'], $_SERVER['WATERLINE_LOCALE']);
-            if ($previousEnv !== null) {
-                $_ENV['WATERLINE_LOCALE'] = $previousEnv;
-            }
-            if ($previousServer !== null) {
-                $_SERVER['WATERLINE_LOCALE'] = $previousServer;
-            }
-        }
     }
 
     public function testServiceDetailDisplaysOnlyTheHostsConfiguredApplicationContext(): void

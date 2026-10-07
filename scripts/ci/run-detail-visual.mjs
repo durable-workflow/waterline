@@ -450,7 +450,7 @@ async function auditOperatorClarity(page, state) {
         }
     } else if (state.result === 'supported-empty') {
         if (!summary.includes('Completed describes this coordinator run.') || !summary.includes('import-run')
-            || !summary.includes('waiting / running')) {
+            || !summary.includes('Waiting / Running')) {
             throw new Error('Coordinator completion is not distinguished from its declared open child.');
         }
     } else if (state.result === 'degraded' && !summary.includes('Details removed by retention.')) {
@@ -527,8 +527,8 @@ async function auditCancellationCascade(page, state) {
     const text = await panel.innerText();
     for (const expected of [fixture.root.root_request_id, fixture.root.cleanup_deadline_at,
         'visual.php.parent', 'visual.python.child', 'php.local.work', 'rust.remote.work',
-        'Callback reported stopped', 'Previous callback stop: unknown',
-        'visual-old-worker', 'visual-replacement-worker', 'wait cancellation completed']) {
+        'Callback reported stopped', 'Previous callback stop: Unknown',
+        'visual-old-worker', 'visual-replacement-worker', 'Wait for cancellation completion']) {
         if (!text.includes(expected)) throw new Error(`Cancellation evidence is missing: ${expected}`);
     }
     if (await panel.locator('article').count() !== 2) throw new Error('The cascade does not show both runs.');

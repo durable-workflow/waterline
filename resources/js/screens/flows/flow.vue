@@ -457,7 +457,7 @@
                             {{ flow.current_run_id }}
                         </router-link>
                         <span v-if="flow.current_run_status">
-                            ({{ flow.current_run_status }}<span v-if="flow.current_run_status_bucket"> / {{ flow.current_run_status_bucket }}</span>)
+                            ({{ stateLabel(flow.current_run_status) }}<span v-if="flow.current_run_status_bucket"> / {{ stateLabel(flow.current_run_status_bucket) }}</span>)
                         </span>
                     </div>
                 </div>
@@ -535,7 +535,7 @@
                 <div class="row mb-2" v-if="hasDetailValue(flow.next_task_id)">
                     <div class="col-md-2"><strong>{{ $t("Next Task") }}</strong></div>
                     <div class="col">
-                        {{ flow.next_task_type }} / {{ flow.next_task_status }} / {{ flow.next_task_id }}
+                        {{ flow.next_task_type }} / {{ stateLabel(flow.next_task_status) }} / {{ flow.next_task_id }}
                     </div>
                 </div>
 
@@ -1497,19 +1497,19 @@
                                     {{ $t("history /") }} {{ historyReferenceLabel(update) }}
                                 </div>
                                 <div v-if="hasDetailValue(update.current_task_id)" class="small text-muted">
-                                    {{ $t("current task /") }} {{ update.current_task_id }}<span v-if="hasDetailValue(update.current_task_status)"> ({{ update.current_task_status }})</span>
+                                    {{ $t("current task /") }} {{ update.current_task_id }}<span v-if="hasDetailValue(update.current_task_status)"> ({{ stateLabel(update.current_task_status) }})</span>
                                 </div>
                                 <div v-if="historicalTaskIds(update).length" class="small text-muted">
                                     {{ $t("tasks /") }} {{ historicalTaskIds(update).join(', ') }}
                                 </div>
                                 <div v-if="update.task_missing === true && !hasDetailValue(update.current_task_id)" class="small text-muted">
-                                    {{ $t("transport /") }} {{ update.task_transport_state || 'missing' }}
+                                    {{ $t("transport /") }} {{ stateLabel(update.task_transport_state || 'missing') }}
                                 </div>
                             </td>
                             <td>
-                                <div>{{ update.state_label || update.status || '-' }}</div>
+                                <div>{{ update.state_label ? uiText(update.state_label) : stateLabel(update.status || '-') }}</div>
                                 <div v-if="hasDetailValue(update.outcome)" class="small text-muted">
-                                    {{ update.outcome }}
+                                    {{ stateLabel(update.outcome) }}
                                 </div>
                                 <div v-if="hasDetailValue(update.reason)" class="small text-muted">
                                     {{ $t("reason /") }} {{ update.reason }}
@@ -2665,13 +2665,13 @@ export default {
         diagnosticSeverityLabel(severity) {
             switch (severity) {
                 case 'critical':
-                    return 'Critical'
+                    return this.$t('Critical')
                 case 'warning':
-                    return 'Warning'
+                    return this.$t('Warning')
                 case 'info':
-                    return 'Info'
+                    return this.$t('Info')
                 default:
-                    return severity || 'Info'
+                    return severity || this.$t('Info')
             }
         },
 
@@ -2693,13 +2693,13 @@ export default {
 
         historyBudgetSummary(flow) {
             const eventCount = this.hasDetailValue(flow.history_event_count)
-                ? Number(flow.history_event_count).toLocaleString() + ' events'
-                : '- events'
+                ? this.$t('{count} events', { count: Number(flow.history_event_count).toLocaleString() }, Number(flow.history_event_count))
+                : this.$t('Unknown event count')
             const size = this.formatBytes(flow.history_size_bytes)
             const thresholds = []
 
             if (this.hasDetailValue(flow.history_event_threshold)) {
-                thresholds.push(Number(flow.history_event_threshold).toLocaleString() + ' events')
+                thresholds.push(this.$t('{count} events', { count: Number(flow.history_event_threshold).toLocaleString() }, Number(flow.history_event_threshold)))
             }
 
             if (this.hasDetailValue(flow.history_size_bytes_threshold)) {
@@ -2707,7 +2707,7 @@ export default {
             }
 
             return thresholds.length
-                ? eventCount + ' / ' + size + ' (threshold ' + thresholds.join(' or ') + ')'
+                ? this.$t('{events} / {size} (threshold {threshold})', { events: eventCount, size, threshold: thresholds.join(this.$t(' or ')) })
                 : eventCount + ' / ' + size
         },
 
@@ -2770,7 +2770,7 @@ export default {
         readableTimestamp(iso) {
             if (!iso) return ''
             try {
-                return new Date(iso).toLocaleString()
+                return new Date(iso).toLocaleString(this.$i18n.locale)
             } catch {
                 return iso
             }
@@ -2785,7 +2785,7 @@ export default {
                 case 'live_definition':
                     return this.$t("Live definition fallback")
                 case 'unavailable':
-                    return 'Unavailable'
+                    return this.$t('Unavailable')
                 default:
                     return source
             }
@@ -2914,7 +2914,7 @@ export default {
 
         compatibilityFleetSummary(supported) {
             if (supported === true) {
-                return 'yes'
+                return this.$t('yes')
             }
 
             if (supported === false) {
@@ -3046,19 +3046,21 @@ export default {
             const returned = this.timelineReturnedCount().toLocaleString()
             if ((this.flow.engine_source === 'service' || this.flow.read_mode === 'bounded')
                 && !this.hasDetailValue(this.flow.timeline_total_count)) {
-                const scope = this.flow.history_window_from_start === false ? ' in a selected history window' : ''
-                return 'Showing ' + returned + ' events' + scope + (this.timelineHasOlder() ? ' / more available' : '')
+                const key = this.flow.history_window_from_start === false
+                    ? 'Showing {count} events in a selected history window'
+                    : 'Showing {count} events'
+                return this.$t(key, { count: returned }, this.timelineReturnedCount()) + (this.timelineHasOlder() ? this.$t(' / more available') : '')
             }
             const total = this.timelineTotalCount().toLocaleString()
-            const direction = this.flow.timeline_window_direction === 'latest'
-                ? 'latest'
-                : 'selected'
+            const key = this.flow.timeline_window_direction === 'latest'
+                ? 'Showing {returned} of {total} latest events{range}'
+                : 'Showing {returned} of {total} selected events{range}'
             const range = this.hasDetailValue(this.flow.timeline_window_start_sequence)
                 && this.hasDetailValue(this.flow.timeline_window_end_sequence)
                 ? ' / #' + this.flow.timeline_window_start_sequence + '-' + this.flow.timeline_window_end_sequence
                 : ''
 
-            return 'Showing ' + returned + ' of ' + total + ' ' + direction + ' events' + range
+            return this.$t(key, { returned, total, range })
         },
 
         onHistoryScroll(event) {
@@ -3150,7 +3152,7 @@ export default {
                 case 'unsupported_terminal_without_history':
                     return this.$t("History: unsupported older terminal row")
                 default:
-                    return 'History: ' + authority
+                    return this.$t('History: {value}', { value: authority })
             }
         },
 
@@ -3163,7 +3165,7 @@ export default {
                 case 'terminal_child_link_without_typed_parent_history':
                     return this.$t("Reason: terminal child link has no typed parent history")
                 default:
-                    return 'Reason: ' + reason
+                    return this.$t('Reason: {value}', { value: reason })
             }
         },
 
@@ -4140,7 +4142,7 @@ export default {
                     ? ' / ' + rebuildReasons.map((reason) => this.projectionRebuildReasonLabel(reason)).join(', ')
                     : ''
 
-                return 'Projection rebuilt on read: ' + base + detail
+                return this.$t('Projection rebuilt on read: {value}', { value: base + detail })
             }
 
             if (source === 'workflow_run_timeline_entries') {
@@ -4159,7 +4161,7 @@ export default {
                 return this.$t("Projection: workflow_run_timer_entries")
             }
 
-            return 'Projection: ' + source
+            return this.$t('Projection: {value}', { value: source })
         },
 
         projectionRebuildReasonLabel(reason) {
@@ -4361,15 +4363,15 @@ export default {
             const resolved = command.resolved_run_id || null
 
             if (requested && resolved && requested !== resolved) {
-                return 'requested run ' + requested + ' -> resolved run ' + resolved
+                return this.$t('requested run {requested} -> resolved run {resolved}', { requested, resolved })
             }
 
             if (requested) {
-                return 'requested run ' + requested
+                return this.$t('requested run {value}', { value: requested })
             }
 
             if (resolved && command.target_scope === 'instance') {
-                return 'resolved run ' + resolved
+                return this.$t('resolved run {value}', { value: resolved })
             }
 
             return ''
@@ -4388,19 +4390,19 @@ export default {
                 const workflowDetails = []
 
                 if (workflow.parent_instance_id) {
-                    workflowDetails.push('instance ' + workflow.parent_instance_id)
+                    workflowDetails.push(this.$t('instance {value}', { value: workflow.parent_instance_id }))
                 }
 
                 if (workflow.parent_run_id) {
-                    workflowDetails.push('run ' + workflow.parent_run_id)
+                    workflowDetails.push(this.$t('run {value}', { value: workflow.parent_run_id }))
                 }
 
                 if (workflow.sequence !== null && workflow.sequence !== undefined) {
-                    workflowDetails.push('step ' + workflow.sequence)
+                    workflowDetails.push(this.$t('step {value}', { value: workflow.sequence }))
                 }
 
                 if (workflow.child_call_id) {
-                    workflowDetails.push('child call ' + workflow.child_call_id)
+                    workflowDetails.push(this.$t('child call {value}', { value: workflow.child_call_id }))
                 }
 
                 if (workflowDetails.length) {
@@ -4414,11 +4416,11 @@ export default {
             }
 
             if (this.hasDetailValue(command.caller_label) && command.caller_label !== this.commandSource(command)) {
-                details.push('caller ' + command.caller_label)
+                details.push(this.$t('caller {value}', { value: command.caller_label }))
             }
 
             if (this.hasDetailValue(command.principal_id) && this.hasDetailValue(command.principal_label)) {
-                details.push('principal ' + command.principal_id)
+                details.push(this.$t('principal {value}', { value: command.principal_id }))
             }
 
             if (command.auth_status && command.auth_method) {
@@ -4462,7 +4464,7 @@ export default {
                     ? ' / ' + task.replay_blocked_recorded_condition_key
                     : ''
 
-                return 'condition wait' + conditionLabel + ' / ' + task.replay_blocked_condition_wait_id
+                return this.$t('condition wait') + conditionLabel + ' / ' + task.replay_blocked_condition_wait_id
             }
 
             if (this.hasDetailValue(task.condition_wait_id)) {
@@ -4471,14 +4473,14 @@ export default {
                     : ''
 
                 if (this.hasDetailValue(task.timer_sequence)) {
-                    return 'condition timeout' + conditionLabel + ' #' + task.timer_sequence
+                    return this.$t('condition timeout') + conditionLabel + ' #' + task.timer_sequence
                 }
 
-                return 'condition timeout' + conditionLabel
+                return this.$t('condition timeout') + conditionLabel
             }
 
             if (this.hasDetailValue(task.timer_sequence)) {
-                return 'timer #' + task.timer_sequence
+                return this.$t('timer #{value}', { value: task.timer_sequence })
             }
 
             if (
@@ -4490,15 +4492,15 @@ export default {
             }
 
             if (this.hasDetailValue(task.workflow_update_id)) {
-                return 'update / ' + task.workflow_update_id
+                return this.$t('update / {value}', { value: task.workflow_update_id })
             }
 
             if (this.hasDetailValue(task.workflow_signal_id)) {
-                return 'signal / ' + task.workflow_signal_id
+                return this.$t('signal / {value}', { value: task.workflow_signal_id })
             }
 
             if (this.hasDetailValue(task.workflow_command_id)) {
-                return 'command / ' + task.workflow_command_id
+                return this.$t('command / {value}', { value: task.workflow_command_id })
             }
 
             if (this.hasDetailValue(task.workflow_wait_kind)) {
@@ -4510,18 +4512,18 @@ export default {
 
         taskTransportState(task) {
             const labels = {
-                ready: 'ready',
-                scheduled: 'scheduled',
-                leased: 'leased',
+                ready: this.stateLabel('ready'),
+                scheduled: this.$t('Scheduled'),
+                leased: this.stateLabel('leased'),
                 lease_expired: this.$t("lease expired"),
                 dispatch_overdue: this.$t("dispatch overdue"),
                 dispatch_failed: this.$t("dispatch failed"),
                 repair_backoff: this.$t("repair backoff"),
                 replay_blocked: this.$t("replay blocked"),
-                missing: 'missing',
-                completed: 'completed',
-                cancelled: 'cancelled',
-                failed: 'failed',
+                missing: this.stateLabel('missing'),
+                completed: this.stateLabel('completed'),
+                cancelled: this.stateLabel('cancelled'),
+                failed: this.stateLabel('failed'),
             }
 
             return labels[task.transport_state] || task.transport_state || '-'
@@ -4697,8 +4699,10 @@ export default {
         relationshipWindowSummary() {
             return ['parents', 'children'].map((direction) => {
                 const page = this.flow.relationships?.[direction]
-                return page ? page.returned_count + ' ' + direction
-                    + (page.has_more ? ' shown, more available in full details' : ' shown') : null
+                return page ? this.$t(direction === 'parents' ? '{count} parents shown{more}' : '{count} children shown{more}', {
+                    count: page.returned_count,
+                    more: page.has_more ? this.$t(', more available in full details') : '',
+                }) : null
             }).filter(Boolean).join(' / ')
         },
 

@@ -144,7 +144,7 @@
             },
 
             statusBadgeLabel(flow) {
-                return flow.status.charAt(0).toUpperCase() + flow.status.slice(1)
+                return this.stateLabel(flow.status)
             },
 
             statusBadgeClass(flow) {
@@ -165,7 +165,7 @@
                 const repair = this.repairBlocked(flow)
 
                 return repair && repair.label
-                    ? repair.label
+                    ? this.uiText(repair.label)
                     : this.$t("Repair Blocked")
             },
 
@@ -173,7 +173,7 @@
                 const repair = this.repairBlocked(flow)
 
                 return repair && repair.description
-                    ? repair.description
+                    ? this.uiText(repair.description)
                     : this.$t("Repair is currently blocked.")
             },
 
@@ -199,7 +199,7 @@
                 const taskProblem = this.taskProblem(flow)
 
                 return taskProblem && taskProblem.label
-                    ? taskProblem.label
+                    ? this.uiText(taskProblem.label)
                     : this.$t("Task Problem")
             },
 
@@ -207,7 +207,7 @@
                 const taskProblem = this.taskProblem(flow)
 
                 return taskProblem && taskProblem.description
-                    ? taskProblem.description
+                    ? this.uiText(taskProblem.description)
                     : this.$t("This run recorded workflow-task problems.")
             },
 
@@ -305,7 +305,7 @@
                 const indicator = this.historyBudgetIndicator(flow)
 
                 return indicator && indicator.label
-                    ? indicator.label
+                    ? this.uiText(indicator.label)
                     : this.$t("History Budget")
             },
 
@@ -313,7 +313,7 @@
                 const indicator = this.historyBudgetIndicator(flow)
 
                 return indicator && indicator.description
-                    ? indicator.description
+                    ? this.uiText(indicator.description)
                     : this.$t("This run is approaching a configured history budget.")
             },
 

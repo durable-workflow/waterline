@@ -648,7 +648,7 @@ export default {
         },
 
         classificationScopeLabel() {
-            return this.stats.classification_scope?.label || this.$t("All workflow types");
+            return this.uiText(this.stats.classification_scope?.label) || this.$t("All workflow types");
         },
 
         dashboardNamespaceLabel() {
@@ -751,7 +751,7 @@ export default {
                 },
                 {
                     label: this.$t("Projection rebuilds needed"),
-                    value: projectionMetricLabel(this.operatorProjectionNeedsRebuild()),
+                    value: this.uiText(projectionMetricLabel(this.operatorProjectionNeedsRebuild())),
                     meta: this.operatorProjectionNeedsRebuild() === null
                         ? this.$t("Open a workflow to inspect its history")
                         : this.$t("Outstanding projection normalization work"),
@@ -1153,7 +1153,7 @@ export default {
         },
 
         operatorProjectionMetricLabel(group, key = null) {
-            return projectionMetricLabel(this.operatorProjectionMetric(group, key));
+            return this.uiText(projectionMetricLabel(this.operatorProjectionMetric(group, key)));
         },
 
         operatorProjectionDurationMetricLabel(group, key) {
@@ -1191,7 +1191,7 @@ export default {
         },
 
         operatorBackendStatusLabel() {
-            return this.operatorBackend().supported ? 'Supported' : this.$t("Needs attention");
+            return this.operatorBackend().supported ? this.$t('Supported') : this.$t("Needs attention");
         },
 
         operatorBackendComponentLabel(component) {

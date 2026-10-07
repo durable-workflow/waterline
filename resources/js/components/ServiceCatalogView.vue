@@ -526,7 +526,7 @@ export default {
 
         activeFilterLabel() {
             if (this.activeTab !== 'calls') {
-                return 'namespace catalog';
+                return this.$t('namespace catalog');
             }
 
             const labels = [this.callFilters.scope];

@@ -303,7 +303,7 @@ export default {
         formatTimestamp(timestamp) {
             if (!timestamp) return '';
             try {
-                return new Date(timestamp).toLocaleString();
+                return new Date(timestamp).toLocaleString(this.$i18n.locale);
             } catch (e) {
                 return timestamp;
             }

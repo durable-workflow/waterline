@@ -1195,7 +1195,7 @@ export default {
                 return this.$t("Queue visibility");
             }
 
-            return 'Coordination';
+            return this.$t('Coordination');
         },
 
         coordinationAlertCategoryLabel(alert) {
@@ -1204,11 +1204,11 @@ export default {
                 : null;
 
             if (category === 'correctness') {
-                return 'Correctness';
+                return this.$t('Correctness');
             }
 
             if (category === 'acceleration') {
-                return 'Acceleration';
+                return this.$t('Acceleration');
             }
 
             return null;
@@ -1357,7 +1357,7 @@ export default {
             const milliseconds = Number(value || 0);
 
             if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
-                return 'fresh';
+                return this.$t('fresh');
             }
 
             if (milliseconds < 1000) {
@@ -1455,7 +1455,7 @@ export default {
         },
 
         formatHeartbeat(timestamp) {
-            if (!timestamp) return 'never';
+            if (!timestamp) return this.$t('never');
             const date = new Date(timestamp);
             const now = new Date();
             const diffSeconds = Math.floor((now - date) / 1000);
@@ -1463,7 +1463,7 @@ export default {
             if (diffSeconds < 60) return this.$t("{value1}s ago", { value1: diffSeconds });
             if (diffSeconds < 3600) return this.$t("{value1}m ago", { value1: Math.floor(diffSeconds / 60) });
             if (diffSeconds < 86400) return this.$t("{value1}h ago", { value1: Math.floor(diffSeconds / 3600) });
-            return date.toLocaleString();
+            return date.toLocaleString(this.$i18n.locale);
         },
 
         truncateId(id) {

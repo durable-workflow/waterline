@@ -138,7 +138,7 @@
                 }
 
                 if (!this.selectedSavedView) {
-                    return 'Default'
+                    return this.$t('Default')
                 }
 
                 const selected = this.savedViews.find((view) => view.id === this.selectedSavedView)
@@ -1824,7 +1824,7 @@
 
             <div v-if="ready && flows.length" class="flow-index__pagination">
                 <p class="flow-index__pagination-copy">
-                    {{ $t("Showing") }} {{ flows.length }} {{ flows.length === 1 ? 'flow' : 'flows' }} {{ $t("on") }} {{ flowPageSummary.toLowerCase() }}.
+                    {{ $t('Showing {count} flows on page {page} of {pages}.', { count: flows.length.toLocaleString($i18n.locale), page, pages: Math.max(totalPages, 1) }, flows.length) }}
                 </p>
 
                 <div class="flow-index__pagination-actions">
