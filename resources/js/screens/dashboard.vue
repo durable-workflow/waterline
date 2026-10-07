@@ -142,48 +142,52 @@
                     <div class="card-body card-bg-secondary wl-dashboard-split">
                         <div>
                             <div class="wl-panel-subtitle">{{ $t("Current status") }}</div>
-                            <table class="table table-sm mb-0">
-                                <tbody>
-                                    <tr>
-                                        <td>{{ $t("Running") }}</td>
-                                        <td class="text-right">{{ fleetMetric('current', 'running').toLocaleString() }}</td>
-                                    </tr>
-                                    <tr>
-                                        <td>{{ $t("Failed") }}</td>
-                                        <td class="text-right text-danger">{{ fleetMetric('current', 'failed').toLocaleString() }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div class="table-responsive" tabindex="0" role="region" :aria-label="$t('Current status')">
+                                <table class="table table-sm mb-0">
+                                    <tbody>
+                                        <tr>
+                                            <td>{{ $t("Running") }}</td>
+                                            <td class="text-right">{{ fleetMetric('current', 'running').toLocaleString() }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>{{ $t("Failed") }}</td>
+                                            <td class="text-right text-danger">{{ fleetMetric('current', 'failed').toLocaleString() }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
 
                         <div>
                             <div class="wl-panel-subtitle">{{ $t("Recent trends") }}</div>
-                            <table class="table table-sm mb-0">
-                                <thead>
-                                    <tr>
-                                        <th>{{ $t("Period") }}</th>
-                                        <th class="text-right">{{ $t("Completed") }}</th>
-                                        <th class="text-right">{{ $t("Failed") }}</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td>{{ $t("Last hour") }}</td>
-                                        <td class="text-right text-success">{{ fleetMetric('trends', 'hour', 'completed').toLocaleString() }}</td>
-                                        <td class="text-right text-danger">{{ fleetMetric('trends', 'hour', 'failed').toLocaleString() }}</td>
-                                    </tr>
-                                    <tr>
-                                        <td>{{ $t("Last day") }}</td>
-                                        <td class="text-right text-success">{{ fleetMetric('trends', 'day', 'completed').toLocaleString() }}</td>
-                                        <td class="text-right text-danger">{{ fleetMetric('trends', 'day', 'failed').toLocaleString() }}</td>
-                                    </tr>
-                                    <tr>
-                                        <td>{{ $t("Last week") }}</td>
-                                        <td class="text-right text-success">{{ fleetMetric('trends', 'week', 'completed').toLocaleString() }}</td>
-                                        <td class="text-right text-danger">{{ fleetMetric('trends', 'week', 'failed').toLocaleString() }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                            <div class="table-responsive" tabindex="0" role="region" :aria-label="$t('Recent trends')">
+                                <table class="table table-sm mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>{{ $t("Period") }}</th>
+                                            <th class="text-right">{{ $t("Completed") }}</th>
+                                            <th class="text-right">{{ $t("Failed") }}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>{{ $t("Last hour") }}</td>
+                                            <td class="text-right text-success">{{ fleetMetric('trends', 'hour', 'completed').toLocaleString() }}</td>
+                                            <td class="text-right text-danger">{{ fleetMetric('trends', 'hour', 'failed').toLocaleString() }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>{{ $t("Last day") }}</td>
+                                            <td class="text-right text-success">{{ fleetMetric('trends', 'day', 'completed').toLocaleString() }}</td>
+                                            <td class="text-right text-danger">{{ fleetMetric('trends', 'day', 'failed').toLocaleString() }}</td>
+                                        </tr>
+                                        <tr>
+                                            <td>{{ $t("Last week") }}</td>
+                                            <td class="text-right text-success">{{ fleetMetric('trends', 'week', 'completed').toLocaleString() }}</td>
+                                            <td class="text-right text-danger">{{ fleetMetric('trends', 'week', 'failed').toLocaleString() }}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
 
                         <div class="wl-operator-backend">
@@ -217,7 +221,7 @@
                     </div>
 
                     <div class="card-body card-bg-secondary">
-                        <div v-if="topWorkflowTypes.length" class="table-responsive">
+                        <div v-if="topWorkflowTypes.length" class="table-responsive" tabindex="0" role="region" :aria-label="$t('Workflow type health')">
                             <table class="table table-sm mb-0">
                                 <thead>
                                     <tr>
@@ -568,7 +572,7 @@
                             <p v-if="!operatorWorkerFleet().length" class="text-muted">
                                 {{ $t("No active worker compatibility heartbeats in this namespace.") }}
                             </p>
-                            <div v-else class="table-responsive">
+                            <div v-else class="table-responsive" tabindex="0" role="region" :aria-label="$t('Worker compatibility fleet')">
                                 <table class="table table-sm mb-0">
                                     <thead>
                                         <tr>
@@ -1652,6 +1656,28 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.wl-dashboard-view .card-body,
+.wl-dashboard-split > *,
+.wl-operator-grid > * {
+    min-width: 0;
+}
+
+.wl-dashboard-view .card {
+    overflow-wrap: anywhere;
+}
+
+.wl-dashboard-view .card-header {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.wl-dashboard-view .card-header > * {
+    min-width: 0;
+    max-width: 100%;
 }
 
 .wl-screen-state {
@@ -1678,6 +1704,12 @@ export default {
     align-items: flex-end;
     justify-content: space-between;
     gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.wl-screen-hero > * {
+    min-width: 0;
+    max-width: 100%;
 }
 
 .wl-screen-eyebrow {
@@ -1723,6 +1755,7 @@ export default {
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+    max-width: 100%;
 }
 
 .wl-chip--warning {
@@ -1774,7 +1807,7 @@ export default {
 
 .wl-dashboard-summary-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
     gap: 1rem;
 }
 
@@ -1814,6 +1847,7 @@ export default {
 
 .wl-dashboard-card {
     grid-column: span 4;
+    min-width: 0;
 }
 
 .wl-dashboard-card--wide {
@@ -1822,6 +1856,7 @@ export default {
 
 .wl-dashboard-split {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 1rem;
 }
 
@@ -1846,12 +1881,13 @@ export default {
 
 .wl-dashboard-chart-stack {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 1.25rem;
 }
 
 .wl-overview-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
     gap: 0.9rem;
 }
 
@@ -1876,12 +1912,13 @@ export default {
 
 .wl-operator-grid {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 1.25rem;
 }
 
 .wl-operator-metrics-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
     gap: 0.9rem;
 }
 
@@ -1923,6 +1960,7 @@ export default {
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
+    flex-wrap: wrap;
     padding-bottom: 0.45rem;
     border-bottom: 1px solid color-mix(in srgb, var(--wl-text) 6%, transparent);
     font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
@@ -1936,11 +1974,6 @@ export default {
 }
 
 @media (max-width: 1200px) {
-    .wl-dashboard-summary-grid,
-    .wl-operator-metrics-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
     .wl-dashboard-card,
     .wl-dashboard-card--wide {
         grid-column: span 12;
@@ -1953,10 +1986,5 @@ export default {
         align-items: flex-start;
     }
 
-    .wl-dashboard-summary-grid,
-    .wl-overview-grid,
-    .wl-operator-metrics-grid {
-        grid-template-columns: minmax(0, 1fr);
-    }
 }
 </style>

@@ -709,6 +709,7 @@ $waterline-dialog-border: mix($body-color, $input-bg, 36%);
     top: 0;
     z-index: 30;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
@@ -723,6 +724,8 @@ $waterline-dialog-border: mix($body-color, $input-bg, 36%);
     align-items: center;
     gap: 0.9rem;
     min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
 }
 
 .wl-topbar__logo {
@@ -749,8 +752,12 @@ $waterline-dialog-border: mix($body-color, $input-bg, 36%);
 
 .wl-topbar__actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 0.75rem;
+    min-width: 0;
+    max-width: 100%;
+    justify-content: flex-end;
 }
 
 .wl-topbar__scope {
@@ -799,6 +806,8 @@ $waterline-dialog-border: mix($body-color, $input-bg, 36%);
     font-size: 0.72rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+    max-width: 100%;
+    overflow-wrap: anywhere;
     transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease, transform 120ms ease;
 }
 
@@ -897,6 +906,7 @@ $waterline-dialog-border: mix($body-color, $input-bg, 36%);
 
 .wl-main {
     min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 .wl-main > .alert {

@@ -589,6 +589,14 @@ jobs:
         --service-base-url "${WATERLINE_SERVICE_VISUAL_URL}"
         --output-dir run-detail-evidence
 
+    - name: Qualify populated dashboards and browser zoom
+      working-directory: sample-app
+      run: >-
+        node ../waterline/scripts/ci/dashboard-visual.mjs
+        --base-url "${APP_URL}"
+        --service-base-url "${WATERLINE_SERVICE_VISUAL_URL}"
+        --output-dir run-detail-evidence/dashboard
+
     - name: Upload responsive run-detail evidence
       if: ${{ always() }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7

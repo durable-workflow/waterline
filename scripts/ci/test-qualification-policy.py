@@ -91,6 +91,17 @@ class ChangeClassificationTest(unittest.TestCase):
                 )
 
     def test_visual_surfaces_are_selected_from_changed_product_files(self) -> None:
+        for path in (
+            "resources/js/screens/dashboard.vue",
+            "scripts/ci/dashboard-visual.mjs",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(
+                    qualification.requires_run_detail_visual(
+                        qualification.classify_paths([path])
+                    )
+                )
+
         dialog = qualification.classify_paths(["resources/js/dialogs.mjs"])
         detail = qualification.classify_paths(
             ["resources/js/screens/flows/flow.vue"]

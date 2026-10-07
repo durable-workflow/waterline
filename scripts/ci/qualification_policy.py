@@ -95,8 +95,10 @@ RUN_DETAIL_VISUAL_PATHS = frozenset(
         "app/Support/WorkflowStreamPresenter.php",
         "resources/js/bootstrap-config.mjs",
         "resources/js/screens/flows/flow.vue",
+        "resources/js/screens/dashboard.vue",
         "resources/js/workflow-streams.mjs",
         "scripts/ci/run-detail-visual.mjs",
+        "scripts/ci/dashboard-visual.mjs",
     }
 )
 SHARED_VISUAL_PATHS = frozenset(

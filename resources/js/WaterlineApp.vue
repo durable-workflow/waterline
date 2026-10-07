@@ -15,7 +15,7 @@
             <div class="wl-topbar__actions">
                 <div class="wl-topbar__scope" :title="scopeDescription">
                     <span class="wl-topbar__scope-label">{{ $t("Scope") }}</span>
-                    <span class="wl-topbar__scope-value">{{ bootstrap.operator_scope.mode === 'namespace' ? bootstrap.operator_scope.namespace : $t('Cluster-wide') }}</span>
+                    <span class="wl-topbar__scope-value" :title="bootstrap.operator_scope.mode === 'namespace' ? bootstrap.operator_scope.namespace : $t('Cluster-wide')">{{ bootstrap.operator_scope.mode === 'namespace' ? bootstrap.operator_scope.namespace : $t('Cluster-wide') }}</span>
                 </div>
 
                 <div class="wl-topbar__scope" :title="bootstrap.backend.transport || ''">
