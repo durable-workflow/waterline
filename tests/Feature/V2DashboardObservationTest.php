@@ -38,6 +38,7 @@ class V2DashboardObservationTest extends TestCase
 
     /**
      * @param list<int> $expiryOffsets
+     * @dataProvider heartbeatCases
      */
     #[DataProvider('heartbeatCases')]
     public function testEmbeddedHttpDashboardWorksWithoutDatabaseWrites(array $expiryOffsets): void
