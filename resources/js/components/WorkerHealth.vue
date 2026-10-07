@@ -145,12 +145,15 @@
                     </div>
 
                     <div class="card-body card-bg-secondary p-0">
+                        <p v-if="columnEnabled('runtime') && missingFleetRuntime" class="text-muted px-3 pt-3 mb-3">
+                            {{ $t('Compatibility heartbeats report freshness and compatibility, but do not identify the worker runtime.') }}
+                        </p>
                         <div v-if="workers.length > 0" class="table-responsive">
                             <table :class="workersTableClass">
                                 <thead>
                                     <tr>
                                         <th v-if="columnEnabled('worker_id')">{{ $t("Worker") }}</th>
-                                        <th v-if="columnEnabled('runtime')">{{ $t("Runtime") }}</th>
+                                        <th v-if="columnEnabled('runtime')">{{ $t("Worker runtime") }}</th>
                                         <th v-if="columnEnabled('task_queue')">{{ $t("Task Queue") }}</th>
                                         <th v-if="columnEnabled('heartbeat')">{{ $t("Heartbeat") }}</th>
                                         <th v-if="columnEnabled('status')">{{ $t("Status") }}</th>
@@ -175,7 +178,7 @@
                                         </td>
 
                                         <td v-if="columnEnabled('runtime')">
-                                            <span class="worker-health__pill worker-health__pill--muted">{{ worker.runtime || 'unknown' }}</span>
+                                            <span class="worker-health__pill worker-health__pill--muted" :title="workerRuntimeDescription(worker)">{{ workerRuntimeLabel(worker) }}</span>
                                         </td>
 
                                         <td v-if="columnEnabled('task_queue')">
@@ -519,6 +522,10 @@ export default {
     },
 
     computed: {
+        missingFleetRuntime() {
+            return this.workers.some(worker => worker.observation_source === 'compatibility_heartbeat' && !this.reportedRuntime(worker));
+        },
+
         registrationCount() {
             const count = Number(this.healthData?.operator_metrics?.workers?.registration_count);
 
@@ -790,7 +797,7 @@ export default {
         workersListColumnOptions() {
             return [
                 {key: 'worker_id', label: this.$t("Worker ID")},
-                {key: 'runtime', label: this.$t("Runtime")},
+                {key: 'runtime', label: this.$t("Worker runtime")},
                 {key: 'task_queue', label: this.$t("Task Queue")},
                 {key: 'heartbeat', label: this.$t("Heartbeat")},
                 {key: 'status', label: this.$t("Status")},
@@ -835,7 +842,8 @@ export default {
 
             return {
                 worker_id: typeof entry.worker_id === 'string' ? entry.worker_id : '',
-                runtime: null,
+                runtime: this.reportedRuntime(entry),
+                observation_source: 'compatibility_heartbeat',
                 task_queue: taskQueue,
                 last_heartbeat_at: typeof entry.recorded_at === 'string' ? entry.recorded_at : null,
                 status: supportsRequired ? 'active' : 'incompatible',
@@ -848,6 +856,22 @@ export default {
                 supports_required: supportsRequired,
                 heartbeat_source: typeof entry.source === 'string' ? entry.source : null,
             };
+        },
+
+        reportedRuntime(worker) {
+            return typeof worker?.runtime === 'string' && worker.runtime.trim() !== ''
+                ? worker.runtime.trim()
+                : null;
+        },
+
+        workerRuntimeLabel(worker) {
+            return this.reportedRuntime(worker) || this.$t('Not reported');
+        },
+
+        workerRuntimeDescription(worker) {
+            return this.reportedRuntime(worker) || this.$t(worker.observation_source === 'compatibility_heartbeat'
+                ? 'Compatibility heartbeats report freshness and compatibility, but do not identify the worker runtime.'
+                : 'This worker observation does not include runtime metadata.');
         },
 
         defaultWorkersListColumns() {

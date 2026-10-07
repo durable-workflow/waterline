@@ -1,4 +1,8 @@
 {
+    "Worker runtime": "Мова воркера",
+    "Not reported": "Не вказано",
+    "Compatibility heartbeats report freshness and compatibility, but do not identify the worker runtime.": "Heartbeat сумісності показує свіжість даних і сумісність, але не визначає мову воркера.",
+    "This worker observation does not include runtime metadata.": "Ці дані про воркер не містять відомостей про його мову виконання.",
     ", activity task lease": ", оренда завдання activity",
     ", availability ceiling": ", межа доступності",
     ", backpressure": ", обмеження навантаження",
