@@ -10,8 +10,8 @@
                     class="btn btn-sm btn-link p-0 text-muted"
                     @click="collapsed = !collapsed"
                     :aria-expanded="!collapsed">
-                    <span v-if="collapsed">▶ Show payload ({{ payloadSize }})</span>
-                    <span v-else>▼ Hide payload</span>
+                    <span v-if="collapsed">{{ $t("▶ Show payload (") }}{{ payloadSize }})</span>
+                    <span v-else>{{ $t("▼ Hide payload") }}</span>
                 </button>
             </div>
 
@@ -25,7 +25,7 @@
         </div>
 
         <div v-else class="text-muted">
-            <small>(empty)</small>
+            <small>{{ $t("(empty)") }}</small>
         </div>
     </div>
 </template>
@@ -76,7 +76,7 @@ export default {
         payloadSize() {
             const size = this.formattedPayload.length;
             if (size < 1024) {
-                return `${size} bytes`;
+                return this.$t("{value1} bytes", { value1: size });
             } else if (size < 1024 * 1024) {
                 return `${(size / 1024).toFixed(1)} KB`;
             } else {
@@ -170,7 +170,7 @@ export default {
                         this.decoded = JSON.parse(blob);
                         this.updateCollapsedState();
                     } catch (e) {
-                        this.rawValue = `[Avro payload: ${blob.length} bytes]`;
+                        this.rawValue = this.$t("[Avro payload: {value1} bytes]", { value1: blob.length });
                     }
                 } else {
                     this.rawValue = blob;

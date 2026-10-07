@@ -3,33 +3,33 @@
         <div class="card wl-flow-detail__summary-card">
             <div class="card-header d-flex align-items-start justify-content-between flex-wrap wl-flow-detail__summary-header">
                 <div class="wl-flow-detail__headline">
-                    <div class="wl-flow-detail__eyebrow">{{ ready && hasDetailValue(flow.instance_id) ? 'Workflow instance' : 'Workflow run' }}</div>
-                    <h1 class="wl-flow-detail__title" v-if="!ready">Flow Preview</h1>
+                    <div class="wl-flow-detail__eyebrow">{{ ready && hasDetailValue(flow.instance_id) ? $t('Workflow instance') : $t('Workflow run') }}</div>
+                    <h1 class="wl-flow-detail__title" v-if="!ready">{{ $t("Flow Preview") }}</h1>
                     <h1 class="wl-flow-detail__title" v-if="ready">{{ flow.class }}</h1>
 
                     <div v-if="ready" class="wl-flow-detail__headline-meta">
                         <span class="wl-flow-detail__status" :class="detailStatusClass(flow.status)">
-                            {{ flow.status }}
+                            {{ stateLabel(flow.status) }}
                             <template v-if="hasDetailValue(flow.status_bucket)">
                                 <span class="wl-flow-detail__status-slash">/</span>
-                                {{ flow.status_bucket }}
+                                {{ stateLabel(flow.status_bucket) }}
                             </template>
                         </span>
 
                         <span class="wl-flow-detail__headline-pill mono" v-if="hasDetailValue(flow.engine_source)">
-                            engine {{ flow.engine_source.toUpperCase() }}<template v-if="hasDetailValue(flow.engine_version)"> {{ flow.engine_version }}</template>
+                            {{ $t("engine") }} {{ flow.engine_source.toUpperCase() }}<template v-if="hasDetailValue(flow.engine_version)"> {{ flow.engine_version }}</template>
                         </span>
 
                         <span class="wl-flow-detail__headline-pill mono" v-if="hasDetailValue(flow.instance_id)">
-                            instance {{ flow.instance_id }}
+                            {{ $t("instance") }} {{ flow.instance_id }}
                         </span>
 
                         <span class="wl-flow-detail__headline-pill mono" v-if="hasDetailValue(flow.run_id)">
-                            run {{ flow.run_id }}
+                            {{ $t("run") }} {{ flow.run_id }}
                         </span>
 
                         <span class="wl-flow-detail__headline-pill mono" v-if="hasDetailValue(flow.namespace)">
-                            namespace {{ flow.namespace }}
+                            {{ $t("namespace") }} {{ flow.namespace }}
                         </span>
                     </div>
                 </div>
@@ -38,19 +38,19 @@
                     <button v-if="ready && canIssueQuery()"
                         class="btn btn-outline-secondary btn-sm mr-2 wl-flow-detail__action-btn"
                         @click="issueCommand('query')">
-                        Query
+                        {{ $t("Query") }}
                     </button>
 
                     <button v-if="ready && canIssueSignal()"
                         class="btn btn-outline-primary btn-sm mr-2 wl-flow-detail__action-btn"
                         @click="issueCommand('signal')">
-                        Signal
+                        {{ $t("Signal") }}
                     </button>
 
                     <button v-if="ready && canIssueUpdate()"
                         class="btn btn-outline-success btn-sm mr-2 wl-flow-detail__action-btn"
                         @click="issueCommand('update')">
-                        Update
+                        {{ $t("Update") }}
                     </button>
 
                     <a v-if="ready && historyExportEndpoint()"
@@ -58,35 +58,35 @@
                         :href="historyExportEndpoint()"
                         target="_blank"
                         rel="noopener">
-                        Export History
+                        {{ $t("Export History") }}
                     </a>
 
                     <button v-if="ready && canAction('repair')"
                         class="btn btn-outline-info btn-sm mr-2 wl-flow-detail__action-btn"
                         @click="issueCommand('repair')">
-                        Repair
+                        {{ $t("Repair") }}
                     </button>
 
                     <button v-if="ready && canAction('cancel', flow.can_issue_terminal_commands)"
                         class="btn btn-outline-warning btn-sm mr-2 wl-flow-detail__action-btn"
                         @click="issueCommand('cancel')">
-                        Cancel
+                        {{ $t("Cancel") }}
                     </button>
 
                     <button v-if="ready && canAction('terminate', flow.can_issue_terminal_commands)"
                         class="btn btn-outline-danger btn-sm mr-3 wl-flow-detail__action-btn"
                         @click="issueCommand('terminate')">
-                        Terminate
+                        {{ $t("Terminate") }}
                     </button>
 
                     <button v-if="ready && canAction('archive')"
                         class="btn btn-outline-secondary btn-sm mr-3 wl-flow-detail__action-btn"
                         @click="issueCommand('archive')">
-                        Archive
+                        {{ $t("Archive") }}
                     </button>
 
                     <a class="wl-flow-detail__collapse-link" data-toggle="collapse" href="#collapseDetails" role="button">
-                        Collapse
+                        {{ $t("Collapse") }}
                     </a>
                 </div>
             </div>
@@ -99,42 +99,41 @@
                     </path>
                 </svg>
 
-                <span>Loading...</span>
+                <span>{{ $t("Loading...") }}</span>
             </div>
 
             <div v-if="!ready && loadingError"
                 class="d-flex flex-column align-items-center justify-content-center text-center card-bg-secondary p-5 bottom-radius">
-                <strong>Flow preview unavailable</strong>
+                <strong>{{ $t("Flow preview unavailable") }}</strong>
                 <span class="text-muted mt-2">{{ loadingError }}</span>
                 <button class="btn btn-outline-primary btn-sm mt-3" @click="retryFlowLoad">
-                    Retry
+                    {{ $t("Retry") }}
                 </button>
                 <button v-if="isCanonicalRoute()" class="btn btn-outline-secondary btn-sm mt-2" @click="loadCompleteDetails">
-                    Open complete details
+                    {{ $t("Open complete details") }}
                 </button>
             </div>
 
             <div class="card-body card-bg-secondary collapse show wl-flow-detail__summary-body" id="collapseDetails" v-if="ready">
                 <div v-if="flow.read_mode === 'bounded'" class="mb-3" role="status">
                     <div class="small text-muted mb-2">
-                        Status, current waits, related runs and recent failures are loaded first.
-                        Inspect the full details for inputs, results, actions and recovery diagnostics.
+                        {{ $t("Status, current waits, related runs and recent failures are loaded first. Inspect the full details for inputs, results, actions and recovery diagnostics.") }}
                     </div>
                     <div class="small text-muted mb-2">
                         {{ flow.operator_scope && flow.operator_scope.label }}
-                        / observed {{ timestamp(flow.observed_at) }}
+                        {{ $t("/ observed") }} {{ timestamp(flow.observed_at) }}
                     </div>
                     <button class="btn btn-outline-secondary btn-sm" @click="loadCompleteDetails">
-                        Inspect full details
+                        {{ $t("Inspect full details") }}
                     </button>
                 </div>
                 <div class="row mb-2">
-                    <div class="col-md-2"><strong>ID</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("ID") }}</strong></div>
                     <div class="col">{{ flow.id }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.engine_source)">
-                    <div class="col-md-2"><strong>Execution Engine</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Execution Engine") }}</strong></div>
                     <div class="col">
                         {{ flow.engine_source.toUpperCase() }}<span v-if="hasDetailValue(flow.engine_version)"> {{ flow.engine_version }}</span>
                         <span v-if="hasDetailValue(flow.execution_engine)"> / {{ flow.execution_engine }}</span>
@@ -142,57 +141,57 @@
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.instance_id)">
-                    <div class="col-md-2"><strong>Instance ID</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Instance ID") }}</strong></div>
                     <div class="col">{{ flow.instance_id }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.run_id)">
-                    <div class="col-md-2"><strong>Run ID</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Run ID") }}</strong></div>
                     <div class="col">{{ flow.run_id }}</div>
                 </div>
 
                 <div class="row mb-2">
-                    <div class="col-md-2"><strong>Status</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Status") }}</strong></div>
                     <div class="col">
-                        {{ flow.status }}
-                        <span v-if="hasDetailValue(flow.status_bucket)"> / {{ flow.status_bucket }}</span>
+                        {{ stateLabel(flow.status) }}
+                        <span v-if="hasDetailValue(flow.status_bucket)"> / {{ stateLabel(flow.status_bucket) }}</span>
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.namespace)">
-                    <div class="col-md-2"><strong>Namespace</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Namespace") }}</strong></div>
                     <div class="col">{{ flow.namespace }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="flow.workflow_classification">
-                    <div class="col-md-2"><strong>Classification</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Classification") }}</strong></div>
                     <div class="col">{{ flow.workflow_classification }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="flow.current_waits_state === 'unavailable'">
-                    <div class="col-md-2"><strong>Current wait</strong></div>
-                    <div class="col text-muted">Current wait information is unavailable from this backend.</div>
+                    <div class="col-md-2"><strong>{{ $t("Current wait") }}</strong></div>
+                    <div class="col text-muted">{{ $t("Current wait information is unavailable from this backend.") }}</div>
                 </div>
                 <div class="row mb-2" v-if="flow.current_waits_state === 'partial'">
-                    <div class="col-md-2"><strong>Current wait</strong></div>
-                    <div class="col text-muted">A wait summary is available. Additional waits and dependency details may be unavailable.</div>
+                    <div class="col-md-2"><strong>{{ $t("Current wait") }}</strong></div>
+                    <div class="col text-muted">{{ $t("A wait summary is available. Additional waits and dependency details may be unavailable.") }}</div>
                 </div>
 
                 <div class="alert alert-info mt-3" role="status"
                     v-if="flow.workflow_classification === 'coordinator' && flow.status === 'completed'">
-                    Completed describes this coordinator run. Related executions have their own outcomes.
+                    {{ $t("Completed describes this coordinator run. Related executions have their own outcomes.") }}
                 </div>
 
                 <template v-if="flow.application_context">
                     <div class="row mb-2" v-for="field in flow.application_context.fields" :key="'context-' + field.name">
                         <div class="col-md-2"><strong>{{ field.label }}</strong></div>
                         <div class="col">
-                            {{ field.state === 'available' ? field.value : 'Unavailable' }}
-                            <span v-if="field.truncated" class="text-muted">(shortened)</span>
+                            {{ field.state === 'available' ? field.value : $t('Unavailable') }}
+                            <span v-if="field.truncated" class="text-muted">{{ $t("(shortened)") }}</span>
                         </div>
                     </div>
                     <div class="row mb-2" v-if="flow.application_context.links.length">
-                        <div class="col-md-2"><strong>Application</strong></div>
+                        <div class="col-md-2"><strong>{{ $t("Application") }}</strong></div>
                         <div class="col">
                             <a v-for="link in flow.application_context.links" :key="link.name" :href="link.url"
                                 class="mr-3" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>
@@ -201,7 +200,7 @@
                 </template>
 
                 <div class="row mb-2" v-if="taskProblemBadge(flow)">
-                    <div class="col-md-2"><strong>Task Problems</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Task Problems") }}</strong></div>
                     <div class="col">
                         <span :class="taskProblemBadgeClass(flow)" class="badge mr-2">
                             {{ taskProblemBadge(flow).label }}
@@ -211,12 +210,12 @@
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.read_only_reason)">
-                    <div class="col-md-2"><strong>Mode</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Mode") }}</strong></div>
                     <div class="col">{{ flow.read_only_reason }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.archived_at)">
-                    <div class="col-md-2"><strong>Archived At</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Archived At") }}</strong></div>
                     <div class="col">
                         {{ timestamp(flow.archived_at) }}
                         <span v-if="hasDetailValue(flow.archive_reason)" class="text-muted"> / {{ flow.archive_reason }}</span>
@@ -224,94 +223,93 @@
                 </div>
 
                 <div class="alert alert-info mt-3" role="status" v-if="hasDetailValue(flow.details_pruned_at)">
-                    <strong>Details removed by retention.</strong>
-                    History and error details were removed at {{ timestamp(flow.details_pruned_at) }}.
-                    The run's {{ flow.status }} status is retained.
+                    <strong>{{ $t("Details removed by retention.") }}</strong>
+                    {{ $t("History and error details were removed at") }} {{ timestamp(flow.details_pruned_at) }}{{ $t(". The run's") }} {{ stateLabel(flow.status) }} {{ $t("status is retained.") }}
                 </div>
 
                 <div class="row mb-2" v-if="actionStateRows().length">
-                    <div class="col-md-2"><strong>Actions</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Actions") }}</strong></div>
                     <div class="col">
                         <div v-for="action in actionStateRows()" :key="action.name">
-                            {{ action.label }}: {{ action.allowed ? 'available' : 'blocked' }}
+                            {{ action.label }}: {{ action.allowed ? $t('available') : $t('blocked') }}
                             <span v-if="hasDetailValue(action.reason)" class="text-muted">({{ actionReasonLabel(action.reason) }})</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="row mb-2">
-                    <div class="col-md-2"><strong>Started At</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Started At") }}</strong></div>
                     <div class="col">{{ timestamp(flow.created_at) }}</div>
                 </div>
 
                 <div class="row mb-2">
-                    <div class="col-md-2"><strong>Closed At</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Closed At") }}</strong></div>
                     <div class="col" v-if="isClosed(flow)">{{ timestamp(flow.closed_at || flow.updated_at) }}</div>
                     <div class="col" v-else>-</div>
                 </div>
 
                 <div class="row mb-2">
-                    <div class="col-md-2"><strong>Duration</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Duration") }}</strong></div>
                     <div class="col" v-if="isClosed(flow)">{{ duration(flow.created_at, flow.closed_at || flow.updated_at) }}</div>
                     <div class="col" v-else>-</div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.connection)">
-                    <div class="col-md-2"><strong>Connection</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Connection") }}</strong></div>
                     <div class="col">{{ flow.connection }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.queue)">
-                    <div class="col-md-2"><strong>Queue</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Queue") }}</strong></div>
                     <div class="col">{{ flow.queue }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.business_key)">
-                    <div class="col-md-2"><strong>Business Key</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Business Key") }}</strong></div>
                     <div class="col">{{ flow.business_key }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="hasObjectEntries(flow.visibility_labels)">
-                    <div class="col-md-2"><strong>Labels</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Labels") }}</strong></div>
                     <div class="col">
                         <pre class="mb-0">{{ prettyJson(flow.visibility_labels) }}</pre>
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasObjectEntries(flow.memo)">
-                    <div class="col-md-2"><strong>Memo</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Memo") }}</strong></div>
                     <div class="col">
                         <pre class="mb-0">{{ prettyJson(flow.memo) }}</pre>
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasObjectEntries(flow.search_attributes)">
-                    <div class="col-md-2"><strong>Search Attributes</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Search Attributes") }}</strong></div>
                     <div class="col">
                         <SearchAttributeRenderer :attributes="flow.search_attributes" />
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.execution_timeout_seconds) || hasDetailValue(flow.run_timeout_seconds)">
-                    <div class="col-md-2"><strong>Timeouts</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Timeouts") }}</strong></div>
                     <div class="col">
                         <div v-if="hasDetailValue(flow.execution_timeout_seconds)">
-                            Execution: {{ formatTimeoutDuration(flow.execution_timeout_seconds) }}
+                            {{ $t("Execution:") }} {{ formatTimeoutDuration(flow.execution_timeout_seconds) }}
                             <span class="small text-muted" v-if="hasDetailValue(flow.execution_deadline_at)">
-                                (deadline {{ readableTimestamp(flow.execution_deadline_at) }})
+                                {{ $t("(deadline") }} {{ readableTimestamp(flow.execution_deadline_at) }})
                             </span>
                         </div>
                         <div v-if="hasDetailValue(flow.run_timeout_seconds)">
-                            Run: {{ formatTimeoutDuration(flow.run_timeout_seconds) }}
+                            {{ $t("Run:") }} {{ formatTimeoutDuration(flow.run_timeout_seconds) }}
                             <span class="small text-muted" v-if="hasDetailValue(flow.run_deadline_at)">
-                                (deadline {{ readableTimestamp(flow.run_deadline_at) }})
+                                {{ $t("(deadline") }} {{ readableTimestamp(flow.run_deadline_at) }})
                             </span>
                         </div>
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="declaredSignalTargets().length">
-                    <div class="col-md-2"><strong>Signals</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Signals") }}</strong></div>
                     <div class="col">
                         <div v-for="target in declaredSignalTargets()" :key="target.name">
                             {{ signalTargetLabel(target) }}
@@ -320,7 +318,7 @@
                 </div>
 
                 <div class="row mb-2" v-if="declaredQueryTargets().length">
-                    <div class="col-md-2"><strong>Queries</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Queries") }}</strong></div>
                     <div class="col">
                         <div v-for="target in declaredQueryTargets()" :key="target.name">
                             {{ queryTargetLabel(target) }}
@@ -329,30 +327,30 @@
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.declared_contract_source)">
-                    <div class="col-md-2"><strong>Command Contract</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Command Contract") }}</strong></div>
                     <div class="col">{{ contractSourceLabel(flow.declared_contract_source) }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.declared_entry_method)">
-                    <div class="col-md-2"><strong>Entry Method</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Entry Method") }}</strong></div>
                     <div class="col">
                         <div>
                             <code>{{ flow.declared_entry_method }}()</code>
                             <span v-if="flow.declared_entry_mode === 'compatibility'" class="small text-muted">
-                                review required
+                                {{ $t("review required") }}
                             </span>
                         </div>
                         <div class="small text-muted" v-if="hasDetailValue(flow.declared_entry_declaring_class)">
-                            Declared on {{ flow.declared_entry_declaring_class }}
+                            {{ $t("Declared on") }} {{ flow.declared_entry_declaring_class }}
                         </div>
                         <div class="small text-muted" v-else-if="flow.declared_entry_mode === 'compatibility'">
-                            This run was recorded with older entry-contract metadata. Review command targets before relying on signals, updates, or queries for this run.
+                            {{ $t("This run was recorded with older entry-contract metadata. Review command targets before relying on signals, updates, or queries for this run.") }}
                         </div>
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="declaredUpdateTargets().length">
-                    <div class="col-md-2"><strong>Updates</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Updates") }}</strong></div>
                     <div class="col">
                         <div v-for="target in declaredUpdateTargets()" :key="target.name">
                             {{ updateTargetLabel(target) }}
@@ -361,58 +359,56 @@
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.declared_contract_source)">
-                    <div class="col-md-2"><strong>Contract Source</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Contract Source") }}</strong></div>
                     <div class="col">
                         {{ contractSourceLabel(flow.declared_contract_source) }}
                         <div
                             class="small text-muted"
                             v-if="flow.declared_contract_backfill_needed === true && flow.declared_contract_backfill_available === true"
                         >
-                            This run still needs command-contract normalization. The background repair/watchdog loop
-                            will keep trying to persist it while a compatible build is active; a compatible
-                            selected-run detail or history-export read can also persist it immediately. Use
-                            <code>php artisan workflow:v2:repair-pass</code> to force the next batch,
+                            {{ $t("This run still needs command-contract normalization. The background repair/watchdog loop will keep trying to persist it while a compatible build is active; a compatible selected-run detail or history-export read can also persist it immediately. Use") }}
+                            <code>php artisan workflow:v2:repair-pass</code> {{ $t("to force the next batch,") }}
                             <code>php artisan workflow:v2:rebuild-projections --needs-rebuild</code>
-                            to sweep untouched runs with the rest of the selected-run projection drift, or run
+                            {{ $t("to sweep untouched runs with the rest of the selected-run projection drift, or run") }}
                             <code>php artisan workflow:v2:backfill-command-contracts --dry-run</code>
-                            and then rerun that command without <code>--dry-run</code> before relying on this run after a class move.
+                            {{ $t("and then rerun that command without") }} <code>--dry-run</code> {{ $t("before relying on this run after a class move.") }}
                         </div>
                         <div
                             class="small text-muted"
                             v-else-if="flow.declared_contract_backfill_needed === true"
                         >
-                            This run still needs command-contract normalization, but the current build can no longer resolve the workflow definition needed to finish it. The remaining target list is diagnostic metadata until a compatible build persists the missing durable snapshot. Named query arguments and named JSON-object signal or update payloads reject when the missing durable contract is required, and query or update execution still stays blocked when the workflow definition itself is unavailable.
+                            {{ $t("This run still needs command-contract normalization, but the current build can no longer resolve the workflow definition needed to finish it. The remaining target list is diagnostic metadata until a compatible build persists the missing durable snapshot. Named query arguments and named JSON-object signal or update payloads reject when the missing durable contract is required, and query or update execution still stays blocked when the workflow definition itself is unavailable.") }}
                         </div>
                         <div class="small text-muted" v-else-if="flow.declared_contract_source === 'live_definition'">
-                            This response fell back to the current PHP definition before durable command-contract normalization completed.
+                            {{ $t("This response fell back to the current PHP definition before durable command-contract normalization completed.") }}
                         </div>
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.workflow_definition_fingerprint) || hasDetailValue(flow.workflow_definition_current_fingerprint) || flow.workflow_definition_matches_current !== null">
-                    <div class="col-md-2"><strong>Definition</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Definition") }}</strong></div>
                     <div class="col">
                         <div v-if="hasDetailValue(flow.workflow_definition_fingerprint)">
-                            Start fingerprint: {{ flow.workflow_definition_fingerprint }}
+                            {{ $t("Start fingerprint:") }} {{ flow.workflow_definition_fingerprint }}
                         </div>
                         <div class="small text-muted" v-if="hasDetailValue(flow.workflow_definition_current_fingerprint)">
-                            Current fingerprint: {{ flow.workflow_definition_current_fingerprint }}
+                            {{ $t("Current fingerprint:") }} {{ flow.workflow_definition_current_fingerprint }}
                         </div>
                         <div class="small text-muted" v-if="flow.workflow_definition_matches_current === true">
-                            Matches the current loadable workflow definition.
+                            {{ $t("Matches the current loadable workflow definition.") }}
                         </div>
                         <div class="small text-muted" v-else-if="flow.workflow_definition_matches_current === false">
-                            Selected run started on a different workflow definition than the current loadable class.
+                            {{ $t("Selected run started on a different workflow definition than the current loadable class.") }}
                         </div>
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.workflow_determinism_status)">
-                    <div class="col-md-2"><strong>Replay Safety</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Replay Safety") }}</strong></div>
                     <div class="col">
                         <div>{{ workflowDeterminismStatusLabel(flow.workflow_determinism_status, flow.workflow_determinism_source) }}</div>
                         <div class="small text-muted" v-if="hasDetailValue(flow.workflow_determinism_source)">
-                            Source: {{ contractSourceLabel(flow.workflow_determinism_source) }}
+                            {{ $t("Source:") }} {{ contractSourceLabel(flow.workflow_determinism_source) }}
                         </div>
                         <div
                             v-for="finding in workflowDeterminismFindings()"
@@ -425,20 +421,20 @@
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.compatibility) || flow.compatibility_supported === false || hasDetailValue(flow.compatibility_supported_in_fleet)">
-                    <div class="col-md-2"><strong>Compatibility</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Compatibility") }}</strong></div>
                     <div class="col">
                         <div>{{ flow.compatibility || '-' }}</div>
                         <div class="small text-muted" v-if="hasDetailValue(flow.compatibility_namespace)">
-                            Namespace: {{ flow.compatibility_namespace }}
+                            {{ $t("Namespace:") }} {{ flow.compatibility_namespace }}
                         </div>
                         <div class="small text-muted" v-if="hasDetailValue(flow.compatibility_semantics && flow.compatibility_semantics.operator_summary)">
                             {{ flow.compatibility_semantics.operator_summary }}
                         </div>
                         <div class="small text-muted" v-if="flow.compatibility_supported === false && hasDetailValue(flow.compatibility_reason)">
-                            Claimable by this build: {{ flow.compatibility_reason }}
+                            {{ $t("Claimable by this build:") }} {{ flow.compatibility_reason }}
                         </div>
                         <div class="small text-muted" v-if="hasDetailValue(flow.compatibility_supported_in_fleet)">
-                            Supported in active fleet: {{ compatibilityFleetSummary(flow.compatibility_supported_in_fleet) }}
+                            {{ $t("Supported in active fleet:") }} {{ compatibilityFleetSummary(flow.compatibility_supported_in_fleet) }}
                         </div>
                         <div class="small text-muted" v-if="flow.compatibility_supported_in_fleet === false && hasDetailValue(flow.compatibility_fleet_reason)">
                             {{ flow.compatibility_fleet_reason }}
@@ -447,7 +443,7 @@
                             <div v-for="snapshot in compatibilityFleetRows(flow.compatibility_fleet)" :key="compatibilityFleetKey(snapshot)">
                                 {{ compatibilityFleetLabel(snapshot) }}
                                 <span v-if="hasDetailValue(snapshot.expires_at)">
-                                    until {{ timestamp(snapshot.expires_at) }}
+                                    {{ $t("until") }} {{ timestamp(snapshot.expires_at) }}
                                 </span>
                             </div>
                         </div>
@@ -455,45 +451,45 @@
                 </div>
 
                 <div class="row mb-2" v-if="!flow.is_current_run && flow.current_run_id">
-                    <div class="col-md-2"><strong>Current Run</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Current Run") }}</strong></div>
                     <div class="col">
                         <router-link :to="canonicalRoute(flow.instance_id, flow.current_run_id)">
                             {{ flow.current_run_id }}
                         </router-link>
                         <span v-if="flow.current_run_status">
-                            ({{ flow.current_run_status }}<span v-if="flow.current_run_status_bucket"> / {{ flow.current_run_status_bucket }}</span>)
+                            ({{ stateLabel(flow.current_run_status) }}<span v-if="flow.current_run_status_bucket"> / {{ stateLabel(flow.current_run_status_bucket) }}</span>)
                         </span>
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.current_run_source)">
-                    <div class="col-md-2"><strong>Current Run Source</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Current Run Source") }}</strong></div>
                     <div class="col">
                         {{ currentRunSourceLabel(flow.current_run_source) }}
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="runNavigationRows().length > 1">
-                    <div class="col-md-2"><strong>Runs</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Runs") }}</strong></div>
                     <div class="col">
                         <div v-for="entry in runNavigationRows()" :key="entry.run_id">
                             <router-link v-if="entry.instance_id && entry.run_id"
                                 :to="canonicalRoute(entry.instance_id, entry.run_id)">
-                                Run {{ entry.run_number }} / {{ entry.run_id }}
+                                {{ $t("Run") }} {{ entry.run_number }} / {{ entry.run_id }}
                             </router-link>
-                            <span v-else>Run {{ entry.run_number }} / {{ entry.run_id }}</span>
-                            <span v-if="entry.is_selected_run" class="badge badge-info ml-1">Viewing</span>
-                            <span v-if="entry.is_current_run" class="badge badge-success ml-1">Current</span>
+                            <span v-else>{{ $t("Run") }} {{ entry.run_number }} / {{ entry.run_id }}</span>
+                            <span v-if="entry.is_selected_run" class="badge badge-info ml-1">{{ $t("Viewing") }}</span>
+                            <span v-if="entry.is_current_run" class="badge badge-success ml-1">{{ $t("Current") }}</span>
                             <span v-if="entry.status">
-                                - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
+                                - {{ stateLabel(entry.status) }}<span v-if="entry.status_bucket"> / {{ stateLabel(entry.status_bucket) }}</span>
                             </span>
-                            <span v-else-if="entry.metadata_state === 'unavailable'" class="text-muted"> / status unavailable</span>
+                            <span v-else-if="entry.metadata_state === 'unavailable'" class="text-muted"> {{ $t("/ status unavailable") }}</span>
                         </div>
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.wait_reason)">
-                    <div class="col-md-2"><strong>Wait</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Wait") }}</strong></div>
                     <div class="col">
                         {{ flow.wait_reason }}
                         <span v-if="hasDetailValue(flow.wait_kind)">
@@ -503,12 +499,12 @@
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.open_wait_id)">
-                    <div class="col-md-2"><strong>Open Wait ID</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Open Wait ID") }}</strong></div>
                     <div class="col">{{ flow.open_wait_id }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="currentChildIdentityRows().length">
-                    <div class="col-md-2"><strong>Current Child</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Current Child") }}</strong></div>
                     <div class="col">
                         <div v-for="detail in currentChildIdentityRows()" :key="detail">
                             {{ detail }}
@@ -517,17 +513,17 @@
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.open_wait_count) && flow.open_wait_count > 1">
-                    <div class="col-md-2"><strong>Open Waits</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Open Waits") }}</strong></div>
                     <div class="col">{{ flow.open_wait_count }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="resumeSourceSummary(flow.resume_source_kind, flow.resume_source_id)">
-                    <div class="col-md-2"><strong>Resume Source</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Resume Source") }}</strong></div>
                     <div class="col">{{ resumeSourceSummary(flow.resume_source_kind, flow.resume_source_id) }}</div>
                 </div>
 
                 <div class="row mb-2" v-if="flow.read_mode !== 'bounded' && hasDetailValue(flow.liveness_reason)">
-                    <div class="col-md-2"><strong>Liveness</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Liveness") }}</strong></div>
                     <div class="col">
                         {{ flow.liveness_reason }}
                         <span v-if="hasDetailValue(flow.liveness_state)">
@@ -537,38 +533,38 @@
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.next_task_id)">
-                    <div class="col-md-2"><strong>Next Task</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Next Task") }}</strong></div>
                     <div class="col">
-                        {{ flow.next_task_type }} / {{ flow.next_task_status }} / {{ flow.next_task_id }}
+                        {{ flow.next_task_type }} / {{ stateLabel(flow.next_task_status) }} / {{ flow.next_task_id }}
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.history_event_count) || hasDetailValue(flow.history_size_bytes)">
-                    <div class="col-md-2"><strong>History Budget</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("History Budget") }}</strong></div>
                     <div class="col">
                         {{ historyBudgetSummary(flow) }}
                         <span v-if="flow.continue_as_new_recommended" class="badge badge-warning ml-1">
-                            Continue as new recommended
+                            {{ $t("Continue as new recommended") }}
                         </span>
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="hasDetailValue(flow.retained_history_event_count) && hasDetailValue(flow.retained_exception_count)">
-                    <div class="col-md-2"><strong>Retained Details</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Retained Details") }}</strong></div>
                     <div class="col">
-                        {{ Number(flow.retained_history_event_count).toLocaleString() }} history events,
-                        {{ Number(flow.retained_exception_count).toLocaleString() }} failure records
+                        {{ Number(flow.retained_history_event_count).toLocaleString() }} {{ $t("history events,") }}
+                        {{ Number(flow.retained_exception_count).toLocaleString() }} {{ $t("failure records") }}
                     </div>
                 </div>
 
                 <div class="row mb-2" v-if="lineageEntries().length">
-                    <div class="col-md-2"><strong>Lineage</strong></div>
+                    <div class="col-md-2"><strong>{{ $t("Lineage") }}</strong></div>
                     <div class="col">
                         <div class="small text-muted mb-1" v-if="hasDetailValue(flow.lineage_projection_source)">
                             {{ projectionSourceLabel(flow.lineage_projection_source) }}
                         </div>
                         <div class="small text-muted mb-1" v-if="flow.read_mode === 'bounded'">
-                            Related runs have independent outcomes. {{ relationshipWindowSummary() }}
+                            {{ $t("Related runs have independent outcomes.") }} {{ relationshipWindowSummary() }}
                         </div>
                         <div v-for="entry in lineageEntries()" :key="entry.key">
                             <strong>{{ entry.label }}:</strong>
@@ -577,9 +573,9 @@
                                 {{ entry.display_id }}
                             </router-link>
                             <span v-else>{{ entry.display_id }}</span>
-                            <span v-if="entry.run_number"> (run {{ entry.run_number }})</span>
+                            <span v-if="entry.run_number"> {{ $t("(run") }} {{ entry.run_number }})</span>
                             <span v-if="entry.status">
-                                - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
+                                - {{ stateLabel(entry.status) }}<span v-if="entry.status_bucket"> / {{ stateLabel(entry.status_bucket) }}</span>
                             </span>
                         <div
                                 v-for="detail in lineageIdentityRows(entry)"
@@ -596,10 +592,10 @@
 
         <div class="card mt-4" v-if="ready && flow.read_mode !== 'bounded'">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Arguments</h5>
+                <h5>{{ $t("Arguments") }}</h5>
 
                 <a data-toggle="collapse" href="#collapseArguments" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
@@ -610,10 +606,10 @@
 
         <div class="card mt-4" v-if="ready && flow.read_mode !== 'bounded' && isClosed(flow)">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Output</h5>
+                <h5>{{ $t("Output") }}</h5>
 
                 <a data-toggle="collapse" href="#collapseOutput" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
@@ -625,33 +621,33 @@
         <CancellationCascadeView v-if="ready && flow.read_mode !== 'bounded'" :diagnostics="flow" />
 
         <div class="card mt-4" v-if="ready" id="failureSummary">
-            <div class="card-header"><h5>Recent failures</h5></div>
+            <div class="card-header"><h5>{{ $t("Recent failures") }}</h5></div>
             <div class="card-body">
                 <div class="small text-muted mb-2" v-if="failureSummaryView().state === 'pruned'">
-                    Execution details have been pruned. Retained failures may have incomplete history evidence.
+                    {{ $t("Execution details have been pruned. Retained failures may have incomplete history evidence.") }}
                 </div>
                 <div v-if="failureSummaryView().state === 'unavailable'">
-                    Failure information is unavailable for this run.
+                    {{ $t("Failure information is unavailable for this run.") }}
                 </div>
                 <div v-else-if="!failureSummaryView().rows.length">
-                    {{ failureSummaryView().state === 'pruned' ? 'No retained failure details.' : 'No failures reported in this view.' }}
+                    {{ failureSummaryView().state === 'pruned' ? $t('No retained failure details.') : $t('No failures reported in this view.') }}
                 </div>
                 <div v-for="failure in failureSummaryView().rows" :key="failure.id" class="mb-3">
-                    <strong>{{ failure.type || 'Failure' }}</strong>
-                    <span v-if="failure.handled === true" class="badge badge-secondary ml-2">Handled</span>
+                    <strong>{{ failure.type || $t('Failure') }}</strong>
+                    <span v-if="failure.handled === true" class="badge badge-secondary ml-2">{{ $t("Handled") }}</span>
                     <div v-if="failure.message" class="wl-failure-message">{{ failure.message }}</div>
                     <div class="small text-muted" v-if="failure.source_id">
-                        {{ failure.source_kind || 'Source' }} / {{ failure.source_id }}
+                        {{ failure.source_kind || $t('Source') }} / {{ failure.source_id }}
                     </div>
                     <div class="small text-muted" v-if="failure.recorded_at">{{ timestamp(failure.recorded_at) }}</div>
                     <a v-if="failure.event_sequence" :href="failureEventHref(failure)"
                         class="small" @click.prevent="focusFailureEvent(failure)">
-                        View history event #{{ failure.event_sequence }}
+                        {{ $t("View history event #") }}{{ failure.event_sequence }}
                     </a>
                     <div v-else class="small text-muted">{{ failureEvidenceLabel(failure.evidence_state) }}</div>
                 </div>
                 <div class="small text-muted" v-if="failureSummaryView().truncated">
-                    Showing {{ failureSummaryView().rows.length }} recent failures. Additional failures may exist.
+                    {{ $t("Showing") }} {{ failureSummaryView().rows.length }} {{ $t("recent failures. Additional failures may exist.") }}
                 </div>
             </div>
         </div>
@@ -659,12 +655,12 @@
         <div :class="diagnosticsBannerClass()" v-if="ready && diagnosticRows().length" role="alert">
             <div class="d-flex align-items-center justify-content-between">
                 <div>
-                    <strong>Issues detected</strong>
+                    <strong>{{ $t("Issues detected") }}</strong>
                     <span class="small ml-2">{{ diagnosticsSummary() }}</span>
                 </div>
 
                 <a data-toggle="collapse" href="#collapseRunDiagnostics" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
@@ -697,7 +693,7 @@
                         target="_blank"
                         rel="noopener"
                     >
-                        Docs
+                        {{ $t("Docs") }}
                     </a>
                 </div>
             </div>
@@ -706,14 +702,14 @@
         <div class="card mt-4" v-if="ready && flow.chartData && flow.chartData.length">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <div>
-                    <h5>Timeline Chart</h5>
+                    <h5>{{ $t("Timeline Chart") }}</h5>
                     <div class="small text-muted" v-if="chartHasDiagnosticRows()">
-                        Compatibility chart entries marked from older mutable activity rows are diagnostic only. Use Activities and History for the durable contract.
+                        {{ $t("Compatibility chart entries marked from older mutable activity rows are diagnostic only. Use Activities and History for the durable contract.") }}
                     </div>
                 </div>
 
                 <a data-toggle="collapse" href="#collapseTimeline" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
@@ -725,7 +721,7 @@
         <div class="card mt-4" v-if="ready && flow.timeline && flow.timeline.length">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <div>
-                    <h5>History</h5>
+                    <h5>{{ $t("History") }}</h5>
                     <div class="small text-muted" v-if="hasDetailValue(flow.timeline_projection_source)">
                         {{ projectionSourceLabel(flow.timeline_projection_source) }}
                     </div>
@@ -735,14 +731,14 @@
                 </div>
 
                 <div class="d-flex align-items-center">
-                    <div class="btn-group btn-group-sm mr-2" role="group" aria-label="History view">
+                    <div class="btn-group btn-group-sm mr-2" role="group" :aria-label="$t('History view')">
                         <button
                             type="button"
                             class="btn"
                             :class="runDetailTab() === 'timeline' ? 'btn-secondary' : 'btn-outline-secondary'"
                             :disabled="savingRunDetailPreferences"
                             @click="setRunDetailTab('timeline')">
-                            Timeline
+                            {{ $t("Timeline") }}
                         </button>
                         <button
                             type="button"
@@ -750,7 +746,7 @@
                             :class="runDetailTab() === 'events' ? 'btn-secondary' : 'btn-outline-secondary'"
                             :disabled="savingRunDetailPreferences"
                             @click="setRunDetailTab('events')">
-                            Event List
+                            {{ $t("Event List") }}
                         </button>
                     </div>
 
@@ -759,7 +755,7 @@
                         class="btn btn-outline-secondary btn-sm mr-2"
                         :disabled="loadingMoreHistory"
                         @click="loadOlderHistory">
-                        {{ flow.engine_source === 'service' || flow.read_mode === 'bounded' ? 'Load more' : 'Load older' }}
+                        {{ flow.engine_source === 'service' || flow.read_mode === 'bounded' ? $t('Load more') : $t('Load older') }}
                     </button>
 
                     <a v-if="historyExportEndpoint()"
@@ -767,11 +763,11 @@
                         :href="historyExportEndpoint()"
                         target="_blank"
                         rel="noopener">
-                        Export all
+                        {{ $t("Export all") }}
                     </a>
 
                     <a data-toggle="collapse" href="#collapseHistory" role="button">
-                        Collapse
+                        {{ $t("Collapse") }}
                     </a>
                 </div>
             </div>
@@ -782,7 +778,7 @@
 
             <div class="card-body collapse show" id="collapseHistory">
                 <div class="alert alert-warning" v-if="pinnedTimelineItems().length">
-                    <div class="font-weight-bold mb-2">Pinned Attention</div>
+                    <div class="font-weight-bold mb-2">{{ $t("Pinned Attention") }}</div>
                     <div
                         v-for="item in pinnedTimelineItems()"
                         :key="item.key"
@@ -814,11 +810,11 @@
                     <table class="table table-sm mb-0">
                         <thead>
                             <tr>
-                                <th>Seq</th>
-                                <th>Type</th>
-                                <th>Summary</th>
-                                <th>Recorded</th>
-                                <th>Source</th>
+                                <th>{{ $t("Seq") }}</th>
+                                <th>{{ $t("Type") }}</th>
+                                <th>{{ $t("Summary") }}</th>
+                                <th>{{ $t("Recorded") }}</th>
+                                <th>{{ $t("Source") }}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -841,8 +837,8 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <div>
                     <h5>
-                        Waits
-                        <span v-if="openWaitCount() > 1" class="small text-muted">({{ openWaitCount() }} open)</span>
+                        {{ $t("Waits") }}
+                        <span v-if="openWaitCount() > 1" class="small text-muted">({{ openWaitCount() }} {{ $t("open)") }}</span>
                     </h5>
                     <div class="small text-muted" v-if="hasDetailValue(flow.waits_projection_source)">
                         {{ projectionSourceLabel(flow.waits_projection_source) }}
@@ -850,22 +846,22 @@
                 </div>
 
                 <a data-toggle="collapse" href="#collapseWaits" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
             <div class="card-body collapse show" id="collapseWaits">
                 <div class="small text-muted mb-2" v-if="flow.current_waits_truncated">
-                    Showing up to {{ flow.current_waits_limit }} current waits. Additional waits may exist.
+                    {{ $t("Showing up to") }} {{ flow.current_waits_limit }} {{ $t("current waits. Additional waits may exist.") }}
                 </div>
                 <table class="table">
                     <thead>
                         <tr>
-                            <th scope="col">Wait</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Backing</th>
-                            <th scope="col">Opened At</th>
-                            <th scope="col">Resolved / Deadline</th>
+                            <th scope="col">{{ $t("Wait") }}</th>
+                            <th scope="col">{{ $t("Status") }}</th>
+                            <th scope="col">{{ $t("Backing") }}</th>
+                            <th scope="col">{{ $t("Opened At") }}</th>
+                            <th scope="col">{{ $t("Resolved / Deadline") }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -873,20 +869,20 @@
                             <td>
                                 <div>
                                     {{ wait.current_summary && wait.current_summary.kind === 'activity_retry' ? wait.current_summary.reason : wait.summary }}
-                                    <span v-if="isCurrentWait(wait)" class="badge badge-info ml-1">Current</span>
+                                    <span v-if="isCurrentWait(wait)" class="badge badge-info ml-1">{{ $t("Current") }}</span>
                                 </div>
                                 <div class="small mt-1" v-if="wait.current_summary">
                                     <strong>{{ waitResumeStateLabel(wait.current_summary.state) }}</strong>
                                     <div v-if="wait.current_summary.next_scheduled_resume_at">
-                                        Scheduled resume: {{ timestamp(wait.current_summary.next_scheduled_resume_at) }}
+                                        {{ $t("Scheduled resume:") }} {{ timestamp(wait.current_summary.next_scheduled_resume_at) }}
                                     </div>
                                     <div v-if="wait.current_summary.deadline_at">
-                                        Deadline: {{ timestamp(wait.current_summary.deadline_at) }}
+                                        {{ $t("Deadline:") }} {{ timestamp(wait.current_summary.deadline_at) }}
                                     </div>
                                     <div v-if="Number(wait.current_summary.attempt_number) > 0">
-                                        {{ wait.current_summary.kind === 'activity_retry' ? 'Next attempt' : 'Attempt' }}
+                                        {{ wait.current_summary.kind === 'activity_retry' ? $t('Next attempt') : $t('Attempt') }}
                                         {{ wait.current_summary.attempt_number }}
-                                        <span v-if="Number(wait.current_summary.attempt_limit) > 0">of {{ wait.current_summary.attempt_limit }}</span>
+                                        <span v-if="Number(wait.current_summary.attempt_limit) > 0">{{ $t("of") }} {{ wait.current_summary.attempt_limit }}</span>
                                     </div>
                                     <div v-if="wait.current_summary.unavailable_reason" class="text-muted">
                                         {{ historyUnsupportedReasonLabel(wait.current_summary.unavailable_reason) }}
@@ -905,16 +901,16 @@
                                     {{ detail }}
                                 </div>
                                 <div class="small text-muted" v-if="resumeSourceSummary(wait.resume_source_kind, wait.resume_source_id)">
-                                    resume / {{ resumeSourceSummary(wait.resume_source_kind, wait.resume_source_id) }}
+                                    {{ $t("resume /") }} {{ resumeSourceSummary(wait.resume_source_kind, wait.resume_source_id) }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.sequence)">
-                                    step {{ wait.sequence }}
+                                    {{ $t("step") }} {{ wait.sequence }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.condition_key)">
-                                    condition key / {{ wait.condition_key }}
+                                    {{ $t("condition key /") }} {{ wait.condition_key }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.condition_definition_fingerprint)">
-                                    predicate fingerprint / {{ wait.condition_definition_fingerprint }}
+                                    {{ $t("predicate fingerprint /") }} {{ wait.condition_definition_fingerprint }}
                                 </div>
                                 <div class="small text-muted" v-if="parallelGroupLabel(wait)">
                                     {{ parallelGroupLabel(wait) }}
@@ -926,23 +922,23 @@
                                     {{ historyUnsupportedReasonLabel(wait.history_unsupported_reason) }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id) || hasDetailValue(wait.command_sequence) || hasDetailValue(wait.timeout_seconds)">
-                                    <span v-if="hasDetailValue(wait.update_id)">update / {{ wait.update_id }}</span>
-                                    <span v-if="hasDetailValue(wait.signal_wait_id)">signal wait / {{ wait.signal_wait_id }}</span>
+                                    <span v-if="hasDetailValue(wait.update_id)">{{ $t("update /") }} {{ wait.update_id }}</span>
+                                    <span v-if="hasDetailValue(wait.signal_wait_id)">{{ $t("signal wait /") }} {{ wait.signal_wait_id }}</span>
                                     <span v-if="hasDetailValue(wait.condition_wait_id)">
-                                        <span v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id)"> | </span>condition wait / {{ wait.condition_wait_id }}
+                                        <span v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id)"> | </span>{{ $t("condition wait /") }} {{ wait.condition_wait_id }}
                                     </span>
                                     <span v-if="hasDetailValue(wait.command_sequence)">
-                                        <span v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id)"> | </span>command / #{{ wait.command_sequence }}
+                                        <span v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id)"> | </span>{{ $t("command / #") }}{{ wait.command_sequence }}
                                     </span>
                                     <span v-if="hasDetailValue(wait.timeout_seconds)">
-                                        <span v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id) || hasDetailValue(wait.command_sequence)"> | </span>timeout / {{ wait.timeout_seconds }}s
+                                        <span v-if="hasDetailValue(wait.update_id) || hasDetailValue(wait.signal_wait_id) || hasDetailValue(wait.condition_wait_id) || hasDetailValue(wait.command_sequence)"> | </span>{{ $t("timeout /") }} {{ wait.timeout_seconds }}{{ $t("s") }}
                                     </span>
                                 </div>
                             </td>
                             <td>
-                                {{ wait.status }}
+                                {{ stateLabel(wait.status) }}
                                 <div class="small text-muted" v-if="hasDetailValue(wait.source_status)">
-                                    source status / {{ wait.source_status }}
+                                    {{ $t("source status /") }} {{ wait.source_status }}
                                 </div>
                             </td>
                             <td>{{ waitBacking(wait) }}</td>
@@ -956,10 +952,10 @@
 
         <div class="card mt-4" v-if="ready && taskRows().length">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Tasks</h5>
+                <h5>{{ $t("Tasks") }}</h5>
 
                 <a data-toggle="collapse" href="#collapseTasks" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
@@ -968,15 +964,15 @@
                     <table class="table detail-table detail-tasks-table mb-0">
                         <thead>
                             <tr>
-                                <th scope="col" class="task-col-type">Type</th>
-                                <th scope="col" class="task-col-status">Status</th>
-                                <th scope="col" class="task-col-transport">Transport</th>
-                                <th scope="col" class="task-col-target">Target</th>
-                                <th scope="col" class="task-col-queue">Queue</th>
-                                <th scope="col" class="task-col-compatibility">Compatibility</th>
-                                <th scope="col" class="task-col-summary">Summary</th>
-                                <th scope="col" class="task-col-availability">Ready / Leased</th>
-                                <th scope="col" class="task-col-attempts">Attempts</th>
+                                <th scope="col" class="task-col-type">{{ $t("Type") }}</th>
+                                <th scope="col" class="task-col-status">{{ $t("Status") }}</th>
+                                <th scope="col" class="task-col-transport">{{ $t("Transport") }}</th>
+                                <th scope="col" class="task-col-target">{{ $t("Target") }}</th>
+                                <th scope="col" class="task-col-queue">{{ $t("Queue") }}</th>
+                                <th scope="col" class="task-col-compatibility">{{ $t("Compatibility") }}</th>
+                                <th scope="col" class="task-col-summary">{{ $t("Summary") }}</th>
+                                <th scope="col" class="task-col-availability">{{ $t("Ready / Leased") }}</th>
+                                <th scope="col" class="task-col-attempts">{{ $t("Attempts") }}</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -985,7 +981,7 @@
                                     <div class="detail-cell-main" :title="task.type">{{ task.type }}</div>
                                 </td>
                                 <td class="task-col-status">
-                                    <span class="detail-nowrap" :title="task.status">{{ task.status }}</span>
+                                    <span class="detail-nowrap" :title="task.status">{{ stateLabel(task.status) }}</span>
                                 </td>
                                 <td class="task-col-transport">
                                     <div class="detail-cell-main" :title="taskTransportState(task)">{{ taskTransportState(task) }}</div>
@@ -993,16 +989,16 @@
                                         {{ timestamp(task.last_dispatch_attempt_at) }}
                                     </div>
                                     <div class="small text-muted detail-nowrap" v-if="hasDetailValue(task.last_claim_failed_at)">
-                                        Claim failed {{ timestamp(task.last_claim_failed_at) }}
+                                        {{ $t("Claim failed") }} {{ timestamp(task.last_claim_failed_at) }}
                                     </div>
                                     <div class="small text-muted detail-nowrap" v-if="hasDetailValue(task.repair_available_at)">
-                                        Repair after {{ timestamp(task.repair_available_at) }}
+                                        {{ $t("Repair after") }} {{ timestamp(task.repair_available_at) }}
                                     </div>
                                 </td>
                                 <td class="task-col-target">
                                     <div class="detail-cell-main" :title="taskTarget(task)">{{ taskTarget(task) }}</div>
                                     <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.expected_task_id)" :title="task.expected_task_id">
-                                        expected task / {{ task.expected_task_id }}
+                                        {{ $t("expected task /") }} {{ task.expected_task_id }}
                                     </div>
                                     <div
                                         v-for="detail in taskChildIdentityRows(task)"
@@ -1022,10 +1018,10 @@
                                         {{ task.compatibility_semantics.operator_summary }}
                                     </div>
                                     <div class="small text-muted detail-cell-muted" v-if="task.compatibility_supported === false && hasDetailValue(task.compatibility_reason)" :title="task.compatibility_reason">
-                                        Claimable by this build: {{ task.compatibility_reason }}
+                                        {{ $t("Claimable by this build:") }} {{ task.compatibility_reason }}
                                     </div>
                                     <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.compatibility_supported_in_fleet)">
-                                        Supported in active fleet: {{ compatibilityFleetSummary(task.compatibility_supported_in_fleet) }}
+                                        {{ $t("Supported in active fleet:") }} {{ compatibilityFleetSummary(task.compatibility_supported_in_fleet) }}
                                     </div>
                                     <div class="small text-muted detail-cell-muted" v-if="task.compatibility_supported_in_fleet === false && hasDetailValue(task.compatibility_fleet_reason)" :title="task.compatibility_fleet_reason">
                                         {{ task.compatibility_fleet_reason }}
@@ -1043,26 +1039,26 @@
                                         {{ task.last_error }}
                                     </div>
                                     <div class="small text-danger detail-cell-muted" v-if="task.replay_blocked === true">
-                                        Replay blocked<span v-if="hasDetailValue(task.replay_blocked_reason)"> / {{ task.replay_blocked_reason }}</span>
+                                        {{ $t("Replay blocked") }}<span v-if="hasDetailValue(task.replay_blocked_reason)"> / {{ task.replay_blocked_reason }}</span>
                                     </div>
                                     <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.replay_blocked_expected_history_shape)" :title="task.replay_blocked_expected_history_shape">
-                                        expected step / {{ task.replay_blocked_expected_history_shape }}
+                                        {{ $t("expected step /") }} {{ task.replay_blocked_expected_history_shape }}
                                     </div>
                                     <div class="small text-muted detail-cell-muted" v-if="replayBlockedRecordedEvents(task).length" :title="replayBlockedRecordedEvents(task).join(', ')">
-                                        recorded events / {{ replayBlockedRecordedEvents(task).join(', ') }}
+                                        {{ $t("recorded events /") }} {{ replayBlockedRecordedEvents(task).join(', ') }}
                                     </div>
                                     <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.replay_blocked_recorded_condition_definition_fingerprint)" :title="task.replay_blocked_recorded_condition_definition_fingerprint">
-                                        recorded predicate / {{ task.replay_blocked_recorded_condition_definition_fingerprint }}
+                                        {{ $t("recorded predicate /") }} {{ task.replay_blocked_recorded_condition_definition_fingerprint }}
                                     </div>
                                     <div class="small text-muted detail-cell-muted" v-if="hasDetailValue(task.replay_blocked_current_condition_definition_fingerprint)" :title="task.replay_blocked_current_condition_definition_fingerprint">
-                                        current predicate / {{ task.replay_blocked_current_condition_definition_fingerprint }}
+                                        {{ $t("current predicate /") }} {{ task.replay_blocked_current_condition_definition_fingerprint }}
                                     </div>
                                 </td>
                                 <td class="task-col-availability">
                                     <span class="detail-nowrap" :title="taskAvailability(task)">{{ taskAvailability(task) }}</span>
                                 </td>
                                 <td class="task-col-attempts">
-                                    <span class="detail-nowrap">{{ task.attempt_count }}<span v-if="task.repair_count"> / repair {{ task.repair_count }}</span></span>
+                                    <span class="detail-nowrap">{{ task.attempt_count }}<span v-if="task.repair_count"> {{ $t("/ repair") }} {{ task.repair_count }}</span></span>
                                 </td>
                             </tr>
                         </tbody>
@@ -1078,9 +1074,9 @@
         >
             <div class="card-header d-flex align-items-center justify-content-between">
                 <div>
-                    <h5>Message &amp; Workflow Streams</h5>
+                    <h5>{{ $t("Message & Workflow Streams") }}</h5>
                     <div class="small text-muted">
-                        Embedded streams include workflow inbox/outbox messages; service streams are workflow output only.
+                        {{ $t("Embedded streams include workflow inbox/outbox messages; service streams are workflow output only.") }}
                     </div>
                 </div>
 
@@ -1091,7 +1087,7 @@
                     :aria-expanded="workflowStreamsExpanded"
                     @click="toggleWorkflowStreams"
                 >
-                    {{ workflowStreamsExpanded ? 'Collapse Workflow Streams' : 'Expand Workflow Streams' }}
+                    {{ workflowStreamsExpanded ? $t('Collapse Workflow Streams') : $t('Expand Workflow Streams') }}
                 </button>
             </div>
 
@@ -1113,27 +1109,27 @@
                     <table class="table detail-workflow-streams-table mb-0">
                         <thead>
                             <tr>
-                                <th scope="col">Stream</th>
-                                <th scope="col">Mode</th>
-                                <th scope="col">Lifecycle</th>
-                                <th scope="col">Offsets</th>
-                                <th scope="col">Pending</th>
-                                <th scope="col">Direction</th>
-                                <th scope="col">Error</th>
+                                <th scope="col">{{ $t("Stream") }}</th>
+                                <th scope="col">{{ $t("Mode") }}</th>
+                                <th scope="col">{{ $t("Lifecycle") }}</th>
+                                <th scope="col">{{ $t("Offsets") }}</th>
+                                <th scope="col">{{ $t("Pending") }}</th>
+                                <th scope="col">{{ $t("Direction") }}</th>
+                                <th scope="col">{{ $t("Error") }}</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr v-for="stream in workflowStreamRows()" :key="workflowStreamKey(stream)">
                                 <td>{{ stream.stream_name }}</td>
                                 <td><span class="badge badge-secondary">{{ stream.mode }}</span></td>
-                                <td>{{ stream.status }}</td>
+                                <td>{{ stateLabel(stream.status) }}</td>
                                 <td>
                                     {{ workflowStreamOffsets(stream) }}
-                                    <div class="small text-muted">{{ stream.total_items }} retained items</div>
+                                    <div class="small text-muted">{{ stream.total_items }} {{ $t("retained items") }}</div>
                                     <div class="small text-muted" v-if="hasDetailValue(stream.run_cursor_offset)">
-                                        run cursor / {{ stream.run_cursor_offset }}
+                                        {{ $t("run cursor /") }} {{ stream.run_cursor_offset }}
                                     </div>
-                                    <div class="small text-muted">stream origin / {{ stream.offset_origin }}</div>
+                                    <div class="small text-muted">{{ $t("stream origin /") }} {{ stream.offset_origin }}</div>
                                 </td>
                                 <td>{{ stream.pending_items }}</td>
                                 <td>
@@ -1157,41 +1153,41 @@
                         :key="'mobile-' + workflowStreamKey(stream)"
                     >
                         <div>
-                            <dt>Stream</dt>
+                            <dt>{{ $t("Stream") }}</dt>
                             <dd>{{ stream.stream_name }}</dd>
                         </div>
                         <div>
-                            <dt>Mode</dt>
+                            <dt>{{ $t("Mode") }}</dt>
                             <dd><span class="badge badge-secondary">{{ stream.mode }}</span></dd>
                         </div>
                         <div>
-                            <dt>Lifecycle</dt>
-                            <dd>{{ stream.status }}</dd>
+                            <dt>{{ $t("Lifecycle") }}</dt>
+                            <dd>{{ stateLabel(stream.status) }}</dd>
                         </div>
                         <div>
-                            <dt>Offsets</dt>
+                            <dt>{{ $t("Offsets") }}</dt>
                             <dd>
                                 <div>{{ workflowStreamOffsets(stream) }}</div>
-                                <div class="small text-muted">{{ stream.total_items }} retained items</div>
+                                <div class="small text-muted">{{ stream.total_items }} {{ $t("retained items") }}</div>
                                 <div class="small text-muted" v-if="hasDetailValue(stream.run_cursor_offset)">
-                                    run cursor / {{ stream.run_cursor_offset }}
+                                    {{ $t("run cursor /") }} {{ stream.run_cursor_offset }}
                                 </div>
-                                <div class="small text-muted">stream origin / {{ stream.offset_origin }}</div>
+                                <div class="small text-muted">{{ $t("stream origin /") }} {{ stream.offset_origin }}</div>
                             </dd>
                         </div>
                         <div>
-                            <dt>Pending</dt>
+                            <dt>{{ $t("Pending") }}</dt>
                             <dd>{{ stream.pending_items }}</dd>
                         </div>
                         <div>
-                            <dt>Direction</dt>
+                            <dt>{{ $t("Direction") }}</dt>
                             <dd>
                                 <div>{{ workflowStreamDirection(stream) }}</div>
                                 <div class="small text-muted">{{ stream.delivery }}</div>
                             </dd>
                         </div>
                         <div>
-                            <dt>Error</dt>
+                            <dt>{{ $t("Error") }}</dt>
                             <dd :class="stream.error_reason ? 'text-danger' : 'text-muted'">
                                 {{ stream.error_reason || '-' }}
                             </dd>
@@ -1203,10 +1199,10 @@
 
         <div class="card mt-4" v-if="ready && linkedIntakeRows().length">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Linked Intakes</h5>
+                <h5>{{ $t("Linked Intakes") }}</h5>
 
                 <a data-toggle="collapse" href="#collapseLinkedIntakes" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
@@ -1214,11 +1210,11 @@
                 <table class="table">
                     <thead>
                         <tr>
-                            <th scope="col">Mode</th>
-                            <th scope="col">Group</th>
-                            <th scope="col">Start</th>
-                            <th scope="col">Primary</th>
-                            <th scope="col">Commands</th>
+                            <th scope="col">{{ $t("Mode") }}</th>
+                            <th scope="col">{{ $t("Group") }}</th>
+                            <th scope="col">{{ $t("Start") }}</th>
+                            <th scope="col">{{ $t("Primary") }}</th>
+                            <th scope="col">{{ $t("Commands") }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1226,7 +1222,7 @@
                             <td>
                                 <div>{{ linkedIntakeModeLabel(intake) }}</div>
                                 <div v-if="intake.complete === false" class="small text-muted">
-                                    Incomplete
+                                    {{ $t("Incomplete") }}
                                 </div>
                             </td>
                             <td>
@@ -1235,7 +1231,7 @@
                                     {{ intake.source }}
                                 </div>
                                 <div v-if="intake.missing_expected_command_types && intake.missing_expected_command_types.length" class="small text-muted">
-                                    missing / {{ intake.missing_expected_command_types.join(', ') }}
+                                    {{ $t("missing /") }} {{ intake.missing_expected_command_types.join(', ') }}
                                 </div>
                             </td>
                             <td>
@@ -1274,10 +1270,10 @@
 
         <div class="card mt-4" v-if="ready && flow.commands && flow.commands.length">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Commands</h5>
+                <h5>{{ $t("Commands") }}</h5>
 
                 <a data-toggle="collapse" href="#collapseCommands" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
@@ -1285,15 +1281,15 @@
                 <table class="table">
                     <thead>
                         <tr>
-                            <th scope="col">Seq</th>
-                            <th scope="col">Type</th>
-                            <th scope="col">Target</th>
-                            <th scope="col">Outcome</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Source</th>
-                            <th scope="col">Payload</th>
-                            <th scope="col">Result</th>
-                            <th scope="col">Accepted At</th>
+                            <th scope="col">{{ $t("Seq") }}</th>
+                            <th scope="col">{{ $t("Type") }}</th>
+                            <th scope="col">{{ $t("Target") }}</th>
+                            <th scope="col">{{ $t("Outcome") }}</th>
+                            <th scope="col">{{ $t("Status") }}</th>
+                            <th scope="col">{{ $t("Source") }}</th>
+                            <th scope="col">{{ $t("Payload") }}</th>
+                            <th scope="col">{{ $t("Result") }}</th>
+                            <th scope="col">{{ $t("Accepted At") }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1306,17 +1302,17 @@
                                     {{ commandTargetDetail(command) }}
                                 </small>
                                 <div v-if="hasDetailValue(command.current_task_id)" class="small text-muted">
-                                    current task / {{ command.current_task_id }}<span v-if="hasDetailValue(command.current_task_status)"> ({{ command.current_task_status }})</span>
+                                    {{ $t("current task /") }} {{ command.current_task_id }}<span v-if="hasDetailValue(command.current_task_status)"> ({{ command.current_task_status }})</span>
                                 </div>
                                 <div v-if="historicalTaskIds(command).length" class="small text-muted">
-                                    tasks / {{ historicalTaskIds(command).join(', ') }}
+                                    {{ $t("tasks /") }} {{ historicalTaskIds(command).join(', ') }}
                                 </div>
                                 <div v-if="command.task_missing === true && !hasDetailValue(command.current_task_id)" class="small text-muted">
-                                    transport / {{ command.task_transport_state || 'missing' }}
+                                    {{ $t("transport /") }} {{ command.task_transport_state || 'missing' }}
                                 </div>
                             </td>
                             <td>{{ command.outcome || '-' }}</td>
-                            <td>{{ command.status }}</td>
+                            <td>{{ stateLabel(command.status) }}</td>
                             <td>
                                 <div>{{ commandSource(command) }}</div>
                                 <small v-if="commandPrincipalDetail(command)" class="text-muted d-block">
@@ -1339,19 +1335,19 @@
                             <td>
                                 <button
                                     v-if="command.payload_available"
-                                    title="View Payload"
+                                    :title="$t('View Payload')"
                                     class="btn btn-outline-primary ml-auto"
                                     @click="showResult(command.payload, 'Command Payload')"
-                                >View</button>
+                                >{{ $t("View") }}</button>
                                 <span v-else>-</span>
                             </td>
                             <td>
                                 <button
                                     v-if="command.result_available"
-                                    title="View Result"
+                                    :title="$t('View Result')"
                                     class="btn btn-outline-primary ml-auto"
                                     @click="showResult(command.result, 'Command Result')"
-                                >View</button>
+                                >{{ $t("View") }}</button>
                                 <span v-else>-</span>
                             </td>
                             <td>{{ timestamp(command.accepted_at || command.rejected_at || command.applied_at) }}</td>
@@ -1363,10 +1359,10 @@
 
         <div class="card mt-4" v-if="ready && signalRows().length">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Signals</h5>
+                <h5>{{ $t("Signals") }}</h5>
 
                 <a data-toggle="collapse" href="#collapseSignals" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
@@ -1374,12 +1370,12 @@
                 <table class="table">
                     <thead>
                         <tr>
-                            <th scope="col">Signal</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Target</th>
-                            <th scope="col">Arguments</th>
-                            <th scope="col">Received</th>
-                            <th scope="col">Closed</th>
+                            <th scope="col">{{ $t("Signal") }}</th>
+                            <th scope="col">{{ $t("Status") }}</th>
+                            <th scope="col">{{ $t("Target") }}</th>
+                            <th scope="col">{{ $t("Arguments") }}</th>
+                            <th scope="col">{{ $t("Received") }}</th>
+                            <th scope="col">{{ $t("Closed") }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1387,32 +1383,32 @@
                             <td>
                                 <div>{{ signal.name || '-' }}</div>
                                 <div v-if="hasDetailValue(signal.id)" class="small text-muted">
-                                    signal / {{ signal.id }}
+                                    {{ $t("signal /") }} {{ signal.id }}
                                 </div>
                                 <div v-if="hasDetailValue(signal.signal_wait_id)" class="small text-muted">
-                                    wait / {{ signal.signal_wait_id }}
+                                    {{ $t("wait /") }} {{ signal.signal_wait_id }}
                                 </div>
                                 <div v-if="hasDetailValue(signal.command_id)" class="small text-muted">
-                                    command / {{ signal.command_id }}
+                                    {{ $t("command /") }} {{ signal.command_id }}
                                 </div>
                                 <div v-if="hasDetailValue(signal.command_sequence)" class="small text-muted">
-                                    command seq / #{{ signal.command_sequence }}
+                                    {{ $t("command seq / #") }}{{ signal.command_sequence }}
                                 </div>
                                 <div v-if="hasDetailValue(signal.workflow_sequence)" class="small text-muted">
-                                    step / {{ signal.workflow_sequence }}
+                                    {{ $t("step /") }} {{ signal.workflow_sequence }}
                                 </div>
                                 <div v-if="hasDetailValue(signal.current_task_id)" class="small text-muted">
-                                    current task / {{ signal.current_task_id }}<span v-if="hasDetailValue(signal.current_task_status)"> ({{ signal.current_task_status }})</span>
+                                    {{ $t("current task /") }} {{ signal.current_task_id }}<span v-if="hasDetailValue(signal.current_task_status)"> ({{ signal.current_task_status }})</span>
                                 </div>
                                 <div v-if="historicalTaskIds(signal).length" class="small text-muted">
-                                    tasks / {{ historicalTaskIds(signal).join(', ') }}
+                                    {{ $t("tasks /") }} {{ historicalTaskIds(signal).join(', ') }}
                                 </div>
                                 <div v-if="signal.task_missing === true && !hasDetailValue(signal.current_task_id)" class="small text-muted">
-                                    transport / {{ signal.task_transport_state || 'missing' }}
+                                    {{ $t("transport /") }} {{ signal.task_transport_state || 'missing' }}
                                 </div>
                             </td>
                             <td>
-                                <div>{{ signal.status || '-' }}</div>
+                                <div>{{ stateLabel(signal.status || '-') }}</div>
                                 <div v-if="hasDetailValue(signal.outcome)" class="small text-muted">
                                     {{ signal.outcome }}
                                 </div>
@@ -1436,10 +1432,10 @@
                             <td>
                                 <button
                                     v-if="signal.arguments_available"
-                                    title="View Arguments"
+                                    :title="$t('View Arguments')"
                                     class="btn btn-outline-primary ml-auto"
                                     @click="showResult(signal.arguments, 'Signal Arguments')"
-                                >View</button>
+                                >{{ $t("View") }}</button>
                                 <span v-else>-</span>
                             </td>
                             <td>{{ timestamp(signal.received_at || signal.rejected_at) }}</td>
@@ -1452,10 +1448,10 @@
 
         <div class="card mt-4" v-if="ready && updateRows().length">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Updates</h5>
+                <h5>{{ $t("Updates") }}</h5>
 
                 <a data-toggle="collapse" href="#collapseUpdates" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
@@ -1463,13 +1459,13 @@
                 <table class="table">
                     <thead>
                         <tr>
-                            <th scope="col">Update</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Target</th>
-                            <th scope="col">Payload</th>
-                            <th scope="col">Result</th>
-                            <th scope="col">Accepted</th>
-                            <th scope="col">Closed</th>
+                            <th scope="col">{{ $t("Update") }}</th>
+                            <th scope="col">{{ $t("Status") }}</th>
+                            <th scope="col">{{ $t("Target") }}</th>
+                            <th scope="col">{{ $t("Payload") }}</th>
+                            <th scope="col">{{ $t("Result") }}</th>
+                            <th scope="col">{{ $t("Accepted") }}</th>
+                            <th scope="col">{{ $t("Closed") }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1477,46 +1473,46 @@
                             <td>
                                 <div>{{ update.name || '-' }}</div>
                                 <div v-if="hasDetailValue(update.id)" class="small text-muted">
-                                    update / {{ update.id }}
+                                    {{ $t("update /") }} {{ update.id }}
                                 </div>
                                 <div v-if="hasDetailValue(update.command_id)" class="small text-muted">
-                                    command / {{ update.command_id }}
+                                    {{ $t("command /") }} {{ update.command_id }}
                                 </div>
                                 <div v-if="hasDetailValue(update.command_sequence)" class="small text-muted">
-                                    command seq / #{{ update.command_sequence }}
+                                    {{ $t("command seq / #") }}{{ update.command_sequence }}
                                 </div>
                                 <div v-if="hasDetailValue(update.request_id)" class="small text-muted">
-                                    request / {{ update.request_id }}
+                                    {{ $t("request /") }} {{ update.request_id }}
                                 </div>
                                 <div v-if="hasDetailValue(update.correlation_id)" class="small text-muted">
-                                    correlation / {{ update.correlation_id }}
+                                    {{ $t("correlation /") }} {{ update.correlation_id }}
                                 </div>
                                 <div v-if="hasDetailValue(update.request_fingerprint)" class="small text-muted">
-                                    fingerprint / {{ update.request_fingerprint }}
+                                    {{ $t("fingerprint /") }} {{ update.request_fingerprint }}
                                 </div>
                                 <div v-if="hasDetailValue(update.workflow_sequence)" class="small text-muted">
-                                    step / {{ update.workflow_sequence }}
+                                    {{ $t("step /") }} {{ update.workflow_sequence }}
                                 </div>
                                 <div v-if="historyReferenceLabel(update)" class="small text-muted">
-                                    history / {{ historyReferenceLabel(update) }}
+                                    {{ $t("history /") }} {{ historyReferenceLabel(update) }}
                                 </div>
                                 <div v-if="hasDetailValue(update.current_task_id)" class="small text-muted">
-                                    current task / {{ update.current_task_id }}<span v-if="hasDetailValue(update.current_task_status)"> ({{ update.current_task_status }})</span>
+                                    {{ $t("current task /") }} {{ update.current_task_id }}<span v-if="hasDetailValue(update.current_task_status)"> ({{ stateLabel(update.current_task_status) }})</span>
                                 </div>
                                 <div v-if="historicalTaskIds(update).length" class="small text-muted">
-                                    tasks / {{ historicalTaskIds(update).join(', ') }}
+                                    {{ $t("tasks /") }} {{ historicalTaskIds(update).join(', ') }}
                                 </div>
                                 <div v-if="update.task_missing === true && !hasDetailValue(update.current_task_id)" class="small text-muted">
-                                    transport / {{ update.task_transport_state || 'missing' }}
+                                    {{ $t("transport /") }} {{ stateLabel(update.task_transport_state || 'missing') }}
                                 </div>
                             </td>
                             <td>
-                                <div>{{ update.state_label || update.status || '-' }}</div>
+                                <div>{{ update.state_label ? uiText(update.state_label) : stateLabel(update.status || '-') }}</div>
                                 <div v-if="hasDetailValue(update.outcome)" class="small text-muted">
-                                    {{ update.outcome }}
+                                    {{ stateLabel(update.outcome) }}
                                 </div>
                                 <div v-if="hasDetailValue(update.reason)" class="small text-muted">
-                                    reason / {{ update.reason }}
+                                    {{ $t("reason /") }} {{ update.reason }}
                                 </div>
                                 <div v-if="hasDetailValue(update.rejection_reason)" class="small text-muted">
                                     {{ update.rejection_reason }}
@@ -1538,19 +1534,19 @@
                             <td>
                                 <button
                                     v-if="update.payload_available"
-                                    title="View Payload"
+                                    :title="$t('View Payload')"
                                     class="btn btn-outline-primary ml-auto"
                                     @click="showResult(update.payload, 'Update Payload')"
-                                >View</button>
+                                >{{ $t("View") }}</button>
                                 <span v-else>-</span>
                             </td>
                             <td>
                                 <button
                                     v-if="update.result_available"
-                                    title="View Result"
+                                    :title="$t('View Result')"
                                     class="btn btn-outline-primary ml-auto"
                                     @click="showResult(update.result, 'Update Result')"
-                                >View</button>
+                                >{{ $t("View") }}</button>
                                 <div
                                     v-else-if="update.error_available || hasDetailValue(update.failure_message) || update.exception_replay_blocked === true || hasDetailValue(update.exception_resolution_source)"
                                     class="small text-muted"
@@ -1559,17 +1555,17 @@
                                         {{ update.failure_message }}
                                     </div>
                                     <div v-if="update.exception_replay_blocked === true" class="text-danger">
-                                        Exception mapping unresolved.
+                                        {{ $t("Exception mapping unresolved.") }}
                                     </div>
                                     <div v-else-if="hasDetailValue(update.exception_resolution_source)">
-                                        exception / {{ update.exception_resolution_source }}
+                                        {{ $t("exception /") }} {{ update.exception_resolution_source }}
                                     </div>
                                     <button
                                         v-if="update.error_available"
-                                        title="View Error"
+                                        :title="$t('View Error')"
                                         class="btn btn-outline-danger btn-sm mt-2"
                                         @click="showResult(update.error, 'Update Error')"
-                                    >Error</button>
+                                    >{{ $t("Error") }}</button>
                                 </div>
                                 <span v-else>-</span>
                             </td>
@@ -1583,10 +1579,10 @@
 
         <div class="card mt-4" v-if="ready && activityRows().length">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Activities</h5>
+                <h5>{{ $t("Activities") }}</h5>
 
                 <a data-toggle="collapse" href="#collapseActivities" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
@@ -1594,15 +1590,15 @@
                 <table class="table">
                     <thead>
                         <tr>
-                            <th scope="col">Activity</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Attempts</th>
-                            <th scope="col">Retry Policy</th>
-                            <th scope="col">Queue</th>
-                            <th scope="col">Started</th>
-                            <th scope="col">Heartbeat</th>
-                            <th scope="col">Closed</th>
-                            <th scope="col">Result</th>
+                            <th scope="col">{{ $t("Activity") }}</th>
+                            <th scope="col">{{ $t("Status") }}</th>
+                            <th scope="col">{{ $t("Attempts") }}</th>
+                            <th scope="col">{{ $t("Retry Policy") }}</th>
+                            <th scope="col">{{ $t("Queue") }}</th>
+                            <th scope="col">{{ $t("Started") }}</th>
+                            <th scope="col">{{ $t("Heartbeat") }}</th>
+                            <th scope="col">{{ $t("Closed") }}</th>
+                            <th scope="col">{{ $t("Result") }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1610,37 +1606,37 @@
                             <td>
                                 {{ activity.type || activity.class }}
                                 <div v-if="activity.idempotency_key" class="small text-muted">
-                                    idempotency / {{ activity.idempotency_key }}
+                                    {{ $t("idempotency /") }} {{ activity.idempotency_key }}
                                 </div>
                                 <div v-if="activity.history_authority" class="small text-muted">
                                     {{ historyAuthorityLabel(activity.history_authority) }}
                                 </div>
                                 <div v-if="activity.reused_from_run_id" class="small text-muted text-break">
-                                    Reused from run {{ activity.reused_from_run_id }}
+                                    {{ $t("Reused from run") }} {{ activity.reused_from_run_id }}
                                 </div>
                                 <div v-else-if="hasReusedActivities()" class="small text-muted">
-                                    Executed in this run
+                                    {{ $t("Executed in this run") }}
                                 </div>
                                 <div v-if="activity.diagnostic_only === true" class="small text-muted">
-                                    diagnostic only
+                                    {{ $t("diagnostic only") }}
                                 </div>
                                 <div v-if="activity.history_unsupported_reason" class="small text-muted">
                                     {{ historyUnsupportedReasonLabel(activity.history_unsupported_reason) }}
                                 </div>
                                 <div v-if="activity.row_status" class="small text-muted">
-                                    row status / {{ activity.row_status }}
+                                    {{ $t("row status /") }} {{ activity.row_status }}
                                 </div>
                             </td>
-                            <td>{{ activity.status || '-' }}</td>
+                            <td>{{ stateLabel(activity.status || '-') }}</td>
                             <td>
                                 {{ activity.attempt_count || 0 }}
                                 <div v-if="activity.attempt_id" class="small text-muted">{{ activity.attempt_id }}</div>
                                 <div v-if="activity.attempts && activity.attempts.length" class="small text-muted mt-2">
                                     <div v-for="attempt in activity.attempts" :key="attempt.id">
-                                        #{{ attempt.attempt_number }} / {{ attempt.status || '-' }}
-                                        <div v-if="attempt.task_id">task / {{ attempt.task_id }}</div>
-                                        <div v-if="attempt.lease_owner">worker / {{ attempt.lease_owner }}</div>
-                                        <div v-if="attempt.lease_expires_at">lease / {{ timestamp(attempt.lease_expires_at) }}</div>
+                                        #{{ attempt.attempt_number }} / {{ stateLabel(attempt.status || '-') }}
+                                        <div v-if="attempt.task_id">{{ $t("task /") }} {{ attempt.task_id }}</div>
+                                        <div v-if="attempt.lease_owner">{{ $t("worker /") }} {{ attempt.lease_owner }}</div>
+                                        <div v-if="attempt.lease_expires_at">{{ $t("lease /") }} {{ timestamp(attempt.lease_expires_at) }}</div>
                                         <div v-if="attempt.last_heartbeat_progress">{{ heartbeatProgressLabel(attempt.last_heartbeat_progress) }}</div>
                                         <div
                                             v-for="detail in heartbeatProgressDetails(attempt.last_heartbeat_progress)"
@@ -1648,8 +1644,8 @@
                                         >
                                             {{ detail }}
                                         </div>
-                                        <div v-if="attempt.cancel_requested">cancel requested</div>
-                                        <div v-if="attempt.stop_reason">stop / {{ attempt.stop_reason }}</div>
+                                        <div v-if="attempt.cancel_requested">{{ $t("cancel requested") }}</div>
+                                        <div v-if="attempt.stop_reason">{{ $t("stop /") }} {{ attempt.stop_reason }}</div>
                                     </div>
                                 </div>
                             </td>
@@ -1671,8 +1667,8 @@
                             </td>
                             <td>{{ timestamp(activity.closed_at) }}</td>
                             <td>
-                                <button v-if="canViewActivityResult(activity)" title="View Result" class="btn btn-outline-primary ml-auto"
-                                    @click="showResult(activity.result)">View</button>
+                                <button v-if="canViewActivityResult(activity)" :title="$t('View Result')" class="btn btn-outline-primary ml-auto"
+                                    @click="showResult(activity.result)">{{ $t("View") }}</button>
                                 <span v-else class="text-muted">{{ activityResultUnavailableLabel(activity) }}</span>
                             </td>
                         </tr>
@@ -1684,14 +1680,14 @@
         <div class="card mt-4" v-if="ready && timerRows().length">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <div>
-                    <h5>Timers</h5>
+                    <h5>{{ $t("Timers") }}</h5>
                     <div class="small text-muted" v-if="hasDetailValue(flow.timers_projection_source)">
                         {{ projectionSourceLabel(flow.timers_projection_source, flow.timers_projection_rebuild_reasons) }}
                     </div>
                 </div>
 
                 <a data-toggle="collapse" href="#collapseTimers" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
@@ -1699,11 +1695,11 @@
                 <table class="table">
                     <thead>
                         <tr>
-                            <th scope="col">Timer</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Delay</th>
-                            <th scope="col">Fire At</th>
-                            <th scope="col">Closed</th>
+                            <th scope="col">{{ $t("Timer") }}</th>
+                            <th scope="col">{{ $t("Status") }}</th>
+                            <th scope="col">{{ $t("Delay") }}</th>
+                            <th scope="col">{{ $t("Fire At") }}</th>
+                            <th scope="col">{{ $t("Closed") }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1712,34 +1708,34 @@
                                 {{ timer.timer_kind || 'timer' }}
                                 <div class="small text-muted">{{ timer.id }}</div>
                                 <div class="small text-muted" v-if="hasDetailValue(timer.condition_wait_id)">
-                                    condition wait / {{ timer.condition_wait_id }}
+                                    {{ $t("condition wait /") }} {{ timer.condition_wait_id }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(timer.condition_key)">
-                                    condition key / {{ timer.condition_key }}
+                                    {{ $t("condition key /") }} {{ timer.condition_key }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(timer.condition_definition_fingerprint)">
-                                    predicate fingerprint / {{ timer.condition_definition_fingerprint }}
+                                    {{ $t("predicate fingerprint /") }} {{ timer.condition_definition_fingerprint }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(timer.history_authority)">
                                     {{ historyAuthorityLabel(timer.history_authority) }}
                                 </div>
                                 <div class="small text-muted" v-if="timer.diagnostic_only === true">
-                                    Diagnostic only
+                                    {{ $t("Diagnostic only") }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(timer.history_unsupported_reason)">
                                     {{ historyUnsupportedReasonLabel(timer.history_unsupported_reason) }}
                                 </div>
                                 <div class="small text-muted" v-if="hasDetailValue(timer.row_status)">
-                                    row status / {{ timer.row_status }}
+                                    {{ $t("row status /") }} {{ timer.row_status }}
                                 </div>
                             </td>
                             <td>
-                                {{ timer.status || '-' }}
+                                {{ stateLabel(timer.status || '-') }}
                                 <div
                                     class="small text-muted"
                                     v-if="hasDetailValue(timer.source_status) && timer.source_status !== timer.status"
                                 >
-                                    source status / {{ timer.source_status }}
+                                    {{ $t("source status /") }} {{ timer.source_status }}
                                 </div>
                             </td>
                             <td>{{ hasDetailValue(timer.delay_seconds) ? timer.delay_seconds + 's' : '-' }}</td>
@@ -1753,10 +1749,10 @@
 
         <div class="card mt-4" v-if="ready && flow.exceptions && flow.exceptions.length">
             <div class="card-header d-flex align-items-center justify-content-between">
-                <h5>Exceptions</h5>
+                <h5>{{ $t("Exceptions") }}</h5>
 
                 <a data-toggle="collapse" href="#collapseExceptions" role="button">
-                    Collapse
+                    {{ $t("Collapse") }}
                 </a>
             </div>
 
@@ -1764,11 +1760,11 @@
                 <table class="table" id="accordion">
                     <thead>
                         <tr>
-                            <th scope="col">Activity</th>
-                            <th scope="col">Type</th>
-                            <th scope="col">Category</th>
-                            <th scope="col">Trace</th>
-                            <th scope="col">Logged At</th>
+                            <th scope="col">{{ $t("Activity") }}</th>
+                            <th scope="col">{{ $t("Type") }}</th>
+                            <th scope="col">{{ $t("Category") }}</th>
+                            <th scope="col">{{ $t("Trace") }}</th>
+                            <th scope="col">{{ $t("Logged At") }}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -1780,14 +1776,14 @@
                                         {{ historyAuthorityLabel(exception.history_authority) }}
                                     </div>
                                     <div v-if="exception.diagnostic_only === true" class="small text-muted">
-                                        diagnostic only
+                                        {{ $t("diagnostic only") }}
                                     </div>
                                 </td>
                                 <td>{{ exception.exception_type || '-' }}</td>
-                                <td>{{ exception.failure_category || '-' }}<span v-if="exception.non_retryable" class="badge badge-warning ml-1">non-retryable</span></td>
-                                <td v-if="exception.code"><button title="View Exception" class="btn btn-outline-primary ml-auto"
+                                <td>{{ exception.failure_category || '-' }}<span v-if="exception.non_retryable" class="badge badge-warning ml-1">{{ $t("non-retryable") }}</span></td>
+                                <td v-if="exception.code"><button :title="$t('View Exception')" class="btn btn-outline-primary ml-auto"
                                         data-toggle="collapse" :href="'#collapse' + exception.id" aria-expanded="false"
-                                        :aria-controls="'collapse' + exception.id">View</button></td>
+                                        :aria-controls="'collapse' + exception.id">{{ $t("View") }}</button></td>
                                 <td v-else>-</td>
                                 <td>{{ timestamp(exception.created_at) }}</td>
                             </tr>
@@ -1797,24 +1793,24 @@
                                         <div v-for="decodedException in [unserialize(exception.exception)]">
                                             <b>{{ decodedException.__constructor }}("{{ decodedException.message }}")</b>
                                             <span v-if="decodedException.type">
-                                                [type {{ decodedException.type }}]
+                                                {{ $t("[type") }} {{ decodedException.type }}]
                                             </span>
                                             <span v-if="decodedException.code !== undefined && decodedException.code !== null">
-                                                [code {{ decodedException.code }}]
+                                                {{ $t("[code") }} {{ decodedException.code }}]
                                             </span>
                                             <span v-if="hasDetailValue(exception.exception_resolved_class)">
-                                                [resolved {{ exception.exception_resolved_class }} via {{ exception.exception_resolution_source || 'unknown' }}]
+                                                {{ $t("[resolved") }} {{ exception.exception_resolved_class }} {{ $t("via") }} {{ exception.exception_resolution_source || 'unknown' }}]
                                             </span>
                                             <span v-if="hasDetailValue(exception.exception_resolution_error)">
-                                                [resolution error {{ exception.exception_resolution_error }}]
+                                                {{ $t("[resolution error") }} {{ exception.exception_resolution_error }}]
                                             </span>
                                             <span v-if="exception.exception_replay_blocked === true">
-                                                [replay blocked until this exception mapping is fixed]
+                                                {{ $t("[replay blocked until this exception mapping is fixed]") }}
                                             </span><br />
-                                            <span class="wl-exception-location">in {{ decodedException.file }} (line {{ decodedException.line
+                                            <span class="wl-exception-location">{{ $t("in") }} {{ decodedException.file }} {{ $t("(line") }} {{ decodedException.line
                                             }})</span><br /><br />
                                             <div v-if="decodedException.properties && decodedException.properties.length">
-                                                <b>Custom Properties</b><br /><br />
+                                                <b>{{ $t("Custom Properties") }}</b><br /><br />
                                                 <div v-for="property in decodedException.properties"
                                                     :key="property.declaring_class + ':' + property.name">
                                                     <b>{{ property.declaring_class }}::{{ property.name }}</b>
@@ -1827,7 +1823,7 @@
                                         <br />
                                         <div v-for="trace in unserialize(exception.exception).trace">
                                             <b>{{ trace.class }}{{ trace.type }}{{ trace.function }}()</b> <br />
-                                            <span class="wl-exception-location">in {{ trace.file }} (line {{ trace.line
+                                            <span class="wl-exception-location">{{ $t("in") }} {{ trace.file }} {{ $t("(line") }} {{ trace.line
                                             }})</span><br /><br />
                                         </div>
                                     </div>
@@ -1925,20 +1921,20 @@ export default {
                         if (seriesIndex === 0) {
                             let data = w.globals.initialSeries[seriesIndex].data[dataPointIndex]
                             let details = [
-                                '<b>'+data.type+'</b>: ' + data.x.split('_')[0],
-                                '<b>Time</b>: ' + (data.y[1] - data.y[0]) + 'ms',
+                                '<b>' + this.escapeHtml(data.type) + '</b>: ' + this.escapeHtml(data.x.split('_')[0]),
+                                '<b>' + this.escapeHtml(this.$t('Time')) + '</b>: ' + (data.y[1] - data.y[0]) + 'ms',
                             ]
 
                             if (data.diagnostic_only === true) {
-                                details.push('<b>Detail</b>: diagnostic only')
+                                details.push('<b>' + this.escapeHtml(this.$t('Detail')) + '</b>: ' + this.escapeHtml(this.$t('diagnostic only')))
                             }
 
                             if (this.hasDetailValue(data.history_authority)) {
-                                details.push('<b>History</b>: ' + this.historyAuthorityLabel(data.history_authority))
+                                details.push('<b>' + this.escapeHtml(this.$t('History')) + '</b>: ' + this.escapeHtml(this.historyAuthorityLabel(data.history_authority)))
                             }
 
                             if (this.hasDetailValue(data.history_unsupported_reason)) {
-                                details.push('<b>Reason</b>: ' + this.historyUnsupportedReasonLabel(data.history_unsupported_reason))
+                                details.push('<b>' + this.escapeHtml(this.$t('Reason')) + '</b>: ' + this.escapeHtml(this.historyUnsupportedReasonLabel(data.history_unsupported_reason)))
                             }
 
                             return '<div class="wl-chart-tooltip">' + details.join('<br />') + '</div>'
@@ -1948,13 +1944,13 @@ export default {
                             if (typeof exception !== 'object') return '';
 
                             return '<div class="wl-chart-tooltip">' +
-                                '<b>Class</b>: ' + exception.__constructor + '<br />' +
-                                '<b>Message</b>: ' + exception.message + '<br />' +
+                                '<b>' + this.escapeHtml(this.$t('Class')) + '</b>: ' + this.escapeHtml(exception.__constructor) + '<br />' +
+                                '<b>' + this.escapeHtml(this.$t('Message')) + '</b>: ' + this.escapeHtml(exception.message) + '<br />' +
                                 ((exception.code !== undefined && exception.code !== null)
-                                    ? '<b>Code</b>: ' + exception.code + '<br />'
+                                    ? '<b>' + this.escapeHtml(this.$t('Code')) + '</b>: ' + this.escapeHtml(exception.code) + '<br />'
                                     : '') +
-                                '<b>File</b>: ' + exception.file + '<br />' +
-                                '<b>Line</b>: ' + exception.line + '<br />' +
+                                '<b>' + this.escapeHtml(this.$t('File')) + '</b>: ' + this.escapeHtml(exception.file) + '<br />' +
+                                '<b>' + this.escapeHtml(this.$t('Line')) + '</b>: ' + this.escapeHtml(exception.line) + '<br />' +
                                 '</div>'
                         }
                     }
@@ -1990,7 +1986,7 @@ export default {
 
         this.handleRouteChange();
 
-        document.title = "Waterline - Flow Detail";
+        document.title = this.$t("Waterline - Flow Detail");
     },
 
     watch: {
@@ -2266,7 +2262,7 @@ export default {
 
         flowLoadErrorMessage(error) {
             if (error && error.code === 'ECONNABORTED') {
-                return 'The request timed out before Waterline could load this run.'
+                return this.$t("The request timed out before Waterline could load this run.")
             }
 
             if (error && error.response && error.response.status) {
@@ -2274,19 +2270,19 @@ export default {
                 const message = error.response.data && error.response.data.message
 
                 return message
-                    ? `Request failed with HTTP ${status}: ${message}`
-                    : `Request failed with HTTP ${status}.`
+                    ? this.$t("Request failed with HTTP {value1}: {value2}", { value1: status, value2: message })
+                    : this.$t("Request failed with HTTP {value1}.", { value1: status })
             }
 
             if (error && error.request) {
-                return 'Waterline could not reach the run detail endpoint.'
+                return this.$t("Waterline could not reach the run detail endpoint.")
             }
 
             if (error && error.message) {
                 return error.message
             }
 
-            return 'Waterline could not load this run detail.'
+            return this.$t("Waterline could not load this run detail.")
         },
 
         loadRunDetailPreferences() {
@@ -2465,10 +2461,10 @@ export default {
 
         failureEvidenceLabel(state) {
             return {
-                pruned: 'Supporting history has been pruned.',
-                outside_window: 'Supporting history is outside the loaded window. Load more history to inspect it.',
-                unavailable: 'Supporting history is unavailable in this view.',
-            }[state] || 'Supporting history is unavailable in this view.'
+                pruned: this.$t("Supporting history has been pruned."),
+                outside_window: this.$t("Supporting history is outside the loaded window. Load more history to inspect it."),
+                unavailable: this.$t("Supporting history is unavailable in this view."),
+            }[state] || this.$t("Supporting history is unavailable in this view.")
         },
 
         failureEventLocation(failure) {
@@ -2652,15 +2648,15 @@ export default {
             const parts = []
 
             if (critical) {
-                parts.push(`${critical} critical`)
+                parts.push(this.$t("{value1} critical", { value1: critical }))
             }
 
             if (warning) {
-                parts.push(`${warning} warning`)
+                parts.push(this.$t("{value1} warning", { value1: warning }))
             }
 
             if (info) {
-                parts.push(`${info} info`)
+                parts.push(this.$t("{value1} info", { value1: info }))
             }
 
             return parts.join(' / ')
@@ -2669,13 +2665,13 @@ export default {
         diagnosticSeverityLabel(severity) {
             switch (severity) {
                 case 'critical':
-                    return 'Critical'
+                    return this.$t('Critical')
                 case 'warning':
-                    return 'Warning'
+                    return this.$t('Warning')
                 case 'info':
-                    return 'Info'
+                    return this.$t('Info')
                 default:
-                    return severity || 'Info'
+                    return severity || this.$t('Info')
             }
         },
 
@@ -2697,13 +2693,13 @@ export default {
 
         historyBudgetSummary(flow) {
             const eventCount = this.hasDetailValue(flow.history_event_count)
-                ? Number(flow.history_event_count).toLocaleString() + ' events'
-                : '- events'
+                ? this.$t('{count} events', { count: Number(flow.history_event_count).toLocaleString() }, Number(flow.history_event_count))
+                : this.$t('Unknown event count')
             const size = this.formatBytes(flow.history_size_bytes)
             const thresholds = []
 
             if (this.hasDetailValue(flow.history_event_threshold)) {
-                thresholds.push(Number(flow.history_event_threshold).toLocaleString() + ' events')
+                thresholds.push(this.$t('{count} events', { count: Number(flow.history_event_threshold).toLocaleString() }, Number(flow.history_event_threshold)))
             }
 
             if (this.hasDetailValue(flow.history_size_bytes_threshold)) {
@@ -2711,7 +2707,7 @@ export default {
             }
 
             return thresholds.length
-                ? eventCount + ' / ' + size + ' (threshold ' + thresholds.join(' or ') + ')'
+                ? this.$t('{events} / {size} (threshold {threshold})', { events: eventCount, size, threshold: thresholds.join(this.$t(' or ')) })
                 : eventCount + ' / ' + size
         },
 
@@ -2774,7 +2770,7 @@ export default {
         readableTimestamp(iso) {
             if (!iso) return ''
             try {
-                return new Date(iso).toLocaleString()
+                return new Date(iso).toLocaleString(this.$i18n.locale)
             } catch {
                 return iso
             }
@@ -2783,13 +2779,13 @@ export default {
         contractSourceLabel(source) {
             switch (source) {
                 case 'durable_history':
-                    return 'Durable start history'
+                    return this.$t("Durable start history")
                 case 'definition_drift':
-                    return 'Definition drift'
+                    return this.$t("Definition drift")
                 case 'live_definition':
-                    return 'Live definition fallback'
+                    return this.$t("Live definition fallback")
                 case 'unavailable':
-                    return 'Unavailable'
+                    return this.$t('Unavailable')
                 default:
                     return source
             }
@@ -2798,14 +2794,14 @@ export default {
         workflowDeterminismStatusLabel(status, source = null) {
             switch (status) {
                 case 'clean':
-                    return 'No obvious replay-unsafe calls detected in the loadable workflow definition.'
+                    return this.$t("No obvious replay-unsafe calls detected in the loadable workflow definition.")
                 case 'warning':
                     if (source === 'definition_drift') {
-                        return 'Current-source replay-safety findings are suppressed because this run started on a different workflow definition.'
+                        return this.$t("Current-source replay-safety findings are suppressed because this run started on a different workflow definition.")
                     }
-                    return 'Replay-unsafe calls detected in the loadable workflow definition.'
+                    return this.$t("Replay-unsafe calls detected in the loadable workflow definition.")
                 case 'unavailable':
-                    return 'Workflow definition is unavailable, so replay-safety diagnostics could not run.'
+                    return this.$t("Workflow definition is unavailable, so replay-safety diagnostics could not run.")
                 default:
                     return status
             }
@@ -2827,7 +2823,7 @@ export default {
         },
 
         workflowDeterminismFindingLabel(finding) {
-            const symbol = finding && finding.symbol ? finding.symbol : 'unknown symbol'
+            const symbol = finding && finding.symbol ? finding.symbol : this.$t("unknown symbol")
             const location = finding && finding.file
                 ? `${finding.file}${finding.line ? ':' + finding.line : ''}`
                 : ''
@@ -2918,11 +2914,11 @@ export default {
 
         compatibilityFleetSummary(supported) {
             if (supported === true) {
-                return 'yes'
+                return this.$t('yes')
             }
 
             if (supported === false) {
-                return 'no active compatible worker heartbeat'
+                return this.$t("no active compatible worker heartbeat")
             }
 
             return '-'
@@ -2955,7 +2951,7 @@ export default {
             }
 
             if (this.hasDetailValue(snapshot && snapshot.namespace)) {
-                parts.push(`namespace ${snapshot.namespace}`)
+                parts.push(this.$t("namespace {value1}", { value1: snapshot.namespace }))
             }
 
             if (this.hasDetailValue(snapshot && snapshot.host)) {
@@ -2968,30 +2964,30 @@ export default {
 
             if (this.hasDetailValue(snapshot && snapshot.connection) || this.hasDetailValue(snapshot && snapshot.queue)) {
                 parts.push([
-                    this.hasDetailValue(snapshot && snapshot.connection) ? `connection ${snapshot.connection}` : null,
-                    this.hasDetailValue(snapshot && snapshot.queue) ? `queue ${snapshot.queue}` : null,
+                    this.hasDetailValue(snapshot && snapshot.connection) ? this.$t("connection {value1}", { value1: snapshot.connection }) : null,
+                    this.hasDetailValue(snapshot && snapshot.queue) ? this.$t("queue {value1}", { value1: snapshot.queue }) : null,
                 ].filter(Boolean).join(' / '))
             }
 
-            parts.push(`supports ${supported.length ? supported.join(', ') : 'none'}`)
+            parts.push(this.$t("supports {value1}", { value1: supported.length ? supported.join(', ') : 'none' }))
 
             if (snapshot && snapshot.supports_required === true) {
-                parts.push('matches selected marker')
+                parts.push(this.$t("matches selected marker"))
             }
 
             if (snapshot && snapshot.source === 'cache') {
-                parts.push('legacy cache heartbeat')
+                parts.push(this.$t("legacy cache heartbeat"))
             }
 
             return parts.join(' / ')
         },
 
-        showResult(result, title = 'Activity Result') {
-            Swal.fire({
+        showResult(result, title = this.$t("Activity Result")) {
+            this.$dialog({
                 title: title,
                 text: JSON.stringify(this.unserialize(result), null, 2),
                 icon: 'info',
-                confirmButtonText: 'Okay',
+                confirmButtonText: this.$t("Okay"),
                 background: '#1c1c1c',
             })
         },
@@ -3050,19 +3046,21 @@ export default {
             const returned = this.timelineReturnedCount().toLocaleString()
             if ((this.flow.engine_source === 'service' || this.flow.read_mode === 'bounded')
                 && !this.hasDetailValue(this.flow.timeline_total_count)) {
-                const scope = this.flow.history_window_from_start === false ? ' in a selected history window' : ''
-                return 'Showing ' + returned + ' events' + scope + (this.timelineHasOlder() ? ' / more available' : '')
+                const key = this.flow.history_window_from_start === false
+                    ? 'Showing {count} events in a selected history window'
+                    : 'Showing {count} events'
+                return this.$t(key, { count: returned }, this.timelineReturnedCount()) + (this.timelineHasOlder() ? this.$t(' / more available') : '')
             }
             const total = this.timelineTotalCount().toLocaleString()
-            const direction = this.flow.timeline_window_direction === 'latest'
-                ? 'latest'
-                : 'selected'
+            const key = this.flow.timeline_window_direction === 'latest'
+                ? 'Showing {returned} of {total} latest events{range}'
+                : 'Showing {returned} of {total} selected events{range}'
             const range = this.hasDetailValue(this.flow.timeline_window_start_sequence)
                 && this.hasDetailValue(this.flow.timeline_window_end_sequence)
                 ? ' / #' + this.flow.timeline_window_start_sequence + '-' + this.flow.timeline_window_end_sequence
                 : ''
 
-            return 'Showing ' + returned + ' of ' + total + ' ' + direction + ' events' + range
+            return this.$t(key, { returned, total, range })
         },
 
         onHistoryScroll(event) {
@@ -3146,28 +3144,28 @@ export default {
         historyAuthorityLabel(authority) {
             switch (authority) {
                 case 'typed_history':
-                    return 'History: typed durable history'
+                    return this.$t("History: typed durable history")
                 case 'failure_row_fallback':
-                    return 'History: failure row compatibility fallback'
+                    return this.$t("History: failure row compatibility fallback")
                 case 'mutable_open_fallback':
-                    return 'History: older open row diagnostic'
+                    return this.$t("History: older open row diagnostic")
                 case 'unsupported_terminal_without_history':
-                    return 'History: unsupported older terminal row'
+                    return this.$t("History: unsupported older terminal row")
                 default:
-                    return 'History: ' + authority
+                    return this.$t('History: {value}', { value: authority })
             }
         },
 
         historyUnsupportedReasonLabel(reason) {
             switch (reason) {
                 case 'terminal_activity_row_without_typed_history':
-                    return 'Reason: terminal activity row has no typed history'
+                    return this.$t("Reason: terminal activity row has no typed history")
                 case 'terminal_timer_row_without_typed_history':
-                    return 'Reason: terminal timer row has no typed history'
+                    return this.$t("Reason: terminal timer row has no typed history")
                 case 'terminal_child_link_without_typed_parent_history':
-                    return 'Reason: terminal child link has no typed parent history'
+                    return this.$t("Reason: terminal child link has no typed parent history")
                 default:
-                    return 'Reason: ' + reason
+                    return this.$t('Reason: {value}', { value: reason })
             }
         },
 
@@ -3185,7 +3183,7 @@ export default {
 
         activityResultUnavailableLabel(activity) {
             if (activity && this.hasDetailValue(activity.history_unsupported_reason)) {
-                return 'Diagnostic only'
+                return this.$t("Diagnostic only")
             }
 
             return '-'
@@ -3201,27 +3199,27 @@ export default {
             const parts = []
 
             if (Object.prototype.hasOwnProperty.call(policy, 'max_attempts')) {
-                parts.push(policy.max_attempts === null ? 'unlimited attempts' : `${policy.max_attempts} attempts`)
+                parts.push(policy.max_attempts === null ? this.$t("unlimited attempts") : this.$t("{value1} attempts", { value1: policy.max_attempts }))
             }
 
             if (Array.isArray(policy.backoff_seconds) && policy.backoff_seconds.length) {
-                parts.push(`backoff ${policy.backoff_seconds.join(', ')}s`)
+                parts.push(this.$t("backoff {value1}s", { value1: policy.backoff_seconds.join(', ') }))
             }
 
             if (policy.start_to_close_timeout) {
-                parts.push(`start-to-close ${policy.start_to_close_timeout}s`)
+                parts.push(this.$t("start-to-close {value1}s", { value1: policy.start_to_close_timeout }))
             }
 
             if (policy.schedule_to_start_timeout) {
-                parts.push(`schedule-to-start ${policy.schedule_to_start_timeout}s`)
+                parts.push(this.$t("schedule-to-start {value1}s", { value1: policy.schedule_to_start_timeout }))
             }
 
             if (policy.schedule_to_close_timeout) {
-                parts.push(`schedule-to-close ${policy.schedule_to_close_timeout}s`)
+                parts.push(this.$t("schedule-to-close {value1}s", { value1: policy.schedule_to_close_timeout }))
             }
 
             if (policy.heartbeat_timeout) {
-                parts.push(`heartbeat ${policy.heartbeat_timeout}s`)
+                parts.push(this.$t("heartbeat {value1}s", { value1: policy.heartbeat_timeout }))
             }
 
             return parts.length ? parts.join(' / ') : '-'
@@ -3553,17 +3551,17 @@ export default {
 
             const firstSignal = signals[0].name
 
-            const result = await Swal.fire({
-                title: 'Send signal',
+            const result = await this.$dialog({
+                title: this.$t("Send signal"),
                 html: `
-                    <label class="d-block text-left mb-2" for="waterline-signal-target">Signal</label>
+                    <label class="d-block text-left mb-2" for="waterline-signal-target">${this.escapeHtml(this.$t('Signal'))}</label>
                     <select id="waterline-signal-target" class="swal2-input">${options}</select>
-                    <label class="d-block text-left mb-2" for="waterline-signal-arguments">Arguments JSON</label>
+                    <label class="d-block text-left mb-2" for="waterline-signal-arguments">${this.escapeHtml(this.$t('Arguments JSON'))}</label>
                     <textarea id="waterline-signal-arguments" class="swal2-textarea wl-command-textarea wl-command-textarea--signal">${this.escapeHtml(this.defaultSignalArguments(firstSignal))}</textarea>
-                    <div class="small text-muted text-left">Use a JSON object for named arguments when the signal declares a contract, a JSON array for positional arguments, or any other JSON value for one payload.</div>
+                    <div class="small text-muted text-left">${this.escapeHtml(this.$t('Use a JSON object for named arguments when the signal declares a contract, a JSON array for positional arguments, or any other JSON value for one payload.'))}</div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: 'Send signal',
+                confirmButtonText: this.$t("Send signal"),
                 focusConfirm: false,
                 background: '#1c1c1c',
                 didOpen: () => {
@@ -3585,7 +3583,7 @@ export default {
                     const rawArguments = document.getElementById('waterline-signal-arguments').value
 
                     if (!target) {
-                        Swal.showValidationMessage('Select a signal.')
+                        Swal.showValidationMessage(this.$t("Select a signal."))
 
                         return false
                     }
@@ -3606,7 +3604,7 @@ export default {
                     } catch (error) {
                         Swal.showValidationMessage((error && (error.response || error.request))
                             ? this.commandFailureMessage(error, 'signal')
-                            : 'Arguments must be valid JSON.')
+                            : this.$t("Arguments must be valid JSON."))
 
                         return false
                     }
@@ -3629,17 +3627,17 @@ export default {
 
             const firstQuery = queries[0].name
 
-            const result = await Swal.fire({
-                title: 'Run query',
+            const result = await this.$dialog({
+                title: this.$t("Run query"),
                 html: `
-                    <label class="d-block text-left mb-2" for="waterline-query-target">Query</label>
+                    <label class="d-block text-left mb-2" for="waterline-query-target">${this.escapeHtml(this.$t('Query'))}</label>
                     <select id="waterline-query-target" class="swal2-input">${options}</select>
-                    <label class="d-block text-left mb-2" for="waterline-query-arguments">Arguments JSON</label>
+                    <label class="d-block text-left mb-2" for="waterline-query-arguments">${this.escapeHtml(this.$t('Arguments JSON'))}</label>
                     <textarea id="waterline-query-arguments" class="swal2-textarea wl-command-textarea">${this.escapeHtml(this.defaultQueryArguments(firstQuery))}</textarea>
-                    <div class="small text-muted text-left">Use a JSON object for named arguments or a JSON array for positional arguments.</div>
+                    <div class="small text-muted text-left">${this.escapeHtml(this.$t('Use a JSON object for named arguments or a JSON array for positional arguments.'))}</div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: 'Run query',
+                confirmButtonText: this.$t("Run query"),
                 focusConfirm: false,
                 background: '#1c1c1c',
                 didOpen: () => {
@@ -3661,7 +3659,7 @@ export default {
                     const rawArguments = document.getElementById('waterline-query-arguments').value
 
                     if (!target) {
-                        Swal.showValidationMessage('Select a query.')
+                        Swal.showValidationMessage(this.$t("Select a query."))
 
                         return false
                     }
@@ -3682,7 +3680,7 @@ export default {
                     } catch (error) {
                         Swal.showValidationMessage((error && (error.response || error.request))
                             ? this.commandFailureMessage(error, 'query')
-                            : 'Arguments must be valid JSON.')
+                            : this.$t("Arguments must be valid JSON."))
 
                         return false
                     }
@@ -3705,24 +3703,24 @@ export default {
 
             const firstUpdate = updates[0].name
 
-            const result = await Swal.fire({
-                title: 'Apply update',
+            const result = await this.$dialog({
+                title: this.$t("Apply update"),
                 html: `
-                    <label class="d-block text-left mb-2" for="waterline-update-target">Update</label>
+                    <label class="d-block text-left mb-2" for="waterline-update-target">${this.escapeHtml(this.$t('Update'))}</label>
                     <select id="waterline-update-target" class="swal2-input">${options}</select>
-                    <label class="d-block text-left mb-2" for="waterline-update-arguments">Arguments JSON</label>
+                    <label class="d-block text-left mb-2" for="waterline-update-arguments">${this.escapeHtml(this.$t('Arguments JSON'))}</label>
                     <textarea id="waterline-update-arguments" class="swal2-textarea wl-command-textarea">${this.escapeHtml(this.defaultUpdateArguments(firstUpdate))}</textarea>
-                    <label class="d-block text-left mb-2" for="waterline-update-wait-for">Return after</label>
+                    <label class="d-block text-left mb-2" for="waterline-update-wait-for">${this.escapeHtml(this.$t('Return after'))}</label>
                     <select id="waterline-update-wait-for" class="swal2-input">
-                        <option value="completed">Worker applies update</option>
-                        <option value="accepted">Command is accepted</option>
+                        <option value="completed">${this.escapeHtml(this.$t('Worker applies update'))}</option>
+                        <option value="accepted">${this.escapeHtml(this.$t('Command is accepted'))}</option>
                     </select>
-                    <label class="d-block text-left mb-2" for="waterline-update-wait-timeout-seconds">Completion wait timeout (seconds)</label>
-                    <input id="waterline-update-wait-timeout-seconds" type="number" min="1" class="swal2-input" placeholder="Use package default">
-                    <div class="small text-muted text-left">Use a JSON object for named arguments or a JSON array for positional arguments. Waterline always records the update durably first; choose whether to return immediately after acceptance or wait briefly for worker-applied completion before falling back to an accepted lifecycle.</div>
+                    <label class="d-block text-left mb-2" for="waterline-update-wait-timeout-seconds">${this.escapeHtml(this.$t('Completion wait timeout (seconds)'))}</label>
+                    <input id="waterline-update-wait-timeout-seconds" type="number" min="1" class="swal2-input" placeholder="${this.escapeHtml(this.$t('Use package default'))}">
+                    <div class="small text-muted text-left">${this.escapeHtml(this.$t('Use a JSON object for named arguments or a JSON array for positional arguments. Waterline always records the update durably first; choose whether to return immediately after acceptance or wait briefly for worker-applied completion before falling back to an accepted lifecycle.'))}</div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: 'Apply update',
+                confirmButtonText: this.$t("Apply update"),
                 focusConfirm: false,
                 background: '#1c1c1c',
                 didOpen: () => {
@@ -3746,7 +3744,7 @@ export default {
                     const waitTimeoutSeconds = document.getElementById('waterline-update-wait-timeout-seconds').value
 
                     if (!target) {
-                        Swal.showValidationMessage('Select an update.')
+                        Swal.showValidationMessage(this.$t("Select an update."))
 
                         return false
                     }
@@ -3769,7 +3767,7 @@ export default {
                     } catch (error) {
                         Swal.showValidationMessage((error && (error.response || error.request))
                             ? this.commandFailureMessage(error, 'update')
-                            : 'Arguments must be valid JSON.')
+                            : this.$t("Arguments must be valid JSON."))
 
                         return false
                     }
@@ -3850,26 +3848,26 @@ export default {
             switch (reason) {
                 case 'earlier_signal_pending':
                     return commandType === 'update'
-                        ? 'An earlier accepted signal is still waiting to be applied. Retry the update after the worker drains it.'
-                        : 'An earlier accepted signal is still waiting to be applied.'
+                        ? this.$t("An earlier accepted signal is still waiting to be applied. Retry the update after the worker drains it.")
+                        : this.$t("An earlier accepted signal is still waiting to be applied.")
                 case 'selected_run_not_current':
-                    return 'The selected run is not the current active run.'
+                    return this.$t("The selected run is not the current active run.")
                 case 'run_closed':
-                    return 'The selected run is already closed.'
+                    return this.$t("The selected run is already closed.")
                 case 'repair_not_needed':
-                    return 'The selected run already has a durable resume path.'
+                    return this.$t("The selected run already has a durable resume path.")
                 case 'repair_state_unknown':
-                    return 'Waterline has not classified this run as repairable yet.'
+                    return this.$t("Waterline has not classified this run as repairable yet.")
                 case 'unsupported_history':
-                    return 'The selected run only has older diagnostic history and no durable resume path for repair.'
+                    return this.$t("The selected run only has older diagnostic history and no durable resume path for repair.")
                 case 'run_not_closed':
-                    return 'Only closed runs can be archived.'
+                    return this.$t("Only closed runs can be archived.")
                 case 'run_archived':
-                    return 'The selected run is already archived.'
+                    return this.$t("The selected run is already archived.")
                 case 'workflow_definition_unavailable':
                     return commandType === 'query'
-                        ? 'The durable query target is known, but this run cannot be replayed because its workflow definition is unavailable.'
-                        : 'The durable target is known, but this run cannot execute because its workflow definition is unavailable.'
+                        ? this.$t("The durable query target is known, but this run cannot be replayed because its workflow definition is unavailable.")
+                        : this.$t("The durable target is known, but this run cannot execute because its workflow definition is unavailable.")
                 default:
                     return reason
             }
@@ -3886,13 +3884,13 @@ export default {
             }
 
             return [
-                { name: 'query', label: 'Query' },
-                { name: 'signal', label: 'Signal' },
-                { name: 'update', label: 'Update' },
-                { name: 'repair', label: 'Repair' },
-                { name: 'cancel', label: 'Cancel' },
-                { name: 'terminate', label: 'Terminate' },
-                { name: 'archive', label: 'Archive' },
+                { name: 'query', label: this.$t("Query") },
+                { name: 'signal', label: this.$t("Signal") },
+                { name: 'update', label: this.$t("Update") },
+                { name: 'repair', label: this.$t("Repair") },
+                { name: 'cancel', label: this.$t("Cancel") },
+                { name: 'terminate', label: this.$t("Terminate") },
+                { name: 'archive', label: this.$t("Archive") },
             ].map((action) => ({
                 ...action,
                 allowed: this.canAction(action.name, action.name === 'cancel' || action.name === 'terminate'
@@ -3928,12 +3926,12 @@ export default {
 
         waitResumeStateLabel(state) {
             return {
-                planned: 'Planned wait',
-                eligible: 'Resume is due',
-                resume_time_unknown: 'Resume time unknown',
-                deadline_elapsed: 'Wait deadline has passed',
-                unavailable: 'Wait details unavailable',
-            }[state] || 'Resume time unknown'
+                planned: this.$t("Planned wait"),
+                eligible: this.$t("Resume is due"),
+                resume_time_unknown: this.$t("Resume time unknown"),
+                deadline_elapsed: this.$t("Wait deadline has passed"),
+                unavailable: this.$t("Wait details unavailable"),
+            }[state] || this.$t("Resume time unknown")
         },
 
         openWaitCount() {
@@ -3977,12 +3975,12 @@ export default {
         workflowStreamOffsets(stream) {
             const head = this.hasDetailValue(stream.last_offset) ? stream.last_offset : '-'
 
-            return `stream head ${head}`
+            return this.$t("stream head {value1}", { value1: head })
         },
 
         workflowStreamDirection(stream) {
             if (stream.mode === 'service') {
-                return 'workflow output'
+                return this.$t("workflow output")
             }
 
             return String(stream.direction || 'inbox/outbox').replace(/_/g, ' ').replace(/\+/g, ' / ')
@@ -4016,38 +4014,38 @@ export default {
 
         waitBacking(wait) {
             if (wait.summary_only) {
-                return 'Summary only'
+                return this.$t("Summary only")
             }
             if (wait.diagnostic_only) {
-                return 'diagnostic only'
+                return this.$t("diagnostic only")
             }
 
             if (wait.kind === 'condition' && this.hasDetailValue(wait.timeout_seconds)) {
                 if (!wait.task_backed && this.hasDetailValue(wait.task_id)) {
-                    return ['stale timeout task', wait.task_status, 'external input']
+                    return [this.$t("stale timeout task"), wait.task_status, this.$t("external input")]
                         .filter(Boolean)
                         .join(' / ')
                 }
 
                 if (!wait.task_backed) {
-                    return 'external input / timeout task missing'
+                    return this.$t("external input / timeout task missing")
                 }
 
-                return [wait.task_type || 'timer', wait.task_status, 'external input']
+                return [wait.task_type || 'timer', wait.task_status, this.$t("external input")]
                     .filter(Boolean)
                     .join(' / ')
             }
 
             if (wait.kind === 'update' && !wait.task_backed && !this.hasDetailValue(wait.task_id)) {
-                return 'workflow task missing'
+                return this.$t("workflow task missing")
             }
 
             if (wait.kind === 'child') {
-                return 'child run'
+                return this.$t("child run")
             }
 
             if (wait.external_only) {
-                return 'external input'
+                return this.$t("external input")
             }
 
             if (!wait.task_backed && this.hasDetailValue(wait.task_id)) {
@@ -4061,7 +4059,7 @@ export default {
             }
 
             if (!wait.task_backed) {
-                return 'task missing'
+                return this.$t("task missing")
             }
 
             return [wait.task_type, wait.task_status].filter(Boolean).join(' / ')
@@ -4104,8 +4102,8 @@ export default {
                     ? group.parallel_group_index + 1
                     : null
                 const label = groupKind === 'activity'
-                    ? 'parallel activity group'
-                    : (groupKind === 'mixed' ? 'parallel group' : 'parallel child group')
+                    ? this.$t("parallel activity group")
+                    : (groupKind === 'mixed' ? this.$t("parallel group") : this.$t("parallel child group"))
 
                 if (!this.hasDetailValue(position) || !this.hasDetailValue(group.parallel_group_size)) {
                     return label
@@ -4135,7 +4133,7 @@ export default {
 
         projectionSourceLabel(source, rebuildReasons = []) {
             if (source === 'live_fallback') {
-                return 'Projection diagnostic: rebuild needed'
+                return this.$t("Projection diagnostic: rebuild needed")
             }
 
             if (typeof source === 'string' && source.endsWith('_rebuilt')) {
@@ -4144,36 +4142,36 @@ export default {
                     ? ' / ' + rebuildReasons.map((reason) => this.projectionRebuildReasonLabel(reason)).join(', ')
                     : ''
 
-                return 'Projection rebuilt on read: ' + base + detail
+                return this.$t('Projection rebuilt on read: {value}', { value: base + detail })
             }
 
             if (source === 'workflow_run_timeline_entries') {
-                return 'Projection: workflow_run_timeline_entries'
+                return this.$t("Projection: workflow_run_timeline_entries")
             }
 
             if (source === 'workflow_run_waits') {
-                return 'Projection: workflow_run_waits'
+                return this.$t("Projection: workflow_run_waits")
             }
 
             if (source === 'workflow_run_lineage_entries') {
-                return 'Projection: workflow_run_lineage_entries'
+                return this.$t("Projection: workflow_run_lineage_entries")
             }
 
             if (source === 'workflow_run_timer_entries') {
-                return 'Projection: workflow_run_timer_entries'
+                return this.$t("Projection: workflow_run_timer_entries")
             }
 
-            return 'Projection: ' + source
+            return this.$t('Projection: {value}', { value: source })
         },
 
         projectionRebuildReasonLabel(reason) {
             switch (reason) {
                 case 'schema_version_mismatch':
-                    return 'schema version mismatch rows'
+                    return this.$t("schema version mismatch rows")
                 case 'missing_projection':
-                    return 'missing projection rows'
+                    return this.$t("missing projection rows")
                 case 'stale_projection':
-                    return 'stale projection payload'
+                    return this.$t("stale projection payload")
                 default:
                     return reason
             }
@@ -4181,11 +4179,11 @@ export default {
 
         currentRunSourceLabel(source) {
             if (source === 'continue_as_new_lineage') {
-                return 'Resolved from typed continue-as-new lineage'
+                return this.$t("Resolved from typed continue-as-new lineage")
             }
 
             if (source === 'run_order_fallback') {
-                return 'Resolved from durable run ordering fallback'
+                return this.$t("Resolved from durable run ordering fallback")
             }
 
             return source
@@ -4275,7 +4273,7 @@ export default {
                 }
 
                 if (entry.failure.exception_replay_blocked === true) {
-                    details.push('exception replay blocked')
+                    details.push(this.$t("exception replay blocked"))
                 }
             }
 
@@ -4365,15 +4363,15 @@ export default {
             const resolved = command.resolved_run_id || null
 
             if (requested && resolved && requested !== resolved) {
-                return 'requested run ' + requested + ' -> resolved run ' + resolved
+                return this.$t('requested run {requested} -> resolved run {resolved}', { requested, resolved })
             }
 
             if (requested) {
-                return 'requested run ' + requested
+                return this.$t('requested run {value}', { value: requested })
             }
 
             if (resolved && command.target_scope === 'instance') {
-                return 'resolved run ' + resolved
+                return this.$t('resolved run {value}', { value: resolved })
             }
 
             return ''
@@ -4392,19 +4390,19 @@ export default {
                 const workflowDetails = []
 
                 if (workflow.parent_instance_id) {
-                    workflowDetails.push('instance ' + workflow.parent_instance_id)
+                    workflowDetails.push(this.$t('instance {value}', { value: workflow.parent_instance_id }))
                 }
 
                 if (workflow.parent_run_id) {
-                    workflowDetails.push('run ' + workflow.parent_run_id)
+                    workflowDetails.push(this.$t('run {value}', { value: workflow.parent_run_id }))
                 }
 
                 if (workflow.sequence !== null && workflow.sequence !== undefined) {
-                    workflowDetails.push('step ' + workflow.sequence)
+                    workflowDetails.push(this.$t('step {value}', { value: workflow.sequence }))
                 }
 
                 if (workflow.child_call_id) {
-                    workflowDetails.push('child call ' + workflow.child_call_id)
+                    workflowDetails.push(this.$t('child call {value}', { value: workflow.child_call_id }))
                 }
 
                 if (workflowDetails.length) {
@@ -4418,11 +4416,11 @@ export default {
             }
 
             if (this.hasDetailValue(command.caller_label) && command.caller_label !== this.commandSource(command)) {
-                details.push('caller ' + command.caller_label)
+                details.push(this.$t('caller {value}', { value: command.caller_label }))
             }
 
             if (this.hasDetailValue(command.principal_id) && this.hasDetailValue(command.principal_label)) {
-                details.push('principal ' + command.principal_id)
+                details.push(this.$t('principal {value}', { value: command.principal_id }))
             }
 
             if (command.auth_status && command.auth_method) {
@@ -4466,7 +4464,7 @@ export default {
                     ? ' / ' + task.replay_blocked_recorded_condition_key
                     : ''
 
-                return 'condition wait' + conditionLabel + ' / ' + task.replay_blocked_condition_wait_id
+                return this.$t('condition wait') + conditionLabel + ' / ' + task.replay_blocked_condition_wait_id
             }
 
             if (this.hasDetailValue(task.condition_wait_id)) {
@@ -4475,14 +4473,14 @@ export default {
                     : ''
 
                 if (this.hasDetailValue(task.timer_sequence)) {
-                    return 'condition timeout' + conditionLabel + ' #' + task.timer_sequence
+                    return this.$t('condition timeout') + conditionLabel + ' #' + task.timer_sequence
                 }
 
-                return 'condition timeout' + conditionLabel
+                return this.$t('condition timeout') + conditionLabel
             }
 
             if (this.hasDetailValue(task.timer_sequence)) {
-                return 'timer #' + task.timer_sequence
+                return this.$t('timer #{value}', { value: task.timer_sequence })
             }
 
             if (
@@ -4490,42 +4488,42 @@ export default {
                 || this.hasDetailValue(task.child_call_id)
                 || this.hasDetailValue(task.child_workflow_run_id)
             ) {
-                return 'child workflow'
+                return this.$t("child workflow")
             }
 
             if (this.hasDetailValue(task.workflow_update_id)) {
-                return 'update / ' + task.workflow_update_id
+                return this.$t('update / {value}', { value: task.workflow_update_id })
             }
 
             if (this.hasDetailValue(task.workflow_signal_id)) {
-                return 'signal / ' + task.workflow_signal_id
+                return this.$t('signal / {value}', { value: task.workflow_signal_id })
             }
 
             if (this.hasDetailValue(task.workflow_command_id)) {
-                return 'command / ' + task.workflow_command_id
+                return this.$t('command / {value}', { value: task.workflow_command_id })
             }
 
             if (this.hasDetailValue(task.workflow_wait_kind)) {
                 return String(task.workflow_wait_kind).replace(/_/g, ' ')
             }
 
-            return 'selected run'
+            return this.$t("selected run")
         },
 
         taskTransportState(task) {
             const labels = {
-                ready: 'ready',
-                scheduled: 'scheduled',
-                leased: 'leased',
-                lease_expired: 'lease expired',
-                dispatch_overdue: 'dispatch overdue',
-                dispatch_failed: 'dispatch failed',
-                repair_backoff: 'repair backoff',
-                replay_blocked: 'replay blocked',
-                missing: 'missing',
-                completed: 'completed',
-                cancelled: 'cancelled',
-                failed: 'failed',
+                ready: this.stateLabel('ready'),
+                scheduled: this.$t('Scheduled'),
+                leased: this.stateLabel('leased'),
+                lease_expired: this.$t("lease expired"),
+                dispatch_overdue: this.$t("dispatch overdue"),
+                dispatch_failed: this.$t("dispatch failed"),
+                repair_backoff: this.$t("repair backoff"),
+                replay_blocked: this.$t("replay blocked"),
+                missing: this.stateLabel('missing'),
+                completed: this.stateLabel('completed'),
+                cancelled: this.stateLabel('cancelled'),
+                failed: this.stateLabel('failed'),
             }
 
             return labels[task.transport_state] || task.transport_state || '-'
@@ -4538,7 +4536,7 @@ export default {
 
             return task.replay_blocked_recorded_event_types.map((eventType) => {
                 if (eventType === 'NoTypedHistory') {
-                    return 'no typed history'
+                    return this.$t("no typed history")
                 }
 
                 return eventType
@@ -4701,8 +4699,10 @@ export default {
         relationshipWindowSummary() {
             return ['parents', 'children'].map((direction) => {
                 const page = this.flow.relationships?.[direction]
-                return page ? page.returned_count + ' ' + direction
-                    + (page.has_more ? ' shown, more available in full details' : ' shown') : null
+                return page ? this.$t(direction === 'parents' ? '{count} parents shown{more}' : '{count} children shown{more}', {
+                    count: page.returned_count,
+                    more: page.has_more ? this.$t(', more available in full details') : '',
+                }) : null
             }).filter(Boolean).join(' / ')
         },
 
@@ -4713,7 +4713,7 @@ export default {
 
         lineageLabel(link, direction) {
             if (link.link_type === 'continue_as_new') {
-                return direction === 'parent' ? 'Continued from' : 'Continued as'
+                return direction === 'parent' ? this.$t("Continued from") : this.$t("Continued as")
             }
 
             return direction === 'parent' ? 'Parent' : 'Child'
@@ -4746,28 +4746,28 @@ export default {
 
             const copy = {
                 repair: {
-                    title: 'Repair run?',
-                    text: 'This recreates the durable next task for the current active run when liveness shows repair is needed. It does not restart an activity that is already marked running. For scripted recovery, the matching CLI sweep is workflow:v2:repair-pass --run-id=<current-run-id>.',
-                    confirmButtonText: 'Repair run',
+                    title: this.$t("Repair run?"),
+                    text: this.$t("This recreates the durable next task for the current active run when liveness shows repair is needed. It does not restart an activity that is already marked running. For scripted recovery, the matching CLI sweep is workflow:v2:repair-pass --run-id=<current-run-id>."),
+                    confirmButtonText: this.$t("Repair run"),
                 },
                 cancel: {
-                    title: 'Cancel run?',
-                    text: 'This action applies to the current active run.',
-                    confirmButtonText: 'Cancel run',
+                    title: this.$t("Cancel run?"),
+                    text: this.$t('This immediately closes the current active run as Cancelled without cooperative cleanup. Previously completed external side effects are not undone.'),
+                    confirmButtonText: this.$t("Cancel run"),
                 },
                 terminate: {
-                    title: 'Terminate run?',
-                    text: 'This action applies to the current active run.',
-                    confirmButtonText: 'Terminate run',
+                    title: this.$t("Terminate run?"),
+                    text: this.$t('This forcibly closes the current active run as Terminated and stops cooperative cleanup. Previously completed external side effects are not undone.'),
+                    confirmButtonText: this.$t("Terminate run"),
                 },
                 archive: {
-                    title: 'Archive run?',
-                    text: 'This marks the selected closed run as archived while preserving its durable history and command audit trail.',
-                    confirmButtonText: 'Archive run',
+                    title: this.$t("Archive run?"),
+                    text: this.$t("This marks the selected closed run as archived while preserving its durable history and command audit trail."),
+                    confirmButtonText: this.$t("Archive run"),
                 },
             }[commandType]
 
-            const confirmed = await Swal.fire({
+            const confirmed = await this.$dialog({
                 title: copy.title,
                 text: copy.text,
                 icon: 'warning',
@@ -4806,11 +4806,11 @@ export default {
 
                 return this.handleCommandSuccess(commandType, interactiveCommand, response)
             } catch (error) {
-                Swal.fire({
-                    title: commandType === 'query' ? 'Query failed' : 'Command rejected',
+                this.$dialog({
+                    title: commandType === 'query' ? this.$t("Query failed") : this.$t("Command rejected"),
                     text: this.commandFailureMessage(error, commandType),
                     icon: 'error',
-                    confirmButtonText: 'Okay',
+                    confirmButtonText: this.$t("Okay"),
                     background: '#1c1c1c',
                 })
             }
@@ -4836,32 +4836,32 @@ export default {
 
             await this.loadRouteFlow()
 
-            Swal.fire({
-                title: 'Command accepted',
+            this.$dialog({
+                title: this.$t("Command accepted"),
                 text: this.commandSuccessMessage(commandType, response),
                 icon: 'success',
-                confirmButtonText: 'Okay',
+                confirmButtonText: this.$t("Okay"),
                 background: '#1c1c1c',
             })
         },
 
         commandSuccessMessage(commandType, response) {
             return {
-                signal: 'Waterline recorded the signal command durably.',
+                signal: this.$t("Waterline recorded the signal command durably."),
                 update: response.data.wait_timed_out === true
-                    ? 'Waterline accepted the update command, waited for worker-applied completion, and returned the still-open lifecycle when that wait budget expired.'
+                    ? this.$t("Waterline accepted the update command, waited for worker-applied completion, and returned the still-open lifecycle when that wait budget expired.")
                     : (response.data.update_status === 'accepted'
-                        ? 'Waterline accepted the update command and queued a workflow task to apply it.'
-                        : 'Waterline recorded the update command durably and the workflow worker applied it.'),
+                        ? this.$t("Waterline accepted the update command and queued a workflow task to apply it.")
+                        : this.$t("Waterline recorded the update command durably and the workflow worker applied it.")),
                 repair: response.data.outcome === 'repair_dispatched'
-                    ? 'Waterline recreated the durable task and re-dispatched it.'
-                    : 'Waterline recorded the repair command, and no new task was needed.',
-                cancel: 'Waterline recorded the command durably.',
-                terminate: 'Waterline recorded the command durably.',
+                    ? this.$t("Waterline recreated the durable task and re-dispatched it.")
+                    : this.$t("Waterline recorded the repair command, and no new task was needed."),
+                cancel: this.$t("Waterline recorded the command durably."),
+                terminate: this.$t("Waterline recorded the command durably."),
                 archive: response.data.outcome === 'archive_not_needed'
-                    ? 'Waterline recorded the archive command; the run was already archived.'
-                    : 'Waterline archived the selected run durably.',
-            }[commandType] || 'Waterline recorded the command durably.'
+                    ? this.$t("Waterline recorded the archive command; the run was already archived.")
+                    : this.$t("Waterline archived the selected run durably."),
+            }[commandType] || this.$t("Waterline recorded the command durably.")
         },
 
         commandFailureMessage(error, commandType) {
@@ -4883,7 +4883,7 @@ export default {
                     && error.response.data
                     && error.response.data.message
                     ? error.response.data.message
-                    : 'Command was rejected.')
+                    : this.$t("Command was rejected."))
         },
 
         commandEndpoint(commandType, targetName = null) {

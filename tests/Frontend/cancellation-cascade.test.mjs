@@ -4,12 +4,14 @@ import test from 'node:test'
 import { parse } from '@vue/compiler-sfc'
 import { createSSRApp } from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import { createWaterlineI18n } from '../../resources/js/localization.mjs'
+import { localizedState } from '../../resources/js/state-labels.mjs'
 
 const source = fs.readFileSync(new URL('../../resources/js/components/CancellationCascadeView.vue', import.meta.url), 'utf8')
 const { descriptor } = parse(source)
-const component = Function(descriptor.script.content.replace('export default', 'return'))()
+const component = Function('localizedState', descriptor.script.content.replace(/^import .*$/gm, '').replace('export default', 'return'))(localizedState)
 component.template = descriptor.template.content
-const render = diagnostics => renderToString(createSSRApp(component, { diagnostics }))
+const render = (diagnostics, locale = 'en') => renderToString(createSSRApp(component, { diagnostics }).use(createWaterlineI18n(locale)))
 
 // A display fixture. Connected runtime evidence is qualified separately.
 function fixture() {
@@ -53,9 +55,9 @@ function fixture() {
 test('one view explains the root budget, both language runs, stop receipts and cleanup recovery', async () => {
     const html = await render(fixture())
     for (const value of ['root-request', '2026-10-02T00:00:30Z', 'php.parent', 'python.child', 'Selected run',
-        'cleaning up', 'cancelled', 'child-request', 'Original root budget', 'Callback reported stopped',
+        'Cleaning up', 'Cancelled', 'child-request', 'Original root budget', 'Callback reported stopped',
         'php.local.work', 'rust.remote.work', 'Cleanup worker recovery', 'old-worker', 'replacement',
-        'Previous callback stop: unknown', 'wait cancellation completed', 'WorkflowCancelled']) {
+        'Previous callback stop: Unknown', 'Wait for cancellation completion', 'WorkflowCancelled']) {
         assert.ok(html.includes(value), value)
     }
     assert.ok(!html.includes('SIGKILL'))
@@ -65,6 +67,18 @@ test('embedded and service presentations consume the same evidence without chang
     const embedded = { ...fixture(), engine_source: 'v2' }
     const service = { ...fixture(), engine_source: 'service' }
     assert.equal(await render(embedded), await render(service))
+})
+
+test('Ukrainian cascade explains cleanup while preserving identities, deadlines and original evidence', async () => {
+    const payload = fixture()
+    payload.cancellation_cascade.root.reason = 'Original reason <script>unsafe()</script>'
+    const before = structuredClone(payload)
+    const html = await render(payload, 'uk')
+    for (const value of ['Каскад скасування', 'Початковий термін очищення', 'Очищення', 'Скасовано',
+        'root-request', 'child-request', '2026-10-02T00:00:30Z', 'php.parent', 'python.child', 'rust.remote.work',
+        'Original reason &lt;script&gt;unsafe()&lt;/script&gt;', 'WorkflowCancelled']) assert.ok(html.includes(value), value)
+    assert.ok(!html.includes('<script>'))
+    assert.deepEqual(payload, before)
 })
 
 test('a fence without a matching receipt keeps callback exit unverified', async () => {

@@ -8,20 +8,20 @@
 
                 <div class="flow-row__meta">
                     <template v-if="flow.engine_source === 'v1'">
-                        <span class="flow-row__mono">legacy workflow {{ flow.legacy_id || flow.id }}</span>
+                        <span class="flow-row__mono">{{ $t("legacy workflow") }} {{ flow.legacy_id || flow.id }}</span>
                     </template>
                     <template v-else>
-                        <span class="flow-row__mono">workflow {{ flow.instance_id || flow.workflow_instance_id || flow.id }}</span>
-                        <span class="flow-row__mono">run {{ flow.run_id || flow.id }}</span>
+                        <span class="flow-row__mono">{{ $t("workflow") }} {{ flow.instance_id || flow.workflow_instance_id || flow.id }}</span>
+                        <span class="flow-row__mono">{{ $t("run") }} {{ flow.run_id || flow.id }}</span>
                     </template>
                 </div>
 
                 <div class="flow-row__badges">
                     <span v-if="flow.engine_source" class="badge badge-secondary">
-                        Engine {{ flow.engine_source.toUpperCase() }}<template v-if="flow.engine_version"> {{ flow.engine_version }}</template>
+                        {{ $t("Engine") }} {{ flow.engine_source.toUpperCase() }}<template v-if="flow.engine_version"> {{ flow.engine_version }}</template>
                     </span>
-                    <span v-if="flow.namespace" class="badge badge-light">Namespace {{ flow.namespace }}</span>
-                    <span v-if="flow.status === 'continued' || flow.closed_reason === 'continued'" class="badge badge-info">Continued</span>
+                    <span v-if="flow.namespace" class="badge badge-light">{{ $t("Namespace") }} {{ flow.namespace }}</span>
+                    <span v-if="flow.status === 'continued' || flow.closed_reason === 'continued'" class="badge badge-info">{{ $t("Continued") }}</span>
                     <span v-if="showStatusBadge(flow)" :class="statusBadgeClass(flow)" class="badge">{{ statusBadgeLabel(flow) }}</span>
                     <span v-if="showRepairBadge(flow)"
                           :class="repairBadgeClass(flow)"
@@ -38,7 +38,7 @@
                     <span v-if="showCompatibilityEntryBadge(flow)"
                           class="badge badge-info"
                           :title="compatibilityEntryBadgeTitle(flow)">
-                        Entry Review
+                        {{ $t("Entry Review") }}
                     </span>
                     <span v-if="showCompatibilitySemanticsBadge(flow)"
                           :class="compatibilitySemanticsBadgeClass(flow)"
@@ -76,7 +76,7 @@
 
         <td v-if="columnEnabled('actions')" class="table-fit text-right flow-row__actions-cell">
             <router-link class="btn btn-sm btn-outline-primary flow-row__open" :to="detailRoute(flow)">
-                Open
+                {{ $t("Open") }}
             </router-link>
         </td>
     </tr>
@@ -144,7 +144,7 @@
             },
 
             statusBadgeLabel(flow) {
-                return flow.status.charAt(0).toUpperCase() + flow.status.slice(1)
+                return this.stateLabel(flow.status)
             },
 
             statusBadgeClass(flow) {
@@ -165,16 +165,16 @@
                 const repair = this.repairBlocked(flow)
 
                 return repair && repair.label
-                    ? repair.label
-                    : 'Repair Blocked'
+                    ? this.uiText(repair.label)
+                    : this.$t("Repair Blocked")
             },
 
             repairBadgeTitle(flow) {
                 const repair = this.repairBlocked(flow)
 
                 return repair && repair.description
-                    ? repair.description
-                    : 'Repair is currently blocked.'
+                    ? this.uiText(repair.description)
+                    : this.$t("Repair is currently blocked.")
             },
 
             repairBadgeClass(flow) {
@@ -199,16 +199,16 @@
                 const taskProblem = this.taskProblem(flow)
 
                 return taskProblem && taskProblem.label
-                    ? taskProblem.label
-                    : 'Task Problem'
+                    ? this.uiText(taskProblem.label)
+                    : this.$t("Task Problem")
             },
 
             taskProblemBadgeTitle(flow) {
                 const taskProblem = this.taskProblem(flow)
 
                 return taskProblem && taskProblem.description
-                    ? taskProblem.description
-                    : 'This run recorded workflow-task problems.'
+                    ? this.uiText(taskProblem.description)
+                    : this.$t("This run recorded workflow-task problems.")
             },
 
             taskProblemBadgeClass(flow) {
@@ -228,7 +228,7 @@
             },
 
             compatibilityEntryBadgeTitle() {
-                return 'This run was recorded with older entry-contract metadata and should be reviewed before relying on command targets.'
+                return this.$t("This run was recorded with older entry-contract metadata and should be reviewed before relying on command targets.")
             },
 
             showCompatibilitySemanticsBadge(flow) {
@@ -243,10 +243,10 @@
                 const semantics = this.compatibilitySemantics(flow)
 
                 if (semantics && semantics.state === 'supported_elsewhere_in_active_fleet') {
-                    return 'Fleet Claimable'
+                    return this.$t("Fleet Claimable")
                 }
 
-                return 'Compatibility Wait'
+                return this.$t("Compatibility Wait")
             },
 
             compatibilitySemanticsBadgeTitle(flow) {
@@ -254,7 +254,7 @@
 
                 return semantics && semantics.operator_summary
                     ? semantics.operator_summary
-                    : 'Compatibility claimability is not available for this build.'
+                    : this.$t("Compatibility claimability is not available for this build.")
             },
 
             compatibilitySemanticsBadgeClass(flow) {
@@ -277,16 +277,16 @@
 
             contractBackfillBadgeLabel(flow) {
                 return flow && flow.declared_contract_backfill_available === true
-                    ? 'Contract Pending'
-                    : 'Contract Blocked'
+                    ? this.$t("Contract Pending")
+                    : this.$t("Contract Blocked")
             },
 
             contractBackfillBadgeTitle(flow) {
                 if (flow && flow.declared_contract_backfill_available === true) {
-                    return 'This run still needs durable command-contract normalization, and a compatible build can backfill it.'
+                    return this.$t("This run still needs durable command-contract normalization, and a compatible build can backfill it.")
                 }
 
-                return 'This run still needs durable command-contract normalization, but the current build cannot resolve the workflow definition required to finish it.'
+                return this.$t("This run still needs durable command-contract normalization, but the current build cannot resolve the workflow definition required to finish it.")
             },
 
             contractBackfillBadgeClass(flow) {
@@ -305,16 +305,16 @@
                 const indicator = this.historyBudgetIndicator(flow)
 
                 return indicator && indicator.label
-                    ? indicator.label
-                    : 'History Budget'
+                    ? this.uiText(indicator.label)
+                    : this.$t("History Budget")
             },
 
             historyBudgetBadgeTitle(flow) {
                 const indicator = this.historyBudgetIndicator(flow)
 
                 return indicator && indicator.description
-                    ? indicator.description
-                    : 'This run is approaching a configured history budget.'
+                    ? this.uiText(indicator.description)
+                    : this.$t("This run is approaching a configured history budget.")
             },
 
             historyBudgetBadgeClass(flow) {

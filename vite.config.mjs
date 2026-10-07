@@ -111,6 +111,11 @@ export default defineConfig({
                 'styles-dark': path.join(root, 'resources/sass/app-dark.scss'),
             },
             output: {
+                manualChunks(id) {
+                    if (id.includes('/resources/lang/') && id.endsWith('.json')) {
+                        return 'ui-messages';
+                    }
+                },
                 entryFileNames: '[name].js',
                 chunkFileNames: 'chunks/[name]-[hash].js',
                 assetFileNames(asset) {

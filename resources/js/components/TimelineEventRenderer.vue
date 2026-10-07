@@ -18,11 +18,11 @@
                 <!-- Activity Events -->
                 <div v-if="isActivityEvent" class="event-details small">
                     <div v-if="event.activity_type || event.activity_class">
-                        <span class="text-muted">Activity:</span>
+                        <span class="text-muted">{{ $t("Activity:") }}</span>
                         <code class="ml-1">{{ event.activity_type || event.activity_class }}</code>
                     </div>
                     <div v-if="event.activity_execution_id">
-                        <span class="text-muted">Execution ID:</span>
+                        <span class="text-muted">{{ $t("Execution ID:") }}</span>
                         <a
                             href="#"
                             class="ml-1"
@@ -31,7 +31,7 @@
                         </a>
                     </div>
                     <div v-if="event.activity_status">
-                        <span class="text-muted">Status:</span>
+                        <span class="text-muted">{{ $t("Status:") }}</span>
                         <span class="ml-1">{{ event.activity_status }}</span>
                     </div>
                 </div>
@@ -39,11 +39,11 @@
                 <!-- Timer Events -->
                 <div v-else-if="isTimerEvent" class="event-details small">
                     <div v-if="event.timer_id">
-                        <span class="text-muted">Timer ID:</span>
+                        <span class="text-muted">{{ $t("Timer ID:") }}</span>
                         <code class="ml-1">{{ event.timer_id.substring(0, 8) }}...</code>
                     </div>
                     <div v-if="event.delay_seconds">
-                        <span class="text-muted">Delay:</span>
+                        <span class="text-muted">{{ $t("Delay:") }}</span>
                         <span class="ml-1">{{ formatDuration(event.delay_seconds) }}</span>
                     </div>
                 </div>
@@ -51,11 +51,11 @@
                 <!-- Child Workflow Events -->
                 <div v-else-if="isChildEvent" class="event-details small">
                     <div v-if="event.child_workflow_type || event.child_workflow_class">
-                        <span class="text-muted">Child Type:</span>
+                        <span class="text-muted">{{ $t("Child Type:") }}</span>
                         <code class="ml-1">{{ event.child_workflow_type || event.child_workflow_class }}</code>
                     </div>
                     <div v-if="event.child_workflow_run_id">
-                        <span class="text-muted">Run ID:</span>
+                        <span class="text-muted">{{ $t("Run ID:") }}</span>
                         <a
                             href="#"
                             class="ml-1"
@@ -64,7 +64,7 @@
                         </a>
                     </div>
                     <div v-if="event.child_status">
-                        <span class="text-muted">Status:</span>
+                        <span class="text-muted">{{ $t("Status:") }}</span>
                         <span class="ml-1">{{ event.child_status }}</span>
                     </div>
                 </div>
@@ -72,15 +72,15 @@
                 <!-- Signal Events -->
                 <div v-else-if="isSignalEvent" class="event-details small">
                     <div v-if="event.signal_name">
-                        <span class="text-muted">Signal:</span>
+                        <span class="text-muted">{{ $t("Signal:") }}</span>
                         <code class="ml-1">{{ event.signal_name }}</code>
                     </div>
                     <div v-if="event.signal_id">
-                        <span class="text-muted">Signal ID:</span>
+                        <span class="text-muted">{{ $t("Signal ID:") }}</span>
                         <code class="ml-1">{{ event.signal_id.substring(0, 8) }}...</code>
                     </div>
                     <div v-if="commandPrincipalLabel">
-                        <span class="text-muted">Principal:</span>
+                        <span class="text-muted">{{ $t("Principal:") }}</span>
                         <span class="ml-1">{{ commandPrincipalLabel }}</span>
                     </div>
                 </div>
@@ -88,11 +88,11 @@
                 <!-- Update Events -->
                 <div v-else-if="isUpdateEvent" class="event-details small">
                     <div v-if="event.update_name">
-                        <span class="text-muted">Update:</span>
+                        <span class="text-muted">{{ $t("Update:") }}</span>
                         <code class="ml-1">{{ event.update_name }}</code>
                     </div>
                     <div v-if="commandPrincipalLabel">
-                        <span class="text-muted">Principal:</span>
+                        <span class="text-muted">{{ $t("Principal:") }}</span>
                         <span class="ml-1">{{ commandPrincipalLabel }}</span>
                     </div>
                 </div>
@@ -100,19 +100,19 @@
                 <!-- Command Events -->
                 <div v-else-if="isCommandEvent" class="event-details small">
                     <div v-if="commandSourceLabel">
-                        <span class="text-muted">Actor:</span>
+                        <span class="text-muted">{{ $t("Actor:") }}</span>
                         <span class="ml-1">{{ commandSourceLabel }}</span>
                     </div>
                     <div v-if="commandPrincipalLabel">
-                        <span class="text-muted">Principal:</span>
+                        <span class="text-muted">{{ $t("Principal:") }}</span>
                         <span class="ml-1">{{ commandPrincipalLabel }}</span>
                     </div>
                     <div v-if="commandStatusLabel">
-                        <span class="text-muted">Command:</span>
+                        <span class="text-muted">{{ $t("Command:") }}</span>
                         <span class="ml-1">{{ commandStatusLabel }}</span>
                     </div>
                     <div v-if="commandRequestLabel">
-                        <span class="text-muted">Request:</span>
+                        <span class="text-muted">{{ $t("Request:") }}</span>
                         <code class="ml-1">{{ commandRequestLabel }}</code>
                     </div>
                 </div>
@@ -120,33 +120,33 @@
                 <!-- Version Marker Events -->
                 <div v-else-if="isVersionEvent" class="event-details small">
                     <div v-if="event.version_change_id">
-                        <span class="text-muted">Change ID:</span>
+                        <span class="text-muted">{{ $t("Change ID:") }}</span>
                         <code class="ml-1">{{ event.version_change_id }}</code>
                     </div>
                     <div v-if="event.version !== null">
-                        <span class="text-muted">Version:</span>
+                        <span class="text-muted">{{ $t("Version:") }}</span>
                         <span class="ml-1">{{ event.version }}</span>
                     </div>
                 </div>
 
                 <!-- Search Attributes -->
                 <div v-else-if="event.type === 'SearchAttributesUpserted'" class="event-details small">
-                    <span class="text-muted">Search attributes updated</span>
+                    <span class="text-muted">{{ $t("Search attributes updated") }}</span>
                 </div>
 
                 <!-- Side Effect -->
                 <div v-else-if="event.type === 'SideEffectRecorded'" class="event-details small">
-                    <span class="text-muted">Side effect recorded</span>
+                    <span class="text-muted">{{ $t("Side effect recorded") }}</span>
                 </div>
 
                 <!-- Failure Events -->
                 <div v-if="hasFailure" class="event-details small text-danger mt-1">
                     <div v-if="event.exception_class">
-                        <span class="text-muted">Exception:</span>
+                        <span class="text-muted">{{ $t("Exception:") }}</span>
                         <code class="ml-1">{{ event.exception_class }}</code>
                     </div>
                     <div v-if="event.message">
-                        <span class="text-muted">Message:</span>
+                        <span class="text-muted">{{ $t("Message:") }}</span>
                         <span class="ml-1">{{ event.message }}</span>
                     </div>
                 </div>
@@ -248,7 +248,7 @@ export default {
             const caller = this.firstPresent(command.caller_label, this.event.caller_label, command.source);
             const authStatus = this.firstPresent(command.auth_status, this.event.auth_status);
             const authMethod = this.firstPresent(command.auth_method, this.event.auth_method);
-            const auth = [authStatus, authMethod ? `via ${authMethod}` : null]
+            const auth = [authStatus, authMethod ? this.$t("via {value1}", { value1: authMethod }) : null]
                 .filter(Boolean)
                 .join(' ');
 
@@ -303,7 +303,7 @@ export default {
         formatTimestamp(timestamp) {
             if (!timestamp) return '';
             try {
-                return new Date(timestamp).toLocaleString();
+                return new Date(timestamp).toLocaleString(this.$i18n.locale);
             } catch (e) {
                 return timestamp;
             }

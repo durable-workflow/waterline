@@ -2,27 +2,27 @@
     <div class="worker-health">
         <section class="worker-health__hero">
             <div>
-                <p class="worker-health__eyebrow">Operator surface</p>
-                <h1 class="worker-health__title">Workers</h1>
+                <p class="worker-health__eyebrow">{{ $t("Operator surface") }}</p>
+                <h1 class="worker-health__title">{{ $t("Workers") }}</h1>
                 <p class="worker-health__subtitle">
-                    Heartbeats, compatibility coverage, and queue capacity across the active Waterline fleet.
+                    {{ $t("Heartbeats, compatibility coverage, and queue capacity across the active Waterline fleet.") }}
                 </p>
             </div>
 
             <div class="worker-health__actions">
                 <span v-if="healthData" class="worker-health__pill" :class="statusToneClass(healthData.status)">
-                    {{ (healthData.status || 'unknown').toUpperCase() }}
+                    {{ stateLabel(healthData.status || 'unknown') }}
                 </span>
 
                 <button class="btn btn-sm btn-outline-secondary" @click="editViewOptions" :disabled="savingOperatorPreferences">
-                    View Options
+                    {{ $t("View Options") }}
                 </button>
 
                 <button class="btn btn-sm btn-outline-secondary" @click="refresh">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon fill-text-color worker-health__button-icon">
                         <path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"></path>
                     </svg>
-                    Refresh
+                    {{ $t("Refresh") }}
                 </button>
             </div>
         </section>
@@ -31,30 +31,30 @@
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color worker-health__state-icon">
                 <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
             </svg>
-            <p class="worker-health__state-copy">Loading worker health…</p>
+            <p class="worker-health__state-copy">{{ $t("Loading worker health…") }}</p>
         </div>
 
         <div v-else-if="error" class="worker-health__state card card-bg-secondary worker-health__state--error">
-            <strong>Worker health unavailable</strong>
+            <strong>{{ $t("Worker health unavailable") }}</strong>
             <p class="worker-health__state-copy">{{ error }}</p>
-            <button class="btn btn-sm btn-outline-primary" @click="refresh">Retry</button>
+            <button class="btn btn-sm btn-outline-primary" @click="refresh">{{ $t("Retry") }}</button>
         </div>
 
         <div v-else class="worker-health__content">
             <section class="worker-health__summary-grid">
                 <article class="card worker-health__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="worker-health__summary-label">Overall health</div>
+                        <div class="worker-health__summary-label">{{ $t("Overall health") }}</div>
                         <div class="worker-health__summary-value" :class="statusToneClass(healthData && healthData.status)">
-                            {{ (healthData && healthData.status ? healthData.status : 'unknown').toUpperCase() }}
+                            {{ stateLabel(healthData && healthData.status ? healthData.status : 'unknown') }}
                         </div>
-                        <div class="worker-health__summary-meta">Derived from worker heartbeats and health checks.</div>
+                        <div class="worker-health__summary-meta">{{ $t("Derived from worker heartbeats and health checks.") }}</div>
                     </div>
                 </article>
 
                 <article class="card worker-health__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="worker-health__summary-label">Worker registrations</div>
+                        <div class="worker-health__summary-label">{{ $t("Worker registrations") }}</div>
                         <div class="worker-health__summary-value">{{ registrationCount.toLocaleString() }}</div>
                         <div class="worker-health__summary-meta">{{ registrationSummary }}</div>
                     </div>
@@ -62,17 +62,17 @@
 
                 <article class="card worker-health__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="worker-health__summary-label">Compatible workers</div>
+                        <div class="worker-health__summary-label">{{ $t("Compatible workers") }}</div>
                         <div class="worker-health__summary-value">{{ supportedWorkerCount.toLocaleString() }}</div>
-                        <div class="worker-health__summary-meta">Workers supporting the required compatibility marker.</div>
+                        <div class="worker-health__summary-meta">{{ $t("Workers supporting the required compatibility marker.") }}</div>
                     </div>
                 </article>
 
                 <article class="card worker-health__summary-card">
                     <div class="card-body card-bg-secondary">
-                        <div class="worker-health__summary-label">Active leases</div>
+                        <div class="worker-health__summary-label">{{ $t("Active leases") }}</div>
                         <div class="worker-health__summary-value">{{ totalLeases.toLocaleString() }}</div>
-                        <div class="worker-health__summary-meta">Leases currently held by returned registrations.</div>
+                        <div class="worker-health__summary-meta">{{ $t("Leases currently held by returned registrations.") }}</div>
                     </div>
                 </article>
             </section>
@@ -80,12 +80,12 @@
             <section v-if="coordinationAlerts.length > 0" class="card worker-health__panel">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
-                        <h5 class="mb-0">Coordination alerts</h5>
+                        <h5 class="mb-0">{{ $t("Coordination alerts") }}</h5>
                         <small class="text-muted">{{ coordinationAlertSummary }}</small>
                     </div>
 
                     <span class="worker-health__pill" :class="statusToneClass(coordinationAlertRollup)">
-                        {{ coordinationAlerts.length.toLocaleString() }} open
+                        {{ coordinationAlerts.length.toLocaleString() }} {{ $t("open") }}
                     </span>
                 </div>
 
@@ -98,7 +98,7 @@
                         >
                             <div class="worker-health__check-head">
                                 <span class="worker-health__pill" :class="statusToneClass(alert.status)">
-                                    {{ (alert.status || 'warning').toUpperCase() }}
+                                    {{ stateLabel(alert.status || 'warning') }}
                                 </span>
                                 <strong>{{ coordinationAlertTitle(alert) }}</strong>
                             </div>
@@ -135,12 +135,12 @@
                 <article class="card worker-health__panel worker-health__panel--wide">
                     <div class="card-header d-flex align-items-center justify-content-between">
                         <div>
-                            <h5 class="mb-0">Worker fleet</h5>
-                            <small class="text-muted">Runtime, queues, capability coverage, and heartbeat freshness.</small>
+                            <h5 class="mb-0">{{ $t("Worker fleet") }}</h5>
+                            <small class="text-muted">{{ $t("Runtime, queues, capability coverage, and heartbeat freshness.") }}</small>
                         </div>
 
                         <span class="worker-health__pill worker-health__pill--muted">
-                            {{ workers.length.toLocaleString() }} workers
+                            {{ workers.length.toLocaleString() }} {{ $t("workers") }}
                         </span>
                     </div>
 
@@ -149,18 +149,18 @@
                             <table :class="workersTableClass">
                                 <thead>
                                     <tr>
-                                        <th v-if="columnEnabled('worker_id')">Worker</th>
-                                        <th v-if="columnEnabled('runtime')">Runtime</th>
-                                        <th v-if="columnEnabled('task_queue')">Task Queue</th>
-                                        <th v-if="columnEnabled('heartbeat')">Heartbeat</th>
-                                        <th v-if="columnEnabled('status')">Status</th>
-                                        <th v-if="columnEnabled('compatibility')">Compatibility</th>
-                                        <th v-if="columnEnabled('source')">Source</th>
-                                        <th v-if="columnEnabled('workflows')">Workflow Support</th>
-                                        <th v-if="columnEnabled('activities')">Activity Support</th>
-                                        <th v-if="columnEnabled('concurrency')">Concurrency</th>
-                                        <th v-if="columnEnabled('slots')">Slots (free / cap)</th>
-                                        <th v-if="columnEnabled('process')">Process</th>
+                                        <th v-if="columnEnabled('worker_id')">{{ $t("Worker") }}</th>
+                                        <th v-if="columnEnabled('runtime')">{{ $t("Runtime") }}</th>
+                                        <th v-if="columnEnabled('task_queue')">{{ $t("Task Queue") }}</th>
+                                        <th v-if="columnEnabled('heartbeat')">{{ $t("Heartbeat") }}</th>
+                                        <th v-if="columnEnabled('status')">{{ $t("Status") }}</th>
+                                        <th v-if="columnEnabled('compatibility')">{{ $t("Compatibility") }}</th>
+                                        <th v-if="columnEnabled('source')">{{ $t("Source") }}</th>
+                                        <th v-if="columnEnabled('workflows')">{{ $t("Workflow Support") }}</th>
+                                        <th v-if="columnEnabled('activities')">{{ $t("Activity Support") }}</th>
+                                        <th v-if="columnEnabled('concurrency')">{{ $t("Concurrency") }}</th>
+                                        <th v-if="columnEnabled('slots')">{{ $t("Slots (free / cap)") }}</th>
+                                        <th v-if="columnEnabled('process')">{{ $t("Process") }}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -169,7 +169,7 @@
                                             <div class="worker-health__cell-main">
                                                 <code>{{ truncateId(worker.worker_id) }}</code>
                                                 <div class="worker-health__cell-meta" v-if="worker.current_leases">
-                                                    {{ worker.current_leases }} active lease<span v-if="worker.current_leases !== 1">s</span>
+                                                    {{ worker.current_leases }} {{ $t("active lease") }}<span v-if="worker.current_leases !== 1">{{ $t("s") }}</span>
                                                 </div>
                                             </div>
                                         </td>
@@ -181,7 +181,7 @@
                                         <td v-if="columnEnabled('task_queue')">
                                             <div class="worker-health__cell-main">
                                                 <code>{{ worker.task_queue || 'default' }}</code>
-                                                <div class="worker-health__cell-meta">Queue affinity</div>
+                                                <div class="worker-health__cell-meta">{{ $t("Queue affinity") }}</div>
                                             </div>
                                         </td>
 
@@ -196,7 +196,7 @@
 
                                         <td v-if="columnEnabled('status')">
                                             <span class="worker-health__pill" :class="workerStatusToneClass(worker)">
-                                                {{ worker.status || 'unknown' }}
+                                                {{ stateLabel(worker.status || 'unknown') }}
                                             </span>
                                         </td>
 
@@ -212,7 +212,7 @@
                                                 </span>
                                                 <span v-else class="text-muted">—</span>
                                                 <div class="worker-health__cell-meta" v-if="workerCompatibilityMarkers(worker).length > 0">
-                                                    {{ worker.supports_required === true ? 'Supports required marker' : worker.supports_required === false ? 'Does not support required marker' : 'Required marker not set' }}
+                                                    {{ worker.supports_required === true ? $t('Supports required marker') : worker.supports_required === false ? $t('Does not support required marker') : $t('Required marker not set') }}
                                                 </div>
                                             </div>
                                         </td>
@@ -227,9 +227,9 @@
                                         <td v-if="columnEnabled('workflows')">
                                             <div class="worker-health__cell-main">
                                                 <span v-if="worker.supported_workflow_types && worker.supported_workflow_types.length > 0">
-                                                    {{ worker.supported_workflow_types.length }} types
+                                                    {{ worker.supported_workflow_types.length }} {{ $t("types") }}
                                                 </span>
-                                                <span v-else class="text-muted">None</span>
+                                                <span v-else class="text-muted">{{ $t("None") }}</span>
                                                 <div class="worker-health__cell-meta" v-if="worker.supported_workflow_types && worker.supported_workflow_types.length > 0">
                                                     {{ worker.supported_workflow_types.slice(0, 2).join(', ') }}<span v-if="worker.supported_workflow_types.length > 2">…</span>
                                                 </div>
@@ -239,9 +239,9 @@
                                         <td v-if="columnEnabled('activities')">
                                             <div class="worker-health__cell-main">
                                                 <span v-if="worker.supported_activity_types && worker.supported_activity_types.length > 0">
-                                                    {{ worker.supported_activity_types.length }} types
+                                                    {{ worker.supported_activity_types.length }} {{ $t("types") }}
                                                 </span>
-                                                <span v-else class="text-muted">None</span>
+                                                <span v-else class="text-muted">{{ $t("None") }}</span>
                                                 <div class="worker-health__cell-meta" v-if="worker.supported_activity_types && worker.supported_activity_types.length > 0">
                                                     {{ worker.supported_activity_types.slice(0, 2).join(', ') }}<span v-if="worker.supported_activity_types.length > 2">…</span>
                                                 </div>
@@ -251,7 +251,7 @@
                                         <td v-if="columnEnabled('concurrency')">
                                             <div class="worker-health__cell-main">
                                                 WF {{ worker.max_concurrent_workflow_tasks || 0 }} / ACT {{ worker.max_concurrent_activity_tasks || 0 }}
-                                                <div class="worker-health__cell-meta">Task slot limits</div>
+                                                <div class="worker-health__cell-meta">{{ $t("Task slot limits") }}</div>
                                             </div>
                                         </td>
 
@@ -260,7 +260,7 @@
                                                 <span v-if="hasSlotData(worker)">{{ formatSlotPair(worker.task_slots && worker.task_slots.workflow_available, slotCapacity(worker, 'workflow')) }} wf · {{ formatSlotPair(worker.task_slots && worker.task_slots.activity_available, slotCapacity(worker, 'activity')) }} act</span>
                                                 <span v-else class="text-muted">—</span>
                                                 <div class="worker-health__cell-meta" v-if="worker.task_slots && worker.task_slots.session_available !== null && worker.task_slots.session_available !== undefined">
-                                                    sessions {{ formatSlotPair(worker.task_slots.session_available, slotCapacity(worker, 'session')) }}
+                                                    {{ $t("sessions") }} {{ formatSlotPair(worker.task_slots.session_available, slotCapacity(worker, 'session')) }}
                                                 </div>
                                             </div>
                                         </td>
@@ -270,7 +270,7 @@
                                                 <span v-if="hasProcessMetrics(worker)">{{ formatProcessSummary(worker) }}</span>
                                                 <span v-else class="text-muted">—</span>
                                                 <div class="worker-health__cell-meta" v-if="worker.process_metrics && worker.process_metrics.host">
-                                                    {{ worker.process_metrics.host }}<span v-if="worker.process_metrics.process_id !== null && worker.process_metrics.process_id !== undefined"> · pid {{ worker.process_metrics.process_id }}</span>
+                                                    {{ worker.process_metrics.host }}<span v-if="worker.process_metrics.process_id !== null && worker.process_metrics.process_id !== undefined"> {{ $t("· pid") }} {{ worker.process_metrics.process_id }}</span>
                                                 </div>
                                             </div>
                                         </td>
@@ -281,12 +281,12 @@
 
                         <div v-else class="worker-health__empty-state">
                             <template v-if="staleRegistrationCount > 0">
-                                <strong>No active workers</strong>
-                                <p class="mb-0 text-muted">Previously registered workers are stale. Check their processes and task queues, then verify a fresh heartbeat.</p>
+                                <strong>{{ $t("No active workers") }}</strong>
+                                <p class="mb-0 text-muted">{{ $t("Previously registered workers are stale. Check their processes and task queues, then verify a fresh heartbeat.") }}</p>
                             </template>
                             <template v-else>
-                                <strong>No workers registered</strong>
-                                <p class="mb-0 text-muted">Waterline has not observed any worker registrations for this scope yet.</p>
+                                <strong>{{ $t("No workers registered") }}</strong>
+                                <p class="mb-0 text-muted">{{ $t("Waterline has not observed any worker registrations for this scope yet.") }}</p>
                             </template>
                         </div>
                     </div>
@@ -294,9 +294,9 @@
 
                 <article class="card worker-health__panel">
                     <div class="card-header">
-                        <h5 class="mb-0">Health checks</h5>
+                        <h5 class="mb-0">{{ $t("Health checks") }}</h5>
                         <small class="text-muted">
-                            Correctness answers <em>is work being discovered?</em>; acceleration answers <em>is the acceleration layer propagating?</em>.
+                            {{ $t("Correctness answers") }} <em>{{ $t("is work being discovered?") }}</em>{{ $t("; acceleration answers") }} <em>{{ $t("is the acceleration layer propagating?") }}</em>.
                         </small>
                     </div>
 
@@ -330,7 +330,7 @@
                                 >
                                     <div class="worker-health__check-head">
                                         <span class="worker-health__pill" :class="statusToneClass(check.status)">
-                                            {{ check.status }}
+                                            {{ stateLabel(check.status) }}
                                         </span>
                                         <strong>{{ check.name }}</strong>
                                     </div>
@@ -340,8 +340,8 @@
                             </div>
 
                             <div v-else class="worker-health__empty-state worker-health__empty-state--compact">
-                                <strong>No {{ category.title.toLowerCase() }} checks reported</strong>
-                                <p class="mb-0 text-muted">The health endpoint did not return any checks for this category.</p>
+                                <strong>{{ $t("No") }} {{ category.title.toLowerCase() }} {{ $t("checks reported") }}</strong>
+                                <p class="mb-0 text-muted">{{ $t("The health endpoint did not return any checks for this category.") }}</p>
                             </div>
                         </section>
                     </div>
@@ -351,24 +351,24 @@
             <section class="card worker-health__panel">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
-                        <h5 class="mb-0">Task queues</h5>
-                        <small class="text-muted">Queue backlog, recent flow, poller pressure, and repair candidates for the configured namespace.</small>
+                        <h5 class="mb-0">{{ $t("Task queues") }}</h5>
+                        <small class="text-muted">{{ $t("Queue backlog, recent flow, poller pressure, and repair candidates for the configured namespace.") }}</small>
                     </div>
 
                     <span class="worker-health__pill worker-health__pill--muted">
-                        {{ taskQueues.length.toLocaleString() }} queues
+                        {{ taskQueues.length.toLocaleString() }} {{ $t("queues") }}
                     </span>
                 </div>
 
                 <div class="card-body card-bg-secondary">
                     <div v-if="queueVisibility.available !== true" class="worker-health__empty-state worker-health__empty-state--compact">
-                        <strong>Queue visibility unavailable</strong>
+                        <strong>{{ $t("Queue visibility unavailable") }}</strong>
                         <p class="mb-0 text-muted">{{ queueVisibilityReason }}</p>
                     </div>
 
                     <div v-else-if="taskQueues.length === 0" class="worker-health__empty-state worker-health__empty-state--compact">
-                        <strong>No task queues observed</strong>
-                        <p class="mb-0 text-muted">No ready, leased, or polled queues are currently visible for this namespace.</p>
+                        <strong>{{ $t("No task queues observed") }}</strong>
+                        <p class="mb-0 text-muted">{{ $t("No ready, leased, or polled queues are currently visible for this namespace.") }}</p>
                     </div>
 
                     <div v-else class="worker-health__queue-grid">
@@ -377,7 +377,7 @@
                                 <div>
                                     <strong>{{ taskQueue.name }}</strong>
                                     <div class="worker-health__cell-meta">
-                                        namespace {{ queueVisibility.namespace || 'default' }}
+                                        {{ $t("namespace") }} {{ queueVisibility.namespace || 'default' }}
                                     </div>
                                 </div>
 
@@ -388,59 +388,59 @@
 
                             <div class="worker-health__queue-metrics">
                                 <div class="worker-health__queue-metric">
-                                    <span class="worker-health__queue-metric-label">Backlog</span>
+                                    <span class="worker-health__queue-metric-label">{{ $t("Backlog") }}</span>
                                     <strong class="worker-health__queue-metric-value">{{ integerLabel(taskQueue.stats.approximate_backlog_count) }}</strong>
-                                    <div class="worker-health__queue-metric-meta">oldest ready {{ queueBacklogAge(taskQueue) }}</div>
+                                    <div class="worker-health__queue-metric-meta">{{ $t("oldest ready") }} {{ queueBacklogAge(taskQueue) }}</div>
                                 </div>
 
                                 <div class="worker-health__queue-metric">
-                                    <span class="worker-health__queue-metric-label">Pollers</span>
+                                    <span class="worker-health__queue-metric-label">{{ $t("Pollers") }}</span>
                                     <strong class="worker-health__queue-metric-value">
-                                        {{ integerLabel(taskQueue.stats.pollers.active_count) }} active / {{ integerLabel(taskQueue.stats.pollers.stale_count) }} stale
+                                        {{ integerLabel(taskQueue.stats.pollers.active_count) }} {{ $t("active /") }} {{ integerLabel(taskQueue.stats.pollers.stale_count) }} {{ $t("stale") }}
                                     </strong>
                                     <div class="worker-health__queue-metric-meta">
-                                        {{ integerLabel(taskQueue.stats.pollers.stale_after_seconds) }}s stale window
+                                        {{ integerLabel(taskQueue.stats.pollers.stale_after_seconds) }}{{ $t("s stale window") }}
                                     </div>
                                 </div>
 
                                 <div class="worker-health__queue-metric">
-                                    <span class="worker-health__queue-metric-label">Flow (60s)</span>
+                                    <span class="worker-health__queue-metric-label">{{ $t("Flow (60s)") }}</span>
                                     <strong class="worker-health__queue-metric-value">
-                                        {{ integerLabel(taskQueue.stats.tasks_added_last_minute) }} in / {{ integerLabel(taskQueue.stats.tasks_dispatched_last_minute) }} out
+                                        {{ integerLabel(taskQueue.stats.tasks_added_last_minute) }} {{ $t("in /") }} {{ integerLabel(taskQueue.stats.tasks_dispatched_last_minute) }} {{ $t("out") }}
                                     </strong>
-                                    <div class="worker-health__queue-metric-meta">Added vs dispatched durable tasks.</div>
+                                    <div class="worker-health__queue-metric-meta">{{ $t("Added vs dispatched durable tasks.") }}</div>
                                 </div>
 
                                 <div class="worker-health__queue-metric">
-                                    <span class="worker-health__queue-metric-label">Workflow tasks</span>
+                                    <span class="worker-health__queue-metric-label">{{ $t("Workflow tasks") }}</span>
                                     <strong class="worker-health__queue-metric-value">
-                                        {{ integerLabel(taskQueue.stats.workflow_tasks.ready_count) }} ready
+                                        {{ integerLabel(taskQueue.stats.workflow_tasks.ready_count) }} {{ $t("ready") }}
                                     </strong>
                                     <div class="worker-health__queue-metric-meta">
-                                        {{ integerLabel(taskQueue.stats.workflow_tasks.leased_count) }} leased, {{ integerLabel(taskQueue.stats.workflow_tasks.expired_lease_count) }} expired
+                                        {{ integerLabel(taskQueue.stats.workflow_tasks.leased_count) }} {{ $t("leased,") }} {{ integerLabel(taskQueue.stats.workflow_tasks.expired_lease_count) }} {{ $t("expired") }}
                                     </div>
                                 </div>
 
                                 <div class="worker-health__queue-metric">
-                                    <span class="worker-health__queue-metric-label">Activity tasks</span>
+                                    <span class="worker-health__queue-metric-label">{{ $t("Activity tasks") }}</span>
                                     <strong class="worker-health__queue-metric-value">
-                                        {{ integerLabel(taskQueue.stats.activity_tasks.ready_count) }} ready
+                                        {{ integerLabel(taskQueue.stats.activity_tasks.ready_count) }} {{ $t("ready") }}
                                     </strong>
                                     <div class="worker-health__queue-metric-meta">
-                                        {{ integerLabel(taskQueue.stats.activity_tasks.leased_count) }} leased, {{ integerLabel(taskQueue.stats.activity_tasks.expired_lease_count) }} expired
+                                        {{ integerLabel(taskQueue.stats.activity_tasks.leased_count) }} {{ $t("leased,") }} {{ integerLabel(taskQueue.stats.activity_tasks.expired_lease_count) }} {{ $t("expired") }}
                                     </div>
                                 </div>
 
                                 <div class="worker-health__queue-metric">
-                                    <span class="worker-health__queue-metric-label">Repair</span>
+                                    <span class="worker-health__queue-metric-label">{{ $t("Repair") }}</span>
                                     <strong class="worker-health__queue-metric-value">
-                                        {{ integerLabel(taskQueue.repair.candidates) }} candidates
+                                        {{ integerLabel(taskQueue.repair.candidates) }} {{ $t("candidates") }}
                                     </strong>
                                     <div class="worker-health__queue-metric-meta">
-                                        {{ integerLabel(taskQueue.repair.dispatch_failed) }} dispatch failed, {{ integerLabel(taskQueue.repair.dispatch_overdue) }} overdue, {{ integerLabel(taskQueue.repair.expired_leases) }} expired
+                                        {{ integerLabel(taskQueue.repair.dispatch_failed) }} {{ $t("dispatch failed,") }} {{ integerLabel(taskQueue.repair.dispatch_overdue) }} {{ $t("overdue,") }} {{ integerLabel(taskQueue.repair.expired_leases) }} {{ $t("expired") }}
                                     </div>
                                     <div class="worker-health__queue-metric-meta">
-                                        oldest failed {{ durationMillisecondsLabel(taskQueue.repair.max_dispatch_failed_age_ms) }}, overdue {{ durationMillisecondsLabel(taskQueue.repair.max_dispatch_overdue_age_ms) }}, expired {{ durationMillisecondsLabel(taskQueue.repair.max_lease_expired_age_ms) }}
+                                        {{ $t("oldest failed") }} {{ durationMillisecondsLabel(taskQueue.repair.max_dispatch_failed_age_ms) }}{{ $t(", overdue") }} {{ durationMillisecondsLabel(taskQueue.repair.max_dispatch_overdue_age_ms) }}{{ $t(", expired") }} {{ durationMillisecondsLabel(taskQueue.repair.max_lease_expired_age_ms) }}
                                     </div>
                                 </div>
                             </div>
@@ -453,7 +453,7 @@
                                 >
                                     <div class="worker-health__build-head">
                                         <div>
-                                            <div class="worker-health__queue-metric-label">Build ID</div>
+                                            <div class="worker-health__queue-metric-label">{{ $t("Build ID") }}</div>
                                             <strong class="worker-health__build-label">{{ buildIdLabel(build) }}</strong>
                                         </div>
                                         <span class="worker-health__pill" :class="buildIdToneClass(build)">
@@ -567,7 +567,7 @@ export default {
             const active = this.activeRegistrationCount;
             const stale = this.staleRegistrationCount;
 
-            return `${active.toLocaleString()} active; ${stale.toLocaleString()} stale.`;
+            return this.$t('{active} active; {stale} stale.', { active: active.toLocaleString(), stale: stale.toLocaleString() });
         },
 
         healthChecks() {
@@ -582,7 +582,7 @@ export default {
                     available: false,
                     namespace: this.healthData?.namespace || null,
                     task_queues: [],
-                    reason: 'Queue visibility is unavailable for this scope.',
+                    reason: this.$t("Queue visibility is unavailable for this scope."),
                 };
             }
 
@@ -592,7 +592,7 @@ export default {
         queueVisibilityReason() {
             return typeof this.queueVisibility.reason === 'string'
                 ? this.queueVisibility.reason
-                : 'Queue visibility is unavailable for this scope.';
+                : this.$t("Queue visibility is unavailable for this scope.");
         },
 
         taskQueues() {
@@ -627,35 +627,35 @@ export default {
             const parts = [];
 
             if (errors > 0) {
-                parts.push(`${errors.toLocaleString()} error${errors === 1 ? '' : 's'}`);
+                parts.push(this.$t('{count} errors', { count: errors.toLocaleString() }, errors));
             }
 
             if (warnings > 0) {
-                parts.push(`${warnings.toLocaleString()} warning${warnings === 1 ? '' : 's'}`);
+                parts.push(this.$t('{count} warnings', { count: warnings.toLocaleString() }, warnings));
             }
 
             if (parts.length === 0) {
-                return 'Warnings and errors distilled from health checks and queue visibility.';
+                return this.$t("Warnings and errors distilled from health checks and queue visibility.");
             }
 
-            return `${parts.join(' and ')} distilled from health checks and queue visibility.`;
+            return this.$t("{value1} distilled from health checks and queue visibility.", { value1: parts.join(this.$t(' and ')) });
         },
 
         categorizedChecks() {
             const definitions = [
                 {
                     key: 'correctness',
-                    eyebrow: 'Durable substrate',
-                    title: 'Correctness',
-                    subtitle: 'Answers "is work being discovered?" from durable dispatch state.',
-                    rollupTitle: 'Rollup of correctness-category checks.',
+                    eyebrow: this.$t("Durable substrate"),
+                    title: this.$t("Correctness"),
+                    subtitle: this.$t("Answers \"is work being discovered?\" from durable dispatch state."),
+                    rollupTitle: this.$t("Rollup of correctness-category checks."),
                 },
                 {
                     key: 'acceleration',
-                    eyebrow: 'Optional layer',
-                    title: 'Acceleration',
-                    subtitle: 'Answers "is the acceleration layer propagating?". Degraded acceleration never masks correctness.',
-                    rollupTitle: 'Rollup of acceleration-category checks.',
+                    eyebrow: this.$t("Optional layer"),
+                    title: this.$t("Acceleration"),
+                    subtitle: this.$t("Answers \"is the acceleration layer propagating?\". Degraded acceleration never masks correctness."),
+                    rollupTitle: this.$t("Rollup of acceleration-category checks."),
                 },
             ];
 
@@ -714,7 +714,7 @@ export default {
                 this.healthData = response.data;
                 this.workers = this.workersFromSnapshot(response.data);
             } catch (e) {
-                this.error = e.response?.data?.message || e.message || 'Failed to load worker health';
+                this.error = e.response?.data?.message || e.message || this.$t("Failed to load worker health");
                 console.error('Worker health error:', e);
             } finally {
                 this.loading = false;
@@ -789,18 +789,18 @@ export default {
 
         workersListColumnOptions() {
             return [
-                {key: 'worker_id', label: 'Worker ID'},
-                {key: 'runtime', label: 'Runtime'},
-                {key: 'task_queue', label: 'Task Queue'},
-                {key: 'heartbeat', label: 'Heartbeat'},
-                {key: 'status', label: 'Status'},
-                {key: 'compatibility', label: 'Compatibility'},
-                {key: 'source', label: 'Heartbeat Source'},
+                {key: 'worker_id', label: this.$t("Worker ID")},
+                {key: 'runtime', label: this.$t("Runtime")},
+                {key: 'task_queue', label: this.$t("Task Queue")},
+                {key: 'heartbeat', label: this.$t("Heartbeat")},
+                {key: 'status', label: this.$t("Status")},
+                {key: 'compatibility', label: this.$t("Compatibility")},
+                {key: 'source', label: this.$t("Heartbeat Source")},
                 {key: 'workflows', label: 'Workflows'},
-                {key: 'activities', label: 'Activities'},
-                {key: 'concurrency', label: 'Concurrency'},
-                {key: 'slots', label: 'Free Slots'},
-                {key: 'process', label: 'Process'},
+                {key: 'activities', label: this.$t("Activities")},
+                {key: 'concurrency', label: this.$t("Concurrency")},
+                {key: 'slots', label: this.$t("Free Slots")},
+                {key: 'process', label: this.$t("Process")},
             ];
         },
 
@@ -906,23 +906,23 @@ export default {
                 </label>
             `).join('');
 
-            const result = await Swal.fire({
-                title: 'View Options',
+            const result = await this.$dialog({
+                title: this.$t("View Options"),
                 html: `
                     <div class="text-left">
-                        <label class="d-block mb-1">Density</label>
+                        <label class="d-block mb-1">${this.escapeHtml(this.$t("Density"))}</label>
                         <select id="waterline-workers-density" class="swal2-input">
-                            <option value="dense" ${this.workersListDensity() === 'dense' ? 'selected' : ''}>Dense</option>
-                            <option value="comfortable" ${this.workersListDensity() === 'comfortable' ? 'selected' : ''}>Comfortable</option>
+                            <option value="dense" ${this.workersListDensity() === 'dense' ? 'selected' : ''}>${this.escapeHtml(this.$t("Dense"))}</option>
+                            <option value="comfortable" ${this.workersListDensity() === 'comfortable' ? 'selected' : ''}>${this.escapeHtml(this.$t("Comfortable"))}</option>
                         </select>
                         <div class="mt-3">
-                            <label class="d-block mb-2">Columns</label>
+                            <label class="d-block mb-2">${this.escapeHtml(this.$t("Columns"))}</label>
                             ${columnHtml}
                         </div>
                     </div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: 'Save Options',
+                confirmButtonText: this.$t("Save Options"),
                 background: this.swalBackground(),
                 preConfirm: () => {
                     const selectedColumns = Array.from(document.querySelectorAll('.waterline-worker-column-option'))
@@ -1008,9 +1008,9 @@ export default {
             const backlog = Number(stats.approximate_backlog_count || 0);
             const activePollers = Number(stats.pollers?.active_count || 0);
 
-            if (Number(repair.candidates || 0) > 0) return 'needs attention';
-            if (backlog > 0 && activePollers === 0) return 'no active pollers';
-            if (Number(stats.pollers?.stale_count || 0) > 0) return 'stale pollers';
+            if (Number(repair.candidates || 0) > 0) return this.$t("needs attention");
+            if (backlog > 0 && activePollers === 0) return this.$t("no active pollers");
+            if (Number(stats.pollers?.stale_count || 0) > 0) return this.$t("stale pollers");
 
             return 'healthy';
         },
@@ -1061,7 +1061,7 @@ export default {
             const pendingStatus = build?.pending_workflow_tasks?.status;
 
             if (pendingStatus === 'no_compatible_worker') {
-                return 'no compatible worker';
+                return this.$t("no compatible worker");
             }
 
             if (build?.new_start_selected === true) {
@@ -1096,7 +1096,7 @@ export default {
             const stale = this.integerLabel(build?.stale_worker_count);
             const total = this.integerLabel(build?.total_worker_count);
 
-            return `${active} active, ${stale} stale, ${total} total`;
+            return this.$t('{active} active, {stale} stale, {total} total', { active, stale, total });
         },
 
         buildIdRuntimeLabel(build) {
@@ -1105,7 +1105,7 @@ export default {
             const parts = [];
 
             if (runtimes.length > 0) {
-                parts.push(`runtime ${runtimes.slice(0, 2).join(', ')}${runtimes.length > 2 ? '…' : ''}`);
+                parts.push(this.$t("runtime {value1}{value2}", { value1: runtimes.slice(0, 2).join(', '), value2: runtimes.length > 2 ? '…' : '' }));
             }
 
             if (sdkVersions.length > 0) {
@@ -1119,15 +1119,15 @@ export default {
             const parts = [];
 
             if (build?.new_start_selected === true) {
-                parts.push('selected for new starts');
+                parts.push(this.$t("selected for new starts"));
             }
 
             if (typeof build?.drain_intent === 'string' && build.drain_intent !== '') {
-                parts.push(`drain ${build.drain_intent}`);
+                parts.push(this.$t("drain {value1}", { value1: build.drain_intent }));
             }
 
             if (typeof build?.promoted_at === 'string' && build.promoted_at !== '') {
-                parts.push(`promoted ${build.promoted_at}`);
+                parts.push(this.$t("promoted {value1}", { value1: build.promoted_at }));
             }
 
             return parts.join(' · ');
@@ -1147,10 +1147,10 @@ export default {
             }
 
             if (pending.status === 'no_compatible_worker') {
-                return `${this.integerLabel(total)} pending workflow task${total === 1 ? '' : 's'} without an active compatible worker.`;
+                return this.$t('{count} pending workflow tasks without an active compatible worker.', { count: this.integerLabel(total) }, total);
             }
 
-            return `${this.integerLabel(total)} pending workflow task${total === 1 ? '' : 's'} for this build.`;
+            return this.$t('{count} pending workflow tasks for this build.', { count: this.integerLabel(total) }, total);
         },
 
         coordinationAlertTitle(alert) {
@@ -1162,7 +1162,7 @@ export default {
                 return alert.key.replace(/_/g, ' ');
             }
 
-            return 'Coordination alert';
+            return this.$t("Coordination alert");
         },
 
         coordinationAlertDetails(alert) {
@@ -1179,23 +1179,23 @@ export default {
             }
 
             const label = queues.slice(0, 3).join(', ');
-            const suffix = queues.length > 3 ? ` +${queues.length - 3} more` : '';
+            const suffix = queues.length > 3 ? this.$t(" +{value1} more", { value1: queues.length - 3 }) : '';
 
-            return `Queues: ${label}${suffix}`;
+            return this.$t("Queues: {value1}{value2}", { value1: label, value2: suffix });
         },
 
         coordinationAlertSourceLabel(alert) {
             const source = typeof alert?.source === 'string' ? alert.source : '';
 
             if (source === 'health_check') {
-                return 'Health check';
+                return this.$t("Health check");
             }
 
             if (source === 'queue_visibility') {
-                return 'Queue visibility';
+                return this.$t("Queue visibility");
             }
 
-            return 'Coordination';
+            return this.$t('Coordination');
         },
 
         coordinationAlertCategoryLabel(alert) {
@@ -1204,11 +1204,11 @@ export default {
                 : null;
 
             if (category === 'correctness') {
-                return 'Correctness';
+                return this.$t('Correctness');
             }
 
             if (category === 'acceleration') {
-                return 'Acceleration';
+                return this.$t('Acceleration');
             }
 
             return null;
@@ -1227,23 +1227,23 @@ export default {
             const maxAgeMs = Number(alert?.max_age_ms);
 
             if (Number.isFinite(queueCount) && queueCount > 0) {
-                facts.push(`${queueCount.toLocaleString()} queue${queueCount === 1 ? '' : 's'}`);
+                facts.push(this.$t('{count} queues', { count: queueCount.toLocaleString() }, queueCount));
             }
 
             if (Number.isFinite(backlogCount) && backlogCount > 0) {
-                facts.push(`backlog ${backlogCount.toLocaleString()}`);
+                facts.push(this.$t("backlog {value1}", { value1: backlogCount.toLocaleString() }));
             }
 
             if (Number.isFinite(stalePollerCount) && stalePollerCount > 0) {
-                facts.push(`stale pollers ${stalePollerCount.toLocaleString()}`);
+                facts.push(this.$t("stale pollers {value1}", { value1: stalePollerCount.toLocaleString() }));
             }
 
             if (Number.isFinite(candidateCount) && candidateCount > 0) {
-                facts.push(`repair candidates ${candidateCount.toLocaleString()}`);
+                facts.push(this.$t("repair candidates {value1}", { value1: candidateCount.toLocaleString() }));
             }
 
             if (Number.isFinite(maxAgeMs) && maxAgeMs > 0) {
-                facts.push(`max age ${this.durationMillisecondsLabel(maxAgeMs)}`);
+                facts.push(this.$t("max age {value1}", { value1: this.durationMillisecondsLabel(maxAgeMs) }));
             }
 
             return facts;
@@ -1272,47 +1272,47 @@ export default {
             const activeWorkerScopes = Number(healthFacts.active_worker_scopes || 0);
 
             if (Number.isFinite(compatibilityBlockedRuns) && compatibilityBlockedRuns > 0) {
-                facts.push(`compat blocked ${compatibilityBlockedRuns.toLocaleString()}`);
+                facts.push(this.$t("compat blocked {value1}", { value1: compatibilityBlockedRuns.toLocaleString() }));
             }
 
             if (Number.isFinite(dispatchOverdueTasks) && dispatchOverdueTasks > 0) {
-                facts.push(`dispatch overdue ${dispatchOverdueTasks.toLocaleString()}`);
+                facts.push(this.$t("dispatch overdue {value1}", { value1: dispatchOverdueTasks.toLocaleString() }));
             }
 
             if (Number.isFinite(claimFailedTasks) && claimFailedTasks > 0) {
-                facts.push(`claim failed ${claimFailedTasks.toLocaleString()}`);
+                facts.push(this.$t("claim failed {value1}", { value1: claimFailedTasks.toLocaleString() }));
             }
 
             if (Number.isFinite(queuesWithDrains) && queuesWithDrains > 0) {
-                facts.push(`draining queues ${queuesWithDrains.toLocaleString()}`);
+                facts.push(this.$t("draining queues {value1}", { value1: queuesWithDrains.toLocaleString() }));
             }
 
             if (Number.isFinite(drainingBuildIdCount) && drainingBuildIdCount > 0) {
-                facts.push(`draining builds ${drainingBuildIdCount.toLocaleString()}`);
+                facts.push(this.$t("draining builds {value1}", { value1: drainingBuildIdCount.toLocaleString() }));
             }
 
             if (Number.isFinite(drainingWorkerCount) && drainingWorkerCount > 0) {
-                facts.push(`draining workers ${drainingWorkerCount.toLocaleString()}`);
+                facts.push(this.$t("draining workers {value1}", { value1: drainingWorkerCount.toLocaleString() }));
             }
 
             if (Number.isFinite(staleWorkerCount) && staleWorkerCount > 0) {
-                facts.push(`stale workers ${staleWorkerCount.toLocaleString()}`);
+                facts.push(this.$t("stale workers {value1}", { value1: staleWorkerCount.toLocaleString() }));
             }
 
             if (typeof healthFacts.matching_shape === 'string' && healthFacts.matching_shape !== '') {
-                facts.push(`matching ${healthFacts.matching_shape}`);
+                facts.push(this.$t("matching {value1}", { value1: healthFacts.matching_shape }));
             }
 
             if (typeof healthFacts.task_dispatch_mode === 'string' && healthFacts.task_dispatch_mode !== '') {
-                facts.push(`dispatch ${healthFacts.task_dispatch_mode}`);
+                facts.push(this.$t("dispatch {value1}", { value1: healthFacts.task_dispatch_mode }));
             }
 
             if (typeof healthFacts.queue_wake_enabled === 'boolean') {
-                facts.push(healthFacts.queue_wake_enabled ? 'wake enabled' : 'wake disabled');
+                facts.push(healthFacts.queue_wake_enabled ? this.$t("wake enabled") : this.$t("wake disabled"));
             }
 
             if (Number.isFinite(activeWorkerScopes) && activeWorkerScopes > 0) {
-                facts.push(`worker scopes ${activeWorkerScopes.toLocaleString()}`);
+                facts.push(this.$t("worker scopes {value1}", { value1: activeWorkerScopes.toLocaleString() }));
             }
 
             // Surface fleet compatibility coverage so a "compatibility block"
@@ -1327,8 +1327,8 @@ export default {
                     ? healthFacts.required_compatibility
                     : null;
                 facts.push(requiredCompatibility !== null
-                    ? `no fleet coverage for ${requiredCompatibility}`
-                    : 'no fleet coverage for required marker');
+                    ? this.$t("no fleet coverage for {value1}", { value1: requiredCompatibility })
+                    : this.$t("no fleet coverage for required marker"));
             }
             const supportingWorkers = Number(healthFacts.active_workers_supporting_required ?? null);
             const totalActiveWorkers = Number(healthFacts.active_workers ?? null);
@@ -1337,11 +1337,11 @@ export default {
                 && totalActiveWorkers > 0
                 && supportingWorkers >= 0
                 && supportingWorkers < totalActiveWorkers) {
-                facts.push(`${supportingWorkers.toLocaleString()}/${totalActiveWorkers.toLocaleString()} workers support required marker`);
+                facts.push(this.$t("{value1}/{value2} workers support required marker", { value1: supportingWorkers.toLocaleString(), value2: totalActiveWorkers.toLocaleString() }));
             }
 
             if (Number.isFinite(maxAgeMs) && maxAgeMs > 0) {
-                facts.push(`max age ${this.durationMillisecondsLabel(maxAgeMs)}`);
+                facts.push(this.$t("max age {value1}", { value1: this.durationMillisecondsLabel(maxAgeMs) }));
             }
 
             return facts;
@@ -1357,7 +1357,7 @@ export default {
             const milliseconds = Number(value || 0);
 
             if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
-                return 'fresh';
+                return this.$t('fresh');
             }
 
             if (milliseconds < 1000) {
@@ -1430,7 +1430,7 @@ export default {
             const markers = this.workerCompatibilityMarkers(worker);
 
             if (markers.length === 0) {
-                return 'No compatibility markers advertised';
+                return this.$t("No compatibility markers advertised");
             }
 
             return 'Advertised: ' + markers.join(', ');
@@ -1455,15 +1455,15 @@ export default {
         },
 
         formatHeartbeat(timestamp) {
-            if (!timestamp) return 'never';
+            if (!timestamp) return this.$t('never');
             const date = new Date(timestamp);
             const now = new Date();
             const diffSeconds = Math.floor((now - date) / 1000);
 
-            if (diffSeconds < 60) return `${diffSeconds}s ago`;
-            if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
-            if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;
-            return date.toLocaleString();
+            if (diffSeconds < 60) return this.$t("{value1}s ago", { value1: diffSeconds });
+            if (diffSeconds < 3600) return this.$t("{value1}m ago", { value1: Math.floor(diffSeconds / 60) });
+            if (diffSeconds < 86400) return this.$t("{value1}h ago", { value1: Math.floor(diffSeconds / 3600) });
+            return date.toLocaleString(this.$i18n.locale);
         },
 
         truncateId(id) {
@@ -1518,10 +1518,10 @@ export default {
                 parts.push(`CPU ${Number(metrics.cpu_percent).toFixed(1)}%`);
             }
             if (Number.isFinite(metrics.memory_bytes)) {
-                parts.push(`mem ${this.formatBytes(metrics.memory_bytes)}`);
+                parts.push(this.$t("mem {value1}", { value1: this.formatBytes(metrics.memory_bytes) }));
             }
             if (Number.isFinite(metrics.process_uptime_seconds)) {
-                parts.push(`up ${this.formatUptime(metrics.process_uptime_seconds)}`);
+                parts.push(this.$t("up {value1}", { value1: this.formatUptime(metrics.process_uptime_seconds) }));
             }
 
             return parts.length > 0 ? parts.join(' · ') : '—';

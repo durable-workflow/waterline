@@ -37,7 +37,7 @@ return Illuminate\Foundation\Application::configure(basePath: dirname(__DIR__))
 PHP);
             file_put_contents($root.'/config/waterline.php', <<<'PHP'
 <?php
-return ['backend' => 'embedded', 'engine_source' => 'v2', 'hybrid_migration_view' => false];
+return ['backend' => 'embedded', 'engine_source' => 'v2', 'hybrid_migration_view' => false, 'locale' => 'uk'];
 PHP);
             file_put_contents($root.'/config/workflows.php', <<<'PHP'
 <?php
@@ -53,6 +53,7 @@ PHP);
                 .'    "v1_enabled" => config("workflows.v1.enabled"),'.PHP_EOL
                 .'    "engine_source" => config("waterline.engine_source"),'.PHP_EOL
                 .'    "hybrid_migration_view" => config("waterline.hybrid_migration_view"),'.PHP_EOL
+                .'    "locale" => config("waterline.locale"),'.PHP_EOL
                 .'], JSON_THROW_ON_ERROR);'.PHP_EOL);
 
             $environment = [
@@ -63,11 +64,13 @@ PHP);
                 'WATERLINE_ENGINE_SOURCE' => 'v1',
                 'WATERLINE_HYBRID_MIGRATION_VIEW' => 'true',
                 'WATERLINE_RUNTIME_ENVIRONMENT_OVERRIDES' => 'false',
+                'WATERLINE_LOCALE' => 'en',
             ];
             $expected = [
                 'v1_enabled' => false,
                 'engine_source' => 'v2',
                 'hybrid_migration_view' => false,
+                'locale' => 'uk',
             ];
 
             $this->assertSame($expected, $this->inspect($root, $environment));
@@ -78,6 +81,7 @@ PHP);
             $this->assertSame(false, $cached['workflows']['v1']['enabled']);
             $this->assertSame('v2', $cached['waterline']['engine_source']);
             $this->assertSame(false, $cached['waterline']['hybrid_migration_view']);
+            $this->assertSame('uk', $cached['waterline']['locale']);
             $this->assertSame($expected, $this->inspect($root, $environment));
         } finally {
             $files->deleteDirectory($root);

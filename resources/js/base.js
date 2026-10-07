@@ -1,4 +1,5 @@
 import moment from 'moment-timezone';
+import { localizedState } from './state-labels.mjs';
 
 export default {
     computed: {
@@ -8,6 +9,14 @@ export default {
     },
 
     methods: {
+        uiText(value) {
+            return typeof value === 'string' && this.$te(value) ? this.$t(value) : value;
+        },
+
+        stateLabel(value) {
+            return localizedState(value, this.$t);
+        },
+
         /**
          * Format the given date with respect to timezone.
          */

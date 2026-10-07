@@ -4,6 +4,7 @@ import test from 'node:test';
 import { parse } from '@vue/compiler-sfc';
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
+import { createWaterlineI18n } from '../../resources/js/localization.mjs';
 
 const source = fs.readFileSync(new URL('../../resources/js/components/TimelineEventRenderer.vue', import.meta.url), 'utf8');
 const { descriptor } = parse(source);
@@ -20,7 +21,7 @@ test('timeline shows event identity and time without expanding its payload', asy
         type: 'ActivityHeartbeatRecorded',
         recorded_at: timestamp,
         payload: { details: 'still working' },
-    } }));
+    } }).use(createWaterlineI18n('en')));
 
     assert.match(html, /ActivityHeartbeatRecorded/);
     assert.match(html, /#5/);
@@ -33,7 +34,7 @@ test('timeline escapes future event names and summaries', async () => {
         sequence: 0,
         type: '<script>future</script>',
         summary: '<img src=x onerror=alert(1)>',
-    } }));
+    } }).use(createWaterlineI18n('en')));
 
     assert.match(html, /#0/);
     assert.match(html, /&lt;script&gt;future&lt;\/script&gt;/);

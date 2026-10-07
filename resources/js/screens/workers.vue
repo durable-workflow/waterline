@@ -7,7 +7,7 @@
         },
 
         mounted() {
-            document.title = "Waterline - Workers";
+            document.title = this.$t("Waterline - Workers");
         }
     }
 </script>

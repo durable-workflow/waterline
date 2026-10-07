@@ -4,21 +4,20 @@
             <div class="card-body">
                 <h6 class="mb-1">
                     <span class="badge badge-danger mr-2" aria-hidden="true">!</span>
-                    {{ panelLabel }} did not render
+                    {{ $t('{panel} did not render', { panel: panelLabel }) }}
                 </h6>
                 <p class="small text-muted mb-2">
-                    This panel ran into an unexpected error. Other panels on the page are not affected.
-                    Retry re-mounts the panel without reloading the page.
+                    {{ $t("This panel ran into an unexpected error. Other panels on the page are not affected. Retry re-mounts the panel without reloading the page.") }}
                 </p>
                 <p v-if="showDetails" class="small text-muted mb-2 error-boundary-detail">
                     <code>{{ errorMessage }}</code>
                 </p>
                 <div>
                     <button type="button" class="btn btn-sm btn-outline-secondary mr-2" @click="retry">
-                        Retry
+                        {{ $t("Retry") }}
                     </button>
                     <button type="button" class="btn btn-sm btn-link" @click="showDetails = !showDetails">
-                        {{ showDetails ? 'Hide' : 'Show' }} technical detail
+                        {{ $t(showDetails ? 'Hide technical detail' : 'Show technical detail') }}
                     </button>
                 </div>
             </div>
@@ -51,7 +50,7 @@
 
         computed: {
             panelLabel() {
-                return this.label ? this.label : 'This panel';
+                return this.label ? this.label : this.$t('This panel');
             },
         },
 

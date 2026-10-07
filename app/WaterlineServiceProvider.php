@@ -199,6 +199,7 @@ class WaterlineServiceProvider extends ServiceProvider
     protected function registerResources()
     {
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'waterline');
+        $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'waterline');
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
     }
 
@@ -239,12 +240,17 @@ class WaterlineServiceProvider extends ServiceProvider
      */
     protected function registerCommands()
     {
-        if ($this->app->runningInConsole() && ! BackendConfiguration::serviceMode()) {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        $this->commands([Console\PublishCommand::class]);
+
+        if (! BackendConfiguration::serviceMode()) {
             $this->commands([
                 Console\InstallCommand::class,
                 Console\NamespaceConformanceCommand::class,
                 Console\PrincipalAttributionConformanceCommand::class,
-                Console\PublishCommand::class,
                 Console\SearchAttributesConformanceCommand::class,
                 Console\SignalsQueriesConformanceCommand::class,
                 Console\WorkflowUpdatesConformanceCommand::class,
