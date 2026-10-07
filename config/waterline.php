@@ -30,6 +30,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Operator UI Language
+    |--------------------------------------------------------------------------
+    |
+    | Select English (en) or Ukrainian (uk) in either backend mode. Unsupported
+    | languages and missing translations fall back to English. This setting
+    | affects Waterline presentation without changing the Laravel host locale.
+    |
+    */
+
+    'locale' => env('WATERLINE_LOCALE', 'en'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Waterline Route Middleware
     |--------------------------------------------------------------------------
     |
