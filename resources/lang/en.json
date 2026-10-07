@@ -1,4 +1,8 @@
 {
+    "Worker runtime": "Worker runtime",
+    "Not reported": "Not reported",
+    "Compatibility heartbeats report freshness and compatibility, but do not identify the worker runtime.": "Compatibility heartbeats report freshness and compatibility, but do not identify the worker runtime.",
+    "This worker observation does not include runtime metadata.": "This worker observation does not include runtime metadata.",
     ", activity task lease": ", activity task lease",
     ", availability ceiling": ", availability ceiling",
     ", backpressure": ", backpressure",

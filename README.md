@@ -78,6 +78,16 @@ WATERLINE_ALLOW_UNAUTHENTICATED=true
 
 ## Configuration
 
+### Worker runtime
+
+The Workers roster's **Worker runtime** column identifies the worker language
+(for example PHP, Python or Rust) when the backend reports it. This is separate
+from the application's deployment environment. Compatibility heartbeats report
+freshness and supported compatibility markers, without runtime metadata. Their
+rows display **Not reported** with an explanation. Heartbeat and compatibility
+status remain available independently. Waterline preserves runtime metadata
+when an observation provides it and does not infer it from the host language.
+
 ### Interface language
 
 English is the default. To use Ukrainian in embedded Laravel or standalone
