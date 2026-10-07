@@ -993,6 +993,19 @@ jobs:
         DB_HOST: 127.0.0.1
       run: php scripts/ci/preflight-databases.php "${{ matrix.database }}" "$DB_HOST"
 
+    - name: Reserve redo capacity for schema-heavy MySQL tests
+      if: ${{ matrix.database == 'mysql' }}
+      run: |
+        php -r '
+          $connection = new PDO("mysql:host=127.0.0.1;port=3306", "root", "password", [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+          $connection->exec("SET GLOBAL innodb_redo_log_capacity = 536870912");
+          $capacity = (int) $connection->query("SELECT @@GLOBAL.innodb_redo_log_capacity")->fetchColumn();
+          if ($capacity !== 536870912) {
+            throw new RuntimeException("MySQL qualification redo capacity was not applied.");
+          }
+          printf("MySQL qualification redo capacity: %d bytes\n", $capacity);
+        '
+
     - name: Select deterministic test scope
       id: test-scope
       run: >-
