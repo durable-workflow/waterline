@@ -1670,6 +1670,10 @@ export default {
     overflow-wrap: anywhere;
 }
 
+.wl-dashboard-view .table {
+    white-space: nowrap;
+}
+
 .wl-dashboard-view .card-header {
     flex-wrap: wrap;
     gap: 0.75rem;
