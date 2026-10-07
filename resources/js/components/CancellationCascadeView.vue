@@ -13,7 +13,7 @@
                     <dt class="col-sm-3">{{ $t("Requester") }}</dt><dd class="col-sm-9 wl-cancellation-value">{{ label(requester.label || requester.id) }} · {{ label(root.source) }}</dd>
                 </dl>
                 <div class="alert alert-warning" v-if="view.inspection_complete !== true" role="status">
-                    {{ $t("Some cancellation evidence is unavailable") }}{{ view.truncated === true ? ' or outside this view’s limits' : '' }}.
+                    {{ $t(view.truncated === true ? 'Some cancellation evidence is unavailable or outside this view’s limits.' : 'Some cancellation evidence is unavailable.') }}
                     <ul class="mb-0 mt-2" v-if="findings.length">
                         <li v-for="(finding, index) in findings" :key="index" class="wl-cancellation-value">{{ label(finding.message) }} ({{ label(finding.run_id) }})</li>
                     </ul>
@@ -34,10 +34,10 @@
                     </dl>
                     <div v-for="stop in objects(run.activity_stops)" :key="stop.fence_history_event_id" class="small mt-2 wl-cancellation-value">
                         <strong>{{ label(stop.activity_type) }} ({{ label(stop.execution_mode) }})</strong>
-                        · {{ stop.callback_state === 'reported_stopped' ? 'Callback reported stopped' : 'Callback stop unverified' }}
+                        · {{ $t(stop.callback_state === 'reported_stopped' ? 'Callback reported stopped' : 'Callback stop unverified') }}
                         <div>{{ $t("Activity") }} {{ label(stop.activity_execution_id) }} {{ $t("· attempt") }} {{ label(stop.activity_attempt_id) }}</div>
                         <div>{{ $t("Fence history") }} {{ label(stop.fence_history_event_id) }} {{ $t("· stop receipt") }} {{ label(stop.stop_history_event_id) }} · {{ label(stop.evidence_source) }}</div>
-                        <div v-if="stop.acknowledged_at">{{ $t("Acknowledged") }} {{ label(stop.acknowledged_at) }}{{ stop.received_after_deadline === true ? ' after the original deadline' : '' }}</div>
+                        <div v-if="stop.acknowledged_at">{{ $t(stop.received_after_deadline === true ? 'Acknowledged {at} after the original deadline' : 'Acknowledged {at}', { at: label(stop.acknowledged_at) }) }}</div>
                     </div>
                     <div v-for="recovery in objects(run.cleanup_recovery)" :key="recovery.history_event_id" class="small mt-2 wl-cancellation-value">
                         <strong>{{ $t("Cleanup worker recovery") }}</strong> {{ $t("· activity") }} {{ label(recovery.activity_execution_id) }} {{ $t("· history") }} {{ label(recovery.history_event_id) }}
@@ -61,6 +61,7 @@
 </template>
 
 <script>
+import { localizedState } from '../state-labels.mjs'
 export default {
     props: { diagnostics: { type: Object, required: true } },
     computed: {
@@ -72,18 +73,18 @@ export default {
         runs() { return this.objects(this.view?.runs) },
         edges() { return this.objects(this.view?.edges) },
         findings() { return this.objects(this.view?.findings) },
-        emptyNotice() { return this.diagnostics.cancellation_cascade_supported === true ? 'No cooperative cancellation request for this run.' : 'Cancellation details are unavailable with this runtime.' },
+        emptyNotice() { return this.$t(this.diagnostics.cancellation_cascade_supported === true ? 'No cooperative cancellation request for this run.' : 'Cancellation details are unavailable with this runtime.') },
     },
     methods: {
         object(value) { return value && typeof value === 'object' && !Array.isArray(value) ? value : {} },
         objects(value) { return Array.isArray(value) ? value.filter(item => item && typeof item === 'object' && !Array.isArray(item)) : [] },
-        label(value) { return ['string', 'number', 'boolean'].includes(typeof value) ? String(value) : 'Not recorded' },
-        phase(value) { return typeof value === 'string' ? value.replaceAll('_', ' ') : 'Not recorded' },
+        label(value) { return ['string', 'number', 'boolean'].includes(typeof value) ? String(value) : this.$t('Not recorded') },
+        phase(value) { return localizedState(value, this.$t) },
         budget(run) {
             const request = this.object(run.request)
-            if (!request.root_request_id || !this.root.root_request_id) return 'Unverified budget'
-            if (run.same_root_budget === true) return 'Original root budget'
-            return request.root_request_id !== this.root.root_request_id ? 'Independent root budget' : 'Conflicting or unverified budget'
+            if (!request.root_request_id || !this.root.root_request_id) return this.$t('Unverified budget')
+            if (run.same_root_budget === true) return this.$t('Original root budget')
+            return this.$t(request.root_request_id !== this.root.root_request_id ? 'Independent root budget' : 'Conflicting or unverified budget')
         },
     },
 }

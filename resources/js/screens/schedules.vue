@@ -7,7 +7,7 @@
         },
 
         mounted() {
-            document.title = "Waterline - Schedules";
+            document.title = this.$t("Waterline - Schedules");
         }
     }
 </script>

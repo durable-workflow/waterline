@@ -3,16 +3,16 @@
         <div class="card wl-flow-detail__summary-card">
             <div class="card-header d-flex align-items-start justify-content-between flex-wrap wl-flow-detail__summary-header">
                 <div class="wl-flow-detail__headline">
-                    <div class="wl-flow-detail__eyebrow">{{ ready && hasDetailValue(flow.instance_id) ? 'Workflow instance' : 'Workflow run' }}</div>
+                    <div class="wl-flow-detail__eyebrow">{{ ready && hasDetailValue(flow.instance_id) ? $t('Workflow instance') : $t('Workflow run') }}</div>
                     <h1 class="wl-flow-detail__title" v-if="!ready">{{ $t("Flow Preview") }}</h1>
                     <h1 class="wl-flow-detail__title" v-if="ready">{{ flow.class }}</h1>
 
                     <div v-if="ready" class="wl-flow-detail__headline-meta">
                         <span class="wl-flow-detail__status" :class="detailStatusClass(flow.status)">
-                            {{ flow.status }}
+                            {{ stateLabel(flow.status) }}
                             <template v-if="hasDetailValue(flow.status_bucket)">
                                 <span class="wl-flow-detail__status-slash">/</span>
-                                {{ flow.status_bucket }}
+                                {{ stateLabel(flow.status_bucket) }}
                             </template>
                         </span>
 
@@ -153,8 +153,8 @@
                 <div class="row mb-2">
                     <div class="col-md-2"><strong>{{ $t("Status") }}</strong></div>
                     <div class="col">
-                        {{ flow.status }}
-                        <span v-if="hasDetailValue(flow.status_bucket)"> / {{ flow.status_bucket }}</span>
+                        {{ stateLabel(flow.status) }}
+                        <span v-if="hasDetailValue(flow.status_bucket)"> / {{ stateLabel(flow.status_bucket) }}</span>
                     </div>
                 </div>
 
@@ -186,7 +186,7 @@
                     <div class="row mb-2" v-for="field in flow.application_context.fields" :key="'context-' + field.name">
                         <div class="col-md-2"><strong>{{ field.label }}</strong></div>
                         <div class="col">
-                            {{ field.state === 'available' ? field.value : 'Unavailable' }}
+                            {{ field.state === 'available' ? field.value : $t('Unavailable') }}
                             <span v-if="field.truncated" class="text-muted">{{ $t("(shortened)") }}</span>
                         </div>
                     </div>
@@ -224,14 +224,14 @@
 
                 <div class="alert alert-info mt-3" role="status" v-if="hasDetailValue(flow.details_pruned_at)">
                     <strong>{{ $t("Details removed by retention.") }}</strong>
-                    {{ $t("History and error details were removed at") }} {{ timestamp(flow.details_pruned_at) }}{{ $t(". The run's") }} {{ flow.status }} {{ $t("status is retained.") }}
+                    {{ $t("History and error details were removed at") }} {{ timestamp(flow.details_pruned_at) }}{{ $t(". The run's") }} {{ stateLabel(flow.status) }} {{ $t("status is retained.") }}
                 </div>
 
                 <div class="row mb-2" v-if="actionStateRows().length">
                     <div class="col-md-2"><strong>{{ $t("Actions") }}</strong></div>
                     <div class="col">
                         <div v-for="action in actionStateRows()" :key="action.name">
-                            {{ action.label }}: {{ action.allowed ? 'available' : 'blocked' }}
+                            {{ action.label }}: {{ action.allowed ? $t('available') : $t('blocked') }}
                             <span v-if="hasDetailValue(action.reason)" class="text-muted">({{ actionReasonLabel(action.reason) }})</span>
                         </div>
                     </div>
@@ -481,7 +481,7 @@
                             <span v-if="entry.is_selected_run" class="badge badge-info ml-1">{{ $t("Viewing") }}</span>
                             <span v-if="entry.is_current_run" class="badge badge-success ml-1">{{ $t("Current") }}</span>
                             <span v-if="entry.status">
-                                - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
+                                - {{ stateLabel(entry.status) }}<span v-if="entry.status_bucket"> / {{ stateLabel(entry.status_bucket) }}</span>
                             </span>
                             <span v-else-if="entry.metadata_state === 'unavailable'" class="text-muted"> {{ $t("/ status unavailable") }}</span>
                         </div>
@@ -575,7 +575,7 @@
                             <span v-else>{{ entry.display_id }}</span>
                             <span v-if="entry.run_number"> {{ $t("(run") }} {{ entry.run_number }})</span>
                             <span v-if="entry.status">
-                                - {{ entry.status }}<span v-if="entry.status_bucket"> / {{ entry.status_bucket }}</span>
+                                - {{ stateLabel(entry.status) }}<span v-if="entry.status_bucket"> / {{ stateLabel(entry.status_bucket) }}</span>
                             </span>
                         <div
                                 v-for="detail in lineageIdentityRows(entry)"
@@ -630,14 +630,14 @@
                     {{ $t("Failure information is unavailable for this run.") }}
                 </div>
                 <div v-else-if="!failureSummaryView().rows.length">
-                    {{ failureSummaryView().state === 'pruned' ? 'No retained failure details.' : 'No failures reported in this view.' }}
+                    {{ failureSummaryView().state === 'pruned' ? $t('No retained failure details.') : $t('No failures reported in this view.') }}
                 </div>
                 <div v-for="failure in failureSummaryView().rows" :key="failure.id" class="mb-3">
-                    <strong>{{ failure.type || 'Failure' }}</strong>
+                    <strong>{{ failure.type || $t('Failure') }}</strong>
                     <span v-if="failure.handled === true" class="badge badge-secondary ml-2">{{ $t("Handled") }}</span>
                     <div v-if="failure.message" class="wl-failure-message">{{ failure.message }}</div>
                     <div class="small text-muted" v-if="failure.source_id">
-                        {{ failure.source_kind || 'Source' }} / {{ failure.source_id }}
+                        {{ failure.source_kind || $t('Source') }} / {{ failure.source_id }}
                     </div>
                     <div class="small text-muted" v-if="failure.recorded_at">{{ timestamp(failure.recorded_at) }}</div>
                     <a v-if="failure.event_sequence" :href="failureEventHref(failure)"
@@ -755,7 +755,7 @@
                         class="btn btn-outline-secondary btn-sm mr-2"
                         :disabled="loadingMoreHistory"
                         @click="loadOlderHistory">
-                        {{ flow.engine_source === 'service' || flow.read_mode === 'bounded' ? 'Load more' : 'Load older' }}
+                        {{ flow.engine_source === 'service' || flow.read_mode === 'bounded' ? $t('Load more') : $t('Load older') }}
                     </button>
 
                     <a v-if="historyExportEndpoint()"
@@ -880,7 +880,7 @@
                                         {{ $t("Deadline:") }} {{ timestamp(wait.current_summary.deadline_at) }}
                                     </div>
                                     <div v-if="Number(wait.current_summary.attempt_number) > 0">
-                                        {{ wait.current_summary.kind === 'activity_retry' ? 'Next attempt' : 'Attempt' }}
+                                        {{ wait.current_summary.kind === 'activity_retry' ? $t('Next attempt') : $t('Attempt') }}
                                         {{ wait.current_summary.attempt_number }}
                                         <span v-if="Number(wait.current_summary.attempt_limit) > 0">{{ $t("of") }} {{ wait.current_summary.attempt_limit }}</span>
                                     </div>
@@ -936,7 +936,7 @@
                                 </div>
                             </td>
                             <td>
-                                {{ wait.status }}
+                                {{ stateLabel(wait.status) }}
                                 <div class="small text-muted" v-if="hasDetailValue(wait.source_status)">
                                     {{ $t("source status /") }} {{ wait.source_status }}
                                 </div>
@@ -981,7 +981,7 @@
                                     <div class="detail-cell-main" :title="task.type">{{ task.type }}</div>
                                 </td>
                                 <td class="task-col-status">
-                                    <span class="detail-nowrap" :title="task.status">{{ task.status }}</span>
+                                    <span class="detail-nowrap" :title="task.status">{{ stateLabel(task.status) }}</span>
                                 </td>
                                 <td class="task-col-transport">
                                     <div class="detail-cell-main" :title="taskTransportState(task)">{{ taskTransportState(task) }}</div>
@@ -1087,7 +1087,7 @@
                     :aria-expanded="workflowStreamsExpanded"
                     @click="toggleWorkflowStreams"
                 >
-                    {{ workflowStreamsExpanded ? 'Collapse Workflow Streams' : 'Expand Workflow Streams' }}
+                    {{ workflowStreamsExpanded ? $t('Collapse Workflow Streams') : $t('Expand Workflow Streams') }}
                 </button>
             </div>
 
@@ -1122,7 +1122,7 @@
                             <tr v-for="stream in workflowStreamRows()" :key="workflowStreamKey(stream)">
                                 <td>{{ stream.stream_name }}</td>
                                 <td><span class="badge badge-secondary">{{ stream.mode }}</span></td>
-                                <td>{{ stream.status }}</td>
+                                <td>{{ stateLabel(stream.status) }}</td>
                                 <td>
                                     {{ workflowStreamOffsets(stream) }}
                                     <div class="small text-muted">{{ stream.total_items }} {{ $t("retained items") }}</div>
@@ -1162,7 +1162,7 @@
                         </div>
                         <div>
                             <dt>{{ $t("Lifecycle") }}</dt>
-                            <dd>{{ stream.status }}</dd>
+                            <dd>{{ stateLabel(stream.status) }}</dd>
                         </div>
                         <div>
                             <dt>{{ $t("Offsets") }}</dt>
@@ -1312,7 +1312,7 @@
                                 </div>
                             </td>
                             <td>{{ command.outcome || '-' }}</td>
-                            <td>{{ command.status }}</td>
+                            <td>{{ stateLabel(command.status) }}</td>
                             <td>
                                 <div>{{ commandSource(command) }}</div>
                                 <small v-if="commandPrincipalDetail(command)" class="text-muted d-block">
@@ -1408,7 +1408,7 @@
                                 </div>
                             </td>
                             <td>
-                                <div>{{ signal.status || '-' }}</div>
+                                <div>{{ stateLabel(signal.status || '-') }}</div>
                                 <div v-if="hasDetailValue(signal.outcome)" class="small text-muted">
                                     {{ signal.outcome }}
                                 </div>
@@ -1627,13 +1627,13 @@
                                     {{ $t("row status /") }} {{ activity.row_status }}
                                 </div>
                             </td>
-                            <td>{{ activity.status || '-' }}</td>
+                            <td>{{ stateLabel(activity.status || '-') }}</td>
                             <td>
                                 {{ activity.attempt_count || 0 }}
                                 <div v-if="activity.attempt_id" class="small text-muted">{{ activity.attempt_id }}</div>
                                 <div v-if="activity.attempts && activity.attempts.length" class="small text-muted mt-2">
                                     <div v-for="attempt in activity.attempts" :key="attempt.id">
-                                        #{{ attempt.attempt_number }} / {{ attempt.status || '-' }}
+                                        #{{ attempt.attempt_number }} / {{ stateLabel(attempt.status || '-') }}
                                         <div v-if="attempt.task_id">{{ $t("task /") }} {{ attempt.task_id }}</div>
                                         <div v-if="attempt.lease_owner">{{ $t("worker /") }} {{ attempt.lease_owner }}</div>
                                         <div v-if="attempt.lease_expires_at">{{ $t("lease /") }} {{ timestamp(attempt.lease_expires_at) }}</div>
@@ -1730,7 +1730,7 @@
                                 </div>
                             </td>
                             <td>
-                                {{ timer.status || '-' }}
+                                {{ stateLabel(timer.status || '-') }}
                                 <div
                                     class="small text-muted"
                                     v-if="hasDetailValue(timer.source_status) && timer.source_status !== timer.status"
@@ -1921,20 +1921,20 @@ export default {
                         if (seriesIndex === 0) {
                             let data = w.globals.initialSeries[seriesIndex].data[dataPointIndex]
                             let details = [
-                                '<b>'+data.type+'</b>: ' + data.x.split('_')[0],
-                                '<b>Time</b>: ' + (data.y[1] - data.y[0]) + 'ms',
+                                '<b>' + this.escapeHtml(data.type) + '</b>: ' + this.escapeHtml(data.x.split('_')[0]),
+                                '<b>' + this.escapeHtml(this.$t('Time')) + '</b>: ' + (data.y[1] - data.y[0]) + 'ms',
                             ]
 
                             if (data.diagnostic_only === true) {
-                                details.push('<b>Detail</b>: diagnostic only')
+                                details.push('<b>' + this.escapeHtml(this.$t('Detail')) + '</b>: ' + this.escapeHtml(this.$t('diagnostic only')))
                             }
 
                             if (this.hasDetailValue(data.history_authority)) {
-                                details.push('<b>History</b>: ' + this.historyAuthorityLabel(data.history_authority))
+                                details.push('<b>' + this.escapeHtml(this.$t('History')) + '</b>: ' + this.escapeHtml(this.historyAuthorityLabel(data.history_authority)))
                             }
 
                             if (this.hasDetailValue(data.history_unsupported_reason)) {
-                                details.push('<b>Reason</b>: ' + this.historyUnsupportedReasonLabel(data.history_unsupported_reason))
+                                details.push('<b>' + this.escapeHtml(this.$t('Reason')) + '</b>: ' + this.escapeHtml(this.historyUnsupportedReasonLabel(data.history_unsupported_reason)))
                             }
 
                             return '<div class="wl-chart-tooltip">' + details.join('<br />') + '</div>'
@@ -1944,13 +1944,13 @@ export default {
                             if (typeof exception !== 'object') return '';
 
                             return '<div class="wl-chart-tooltip">' +
-                                '<b>Class</b>: ' + exception.__constructor + '<br />' +
-                                '<b>Message</b>: ' + exception.message + '<br />' +
+                                '<b>' + this.escapeHtml(this.$t('Class')) + '</b>: ' + this.escapeHtml(exception.__constructor) + '<br />' +
+                                '<b>' + this.escapeHtml(this.$t('Message')) + '</b>: ' + this.escapeHtml(exception.message) + '<br />' +
                                 ((exception.code !== undefined && exception.code !== null)
-                                    ? '<b>Code</b>: ' + exception.code + '<br />'
+                                    ? '<b>' + this.escapeHtml(this.$t('Code')) + '</b>: ' + this.escapeHtml(exception.code) + '<br />'
                                     : '') +
-                                '<b>File</b>: ' + exception.file + '<br />' +
-                                '<b>Line</b>: ' + exception.line + '<br />' +
+                                '<b>' + this.escapeHtml(this.$t('File')) + '</b>: ' + this.escapeHtml(exception.file) + '<br />' +
+                                '<b>' + this.escapeHtml(this.$t('Line')) + '</b>: ' + this.escapeHtml(exception.line) + '<br />' +
                                 '</div>'
                         }
                     }
@@ -1986,7 +1986,7 @@ export default {
 
         this.handleRouteChange();
 
-        document.title = "Waterline - Flow Detail";
+        document.title = this.$t("Waterline - Flow Detail");
     },
 
     watch: {
@@ -2262,7 +2262,7 @@ export default {
 
         flowLoadErrorMessage(error) {
             if (error && error.code === 'ECONNABORTED') {
-                return 'The request timed out before Waterline could load this run.'
+                return this.$t("The request timed out before Waterline could load this run.")
             }
 
             if (error && error.response && error.response.status) {
@@ -2270,19 +2270,19 @@ export default {
                 const message = error.response.data && error.response.data.message
 
                 return message
-                    ? `Request failed with HTTP ${status}: ${message}`
-                    : `Request failed with HTTP ${status}.`
+                    ? this.$t("Request failed with HTTP {value1}: {value2}", { value1: status, value2: message })
+                    : this.$t("Request failed with HTTP {value1}.", { value1: status })
             }
 
             if (error && error.request) {
-                return 'Waterline could not reach the run detail endpoint.'
+                return this.$t("Waterline could not reach the run detail endpoint.")
             }
 
             if (error && error.message) {
                 return error.message
             }
 
-            return 'Waterline could not load this run detail.'
+            return this.$t("Waterline could not load this run detail.")
         },
 
         loadRunDetailPreferences() {
@@ -2461,10 +2461,10 @@ export default {
 
         failureEvidenceLabel(state) {
             return {
-                pruned: 'Supporting history has been pruned.',
-                outside_window: 'Supporting history is outside the loaded window. Load more history to inspect it.',
-                unavailable: 'Supporting history is unavailable in this view.',
-            }[state] || 'Supporting history is unavailable in this view.'
+                pruned: this.$t("Supporting history has been pruned."),
+                outside_window: this.$t("Supporting history is outside the loaded window. Load more history to inspect it."),
+                unavailable: this.$t("Supporting history is unavailable in this view."),
+            }[state] || this.$t("Supporting history is unavailable in this view.")
         },
 
         failureEventLocation(failure) {
@@ -2648,15 +2648,15 @@ export default {
             const parts = []
 
             if (critical) {
-                parts.push(`${critical} critical`)
+                parts.push(this.$t("{value1} critical", { value1: critical }))
             }
 
             if (warning) {
-                parts.push(`${warning} warning`)
+                parts.push(this.$t("{value1} warning", { value1: warning }))
             }
 
             if (info) {
-                parts.push(`${info} info`)
+                parts.push(this.$t("{value1} info", { value1: info }))
             }
 
             return parts.join(' / ')
@@ -2779,11 +2779,11 @@ export default {
         contractSourceLabel(source) {
             switch (source) {
                 case 'durable_history':
-                    return 'Durable start history'
+                    return this.$t("Durable start history")
                 case 'definition_drift':
-                    return 'Definition drift'
+                    return this.$t("Definition drift")
                 case 'live_definition':
-                    return 'Live definition fallback'
+                    return this.$t("Live definition fallback")
                 case 'unavailable':
                     return 'Unavailable'
                 default:
@@ -2794,14 +2794,14 @@ export default {
         workflowDeterminismStatusLabel(status, source = null) {
             switch (status) {
                 case 'clean':
-                    return 'No obvious replay-unsafe calls detected in the loadable workflow definition.'
+                    return this.$t("No obvious replay-unsafe calls detected in the loadable workflow definition.")
                 case 'warning':
                     if (source === 'definition_drift') {
-                        return 'Current-source replay-safety findings are suppressed because this run started on a different workflow definition.'
+                        return this.$t("Current-source replay-safety findings are suppressed because this run started on a different workflow definition.")
                     }
-                    return 'Replay-unsafe calls detected in the loadable workflow definition.'
+                    return this.$t("Replay-unsafe calls detected in the loadable workflow definition.")
                 case 'unavailable':
-                    return 'Workflow definition is unavailable, so replay-safety diagnostics could not run.'
+                    return this.$t("Workflow definition is unavailable, so replay-safety diagnostics could not run.")
                 default:
                     return status
             }
@@ -2823,7 +2823,7 @@ export default {
         },
 
         workflowDeterminismFindingLabel(finding) {
-            const symbol = finding && finding.symbol ? finding.symbol : 'unknown symbol'
+            const symbol = finding && finding.symbol ? finding.symbol : this.$t("unknown symbol")
             const location = finding && finding.file
                 ? `${finding.file}${finding.line ? ':' + finding.line : ''}`
                 : ''
@@ -2918,7 +2918,7 @@ export default {
             }
 
             if (supported === false) {
-                return 'no active compatible worker heartbeat'
+                return this.$t("no active compatible worker heartbeat")
             }
 
             return '-'
@@ -2951,7 +2951,7 @@ export default {
             }
 
             if (this.hasDetailValue(snapshot && snapshot.namespace)) {
-                parts.push(`namespace ${snapshot.namespace}`)
+                parts.push(this.$t("namespace {value1}", { value1: snapshot.namespace }))
             }
 
             if (this.hasDetailValue(snapshot && snapshot.host)) {
@@ -2964,30 +2964,30 @@ export default {
 
             if (this.hasDetailValue(snapshot && snapshot.connection) || this.hasDetailValue(snapshot && snapshot.queue)) {
                 parts.push([
-                    this.hasDetailValue(snapshot && snapshot.connection) ? `connection ${snapshot.connection}` : null,
-                    this.hasDetailValue(snapshot && snapshot.queue) ? `queue ${snapshot.queue}` : null,
+                    this.hasDetailValue(snapshot && snapshot.connection) ? this.$t("connection {value1}", { value1: snapshot.connection }) : null,
+                    this.hasDetailValue(snapshot && snapshot.queue) ? this.$t("queue {value1}", { value1: snapshot.queue }) : null,
                 ].filter(Boolean).join(' / '))
             }
 
-            parts.push(`supports ${supported.length ? supported.join(', ') : 'none'}`)
+            parts.push(this.$t("supports {value1}", { value1: supported.length ? supported.join(', ') : 'none' }))
 
             if (snapshot && snapshot.supports_required === true) {
-                parts.push('matches selected marker')
+                parts.push(this.$t("matches selected marker"))
             }
 
             if (snapshot && snapshot.source === 'cache') {
-                parts.push('legacy cache heartbeat')
+                parts.push(this.$t("legacy cache heartbeat"))
             }
 
             return parts.join(' / ')
         },
 
-        showResult(result, title = 'Activity Result') {
-            Swal.fire({
+        showResult(result, title = this.$t("Activity Result")) {
+            this.$dialog({
                 title: title,
                 text: JSON.stringify(this.unserialize(result), null, 2),
                 icon: 'info',
-                confirmButtonText: 'Okay',
+                confirmButtonText: this.$t("Okay"),
                 background: '#1c1c1c',
             })
         },
@@ -3142,13 +3142,13 @@ export default {
         historyAuthorityLabel(authority) {
             switch (authority) {
                 case 'typed_history':
-                    return 'History: typed durable history'
+                    return this.$t("History: typed durable history")
                 case 'failure_row_fallback':
-                    return 'History: failure row compatibility fallback'
+                    return this.$t("History: failure row compatibility fallback")
                 case 'mutable_open_fallback':
-                    return 'History: older open row diagnostic'
+                    return this.$t("History: older open row diagnostic")
                 case 'unsupported_terminal_without_history':
-                    return 'History: unsupported older terminal row'
+                    return this.$t("History: unsupported older terminal row")
                 default:
                     return 'History: ' + authority
             }
@@ -3157,11 +3157,11 @@ export default {
         historyUnsupportedReasonLabel(reason) {
             switch (reason) {
                 case 'terminal_activity_row_without_typed_history':
-                    return 'Reason: terminal activity row has no typed history'
+                    return this.$t("Reason: terminal activity row has no typed history")
                 case 'terminal_timer_row_without_typed_history':
-                    return 'Reason: terminal timer row has no typed history'
+                    return this.$t("Reason: terminal timer row has no typed history")
                 case 'terminal_child_link_without_typed_parent_history':
-                    return 'Reason: terminal child link has no typed parent history'
+                    return this.$t("Reason: terminal child link has no typed parent history")
                 default:
                     return 'Reason: ' + reason
             }
@@ -3181,7 +3181,7 @@ export default {
 
         activityResultUnavailableLabel(activity) {
             if (activity && this.hasDetailValue(activity.history_unsupported_reason)) {
-                return 'Diagnostic only'
+                return this.$t("Diagnostic only")
             }
 
             return '-'
@@ -3197,27 +3197,27 @@ export default {
             const parts = []
 
             if (Object.prototype.hasOwnProperty.call(policy, 'max_attempts')) {
-                parts.push(policy.max_attempts === null ? 'unlimited attempts' : `${policy.max_attempts} attempts`)
+                parts.push(policy.max_attempts === null ? this.$t("unlimited attempts") : this.$t("{value1} attempts", { value1: policy.max_attempts }))
             }
 
             if (Array.isArray(policy.backoff_seconds) && policy.backoff_seconds.length) {
-                parts.push(`backoff ${policy.backoff_seconds.join(', ')}s`)
+                parts.push(this.$t("backoff {value1}s", { value1: policy.backoff_seconds.join(', ') }))
             }
 
             if (policy.start_to_close_timeout) {
-                parts.push(`start-to-close ${policy.start_to_close_timeout}s`)
+                parts.push(this.$t("start-to-close {value1}s", { value1: policy.start_to_close_timeout }))
             }
 
             if (policy.schedule_to_start_timeout) {
-                parts.push(`schedule-to-start ${policy.schedule_to_start_timeout}s`)
+                parts.push(this.$t("schedule-to-start {value1}s", { value1: policy.schedule_to_start_timeout }))
             }
 
             if (policy.schedule_to_close_timeout) {
-                parts.push(`schedule-to-close ${policy.schedule_to_close_timeout}s`)
+                parts.push(this.$t("schedule-to-close {value1}s", { value1: policy.schedule_to_close_timeout }))
             }
 
             if (policy.heartbeat_timeout) {
-                parts.push(`heartbeat ${policy.heartbeat_timeout}s`)
+                parts.push(this.$t("heartbeat {value1}s", { value1: policy.heartbeat_timeout }))
             }
 
             return parts.length ? parts.join(' / ') : '-'
@@ -3549,17 +3549,17 @@ export default {
 
             const firstSignal = signals[0].name
 
-            const result = await Swal.fire({
-                title: 'Send signal',
+            const result = await this.$dialog({
+                title: this.$t("Send signal"),
                 html: `
-                    <label class="d-block text-left mb-2" for="waterline-signal-target">Signal</label>
+                    <label class="d-block text-left mb-2" for="waterline-signal-target">${this.escapeHtml(this.$t('Signal'))}</label>
                     <select id="waterline-signal-target" class="swal2-input">${options}</select>
-                    <label class="d-block text-left mb-2" for="waterline-signal-arguments">Arguments JSON</label>
+                    <label class="d-block text-left mb-2" for="waterline-signal-arguments">${this.escapeHtml(this.$t('Arguments JSON'))}</label>
                     <textarea id="waterline-signal-arguments" class="swal2-textarea wl-command-textarea wl-command-textarea--signal">${this.escapeHtml(this.defaultSignalArguments(firstSignal))}</textarea>
-                    <div class="small text-muted text-left">Use a JSON object for named arguments when the signal declares a contract, a JSON array for positional arguments, or any other JSON value for one payload.</div>
+                    <div class="small text-muted text-left">${this.escapeHtml(this.$t('Use a JSON object for named arguments when the signal declares a contract, a JSON array for positional arguments, or any other JSON value for one payload.'))}</div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: 'Send signal',
+                confirmButtonText: this.$t("Send signal"),
                 focusConfirm: false,
                 background: '#1c1c1c',
                 didOpen: () => {
@@ -3581,7 +3581,7 @@ export default {
                     const rawArguments = document.getElementById('waterline-signal-arguments').value
 
                     if (!target) {
-                        Swal.showValidationMessage('Select a signal.')
+                        Swal.showValidationMessage(this.$t("Select a signal."))
 
                         return false
                     }
@@ -3602,7 +3602,7 @@ export default {
                     } catch (error) {
                         Swal.showValidationMessage((error && (error.response || error.request))
                             ? this.commandFailureMessage(error, 'signal')
-                            : 'Arguments must be valid JSON.')
+                            : this.$t("Arguments must be valid JSON."))
 
                         return false
                     }
@@ -3625,17 +3625,17 @@ export default {
 
             const firstQuery = queries[0].name
 
-            const result = await Swal.fire({
-                title: 'Run query',
+            const result = await this.$dialog({
+                title: this.$t("Run query"),
                 html: `
-                    <label class="d-block text-left mb-2" for="waterline-query-target">Query</label>
+                    <label class="d-block text-left mb-2" for="waterline-query-target">${this.escapeHtml(this.$t('Query'))}</label>
                     <select id="waterline-query-target" class="swal2-input">${options}</select>
-                    <label class="d-block text-left mb-2" for="waterline-query-arguments">Arguments JSON</label>
+                    <label class="d-block text-left mb-2" for="waterline-query-arguments">${this.escapeHtml(this.$t('Arguments JSON'))}</label>
                     <textarea id="waterline-query-arguments" class="swal2-textarea wl-command-textarea">${this.escapeHtml(this.defaultQueryArguments(firstQuery))}</textarea>
-                    <div class="small text-muted text-left">Use a JSON object for named arguments or a JSON array for positional arguments.</div>
+                    <div class="small text-muted text-left">${this.escapeHtml(this.$t('Use a JSON object for named arguments or a JSON array for positional arguments.'))}</div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: 'Run query',
+                confirmButtonText: this.$t("Run query"),
                 focusConfirm: false,
                 background: '#1c1c1c',
                 didOpen: () => {
@@ -3657,7 +3657,7 @@ export default {
                     const rawArguments = document.getElementById('waterline-query-arguments').value
 
                     if (!target) {
-                        Swal.showValidationMessage('Select a query.')
+                        Swal.showValidationMessage(this.$t("Select a query."))
 
                         return false
                     }
@@ -3678,7 +3678,7 @@ export default {
                     } catch (error) {
                         Swal.showValidationMessage((error && (error.response || error.request))
                             ? this.commandFailureMessage(error, 'query')
-                            : 'Arguments must be valid JSON.')
+                            : this.$t("Arguments must be valid JSON."))
 
                         return false
                     }
@@ -3701,24 +3701,24 @@ export default {
 
             const firstUpdate = updates[0].name
 
-            const result = await Swal.fire({
-                title: 'Apply update',
+            const result = await this.$dialog({
+                title: this.$t("Apply update"),
                 html: `
-                    <label class="d-block text-left mb-2" for="waterline-update-target">Update</label>
+                    <label class="d-block text-left mb-2" for="waterline-update-target">${this.escapeHtml(this.$t('Update'))}</label>
                     <select id="waterline-update-target" class="swal2-input">${options}</select>
-                    <label class="d-block text-left mb-2" for="waterline-update-arguments">Arguments JSON</label>
+                    <label class="d-block text-left mb-2" for="waterline-update-arguments">${this.escapeHtml(this.$t('Arguments JSON'))}</label>
                     <textarea id="waterline-update-arguments" class="swal2-textarea wl-command-textarea">${this.escapeHtml(this.defaultUpdateArguments(firstUpdate))}</textarea>
-                    <label class="d-block text-left mb-2" for="waterline-update-wait-for">Return after</label>
+                    <label class="d-block text-left mb-2" for="waterline-update-wait-for">${this.escapeHtml(this.$t('Return after'))}</label>
                     <select id="waterline-update-wait-for" class="swal2-input">
-                        <option value="completed">Worker applies update</option>
-                        <option value="accepted">Command is accepted</option>
+                        <option value="completed">${this.escapeHtml(this.$t('Worker applies update'))}</option>
+                        <option value="accepted">${this.escapeHtml(this.$t('Command is accepted'))}</option>
                     </select>
-                    <label class="d-block text-left mb-2" for="waterline-update-wait-timeout-seconds">Completion wait timeout (seconds)</label>
-                    <input id="waterline-update-wait-timeout-seconds" type="number" min="1" class="swal2-input" placeholder="Use package default">
-                    <div class="small text-muted text-left">Use a JSON object for named arguments or a JSON array for positional arguments. Waterline always records the update durably first; choose whether to return immediately after acceptance or wait briefly for worker-applied completion before falling back to an accepted lifecycle.</div>
+                    <label class="d-block text-left mb-2" for="waterline-update-wait-timeout-seconds">${this.escapeHtml(this.$t('Completion wait timeout (seconds)'))}</label>
+                    <input id="waterline-update-wait-timeout-seconds" type="number" min="1" class="swal2-input" placeholder="${this.escapeHtml(this.$t('Use package default'))}">
+                    <div class="small text-muted text-left">${this.escapeHtml(this.$t('Use a JSON object for named arguments or a JSON array for positional arguments. Waterline always records the update durably first; choose whether to return immediately after acceptance or wait briefly for worker-applied completion before falling back to an accepted lifecycle.'))}</div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: 'Apply update',
+                confirmButtonText: this.$t("Apply update"),
                 focusConfirm: false,
                 background: '#1c1c1c',
                 didOpen: () => {
@@ -3742,7 +3742,7 @@ export default {
                     const waitTimeoutSeconds = document.getElementById('waterline-update-wait-timeout-seconds').value
 
                     if (!target) {
-                        Swal.showValidationMessage('Select an update.')
+                        Swal.showValidationMessage(this.$t("Select an update."))
 
                         return false
                     }
@@ -3765,7 +3765,7 @@ export default {
                     } catch (error) {
                         Swal.showValidationMessage((error && (error.response || error.request))
                             ? this.commandFailureMessage(error, 'update')
-                            : 'Arguments must be valid JSON.')
+                            : this.$t("Arguments must be valid JSON."))
 
                         return false
                     }
@@ -3846,26 +3846,26 @@ export default {
             switch (reason) {
                 case 'earlier_signal_pending':
                     return commandType === 'update'
-                        ? 'An earlier accepted signal is still waiting to be applied. Retry the update after the worker drains it.'
-                        : 'An earlier accepted signal is still waiting to be applied.'
+                        ? this.$t("An earlier accepted signal is still waiting to be applied. Retry the update after the worker drains it.")
+                        : this.$t("An earlier accepted signal is still waiting to be applied.")
                 case 'selected_run_not_current':
-                    return 'The selected run is not the current active run.'
+                    return this.$t("The selected run is not the current active run.")
                 case 'run_closed':
-                    return 'The selected run is already closed.'
+                    return this.$t("The selected run is already closed.")
                 case 'repair_not_needed':
-                    return 'The selected run already has a durable resume path.'
+                    return this.$t("The selected run already has a durable resume path.")
                 case 'repair_state_unknown':
-                    return 'Waterline has not classified this run as repairable yet.'
+                    return this.$t("Waterline has not classified this run as repairable yet.")
                 case 'unsupported_history':
-                    return 'The selected run only has older diagnostic history and no durable resume path for repair.'
+                    return this.$t("The selected run only has older diagnostic history and no durable resume path for repair.")
                 case 'run_not_closed':
-                    return 'Only closed runs can be archived.'
+                    return this.$t("Only closed runs can be archived.")
                 case 'run_archived':
-                    return 'The selected run is already archived.'
+                    return this.$t("The selected run is already archived.")
                 case 'workflow_definition_unavailable':
                     return commandType === 'query'
-                        ? 'The durable query target is known, but this run cannot be replayed because its workflow definition is unavailable.'
-                        : 'The durable target is known, but this run cannot execute because its workflow definition is unavailable.'
+                        ? this.$t("The durable query target is known, but this run cannot be replayed because its workflow definition is unavailable.")
+                        : this.$t("The durable target is known, but this run cannot execute because its workflow definition is unavailable.")
                 default:
                     return reason
             }
@@ -3882,13 +3882,13 @@ export default {
             }
 
             return [
-                { name: 'query', label: 'Query' },
-                { name: 'signal', label: 'Signal' },
-                { name: 'update', label: 'Update' },
-                { name: 'repair', label: 'Repair' },
-                { name: 'cancel', label: 'Cancel' },
-                { name: 'terminate', label: 'Terminate' },
-                { name: 'archive', label: 'Archive' },
+                { name: 'query', label: this.$t("Query") },
+                { name: 'signal', label: this.$t("Signal") },
+                { name: 'update', label: this.$t("Update") },
+                { name: 'repair', label: this.$t("Repair") },
+                { name: 'cancel', label: this.$t("Cancel") },
+                { name: 'terminate', label: this.$t("Terminate") },
+                { name: 'archive', label: this.$t("Archive") },
             ].map((action) => ({
                 ...action,
                 allowed: this.canAction(action.name, action.name === 'cancel' || action.name === 'terminate'
@@ -3924,12 +3924,12 @@ export default {
 
         waitResumeStateLabel(state) {
             return {
-                planned: 'Planned wait',
-                eligible: 'Resume is due',
-                resume_time_unknown: 'Resume time unknown',
-                deadline_elapsed: 'Wait deadline has passed',
-                unavailable: 'Wait details unavailable',
-            }[state] || 'Resume time unknown'
+                planned: this.$t("Planned wait"),
+                eligible: this.$t("Resume is due"),
+                resume_time_unknown: this.$t("Resume time unknown"),
+                deadline_elapsed: this.$t("Wait deadline has passed"),
+                unavailable: this.$t("Wait details unavailable"),
+            }[state] || this.$t("Resume time unknown")
         },
 
         openWaitCount() {
@@ -3973,12 +3973,12 @@ export default {
         workflowStreamOffsets(stream) {
             const head = this.hasDetailValue(stream.last_offset) ? stream.last_offset : '-'
 
-            return `stream head ${head}`
+            return this.$t("stream head {value1}", { value1: head })
         },
 
         workflowStreamDirection(stream) {
             if (stream.mode === 'service') {
-                return 'workflow output'
+                return this.$t("workflow output")
             }
 
             return String(stream.direction || 'inbox/outbox').replace(/_/g, ' ').replace(/\+/g, ' / ')
@@ -4012,38 +4012,38 @@ export default {
 
         waitBacking(wait) {
             if (wait.summary_only) {
-                return 'Summary only'
+                return this.$t("Summary only")
             }
             if (wait.diagnostic_only) {
-                return 'diagnostic only'
+                return this.$t("diagnostic only")
             }
 
             if (wait.kind === 'condition' && this.hasDetailValue(wait.timeout_seconds)) {
                 if (!wait.task_backed && this.hasDetailValue(wait.task_id)) {
-                    return ['stale timeout task', wait.task_status, 'external input']
+                    return [this.$t("stale timeout task"), wait.task_status, this.$t("external input")]
                         .filter(Boolean)
                         .join(' / ')
                 }
 
                 if (!wait.task_backed) {
-                    return 'external input / timeout task missing'
+                    return this.$t("external input / timeout task missing")
                 }
 
-                return [wait.task_type || 'timer', wait.task_status, 'external input']
+                return [wait.task_type || 'timer', wait.task_status, this.$t("external input")]
                     .filter(Boolean)
                     .join(' / ')
             }
 
             if (wait.kind === 'update' && !wait.task_backed && !this.hasDetailValue(wait.task_id)) {
-                return 'workflow task missing'
+                return this.$t("workflow task missing")
             }
 
             if (wait.kind === 'child') {
-                return 'child run'
+                return this.$t("child run")
             }
 
             if (wait.external_only) {
-                return 'external input'
+                return this.$t("external input")
             }
 
             if (!wait.task_backed && this.hasDetailValue(wait.task_id)) {
@@ -4057,7 +4057,7 @@ export default {
             }
 
             if (!wait.task_backed) {
-                return 'task missing'
+                return this.$t("task missing")
             }
 
             return [wait.task_type, wait.task_status].filter(Boolean).join(' / ')
@@ -4100,8 +4100,8 @@ export default {
                     ? group.parallel_group_index + 1
                     : null
                 const label = groupKind === 'activity'
-                    ? 'parallel activity group'
-                    : (groupKind === 'mixed' ? 'parallel group' : 'parallel child group')
+                    ? this.$t("parallel activity group")
+                    : (groupKind === 'mixed' ? this.$t("parallel group") : this.$t("parallel child group"))
 
                 if (!this.hasDetailValue(position) || !this.hasDetailValue(group.parallel_group_size)) {
                     return label
@@ -4131,7 +4131,7 @@ export default {
 
         projectionSourceLabel(source, rebuildReasons = []) {
             if (source === 'live_fallback') {
-                return 'Projection diagnostic: rebuild needed'
+                return this.$t("Projection diagnostic: rebuild needed")
             }
 
             if (typeof source === 'string' && source.endsWith('_rebuilt')) {
@@ -4144,19 +4144,19 @@ export default {
             }
 
             if (source === 'workflow_run_timeline_entries') {
-                return 'Projection: workflow_run_timeline_entries'
+                return this.$t("Projection: workflow_run_timeline_entries")
             }
 
             if (source === 'workflow_run_waits') {
-                return 'Projection: workflow_run_waits'
+                return this.$t("Projection: workflow_run_waits")
             }
 
             if (source === 'workflow_run_lineage_entries') {
-                return 'Projection: workflow_run_lineage_entries'
+                return this.$t("Projection: workflow_run_lineage_entries")
             }
 
             if (source === 'workflow_run_timer_entries') {
-                return 'Projection: workflow_run_timer_entries'
+                return this.$t("Projection: workflow_run_timer_entries")
             }
 
             return 'Projection: ' + source
@@ -4165,11 +4165,11 @@ export default {
         projectionRebuildReasonLabel(reason) {
             switch (reason) {
                 case 'schema_version_mismatch':
-                    return 'schema version mismatch rows'
+                    return this.$t("schema version mismatch rows")
                 case 'missing_projection':
-                    return 'missing projection rows'
+                    return this.$t("missing projection rows")
                 case 'stale_projection':
-                    return 'stale projection payload'
+                    return this.$t("stale projection payload")
                 default:
                     return reason
             }
@@ -4177,11 +4177,11 @@ export default {
 
         currentRunSourceLabel(source) {
             if (source === 'continue_as_new_lineage') {
-                return 'Resolved from typed continue-as-new lineage'
+                return this.$t("Resolved from typed continue-as-new lineage")
             }
 
             if (source === 'run_order_fallback') {
-                return 'Resolved from durable run ordering fallback'
+                return this.$t("Resolved from durable run ordering fallback")
             }
 
             return source
@@ -4271,7 +4271,7 @@ export default {
                 }
 
                 if (entry.failure.exception_replay_blocked === true) {
-                    details.push('exception replay blocked')
+                    details.push(this.$t("exception replay blocked"))
                 }
             }
 
@@ -4486,7 +4486,7 @@ export default {
                 || this.hasDetailValue(task.child_call_id)
                 || this.hasDetailValue(task.child_workflow_run_id)
             ) {
-                return 'child workflow'
+                return this.$t("child workflow")
             }
 
             if (this.hasDetailValue(task.workflow_update_id)) {
@@ -4505,7 +4505,7 @@ export default {
                 return String(task.workflow_wait_kind).replace(/_/g, ' ')
             }
 
-            return 'selected run'
+            return this.$t("selected run")
         },
 
         taskTransportState(task) {
@@ -4513,11 +4513,11 @@ export default {
                 ready: 'ready',
                 scheduled: 'scheduled',
                 leased: 'leased',
-                lease_expired: 'lease expired',
-                dispatch_overdue: 'dispatch overdue',
-                dispatch_failed: 'dispatch failed',
-                repair_backoff: 'repair backoff',
-                replay_blocked: 'replay blocked',
+                lease_expired: this.$t("lease expired"),
+                dispatch_overdue: this.$t("dispatch overdue"),
+                dispatch_failed: this.$t("dispatch failed"),
+                repair_backoff: this.$t("repair backoff"),
+                replay_blocked: this.$t("replay blocked"),
                 missing: 'missing',
                 completed: 'completed',
                 cancelled: 'cancelled',
@@ -4534,7 +4534,7 @@ export default {
 
             return task.replay_blocked_recorded_event_types.map((eventType) => {
                 if (eventType === 'NoTypedHistory') {
-                    return 'no typed history'
+                    return this.$t("no typed history")
                 }
 
                 return eventType
@@ -4709,7 +4709,7 @@ export default {
 
         lineageLabel(link, direction) {
             if (link.link_type === 'continue_as_new') {
-                return direction === 'parent' ? 'Continued from' : 'Continued as'
+                return direction === 'parent' ? this.$t("Continued from") : this.$t("Continued as")
             }
 
             return direction === 'parent' ? 'Parent' : 'Child'
@@ -4742,28 +4742,28 @@ export default {
 
             const copy = {
                 repair: {
-                    title: 'Repair run?',
-                    text: 'This recreates the durable next task for the current active run when liveness shows repair is needed. It does not restart an activity that is already marked running. For scripted recovery, the matching CLI sweep is workflow:v2:repair-pass --run-id=<current-run-id>.',
-                    confirmButtonText: 'Repair run',
+                    title: this.$t("Repair run?"),
+                    text: this.$t("This recreates the durable next task for the current active run when liveness shows repair is needed. It does not restart an activity that is already marked running. For scripted recovery, the matching CLI sweep is workflow:v2:repair-pass --run-id=<current-run-id>."),
+                    confirmButtonText: this.$t("Repair run"),
                 },
                 cancel: {
-                    title: 'Cancel run?',
-                    text: 'This action applies to the current active run.',
-                    confirmButtonText: 'Cancel run',
+                    title: this.$t("Cancel run?"),
+                    text: this.$t('This immediately closes the current active run as Cancelled without cooperative cleanup. Previously completed external side effects are not undone.'),
+                    confirmButtonText: this.$t("Cancel run"),
                 },
                 terminate: {
-                    title: 'Terminate run?',
-                    text: 'This action applies to the current active run.',
-                    confirmButtonText: 'Terminate run',
+                    title: this.$t("Terminate run?"),
+                    text: this.$t('This forcibly closes the current active run as Terminated and stops cooperative cleanup. Previously completed external side effects are not undone.'),
+                    confirmButtonText: this.$t("Terminate run"),
                 },
                 archive: {
-                    title: 'Archive run?',
-                    text: 'This marks the selected closed run as archived while preserving its durable history and command audit trail.',
-                    confirmButtonText: 'Archive run',
+                    title: this.$t("Archive run?"),
+                    text: this.$t("This marks the selected closed run as archived while preserving its durable history and command audit trail."),
+                    confirmButtonText: this.$t("Archive run"),
                 },
             }[commandType]
 
-            const confirmed = await Swal.fire({
+            const confirmed = await this.$dialog({
                 title: copy.title,
                 text: copy.text,
                 icon: 'warning',
@@ -4802,11 +4802,11 @@ export default {
 
                 return this.handleCommandSuccess(commandType, interactiveCommand, response)
             } catch (error) {
-                Swal.fire({
-                    title: commandType === 'query' ? 'Query failed' : 'Command rejected',
+                this.$dialog({
+                    title: commandType === 'query' ? this.$t("Query failed") : this.$t("Command rejected"),
                     text: this.commandFailureMessage(error, commandType),
                     icon: 'error',
-                    confirmButtonText: 'Okay',
+                    confirmButtonText: this.$t("Okay"),
                     background: '#1c1c1c',
                 })
             }
@@ -4832,32 +4832,32 @@ export default {
 
             await this.loadRouteFlow()
 
-            Swal.fire({
-                title: 'Command accepted',
+            this.$dialog({
+                title: this.$t("Command accepted"),
                 text: this.commandSuccessMessage(commandType, response),
                 icon: 'success',
-                confirmButtonText: 'Okay',
+                confirmButtonText: this.$t("Okay"),
                 background: '#1c1c1c',
             })
         },
 
         commandSuccessMessage(commandType, response) {
             return {
-                signal: 'Waterline recorded the signal command durably.',
+                signal: this.$t("Waterline recorded the signal command durably."),
                 update: response.data.wait_timed_out === true
-                    ? 'Waterline accepted the update command, waited for worker-applied completion, and returned the still-open lifecycle when that wait budget expired.'
+                    ? this.$t("Waterline accepted the update command, waited for worker-applied completion, and returned the still-open lifecycle when that wait budget expired.")
                     : (response.data.update_status === 'accepted'
-                        ? 'Waterline accepted the update command and queued a workflow task to apply it.'
-                        : 'Waterline recorded the update command durably and the workflow worker applied it.'),
+                        ? this.$t("Waterline accepted the update command and queued a workflow task to apply it.")
+                        : this.$t("Waterline recorded the update command durably and the workflow worker applied it.")),
                 repair: response.data.outcome === 'repair_dispatched'
-                    ? 'Waterline recreated the durable task and re-dispatched it.'
-                    : 'Waterline recorded the repair command, and no new task was needed.',
-                cancel: 'Waterline recorded the command durably.',
-                terminate: 'Waterline recorded the command durably.',
+                    ? this.$t("Waterline recreated the durable task and re-dispatched it.")
+                    : this.$t("Waterline recorded the repair command, and no new task was needed."),
+                cancel: this.$t("Waterline recorded the command durably."),
+                terminate: this.$t("Waterline recorded the command durably."),
                 archive: response.data.outcome === 'archive_not_needed'
-                    ? 'Waterline recorded the archive command; the run was already archived.'
-                    : 'Waterline archived the selected run durably.',
-            }[commandType] || 'Waterline recorded the command durably.'
+                    ? this.$t("Waterline recorded the archive command; the run was already archived.")
+                    : this.$t("Waterline archived the selected run durably."),
+            }[commandType] || this.$t("Waterline recorded the command durably.")
         },
 
         commandFailureMessage(error, commandType) {
@@ -4879,7 +4879,7 @@ export default {
                     && error.response.data
                     && error.response.data.message
                     ? error.response.data.message
-                    : 'Command was rejected.')
+                    : this.$t("Command was rejected."))
         },
 
         commandEndpoint(commandType, targetName = null) {

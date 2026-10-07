@@ -38,7 +38,7 @@ export default {
             if (typeof value === 'boolean') return value ? 'true' : 'false';
             if (typeof value === 'number') return value.toString();
             if (typeof value === 'string') return value;
-            if (Array.isArray(value)) return `[${value.length} items]`;
+            if (Array.isArray(value)) return this.$t("[{value1} items]", { value1: value.length });
             if (typeof value === 'object') return JSON.stringify(value);
             return String(value);
         },

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { createSSRApp } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import { createWaterlineI18n } from '../../resources/js/localization.mjs';
+import Base from '../../resources/js/base.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const componentPath = path.join(root, 'resources/js/components/WorkerHealth.vue');
@@ -41,6 +42,7 @@ function healthSnapshot(backend, registrations, staleRegistrations) {
 function renderedState(component, healthData) {
     const workers = component.methods.workersFromSnapshot.call({}, healthData);
     const context = {
+        $t: createWaterlineI18n('en').global.t,
         healthData,
         workers,
     };
@@ -116,13 +118,13 @@ test('an empty fleet distinguishes stale registrations from a first worker setup
                 template,
                 data() {
                     return {
-                        ...component.data(),
+                        ...component.data.call(this),
                         loading: false,
                         healthData,
                         workers: [],
                     };
                 },
-            }).use(createWaterlineI18n('en')));
+            }).mixin(Base).use(createWaterlineI18n('en')));
 
             if (stale.length > 0) {
                 assert.match(html, /No active workers/);

@@ -199,7 +199,7 @@
                             </div>
                             <div v-if="operatorBackendIssues().length" class="wl-operator-backend__issues">
                                 <div v-for="(issue, index) in operatorBackendIssues()" :key="index">
-                                    {{ issue.summary || issue.code || issue.component || 'Capability issue' }}
+                                    {{ issue.summary || issue.code || issue.component || $t('Capability issue') }}
                                 </div>
                             </div>
                         </div>
@@ -549,7 +549,7 @@
                             </p>
                             <template v-else>
                                 <p>
-                                    {{ $t("Shape") }} <code>{{ operatorMatchingRoleShape() }}</code>{{ $t(", wake owner") }} <code>{{ operatorMatchingRoleWakeOwner() }}</code>{{ $t(", queue-wake") }} {{ operatorMatchingRoleQueueWakeEnabled() ? 'enabled' : 'disabled' }}{{ $t(", task dispatch") }} <code>{{ operatorMatchingRoleTaskDispatchMode() }}</code>.
+                                    {{ $t("Shape") }} <code>{{ operatorMatchingRoleShape() }}</code>{{ $t(", wake owner") }} <code>{{ operatorMatchingRoleWakeOwner() }}</code>{{ $t(", queue-wake") }} {{ operatorMatchingRoleQueueWakeEnabled() ? $t('enabled') : $t('disabled') }}{{ $t(", task dispatch") }} <code>{{ operatorMatchingRoleTaskDispatchMode() }}</code>.
                                 </p>
                                 <p v-if="operatorMatchingRoleContractAvailable()">
                                     {{ $t("Partitions by") }} <code>{{ operatorMatchingRolePartitionPrimitivesLabel() }}</code>{{ $t(", backpressure") }} <code>{{ operatorMatchingRoleBackpressureModel() }}</code>.
@@ -648,11 +648,11 @@ export default {
         },
 
         classificationScopeLabel() {
-            return this.stats.classification_scope?.label || 'All workflow types';
+            return this.stats.classification_scope?.label || this.$t("All workflow types");
         },
 
         dashboardNamespaceLabel() {
-            return this.stats.operator_scope?.label || 'Operator scope';
+            return this.stats.operator_scope?.label || this.$t("Operator scope");
         },
 
         needsAttention() {
@@ -684,24 +684,24 @@ export default {
         summaryTiles() {
             return [
                 {
-                    label: 'Running now',
+                    label: this.$t("Running now"),
                     value: this.fleetMetric('current', 'running').toLocaleString(),
-                    meta: `${this.fleetMetric('current', 'failed').toLocaleString()} failed in the active fleet`,
+                    meta: this.$t("{value1} failed in the active fleet", { value1: this.fleetMetric('current', 'failed').toLocaleString() }),
                 },
                 {
-                    label: 'Completed last day',
+                    label: this.$t("Completed last day"),
                     value: this.fleetMetric('trends', 'day', 'completed').toLocaleString(),
-                    meta: `${this.fleetMetric('trends', 'hour', 'completed').toLocaleString()} completed in the last hour`,
+                    meta: this.$t("{value1} completed in the last hour", { value1: this.fleetMetric('trends', 'hour', 'completed').toLocaleString() }),
                 },
                 {
-                    label: 'Flows per minute',
+                    label: this.$t("Flows per minute"),
                     value: this.formatRate(this.stats.flows_per_minute),
-                    meta: `${Number(this.stats.flows_past_hour || 0).toLocaleString()} flows in the last hour`,
+                    meta: this.$t("{value1} flows in the last hour", { value1: Number(this.stats.flows_past_hour || 0).toLocaleString() }),
                 },
                 {
-                    label: 'Active workers',
+                    label: this.$t("Active workers"),
                     value: this.operatorMetricLabel('workers', 'active_workers'),
-                    meta: `${this.operatorMetricLabel('workers', 'active_worker_scopes')} queue scopes`,
+                    meta: this.$t("{value1} queue scopes", { value1: this.operatorMetricLabel('workers', 'active_worker_scopes') }),
                 },
             ];
         },
@@ -709,52 +709,52 @@ export default {
         overviewTiles() {
             return [
                 {
-                    label: 'Flows past hour',
+                    label: this.$t("Flows past hour"),
                     value: Number(this.stats.flows_past_hour || 0).toLocaleString(),
-                    meta: 'Recent run volume',
+                    meta: this.$t("Recent run volume"),
                 },
                 {
-                    label: 'Exceptions past hour',
+                    label: this.$t("Exceptions past hour"),
                     value: Number(this.stats.exceptions_past_hour || 0).toLocaleString(),
-                    meta: 'Recent failure pressure',
+                    meta: this.$t("Recent failure pressure"),
                 },
                 {
-                    label: 'Failed flows past week',
+                    label: this.$t("Failed flows past week"),
                     value: Number(this.stats.failed_flows_past_week || 0).toLocaleString(),
-                    meta: 'Longer trend window',
+                    meta: this.$t("Longer trend window"),
                 },
                 {
-                    label: 'Total flows',
+                    label: this.$t("Total flows"),
                     value: Number(this.stats.flows || 0).toLocaleString(),
-                    meta: 'All recorded workflow runs',
+                    meta: this.$t("All recorded workflow runs"),
                 },
                 {
-                    label: 'Max wait time',
+                    label: this.$t("Max wait time"),
                     value: this.stats.max_wait_time_workflow ? this.waitAge(this.stats.max_wait_time_workflow) : '-',
-                    meta: this.stats.max_wait_time_workflow ? 'Oldest recorded open wait' : 'No waiting runs',
+                    meta: this.stats.max_wait_time_workflow ? this.$t("Oldest recorded open wait") : this.$t("No waiting runs"),
                     route: this.stats.max_wait_time_workflow ? { name: this.routeName(this.stats.max_wait_time_workflow), params: { flowId: this.stats.max_wait_time_workflow.id } } : null,
                     linkLabel: this.stats.max_wait_time_workflow ? this.workflowLabel(this.stats.max_wait_time_workflow.class) : null,
                 },
                 {
-                    label: 'Max duration',
+                    label: this.$t("Max duration"),
                     value: this.stats.max_duration_workflow ? this.flowDuration(this.stats.max_duration_workflow) : '-',
-                    meta: this.stats.max_duration_workflow ? 'Longest completed run' : 'No completed runs',
+                    meta: this.stats.max_duration_workflow ? this.$t("Longest completed run") : this.$t("No completed runs"),
                     route: this.stats.max_duration_workflow ? { name: this.routeName(this.stats.max_duration_workflow), params: { flowId: this.stats.max_duration_workflow.id } } : null,
                     linkLabel: this.stats.max_duration_workflow ? this.workflowLabel(this.stats.max_duration_workflow.class) : null,
                 },
                 {
-                    label: 'Max exceptions',
+                    label: this.$t("Max exceptions"),
                     value: this.stats.max_exceptions_workflow ? this.exceptionCount(this.stats.max_exceptions_workflow).toLocaleString() : '0',
-                    meta: this.stats.max_exceptions_workflow ? 'Run with the most exception rows' : 'No exception-heavy runs',
+                    meta: this.stats.max_exceptions_workflow ? this.$t("Run with the most exception rows") : this.$t("No exception-heavy runs"),
                     route: this.stats.max_exceptions_workflow ? { name: this.routeName(this.stats.max_exceptions_workflow), params: { flowId: this.stats.max_exceptions_workflow.id } } : null,
                     linkLabel: this.stats.max_exceptions_workflow ? this.workflowLabel(this.stats.max_exceptions_workflow.class) : null,
                 },
                 {
-                    label: 'Projection rebuilds needed',
+                    label: this.$t("Projection rebuilds needed"),
                     value: projectionMetricLabel(this.operatorProjectionNeedsRebuild()),
                     meta: this.operatorProjectionNeedsRebuild() === null
-                        ? 'Open a workflow to inspect its history'
-                        : 'Outstanding projection normalization work',
+                        ? this.$t("Open a workflow to inspect its history")
+                        : this.$t("Outstanding projection normalization work"),
                 },
             ];
         },
@@ -814,9 +814,7 @@ export default {
                         format: 'MMM dd, HH:mm',
                     },
                     y: {
-                        formatter(value) {
-                            return `${Math.round(value)} workflows`;
-                        },
+                        formatter: value => this.$t('{value1} workflows', { value1: Math.round(value) }),
                     },
                 },
                 grid: {
@@ -834,14 +832,14 @@ export default {
 
             return [
                 {
-                    name: 'Completed',
+                    name: this.$t('Completed'),
                     data: series.timestamps.map((timestamp, index) => ({
                         x: timestamp,
                         y: Number((series.completed || [])[index] || 0),
                     })),
                 },
                 {
-                    name: 'Failed',
+                    name: this.$t('Failed (status)'),
                     data: series.timestamps.map((timestamp, index) => ({
                         x: timestamp,
                         y: Number((series.failed || [])[index] || 0),
@@ -890,7 +888,7 @@ export default {
 
         passRateChartSeries() {
             return [{
-                name: 'Pass rate',
+                name: this.$t('Pass rate'),
                 data: this.topWorkflowTypes.map((type) => Number(type.pass_rate || 0)),
             }];
         },
@@ -935,7 +933,7 @@ export default {
 
         durationChartSeries() {
             return [{
-                name: 'Median duration',
+                name: this.$t('Median duration'),
                 data: this.topWorkflowTypes.map((type) => Number(type.median_duration_ms || 0)),
             }];
         },
@@ -944,7 +942,7 @@ export default {
     mounted() {
         moment.relativeTimeThreshold('ss', 1);
 
-        document.title = 'Waterline - Dashboard';
+        document.title = this.$t("Waterline - Dashboard");
 
         this.refreshStatsPeriodically();
     },
@@ -1011,7 +1009,7 @@ export default {
 
         dashboardErrorMessage(error) {
             if (error && error.code === 'ECONNABORTED') {
-                return 'The request timed out before Waterline could load dashboard metrics.';
+                return this.$t("The request timed out before Waterline could load dashboard metrics.");
             }
 
             if (error && error.response && error.response.status) {
@@ -1019,19 +1017,19 @@ export default {
                 const message = error.response.data && error.response.data.message;
 
                 return message
-                    ? `Request failed with HTTP ${status}: ${message}`
-                    : `Request failed with HTTP ${status}.`;
+                    ? this.$t("Request failed with HTTP {value1}: {value2}", { value1: status, value2: message })
+                    : this.$t("Request failed with HTTP {value1}.", { value1: status });
             }
 
             if (error && error.request) {
-                return 'Waterline could not reach the dashboard endpoint.';
+                return this.$t("Waterline could not reach the dashboard endpoint.");
             }
 
             if (error && error.message) {
                 return error.message;
             }
 
-            return 'Waterline could not load dashboard metrics.';
+            return this.$t("Waterline could not load dashboard metrics.");
         },
 
         formatRate(value) {
@@ -1161,7 +1159,7 @@ export default {
         operatorProjectionDurationMetricLabel(group, key) {
             const value = this.operatorProjectionMetric(group, key);
 
-            return value === null ? 'Unknown' : (value > 0 ? moment.duration(value).humanize() : '-');
+            return value === null ? this.$t('Unknown') : (value > 0 ? moment.duration(value).humanize() : '-');
         },
 
         operatorRunSummaryMissingAgeAvailable() {
@@ -1193,7 +1191,7 @@ export default {
         },
 
         operatorBackendStatusLabel() {
-            return this.operatorBackend().supported ? 'Supported' : 'Needs attention';
+            return this.operatorBackend().supported ? 'Supported' : this.$t("Needs attention");
         },
 
         operatorBackendComponentLabel(component) {

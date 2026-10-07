@@ -166,7 +166,7 @@
 
                 return repair && repair.label
                     ? repair.label
-                    : 'Repair Blocked'
+                    : this.$t("Repair Blocked")
             },
 
             repairBadgeTitle(flow) {
@@ -174,7 +174,7 @@
 
                 return repair && repair.description
                     ? repair.description
-                    : 'Repair is currently blocked.'
+                    : this.$t("Repair is currently blocked.")
             },
 
             repairBadgeClass(flow) {
@@ -200,7 +200,7 @@
 
                 return taskProblem && taskProblem.label
                     ? taskProblem.label
-                    : 'Task Problem'
+                    : this.$t("Task Problem")
             },
 
             taskProblemBadgeTitle(flow) {
@@ -208,7 +208,7 @@
 
                 return taskProblem && taskProblem.description
                     ? taskProblem.description
-                    : 'This run recorded workflow-task problems.'
+                    : this.$t("This run recorded workflow-task problems.")
             },
 
             taskProblemBadgeClass(flow) {
@@ -228,7 +228,7 @@
             },
 
             compatibilityEntryBadgeTitle() {
-                return 'This run was recorded with older entry-contract metadata and should be reviewed before relying on command targets.'
+                return this.$t("This run was recorded with older entry-contract metadata and should be reviewed before relying on command targets.")
             },
 
             showCompatibilitySemanticsBadge(flow) {
@@ -243,10 +243,10 @@
                 const semantics = this.compatibilitySemantics(flow)
 
                 if (semantics && semantics.state === 'supported_elsewhere_in_active_fleet') {
-                    return 'Fleet Claimable'
+                    return this.$t("Fleet Claimable")
                 }
 
-                return 'Compatibility Wait'
+                return this.$t("Compatibility Wait")
             },
 
             compatibilitySemanticsBadgeTitle(flow) {
@@ -254,7 +254,7 @@
 
                 return semantics && semantics.operator_summary
                     ? semantics.operator_summary
-                    : 'Compatibility claimability is not available for this build.'
+                    : this.$t("Compatibility claimability is not available for this build.")
             },
 
             compatibilitySemanticsBadgeClass(flow) {
@@ -277,16 +277,16 @@
 
             contractBackfillBadgeLabel(flow) {
                 return flow && flow.declared_contract_backfill_available === true
-                    ? 'Contract Pending'
-                    : 'Contract Blocked'
+                    ? this.$t("Contract Pending")
+                    : this.$t("Contract Blocked")
             },
 
             contractBackfillBadgeTitle(flow) {
                 if (flow && flow.declared_contract_backfill_available === true) {
-                    return 'This run still needs durable command-contract normalization, and a compatible build can backfill it.'
+                    return this.$t("This run still needs durable command-contract normalization, and a compatible build can backfill it.")
                 }
 
-                return 'This run still needs durable command-contract normalization, but the current build cannot resolve the workflow definition required to finish it.'
+                return this.$t("This run still needs durable command-contract normalization, but the current build cannot resolve the workflow definition required to finish it.")
             },
 
             contractBackfillBadgeClass(flow) {
@@ -306,7 +306,7 @@
 
                 return indicator && indicator.label
                     ? indicator.label
-                    : 'History Budget'
+                    : this.$t("History Budget")
             },
 
             historyBudgetBadgeTitle(flow) {
@@ -314,7 +314,7 @@
 
                 return indicator && indicator.description
                     ? indicator.description
-                    : 'This run is approaching a configured history budget.'
+                    : this.$t("This run is approaching a configured history budget.")
             },
 
             historyBudgetBadgeClass(flow) {

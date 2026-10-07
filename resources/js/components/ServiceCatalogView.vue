@@ -252,7 +252,7 @@
                                         </td>
                                         <td>
                                             <span class="service-catalog-view__pill" :class="statusToneClass(row.status_bucket || row.status)">
-                                                {{ row.status || 'unknown' }}
+                                                {{ stateLabel(row.status || 'unknown') }}
                                             </span>
                                         </td>
                                         <td>
@@ -421,18 +421,18 @@ export default {
     data() {
         return {
             tabs: [
-                {key: 'calls', label: 'Calls', panelTitle: 'Service-call history', panelSubtitle: 'Durable calls visible to this namespace.', emptyLabel: 'service calls'},
-                {key: 'endpoints', label: 'Endpoints', panelTitle: 'Service endpoints', panelSubtitle: 'Endpoint registry rows owned by this namespace.', emptyLabel: 'service endpoints'},
-                {key: 'services', label: 'Services', panelTitle: 'Services', panelSubtitle: 'Service registry rows owned by this namespace.', emptyLabel: 'services'},
-                {key: 'operations', label: 'Operations', panelTitle: 'Operations', panelSubtitle: 'Callable operations owned by this namespace.', emptyLabel: 'operations'},
+                {key: 'calls', label: 'Calls', panelTitle: this.$t("Service-call history"), panelSubtitle: this.$t("Durable calls visible to this namespace."), emptyLabel: 'service calls'},
+                {key: 'endpoints', label: 'Endpoints', panelTitle: this.$t("Service endpoints"), panelSubtitle: this.$t("Endpoint registry rows owned by this namespace."), emptyLabel: 'service endpoints'},
+                {key: 'services', label: this.$t("Services"), panelTitle: this.$t("Services"), panelSubtitle: this.$t("Service registry rows owned by this namespace."), emptyLabel: 'services'},
+                {key: 'operations', label: 'Operations', panelTitle: 'Operations', panelSubtitle: this.$t("Callable operations owned by this namespace."), emptyLabel: 'operations'},
             ],
             callPresets: [
-                {key: 'relevant', label: 'Relevant', filters: {scope: 'relevant', status: '', status_bucket: '', outcome: '', outcome_bucket: ''}},
-                {key: 'open', label: 'Open', filters: {scope: 'relevant', status: '', status_bucket: 'open', outcome: '', outcome_bucket: ''}},
-                {key: 'failed', label: 'Failed', filters: {scope: 'relevant', status: '', status_bucket: 'failed', outcome: '', outcome_bucket: ''}},
+                {key: 'relevant', label: this.$t("Relevant"), filters: {scope: 'relevant', status: '', status_bucket: '', outcome: '', outcome_bucket: ''}},
+                {key: 'open', label: this.$t("Open"), filters: {scope: 'relevant', status: '', status_bucket: 'open', outcome: '', outcome_bucket: ''}},
+                {key: 'failed', label: this.$t("Failed"), filters: {scope: 'relevant', status: '', status_bucket: 'failed', outcome: '', outcome_bucket: ''}},
                 {key: 'policy', label: 'Policy', filters: {scope: 'relevant', status: '', status_bucket: '', outcome: '', outcome_bucket: 'policy'}},
-                {key: 'caller', label: 'Caller', filters: {scope: 'caller', status: '', status_bucket: '', outcome: '', outcome_bucket: ''}},
-                {key: 'target', label: 'Target', filters: {scope: 'target', status: '', status_bucket: '', outcome: '', outcome_bucket: ''}},
+                {key: 'caller', label: this.$t("Caller"), filters: {scope: 'caller', status: '', status_bucket: '', outcome: '', outcome_bucket: ''}},
+                {key: 'target', label: this.$t("Target"), filters: {scope: 'target', status: '', status_bucket: '', outcome: '', outcome_bucket: ''}},
             ],
             activeTab: 'calls',
             loading: true,
@@ -548,26 +548,26 @@ export default {
 
         detailTitle() {
             if (this.detailLoading) {
-                return 'Loading detail';
+                return this.$t("Loading detail");
             }
 
             if (!this.detail) {
-                return 'Service detail';
+                return this.$t("Service detail");
             }
 
             if (this.detailType === 'endpoints') {
-                return this.detail.endpoint_name || 'Endpoint detail';
+                return this.detail.endpoint_name || this.$t("Endpoint detail");
             }
 
             if (this.detailType === 'services') {
-                return this.detail.service_name || 'Service detail';
+                return this.detail.service_name || this.$t("Service detail");
             }
 
             if (this.detailType === 'operations') {
-                return this.detail.operation_name || 'Operation detail';
+                return this.detail.operation_name || this.$t("Operation detail");
             }
 
-            return this.detail.operation_name || 'Service-call detail';
+            return this.detail.operation_name || this.$t("Service-call detail");
         },
 
         detailRows() {
@@ -576,43 +576,43 @@ export default {
             }
 
             const rows = [
-                {key: 'namespace', label: 'Namespace', value: this.detail.namespace || '-'},
+                {key: 'namespace', label: this.$t("Namespace"), value: this.detail.namespace || '-'},
             ];
 
             if (this.detailType === 'endpoints') {
                 rows.push(
-                    {key: 'endpoint_name', label: 'Endpoint', value: this.detail.endpoint_name || '-'},
-                    {key: 'description', label: 'Description', value: this.detail.description || '-'},
+                    {key: 'endpoint_name', label: this.$t("Endpoint"), value: this.detail.endpoint_name || '-'},
+                    {key: 'description', label: this.$t("Description"), value: this.detail.description || '-'},
                 );
             } else if (this.detailType === 'services') {
                 rows.push(
-                    {key: 'service_name', label: 'Service', value: this.detail.service_name || '-'},
-                    {key: 'endpoint_id', label: 'Endpoint ID', value: this.detail.workflow_service_endpoint_id || '-', mono: true},
-                    {key: 'description', label: 'Description', value: this.detail.description || '-'},
+                    {key: 'service_name', label: this.$t("Service"), value: this.detail.service_name || '-'},
+                    {key: 'endpoint_id', label: this.$t("Endpoint ID"), value: this.detail.workflow_service_endpoint_id || '-', mono: true},
+                    {key: 'description', label: this.$t("Description"), value: this.detail.description || '-'},
                 );
             } else if (this.detailType === 'operations') {
                 rows.push(
-                    {key: 'operation_name', label: 'Operation', value: this.detail.operation_name || '-'},
-                    {key: 'mode', label: 'Mode', value: this.formatLabel(this.detail.operation_mode)},
-                    {key: 'binding', label: 'Binding', value: this.formatLabel(this.detail.handler_binding_kind)},
-                    {key: 'target', label: 'Target Reference', value: this.detail.handler_target_reference || '-', mono: true},
+                    {key: 'operation_name', label: this.$t("Operation"), value: this.detail.operation_name || '-'},
+                    {key: 'mode', label: this.$t("Mode"), value: this.formatLabel(this.detail.operation_mode)},
+                    {key: 'binding', label: this.$t("Binding"), value: this.formatLabel(this.detail.handler_binding_kind)},
+                    {key: 'target', label: this.$t("Target Reference"), value: this.detail.handler_target_reference || '-', mono: true},
                 );
             } else {
                 rows.push(
-                    {key: 'endpoint', label: 'Endpoint', value: this.detail.endpoint_name || '-'},
-                    {key: 'service', label: 'Service', value: this.detail.service_name || '-'},
-                    {key: 'operation', label: 'Operation', value: this.detail.operation_name || '-'},
-                    {key: 'caller_namespace', label: 'Caller Namespace', value: this.detail.caller_namespace || '-'},
-                    {key: 'target_namespace', label: 'Target Namespace', value: this.detail.target_namespace || '-'},
-                    {key: 'status', label: 'Status', value: this.formatLabel(this.detail.status)},
-                    {key: 'outcome', label: 'Outcome', value: this.formatLabel(this.detail.outcome)},
-                    {key: 'failure_message', label: 'Failure Message', value: this.detail.failure_message || '-'},
-                    {key: 'idempotency_key', label: 'Idempotency Key', value: this.detail.idempotency_key || '-', mono: true},
+                    {key: 'endpoint', label: this.$t("Endpoint"), value: this.detail.endpoint_name || '-'},
+                    {key: 'service', label: this.$t("Service"), value: this.detail.service_name || '-'},
+                    {key: 'operation', label: this.$t("Operation"), value: this.detail.operation_name || '-'},
+                    {key: 'caller_namespace', label: this.$t("Caller Namespace"), value: this.detail.caller_namespace || '-'},
+                    {key: 'target_namespace', label: this.$t("Target Namespace"), value: this.detail.target_namespace || '-'},
+                    {key: 'status', label: this.$t("Status"), value: this.formatLabel(this.detail.status)},
+                    {key: 'outcome', label: this.$t("Outcome"), value: this.formatLabel(this.detail.outcome)},
+                    {key: 'failure_message', label: this.$t("Failure Message"), value: this.detail.failure_message || '-'},
+                    {key: 'idempotency_key', label: this.$t("Idempotency Key"), value: this.detail.idempotency_key || '-', mono: true},
                 );
             }
 
             rows.push(
-                {key: 'created_at', label: 'Created', value: this.timestamp(this.detail.created_at)},
+                {key: 'created_at', label: this.$t("Created"), value: this.timestamp(this.detail.created_at)},
                 {key: 'updated_at', label: 'Updated', value: this.timestamp(this.detail.updated_at)},
             );
 
@@ -755,7 +755,7 @@ export default {
             } catch (error) {
                 this.rows = [];
                 this.pagination = null;
-                this.error = error.response?.data?.message || error.response?.data?.error || error.message || 'Failed to load services';
+                this.error = error.response?.data?.message || error.response?.data?.error || error.message || this.$t("Failed to load services");
             } finally {
                 this.loading = false;
             }
@@ -809,7 +809,7 @@ export default {
                 const response = await axios.get(this.waterlineBasePath() + '/api/v2/services/' + type + '/' + encodeURIComponent(row.id));
                 this.detail = response.data || {};
             } catch (error) {
-                this.detailError = error.response?.data?.error || error.response?.data?.message || error.message || 'Failed to load detail';
+                this.detailError = error.response?.data?.error || error.response?.data?.message || error.message || this.$t("Failed to load detail");
             } finally {
                 this.detailLoading = false;
             }
@@ -1011,9 +1011,12 @@ export default {
                 return '-';
             }
 
-            return String(value)
+            const state = this.stateLabel(String(value));
+            if (state !== value) return state;
+
+            return this.uiText(String(value)
                 .replace(/_/g, ' ')
-                .replace(/\b\w/g, (letter) => letter.toUpperCase());
+                .replace(/\b\w/g, (letter) => letter.toUpperCase()));
         },
 
         prettyJson(value) {

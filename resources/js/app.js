@@ -9,9 +9,14 @@ import PrismEditor from './components/PrismEditor.vue';
 import ErrorBoundary from './components/ErrorBoundary.vue';
 import Popper from 'popper.js';
 import $ from 'jquery';
+import Swal from 'sweetalert2';
+import moment from 'moment-timezone';
+import 'moment/locale/uk';
+import chartEnglish from 'apexcharts/dist/locales/en.json';
+import chartUkrainian from 'apexcharts/dist/locales/uk.json';
 import { readBootstrapConfig } from './bootstrap-config.mjs';
 import WaterlineApp from './WaterlineApp.vue';
-import { createWaterlineI18n } from './localization.mjs';
+import { createWaterlineI18n, dialogLabels } from './localization.mjs';
 
 import 'bootstrap';
 import 'vue-json-pretty/lib/styles.css';
@@ -48,7 +53,14 @@ if (mountElement && waterline) {
     };
 
     app.use(router);
-    app.use(createWaterlineI18n(waterline.locale));
+    const i18n = createWaterlineI18n(waterline.locale);
+    app.use(i18n);
+    moment.locale(i18n.global.locale.value);
+    window.Apex = {
+        ...window.Apex,
+        chart: { ...window.Apex?.chart, locales: [chartEnglish, chartUkrainian], defaultLocale: i18n.global.locale.value },
+    };
+    app.config.globalProperties.$dialog = options => Swal.fire({ ...dialogLabels(i18n.global.t), ...options });
     app.component('apexchart', VueApexCharts);
     app.component('vue-json-pretty', VueJsonPretty);
     app.component('PrismEditor', PrismEditor);

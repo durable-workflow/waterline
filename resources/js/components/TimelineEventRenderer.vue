@@ -248,7 +248,7 @@ export default {
             const caller = this.firstPresent(command.caller_label, this.event.caller_label, command.source);
             const authStatus = this.firstPresent(command.auth_status, this.event.auth_status);
             const authMethod = this.firstPresent(command.auth_method, this.event.auth_method);
-            const auth = [authStatus, authMethod ? `via ${authMethod}` : null]
+            const auth = [authStatus, authMethod ? this.$t("via {value1}", { value1: authMethod }) : null]
                 .filter(Boolean)
                 .join(' ');
 

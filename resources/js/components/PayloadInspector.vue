@@ -76,7 +76,7 @@ export default {
         payloadSize() {
             const size = this.formattedPayload.length;
             if (size < 1024) {
-                return `${size} bytes`;
+                return this.$t("{value1} bytes", { value1: size });
             } else if (size < 1024 * 1024) {
                 return `${(size / 1024).toFixed(1)} KB`;
             } else {
@@ -170,7 +170,7 @@ export default {
                         this.decoded = JSON.parse(blob);
                         this.updateCollapsedState();
                     } catch (e) {
-                        this.rawValue = `[Avro payload: ${blob.length} bytes]`;
+                        this.rawValue = this.$t("[Avro payload: {value1} bytes]", { value1: blob.length });
                     }
                 } else {
                     this.rawValue = blob;

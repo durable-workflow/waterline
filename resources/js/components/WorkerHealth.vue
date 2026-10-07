@@ -11,7 +11,7 @@
 
             <div class="worker-health__actions">
                 <span v-if="healthData" class="worker-health__pill" :class="statusToneClass(healthData.status)">
-                    {{ (healthData.status || 'unknown').toUpperCase() }}
+                    {{ stateLabel(healthData.status || 'unknown') }}
                 </span>
 
                 <button class="btn btn-sm btn-outline-secondary" @click="editViewOptions" :disabled="savingOperatorPreferences">
@@ -46,7 +46,7 @@
                     <div class="card-body card-bg-secondary">
                         <div class="worker-health__summary-label">{{ $t("Overall health") }}</div>
                         <div class="worker-health__summary-value" :class="statusToneClass(healthData && healthData.status)">
-                            {{ (healthData && healthData.status ? healthData.status : 'unknown').toUpperCase() }}
+                            {{ stateLabel(healthData && healthData.status ? healthData.status : 'unknown') }}
                         </div>
                         <div class="worker-health__summary-meta">{{ $t("Derived from worker heartbeats and health checks.") }}</div>
                     </div>
@@ -98,7 +98,7 @@
                         >
                             <div class="worker-health__check-head">
                                 <span class="worker-health__pill" :class="statusToneClass(alert.status)">
-                                    {{ (alert.status || 'warning').toUpperCase() }}
+                                    {{ stateLabel(alert.status || 'warning') }}
                                 </span>
                                 <strong>{{ coordinationAlertTitle(alert) }}</strong>
                             </div>
@@ -196,7 +196,7 @@
 
                                         <td v-if="columnEnabled('status')">
                                             <span class="worker-health__pill" :class="workerStatusToneClass(worker)">
-                                                {{ worker.status || 'unknown' }}
+                                                {{ stateLabel(worker.status || 'unknown') }}
                                             </span>
                                         </td>
 
@@ -212,7 +212,7 @@
                                                 </span>
                                                 <span v-else class="text-muted">—</span>
                                                 <div class="worker-health__cell-meta" v-if="workerCompatibilityMarkers(worker).length > 0">
-                                                    {{ worker.supports_required === true ? 'Supports required marker' : worker.supports_required === false ? 'Does not support required marker' : 'Required marker not set' }}
+                                                    {{ worker.supports_required === true ? $t('Supports required marker') : worker.supports_required === false ? $t('Does not support required marker') : $t('Required marker not set') }}
                                                 </div>
                                             </div>
                                         </td>
@@ -330,7 +330,7 @@
                                 >
                                     <div class="worker-health__check-head">
                                         <span class="worker-health__pill" :class="statusToneClass(check.status)">
-                                            {{ check.status }}
+                                            {{ stateLabel(check.status) }}
                                         </span>
                                         <strong>{{ check.name }}</strong>
                                     </div>
@@ -567,7 +567,7 @@ export default {
             const active = this.activeRegistrationCount;
             const stale = this.staleRegistrationCount;
 
-            return `${active.toLocaleString()} active; ${stale.toLocaleString()} stale.`;
+            return this.$t('{active} active; {stale} stale.', { active: active.toLocaleString(), stale: stale.toLocaleString() });
         },
 
         healthChecks() {
@@ -582,7 +582,7 @@ export default {
                     available: false,
                     namespace: this.healthData?.namespace || null,
                     task_queues: [],
-                    reason: 'Queue visibility is unavailable for this scope.',
+                    reason: this.$t("Queue visibility is unavailable for this scope."),
                 };
             }
 
@@ -592,7 +592,7 @@ export default {
         queueVisibilityReason() {
             return typeof this.queueVisibility.reason === 'string'
                 ? this.queueVisibility.reason
-                : 'Queue visibility is unavailable for this scope.';
+                : this.$t("Queue visibility is unavailable for this scope.");
         },
 
         taskQueues() {
@@ -627,35 +627,35 @@ export default {
             const parts = [];
 
             if (errors > 0) {
-                parts.push(`${errors.toLocaleString()} error${errors === 1 ? '' : 's'}`);
+                parts.push(this.$t('{count} errors', { count: errors.toLocaleString() }, errors));
             }
 
             if (warnings > 0) {
-                parts.push(`${warnings.toLocaleString()} warning${warnings === 1 ? '' : 's'}`);
+                parts.push(this.$t('{count} warnings', { count: warnings.toLocaleString() }, warnings));
             }
 
             if (parts.length === 0) {
-                return 'Warnings and errors distilled from health checks and queue visibility.';
+                return this.$t("Warnings and errors distilled from health checks and queue visibility.");
             }
 
-            return `${parts.join(' and ')} distilled from health checks and queue visibility.`;
+            return this.$t("{value1} distilled from health checks and queue visibility.", { value1: parts.join(this.$t(' and ')) });
         },
 
         categorizedChecks() {
             const definitions = [
                 {
                     key: 'correctness',
-                    eyebrow: 'Durable substrate',
-                    title: 'Correctness',
-                    subtitle: 'Answers "is work being discovered?" from durable dispatch state.',
-                    rollupTitle: 'Rollup of correctness-category checks.',
+                    eyebrow: this.$t("Durable substrate"),
+                    title: this.$t("Correctness"),
+                    subtitle: this.$t("Answers \"is work being discovered?\" from durable dispatch state."),
+                    rollupTitle: this.$t("Rollup of correctness-category checks."),
                 },
                 {
                     key: 'acceleration',
-                    eyebrow: 'Optional layer',
-                    title: 'Acceleration',
-                    subtitle: 'Answers "is the acceleration layer propagating?". Degraded acceleration never masks correctness.',
-                    rollupTitle: 'Rollup of acceleration-category checks.',
+                    eyebrow: this.$t("Optional layer"),
+                    title: this.$t("Acceleration"),
+                    subtitle: this.$t("Answers \"is the acceleration layer propagating?\". Degraded acceleration never masks correctness."),
+                    rollupTitle: this.$t("Rollup of acceleration-category checks."),
                 },
             ];
 
@@ -714,7 +714,7 @@ export default {
                 this.healthData = response.data;
                 this.workers = this.workersFromSnapshot(response.data);
             } catch (e) {
-                this.error = e.response?.data?.message || e.message || 'Failed to load worker health';
+                this.error = e.response?.data?.message || e.message || this.$t("Failed to load worker health");
                 console.error('Worker health error:', e);
             } finally {
                 this.loading = false;
@@ -789,18 +789,18 @@ export default {
 
         workersListColumnOptions() {
             return [
-                {key: 'worker_id', label: 'Worker ID'},
-                {key: 'runtime', label: 'Runtime'},
-                {key: 'task_queue', label: 'Task Queue'},
-                {key: 'heartbeat', label: 'Heartbeat'},
-                {key: 'status', label: 'Status'},
-                {key: 'compatibility', label: 'Compatibility'},
-                {key: 'source', label: 'Heartbeat Source'},
+                {key: 'worker_id', label: this.$t("Worker ID")},
+                {key: 'runtime', label: this.$t("Runtime")},
+                {key: 'task_queue', label: this.$t("Task Queue")},
+                {key: 'heartbeat', label: this.$t("Heartbeat")},
+                {key: 'status', label: this.$t("Status")},
+                {key: 'compatibility', label: this.$t("Compatibility")},
+                {key: 'source', label: this.$t("Heartbeat Source")},
                 {key: 'workflows', label: 'Workflows'},
-                {key: 'activities', label: 'Activities'},
-                {key: 'concurrency', label: 'Concurrency'},
-                {key: 'slots', label: 'Free Slots'},
-                {key: 'process', label: 'Process'},
+                {key: 'activities', label: this.$t("Activities")},
+                {key: 'concurrency', label: this.$t("Concurrency")},
+                {key: 'slots', label: this.$t("Free Slots")},
+                {key: 'process', label: this.$t("Process")},
             ];
         },
 
@@ -906,23 +906,23 @@ export default {
                 </label>
             `).join('');
 
-            const result = await Swal.fire({
-                title: 'View Options',
+            const result = await this.$dialog({
+                title: this.$t("View Options"),
                 html: `
                     <div class="text-left">
-                        <label class="d-block mb-1">Density</label>
+                        <label class="d-block mb-1">${this.escapeHtml(this.$t("Density"))}</label>
                         <select id="waterline-workers-density" class="swal2-input">
-                            <option value="dense" ${this.workersListDensity() === 'dense' ? 'selected' : ''}>Dense</option>
-                            <option value="comfortable" ${this.workersListDensity() === 'comfortable' ? 'selected' : ''}>Comfortable</option>
+                            <option value="dense" ${this.workersListDensity() === 'dense' ? 'selected' : ''}>${this.escapeHtml(this.$t("Dense"))}</option>
+                            <option value="comfortable" ${this.workersListDensity() === 'comfortable' ? 'selected' : ''}>${this.escapeHtml(this.$t("Comfortable"))}</option>
                         </select>
                         <div class="mt-3">
-                            <label class="d-block mb-2">Columns</label>
+                            <label class="d-block mb-2">${this.escapeHtml(this.$t("Columns"))}</label>
                             ${columnHtml}
                         </div>
                     </div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: 'Save Options',
+                confirmButtonText: this.$t("Save Options"),
                 background: this.swalBackground(),
                 preConfirm: () => {
                     const selectedColumns = Array.from(document.querySelectorAll('.waterline-worker-column-option'))
@@ -1008,9 +1008,9 @@ export default {
             const backlog = Number(stats.approximate_backlog_count || 0);
             const activePollers = Number(stats.pollers?.active_count || 0);
 
-            if (Number(repair.candidates || 0) > 0) return 'needs attention';
-            if (backlog > 0 && activePollers === 0) return 'no active pollers';
-            if (Number(stats.pollers?.stale_count || 0) > 0) return 'stale pollers';
+            if (Number(repair.candidates || 0) > 0) return this.$t("needs attention");
+            if (backlog > 0 && activePollers === 0) return this.$t("no active pollers");
+            if (Number(stats.pollers?.stale_count || 0) > 0) return this.$t("stale pollers");
 
             return 'healthy';
         },
@@ -1061,7 +1061,7 @@ export default {
             const pendingStatus = build?.pending_workflow_tasks?.status;
 
             if (pendingStatus === 'no_compatible_worker') {
-                return 'no compatible worker';
+                return this.$t("no compatible worker");
             }
 
             if (build?.new_start_selected === true) {
@@ -1096,7 +1096,7 @@ export default {
             const stale = this.integerLabel(build?.stale_worker_count);
             const total = this.integerLabel(build?.total_worker_count);
 
-            return `${active} active, ${stale} stale, ${total} total`;
+            return this.$t('{active} active, {stale} stale, {total} total', { active, stale, total });
         },
 
         buildIdRuntimeLabel(build) {
@@ -1105,7 +1105,7 @@ export default {
             const parts = [];
 
             if (runtimes.length > 0) {
-                parts.push(`runtime ${runtimes.slice(0, 2).join(', ')}${runtimes.length > 2 ? '…' : ''}`);
+                parts.push(this.$t("runtime {value1}{value2}", { value1: runtimes.slice(0, 2).join(', '), value2: runtimes.length > 2 ? '…' : '' }));
             }
 
             if (sdkVersions.length > 0) {
@@ -1119,15 +1119,15 @@ export default {
             const parts = [];
 
             if (build?.new_start_selected === true) {
-                parts.push('selected for new starts');
+                parts.push(this.$t("selected for new starts"));
             }
 
             if (typeof build?.drain_intent === 'string' && build.drain_intent !== '') {
-                parts.push(`drain ${build.drain_intent}`);
+                parts.push(this.$t("drain {value1}", { value1: build.drain_intent }));
             }
 
             if (typeof build?.promoted_at === 'string' && build.promoted_at !== '') {
-                parts.push(`promoted ${build.promoted_at}`);
+                parts.push(this.$t("promoted {value1}", { value1: build.promoted_at }));
             }
 
             return parts.join(' · ');
@@ -1147,10 +1147,10 @@ export default {
             }
 
             if (pending.status === 'no_compatible_worker') {
-                return `${this.integerLabel(total)} pending workflow task${total === 1 ? '' : 's'} without an active compatible worker.`;
+                return this.$t('{count} pending workflow tasks without an active compatible worker.', { count: this.integerLabel(total) }, total);
             }
 
-            return `${this.integerLabel(total)} pending workflow task${total === 1 ? '' : 's'} for this build.`;
+            return this.$t('{count} pending workflow tasks for this build.', { count: this.integerLabel(total) }, total);
         },
 
         coordinationAlertTitle(alert) {
@@ -1162,7 +1162,7 @@ export default {
                 return alert.key.replace(/_/g, ' ');
             }
 
-            return 'Coordination alert';
+            return this.$t("Coordination alert");
         },
 
         coordinationAlertDetails(alert) {
@@ -1179,20 +1179,20 @@ export default {
             }
 
             const label = queues.slice(0, 3).join(', ');
-            const suffix = queues.length > 3 ? ` +${queues.length - 3} more` : '';
+            const suffix = queues.length > 3 ? this.$t(" +{value1} more", { value1: queues.length - 3 }) : '';
 
-            return `Queues: ${label}${suffix}`;
+            return this.$t("Queues: {value1}{value2}", { value1: label, value2: suffix });
         },
 
         coordinationAlertSourceLabel(alert) {
             const source = typeof alert?.source === 'string' ? alert.source : '';
 
             if (source === 'health_check') {
-                return 'Health check';
+                return this.$t("Health check");
             }
 
             if (source === 'queue_visibility') {
-                return 'Queue visibility';
+                return this.$t("Queue visibility");
             }
 
             return 'Coordination';
@@ -1227,23 +1227,23 @@ export default {
             const maxAgeMs = Number(alert?.max_age_ms);
 
             if (Number.isFinite(queueCount) && queueCount > 0) {
-                facts.push(`${queueCount.toLocaleString()} queue${queueCount === 1 ? '' : 's'}`);
+                facts.push(this.$t('{count} queues', { count: queueCount.toLocaleString() }, queueCount));
             }
 
             if (Number.isFinite(backlogCount) && backlogCount > 0) {
-                facts.push(`backlog ${backlogCount.toLocaleString()}`);
+                facts.push(this.$t("backlog {value1}", { value1: backlogCount.toLocaleString() }));
             }
 
             if (Number.isFinite(stalePollerCount) && stalePollerCount > 0) {
-                facts.push(`stale pollers ${stalePollerCount.toLocaleString()}`);
+                facts.push(this.$t("stale pollers {value1}", { value1: stalePollerCount.toLocaleString() }));
             }
 
             if (Number.isFinite(candidateCount) && candidateCount > 0) {
-                facts.push(`repair candidates ${candidateCount.toLocaleString()}`);
+                facts.push(this.$t("repair candidates {value1}", { value1: candidateCount.toLocaleString() }));
             }
 
             if (Number.isFinite(maxAgeMs) && maxAgeMs > 0) {
-                facts.push(`max age ${this.durationMillisecondsLabel(maxAgeMs)}`);
+                facts.push(this.$t("max age {value1}", { value1: this.durationMillisecondsLabel(maxAgeMs) }));
             }
 
             return facts;
@@ -1272,47 +1272,47 @@ export default {
             const activeWorkerScopes = Number(healthFacts.active_worker_scopes || 0);
 
             if (Number.isFinite(compatibilityBlockedRuns) && compatibilityBlockedRuns > 0) {
-                facts.push(`compat blocked ${compatibilityBlockedRuns.toLocaleString()}`);
+                facts.push(this.$t("compat blocked {value1}", { value1: compatibilityBlockedRuns.toLocaleString() }));
             }
 
             if (Number.isFinite(dispatchOverdueTasks) && dispatchOverdueTasks > 0) {
-                facts.push(`dispatch overdue ${dispatchOverdueTasks.toLocaleString()}`);
+                facts.push(this.$t("dispatch overdue {value1}", { value1: dispatchOverdueTasks.toLocaleString() }));
             }
 
             if (Number.isFinite(claimFailedTasks) && claimFailedTasks > 0) {
-                facts.push(`claim failed ${claimFailedTasks.toLocaleString()}`);
+                facts.push(this.$t("claim failed {value1}", { value1: claimFailedTasks.toLocaleString() }));
             }
 
             if (Number.isFinite(queuesWithDrains) && queuesWithDrains > 0) {
-                facts.push(`draining queues ${queuesWithDrains.toLocaleString()}`);
+                facts.push(this.$t("draining queues {value1}", { value1: queuesWithDrains.toLocaleString() }));
             }
 
             if (Number.isFinite(drainingBuildIdCount) && drainingBuildIdCount > 0) {
-                facts.push(`draining builds ${drainingBuildIdCount.toLocaleString()}`);
+                facts.push(this.$t("draining builds {value1}", { value1: drainingBuildIdCount.toLocaleString() }));
             }
 
             if (Number.isFinite(drainingWorkerCount) && drainingWorkerCount > 0) {
-                facts.push(`draining workers ${drainingWorkerCount.toLocaleString()}`);
+                facts.push(this.$t("draining workers {value1}", { value1: drainingWorkerCount.toLocaleString() }));
             }
 
             if (Number.isFinite(staleWorkerCount) && staleWorkerCount > 0) {
-                facts.push(`stale workers ${staleWorkerCount.toLocaleString()}`);
+                facts.push(this.$t("stale workers {value1}", { value1: staleWorkerCount.toLocaleString() }));
             }
 
             if (typeof healthFacts.matching_shape === 'string' && healthFacts.matching_shape !== '') {
-                facts.push(`matching ${healthFacts.matching_shape}`);
+                facts.push(this.$t("matching {value1}", { value1: healthFacts.matching_shape }));
             }
 
             if (typeof healthFacts.task_dispatch_mode === 'string' && healthFacts.task_dispatch_mode !== '') {
-                facts.push(`dispatch ${healthFacts.task_dispatch_mode}`);
+                facts.push(this.$t("dispatch {value1}", { value1: healthFacts.task_dispatch_mode }));
             }
 
             if (typeof healthFacts.queue_wake_enabled === 'boolean') {
-                facts.push(healthFacts.queue_wake_enabled ? 'wake enabled' : 'wake disabled');
+                facts.push(healthFacts.queue_wake_enabled ? this.$t("wake enabled") : this.$t("wake disabled"));
             }
 
             if (Number.isFinite(activeWorkerScopes) && activeWorkerScopes > 0) {
-                facts.push(`worker scopes ${activeWorkerScopes.toLocaleString()}`);
+                facts.push(this.$t("worker scopes {value1}", { value1: activeWorkerScopes.toLocaleString() }));
             }
 
             // Surface fleet compatibility coverage so a "compatibility block"
@@ -1327,8 +1327,8 @@ export default {
                     ? healthFacts.required_compatibility
                     : null;
                 facts.push(requiredCompatibility !== null
-                    ? `no fleet coverage for ${requiredCompatibility}`
-                    : 'no fleet coverage for required marker');
+                    ? this.$t("no fleet coverage for {value1}", { value1: requiredCompatibility })
+                    : this.$t("no fleet coverage for required marker"));
             }
             const supportingWorkers = Number(healthFacts.active_workers_supporting_required ?? null);
             const totalActiveWorkers = Number(healthFacts.active_workers ?? null);
@@ -1337,11 +1337,11 @@ export default {
                 && totalActiveWorkers > 0
                 && supportingWorkers >= 0
                 && supportingWorkers < totalActiveWorkers) {
-                facts.push(`${supportingWorkers.toLocaleString()}/${totalActiveWorkers.toLocaleString()} workers support required marker`);
+                facts.push(this.$t("{value1}/{value2} workers support required marker", { value1: supportingWorkers.toLocaleString(), value2: totalActiveWorkers.toLocaleString() }));
             }
 
             if (Number.isFinite(maxAgeMs) && maxAgeMs > 0) {
-                facts.push(`max age ${this.durationMillisecondsLabel(maxAgeMs)}`);
+                facts.push(this.$t("max age {value1}", { value1: this.durationMillisecondsLabel(maxAgeMs) }));
             }
 
             return facts;
@@ -1430,7 +1430,7 @@ export default {
             const markers = this.workerCompatibilityMarkers(worker);
 
             if (markers.length === 0) {
-                return 'No compatibility markers advertised';
+                return this.$t("No compatibility markers advertised");
             }
 
             return 'Advertised: ' + markers.join(', ');
@@ -1460,9 +1460,9 @@ export default {
             const now = new Date();
             const diffSeconds = Math.floor((now - date) / 1000);
 
-            if (diffSeconds < 60) return `${diffSeconds}s ago`;
-            if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
-            if (diffSeconds < 86400) return `${Math.floor(diffSeconds / 3600)}h ago`;
+            if (diffSeconds < 60) return this.$t("{value1}s ago", { value1: diffSeconds });
+            if (diffSeconds < 3600) return this.$t("{value1}m ago", { value1: Math.floor(diffSeconds / 60) });
+            if (diffSeconds < 86400) return this.$t("{value1}h ago", { value1: Math.floor(diffSeconds / 3600) });
             return date.toLocaleString();
         },
 
@@ -1518,10 +1518,10 @@ export default {
                 parts.push(`CPU ${Number(metrics.cpu_percent).toFixed(1)}%`);
             }
             if (Number.isFinite(metrics.memory_bytes)) {
-                parts.push(`mem ${this.formatBytes(metrics.memory_bytes)}`);
+                parts.push(this.$t("mem {value1}", { value1: this.formatBytes(metrics.memory_bytes) }));
             }
             if (Number.isFinite(metrics.process_uptime_seconds)) {
-                parts.push(`up ${this.formatUptime(metrics.process_uptime_seconds)}`);
+                parts.push(this.$t("up {value1}", { value1: this.formatUptime(metrics.process_uptime_seconds) }));
             }
 
             return parts.length > 0 ? parts.join(' · ') : '—';

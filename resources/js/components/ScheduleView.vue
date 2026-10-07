@@ -140,7 +140,7 @@
 
                                     <td v-if="columnEnabled('status')">
                                         <span class="schedule-view__pill" :class="statusToneClass(schedule.status)">
-                                            {{ schedule.status || 'unknown' }}
+                                            {{ stateLabel(schedule.status || 'unknown') }}
                                         </span>
                                     </td>
 
@@ -352,7 +352,7 @@
 
                 <div class="card-footer d-flex justify-content-between schedule-view__dialog-actions">
                     <small class="text-muted">
-                        {{ $t("Showing") }} {{ historyEvents.length.toLocaleString() }} {{ $t("event") }}{{ historyEvents.length === 1 ? '' : 's' }}{{ historyHasMore ? ' (more available)' : '' }}.
+                        {{ $t('Showing {count} events', { count: historyEvents.length.toLocaleString($i18n.locale) }, historyEvents.length) }}{{ historyHasMore ? $t(' (more available)') : '' }}.
                     </small>
 
                     <div>
@@ -361,7 +361,7 @@
                             class="btn btn-sm btn-outline-primary"
                             :disabled="historyLoadingMore"
                             @click="loadMoreHistoryEvents">
-                            {{ historyLoadingMore ? 'Loading…' : 'Load more' }}
+                            {{ historyLoadingMore ? $t('Loading…') : $t('Load more') }}
                         </button>
                         <button class="btn btn-sm btn-secondary" @click="closeHistoryDialog">{{ $t("Close") }}</button>
                     </div>
@@ -431,7 +431,7 @@ export default {
         },
 
         currentFilterLabel() {
-            return this.statusFilter ? `${this.statusFilter} only` : 'all statuses';
+            return this.statusFilter ? this.$t("{value1} only", { value1: this.stateLabel(this.statusFilter) }) : this.$t('all statuses');
         },
 
         visiblePages() {
@@ -508,7 +508,7 @@ export default {
                     total: response.data.total
                 };
             } catch (e) {
-                this.error = e.response?.data?.message || e.message || 'Failed to load schedules';
+                this.error = e.response?.data?.message || e.message || this.$t("Failed to load schedules");
                 console.error('Schedule load error:', e);
             } finally {
                 this.loading = false;
@@ -583,13 +583,13 @@ export default {
 
         schedulesListColumnOptions() {
             return [
-                {key: 'schedule_id', label: 'Schedule ID'},
-                {key: 'workflow_type', label: 'Workflow Type'},
-                {key: 'spec', label: 'Spec'},
-                {key: 'status', label: 'Status'},
-                {key: 'next_fire', label: 'Next Fire'},
-                {key: 'last_result', label: 'Last Result'},
-                {key: 'actions', label: 'Actions'},
+                {key: 'schedule_id', label: this.$t("Schedule ID")},
+                {key: 'workflow_type', label: this.$t("Workflow Type")},
+                {key: 'spec', label: this.$t("Spec")},
+                {key: 'status', label: this.$t("Status")},
+                {key: 'next_fire', label: this.$t("Next Fire")},
+                {key: 'last_result', label: this.$t("Last Result")},
+                {key: 'actions', label: this.$t("Actions")},
             ];
         },
 
@@ -649,23 +649,23 @@ export default {
                 </label>
             `).join('');
 
-            const result = await Swal.fire({
-                title: 'View Options',
+            const result = await this.$dialog({
+                title: this.$t("View Options"),
                 html: `
                     <div class="text-left">
-                        <label class="d-block mb-1">Density</label>
+                        <label class="d-block mb-1">${this.escapeHtml(this.$t("Density"))}</label>
                         <select id="waterline-schedules-density" class="swal2-input">
-                            <option value="comfortable" ${this.schedulesListDensity() === 'comfortable' ? 'selected' : ''}>Comfortable</option>
-                            <option value="dense" ${this.schedulesListDensity() === 'dense' ? 'selected' : ''}>Dense</option>
+                            <option value="comfortable" ${this.schedulesListDensity() === 'comfortable' ? 'selected' : ''}>${this.escapeHtml(this.$t("Comfortable"))}</option>
+                            <option value="dense" ${this.schedulesListDensity() === 'dense' ? 'selected' : ''}>${this.escapeHtml(this.$t("Dense"))}</option>
                         </select>
                         <div class="mt-3">
-                            <label class="d-block mb-2">Columns</label>
+                            <label class="d-block mb-2">${this.escapeHtml(this.$t("Columns"))}</label>
                             ${columnHtml}
                         </div>
                     </div>
                 `,
                 showCancelButton: true,
-                confirmButtonText: 'Save Options',
+                confirmButtonText: this.$t("Save Options"),
                 background: this.swalBackground(),
                 preConfirm: () => {
                     const selectedColumns = Array.from(document.querySelectorAll('.waterline-schedule-column-option'))
@@ -697,7 +697,7 @@ export default {
                 await axios.post(`${this.resolvedApiEndpoint()}/${scheduleId}/pause`);
                 await this.loadData();
             } catch (e) {
-                this.showActionError('Failed to pause schedule', e);
+                this.showActionError(this.$t("Failed to pause schedule"), e);
             }
         },
 
@@ -706,17 +706,17 @@ export default {
                 await axios.post(`${this.resolvedApiEndpoint()}/${scheduleId}/resume`);
                 await this.loadData();
             } catch (e) {
-                this.showActionError('Failed to resume schedule', e);
+                this.showActionError(this.$t("Failed to resume schedule"), e);
             }
         },
 
         async triggerNow(scheduleId) {
-            const confirmation = await Swal.fire({
-                title: 'Trigger this schedule now?',
-                text: 'Waterline will attempt an immediate schedule dispatch.',
+            const confirmation = await this.$dialog({
+                title: this.$t("Trigger this schedule now?"),
+                text: this.$t("Waterline will attempt an immediate schedule dispatch."),
                 icon: 'question',
                 showCancelButton: true,
-                confirmButtonText: 'Trigger now',
+                confirmButtonText: this.$t("Trigger now"),
                 background: this.swalBackground(),
             });
 
@@ -727,20 +727,20 @@ export default {
             try {
                 const response = await axios.post(`${this.resolvedApiEndpoint()}/${scheduleId}/trigger`);
                 const text = response.data.triggered
-                    ? `Schedule triggered. Instance ID: ${response.data.instance_id || 'unknown'}`
-                    : 'Schedule trigger was skipped, likely because of the configured overlap policy.';
+                    ? this.$t("Schedule triggered. Instance ID: {value1}", { value1: response.data.instance_id || 'unknown' })
+                    : this.$t("Schedule trigger was skipped, likely because of the configured overlap policy.");
 
-                await Swal.fire({
-                    title: response.data.triggered ? 'Schedule triggered' : 'Trigger skipped',
+                await this.$dialog({
+                    title: response.data.triggered ? this.$t("Schedule triggered") : this.$t("Trigger skipped"),
                     text,
                     icon: response.data.triggered ? 'success' : 'info',
-                    confirmButtonText: 'Okay',
+                    confirmButtonText: this.$t("Okay"),
                     background: this.swalBackground(),
                 });
 
                 await this.loadData();
             } catch (e) {
-                this.showActionError('Failed to trigger schedule', e);
+                this.showActionError(this.$t("Failed to trigger schedule"), e);
             }
         },
 
@@ -754,11 +754,11 @@ export default {
 
         async executeBackfill() {
             if (!this.backfillFrom || !this.backfillTo) {
-                await Swal.fire({
-                    title: 'Missing backfill range',
-                    text: 'Specify both the start and end timestamps for the backfill window.',
+                await this.$dialog({
+                    title: this.$t("Missing backfill range"),
+                    text: this.$t("Specify both the start and end timestamps for the backfill window."),
                     icon: 'warning',
-                    confirmButtonText: 'Okay',
+                    confirmButtonText: this.$t("Okay"),
                     background: this.swalBackground(),
                 });
                 return;
@@ -780,17 +780,17 @@ export default {
 
                 this.showBackfill = false;
 
-                await Swal.fire({
-                    title: 'Backfill queued',
-                    text: `Backfill completed. Results: ${JSON.stringify(response.data.results || {})}`,
+                await this.$dialog({
+                    title: this.$t("Backfill queued"),
+                    text: this.$t("Backfill completed. Results: {value1}", { value1: JSON.stringify(response.data.results || {}) }),
                     icon: 'success',
-                    confirmButtonText: 'Okay',
+                    confirmButtonText: this.$t("Okay"),
                     background: this.swalBackground(),
                 });
 
                 await this.loadData();
             } catch (e) {
-                this.showActionError('Backfill failed', e);
+                this.showActionError(this.$t("Backfill failed"), e);
             }
         },
 
@@ -846,7 +846,7 @@ export default {
                 this.historyError = e.response?.data?.error
                     || e.response?.data?.message
                     || e.message
-                    || 'Failed to load audit history';
+                    || this.$t("Failed to load audit history");
             } finally {
                 this.historyLoading = false;
                 this.historyLoadingMore = false;
@@ -863,7 +863,7 @@ export default {
 
         formatHistoryEventType(type) {
             if (typeof type !== 'string' || type === '') {
-                return 'Unknown event';
+                return this.$t("Unknown event");
             }
             return type
                 .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -966,13 +966,13 @@ export default {
         },
 
         showActionError(title, error) {
-            const text = error.response?.data?.error || error.response?.data?.message || error.message || 'Request failed';
+            const text = error.response?.data?.error || error.response?.data?.message || error.message || this.$t("Request failed");
 
-            Swal.fire({
+            this.$dialog({
                 title,
                 text,
                 icon: 'error',
-                confirmButtonText: 'Okay',
+                confirmButtonText: this.$t("Okay"),
                 background: this.swalBackground(),
             });
         },

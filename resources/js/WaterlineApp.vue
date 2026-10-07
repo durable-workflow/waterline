@@ -13,14 +13,14 @@
             </div>
 
             <div class="wl-topbar__actions">
-                <div class="wl-topbar__scope" :title="bootstrap.operator_scope.description || ''">
+                <div class="wl-topbar__scope" :title="scopeDescription">
                     <span class="wl-topbar__scope-label">{{ $t("Scope") }}</span>
-                    <span class="wl-topbar__scope-value">{{ bootstrap.operator_scope.label || 'Cluster-wide' }}</span>
+                    <span class="wl-topbar__scope-value">{{ bootstrap.operator_scope.mode === 'namespace' ? bootstrap.operator_scope.namespace : $t('Cluster-wide') }}</span>
                 </div>
 
                 <div class="wl-topbar__scope" :title="bootstrap.backend.transport || ''">
                     <span class="wl-topbar__scope-label">{{ $t("Backend") }}</span>
-                    <span class="wl-topbar__scope-value">{{ bootstrap.backend.label || 'Embedded Laravel' }}</span>
+                    <span class="wl-topbar__scope-value">{{ $t(bootstrap.backend.mode === 'service' ? 'Standalone service' : 'Embedded Laravel') }}</span>
                 </div>
 
                 <button class="wl-topbar__button" :class="{ 'is-active': autoLoadsNewEntries }" @click.prevent="autoLoadNewEntries" :title="$t('Auto refresh entries')">
@@ -30,7 +30,7 @@
                     <span>{{ $t("Auto refresh") }}</span>
                 </button>
 
-                <button class="wl-topbar__button" @click.prevent="toggleTheme" :title="theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'">
+                <button class="wl-topbar__button" @click.prevent="toggleTheme" :title="$t(theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode')">
                     <svg v-if="theme === 'light'" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon">
                         <path d="M10 2a1 1 0 0 1 1 1v1a1 1 0 0 1-2 0V3a1 1 0 0 1 1-1zm4 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0zm-.464 4.95l.707.707a1 1 0 0 1-1.414 1.414l-.707-.707a1 1 0 0 1 1.414-1.414zm2.12-10.607a1 1 0 0 1 0 1.414l-.706.707a1 1 0 1 1-1.414-1.414l.707-.707a1 1 0 0 1 1.414 0zM17 11a1 1 0 1 0 0-2h-1a1 1 0 1 0 0 2h1zm-7 4a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1zM5.05 6.464A1 1 0 1 0 6.465 5.05l-.708-.707a1 1 0 0 0-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 0 1-1.414-1.414l.707-.707a1 1 0 0 1 1.414 1.414zM4 11a1 1 0 1 0 0-2H3a1 1 0 0 0 0 2h1z"/>
                     </svg>
@@ -82,7 +82,7 @@
                         <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
                             <path :d="status.icon"></path>
                         </svg>
-                        <span>{{ status.name }}</span>
+                        <span>{{ $t(status.name) }}</span>
                     </router-link>
                 </nav>
             </aside>
@@ -90,8 +90,8 @@
             <main id="main-content" class="wl-main" tabindex="-1">
                 <div v-if="bootstrap.backend.mode === 'service'" class="alert" :class="bootstrap.backend.authentication === 'configured' ? 'alert-info' : 'alert-danger'">
                     {{ $t("Standalone service backend · namespace") }} <strong>{{ bootstrap.backend.namespace || 'default' }}</strong>
-                    · {{ bootstrap.backend.access_mode === 'read_only' ? 'read-only' : 'operator commands enabled' }}
-                    {{ $t("· server authentication") }} {{ bootstrap.backend.authentication || 'missing' }}.
+                    · {{ $t(bootstrap.backend.access_mode === 'read_only' ? 'Read-only' : 'Operator commands enabled') }}
+                    {{ $t("· server authentication") }} {{ $t(bootstrap.backend.authentication === 'configured' ? 'Configured' : 'Missing') }}.
                     <template v-if="bootstrap.backend.authentication !== 'configured'">
                         {{ $t("Set") }} <code>WATERLINE_SERVER_TOKEN</code> {{ $t("before exposing this installation.") }}
                     </template>
@@ -154,6 +154,14 @@ export default {
             statuses,
             theme: localStorage.getItem('waterline-theme') || 'dark',
         };
+    },
+
+    computed: {
+        scopeDescription() {
+            return this.$t(this.bootstrap.operator_scope.mode === 'namespace'
+                ? 'Waterline is restricted to one workflow namespace.'
+                : 'Cluster-wide Waterline scope can observe all namespaces and should only be exposed behind an operator authorization boundary.');
+        },
     },
 
     mounted() {

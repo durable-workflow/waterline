@@ -3,31 +3,52 @@ import fs from 'node:fs'
 import vm from 'node:vm'
 import test from 'node:test'
 import { appendRunHistoryPage } from '../../resources/js/run-history.mjs'
+import { createWaterlineI18n } from '../../resources/js/localization.mjs'
 
 const source = fs.readFileSync(new URL('../../resources/js/screens/flows/flow.vue', import.meta.url), 'utf8')
 const script = source.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1]
     .replace(/^import .*$/gm, '').replace('export default', 'globalThis.component =')
 
-function detail(overrides = {}, backend = 'embedded') {
+function loadComponent(backend = 'embedded') {
     const sandbox = {
         Waterline: { basePath: '/waterline', backend: { mode: backend } },
         TimelineEventRenderer: {}, SearchAttributeRenderer: {}, CancellationCascadeView: {},
         appendRunHistoryPage,
     }
     vm.runInNewContext(script, sandbox)
+    return sandbox.component
+}
+
+function detail(overrides = {}, backend = 'embedded') {
+    const component = loadComponent(backend)
     const context = {
+        $t: createWaterlineI18n('en').global.t,
         flow: {}, historyLimit: 200, historyPageSize: 200, historyPageRequest: 0,
         series: [{ data: [] }, { data: [] }],
         $route: { name: 'flow-detail-run', params: { instanceId: 'order', runId: 'run' }, query: {} },
         ...overrides,
     }
-    for (const [name, method] of Object.entries(sandbox.component.methods)) {
+    for (const [name, method] of Object.entries(component.methods)) {
         if (!(name in context)) context[name] = method.bind(context)
     }
     return context
 }
 
 const run = { instance_id: 'order', selected_run_id: 'run', run_id: 'run', read_mode: 'bounded', engine_source: 'v2' }
+
+test('localized chart tooltips preserve diagnostic data as escaped text', () => {
+    const context = detail({ $t: createWaterlineI18n('uk').global.t })
+    const chart = loadComponent().data.call(context).chartOptions
+    const event = { type: '<img src=x onerror=alert(1)>', x: '<script>alert(2)</script>', y: [10, 20], diagnostic_only: true }
+    const before = structuredClone(event)
+    const html = chart.tooltip.custom({ seriesIndex: 0, dataPointIndex: 0, w: { globals: { initialSeries: [{ data: [event] }] } } })
+    assert.ok(html.includes('<b>Час</b>: 10ms'))
+    assert.ok(html.includes('лише для діагностики'))
+    assert.ok(html.includes('&lt;img'))
+    assert.ok(html.includes('&lt;script&gt;'))
+    assert.ok(!html.includes('<img') && !html.includes('<script>'))
+    assert.deepEqual(event, before)
+})
 
 test('initial embedded and service selections stay bounded, while full inspection remains explicit', () => {
     const embedded = detail()

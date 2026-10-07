@@ -32,3 +32,12 @@ export function createWaterlineI18n(locale) {
         fallbackWarn: false,
     });
 }
+
+export function dialogLabels(translate) {
+    return {
+        confirmButtonText: translate('OK'),
+        cancelButtonText: translate('Cancel'),
+        denyButtonText: translate('No'),
+        closeButtonAriaLabel: translate('Close'),
+    };
+}

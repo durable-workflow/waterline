@@ -76,7 +76,7 @@
                 Object.entries(applied.search_attributes || {}).forEach(([key, value]) => {
                     entries.push({
                         key: 'search_attribute:' + key,
-                        label: 'Search Attribute',
+                        label: this.$t("Search Attribute"),
                         value: key + '=' + value,
                     })
                 })
@@ -110,18 +110,18 @@
 
             flowCollectionDescription() {
                 return {
-                    running: 'Track live execution pressure, fresh arrivals, and claimability without leaving the operator queue.',
-                    completed: 'Review recent completions, confirm expected outcomes, and jump straight into the runs that matter.',
-                    failed: 'Surface failed runs, repair blockers, and compatibility warnings before they become recurring incidents.',
-                    cancelled: 'Audit cancelled work, confirm intent, and reopen the flows that still need operator follow-through.',
-                    terminated: 'Inspect force-stopped runs and verify downstream recovery finished the way the fleet expects.',
-                }[this.$route.params.type] || 'Review workflow executions and open the runs that need attention.'
+                    running: this.$t("Track live execution pressure, fresh arrivals, and claimability without leaving the operator queue."),
+                    completed: this.$t("Review recent completions, confirm expected outcomes, and jump straight into the runs that matter."),
+                    failed: this.$t("Surface failed runs, repair blockers, and compatibility warnings before they become recurring incidents."),
+                    cancelled: this.$t("Audit cancelled work, confirm intent, and reopen the flows that still need operator follow-through."),
+                    terminated: this.$t("Inspect force-stopped runs and verify downstream recovery finished the way the fleet expects."),
+                }[this.$route.params.type] || this.$t("Review workflow executions and open the runs that need attention.")
             },
 
             flowPageSummary() {
                 return this.ready
-                    ? `Page ${this.page} of ${Math.max(this.totalPages, 1)}`
-                    : 'Waiting for results'
+                    ? this.$t("Page {value1} of {value2}", { value1: this.page, value2: Math.max(this.totalPages, 1) })
+                    : this.$t("Waiting for results")
             },
 
             hasFilterContext() {
@@ -145,7 +145,7 @@
 
                 return selected && selected.name
                     ? selected.name
-                    : 'Saved view'
+                    : this.$t("Saved view")
             },
         },
 
@@ -227,7 +227,7 @@
                     })
                     .catch(error => {
                         if (request !== this.listRequest) return
-                        this.listLoadError = error.response?.data?.message || 'The selected execution list could not be loaded.'
+                        this.listLoadError = error.response?.data?.message || this.$t("The selected execution list could not be loaded.")
                         if (error.response?.data?.classification_scope) {
                             this.classificationScope = error.response.data.classification_scope
                         }
@@ -468,16 +468,16 @@
 
             workflowListColumnOptions() {
                 const options = [
-                    {key: 'flow', label: 'Flow'},
-                    {key: 'started_at', label: 'Started At'},
+                    {key: 'flow', label: this.$t("Flow")},
+                    {key: 'started_at', label: this.$t("Started At")},
                 ]
 
                 if (this.isTerminalCollection()) {
                     options.push({key: 'closed_at', label: this.closedAtLabel()})
-                    options.push({key: 'duration', label: 'Duration'})
+                    options.push({key: 'duration', label: this.$t("Duration")})
                 }
 
-                options.push({key: 'actions', label: 'Actions'})
+                options.push({key: 'actions', label: this.$t("Actions")})
 
                 return options
             },
@@ -554,28 +554,28 @@
                     </label>
                 `).join('')
 
-                const result = await Swal.fire(this.workflowListDialogOptions({
-                    title: 'View Options',
+                const result = await this.$dialog(this.workflowListDialogOptions({
+                    title: this.$t("View Options"),
                     html: `
                         <div class="text-left">
-                            <label class="d-block mb-1">Density</label>
+                            <label class="d-block mb-1">${this.escapeHtml(this.$t("Density"))}</label>
                             <select id="waterline-list-density" class="swal2-input">
-                                <option value="dense" ${this.workflowListDensity() === 'dense' ? 'selected' : ''}>Dense</option>
-                                <option value="comfortable" ${this.workflowListDensity() === 'comfortable' ? 'selected' : ''}>Comfortable</option>
+                                <option value="dense" ${this.workflowListDensity() === 'dense' ? 'selected' : ''}>${this.escapeHtml(this.$t("Dense"))}</option>
+                                <option value="comfortable" ${this.workflowListDensity() === 'comfortable' ? 'selected' : ''}>${this.escapeHtml(this.$t("Comfortable"))}</option>
                             </select>
-                            <label class="d-block mb-1 mt-3">Sort</label>
+                            <label class="d-block mb-1 mt-3">${this.escapeHtml(this.$t("Sort"))}</label>
                             <select id="waterline-list-sort-direction" class="swal2-input">
-                                <option value="desc" ${this.workflowListSortDirection() === 'desc' ? 'selected' : ''}>Newest first</option>
-                                <option value="asc" ${this.workflowListSortDirection() === 'asc' ? 'selected' : ''}>Oldest first</option>
+                                <option value="desc" ${this.workflowListSortDirection() === 'desc' ? 'selected' : ''}>${this.escapeHtml(this.$t("Newest first"))}</option>
+                                <option value="asc" ${this.workflowListSortDirection() === 'asc' ? 'selected' : ''}>${this.escapeHtml(this.$t("Oldest first"))}</option>
                             </select>
                             <div class="mt-3">
-                                <label class="d-block mb-2">Columns</label>
+                                <label class="d-block mb-2">${this.escapeHtml(this.$t("Columns"))}</label>
                                 ${columnHtml}
                             </div>
                         </div>
                     `,
                     showCancelButton: true,
-                    confirmButtonText: 'Save Options',
+                    confirmButtonText: this.$t("Save Options"),
                     preConfirm: () => {
                         const selectedColumns = Array.from(document.querySelectorAll('.waterline-column-option'))
                             .filter((input) => input.checked || input.value === 'flow')
@@ -828,14 +828,14 @@
                     const separatorIndex = line.indexOf(separator)
 
                     if (separatorIndex === -1) {
-                        throw new Error(`Use key${separator}value for search attribute filters.`)
+                        throw new Error(this.$t("Use key{value1}value for search attribute filters.", { value1: separator }))
                     }
 
                     const key = line.slice(0, separatorIndex).trim()
                     const attrValue = line.slice(separatorIndex + separator.length).trim()
 
                     if (!this.searchAttributeKeyRegExp().test(key)) {
-                        throw new Error(`Search attribute keys must match ${this.searchAttributeKeyPattern()}.`)
+                        throw new Error(this.$t("Search attribute keys must match {value1}.", { value1: this.searchAttributeKeyPattern() }))
                     }
 
                     if (!attrValue) {
@@ -852,7 +852,7 @@
                 const definition = this.visibilityFieldDefinition(field)
 
                 return definition && definition.label
-                    ? definition.label
+                    ? this.uiText(definition.label)
                     : field
             },
 
@@ -873,7 +873,7 @@
             fieldOptions(field, selectedValue = '') {
                 const definition = this.visibilityFieldDefinition(field)
                 const options = definition && Array.isArray(definition.options)
-                    ? definition.options.map((option) => ({...option}))
+                    ? definition.options.map((option) => ({...option, label: this.uiText(option.label)}))
                     : []
                 const normalizedSelected = this.optionValueString(selectedValue)
 
@@ -1013,11 +1013,11 @@
             filterMetadataNoticeHtml() {
                 const sections = [
                     {
-                        label: 'Indexed metadata',
+                        label: this.$t("Indexed metadata"),
                         entries: this.metadataContractEntries('indexed_metadata'),
                     },
                     {
-                        label: 'Detail only',
+                        label: this.$t("Detail only"),
                         entries: this.metadataContractEntries('detail_metadata'),
                     },
                 ].filter((section) => section.entries.length > 0)
@@ -1033,7 +1033,7 @@
                                 <strong>${this.escapeHtml(section.label)}</strong>
                                 <ul class="mb-0 pl-3 small">
                                     ${section.entries.map((entry) => `
-                                        <li><span class="font-weight-bold">${this.escapeHtml(entry.label || entry.key)}</span>${entry.description ? ': ' + this.escapeHtml(entry.description) : ''}</li>
+                                        <li><span class="font-weight-bold">${this.escapeHtml(this.uiText(entry.label) || entry.key)}</span>${entry.description ? ': ' + this.escapeHtml(this.uiText(entry.description)) : ''}</li>
                                     `).join('')}
                                 </ul>
                             </div>
@@ -1067,7 +1067,7 @@
 
             operatorFieldLabel(definition, fallback) {
                 const label = definition && definition.label
-                    ? definition.label
+                    ? this.uiText(definition.label)
                     : fallback
 
                 return this.escapeHtml(label)
@@ -1084,7 +1084,7 @@
                 const selectInput = (id, label, value, options, help = '', labelClass = 'd-block text-left mb-1') => `
                     <label class="${labelClass}" for="${id}">${label}</label>
                     <select id="${id}" class="swal2-input mt-1">
-                        <option value="" ${value === '' ? 'selected' : ''}>Any</option>
+                        <option value="" ${value === '' ? 'selected' : ''}>${this.escapeHtml(this.$t("Any"))}</option>
                         ${options.map((option) => `
                             <option value="${this.escapeHtml(this.optionValueString(option.value))}" ${value === this.optionValueString(option.value) ? 'selected' : ''}>${this.escapeHtml(option.label)}</option>
                         `).join('')}
@@ -1098,7 +1098,7 @@
                         : this.escapeHtml(labelOverride)
                     const value = this.filterValue(field, filters)
                     const help = definition.help
-                        ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(definition.help)}</small>`
+                        ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(this.uiText(definition.help))}</small>`
                         : ''
 
                     if (definition.input === 'boolean_select' || definition.input === 'select') {
@@ -1112,10 +1112,10 @@
                     : ''
                 const labelsHtml = labelsDefinition
                     ? `
-                        <label class="d-block text-left mb-1" for="waterline-filter-labels">${this.escapeHtml(labelsDefinition.label || 'Labels')}</label>
+                        <label class="d-block text-left mb-1" for="waterline-filter-labels">${this.escapeHtml(this.uiText(labelsDefinition.label) || this.$t('Labels'))}</label>
                         <textarea id="waterline-filter-labels" class="swal2-textarea" rows="4" placeholder="${labelPlaceholder}">${this.escapeHtml(this.labelsText(filters))}</textarea>
                         ${labelsDefinition.help
-                            ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(labelsDefinition.help)}</small>`
+                            ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(this.uiText(labelsDefinition.help))}</small>`
                             : ''}
                     `
                     : ''
@@ -1133,9 +1133,9 @@
 
                         return `
                             <div class="text-left mt-3 mb-2">
-                                <div class="font-weight-bold mb-2">${this.escapeHtml(definition.label || field)}</div>
-                                ${fieldInput(field, definition, 'd-block text-left mb-1 small text-uppercase text-muted', 'Exact match')}
-                                ${fieldInput(containsField, containsDefinition, 'd-block text-left mb-1 mt-3 small text-uppercase text-muted', 'Contains')}
+                                <div class="font-weight-bold mb-2">${this.escapeHtml(this.uiText(definition.label) || field)}</div>
+                                ${fieldInput(field, definition, 'd-block text-left mb-1 small text-uppercase text-muted', this.$t("Exact match"))}
+                                ${fieldInput(containsField, containsDefinition, 'd-block text-left mb-1 mt-3 small text-uppercase text-muted', this.$t('Contains'))}
                             </div>
                         `
                     })
@@ -1147,10 +1147,10 @@
                     : ''
                 const searchAttrHtml = searchAttrDefinition
                     ? `
-                        <label class="d-block text-left mb-1 mt-3" for="waterline-filter-search-attributes">${this.escapeHtml(searchAttrDefinition.label || 'Search Attributes')}</label>
+                        <label class="d-block text-left mb-1 mt-3" for="waterline-filter-search-attributes">${this.escapeHtml(this.uiText(searchAttrDefinition.label) || this.$t('Search Attributes'))}</label>
                         <textarea id="waterline-filter-search-attributes" class="swal2-textarea" rows="4" placeholder="${searchAttrPlaceholder}">${this.escapeHtml(this.searchAttributesText(filters))}</textarea>
                         ${searchAttrDefinition.help
-                            ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(searchAttrDefinition.help)}</small>`
+                            ? `<small class="d-block text-left text-muted mt-2">${this.escapeHtml(this.uiText(searchAttrDefinition.help))}</small>`
                             : ''}
                     `
                     : ''
@@ -1184,14 +1184,14 @@
                     const separatorIndex = line.indexOf(separator)
 
                     if (separatorIndex === -1) {
-                        throw new Error(`Use key${separator}value for label filters.`)
+                        throw new Error(this.$t("Use key{value1}value for label filters.", { value1: separator }))
                     }
 
                     const key = line.slice(0, separatorIndex).trim()
                     const labelValue = line.slice(separatorIndex + separator.length).trim()
 
                     if (!this.labelKeyRegExp().test(key)) {
-                        throw new Error(`Label keys must match ${this.labelKeyPattern()}.`)
+                        throw new Error(this.$t("Label keys must match {value1}.", { value1: this.labelKeyPattern() }))
                     }
 
                     if (!labelValue) {
@@ -1273,11 +1273,11 @@
                 const current = this.selectedCustomView && !this.savedViewVersionSupported(this.selectedCustomView)
                     ? this.mergeFilterPayloads(this.selectedCustomView.filters || {}, this.currentFilterPayload())
                     : this.currentFilterPayload()
-                const result = await Swal.fire(this.workflowListDialogOptions({
-                    title: 'Edit Filters',
+                const result = await this.$dialog(this.workflowListDialogOptions({
+                    title: this.$t("Edit Filters"),
                     html: this.filterEditorHtml(current),
                     showCancelButton: true,
-                    confirmButtonText: 'Apply Filters',
+                    confirmButtonText: this.$t("Apply Filters"),
                     preConfirm: () => {
                         try {
                             const filters = {}
@@ -1335,29 +1335,29 @@
 
                 const view = this.selectedCustomView
                 const updateNote = view.filter_version_supported === false
-                    ? `This view uses filter version ${view.filter_version}. Updating rewrites it to the current contract with the stored view filters plus any query refinements.`
-                    : 'Update uses the current applied filters.'
-                const result = await Swal.fire({
-                    title: 'Manage View',
+                    ? this.$t("This view uses filter version {value1}. Updating rewrites it to the current contract with the stored view filters plus any query refinements.", { value1: view.filter_version })
+                    : this.$t("Update uses the current applied filters.")
+                const result = await this.$dialog({
+                    title: this.$t("Manage View"),
                     html: `
-                        <label class="d-block text-left mb-1" for="waterline-view-name">Name</label>
+                        <label class="d-block text-left mb-1" for="waterline-view-name">${this.escapeHtml(this.$t("Name"))}</label>
                         <input id="waterline-view-name" class="swal2-input" value="${this.escapeHtml(view.name)}">
                         <label class="d-flex align-items-center justify-content-start mt-2">
                             <input id="waterline-view-shared" type="checkbox" class="mr-2" ${view.shared ? 'checked' : ''}>
-                            <span>Shared within this Waterline scope</span>
+                            <span>${this.escapeHtml(this.$t("Shared within this Waterline scope"))}</span>
                         </label>
                         <small class="d-block text-left text-muted mt-3">${this.escapeHtml(updateNote)}</small>
                     `,
                     showCancelButton: true,
                     showDenyButton: true,
-                    confirmButtonText: 'Update View',
-                    denyButtonText: 'Delete View',
+                    confirmButtonText: this.$t("Update View"),
+                    denyButtonText: this.$t("Delete View"),
                     background: this.swalBackground(),
                     preConfirm: () => {
                         const name = document.getElementById('waterline-view-name').value.trim()
 
                         if (!name) {
-                            Swal.showValidationMessage('Enter a view name.')
+                            Swal.showValidationMessage(this.$t("Enter a view name."))
                             return
                         }
 
@@ -1369,12 +1369,12 @@
                 })
 
                 if (result.isDenied) {
-                    const confirmDelete = await Swal.fire({
-                        title: 'Delete view?',
-                        text: `Waterline will remove ${view.name}.`,
+                    const confirmDelete = await this.$dialog({
+                        title: this.$t("Delete view?"),
+                        text: this.$t("Waterline will remove {value1}.", { value1: view.name }),
                         icon: 'warning',
                         showCancelButton: true,
-                        confirmButtonText: 'Delete View',
+                        confirmButtonText: this.$t("Delete View"),
                         background: this.swalBackground(),
                     })
 
@@ -1390,13 +1390,13 @@
                     } catch (error) {
                         const message = error.response && error.response.data && error.response.data.message
                             ? error.response.data.message
-                            : 'Waterline could not delete this view.'
+                            : this.$t("Waterline could not delete this view.")
 
-                        Swal.fire({
-                            title: 'View not deleted',
+                        this.$dialog({
+                            title: this.$t("View not deleted"),
                             text: message,
                             icon: 'error',
-                            confirmButtonText: 'Okay',
+                            confirmButtonText: this.$t("Okay"),
                             background: this.swalBackground(),
                         })
                     }
@@ -1421,30 +1421,30 @@
                 } catch (error) {
                     const message = error.response && error.response.data && error.response.data.message
                         ? error.response.data.message
-                        : 'Waterline could not update this view.'
+                        : this.$t("Waterline could not update this view.")
 
-                    Swal.fire({
-                        title: 'View not updated',
+                    this.$dialog({
+                        title: this.$t("View not updated"),
                         text: message,
                         icon: 'error',
-                        confirmButtonText: 'Okay',
+                        confirmButtonText: this.$t("Okay"),
                         background: this.swalBackground(),
                     })
                 }
             },
 
             async saveCurrentView() {
-                const result = await Swal.fire({
-                    title: 'Save view',
+                const result = await this.$dialog({
+                    title: this.$t("Save view"),
                     input: 'text',
                     inputLabel: 'Name',
                     inputPlaceholder: this.flowCollectionLabel() + ' view',
                     showCancelButton: true,
-                    confirmButtonText: 'Save view',
+                    confirmButtonText: this.$t("Save view"),
                     background: this.swalBackground(),
                     inputValidator: (value) => {
                         if (!value || !value.trim()) {
-                            return 'Enter a view name.';
+                            return this.$t("Enter a view name.");
                         }
 
                         return null;
@@ -1470,13 +1470,13 @@
                 } catch (error) {
                     const message = error.response && error.response.data && error.response.data.message
                         ? error.response.data.message
-                        : 'Waterline could not save this view.';
+                        : this.$t("Waterline could not save this view.");
 
-                    Swal.fire({
-                        title: 'View not saved',
+                    this.$dialog({
+                        title: this.$t("View not saved"),
                         text: message,
                         icon: 'error',
-                        confirmButtonText: 'Okay',
+                        confirmButtonText: this.$t("Okay"),
                         background: this.swalBackground(),
                     });
                 }
@@ -1566,19 +1566,19 @@
             savedViewOptionLabel(view) {
                 if (view && view.system === true) {
                     return view.service_mode_available === false
-                        ? `System: ${view.name} (unavailable in service mode)`
-                        : `System: ${view.name}`
+                        ? this.$t("System: {value1} (unavailable in service mode)", { value1: this.uiText(view.name) })
+                        : this.$t("System: {value1}", { value1: this.uiText(view.name) })
                 }
 
                 if (view && view.service_mode_available === false) {
-                    return `${view.name} (unavailable in service mode)`
+                    return this.$t("{value1} (unavailable in service mode)", { value1: view.name })
                 }
 
                 if (this.savedViewVersionSupported(view)) {
                     return view.name
                 }
 
-                return `${view.name} (upgrade needed)`
+                return this.$t("{value1} (upgrade needed)", { value1: view.name })
             },
 
             selectedSavedViewWarning() {
@@ -1588,7 +1588,7 @@
 
                 if (this.selectedCustomView && this.selectedCustomView.filter_version_supported === false) {
                     return this.selectedCustomView.filter_version_message
-                        || 'This saved view uses an unsupported visibility filter contract.'
+                        || this.$t("This saved view uses an unsupported visibility filter contract.")
                 }
 
                 return null
@@ -1605,7 +1605,7 @@
 
             closedAtLabel() {
                 return this.$route.params.type === 'completed'
-                    ? 'Completed At'
+                    ? this.$t("Completed At")
                     : this.flowCollectionLabel() + ' At';
             }
         }
@@ -1626,7 +1626,7 @@
                     <span class="flow-index__metric-label">{{ $t("Visible On Page") }}</span>
                     <strong class="flow-index__metric-value">{{ ready ? flows.length : '...' }}</strong>
                     <p class="flow-index__metric-copy">
-                        {{ hasNewEntries ? 'Fresh runs are waiting at the top of the queue.' : 'Current registry slice loaded for review.' }}
+                        {{ hasNewEntries ? $t('Fresh runs are waiting at the top of the queue.') : $t('Current registry slice loaded for review.') }}
                     </p>
                 </article>
 
@@ -1634,7 +1634,7 @@
                     <span class="flow-index__metric-label">{{ $t("Queue Window") }}</span>
                     <strong class="flow-index__metric-value">{{ flowPageSummary }}</strong>
                     <p class="flow-index__metric-copy">
-                        {{ workflowListSortDirection() === 'desc' ? 'Newest runs first for fast triage.' : 'Oldest runs first for chronological review.' }}
+                        {{ workflowListSortDirection() === 'desc' ? $t('Newest runs first for fast triage.') : $t('Oldest runs first for chronological review.') }}
                     </p>
                 </article>
 
@@ -1642,7 +1642,7 @@
                     <span class="flow-index__metric-label">{{ $t("Applied Filters") }}</span>
                     <strong class="flow-index__metric-value">{{ activeFilterCount }}</strong>
                     <p class="flow-index__metric-copy">
-                        {{ hasActiveFilters ? 'This collection is narrowed by a saved view or manual filters.' : 'The default collection is currently in view.' }}
+                        {{ hasActiveFilters ? $t('This collection is narrowed by a saved view or manual filters.') : $t('The default collection is currently in view.') }}
                     </p>
                 </article>
 
@@ -1650,7 +1650,7 @@
                     <span class="flow-index__metric-label">{{ $t("Presentation") }}</span>
                     <strong class="flow-index__metric-value">{{ selectedViewDisplay }}</strong>
                     <p class="flow-index__metric-copy">
-                        {{ workflowListDensity() === 'dense' ? 'Dense rows keep more history visible at once.' : 'Comfortable spacing favors deeper inspection.' }}
+                        {{ workflowListDensity() === 'dense' ? $t('Dense rows keep more history visible at once.') : $t('Comfortable spacing favors deeper inspection.') }}
                     </p>
                 </article>
             </div>
@@ -1751,10 +1751,10 @@
                         @click="changeClassification('')">{{ $t("Show all workflow types") }}</button>
             </div>
             <div v-if="ready && !listLoadError && classificationScope" class="small text-muted px-4 pt-3">
-                {{ classificationScope.label }}
+                {{ uiText(classificationScope.label) }}
                 <span v-if="listOperatorScope && listOperatorScope.namespace"> {{ $t("/ namespace") }} {{ listOperatorScope.namespace }}</span>
                 <span v-else-if="listOperatorScope && listOperatorScope.mode === 'cluster'"> {{ $t("/ all namespaces") }}</span>
-                <span v-if="listTimeWindows"> {{ $t("/ retained") }} {{ listTimeWindows.status_bucket }} {{ $t("runs matching the current filters") }}</span>
+                <span v-if="listTimeWindows"> {{ $t("/ retained") }} {{ stateLabel(listTimeWindows.status_bucket) }} {{ $t("runs matching the current filters") }}</span>
                 <span v-if="listTimeWindows && listTimeWindows.generated_at"> {{ $t("/ as of") }} {{ listTimeWindows.generated_at }}</span>
             </div>
             <div class="card-body flow-index__registry-head">
@@ -1762,14 +1762,14 @@
                     <p class="flow-index__section-kicker">{{ $t("Registry") }}</p>
                     <h2 class="flow-index__section-title">{{ flowCollectionLabel() }} {{ $t("flow registry") }}</h2>
                     <p class="flow-index__section-copy">
-                        {{ ready ? `Showing ${flows.length} ${flows.length === 1 ? 'flow' : 'flows'} on the current page.` : 'Loading the current workflow collection.' }}
+                        {{ ready ? $t('Showing {count} flows on the current page.', { count: flows.length.toLocaleString($i18n.locale) }, flows.length) : $t('Loading the current workflow collection.') }}
                     </p>
                 </div>
 
                 <div class="flow-index__registry-meta">
                     <span class="flow-index__pill">{{ flowPageSummary }}</span>
                     <span class="flow-index__pill is-muted">
-                        {{ workflowListSortDirection() === 'desc' ? 'Newest first' : 'Oldest first' }}
+                        {{ workflowListSortDirection() === 'desc' ? $t('Newest first') : $t('Oldest first') }}
                     </span>
                 </div>
             </div>
@@ -1782,9 +1782,9 @@
             </div>
 
             <div v-else-if="flows.length === 0" class="flow-index__state flow-index__state--empty">
-                <strong>{{ hasActiveFilters ? 'No flows match the current view.' : 'No flows in this collection yet.' }}</strong>
+                <strong>{{ hasActiveFilters ? $t('No flows match the current view.') : $t('No flows in this collection yet.') }}</strong>
                 <p class="flow-index__state-copy">
-                    {{ hasActiveFilters ? 'Clear filters or switch views to widen the queue.' : 'Waterline will populate this registry when runs enter this collection.' }}
+                    {{ hasActiveFilters ? $t('Clear filters or switch views to widen the queue.') : $t('Waterline will populate this registry when runs enter this collection.') }}
                 </p>
             </div>
 
