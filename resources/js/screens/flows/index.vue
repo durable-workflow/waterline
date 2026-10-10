@@ -68,7 +68,7 @@
                 Object.entries(applied.labels || {}).forEach(([key, value]) => {
                     entries.push({
                         key: 'label:' + key,
-                        label: 'Label',
+                        label: this.$t('Label'),
                         value: key + '=' + value,
                     })
                 })

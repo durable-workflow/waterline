@@ -803,7 +803,7 @@ export default {
                 {key: 'status', label: this.$t("Status")},
                 {key: 'compatibility', label: this.$t("Compatibility")},
                 {key: 'source', label: this.$t("Heartbeat Source")},
-                {key: 'workflows', label: 'Workflows'},
+                {key: 'workflows', label: this.$t('Workflows')},
                 {key: 'activities', label: this.$t("Activities")},
                 {key: 'concurrency', label: this.$t("Concurrency")},
                 {key: 'slots', label: this.$t("Free Slots")},
@@ -1457,7 +1457,7 @@ export default {
                 return this.$t("No compatibility markers advertised");
             }
 
-            return 'Advertised: ' + markers.join(', ');
+            return this.$t('Advertised: {markers}', { markers: markers.join(', ') });
         },
 
         heartbeatClass(worker) {

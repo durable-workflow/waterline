@@ -2969,7 +2969,7 @@ export default {
                 ].filter(Boolean).join(' / '))
             }
 
-            parts.push(this.$t("supports {value1}", { value1: supported.length ? supported.join(', ') : 'none' }))
+            parts.push(this.$t("supports {value1}", { value1: supported.length ? supported.join(', ') : this.$t('none') }))
 
             if (snapshot && snapshot.supports_required === true) {
                 parts.push(this.$t("matches selected marker"))
@@ -4193,7 +4193,7 @@ export default {
             const details = []
 
             if (this.hasDetailValue(entry.command_status) || this.hasDetailValue(entry.command_outcome)) {
-                const commandDetails = ['command']
+                const commandDetails = [this.$t('command')]
 
                 if (this.hasDetailValue(entry.command_sequence)) {
                     commandDetails.push('#' + entry.command_sequence)
@@ -4213,62 +4213,62 @@ export default {
             }
 
             if (this.hasDetailValue(entry.activity_status)) {
-                details.push('activity / ' + entry.activity_status)
+                details.push(this.$t('activity /') + ' ' + entry.activity_status)
             }
 
             if (entry.activity && this.hasDetailValue(entry.activity.last_heartbeat_at)) {
-                details.push('heartbeat / ' + this.timestamp(entry.activity.last_heartbeat_at))
+                details.push(this.$t('heartbeat /') + ' ' + this.timestamp(entry.activity.last_heartbeat_at))
             }
 
             if (entry.activity && this.hasDetailValue(entry.activity.last_heartbeat_progress)) {
                 const progressLabel = this.heartbeatProgressLabel(entry.activity.last_heartbeat_progress)
 
                 if (this.hasDetailValue(progressLabel)) {
-                    details.push('progress / ' + progressLabel)
+                    details.push(this.$t('progress /') + ' ' + progressLabel)
                 }
             }
 
             if (entry.timer && this.hasDetailValue(entry.timer.status)) {
-                details.push('timer / ' + entry.timer.status)
+                details.push(this.$t('timer /') + ' ' + entry.timer.status)
             }
 
             if (this.hasDetailValue(entry.child_status)) {
-                details.push('child / ' + entry.child_status)
+                details.push(this.$t('child /') + ' ' + entry.child_status)
             }
 
             if (this.hasDetailValue(entry.child_call_id)) {
-                details.push('child call / ' + entry.child_call_id)
+                details.push(this.$t('child call /') + ' ' + entry.child_call_id)
             }
 
             if (entry.failure && this.hasDetailValue(entry.failure.propagation_kind)) {
                 const handled = entry.failure.handled === true
-                    ? 'handled'
-                    : (entry.failure.handled === false ? 'unhandled' : null)
+                    ? this.$t('handled')
+                    : (entry.failure.handled === false ? this.$t('unhandled') : null)
 
                 details.push(
-                    ['failure', entry.failure.propagation_kind, handled]
+                    [this.$t('failure'), entry.failure.propagation_kind, handled]
                         .filter(Boolean)
                         .join(' / ')
                 )
 
                 if (this.hasDetailValue(entry.failure.failure_category)) {
-                    details.push('category / ' + entry.failure.failure_category)
+                    details.push(this.$t('category /') + ' ' + entry.failure.failure_category)
                 }
 
                 if (entry.failure.non_retryable) {
-                    details.push('non-retryable')
+                    details.push(this.$t('non-retryable'))
                 }
 
                 if (this.hasDetailValue(entry.failure.exception_type)) {
-                    details.push('exception type / ' + entry.failure.exception_type)
+                    details.push(this.$t('exception type /') + ' ' + entry.failure.exception_type)
                 }
 
                 if (this.hasDetailValue(entry.failure.exception_resolved_class)) {
                     details.push(
-                        'exception resolves / ' +
+                        this.$t('exception resolves /') + ' ' +
                         entry.failure.exception_resolved_class +
-                        ' via ' +
-                        (entry.failure.exception_resolution_source || 'unknown')
+                        this.$t(' via ') +
+                        (entry.failure.exception_resolution_source || this.$t('unknown'))
                     )
                 }
 
@@ -4622,19 +4622,19 @@ export default {
             const details = []
 
             if (this.hasDetailValue(subject.instance_id)) {
-                details.push('instance / ' + subject.instance_id)
+                details.push(this.$t('instance /') + ' ' + subject.instance_id)
             }
 
             if (this.hasDetailValue(subject.run_id)) {
-                details.push('run / ' + subject.run_id)
+                details.push(this.$t('run /') + ' ' + subject.run_id)
             }
 
             if (this.hasDetailValue(subject.child_call_id)) {
-                details.push('child call / ' + subject.child_call_id)
+                details.push(this.$t('child call /') + ' ' + subject.child_call_id)
             }
 
             if (subject.diagnostic_only === true) {
-                details.push('diagnostic only / ' + (subject.history_authority || 'compatibility fallback'))
+                details.push(this.$t('diagnostic only /') + ' ' + (subject.history_authority || this.$t('compatibility fallback')))
             }
 
             return details

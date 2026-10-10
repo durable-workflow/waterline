@@ -195,7 +195,7 @@ export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirect
         fs.rmSync(scratch, { recursive: true, force: true });
     }
     fs.writeFileSync(path.join(outputDirectory, 'summary.json'), JSON.stringify({ boundary: 'Production UI with synthetic dashboard observations and Chromium page zoom', cases: reports }, null, 2));
-    assert.equal(reports.length, 4 * widths.length * zooms.length);
+    assert.equal(reports.length, 6 * widths.length * zooms.length);
     assert.deepEqual(reports.filter(report => report.failures.length || report.errors.length || report.writes.length), [], 'Dashboard content must remain visible and contained.');
 }
 
