@@ -43,6 +43,7 @@ function renderedState(component, healthData) {
     const workers = component.methods.workersFromSnapshot.call({}, healthData);
     const context = {
         $t: createWaterlineI18n('en').global.t,
+        $i18n: { locale: 'en' },
         healthData,
         workers,
     };

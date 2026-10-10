@@ -552,8 +552,8 @@
                 <div class="row mb-2" v-if="hasDetailValue(flow.retained_history_event_count) && hasDetailValue(flow.retained_exception_count)">
                     <div class="col-md-2"><strong>{{ $t("Retained Details") }}</strong></div>
                     <div class="col">
-                        {{ Number(flow.retained_history_event_count).toLocaleString() }} {{ $t("history events,") }}
-                        {{ Number(flow.retained_exception_count).toLocaleString() }} {{ $t("failure records") }}
+                        {{ Number(flow.retained_history_event_count).toLocaleString(this.$i18n.locale) }} {{ $t("history events,") }}
+                        {{ Number(flow.retained_exception_count).toLocaleString(this.$i18n.locale) }} {{ $t("failure records") }}
                     </div>
                 </div>
 
@@ -2693,13 +2693,13 @@ export default {
 
         historyBudgetSummary(flow) {
             const eventCount = this.hasDetailValue(flow.history_event_count)
-                ? this.$t('{count} events', { count: Number(flow.history_event_count).toLocaleString() }, Number(flow.history_event_count))
+                ? this.$t('{count} events', { count: Number(flow.history_event_count).toLocaleString(this.$i18n.locale) }, Number(flow.history_event_count))
                 : this.$t('Unknown event count')
             const size = this.formatBytes(flow.history_size_bytes)
             const thresholds = []
 
             if (this.hasDetailValue(flow.history_event_threshold)) {
-                thresholds.push(this.$t('{count} events', { count: Number(flow.history_event_threshold).toLocaleString() }, Number(flow.history_event_threshold)))
+                thresholds.push(this.$t('{count} events', { count: Number(flow.history_event_threshold).toLocaleString(this.$i18n.locale) }, Number(flow.history_event_threshold)))
             }
 
             if (this.hasDetailValue(flow.history_size_bytes_threshold)) {
@@ -2723,7 +2723,7 @@ export default {
             }
 
             if (bytes < 1024) {
-                return bytes.toLocaleString() + ' B'
+                return bytes.toLocaleString(this.$i18n.locale) + ' B'
             }
 
             if (bytes < 1024 * 1024) {
@@ -3043,7 +3043,7 @@ export default {
         },
 
         timelineWindowSummary() {
-            const returned = this.timelineReturnedCount().toLocaleString()
+            const returned = this.timelineReturnedCount().toLocaleString(this.$i18n.locale)
             if ((this.flow.engine_source === 'service' || this.flow.read_mode === 'bounded')
                 && !this.hasDetailValue(this.flow.timeline_total_count)) {
                 const key = this.flow.history_window_from_start === false
@@ -3051,7 +3051,7 @@ export default {
                     : 'Showing {count} events'
                 return this.$t(key, { count: returned }, this.timelineReturnedCount()) + (this.timelineHasOlder() ? this.$t(' / more available') : '')
             }
-            const total = this.timelineTotalCount().toLocaleString()
+            const total = this.timelineTotalCount().toLocaleString(this.$i18n.locale)
             const key = this.flow.timeline_window_direction === 'latest'
                 ? 'Showing {returned} of {total} latest events{range}'
                 : 'Showing {returned} of {total} selected events{range}'

@@ -106,15 +106,15 @@
                 <article class="card service-catalog-view__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="service-catalog-view__summary-label">{{ $t("Returned rows") }}</div>
-                        <div class="service-catalog-view__summary-value">{{ totalRows.toLocaleString() }}</div>
-                        <div class="service-catalog-view__summary-meta">{{ pagination ? pagination.total.toLocaleString() : rows.length.toLocaleString() }} {{ $t("total in this result set.") }}</div>
+                        <div class="service-catalog-view__summary-value">{{ totalRows.toLocaleString($i18n.locale) }}</div>
+                        <div class="service-catalog-view__summary-meta">{{ pagination ? pagination.total.toLocaleString($i18n.locale) : rows.length.toLocaleString($i18n.locale) }} {{ $t("total in this result set.") }}</div>
                     </div>
                 </article>
 
                 <article v-if="activeTab === 'calls'" class="card service-catalog-view__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="service-catalog-view__summary-label">{{ $t("Open calls") }}</div>
-                        <div class="service-catalog-view__summary-value">{{ openCallCount.toLocaleString() }}</div>
+                        <div class="service-catalog-view__summary-value">{{ openCallCount.toLocaleString($i18n.locale) }}</div>
                         <div class="service-catalog-view__summary-meta">{{ $t("Calls accepted but not terminal.") }}</div>
                     </div>
                 </article>
@@ -122,7 +122,7 @@
                 <article v-if="activeTab === 'calls'" class="card service-catalog-view__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="service-catalog-view__summary-label">{{ $t("Policy outcomes") }}</div>
-                        <div class="service-catalog-view__summary-value" :class="policyOutcomeCount > 0 ? 'is-warning' : ''">{{ policyOutcomeCount.toLocaleString() }}</div>
+                        <div class="service-catalog-view__summary-value" :class="policyOutcomeCount > 0 ? 'is-warning' : ''">{{ policyOutcomeCount.toLocaleString($i18n.locale) }}</div>
                         <div class="service-catalog-view__summary-meta">{{ $t("Boundary rejections in the returned page.") }}</div>
                     </div>
                 </article>
@@ -130,7 +130,7 @@
                 <article v-if="activeTab === 'calls'" class="card service-catalog-view__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="service-catalog-view__summary-label">{{ $t("Terminal calls") }}</div>
-                        <div class="service-catalog-view__summary-value">{{ terminalCallCount.toLocaleString() }}</div>
+                        <div class="service-catalog-view__summary-value">{{ terminalCallCount.toLocaleString($i18n.locale) }}</div>
                         <div class="service-catalog-view__summary-meta">{{ $t("Completed, failed, or cancelled calls.") }}</div>
                     </div>
                 </article>

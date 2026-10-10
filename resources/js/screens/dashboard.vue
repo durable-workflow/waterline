@@ -147,11 +147,11 @@
                                     <tbody>
                                         <tr>
                                             <td>{{ $t("Running") }}</td>
-                                            <td class="text-right">{{ fleetMetric('current', 'running').toLocaleString() }}</td>
+                                            <td class="text-right">{{ fleetMetric('current', 'running').toLocaleString($i18n.locale) }}</td>
                                         </tr>
                                         <tr>
                                             <td>{{ $t("Failed") }}</td>
-                                            <td class="text-right text-danger">{{ fleetMetric('current', 'failed').toLocaleString() }}</td>
+                                            <td class="text-right text-danger">{{ fleetMetric('current', 'failed').toLocaleString($i18n.locale) }}</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -172,18 +172,18 @@
                                     <tbody>
                                         <tr>
                                             <td>{{ $t("Last hour") }}</td>
-                                            <td class="text-right text-success">{{ fleetMetric('trends', 'hour', 'completed').toLocaleString() }}</td>
-                                            <td class="text-right text-danger">{{ fleetMetric('trends', 'hour', 'failed').toLocaleString() }}</td>
+                                            <td class="text-right text-success">{{ fleetMetric('trends', 'hour', 'completed').toLocaleString($i18n.locale) }}</td>
+                                            <td class="text-right text-danger">{{ fleetMetric('trends', 'hour', 'failed').toLocaleString($i18n.locale) }}</td>
                                         </tr>
                                         <tr>
                                             <td>{{ $t("Last day") }}</td>
-                                            <td class="text-right text-success">{{ fleetMetric('trends', 'day', 'completed').toLocaleString() }}</td>
-                                            <td class="text-right text-danger">{{ fleetMetric('trends', 'day', 'failed').toLocaleString() }}</td>
+                                            <td class="text-right text-success">{{ fleetMetric('trends', 'day', 'completed').toLocaleString($i18n.locale) }}</td>
+                                            <td class="text-right text-danger">{{ fleetMetric('trends', 'day', 'failed').toLocaleString($i18n.locale) }}</td>
                                         </tr>
                                         <tr>
                                             <td>{{ $t("Last week") }}</td>
-                                            <td class="text-right text-success">{{ fleetMetric('trends', 'week', 'completed').toLocaleString() }}</td>
-                                            <td class="text-right text-danger">{{ fleetMetric('trends', 'week', 'failed').toLocaleString() }}</td>
+                                            <td class="text-right text-success">{{ fleetMetric('trends', 'week', 'completed').toLocaleString($i18n.locale) }}</td>
+                                            <td class="text-right text-danger">{{ fleetMetric('trends', 'week', 'failed').toLocaleString($i18n.locale) }}</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -237,7 +237,7 @@
                                         <td>
                                             <code>{{ workflowLabel(type.workflow_type) }}</code>
                                         </td>
-                                        <td class="text-right">{{ Number(type.total_runs || 0).toLocaleString() }}</td>
+                                        <td class="text-right">{{ Number(type.total_runs || 0).toLocaleString($i18n.locale) }}</td>
                                         <td class="text-right">
                                             <span class="badge" :class="workflowBadgeClass(type)">
                                                 {{ Number(type.pass_rate || 0).toFixed(1) }}%
@@ -248,7 +248,7 @@
                                         </td>
                                         <td class="text-right">
                                             <span v-if="Number(type.error_count || 0) > 0" class="text-danger">
-                                                {{ Number(type.error_count).toLocaleString() }}
+                                                {{ Number(type.error_count).toLocaleString($i18n.locale) }}
                                             </span>
                                             <span v-else class="text-muted">-</span>
                                         </td>
@@ -689,18 +689,18 @@ export default {
             return [
                 {
                     label: this.$t("Running now"),
-                    value: this.fleetMetric('current', 'running').toLocaleString(),
-                    meta: this.$t("{value1} failed in the active fleet", { value1: this.fleetMetric('current', 'failed').toLocaleString() }),
+                    value: this.fleetMetric('current', 'running').toLocaleString(this.$i18n.locale),
+                    meta: this.$t("{value1} failed in the active fleet", { value1: this.fleetMetric('current', 'failed').toLocaleString(this.$i18n.locale) }),
                 },
                 {
                     label: this.$t("Completed last day"),
-                    value: this.fleetMetric('trends', 'day', 'completed').toLocaleString(),
-                    meta: this.$t("{value1} completed in the last hour", { value1: this.fleetMetric('trends', 'hour', 'completed').toLocaleString() }),
+                    value: this.fleetMetric('trends', 'day', 'completed').toLocaleString(this.$i18n.locale),
+                    meta: this.$t("{value1} completed in the last hour", { value1: this.fleetMetric('trends', 'hour', 'completed').toLocaleString(this.$i18n.locale) }),
                 },
                 {
                     label: this.$t("Flows per minute"),
                     value: this.formatRate(this.stats.flows_per_minute),
-                    meta: this.$t("{value1} flows in the last hour", { value1: Number(this.stats.flows_past_hour || 0).toLocaleString() }),
+                    meta: this.$t("{value1} flows in the last hour", { value1: Number(this.stats.flows_past_hour || 0).toLocaleString(this.$i18n.locale) }),
                 },
                 {
                     label: this.$t("Active workers"),
@@ -714,22 +714,22 @@ export default {
             return [
                 {
                     label: this.$t("Flows past hour"),
-                    value: Number(this.stats.flows_past_hour || 0).toLocaleString(),
+                    value: Number(this.stats.flows_past_hour || 0).toLocaleString(this.$i18n.locale),
                     meta: this.$t("Recent run volume"),
                 },
                 {
                     label: this.$t("Exceptions past hour"),
-                    value: Number(this.stats.exceptions_past_hour || 0).toLocaleString(),
+                    value: Number(this.stats.exceptions_past_hour || 0).toLocaleString(this.$i18n.locale),
                     meta: this.$t("Recent failure pressure"),
                 },
                 {
                     label: this.$t("Failed flows past week"),
-                    value: Number(this.stats.failed_flows_past_week || 0).toLocaleString(),
+                    value: Number(this.stats.failed_flows_past_week || 0).toLocaleString(this.$i18n.locale),
                     meta: this.$t("Longer trend window"),
                 },
                 {
                     label: this.$t("Total flows"),
-                    value: Number(this.stats.flows || 0).toLocaleString(),
+                    value: Number(this.stats.flows || 0).toLocaleString(this.$i18n.locale),
                     meta: this.$t("All recorded workflow runs"),
                 },
                 {
@@ -748,14 +748,14 @@ export default {
                 },
                 {
                     label: this.$t("Max exceptions"),
-                    value: this.stats.max_exceptions_workflow ? this.exceptionCount(this.stats.max_exceptions_workflow).toLocaleString() : '0',
+                    value: this.stats.max_exceptions_workflow ? this.exceptionCount(this.stats.max_exceptions_workflow).toLocaleString(this.$i18n.locale) : '0',
                     meta: this.stats.max_exceptions_workflow ? this.$t("Run with the most exception rows") : this.$t("No exception-heavy runs"),
                     route: this.stats.max_exceptions_workflow ? { name: this.routeName(this.stats.max_exceptions_workflow), params: { flowId: this.stats.max_exceptions_workflow.id } } : null,
                     linkLabel: this.stats.max_exceptions_workflow ? this.workflowLabel(this.stats.max_exceptions_workflow.class) : null,
                 },
                 {
                     label: this.$t("Projection rebuilds needed"),
-                    value: this.uiText(projectionMetricLabel(this.operatorProjectionNeedsRebuild())),
+                    value: this.uiText(projectionMetricLabel(this.operatorProjectionNeedsRebuild(), this.$i18n.locale)),
                     meta: this.operatorProjectionNeedsRebuild() === null
                         ? this.$t("Open a workflow to inspect its history")
                         : this.$t("Outstanding projection normalization work"),
@@ -1123,7 +1123,7 @@ export default {
         },
 
         operatorMetricLabel(section, key) {
-            return this.operatorMetric(section, key).toLocaleString();
+            return this.operatorMetric(section, key).toLocaleString(this.$i18n.locale);
         },
 
         operatorDurationMetricLabel(section, key) {
@@ -1139,7 +1139,7 @@ export default {
         },
 
         operatorPolicyMetricLabel(key) {
-            return this.operatorPolicyMetric(key).toLocaleString();
+            return this.operatorPolicyMetric(key).toLocaleString(this.$i18n.locale);
         },
 
         operatorUpdateWaitMetric(key) {
@@ -1149,7 +1149,7 @@ export default {
         },
 
         operatorUpdateWaitMetricLabel(key) {
-            return this.operatorUpdateWaitMetric(key).toLocaleString();
+            return this.operatorUpdateWaitMetric(key).toLocaleString(this.$i18n.locale);
         },
 
         operatorProjectionMetric(group, key = null) {
@@ -1157,7 +1157,7 @@ export default {
         },
 
         operatorProjectionMetricLabel(group, key = null) {
-            return this.uiText(projectionMetricLabel(this.operatorProjectionMetric(group, key)));
+            return this.uiText(projectionMetricLabel(this.operatorProjectionMetric(group, key), this.$i18n.locale));
         },
 
         operatorProjectionDurationMetricLabel(group, key) {
@@ -1260,7 +1260,7 @@ export default {
                 return `${value}%`;
             }
 
-            return typeof value === 'number' ? value.toLocaleString() : value;
+            return typeof value === 'number' ? value.toLocaleString(this.$i18n.locale) : value;
         },
 
         operatorRepairScopes() {

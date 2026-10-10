@@ -48,15 +48,15 @@
                 <article class="card schedule-view__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="schedule-view__summary-label">{{ $t("Returned schedules") }}</div>
-                        <div class="schedule-view__summary-value">{{ totalSchedules.toLocaleString() }}</div>
-                        <div class="schedule-view__summary-meta">{{ pagination ? pagination.total.toLocaleString() : schedules.length.toLocaleString() }} {{ $t("total in the filtered result set.") }}</div>
+                        <div class="schedule-view__summary-value">{{ totalSchedules.toLocaleString($i18n.locale) }}</div>
+                        <div class="schedule-view__summary-meta">{{ pagination ? pagination.total.toLocaleString($i18n.locale) : schedules.length.toLocaleString($i18n.locale) }} {{ $t("total in the filtered result set.") }}</div>
                     </div>
                 </article>
 
                 <article class="card schedule-view__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="schedule-view__summary-label">{{ $t("Active") }}</div>
-                        <div class="schedule-view__summary-value is-success">{{ activeScheduleCount.toLocaleString() }}</div>
+                        <div class="schedule-view__summary-value is-success">{{ activeScheduleCount.toLocaleString($i18n.locale) }}</div>
                         <div class="schedule-view__summary-meta">{{ $t("Schedules currently dispatching on cadence.") }}</div>
                     </div>
                 </article>
@@ -64,7 +64,7 @@
                 <article class="card schedule-view__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="schedule-view__summary-label">{{ $t("Paused") }}</div>
-                        <div class="schedule-view__summary-value is-warning">{{ pausedScheduleCount.toLocaleString() }}</div>
+                        <div class="schedule-view__summary-value is-warning">{{ pausedScheduleCount.toLocaleString($i18n.locale) }}</div>
                         <div class="schedule-view__summary-meta">{{ $t("Schedules waiting for operator resume.") }}</div>
                     </div>
                 </article>
@@ -72,7 +72,7 @@
                 <article class="card schedule-view__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="schedule-view__summary-label">{{ $t("Overdue next fires") }}</div>
-                        <div class="schedule-view__summary-value" :class="overdueScheduleCount > 0 ? 'is-danger' : ''">{{ overdueScheduleCount.toLocaleString() }}</div>
+                        <div class="schedule-view__summary-value" :class="overdueScheduleCount > 0 ? 'is-danger' : ''">{{ overdueScheduleCount.toLocaleString($i18n.locale) }}</div>
                         <div class="schedule-view__summary-meta">{{ $t("Active schedules whose next fire time is already behind.") }}</div>
                     </div>
                 </article>
