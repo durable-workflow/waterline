@@ -49,7 +49,7 @@ test('the operator locale defaults to English and accepts the documented Ukraini
 
 test('Spanish regional aliases select operator translations and safe command labels', () => {
     for (const locale of ['es', 'es-ES', 'es_MX', 'ES_ar', 'es-419']) assert.equal(resolveUiLocale(locale), 'es');
-    assert.equal(resolveUiLocale('es<script>'), 'en');
+    for (const locale of ['es<script>', 'es\n', 'es-ES\n', ' es', 'es-419\n']) assert.equal(resolveUiLocale(locale), 'en');
     const translate = createWaterlineI18n('es').global.t;
     assert.equal(translate('Skip to main content'), 'Saltar al contenido principal');
     assert.equal(localizedState('cleaning_up', translate), 'Limpieza en curso');
@@ -65,6 +65,8 @@ test('Spanish count messages distinguish exactly one from zero, fractions and la
         [0.5, '0.5 ejecuciones'], [1.5, '1.5 ejecuciones'], [1000000, '1000000 ejecuciones']]) {
         assert.equal(translate('{count} runs', count), expected);
     }
+    assert.equal(translate('{count} children shown{more}', { count: 1, more: '' }), 'Se muestra 1 flujo hijo');
+    assert.equal(translate('{count} children shown{more}', { count: 2, more: ', más' }), 'Se muestran 2 flujos hijos, más');
 });
 
 test('missing Ukrainian messages fall back to English and unknown keys stay readable', () => {

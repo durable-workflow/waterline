@@ -8,6 +8,7 @@ export const messages = { en, es, uk };
 export function resolveUiLocale(locale) {
     if (typeof locale !== 'string') return 'en';
     const normalized = locale.toLowerCase().replaceAll('_', '-');
+    if (normalized !== normalized.trim()) return 'en';
     if (['uk', 'uk-ua'].includes(normalized)) return 'uk';
     return /^es(?:-(?:[a-z]{2}|[0-9]{3}))?$/.test(normalized) ? 'es' : 'en';
 }

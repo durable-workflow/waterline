@@ -95,7 +95,7 @@ export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirect
     const reports = [];
     try {
         const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker', { timeout: 30000 });
-        for (const [presentation, origin] of [['embedded', baseUrl], ['service', serviceBaseUrl]]) for (const locale of ['en', 'uk']) {
+        for (const [presentation, origin] of [['embedded', baseUrl], ['service', serviceBaseUrl]]) for (const locale of ['en', 'es', 'uk']) {
             const page = await context.newPage();
             const errors = [], writes = [];
             page.on('pageerror', error => errors.push(error.message));
@@ -132,7 +132,7 @@ export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirect
             await page.locator('.wl-operator-metrics-grid').waitFor();
             assert.equal(
                 (await page.locator('.wl-operator-metric__value').last().textContent()).trim(),
-                locale === 'uk' ? 'годину' : 'an hour',
+                { en: 'an hour', es: 'una hora', uk: 'годину' }[locale],
                 'Dashboard durations must use the configured interface language.',
             );
             const tab = await worker.evaluate(async url => (await chrome.tabs.query({})).find(tab => tab.url === url), page.url());

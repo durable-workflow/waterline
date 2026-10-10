@@ -6,6 +6,7 @@ namespace Waterline\Tests\Feature;
 
 use Orchestra\Testbench\TestCase;
 use function Orchestra\Testbench\artisan;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\RuntimeConfiguration;
 use Waterline\Tests\Fixtures\FakeRemoteClient;
@@ -31,14 +32,23 @@ final class ServiceUiLocaleTest extends TestCase
         $app['config']->set('waterline.api_middleware', []);
     }
 
-    public function testUkrainianBootstrapKeepsTheHostLocaleAndApiValues(): void
+    public static function interfaceLocales(): array
+    {
+        return [
+            'Ukrainian' => ['uk', 'uk', 'Перейти до основного вмісту'],
+            'Spanish regional alias' => ['es-MX', 'es', 'Saltar al contenido principal'],
+        ];
+    }
+
+    #[DataProvider('interfaceLocales')]
+    public function testBootstrapKeepsTheHostLocaleAndApiValues(string $configuredLocale, string $resolvedLocale, string $skipLink): void
     {
         Waterline::auth(static fn (): bool => true);
         $this->app->instance(RemoteBackend::class, new RemoteBackend(new FakeRemoteClient()));
         $previous = getenv('WATERLINE_LOCALE');
         $previousEnv = $_ENV['WATERLINE_LOCALE'] ?? null;
         $previousServer = $_SERVER['WATERLINE_LOCALE'] ?? null;
-        putenv('WATERLINE_LOCALE=uk');
+        putenv('WATERLINE_LOCALE='.$configuredLocale);
         $this->app->setLocale('fr');
 
         try {
@@ -52,10 +62,10 @@ final class ServiceUiLocaleTest extends TestCase
                 hash_file('sha256', public_path('vendor/waterline/chunks/'.basename($catalogs[0]))),
             );
             $this->get('/waterline')->assertOk()
-                ->assertSee('<html lang="uk">', false)
-                ->assertSee('Перейти до основного вмісту')
+                ->assertSee('<html lang="'.$resolvedLocale.'">', false)
+                ->assertSee($skipLink)
                 ->assertViewHas('waterlineBootstrap', fn (array $value): bool =>
-                    $value['locale'] === 'uk' && $value['backend']['mode'] === 'service');
+                    $value['locale'] === $resolvedLocale && $value['backend']['mode'] === 'service');
             $this->getJson('/waterline/api/instances/order-1/runs/run-1')->assertOk()
                 ->assertJsonPath('instance_id', 'order-1')
                 ->assertJsonPath('selected_run_id', 'run-1')

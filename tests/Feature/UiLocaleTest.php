@@ -72,7 +72,9 @@ final class UiLocaleTest extends TestCase
         foreach (['es', 'es-ES', 'es_MX', 'ES_ar', 'es-419'] as $locale) {
             self::assertSame('es', UiLocale::resolve($locale));
         }
-        self::assertSame('en', UiLocale::resolve('es<script>'));
+        foreach (['es<script>', "es\n", "es-ES\n", ' es', "es-419\n"] as $locale) {
+            self::assertSame('en', UiLocale::resolve($locale));
+        }
         $this->app->setLocale('de');
         config()->set('waterline.locale', 'es');
         config()->set('app.name', '');
