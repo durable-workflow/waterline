@@ -89,8 +89,8 @@ try {
                 await page.locator('.wl-operator-metrics-grid').waitFor();
                 assert.equal((await page.locator('.wl-operator-metric__value').last().textContent()).trim(), 'una hora');
                 await page.getByText(text('Running now'), { exact: true }).waitFor();
-                const running = page.locator('.wl-overview-tile').filter({ hasText: text('Running now') });
-                assert.equal((await running.locator('.wl-overview-tile__value').textContent()).trim(), '1.234.567',
+                const running = page.locator('.wl-summary-card').filter({ hasText: text('Running now') });
+                assert.equal((await running.locator('.wl-summary-card__value').textContent()).trim(), '1.234.567',
                     'Counts must use the Waterline locale even in an English browser.');
                 await page.locator('.apexcharts-xaxis text').filter({ hasText: /ago/i }).first().waitFor();
                 const geometry = await dashboardGeometry(page);
