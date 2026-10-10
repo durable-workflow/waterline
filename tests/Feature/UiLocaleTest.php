@@ -109,6 +109,27 @@ final class UiLocaleTest extends TestCase
         self::assertSame('de', $this->app->getLocale());
     }
 
+    public function testChineseBootstrapUsesSimplifiedScriptWithoutChangingTheHost(): void
+    {
+        foreach (['zh', 'zh-Hans', 'ZH_hans', 'zh-CN', 'zh_sg', 'zh-Hans-CN', 'zh-Hans-US', 'zh-Hans-419'] as $locale) {
+            self::assertSame('zh-Hans', UiLocale::resolve($locale));
+        }
+        foreach (['zh-Hant', 'zh-TW', 'zh-HK', 'zh-Hant-CN', 'zh-US', 'zh<script>', "zh-Hans\n", ' zh', "zh-Hans-419\n"] as $locale) {
+            self::assertSame('en', UiLocale::resolve($locale));
+        }
+        $this->app->setLocale('fr');
+        config()->set('waterline.locale', 'zh_CN');
+        config()->set('app.name', '');
+
+        $this->get('/waterline')->assertOk()
+            ->assertSee('<html lang="zh-Hans">', false)
+            ->assertSee('跳转到主要内容')
+            ->assertViewHas('waterlineBootstrap', fn (array $value): bool =>
+                $value['locale'] === 'zh-Hans' && $value['app_name'] === '工作流运维');
+
+        self::assertSame('fr', $this->app->getLocale());
+    }
+
     public function testMissingTranslationFallsBackToEnglishWithoutUsingHostMessages(): void
     {
         config()->set('waterline.locale', 'uk');

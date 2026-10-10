@@ -14,10 +14,12 @@ import moment from 'moment-timezone';
 import 'moment/locale/es';
 import 'moment/locale/pt-br';
 import 'moment/locale/uk';
+import 'moment/locale/zh-cn';
 import chartEnglish from 'apexcharts/dist/locales/en.json';
 import chartSpanish from 'apexcharts/dist/locales/es.json';
 import chartPortuguese from 'apexcharts/dist/locales/pt-br.json';
 import chartUkrainian from 'apexcharts/dist/locales/uk.json';
+import chartChinese from 'apexcharts/dist/locales/zh-cn.json';
 import { readBootstrapConfig } from './bootstrap-config.mjs';
 import WaterlineApp from './WaterlineApp.vue';
 import { createWaterlineI18n, dialogLabels } from './localization.mjs';
@@ -61,11 +63,11 @@ if (mountElement && waterline) {
     app.use(router);
     const i18n = createWaterlineI18n(waterline.locale);
     app.use(i18n);
-    const dateLocale = i18n.global.locale.value.toLowerCase();
+    const dateLocale = i18n.global.locale.value === 'zh-Hans' ? 'zh-cn' : i18n.global.locale.value.toLowerCase();
     moment.locale(dateLocale);
     window.Apex = {
         ...window.Apex,
-        chart: { ...window.Apex?.chart, locales: [chartEnglish, chartSpanish, chartPortuguese, chartUkrainian], defaultLocale: dateLocale },
+        chart: { ...window.Apex?.chart, locales: [chartEnglish, chartSpanish, chartPortuguese, chartUkrainian, chartChinese], defaultLocale: dateLocale },
     };
     app.config.globalProperties.$dialog = function (options) {
         return Swal.fire(createWaterlineDialogOptions(this.$root.theme, {

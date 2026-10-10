@@ -23,6 +23,10 @@ final class UiLocale
         if (in_array($normalized, ['pt', 'pt-br'], true)) {
             return 'pt-BR';
         }
+        if (in_array($normalized, ['zh', 'zh-cn', 'zh-sg'], true)
+            || preg_match('/^zh-hans(?:-(?:[a-z]{2}|[0-9]{3}))?$/D', $normalized) === 1) {
+            return 'zh-Hans';
+        }
 
         return preg_match('/^es(?:-(?:[a-z]{2}|[0-9]{3}))?$/D', $normalized) === 1 ? 'es' : 'en';
     }

@@ -103,6 +103,40 @@ test('Portuguese item counts use the singular for one and preserve count paramet
     assert.equal(translate('{count} children shown{more}', { count: 2, more: ', há mais' }), 'Exibidos 2 filhos, há mais');
 });
 
+test('Simplified Chinese aliases keep Traditional Chinese unsupported and preserve machine values', () => {
+    for (const locale of ['zh', 'zh-Hans', 'ZH_hans', 'zh-CN', 'zh_sg', 'zh-Hans-CN', 'zh-Hans-US', 'zh-Hans-419']) {
+        assert.equal(resolveUiLocale(locale), 'zh-Hans');
+    }
+    for (const locale of ['zh-Hant', 'zh-TW', 'zh-HK', 'zh-Hant-CN', 'zh-US', 'zh<script>', 'zh-Hans\n', ' zh', 'zh-Hans-419\n']) {
+        assert.equal(resolveUiLocale(locale), 'en');
+    }
+    const translate = createWaterlineI18n('zh-Hans').global.t;
+    assert.equal(translate('Skip to main content'), '跳转到主要内容');
+    assert.equal(localizedState('cleaning_up', translate), '正在清理');
+    assert.equal(localizedState('cancelled', translate), '已取消');
+    assert.equal(localizedState('terminated', translate), '已强制终止');
+    assert.equal(localizedState('lost_authority', translate), '已失去执行权');
+    assert.equal(localizedState('future_state', translate), 'future_state');
+    assert.equal(dialogLabels(translate).cancelButtonText, '取消');
+    assert.equal(dialogLabels(translate).closeButtonAriaLabel, '关闭');
+    assert.equal(translate('Request failed with HTTP {value1}: {value2}', { value1: 503, value2: 'Original <exception> / 原文' }),
+        '请求失败，HTTP 503：Original <exception> / 原文');
+});
+
+test('Chinese counts use one form without changing count or lineage parameters', () => {
+    const translate = createWaterlineI18n('zh-Hans').global.t;
+    for (const count of [0, 1, 2, 0.5, 1.5, 1000000]) {
+        assert.equal(translate('{count} runs', count), `${count} 个运行`);
+        assert.equal(translate('{count} workers', count), `${count} 个工作进程`);
+    }
+    assert.equal(translate('{count} children shown{more}', { count: 2, more: '，完整详情中还有更多' }),
+        '显示 2 个子工作流，完整详情中还有更多');
+    assert.equal(translate('Acknowledged {at} after the original deadline', { at: '2026-10-02T00:00:31Z' }),
+        '于 2026-10-02T00:00:31Z 确认，晚于原始截止时间');
+    assert.equal(translate('This immediately closes the current active run as Cancelled without cooperative cleanup. Previously completed external side effects are not undone.'),
+        '此操作会立即将当前活跃运行关闭为已取消（Cancelled），不会执行协作式清理。此前已完成的外部副作用不会撤销。');
+});
+
 test('Ukrainian plurals distinguish one, few, many, and fractional counts', () => {
     const i18n = createWaterlineI18n('uk');
     for (const [count, expected] of [[0, '0 запусків'], [1, '1 запуск'], [2, '2 запуски'], [5, '5 запусків'],

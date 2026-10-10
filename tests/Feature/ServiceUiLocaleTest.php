@@ -39,6 +39,8 @@ final class ServiceUiLocaleTest extends TestCase
             'Spanish regional alias' => ['es-MX', 'es', 'Saltar al contenido principal'],
             'Brazilian Portuguese alias' => ['PT_br', 'pt-BR', 'Ir para o conteúdo principal'],
             'Bare Portuguese selects Brazil' => ['pt', 'pt-BR', 'Ir para o conteúdo principal'],
+            'Simplified Chinese script tag' => ['ZH_hans', 'zh-Hans', '跳转到主要内容'],
+            'Chinese mainland alias' => ['zh-CN', 'zh-Hans', '跳转到主要内容'],
         ];
     }
 

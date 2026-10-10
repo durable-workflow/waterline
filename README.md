@@ -101,6 +101,10 @@ Use `uk` for Ukrainian. Spanish regional aliases such as `es-ES`, `es-MX`
 and `es-419` select the shared Spanish interface.
 Use `pt-BR` for Brazilian Portuguese. `pt`, `pt_br` and case variants also
 select the Brazilian interface. Other Portuguese regions fall back to English.
+Use `zh-Hans` for Simplified Chinese. `zh`, `zh-CN`, `zh-SG` and
+explicit Simplified script tags such as `zh-Hans-CN` select this interface.
+Underscores and case variants are accepted. Traditional script and regional
+tags such as `zh-Hant`, `zh-TW` and `zh-HK` fall back to English.
 Embedded hosts can also set `'locale' => 'es'` in `config/waterline.php`.
 Their resolved Laravel configuration takes precedence, including a cached
 literal value. Rebuild the host's config cache after changing environment-based
@@ -113,7 +117,7 @@ change the host application's locale. Workflow names, run IDs, namespaces,
 payloads, original exception messages and machine-readable API states keep
 their original values.
 
-Translations live in `resources/lang/{en,es,pt-BR,uk}.json` and
+Translations live in `resources/lang/{en,es,pt-BR,uk,zh-Hans}.json` and
 are shared by the Vue interface and server-rendered page. English sentence keys
 make missing messages readable. To contribute a language, add its catalog,
 register it in `resources/js/localization.mjs` and `app/Support/UiLocale.php`,
@@ -121,6 +125,7 @@ and cover its locale and plural rules in the tests. Keep placeholders such as
 `{count}` and `{name}` intact. Spanish and Portuguese count messages use two
 alternatives in the order `one | other`. Portuguese discrete item counts use
 the singular for exactly one, with zero and fractional counts taking the plural.
+Chinese count messages use a single form for every count.
 Ukrainian plural messages use four alternatives
 in the order `one | few | many | other`. Translate the complete meaning of
 recovery warnings and review terminology and dialog layout in the browser.
