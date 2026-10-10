@@ -41,6 +41,7 @@ final class ServiceUiLocaleTest extends TestCase
             'Bare Portuguese selects Brazil' => ['pt', 'pt-BR', 'Ir para o conteúdo principal'],
             'Simplified Chinese script tag' => ['ZH_hans', 'zh-Hans', '跳转到主要内容'],
             'Chinese mainland alias' => ['zh-CN', 'zh-Hans', '跳转到主要内容'],
+            'Japanese regional alias' => ['JA_jp', 'ja', 'メインコンテンツへ移動'],
         ];
     }
 

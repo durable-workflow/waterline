@@ -33,8 +33,8 @@ return [
     | Operator UI Language
     |--------------------------------------------------------------------------
     |
-    | Select English (en), Spanish (es), Brazilian Portuguese (pt-BR),
-    | Ukrainian (uk) or Simplified Chinese (zh-Hans) in either backend mode. Unsupported
+    | Select English (en), Brazilian Portuguese (pt-BR), Simplified Chinese
+    | (zh-Hans), Japanese (ja), Spanish (es) or Ukrainian (uk) in either backend mode. Unsupported
     | languages and missing translations fall back to English. This setting
     | affects Waterline presentation without changing the Laravel host locale.
     |

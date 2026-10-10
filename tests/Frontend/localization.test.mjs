@@ -137,6 +137,36 @@ test('Chinese counts use one form without changing count or lineage parameters',
         '此操作会立即将当前活跃运行关闭为已取消（Cancelled），不会执行协作式清理。此前已完成的外部副作用不会撤销。');
 });
 
+test('Japanese aliases preserve original diagnostics and distinguish force termination', () => {
+    for (const locale of ['ja', 'ja-JP', 'JA_jp', 'ja-US', 'ja-419']) assert.equal(resolveUiLocale(locale), 'ja');
+    for (const locale of ['ja<script>', 'ja\n', 'ja-JP\n', ' ja', 'ja-Latn', 'ja-Jpan-JP']) assert.equal(resolveUiLocale(locale), 'en');
+    const translate = createWaterlineI18n('ja').global.t;
+    assert.equal(translate('Skip to main content'), 'メインコンテンツへ移動');
+    assert.equal(localizedState('cleaning_up', translate), 'クリーンアップ中');
+    assert.equal(localizedState('cancelled', translate), 'キャンセル済み');
+    assert.equal(localizedState('terminated', translate), '強制終了済み');
+    assert.equal(localizedState('lost_authority', translate), '処理権限の喪失');
+    assert.equal(localizedState('future_state', translate), 'future_state');
+    assert.equal(dialogLabels(translate).cancelButtonText, 'キャンセル');
+    assert.equal(dialogLabels(translate).closeButtonAriaLabel, '閉じる');
+    assert.equal(translate('Request failed with HTTP {value1}: {value2}', { value1: 503, value2: 'Original <exception> / 原文' }),
+        '要求がHTTP 503で失敗しました: Original <exception> / 原文');
+});
+
+test('Japanese counts use one form and retain the original cancellation deadline', () => {
+    const translate = createWaterlineI18n('ja').global.t;
+    for (const count of [0, 1, 2, 0.5, 1.5, 1000000]) {
+        assert.equal(translate('{count} runs', count), `${count}件の実行`);
+        assert.equal(translate('{count} workers', count), `${count}件のワーカー`);
+    }
+    assert.equal(translate('{count} children shown{more}', { count: 2, more: '、ほかにもあります' }),
+        '2件の子ワークフローを表示、ほかにもあります');
+    assert.equal(translate('Acknowledged {at} after the original deadline', { at: '2026-10-02T00:00:31Z' }),
+        '元の期限を過ぎた2026-10-02T00:00:31Zに受領確認');
+    assert.equal(translate('This immediately closes the current active run as Cancelled without cooperative cleanup. Previously completed external side effects are not undone.'),
+        '現在の稼働中の実行を直ちにキャンセル済み (Cancelled) として終了します。協調的なクリーンアップは実行しません。すでに完了した外部の副作用は取り消されません。');
+});
+
 test('Ukrainian plurals distinguish one, few, many, and fractional counts', () => {
     const i18n = createWaterlineI18n('uk');
     for (const [count, expected] of [[0, '0 запусків'], [1, '1 запуск'], [2, '2 запуски'], [5, '5 запусків'],

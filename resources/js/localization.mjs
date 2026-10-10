@@ -1,11 +1,12 @@
 import { createI18n } from 'vue-i18n';
 import en from '../lang/en.json' with { type: 'json' };
 import es from '../lang/es.json' with { type: 'json' };
+import ja from '../lang/ja.json' with { type: 'json' };
 import ptBR from '../lang/pt-BR.json' with { type: 'json' };
 import uk from '../lang/uk.json' with { type: 'json' };
 import zhHans from '../lang/zh-Hans.json' with { type: 'json' };
 
-export const messages = { en, es, 'pt-BR': ptBR, uk, 'zh-Hans': zhHans };
+export const messages = { en, es, ja, 'pt-BR': ptBR, uk, 'zh-Hans': zhHans };
 
 export function resolveUiLocale(locale) {
     if (typeof locale !== 'string') return 'en';
@@ -13,6 +14,7 @@ export function resolveUiLocale(locale) {
     if (normalized !== normalized.trim()) return 'en';
     if (['uk', 'uk-ua'].includes(normalized)) return 'uk';
     if (['pt', 'pt-br'].includes(normalized)) return 'pt-BR';
+    if (/^ja(?:-(?:[a-z]{2}|[0-9]{3}))?$/.test(normalized)) return 'ja';
     if (['zh', 'zh-cn', 'zh-sg'].includes(normalized)
         || /^zh-hans(?:-(?:[a-z]{2}|[0-9]{3}))?$/.test(normalized)) return 'zh-Hans';
     return /^es(?:-(?:[a-z]{2}|[0-9]{3}))?$/.test(normalized) ? 'es' : 'en';

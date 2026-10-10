@@ -23,6 +23,9 @@ final class UiLocale
         if (in_array($normalized, ['pt', 'pt-br'], true)) {
             return 'pt-BR';
         }
+        if (preg_match('/^ja(?:-(?:[a-z]{2}|[0-9]{3}))?$/D', $normalized) === 1) {
+            return 'ja';
+        }
         if (in_array($normalized, ['zh', 'zh-cn', 'zh-sg'], true)
             || preg_match('/^zh-hans(?:-(?:[a-z]{2}|[0-9]{3}))?$/D', $normalized) === 1) {
             return 'zh-Hans';
