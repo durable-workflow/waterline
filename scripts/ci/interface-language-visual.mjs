@@ -43,7 +43,7 @@ async function login(page, url) {
 async function snapshot(page, name) {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
         `${name}: the page must fit the viewport`);
-    await page.screenshot({ path: path.join(output, `${name}.png`), fullPage: true });
+    await page.screenshot({ path: path.join(output, `${name}.png`), fullPage: !name.endsWith('-dialog') });
     reports.push({ name, status: 'pass' });
 }
 
@@ -93,6 +93,12 @@ try {
                 assert.equal((await running.locator('.wl-summary-card__value').textContent()).trim(), '1.234.567',
                     'Counts must use the Waterline locale even in an English browser.');
                 await page.locator('.apexcharts-xaxis text').filter({ hasText: /ago/i }).first().waitFor();
+                // Theme stylesheet loading and ApexCharts redraws are asynchronous.
+                // Use the dashboard matrix's bounded convergence check.
+                await page.waitForFunction(() => [...document.querySelectorAll('.apexcharts-canvas')].every(chart => {
+                    const rect = chart.getBoundingClientRect(), card = chart.closest('.card').getBoundingClientRect();
+                    return rect.left >= card.left - 2 && rect.right <= card.right + 2;
+                }), null, { timeout: 3000 }).catch(() => {});
                 const geometry = await dashboardGeometry(page);
                 assert.deepEqual(geometry.failures, [], `${prefix}: dashboard text and charts must fit`);
                 await snapshot(page, `${prefix}-dashboard`);
@@ -145,6 +151,7 @@ try {
             }
         }
     fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify({ status: 'pass', locale: 'es', reports }, null, 2));
+    console.log(JSON.stringify({ status: 'pass', locale: 'es', cases: reports.length }));
 } finally {
     await browser.close();
 }
