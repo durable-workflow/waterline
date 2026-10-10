@@ -1539,7 +1539,7 @@ export default {
             const parts = [];
 
             if (Number.isFinite(metrics.cpu_percent)) {
-                parts.push(`CPU ${Number(metrics.cpu_percent).toFixed(1)}%`);
+                parts.push(`CPU ${Number(metrics.cpu_percent).toLocaleString(this.$i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`);
             }
             if (Number.isFinite(metrics.memory_bytes)) {
                 parts.push(this.$t("mem {value1}", { value1: this.formatBytes(metrics.memory_bytes) }));
@@ -1555,10 +1555,10 @@ export default {
             const value = Number(bytes);
             if (!Number.isFinite(value) || value < 0) return '—';
             if (value < 1024) return `${value} B`;
-            if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
-            if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MiB`;
+            if (value < 1024 * 1024) return `${(value / 1024).toLocaleString(this.$i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KiB`;
+            if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toLocaleString(this.$i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MiB`;
 
-            return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
+            return `${(value / (1024 * 1024 * 1024)).toLocaleString(this.$i18n.locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GiB`;
         },
 
         formatUptime(seconds) {

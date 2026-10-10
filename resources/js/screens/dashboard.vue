@@ -240,7 +240,7 @@
                                         <td class="text-right">{{ Number(type.total_runs || 0).toLocaleString($i18n.locale) }}</td>
                                         <td class="text-right">
                                             <span class="badge" :class="workflowBadgeClass(type)">
-                                                {{ Number(type.pass_rate || 0).toFixed(1) }}%
+                                                {{ Number(type.pass_rate || 0).toLocaleString($i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) }}%
                                             </span>
                                         </td>
                                         <td class="text-right">
@@ -871,9 +871,7 @@ export default {
                 colors: ['#28c76f'],
                 dataLabels: {
                     enabled: true,
-                    formatter(value) {
-                        return `${Number(value).toFixed(1)}%`;
-                    },
+                    formatter: value => `${Number(value).toLocaleString(this.$i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`,
                 },
                 xaxis: {
                     categories: this.topWorkflowTypes.map((type) => this.workflowLabel(type.workflow_type)),
@@ -1044,14 +1042,14 @@ export default {
             }
 
             if (numeric >= 10) {
-                return numeric.toFixed(0);
+                return numeric.toLocaleString(this.$i18n.locale, { maximumFractionDigits: 0 });
             }
 
             if (numeric >= 1) {
-                return numeric.toFixed(1);
+                return numeric.toLocaleString(this.$i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
             }
 
-            return numeric.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+            return numeric.toLocaleString(this.$i18n.locale, { maximumFractionDigits: 3 });
         },
 
         workflowLabel(type) {
@@ -1251,8 +1249,8 @@ export default {
 
         formatLimitValue(key, value) {
             if (key.endsWith('_bytes')) {
-                if (value >= 1048576) return `${(value / 1048576).toFixed(1)} MiB`;
-                if (value >= 1024) return `${(value / 1024).toFixed(0)} KiB`;
+                if (value >= 1048576) return `${(value / 1048576).toLocaleString(this.$i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MiB`;
+                if (value >= 1024) return `${(value / 1024).toLocaleString(this.$i18n.locale, { maximumFractionDigits: 0 })} KiB`;
                 return `${value} B`;
             }
 

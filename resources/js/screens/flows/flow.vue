@@ -2727,10 +2727,10 @@ export default {
             }
 
             if (bytes < 1024 * 1024) {
-                return (bytes / 1024).toFixed(1) + ' KiB'
+                return (bytes / 1024).toLocaleString(this.$i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' KiB'
             }
 
-            return (bytes / (1024 * 1024)).toFixed(1) + ' MiB'
+            return (bytes / (1024 * 1024)).toLocaleString(this.$i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' MiB'
         },
 
         duration(start, end) {

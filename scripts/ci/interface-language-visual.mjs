@@ -67,6 +67,7 @@ try {
                 const url = new URL(request.url());
                 if (url.pathname.endsWith('/stats')) {
                     const fixture = dashboardFixture();
+                    fixture.flows_per_minute = 1.5;
                     fixture.fleet_trends_series.timestamps = ['2026-08-01T12:00:00Z', '2026-09-15T12:00:00Z'];
                     return route.fulfill({ json: fixture });
                 }
@@ -93,6 +94,12 @@ try {
                 const running = page.locator('.wl-summary-card').filter({ hasText: text('Running now') });
                 assert.equal((await running.locator('.wl-summary-card__value').textContent()).trim(), '1.234.567',
                     'Counts must use the Waterline locale even in an English browser.');
+                const rate = page.locator('.wl-summary-card').filter({ hasText: text('Flows per minute') });
+                assert.equal((await rate.locator('.wl-summary-card__value').textContent()).trim(), '1,5');
+                const passRate = page.locator('td').filter({ hasText: '98,5%' }).first();
+                await passRate.waitFor();
+                assert.equal((await passRate.textContent()).trim(), '98,5%');
+                await page.locator('.apexcharts-datalabel').filter({ hasText: '98,5%' }).first().waitFor();
                 await page.locator('.apexcharts-xaxis text').filter({ hasText: /ago/i }).first().waitFor();
                 // Theme stylesheet loading and ApexCharts redraws are asynchronous.
                 // Use the dashboard matrix's bounded convergence check.
