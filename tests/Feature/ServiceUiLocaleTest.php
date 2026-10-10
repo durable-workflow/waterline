@@ -40,6 +40,7 @@ final class ServiceUiLocaleTest extends TestCase
         ];
     }
 
+    /** @dataProvider interfaceLocales */
     #[DataProvider('interfaceLocales')]
     public function testBootstrapKeepsTheHostLocaleAndApiValues(string $configuredLocale, string $resolvedLocale, string $skipLink): void
     {
