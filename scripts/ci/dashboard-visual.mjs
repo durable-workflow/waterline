@@ -132,7 +132,7 @@ export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirect
             await page.locator('.wl-operator-metrics-grid').waitFor();
             assert.equal(
                 (await page.locator('.wl-operator-metric__value').last().textContent()).trim(),
-                { en: 'an hour', es: 'una hora', 'pt-BR': 'uma hora', uk: 'годину', 'zh-Hans': '1 小时' }[locale],
+                { en: 'an hour', es: 'una hora', ja: '1時間', 'pt-BR': 'uma hora', uk: 'годину', 'zh-Hans': '1 小时' }[locale],
                 'Dashboard durations must use the configured interface language.',
             );
             const tab = await worker.evaluate(async url => (await chrome.tabs.query({})).find(tab => tab.url === url), page.url());
