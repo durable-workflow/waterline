@@ -73,7 +73,7 @@
     },
     "extra": {
         "branch-alias": {
-            "dev-main": "2.8.x-dev"
+            "dev-main": "2.9.x-dev"
         },
         "durable-workflow": {
             "product-train": "2.9.0",
