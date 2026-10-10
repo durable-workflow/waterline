@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { baseCompile } from '@intlify/message-compiler';
-import { createWaterlineI18n, dialogLabels, frenchPluralRule, messages, resolveUiLocale, ukrainianPluralRule } from '../../resources/js/localization.mjs';
+import { createWaterlineI18n, dialogLabels, frenchPluralRule, germanPluralRule, messages, resolveUiLocale, ukrainianPluralRule } from '../../resources/js/localization.mjs';
 import { localizedState } from '../../resources/js/state-labels.mjs';
 
 test('every catalog covers the same messages and every translation compiles', () => {
@@ -89,6 +89,40 @@ test('French aliases preserve diagnostic values and separate cancellation from f
         /Annulé \(Cancelled\), sans nettoyage coopératif/);
     assert.match(translate('This forcibly closes the current active run as Terminated and stops cooperative cleanup. Previously completed external side effects are not undone.'),
         /Interrompu de force \(Terminated\) et arrête le nettoyage coopératif/);
+});
+
+test('German aliases preserve original diagnostics and distinguish cooperative cancellation from termination', () => {
+    for (const locale of ['de', 'de-DE', 'DE_at', 'de-CH', 'de-029']) assert.equal(resolveUiLocale(locale), 'de');
+    for (const locale of ['de<script>', 'de\n', 'de-DE\n', ' de', 'de-Latn', 'de-Latn-DE']) assert.equal(resolveUiLocale(locale), 'en');
+    const translate = createWaterlineI18n('de').global.t;
+    assert.equal(translate('Skip to main content'), 'Zum Hauptinhalt springen');
+    assert.equal(localizedState('cleaning_up', translate), 'Aufräumen läuft');
+    assert.equal(localizedState('cancelled', translate), 'Abgebrochen');
+    assert.equal(localizedState('terminated', translate), 'Zwangsweise beendet');
+    assert.equal(localizedState('lost_authority', translate), 'Ausführungsberechtigung verloren');
+    assert.equal(localizedState('future_state', translate), 'future_state');
+    assert.equal(dialogLabels(translate).cancelButtonText, 'Abbrechen');
+    assert.equal(dialogLabels(translate).closeButtonAriaLabel, 'Schließen');
+    assert.equal(translate('Request failed with HTTP {value1}: {value2}', { value1: 503, value2: 'Original <exception> / 原文' }),
+        'Anfrage fehlgeschlagen mit HTTP 503: Original <exception> / 原文');
+    assert.equal(translate('Acknowledged {at} after the original deadline', { at: '2026-10-02T00:00:31Z' }),
+        'Am 2026-10-02T00:00:31Z nach der ursprünglichen Frist bestätigt');
+    assert.match(translate('This immediately closes the current active run as Cancelled without cooperative cleanup. Previously completed external side effects are not undone.'),
+        /Cancelled \(Abgebrochen\).*ohne kooperatives Aufräumen/);
+    assert.match(translate('This forcibly closes the current active run as Terminated and stops cooperative cleanup. Previously completed external side effects are not undone.'),
+        /Terminated \(Zwangsweise beendet\).*kooperative Aufräumen gestoppt/);
+});
+
+test('German uses singular only for one and preserves count placeholders', () => {
+    const translate = createWaterlineI18n('de').global.t;
+    for (const [count, expected] of [[0, '0 Ausführungen'], [1, '1 Ausführung'], [2, '2 Ausführungen'],
+        [0.5, '0.5 Ausführungen'], [1.5, '1.5 Ausführungen'], [2.5, '2.5 Ausführungen'], [1000000, '1000000 Ausführungen']]) {
+        assert.equal(translate('{count} runs', count), expected);
+    }
+    assert.equal(translate('{count} children shown{more}', { count: 1, more: '' }), '1 untergeordneter Workflow angezeigt');
+    assert.equal(translate('{count} children shown{more}', { count: 2, more: ', weitere' }), '2 untergeordnete Workflows angezeigt, weitere');
+    assert.equal(germanPluralRule(1, 1), 0);
+    assert.equal(germanPluralRule(2, 1), 0);
 });
 
 test('French count rules include zero and small fractions in one, and numeric millions in plural', () => {
