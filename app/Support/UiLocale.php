@@ -12,9 +12,16 @@ final class UiLocale
     {
         $locale ??= config('waterline.locale', 'en');
 
-        return is_string($locale) && in_array(strtolower(str_replace('_', '-', $locale)), ['uk', 'uk-ua'], true)
-            ? 'uk'
-            : 'en';
+        if (! is_string($locale)) {
+            return 'en';
+        }
+
+        $normalized = strtolower(str_replace('_', '-', $locale));
+        if (in_array($normalized, ['uk', 'uk-ua'], true)) {
+            return 'uk';
+        }
+
+        return preg_match('/^es(?:-(?:[a-z]{2}|[0-9]{3}))?$/D', $normalized) === 1 ? 'es' : 'en';
     }
 
     public static function text(string $message): string

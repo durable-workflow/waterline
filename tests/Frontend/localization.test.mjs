@@ -6,9 +6,9 @@ import { baseCompile } from '@intlify/message-compiler';
 import { createWaterlineI18n, dialogLabels, messages, resolveUiLocale, ukrainianPluralRule } from '../../resources/js/localization.mjs';
 import { localizedState } from '../../resources/js/state-labels.mjs';
 
-test('both catalogs cover the same messages and every translation compiles', () => {
-    assert.deepEqual(Object.keys(messages.uk).sort(), Object.keys(messages.en).sort());
-    for (const locale of ['en', 'uk']) {
+test('every catalog covers the same messages and every translation compiles', () => {
+    for (const locale of Object.keys(messages)) {
+        assert.deepEqual(Object.keys(messages[locale]).sort(), Object.keys(messages.en).sort(), locale);
         const i18n = createWaterlineI18n(locale);
         for (const key of Object.keys(messages.en)) {
             assert.equal(typeof messages[locale][key], 'string', `${locale}: ${key}`);
