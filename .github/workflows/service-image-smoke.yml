@@ -25,6 +25,14 @@ jobs:
           platforms: linux/arm64
           pull: true
           push: false
+      - name: Exercise the current stable public service image on arm64
+        run: |
+          EXPECTED_WATERLINE_VERSION="$(
+            python3 -c 'import json, pathlib; value = json.loads(pathlib.Path("release/current-product-tuple.json").read_text()); print(value["versions"]["waterline"])'
+          )"
+          WATERLINE_IMAGE="durableworkflow/waterline:${EXPECTED_WATERLINE_VERSION}"
+          export WATERLINE_IMAGE EXPECTED_WATERLINE_VERSION
+          SERVICE_IMAGE_SKIP_BUILD=1 scripts/ci/service-mode-image-smoke.sh
 
   smoke:
     name: Self-contained service image smoke
