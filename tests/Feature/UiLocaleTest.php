@@ -88,6 +88,27 @@ final class UiLocaleTest extends TestCase
         self::assertSame('de', $this->app->getLocale());
     }
 
+    public function testPortugueseBootstrapPreservesHostLocaleAndResolvesDocumentedAliases(): void
+    {
+        foreach (['pt', 'pt-BR', 'pt_br', 'PT_br'] as $locale) {
+            self::assertSame('pt-BR', UiLocale::resolve($locale));
+        }
+        foreach (['pt-PT', 'pt<script>', "pt\n", "pt-BR\n", ' pt'] as $locale) {
+            self::assertSame('en', UiLocale::resolve($locale));
+        }
+        $this->app->setLocale('de');
+        config()->set('waterline.locale', 'PT_br');
+        config()->set('app.name', '');
+
+        $this->get('/waterline')->assertOk()
+            ->assertSee('<html lang="pt-BR">', false)
+            ->assertSee('Ir para o conteúdo principal')
+            ->assertViewHas('waterlineBootstrap', fn (array $value): bool =>
+                $value['locale'] === 'pt-BR' && $value['app_name'] === 'Operações de workflow');
+
+        self::assertSame('de', $this->app->getLocale());
+    }
+
     public function testMissingTranslationFallsBackToEnglishWithoutUsingHostMessages(): void
     {
         config()->set('waterline.locale', 'uk');

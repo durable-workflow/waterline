@@ -37,6 +37,8 @@ final class ServiceUiLocaleTest extends TestCase
         return [
             'Ukrainian' => ['uk', 'uk', 'Перейти до основного вмісту'],
             'Spanish regional alias' => ['es-MX', 'es', 'Saltar al contenido principal'],
+            'Brazilian Portuguese alias' => ['PT_br', 'pt-BR', 'Ir para o conteúdo principal'],
+            'Bare Portuguese selects Brazil' => ['pt', 'pt-BR', 'Ir para o conteúdo principal'],
         ];
     }
 

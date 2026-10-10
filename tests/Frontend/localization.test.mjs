@@ -76,6 +76,33 @@ test('missing Ukrainian messages fall back to English and unknown keys stay read
     assert.equal(i18n.global.t('Unknown key.'), 'Unknown key.');
 });
 
+test('Brazilian Portuguese aliases preserve machine states and distinguish force termination', () => {
+    for (const locale of ['pt', 'pt-BR', 'pt_br', 'PT_br']) assert.equal(resolveUiLocale(locale), 'pt-BR');
+    for (const locale of ['pt-PT', 'pt<script>', 'pt\n', 'pt-BR\n', ' pt']) assert.equal(resolveUiLocale(locale), 'en');
+    const translate = createWaterlineI18n('pt-BR').global.t;
+    assert.equal(translate('Skip to main content'), 'Ir para o conteúdo principal');
+    assert.equal(localizedState('cleaning_up', translate), 'Limpeza em andamento');
+    assert.equal(localizedState('cancelled', translate), 'Cancelado');
+    assert.equal(localizedState('terminated', translate), 'Encerrado à força');
+    assert.equal(localizedState('future_state', translate), 'future_state');
+    assert.equal(dialogLabels(translate).cancelButtonText, 'Cancelar');
+    assert.equal(dialogLabels(translate).closeButtonAriaLabel, 'Fechar');
+    assert.equal(translate('Request failed with HTTP {value1}: {value2}', { value1: 503, value2: 'Original <exception>' }),
+        'A solicitação falhou com HTTP 503: Original <exception>');
+});
+
+test('Portuguese item counts use the singular for one and preserve count parameters', () => {
+    // These are counts of discrete runs/items, including zero and fractional
+    // diagnostic input. Vue I18n's one | other rule supplies the intended forms.
+    const translate = createWaterlineI18n('pt-BR').global.t;
+    for (const [count, expected] of [[0, '0 execuções'], [1, '1 execução'], [2, '2 execuções'],
+        [0.5, '0.5 execuções'], [1.5, '1.5 execuções'], [1000000, '1000000 execuções']]) {
+        assert.equal(translate('{count} runs', count), expected);
+    }
+    assert.equal(translate('{count} children shown{more}', { count: 1, more: '' }), 'Exibido 1 filho');
+    assert.equal(translate('{count} children shown{more}', { count: 2, more: ', há mais' }), 'Exibidos 2 filhos, há mais');
+});
+
 test('Ukrainian plurals distinguish one, few, many, and fractional counts', () => {
     const i18n = createWaterlineI18n('uk');
     for (const [count, expected] of [[0, '0 запусків'], [1, '1 запуск'], [2, '2 запуски'], [5, '5 запусків'],

@@ -6,7 +6,15 @@ import { dashboardFixture, dashboardGeometry } from './dashboard-visual.mjs';
 import { runDetailFixture } from './run-detail-visual.mjs';
 import { auditContrast } from './workflow-list-dialog-visual.mjs';
 
-const catalog = JSON.parse(fs.readFileSync(new URL('../../resources/lang/es.json', import.meta.url)));
+const localeIndex = process.argv.indexOf('--locale');
+const locale = localeIndex > 0 ? process.argv[localeIndex + 1] : 'es';
+const localeCases = {
+    es: { hour: 'una hora', month: /ago/i, firstDate: '2026-08-01T12:00:00Z' },
+    'pt-BR': { hour: 'uma hora', month: /fev/i, firstDate: '2026-02-01T12:00:00Z' },
+};
+assert.ok(Object.hasOwn(localeCases, locale), 'Choose a qualified locale: es or pt-BR.');
+const localeCase = localeCases[locale];
+const catalog = JSON.parse(fs.readFileSync(new URL(`../../resources/lang/${locale}.json`, import.meta.url)));
 const text = key => catalog[key];
 const instance = 'waterline-visual-instance';
 const run = 'waterline-visual-run';
@@ -17,7 +25,7 @@ const origins = [
     ['embedded', process.env.WATERLINE_LOCALIZED_EMBEDDED_URL],
     ['service', process.env.WATERLINE_LOCALIZED_SERVICE_URL],
 ];
-assert.ok(origins.every(([, origin]) => origin), 'Both Spanish deployment URLs are required.');
+assert.ok(origins.every(([, origin]) => origin), 'Both localized deployment URLs are required.');
 fs.mkdirSync(output, { recursive: true });
 const { chromium } = createRequire(path.join(process.cwd(), 'package.json'))('playwright');
 const browser = await chromium.launch({ args: ['--no-sandbox'],
@@ -35,9 +43,9 @@ async function login(page, url) {
         await page.goto(url, { waitUntil: 'networkidle' });
     }
     await page.waitForFunction(() => document.getElementById('waterline')?.dataset.waterlineMounted === 'true');
-    assert.equal(await page.locator('html').getAttribute('lang'), 'es');
+    assert.equal(await page.locator('html').getAttribute('lang'), locale);
     assert.equal(await page.locator('#waterline').evaluate(element =>
-        JSON.parse(element.getAttribute('data-waterline-config')).locale), 'es');
+        JSON.parse(element.getAttribute('data-waterline-config')).locale), locale);
     await page.getByRole('link', { name: text('Skip to main content'), exact: true }).waitFor({ state: 'attached' });
 }
 
@@ -55,7 +63,7 @@ try {
             await context.addInitScript(value => localStorage.setItem('waterline-theme', value), theme);
             const page = await context.newPage();
             const errors = [], writes = [];
-            const prefix = `${presentation}-es-${theme}-${width}`;
+            const prefix = `${presentation}-${locale}-${theme}-${width}`;
             let state = 'populated';
             page.on('pageerror', error => errors.push(error.message));
             await page.route('**/waterline/api/**', async route => {
@@ -68,7 +76,7 @@ try {
                 if (url.pathname.endsWith('/stats')) {
                     const fixture = dashboardFixture();
                     fixture.flows_per_minute = 1.5;
-                    fixture.fleet_trends_series.timestamps = ['2026-08-01T12:00:00Z', '2026-09-15T12:00:00Z'];
+                    fixture.fleet_trends_series.timestamps = [localeCase.firstDate, '2026-09-15T12:00:00Z'];
                     return route.fulfill({ json: fixture });
                 }
                 if (url.pathname.endsWith('/preferences/run-detail')) return route.fulfill({ json: {
@@ -89,7 +97,7 @@ try {
             try {
                 await login(page, new URL('/waterline/dashboard', origin).href);
                 await page.locator('.wl-operator-metrics-grid').waitFor();
-                assert.equal((await page.locator('.wl-operator-metric__value').last().textContent()).trim(), 'una hora');
+                assert.equal((await page.locator('.wl-operator-metric__value').last().textContent()).trim(), localeCase.hour);
                 await page.getByText(text('Running now'), { exact: true }).waitFor();
                 const running = page.locator('.wl-summary-card').filter({ hasText: text('Running now') });
                 assert.equal((await running.locator('.wl-summary-card__value').textContent()).trim(), '1.234.567',
@@ -100,7 +108,7 @@ try {
                 await passRate.waitFor();
                 assert.equal((await passRate.textContent()).trim(), '98,5%');
                 await page.locator('.apexcharts-datalabel').filter({ hasText: '98,5%' }).first().waitFor();
-                await page.locator('.apexcharts-xaxis text').filter({ hasText: /ago/i }).first().waitFor();
+                await page.locator('.apexcharts-xaxis text').filter({ hasText: localeCase.month }).first().waitFor();
                 // Theme stylesheet loading and ApexCharts redraws are asynchronous.
                 // Use the dashboard matrix's bounded convergence check.
                 await page.waitForFunction(() => [...document.querySelectorAll('.apexcharts-canvas')].every(chart => {
@@ -164,8 +172,8 @@ try {
                 await context.close();
             }
         }
-    fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify({ status: 'pass', locale: 'es', reports }, null, 2));
-    console.log(JSON.stringify({ status: 'pass', locale: 'es', cases: reports.length }));
+    fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify({ status: 'pass', locale, reports }, null, 2));
+    console.log(JSON.stringify({ status: 'pass', locale, cases: reports.length }));
 } finally {
     await browser.close();
 }
