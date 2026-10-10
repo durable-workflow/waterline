@@ -112,6 +112,7 @@
 </template>
 
 <script>
+import { applyThemeStylesheet } from './theme.mjs';
 const statuses = [
     {
         name: 'Running',
@@ -176,11 +177,8 @@ export default {
         },
 
         applyTheme() {
-            const link = document.getElementById('app-stylesheet');
-            if (link) {
-                const cssFile = this.theme === 'dark' ? 'app-dark.css' : 'app.css';
-                link.href = `/vendor/waterline/${cssFile}`;
-            }
+            applyThemeStylesheet(this.theme)
+                .catch(error => console.error('[Waterline:theme]', error));
         },
     },
 };
