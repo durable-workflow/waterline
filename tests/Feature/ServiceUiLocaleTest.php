@@ -43,6 +43,7 @@ final class ServiceUiLocaleTest extends TestCase
             'Chinese mainland alias' => ['zh-CN', 'zh-Hans', '跳转到主要内容'],
             'Japanese regional alias' => ['JA_jp', 'ja', 'メインコンテンツへ移動'],
             'French regional alias' => ['FR_ca', 'fr', 'Aller au contenu principal'],
+            'German regional alias' => ['DE_at', 'de', 'Zum Hauptinhalt springen'],
         ];
     }
 

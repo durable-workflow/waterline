@@ -17,6 +17,9 @@ final class UiLocale
         }
 
         $normalized = strtolower(str_replace('_', '-', $locale));
+        if (preg_match('/^de(?:-(?:[a-z]{2}|[0-9]{3}))?$/D', $normalized) === 1) {
+            return 'de';
+        }
         if (preg_match('/^fr(?:-(?:[a-z]{2}|[0-9]{3}))?$/D', $normalized) === 1) {
             return 'fr';
         }
