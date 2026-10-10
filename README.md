@@ -102,6 +102,7 @@ WATERLINE_LOCALE=es
 | English (default) | `en` |
 | Brazilian Portuguese | `pt-BR` |
 | Simplified Chinese | `zh-Hans` |
+| French | `fr` |
 | Japanese | `ja` |
 | Spanish | `es` |
 | Ukrainian | `uk` |
@@ -110,6 +111,8 @@ Use `uk` for Ukrainian. Spanish regional aliases such as `es-ES`, `es-MX`
 and `es-419` select the shared Spanish interface.
 Use `ja` for Japanese. Regional aliases such as `ja-JP`, underscores and case
 variants also select the Japanese interface.
+Use `fr` for French. Regional aliases such as `fr-FR` and `fr-CA`, underscores
+and case variants select the shared French interface.
 Use `pt-BR` for Brazilian Portuguese. `pt`, `pt_br` and case variants also
 select the Brazilian interface. Other Portuguese regions fall back to English.
 Use `zh-Hans` for Simplified Chinese. `zh`, `zh-CN`, `zh-SG` and
@@ -128,7 +131,7 @@ change the host application's locale. Workflow names, run IDs, namespaces,
 payloads, original exception messages and machine-readable API states keep
 their original values.
 
-Translations live in `resources/lang/{en,es,ja,pt-BR,uk,zh-Hans}.json` and
+Translations live in `resources/lang/{en,es,fr,ja,pt-BR,uk,zh-Hans}.json` and
 are shared by the Vue interface and server-rendered page. English sentence keys
 make missing messages readable. To contribute a language, add its catalog,
 register it in `resources/js/localization.mjs` and `app/Support/UiLocale.php`,
@@ -136,7 +139,10 @@ and cover its locale and plural rules in the tests. Keep placeholders such as
 `{count}` and `{name}` intact. Spanish and Portuguese count messages use two
 alternatives in the order `one | other`. Portuguese discrete item counts use
 the singular for exactly one, with zero and fractional counts taking the plural.
-Chinese and Japanese count messages use a single form for every count.
+French count messages use `one | other`, with `Intl.PluralRules` selecting the
+singular for zero, one and fractions whose integer part is zero or one. Numeric
+millions use the same plural noun as other plural counts. Chinese and Japanese
+count messages use a single form for every count.
 Ukrainian plural messages use four alternatives
 in the order `one | few | many | other`. Translate the complete meaning of
 recovery warnings and review terminology and dialog layout in the browser.

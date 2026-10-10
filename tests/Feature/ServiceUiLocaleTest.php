@@ -42,6 +42,7 @@ final class ServiceUiLocaleTest extends TestCase
             'Simplified Chinese script tag' => ['ZH_hans', 'zh-Hans', '跳转到主要内容'],
             'Chinese mainland alias' => ['zh-CN', 'zh-Hans', '跳转到主要内容'],
             'Japanese regional alias' => ['JA_jp', 'ja', 'メインコンテンツへ移動'],
+            'French regional alias' => ['FR_ca', 'fr', 'Aller au contenu principal'],
         ];
     }
 
@@ -55,7 +56,7 @@ final class ServiceUiLocaleTest extends TestCase
         $previousEnv = $_ENV['WATERLINE_LOCALE'] ?? null;
         $previousServer = $_SERVER['WATERLINE_LOCALE'] ?? null;
         putenv('WATERLINE_LOCALE='.$configuredLocale);
-        $this->app->setLocale('fr');
+        $this->app->setLocale('de');
 
         try {
             RuntimeConfiguration::hydrate();
@@ -76,7 +77,7 @@ final class ServiceUiLocaleTest extends TestCase
                 ->assertJsonPath('instance_id', 'order-1')
                 ->assertJsonPath('selected_run_id', 'run-1')
                 ->assertJsonPath('timeline.0.event_type', 'WorkflowStarted');
-            self::assertSame('fr', $this->app->getLocale());
+            self::assertSame('de', $this->app->getLocale());
         } finally {
             putenv($previous === false ? 'WATERLINE_LOCALE' : 'WATERLINE_LOCALE='.$previous);
             unset($_ENV['WATERLINE_LOCALE'], $_SERVER['WATERLINE_LOCALE']);

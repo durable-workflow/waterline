@@ -737,6 +737,45 @@ jobs:
         --service-base-url http://127.0.0.1:8009
         --locale ja --output-dir run-detail-evidence/japanese-zoom
 
+    - name: Start French embedded and service presentations
+      working-directory: sample-app
+      run: |
+        APP_URL=http://127.0.0.1:8010 WATERLINE_LOCALE=FR_ca \
+          php artisan serve --host=127.0.0.1 --port=8010 > ../french-embedded-web.log 2>&1 &
+        echo $! > ../french-embedded-web.pid
+        APP_URL=http://127.0.0.1:8011 WATERLINE_LOCALE=fr WATERLINE_BACKEND=service \
+          WATERLINE_ACCESS_MODE=operator WATERLINE_SERVER_ENDPOINT=http://127.0.0.1:1 \
+          WATERLINE_SERVER_TOKEN=language-visual-token \
+          php artisan serve --host=127.0.0.1 --port=8011 > ../french-service-web.log 2>&1 &
+        echo $! > ../french-service-web.pid
+        for _ in $(seq 1 30); do
+          if curl -sf http://127.0.0.1:8010/up > /dev/null \
+            && curl -sf http://127.0.0.1:8011/up > /dev/null; then
+            exit 0
+          fi
+          sleep 1
+        done
+        cat ../french-embedded-web.log
+        cat ../french-service-web.log
+        exit 1
+
+    - name: Qualify French operator text and confirmations
+      working-directory: sample-app
+      env:
+        WATERLINE_LOCALIZED_EMBEDDED_URL: http://127.0.0.1:8010
+        WATERLINE_LOCALIZED_SERVICE_URL: http://127.0.0.1:8011
+      run: >-
+        node ../waterline/scripts/ci/interface-language-visual.mjs
+        --locale fr --output-dir run-detail-evidence/french
+
+    - name: Qualify French dashboard at actual browser zoom
+      working-directory: sample-app
+      run: >-
+        node ../waterline/scripts/ci/dashboard-visual.mjs
+        --base-url http://127.0.0.1:8010
+        --service-base-url http://127.0.0.1:8011
+        --locale fr --output-dir run-detail-evidence/french-zoom
+
     - name: Upload responsive run-detail evidence
       if: ${{ always() }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
@@ -755,7 +794,7 @@ jobs:
         if [ -f run-detail-service-web.pid ]; then
           kill "$(cat run-detail-service-web.pid)" 2>/dev/null || true
         fi
-        for file in language-embedded-web.pid language-service-web.pid portuguese-embedded-web.pid portuguese-service-web.pid chinese-embedded-web.pid chinese-service-web.pid japanese-embedded-web.pid japanese-service-web.pid; do
+        for file in language-embedded-web.pid language-service-web.pid portuguese-embedded-web.pid portuguese-service-web.pid chinese-embedded-web.pid chinese-service-web.pid japanese-embedded-web.pid japanese-service-web.pid french-embedded-web.pid french-service-web.pid; do
           if [ -f "$file" ]; then
             kill "$(cat "$file")" 2>/dev/null || true
           fi

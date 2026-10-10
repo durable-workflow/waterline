@@ -10,13 +10,15 @@ const localeIndex = process.argv.indexOf('--locale');
 const locale = localeIndex > 0 ? process.argv[localeIndex + 1] : 'es';
 const localeCases = {
     es: { hour: 'una hora', month: /ago/i, firstDate: '2026-08-01T12:00:00Z' },
+    fr: { hour: 'une heure', month: /févr|fév/i, firstDate: '2026-02-01T12:00:00Z',
+        count: '1\u202f234\u202f567', rate: '1,5', percent: '98,5%' },
     'pt-BR': { hour: 'uma hora', month: /fev/i, firstDate: '2026-02-01T12:00:00Z' },
     ja: { hour: '1時間', month: /2月/, firstDate: '2026-02-01T12:00:00Z',
         count: '1,234,567', rate: '1.5', percent: '98.5%' },
     'zh-Hans': { hour: '1 小时', month: /二月|2月/, firstDate: '2026-02-01T12:00:00Z',
         count: '1,234,567', rate: '1.5', percent: '98.5%' },
 };
-assert.ok(Object.hasOwn(localeCases, locale), 'Choose a locale: es, ja, pt-BR or zh-Hans.');
+assert.ok(Object.hasOwn(localeCases, locale), 'Choose a locale: es, fr, ja, pt-BR or zh-Hans.');
 const localeCase = localeCases[locale];
 const catalog = JSON.parse(fs.readFileSync(new URL(`../../resources/lang/${locale}.json`, import.meta.url)));
 const text = key => catalog[key];
@@ -108,11 +110,15 @@ try {
                 await login(page, new URL('/waterline/dashboard', origin).href);
                 await page.locator('.wl-operator-metrics-grid').waitFor();
                 assert.equal((await page.locator('.wl-operator-metric__value').last().textContent()).trim(), localeCase.hour);
-                await page.getByText(text('Running now'), { exact: true }).waitFor();
-                const running = page.locator('.wl-summary-card').filter({ hasText: text('Running now') });
+                const running = page.locator('.wl-summary-card').filter({
+                    has: page.getByText(text('Running now'), { exact: true }),
+                });
+                await running.locator('.wl-summary-card__label').waitFor();
                 assert.equal((await running.locator('.wl-summary-card__value').textContent()).trim(), localeCase.count || '1.234.567',
                     'Counts must use the Waterline locale even in an English browser.');
-                const rate = page.locator('.wl-summary-card').filter({ hasText: text('Flows per minute') });
+                const rate = page.locator('.wl-summary-card').filter({
+                    has: page.getByText(text('Flows per minute'), { exact: true }),
+                });
                 assert.equal((await rate.locator('.wl-summary-card__value').textContent()).trim(), localeCase.rate || '1,5');
                 const expectedPercent = localeCase.percent || '98,5%';
                 const passRate = page.locator('td').filter({ hasText: expectedPercent }).first();

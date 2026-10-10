@@ -143,6 +143,27 @@ final class UiLocaleTest extends TestCase
         self::assertSame('fr', $this->app->getLocale());
     }
 
+    public function testFrenchBootstrapPreservesTheHostAndAcceptsRegionalAliases(): void
+    {
+        foreach (['fr', 'fr-FR', 'FR_ca', 'fr-CH', 'fr-029'] as $locale) {
+            self::assertSame('fr', UiLocale::resolve($locale));
+        }
+        foreach (['fr<script>', "fr\n", "fr-FR\n", ' fr', 'fr-Latn', 'fr-Latn-FR'] as $locale) {
+            self::assertSame('en', UiLocale::resolve($locale));
+        }
+        $this->app->setLocale('de');
+        config()->set('waterline.locale', 'FR_ca');
+        config()->set('app.name', '');
+
+        $this->get('/waterline')->assertOk()
+            ->assertSee('<html lang="fr">', false)
+            ->assertSee('Aller au contenu principal')
+            ->assertViewHas('waterlineBootstrap', fn (array $value): bool =>
+                $value['locale'] === 'fr' && $value['app_name'] === 'Opérations sur les workflows');
+
+        self::assertSame('de', $this->app->getLocale());
+    }
+
     public function testJapaneseBootstrapPreservesTheHostAndAcceptsRegionalAliases(): void
     {
         foreach (['ja', 'ja-JP', 'JA_jp', 'ja-US', 'ja-419'] as $locale) {
