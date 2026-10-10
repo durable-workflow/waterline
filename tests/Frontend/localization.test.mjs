@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createSSRApp } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 import { baseCompile } from '@intlify/message-compiler';
-import { createWaterlineI18n, dialogLabels, messages, resolveUiLocale, ukrainianPluralRule } from '../../resources/js/localization.mjs';
+import { createWaterlineI18n, dialogLabels, frenchPluralRule, messages, resolveUiLocale, ukrainianPluralRule } from '../../resources/js/localization.mjs';
 import { localizedState } from '../../resources/js/state-labels.mjs';
 
 test('every catalog covers the same messages and every translation compiles', () => {
@@ -67,6 +67,40 @@ test('Spanish count messages distinguish exactly one from zero, fractions and la
     }
     assert.equal(translate('{count} children shown{more}', { count: 1, more: '' }), 'Se muestra 1 flujo hijo');
     assert.equal(translate('{count} children shown{more}', { count: 2, more: ', más' }), 'Se muestran 2 flujos hijos, más');
+});
+
+test('French aliases preserve diagnostic values and separate cancellation from force termination', () => {
+    for (const locale of ['fr', 'fr-FR', 'FR_ca', 'fr-CH', 'fr-029']) assert.equal(resolveUiLocale(locale), 'fr');
+    for (const locale of ['fr<script>', 'fr\n', 'fr-FR\n', ' fr', 'fr-Latn', 'fr-Latn-FR']) assert.equal(resolveUiLocale(locale), 'en');
+    const translate = createWaterlineI18n('fr').global.t;
+    assert.equal(translate('Skip to main content'), 'Aller au contenu principal');
+    assert.equal(localizedState('cleaning_up', translate), 'Nettoyage en cours');
+    assert.equal(localizedState('cancelled', translate), 'Annulé');
+    assert.equal(localizedState('terminated', translate), 'Interrompu de force');
+    assert.equal(localizedState('lost_authority', translate), 'Autorité perdue');
+    assert.equal(localizedState('future_state', translate), 'future_state');
+    assert.equal(dialogLabels(translate).cancelButtonText, 'Annuler');
+    assert.equal(dialogLabels(translate).closeButtonAriaLabel, 'Fermer');
+    assert.equal(translate('Request failed with HTTP {value1}: {value2}', { value1: 503, value2: 'Original <exception> / 原文' }),
+        'Échec de la requête avec HTTP 503 : Original <exception> / 原文');
+    assert.equal(translate('Acknowledged {at} after the original deadline', { at: '2026-10-02T00:00:31Z' }),
+        "Réception confirmée à 2026-10-02T00:00:31Z, après l'échéance initiale");
+    assert.match(translate('This immediately closes the current active run as Cancelled without cooperative cleanup. Previously completed external side effects are not undone.'),
+        /Annulé \(Cancelled\), sans nettoyage coopératif/);
+    assert.match(translate('This forcibly closes the current active run as Terminated and stops cooperative cleanup. Previously completed external side effects are not undone.'),
+        /Interrompu de force \(Terminated\) et arrête le nettoyage coopératif/);
+});
+
+test('French count rules include zero and small fractions in one, and numeric millions in plural', () => {
+    const translate = createWaterlineI18n('fr').global.t;
+    for (const [count, expected] of [[0, '0 exécution'], [1, '1 exécution'], [2, '2 exécutions'],
+        [0.5, '0.5 exécution'], [1.5, '1.5 exécution'], [2.5, '2.5 exécutions'], [1000000, '1000000 exécutions']]) {
+        assert.equal(translate('{count} runs', count), expected);
+    }
+    assert.equal(translate('{count} children shown{more}', { count: 1, more: '' }), '1 workflow enfant affiché');
+    assert.equal(translate('{count} children shown{more}', { count: 2, more: ', autres' }), '2 workflows enfants affichés, autres');
+    assert.equal(frenchPluralRule(1, 1), 0);
+    assert.equal(frenchPluralRule(2, 1), 0);
 });
 
 test('missing Ukrainian messages fall back to English and unknown keys stay readable', () => {

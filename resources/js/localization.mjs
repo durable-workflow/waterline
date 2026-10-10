@@ -1,17 +1,19 @@
 import { createI18n } from 'vue-i18n';
 import en from '../lang/en.json' with { type: 'json' };
 import es from '../lang/es.json' with { type: 'json' };
+import fr from '../lang/fr.json' with { type: 'json' };
 import ja from '../lang/ja.json' with { type: 'json' };
 import ptBR from '../lang/pt-BR.json' with { type: 'json' };
 import uk from '../lang/uk.json' with { type: 'json' };
 import zhHans from '../lang/zh-Hans.json' with { type: 'json' };
 
-export const messages = { en, es, ja, 'pt-BR': ptBR, uk, 'zh-Hans': zhHans };
+export const messages = { en, es, fr, ja, 'pt-BR': ptBR, uk, 'zh-Hans': zhHans };
 
 export function resolveUiLocale(locale) {
     if (typeof locale !== 'string') return 'en';
     const normalized = locale.toLowerCase().replaceAll('_', '-');
     if (normalized !== normalized.trim()) return 'en';
+    if (/^fr(?:-(?:[a-z]{2}|[0-9]{3}))?$/.test(normalized)) return 'fr';
     if (['uk', 'uk-ua'].includes(normalized)) return 'uk';
     if (['pt', 'pt-br'].includes(normalized)) return 'pt-BR';
     if (/^ja(?:-(?:[a-z]{2}|[0-9]{3}))?$/.test(normalized)) return 'ja';
@@ -22,6 +24,15 @@ export function resolveUiLocale(locale) {
 
 const ukrainianPlurals = new Intl.PluralRules('uk');
 const spanishPlurals = new Intl.PluralRules('es');
+const frenchPlurals = new Intl.PluralRules('fr');
+
+export function frenchPluralRule(choice, choicesLength) {
+    // French "one" includes zero and fractions with integer part zero or one.
+    // Counts are numeric literals, so "many" and "other" use the same plural
+    // noun: 1000000 exécutions, rather than the spelled-out "un million de".
+    if (choicesLength !== 2) return choice === 1 ? 0 : Math.min(1, choicesLength - 1);
+    return frenchPlurals.select(choice) === 'one' ? 0 : 1;
+}
 
 export function spanishPluralRule(choice, choicesLength) {
     if (choicesLength !== 2) return choice === 1 ? 0 : Math.min(1, choicesLength - 1);
@@ -42,7 +53,7 @@ export function createWaterlineI18n(locale) {
         locale: resolveUiLocale(locale),
         fallbackLocale: 'en',
         messages,
-        pluralRules: { es: spanishPluralRule, uk: ukrainianPluralRule },
+        pluralRules: { es: spanishPluralRule, fr: frenchPluralRule, uk: ukrainianPluralRule },
         // Sentence keys keep the English interface legible in the source.
         // They are flat keys, including punctuation, rather than object paths.
         messageResolver: (catalog, key) => Object.hasOwn(catalog, key) ? catalog[key] : null,

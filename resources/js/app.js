@@ -12,12 +12,14 @@ import $ from 'jquery';
 import Swal from 'sweetalert2';
 import moment from 'moment-timezone';
 import 'moment/locale/es';
+import 'moment/locale/fr';
 import 'moment/locale/ja';
 import 'moment/locale/pt-br';
 import 'moment/locale/uk';
 import 'moment/locale/zh-cn';
 import chartEnglish from 'apexcharts/dist/locales/en.json';
 import chartSpanish from 'apexcharts/dist/locales/es.json';
+import chartFrench from 'apexcharts/dist/locales/fr.json';
 import chartJapanese from 'apexcharts/dist/locales/ja.json';
 import chartPortuguese from 'apexcharts/dist/locales/pt-br.json';
 import chartUkrainian from 'apexcharts/dist/locales/uk.json';
@@ -69,7 +71,7 @@ if (mountElement && waterline) {
     moment.locale(dateLocale);
     window.Apex = {
         ...window.Apex,
-        chart: { ...window.Apex?.chart, locales: [chartEnglish, chartSpanish, chartJapanese, chartPortuguese, chartUkrainian, chartChinese], defaultLocale: dateLocale },
+        chart: { ...window.Apex?.chart, locales: [chartEnglish, chartSpanish, chartFrench, chartJapanese, chartPortuguese, chartUkrainian, chartChinese], defaultLocale: dateLocale },
     };
     app.config.globalProperties.$dialog = function (options) {
         return Swal.fire(createWaterlineDialogOptions(this.$root.theme, {

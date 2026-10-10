@@ -10,13 +10,15 @@ const localeIndex = process.argv.indexOf('--locale');
 const locale = localeIndex > 0 ? process.argv[localeIndex + 1] : 'es';
 const localeCases = {
     es: { hour: 'una hora', month: /ago/i, firstDate: '2026-08-01T12:00:00Z' },
+    fr: { hour: 'une heure', month: /févr|fév/i, firstDate: '2026-02-01T12:00:00Z',
+        count: '1\u202f234\u202f567', rate: '1,5', percent: '98,5%' },
     'pt-BR': { hour: 'uma hora', month: /fev/i, firstDate: '2026-02-01T12:00:00Z' },
     ja: { hour: '1時間', month: /2月/, firstDate: '2026-02-01T12:00:00Z',
         count: '1,234,567', rate: '1.5', percent: '98.5%' },
     'zh-Hans': { hour: '1 小时', month: /二月|2月/, firstDate: '2026-02-01T12:00:00Z',
         count: '1,234,567', rate: '1.5', percent: '98.5%' },
 };
-assert.ok(Object.hasOwn(localeCases, locale), 'Choose a locale: es, ja, pt-BR or zh-Hans.');
+assert.ok(Object.hasOwn(localeCases, locale), 'Choose a locale: es, fr, ja, pt-BR or zh-Hans.');
 const localeCase = localeCases[locale];
 const catalog = JSON.parse(fs.readFileSync(new URL(`../../resources/lang/${locale}.json`, import.meta.url)));
 const text = key => catalog[key];
