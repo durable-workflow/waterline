@@ -20,6 +20,9 @@ final class UiLocale
         if (in_array($normalized, ['uk', 'uk-ua'], true)) {
             return 'uk';
         }
+        if (in_array($normalized, ['pt', 'pt-br'], true)) {
+            return 'pt-BR';
+        }
 
         return preg_match('/^es(?:-(?:[a-z]{2}|[0-9]{3}))?$/D', $normalized) === 1 ? 'es' : 'en';
     }
