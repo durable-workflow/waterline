@@ -100,6 +100,7 @@ RUN_DETAIL_VISUAL_PATHS = frozenset(
         "scripts/ci/run-detail-visual.mjs",
         "scripts/ci/dashboard-visual.mjs",
         "scripts/ci/interface-language-visual.mjs",
+        "scripts/ci/workflow-list-dialog-visual.mjs",
     }
 )
 SHARED_VISUAL_PATHS = frozenset(

@@ -19,6 +19,7 @@ import chartUkrainian from 'apexcharts/dist/locales/uk.json';
 import { readBootstrapConfig } from './bootstrap-config.mjs';
 import WaterlineApp from './WaterlineApp.vue';
 import { createWaterlineI18n, dialogLabels } from './localization.mjs';
+import { createWaterlineDialogOptions } from './dialogs.mjs';
 
 import 'bootstrap';
 import 'vue-json-pretty/lib/styles.css';
@@ -62,7 +63,11 @@ if (mountElement && waterline) {
         ...window.Apex,
         chart: { ...window.Apex?.chart, locales: [chartEnglish, chartSpanish, chartUkrainian], defaultLocale: i18n.global.locale.value },
     };
-    app.config.globalProperties.$dialog = options => Swal.fire({ ...dialogLabels(i18n.global.t), ...options });
+    app.config.globalProperties.$dialog = function (options) {
+        return Swal.fire(createWaterlineDialogOptions(this.$root.theme, {
+            ...dialogLabels(i18n.global.t), ...options,
+        }));
+    };
     app.component('apexchart', VueApexCharts);
     app.component('vue-json-pretty', VueJsonPretty);
     app.component('PrismEditor', PrismEditor);

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { dashboardFixture, dashboardGeometry } from './dashboard-visual.mjs';
 import { runDetailFixture } from './run-detail-visual.mjs';
+import { auditContrast } from './workflow-list-dialog-visual.mjs';
 
 const catalog = JSON.parse(fs.readFileSync(new URL('../../resources/lang/es.json', import.meta.url)));
 const text = key => catalog[key];
@@ -40,11 +41,11 @@ async function login(page, url) {
     await page.getByRole('link', { name: text('Skip to main content'), exact: true }).waitFor({ state: 'attached' });
 }
 
-async function snapshot(page, name) {
+async function snapshot(page, name, observations = {}) {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
         `${name}: the page must fit the viewport`);
     await page.screenshot({ path: path.join(output, `${name}.png`), fullPage: !name.endsWith('-dialog') });
-    reports.push({ name, status: 'pass' });
+    reports.push({ name, status: 'pass', ...observations });
 }
 
 try {
@@ -130,14 +131,20 @@ try {
                             await page.getByRole('button', { name: text(label), exact: true }).click();
                             const dialog = page.getByRole('dialog', { name: text(`${label} run?`), exact: true });
                             await dialog.waitFor();
+                            await page.waitForFunction(() => {
+                                const popup = document.querySelector('.swal2-popup');
+                                return popup && getComputedStyle(popup).opacity === '1'
+                                    && popup.getAnimations().every(animation => animation.playState !== 'running');
+                            }, null, { timeout: 3000 });
                             if (action === 'cancel') assert.ok((await dialog.innerText()).includes(text(
                                 'This immediately closes the current active run as Cancelled without cooperative cleanup. Previously completed external side effects are not undone.')));
                             if (action === 'terminate') assert.ok((await dialog.innerText()).includes(text(
                                 'This forcibly closes the current active run as Terminated and stops cooperative cleanup. Previously completed external side effects are not undone.')));
+                            const contrast = await auditContrast(page, ['title', 'body', 'action'], '.swal2-popup');
                             const bounds = await dialog.boundingBox();
                             assert.ok(bounds.x >= -1 && bounds.y >= -1 && bounds.x + bounds.width <= width + 1
                                 && bounds.y + bounds.height <= 901, `${prefix}: confirmation must fit`);
-                            await snapshot(page, `${prefix}-${action}-dialog`);
+                            await snapshot(page, `${prefix}-${action}-dialog`, { contrast });
                             await dialog.locator('.swal2-cancel').click();
                             await dialog.waitFor({ state: 'hidden' });
                         }
