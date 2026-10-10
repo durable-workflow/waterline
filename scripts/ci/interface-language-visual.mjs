@@ -11,8 +11,10 @@ const locale = localeIndex > 0 ? process.argv[localeIndex + 1] : 'es';
 const localeCases = {
     es: { hour: 'una hora', month: /ago/i, firstDate: '2026-08-01T12:00:00Z' },
     'pt-BR': { hour: 'uma hora', month: /fev/i, firstDate: '2026-02-01T12:00:00Z' },
+    'zh-Hans': { hour: '1 小时', month: /二月|2月/, firstDate: '2026-02-01T12:00:00Z',
+        count: '1,234,567', rate: '1.5', percent: '98.5%' },
 };
-assert.ok(Object.hasOwn(localeCases, locale), 'Choose a qualified locale: es or pt-BR.');
+assert.ok(Object.hasOwn(localeCases, locale), 'Choose a qualified locale: es, pt-BR or zh-Hans.');
 const localeCase = localeCases[locale];
 const catalog = JSON.parse(fs.readFileSync(new URL(`../../resources/lang/${locale}.json`, import.meta.url)));
 const text = key => catalog[key];
@@ -106,14 +108,15 @@ try {
                 assert.equal((await page.locator('.wl-operator-metric__value').last().textContent()).trim(), localeCase.hour);
                 await page.getByText(text('Running now'), { exact: true }).waitFor();
                 const running = page.locator('.wl-summary-card').filter({ hasText: text('Running now') });
-                assert.equal((await running.locator('.wl-summary-card__value').textContent()).trim(), '1.234.567',
+                assert.equal((await running.locator('.wl-summary-card__value').textContent()).trim(), localeCase.count || '1.234.567',
                     'Counts must use the Waterline locale even in an English browser.');
                 const rate = page.locator('.wl-summary-card').filter({ hasText: text('Flows per minute') });
-                assert.equal((await rate.locator('.wl-summary-card__value').textContent()).trim(), '1,5');
-                const passRate = page.locator('td').filter({ hasText: '98,5%' }).first();
+                assert.equal((await rate.locator('.wl-summary-card__value').textContent()).trim(), localeCase.rate || '1,5');
+                const expectedPercent = localeCase.percent || '98,5%';
+                const passRate = page.locator('td').filter({ hasText: expectedPercent }).first();
                 await passRate.waitFor();
-                assert.equal((await passRate.textContent()).trim(), '98,5%');
-                await page.locator('.apexcharts-datalabel').filter({ hasText: '98,5%' }).first().waitFor();
+                assert.equal((await passRate.textContent()).trim(), expectedPercent);
+                await page.locator('.apexcharts-datalabel').filter({ hasText: expectedPercent }).first().waitFor();
                 await page.locator('.apexcharts-xaxis text').filter({ hasText: localeCase.month }).first().waitFor();
                 // Theme stylesheet loading and ApexCharts redraws are asynchronous.
                 // Use the dashboard matrix's bounded convergence check.

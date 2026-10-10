@@ -78,7 +78,7 @@ function loadPlaywright() {
     throw new Error('Install Playwright and Chromium before dashboard qualification.');
 }
 
-export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirectory, email = 'demo@example.com', password = 'password', widths = [1280, 1366, 1440, 1920], zooms = [1, 1.25, 1.5, 2] }) {
+export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirectory, email = 'demo@example.com', password = 'password', widths = [1280, 1366, 1440, 1920], zooms = [1, 1.25, 1.5, 2], locales = ['en', 'es', 'uk'] }) {
     assert.ok(serviceBaseUrl, 'Qualify both embedded and service presentations.');
     fs.mkdirSync(outputDirectory, { recursive: true });
     const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'waterline-dashboard-'));
@@ -95,7 +95,7 @@ export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirect
     const reports = [];
     try {
         const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker', { timeout: 30000 });
-        for (const [presentation, origin] of [['embedded', baseUrl], ['service', serviceBaseUrl]]) for (const locale of ['en', 'es', 'uk']) {
+        for (const [presentation, origin] of [['embedded', baseUrl], ['service', serviceBaseUrl]]) for (const locale of locales) {
             const page = await context.newPage();
             const errors = [], writes = [];
             page.on('pageerror', error => errors.push(error.message));
@@ -132,7 +132,7 @@ export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirect
             await page.locator('.wl-operator-metrics-grid').waitFor();
             assert.equal(
                 (await page.locator('.wl-operator-metric__value').last().textContent()).trim(),
-                { en: 'an hour', es: 'una hora', uk: 'годину' }[locale],
+                { en: 'an hour', es: 'una hora', 'pt-BR': 'uma hora', uk: 'годину', 'zh-Hans': '1 小时' }[locale],
                 'Dashboard durations must use the configured interface language.',
             );
             const tab = await worker.evaluate(async url => (await chrome.tabs.query({})).find(tab => tab.url === url), page.url());
@@ -195,11 +195,12 @@ export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirect
         fs.rmSync(scratch, { recursive: true, force: true });
     }
     fs.writeFileSync(path.join(outputDirectory, 'summary.json'), JSON.stringify({ boundary: 'Production UI with synthetic dashboard observations and Chromium page zoom', cases: reports }, null, 2));
-    assert.equal(reports.length, 6 * widths.length * zooms.length);
+    assert.equal(reports.length, 2 * locales.length * widths.length * zooms.length);
     assert.deepEqual(reports.filter(report => report.failures.length || report.errors.length || report.writes.length), [], 'Dashboard content must remain visible and contained.');
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
     const value = (name, fallback) => { const index = process.argv.indexOf(name); return index < 0 ? fallback : process.argv[index + 1]; };
-    await runDashboardVisual({ baseUrl: value('--base-url', process.env.APP_URL), serviceBaseUrl: value('--service-base-url', process.env.WATERLINE_SERVICE_VISUAL_URL), outputDirectory: path.resolve(value('--output-dir', 'dashboard-evidence')), email: process.env.WATERLINE_VISUAL_EMAIL, password: process.env.WATERLINE_VISUAL_PASSWORD });
+    const locale = value('--locale');
+    await runDashboardVisual({ baseUrl: value('--base-url', process.env.APP_URL), serviceBaseUrl: value('--service-base-url', process.env.WATERLINE_SERVICE_VISUAL_URL), outputDirectory: path.resolve(value('--output-dir', 'dashboard-evidence')), email: process.env.WATERLINE_VISUAL_EMAIL, password: process.env.WATERLINE_VISUAL_PASSWORD, ...(locale ? { locales: [locale] } : {}) });
 }
