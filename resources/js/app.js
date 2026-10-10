@@ -22,6 +22,7 @@ import { readBootstrapConfig } from './bootstrap-config.mjs';
 import WaterlineApp from './WaterlineApp.vue';
 import { createWaterlineI18n, dialogLabels } from './localization.mjs';
 import { createWaterlineDialogOptions } from './dialogs.mjs';
+import { applyThemeStylesheet } from './theme.mjs';
 
 import 'bootstrap';
 import 'vue-json-pretty/lib/styles.css';
@@ -83,8 +84,13 @@ if (mountElement && waterline) {
             trigger: 'hover',
         });
     });
-    app.mount(mountElement);
-    mountElement.setAttribute('data-waterline-mounted', 'true');
+    // Measure charts only after the user's selected theme has its real layout.
+    applyThemeStylesheet(localStorage.getItem('waterline-theme') || 'dark')
+        .catch(error => console.error('[Waterline:theme]', error))
+        .finally(() => {
+            app.mount(mountElement);
+            mountElement.setAttribute('data-waterline-mounted', 'true');
+        });
 } else if (mountElement) {
     mountElement.removeAttribute('v-cloak');
     mountElement.replaceChildren();

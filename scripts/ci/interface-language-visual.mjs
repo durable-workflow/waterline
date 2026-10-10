@@ -62,6 +62,12 @@ try {
             const context = await browser.newContext({ viewport: { width, height: 900 } });
             await context.addInitScript(value => localStorage.setItem('waterline-theme', value), theme);
             const page = await context.newPage();
+            // A fast API response must not let charts measure the temporary
+            // layout while the user's alternate theme stylesheet is loading.
+            if (theme === 'light') await page.route('**/vendor/waterline/app.css*', async route => {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                await route.continue();
+            });
             const errors = [], writes = [];
             const prefix = `${presentation}-${locale}-${theme}-${width}`;
             let state = 'populated';
