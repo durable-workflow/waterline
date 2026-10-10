@@ -110,11 +110,15 @@ try {
                 await login(page, new URL('/waterline/dashboard', origin).href);
                 await page.locator('.wl-operator-metrics-grid').waitFor();
                 assert.equal((await page.locator('.wl-operator-metric__value').last().textContent()).trim(), localeCase.hour);
-                await page.getByText(text('Running now'), { exact: true }).waitFor();
-                const running = page.locator('.wl-summary-card').filter({ hasText: text('Running now') });
+                const running = page.locator('.wl-summary-card').filter({
+                    has: page.getByText(text('Running now'), { exact: true }),
+                });
+                await running.locator('.wl-summary-card__label').waitFor();
                 assert.equal((await running.locator('.wl-summary-card__value').textContent()).trim(), localeCase.count || '1.234.567',
                     'Counts must use the Waterline locale even in an English browser.');
-                const rate = page.locator('.wl-summary-card').filter({ hasText: text('Flows per minute') });
+                const rate = page.locator('.wl-summary-card').filter({
+                    has: page.getByText(text('Flows per minute'), { exact: true }),
+                });
                 assert.equal((await rate.locator('.wl-summary-card__value').textContent()).trim(), localeCase.rate || '1,5');
                 const expectedPercent = localeCase.percent || '98,5%';
                 const passRate = page.locator('td').filter({ hasText: expectedPercent }).first();
