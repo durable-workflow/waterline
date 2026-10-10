@@ -115,8 +115,8 @@ async function triggerValidation(page) {
     });
 }
 
-async function auditContrast(page, requiredCategories) {
-    const results = await page.locator('.waterline-dialog').evaluate((popup) => {
+export async function auditContrast(page, requiredCategories, popupSelector = '.waterline-dialog') {
+    const results = await page.locator(popupSelector).evaluate((popup) => {
         const parseColor = (value) => {
             const match = value.match(/rgba?\(([^)]+)\)/);
 
@@ -180,6 +180,7 @@ async function auditContrast(page, requiredCategories) {
         };
         const categories = [
             ['title', '.swal2-title'],
+            ['body', '.swal2-html-container'],
             ['label', 'label'],
             ['help', 'small.text-muted'],
             ['notice', '.card-bg-secondary'],

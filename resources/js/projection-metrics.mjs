@@ -14,8 +14,8 @@ export function projectionMetric(metrics, group, key = null) {
     return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
 }
 
-export function projectionMetricLabel(value) {
-    return value === null ? 'Unknown' : value.toLocaleString();
+export function projectionMetricLabel(value, locale = 'en') {
+    return value === null ? 'Unknown' : value.toLocaleString(locale);
 }
 
 export function projectionRebuildTotal(metrics) {

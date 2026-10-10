@@ -57,7 +57,7 @@ final class UiLocaleTest extends TestCase
 
     public function testUnknownLocaleFallsBackToEnglishAndSupportedRegionalAliasResolves(): void
     {
-        foreach (['es', '', 'uk-UA<script>', ['uk'], false] as $locale) {
+        foreach (['zz', '', 'uk-UA<script>', ['uk'], false] as $locale) {
             self::assertSame('en', UiLocale::resolve($locale));
         }
 
@@ -65,6 +65,27 @@ final class UiLocaleTest extends TestCase
         self::assertSame('uk', UiLocale::resolve('UK_ua'));
         config()->set('waterline.locale', 'unsupported');
         $this->get('/waterline')->assertOk()->assertSee('<html lang="en">', false);
+    }
+
+    public function testSpanishBootstrapUsesUiLabelsWithoutChangingHostSettings(): void
+    {
+        foreach (['es', 'es-ES', 'es_MX', 'ES_ar', 'es-419'] as $locale) {
+            self::assertSame('es', UiLocale::resolve($locale));
+        }
+        foreach (['es<script>', "es\n", "es-ES\n", ' es', "es-419\n"] as $locale) {
+            self::assertSame('en', UiLocale::resolve($locale));
+        }
+        $this->app->setLocale('de');
+        config()->set('waterline.locale', 'es');
+        config()->set('app.name', '');
+
+        $this->get('/waterline')->assertOk()
+            ->assertSee('<html lang="es">', false)
+            ->assertSee('Saltar al contenido principal')
+            ->assertViewHas('waterlineBootstrap', fn (array $value): bool =>
+                $value['locale'] === 'es' && $value['app_name'] === 'Operaciones de flujos de trabajo');
+
+        self::assertSame('de', $this->app->getLocale());
     }
 
     public function testMissingTranslationFallsBackToEnglishWithoutUsingHostMessages(): void

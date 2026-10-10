@@ -6,9 +6,9 @@ import { baseCompile } from '@intlify/message-compiler';
 import { createWaterlineI18n, dialogLabels, messages, resolveUiLocale, ukrainianPluralRule } from '../../resources/js/localization.mjs';
 import { localizedState } from '../../resources/js/state-labels.mjs';
 
-test('both catalogs cover the same messages and every translation compiles', () => {
-    assert.deepEqual(Object.keys(messages.uk).sort(), Object.keys(messages.en).sort());
-    for (const locale of ['en', 'uk']) {
+test('every catalog covers the same messages and every translation compiles', () => {
+    for (const locale of Object.keys(messages)) {
+        assert.deepEqual(Object.keys(messages[locale]).sort(), Object.keys(messages.en).sort(), locale);
         const i18n = createWaterlineI18n(locale);
         for (const key of Object.keys(messages.en)) {
             assert.equal(typeof messages[locale][key], 'string', `${locale}: ${key}`);
@@ -41,10 +41,32 @@ test('dialog defaults include translated cancellation and accessible close contr
 });
 
 test('the operator locale defaults to English and accepts the documented Ukrainian locale', () => {
-    for (const locale of [undefined, null, '', 'es', 'uk<script>', ['uk']]) assert.equal(resolveUiLocale(locale), 'en');
+    for (const locale of [undefined, null, '', 'zz', 'uk<script>', ['uk']]) assert.equal(resolveUiLocale(locale), 'en');
     for (const locale of ['uk', 'uk-UA', 'UK_ua']) assert.equal(resolveUiLocale(locale), 'uk');
     assert.equal(createWaterlineI18n().global.t('Skip to main content'), 'Skip to main content');
     assert.equal(createWaterlineI18n('uk').global.t('Skip to main content'), 'Перейти до основного вмісту');
+});
+
+test('Spanish regional aliases select operator translations and safe command labels', () => {
+    for (const locale of ['es', 'es-ES', 'es_MX', 'ES_ar', 'es-419']) assert.equal(resolveUiLocale(locale), 'es');
+    for (const locale of ['es<script>', 'es\n', 'es-ES\n', ' es', 'es-419\n']) assert.equal(resolveUiLocale(locale), 'en');
+    const translate = createWaterlineI18n('es').global.t;
+    assert.equal(translate('Skip to main content'), 'Saltar al contenido principal');
+    assert.equal(localizedState('cleaning_up', translate), 'Limpieza en curso');
+    assert.equal(localizedState('cancelled', translate), 'Cancelado');
+    assert.equal(dialogLabels(translate).cancelButtonText, 'Cancelar');
+    assert.equal(dialogLabels(translate).closeButtonAriaLabel, 'Cerrar');
+    assert.equal(localizedState('future_state', translate), 'future_state');
+});
+
+test('Spanish count messages distinguish exactly one from zero, fractions and large counts', () => {
+    const translate = createWaterlineI18n('es').global.t;
+    for (const [count, expected] of [[0, '0 ejecuciones'], [1, '1 ejecución'], [2, '2 ejecuciones'],
+        [0.5, '0.5 ejecuciones'], [1.5, '1.5 ejecuciones'], [1000000, '1000000 ejecuciones']]) {
+        assert.equal(translate('{count} runs', count), expected);
+    }
+    assert.equal(translate('{count} children shown{more}', { count: 1, more: '' }), 'Se muestra 1 flujo hijo');
+    assert.equal(translate('{count} children shown{more}', { count: 2, more: ', más' }), 'Se muestran 2 flujos hijos, más');
 });
 
 test('missing Ukrainian messages fall back to English and unknown keys stay readable', () => {

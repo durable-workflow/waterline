@@ -106,15 +106,15 @@
                 <article class="card service-catalog-view__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="service-catalog-view__summary-label">{{ $t("Returned rows") }}</div>
-                        <div class="service-catalog-view__summary-value">{{ totalRows.toLocaleString() }}</div>
-                        <div class="service-catalog-view__summary-meta">{{ pagination ? pagination.total.toLocaleString() : rows.length.toLocaleString() }} {{ $t("total in this result set.") }}</div>
+                        <div class="service-catalog-view__summary-value">{{ totalRows.toLocaleString($i18n.locale) }}</div>
+                        <div class="service-catalog-view__summary-meta">{{ pagination ? pagination.total.toLocaleString($i18n.locale) : rows.length.toLocaleString($i18n.locale) }} {{ $t("total in this result set.") }}</div>
                     </div>
                 </article>
 
                 <article v-if="activeTab === 'calls'" class="card service-catalog-view__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="service-catalog-view__summary-label">{{ $t("Open calls") }}</div>
-                        <div class="service-catalog-view__summary-value">{{ openCallCount.toLocaleString() }}</div>
+                        <div class="service-catalog-view__summary-value">{{ openCallCount.toLocaleString($i18n.locale) }}</div>
                         <div class="service-catalog-view__summary-meta">{{ $t("Calls accepted but not terminal.") }}</div>
                     </div>
                 </article>
@@ -122,7 +122,7 @@
                 <article v-if="activeTab === 'calls'" class="card service-catalog-view__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="service-catalog-view__summary-label">{{ $t("Policy outcomes") }}</div>
-                        <div class="service-catalog-view__summary-value" :class="policyOutcomeCount > 0 ? 'is-warning' : ''">{{ policyOutcomeCount.toLocaleString() }}</div>
+                        <div class="service-catalog-view__summary-value" :class="policyOutcomeCount > 0 ? 'is-warning' : ''">{{ policyOutcomeCount.toLocaleString($i18n.locale) }}</div>
                         <div class="service-catalog-view__summary-meta">{{ $t("Boundary rejections in the returned page.") }}</div>
                     </div>
                 </article>
@@ -130,7 +130,7 @@
                 <article v-if="activeTab === 'calls'" class="card service-catalog-view__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="service-catalog-view__summary-label">{{ $t("Terminal calls") }}</div>
-                        <div class="service-catalog-view__summary-value">{{ terminalCallCount.toLocaleString() }}</div>
+                        <div class="service-catalog-view__summary-value">{{ terminalCallCount.toLocaleString($i18n.locale) }}</div>
                         <div class="service-catalog-view__summary-meta">{{ $t("Completed, failed, or cancelled calls.") }}</div>
                     </div>
                 </article>
@@ -272,7 +272,7 @@
                     </div>
 
                     <div v-else class="service-catalog-view__empty-state">
-                        <strong>{{ $t("No") }} {{ activeTabDefinition.emptyLabel }} {{ $t("found") }}</strong>
+                        <strong>{{ $t(activeTabDefinition.emptyMessage) }}</strong>
                         <p class="mb-0 text-muted">{{ $t("No rows matched the current namespace and filters.") }}</p>
                     </div>
                 </div>
@@ -421,16 +421,16 @@ export default {
     data() {
         return {
             tabs: [
-                {key: 'calls', label: 'Calls', panelTitle: this.$t("Service-call history"), panelSubtitle: this.$t("Durable calls visible to this namespace."), emptyLabel: 'service calls'},
-                {key: 'endpoints', label: 'Endpoints', panelTitle: this.$t("Service endpoints"), panelSubtitle: this.$t("Endpoint registry rows owned by this namespace."), emptyLabel: 'service endpoints'},
-                {key: 'services', label: this.$t("Services"), panelTitle: this.$t("Services"), panelSubtitle: this.$t("Service registry rows owned by this namespace."), emptyLabel: 'services'},
-                {key: 'operations', label: 'Operations', panelTitle: 'Operations', panelSubtitle: this.$t("Callable operations owned by this namespace."), emptyLabel: 'operations'},
+                {key: 'calls', label: this.$t('Calls'), panelTitle: this.$t("Service-call history"), panelSubtitle: this.$t("Durable calls visible to this namespace."), emptyMessage: 'No service calls found'},
+                {key: 'endpoints', label: this.$t('Endpoints'), panelTitle: this.$t("Service endpoints"), panelSubtitle: this.$t("Endpoint registry rows owned by this namespace."), emptyMessage: 'No service endpoints found'},
+                {key: 'services', label: this.$t("Services"), panelTitle: this.$t("Services"), panelSubtitle: this.$t("Service registry rows owned by this namespace."), emptyMessage: 'No services found'},
+                {key: 'operations', label: this.$t('Operations'), panelTitle: this.$t('Operations'), panelSubtitle: this.$t("Callable operations owned by this namespace."), emptyMessage: 'No operations found'},
             ],
             callPresets: [
                 {key: 'relevant', label: this.$t("Relevant"), filters: {scope: 'relevant', status: '', status_bucket: '', outcome: '', outcome_bucket: ''}},
                 {key: 'open', label: this.$t("Open"), filters: {scope: 'relevant', status: '', status_bucket: 'open', outcome: '', outcome_bucket: ''}},
                 {key: 'failed', label: this.$t("Failed"), filters: {scope: 'relevant', status: '', status_bucket: 'failed', outcome: '', outcome_bucket: ''}},
-                {key: 'policy', label: 'Policy', filters: {scope: 'relevant', status: '', status_bucket: '', outcome: '', outcome_bucket: 'policy'}},
+                {key: 'policy', label: this.$t('Policy'), filters: {scope: 'relevant', status: '', status_bucket: '', outcome: '', outcome_bucket: 'policy'}},
                 {key: 'caller', label: this.$t("Caller"), filters: {scope: 'caller', status: '', status_bucket: '', outcome: '', outcome_bucket: ''}},
                 {key: 'target', label: this.$t("Target"), filters: {scope: 'target', status: '', status_bucket: '', outcome: '', outcome_bucket: ''}},
             ],
@@ -613,7 +613,7 @@ export default {
 
             rows.push(
                 {key: 'created_at', label: this.$t("Created"), value: this.timestamp(this.detail.created_at)},
-                {key: 'updated_at', label: 'Updated', value: this.timestamp(this.detail.updated_at)},
+                {key: 'updated_at', label: this.$t('Updated'), value: this.timestamp(this.detail.updated_at)},
             );
 
             return rows;

@@ -90,14 +90,16 @@ when an observation provides it and does not infer it from the host language.
 
 ### Interface language
 
-English is the default. To use Ukrainian in embedded Laravel or standalone
+English is the default. To use Spanish in embedded Laravel or standalone
 service mode, set:
 
 ```dotenv
-WATERLINE_LOCALE=uk
+WATERLINE_LOCALE=es
 ```
 
-Embedded hosts can also set `'locale' => 'uk'` in `config/waterline.php`.
+Use `uk` for Ukrainian. Spanish regional aliases such as `es-ES`, `es-MX`
+and `es-419` select the shared Spanish interface.
+Embedded hosts can also set `'locale' => 'es'` in `config/waterline.php`.
 Their resolved Laravel configuration takes precedence, including a cached
 literal value. Rebuild the host's config cache after changing environment-based
 configuration. Standalone service mode applies `WATERLINE_LOCALE` from its
@@ -109,12 +111,13 @@ change the host application's locale. Workflow names, run IDs, namespaces,
 payloads, original exception messages and machine-readable API states keep
 their original values.
 
-Translations live in `resources/lang/en.json` and `resources/lang/uk.json` and
+Translations live in `resources/lang/{en,es,uk}.json` and
 are shared by the Vue interface and server-rendered page. English sentence keys
 make missing messages readable. To contribute a language, add its catalog,
 register it in `resources/js/localization.mjs` and `app/Support/UiLocale.php`,
 and cover its locale and plural rules in the tests. Keep placeholders such as
-`{count}` and `{name}` intact. Ukrainian plural messages use four alternatives
+`{count}` and `{name}` intact. Spanish plural messages use two alternatives
+in the order `one | other`. Ukrainian plural messages use four alternatives
 in the order `one | few | many | other`. Translate the complete meaning of
 recovery warnings and review terminology and dialog layout in the browser.
 Run `npm test`, rebuild with `npm run production`, and commit the generated

@@ -1,14 +1,25 @@
 import { createI18n } from 'vue-i18n';
 import en from '../lang/en.json' with { type: 'json' };
+import es from '../lang/es.json' with { type: 'json' };
 import uk from '../lang/uk.json' with { type: 'json' };
 
-export const messages = { en, uk };
+export const messages = { en, es, uk };
 
 export function resolveUiLocale(locale) {
-    return typeof locale === 'string' && ['uk', 'uk-ua'].includes(locale.toLowerCase().replaceAll('_', '-')) ? 'uk' : 'en';
+    if (typeof locale !== 'string') return 'en';
+    const normalized = locale.toLowerCase().replaceAll('_', '-');
+    if (normalized !== normalized.trim()) return 'en';
+    if (['uk', 'uk-ua'].includes(normalized)) return 'uk';
+    return /^es(?:-(?:[a-z]{2}|[0-9]{3}))?$/.test(normalized) ? 'es' : 'en';
 }
 
 const ukrainianPlurals = new Intl.PluralRules('uk');
+const spanishPlurals = new Intl.PluralRules('es');
+
+export function spanishPluralRule(choice, choicesLength) {
+    if (choicesLength !== 2) return choice === 1 ? 0 : Math.min(1, choicesLength - 1);
+    return spanishPlurals.select(choice) === 'one' ? 0 : 1;
+}
 
 export function ukrainianPluralRule(choice, choicesLength) {
     // The catalog order is one | few | many | other. Fractional counts use
@@ -24,7 +35,7 @@ export function createWaterlineI18n(locale) {
         locale: resolveUiLocale(locale),
         fallbackLocale: 'en',
         messages,
-        pluralRules: { uk: ukrainianPluralRule },
+        pluralRules: { es: spanishPluralRule, uk: ukrainianPluralRule },
         // Sentence keys keep the English interface legible in the source.
         // They are flat keys, including punctuation, rather than object paths.
         messageResolver: (catalog, key) => Object.hasOwn(catalog, key) ? catalog[key] : null,

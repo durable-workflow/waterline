@@ -55,7 +55,7 @@
                 <article class="card worker-health__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="worker-health__summary-label">{{ $t("Worker registrations") }}</div>
-                        <div class="worker-health__summary-value">{{ registrationCount.toLocaleString() }}</div>
+                        <div class="worker-health__summary-value">{{ registrationCount.toLocaleString($i18n.locale) }}</div>
                         <div class="worker-health__summary-meta">{{ registrationSummary }}</div>
                     </div>
                 </article>
@@ -63,7 +63,7 @@
                 <article class="card worker-health__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="worker-health__summary-label">{{ $t("Compatible workers") }}</div>
-                        <div class="worker-health__summary-value">{{ supportedWorkerCount.toLocaleString() }}</div>
+                        <div class="worker-health__summary-value">{{ supportedWorkerCount.toLocaleString($i18n.locale) }}</div>
                         <div class="worker-health__summary-meta">{{ $t("Workers supporting the required compatibility marker.") }}</div>
                     </div>
                 </article>
@@ -71,7 +71,7 @@
                 <article class="card worker-health__summary-card">
                     <div class="card-body card-bg-secondary">
                         <div class="worker-health__summary-label">{{ $t("Active leases") }}</div>
-                        <div class="worker-health__summary-value">{{ totalLeases.toLocaleString() }}</div>
+                        <div class="worker-health__summary-value">{{ totalLeases.toLocaleString($i18n.locale) }}</div>
                         <div class="worker-health__summary-meta">{{ $t("Leases currently held by returned registrations.") }}</div>
                     </div>
                 </article>
@@ -85,7 +85,7 @@
                     </div>
 
                     <span class="worker-health__pill" :class="statusToneClass(coordinationAlertRollup)">
-                        {{ coordinationAlerts.length.toLocaleString() }} {{ $t("open") }}
+                        {{ coordinationAlerts.length.toLocaleString($i18n.locale) }} {{ $t("open") }}
                     </span>
                 </div>
 
@@ -140,7 +140,7 @@
                         </div>
 
                         <span class="worker-health__pill worker-health__pill--muted">
-                            {{ workers.length.toLocaleString() }} {{ $t("workers") }}
+                            {{ workers.length.toLocaleString($i18n.locale) }} {{ $t("workers") }}
                         </span>
                     </div>
 
@@ -359,7 +359,7 @@
                     </div>
 
                     <span class="worker-health__pill worker-health__pill--muted">
-                        {{ taskQueues.length.toLocaleString() }} {{ $t("queues") }}
+                        {{ taskQueues.length.toLocaleString($i18n.locale) }} {{ $t("queues") }}
                     </span>
                 </div>
 
@@ -574,7 +574,7 @@ export default {
             const active = this.activeRegistrationCount;
             const stale = this.staleRegistrationCount;
 
-            return this.$t('{active} active; {stale} stale.', { active: active.toLocaleString(), stale: stale.toLocaleString() });
+            return this.$t('{active} active; {stale} stale.', { active: active.toLocaleString(this.$i18n.locale), stale: stale.toLocaleString(this.$i18n.locale) });
         },
 
         healthChecks() {
@@ -634,11 +634,11 @@ export default {
             const parts = [];
 
             if (errors > 0) {
-                parts.push(this.$t('{count} errors', { count: errors.toLocaleString() }, errors));
+                parts.push(this.$t('{count} errors', { count: errors.toLocaleString(this.$i18n.locale) }, errors));
             }
 
             if (warnings > 0) {
-                parts.push(this.$t('{count} warnings', { count: warnings.toLocaleString() }, warnings));
+                parts.push(this.$t('{count} warnings', { count: warnings.toLocaleString(this.$i18n.locale) }, warnings));
             }
 
             if (parts.length === 0) {
@@ -803,7 +803,7 @@ export default {
                 {key: 'status', label: this.$t("Status")},
                 {key: 'compatibility', label: this.$t("Compatibility")},
                 {key: 'source', label: this.$t("Heartbeat Source")},
-                {key: 'workflows', label: 'Workflows'},
+                {key: 'workflows', label: this.$t('Workflows')},
                 {key: 'activities', label: this.$t("Activities")},
                 {key: 'concurrency', label: this.$t("Concurrency")},
                 {key: 'slots', label: this.$t("Free Slots")},
@@ -1251,19 +1251,19 @@ export default {
             const maxAgeMs = Number(alert?.max_age_ms);
 
             if (Number.isFinite(queueCount) && queueCount > 0) {
-                facts.push(this.$t('{count} queues', { count: queueCount.toLocaleString() }, queueCount));
+                facts.push(this.$t('{count} queues', { count: queueCount.toLocaleString(this.$i18n.locale) }, queueCount));
             }
 
             if (Number.isFinite(backlogCount) && backlogCount > 0) {
-                facts.push(this.$t("backlog {value1}", { value1: backlogCount.toLocaleString() }));
+                facts.push(this.$t("backlog {value1}", { value1: backlogCount.toLocaleString(this.$i18n.locale) }));
             }
 
             if (Number.isFinite(stalePollerCount) && stalePollerCount > 0) {
-                facts.push(this.$t("stale pollers {value1}", { value1: stalePollerCount.toLocaleString() }));
+                facts.push(this.$t("stale pollers {value1}", { value1: stalePollerCount.toLocaleString(this.$i18n.locale) }));
             }
 
             if (Number.isFinite(candidateCount) && candidateCount > 0) {
-                facts.push(this.$t("repair candidates {value1}", { value1: candidateCount.toLocaleString() }));
+                facts.push(this.$t("repair candidates {value1}", { value1: candidateCount.toLocaleString(this.$i18n.locale) }));
             }
 
             if (Number.isFinite(maxAgeMs) && maxAgeMs > 0) {
@@ -1296,31 +1296,31 @@ export default {
             const activeWorkerScopes = Number(healthFacts.active_worker_scopes || 0);
 
             if (Number.isFinite(compatibilityBlockedRuns) && compatibilityBlockedRuns > 0) {
-                facts.push(this.$t("compat blocked {value1}", { value1: compatibilityBlockedRuns.toLocaleString() }));
+                facts.push(this.$t("compat blocked {value1}", { value1: compatibilityBlockedRuns.toLocaleString(this.$i18n.locale) }));
             }
 
             if (Number.isFinite(dispatchOverdueTasks) && dispatchOverdueTasks > 0) {
-                facts.push(this.$t("dispatch overdue {value1}", { value1: dispatchOverdueTasks.toLocaleString() }));
+                facts.push(this.$t("dispatch overdue {value1}", { value1: dispatchOverdueTasks.toLocaleString(this.$i18n.locale) }));
             }
 
             if (Number.isFinite(claimFailedTasks) && claimFailedTasks > 0) {
-                facts.push(this.$t("claim failed {value1}", { value1: claimFailedTasks.toLocaleString() }));
+                facts.push(this.$t("claim failed {value1}", { value1: claimFailedTasks.toLocaleString(this.$i18n.locale) }));
             }
 
             if (Number.isFinite(queuesWithDrains) && queuesWithDrains > 0) {
-                facts.push(this.$t("draining queues {value1}", { value1: queuesWithDrains.toLocaleString() }));
+                facts.push(this.$t("draining queues {value1}", { value1: queuesWithDrains.toLocaleString(this.$i18n.locale) }));
             }
 
             if (Number.isFinite(drainingBuildIdCount) && drainingBuildIdCount > 0) {
-                facts.push(this.$t("draining builds {value1}", { value1: drainingBuildIdCount.toLocaleString() }));
+                facts.push(this.$t("draining builds {value1}", { value1: drainingBuildIdCount.toLocaleString(this.$i18n.locale) }));
             }
 
             if (Number.isFinite(drainingWorkerCount) && drainingWorkerCount > 0) {
-                facts.push(this.$t("draining workers {value1}", { value1: drainingWorkerCount.toLocaleString() }));
+                facts.push(this.$t("draining workers {value1}", { value1: drainingWorkerCount.toLocaleString(this.$i18n.locale) }));
             }
 
             if (Number.isFinite(staleWorkerCount) && staleWorkerCount > 0) {
-                facts.push(this.$t("stale workers {value1}", { value1: staleWorkerCount.toLocaleString() }));
+                facts.push(this.$t("stale workers {value1}", { value1: staleWorkerCount.toLocaleString(this.$i18n.locale) }));
             }
 
             if (typeof healthFacts.matching_shape === 'string' && healthFacts.matching_shape !== '') {
@@ -1336,7 +1336,7 @@ export default {
             }
 
             if (Number.isFinite(activeWorkerScopes) && activeWorkerScopes > 0) {
-                facts.push(this.$t("worker scopes {value1}", { value1: activeWorkerScopes.toLocaleString() }));
+                facts.push(this.$t("worker scopes {value1}", { value1: activeWorkerScopes.toLocaleString(this.$i18n.locale) }));
             }
 
             // Surface fleet compatibility coverage so a "compatibility block"
@@ -1361,7 +1361,7 @@ export default {
                 && totalActiveWorkers > 0
                 && supportingWorkers >= 0
                 && supportingWorkers < totalActiveWorkers) {
-                facts.push(this.$t("{value1}/{value2} workers support required marker", { value1: supportingWorkers.toLocaleString(), value2: totalActiveWorkers.toLocaleString() }));
+                facts.push(this.$t("{value1}/{value2} workers support required marker", { value1: supportingWorkers.toLocaleString(this.$i18n.locale), value2: totalActiveWorkers.toLocaleString(this.$i18n.locale) }));
             }
 
             if (Number.isFinite(maxAgeMs) && maxAgeMs > 0) {
@@ -1374,7 +1374,7 @@ export default {
         integerLabel(value) {
             const number = Number(value || 0);
 
-            return Number.isFinite(number) ? number.toLocaleString() : '0';
+            return Number.isFinite(number) ? number.toLocaleString(this.$i18n.locale) : '0';
         },
 
         durationMillisecondsLabel(value) {
@@ -1457,7 +1457,7 @@ export default {
                 return this.$t("No compatibility markers advertised");
             }
 
-            return 'Advertised: ' + markers.join(', ');
+            return this.$t('Advertised: {markers}', { markers: markers.join(', ') });
         },
 
         heartbeatClass(worker) {
@@ -1539,7 +1539,7 @@ export default {
             const parts = [];
 
             if (Number.isFinite(metrics.cpu_percent)) {
-                parts.push(`CPU ${Number(metrics.cpu_percent).toFixed(1)}%`);
+                parts.push(`CPU ${Number(metrics.cpu_percent).toLocaleString(this.$i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`);
             }
             if (Number.isFinite(metrics.memory_bytes)) {
                 parts.push(this.$t("mem {value1}", { value1: this.formatBytes(metrics.memory_bytes) }));
@@ -1555,10 +1555,10 @@ export default {
             const value = Number(bytes);
             if (!Number.isFinite(value) || value < 0) return '—';
             if (value < 1024) return `${value} B`;
-            if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
-            if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MiB`;
+            if (value < 1024 * 1024) return `${(value / 1024).toLocaleString(this.$i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} KiB`;
+            if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toLocaleString(this.$i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MiB`;
 
-            return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GiB`;
+            return `${(value / (1024 * 1024 * 1024)).toLocaleString(this.$i18n.locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} GiB`;
         },
 
         formatUptime(seconds) {
