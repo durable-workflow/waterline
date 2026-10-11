@@ -24,12 +24,15 @@ function collect(probe, caller, service, status) {
     assert.equal(probe.status, 200, `${caller}/${service} ${status}: producer response`);
     assert.equal(probe.body.outcome, 'pass', `${caller}/${service} ${status}: actual worker outcome`);
     assert.equal(probe.body.observations.length, 2, 'same/cross-namespace executions are required');
+    assert.deepEqual(probe.body.observations.map(row => row.durable_service_call.body.caller_namespace).sort(),
+        ['shared', 'tenant-a'], 'original caller namespaces');
     for (const observation of probe.body.observations) {
         assert.equal(observation.durable_service_call.status, 200);
         assert.equal(observation.result.status, status);
         const original = observation.durable_service_call.body;
         assert.equal(original.status, status);
         assert.equal(original.namespace, 'shared');
+        assert.equal(original.target_namespace, 'shared');
         const id = original.id || original.service_call_id;
         assert.equal(id, observation.result.service_call_id);
         assert.ok(id && original.call_deadline_at, 'original identity and deadline are required');
@@ -48,6 +51,8 @@ for (const [file, status] of [
 ]) {
     const reports = load(file).reports;
     assert.equal(reports.length, 4, 'all PHP/Python caller/service pairs are required');
+    assert.deepEqual(reports.map(row => `${row.caller}/${row.service}`).sort(),
+        ['php/php', 'php/python', 'python/php', 'python/python']);
     for (const report of reports) collect(report.observation, report.caller, report.service, status);
 }
 assert.equal(cases.length, 24);
