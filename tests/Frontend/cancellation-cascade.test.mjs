@@ -69,6 +69,40 @@ test('embedded and service presentations consume the same evidence without chang
     assert.equal(await render(embedded), await render(service))
 })
 
+test('requester labels preserve the original legacy, operator and anonymous identity', async () => {
+    for (const requester of [
+        { id: 'legacy-token', label: 'Admin', type: 'auth:token' },
+        { id: 'fixture-cancellation-operator', label: 'Operator', type: 'auth:runtime-token' },
+        { id: 'anonymous', label: 'Admin', type: 'server' },
+    ]) {
+        const payload = fixture()
+        payload.cancellation_cascade.root.requester = requester
+        const before = structuredClone(payload)
+        const html = await render(payload)
+        for (const value of [requester.id, requester.label, payload.cancellation_cascade.root.source]) {
+            assert.ok(html.includes(value), value)
+        }
+        assert.deepEqual(payload, before)
+    }
+})
+
+test('requesters without labels and identical label identities are not duplicated', async () => {
+    for (const requester of [{ id: 'original-caller' }, { id: 'original-caller', label: 'original-caller' }]) {
+        const payload = fixture()
+        payload.cancellation_cascade.root.requester = requester
+        const html = await render(payload)
+        assert.equal(html.match(/original-caller/g)?.length, 1)
+    }
+})
+
+test('a requester identity is escaped text even when a safe display label is present', async () => {
+    const payload = fixture()
+    payload.cancellation_cascade.root.requester = { label: 'Operator', id: '<img src=x onerror=alert(1)>' }
+    const html = await render(payload)
+    assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'))
+    assert.ok(!html.includes('<img src=x'))
+})
+
 test('Ukrainian cascade explains cleanup while preserving identities, deadlines and original evidence', async () => {
     const payload = fixture()
     payload.cancellation_cascade.root.reason = 'Original reason <script>unsafe()</script>'

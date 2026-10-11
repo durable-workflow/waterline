@@ -10,7 +10,12 @@
                     <dt class="col-sm-3">{{ $t("Requested") }}</dt><dd class="col-sm-9">{{ label(root.requested_at) }}</dd>
                     <dt class="col-sm-3">{{ $t("Original cleanup deadline") }}</dt><dd class="col-sm-9">{{ label(root.cleanup_deadline_at) }}</dd>
                     <dt class="col-sm-3">{{ $t("Reason") }}</dt><dd class="col-sm-9 wl-cancellation-value">{{ label(root.reason) }}</dd>
-                    <dt class="col-sm-3">{{ $t("Requester") }}</dt><dd class="col-sm-9 wl-cancellation-value">{{ label(requester.label || requester.id) }} · {{ label(root.source) }}</dd>
+                    <dt class="col-sm-3">{{ $t("Requester") }}</dt>
+                    <dd class="col-sm-9 wl-cancellation-value">
+                        {{ label(requester.label || requester.id) }}
+                        <template v-if="requester.label && requester.id && requester.id !== requester.label"> ({{ label(requester.id) }})</template>
+                        · {{ label(root.source) }}
+                    </dd>
                 </dl>
                 <div class="alert alert-warning" v-if="view.inspection_complete !== true" role="status">
                     {{ $t(view.truncated === true ? 'Some cancellation evidence is unavailable or outside this view’s limits.' : 'Some cancellation evidence is unavailable.') }}
