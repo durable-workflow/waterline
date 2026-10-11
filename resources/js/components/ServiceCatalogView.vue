@@ -859,7 +859,7 @@ export default {
                 const response = await axios.get(this.waterlineBasePath() + '/api/v2/services/' + type + '/' + encodeURIComponent(row.id));
                 this.detail = response.data || {};
             } catch (error) {
-                this.detailError = error.response?.data?.error || error.response?.data?.message || error.message || this.$t("Failed to load detail");
+                this.detailError = error.response?.data?.message || error.response?.data?.error || error.message || this.$t("Failed to load detail");
             } finally {
                 this.detailLoading = false;
             }
