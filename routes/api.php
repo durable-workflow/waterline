@@ -9,10 +9,10 @@ use Waterline\Http\Controllers\V2HealthController;
 use Waterline\Http\Controllers\V2SchedulesController;
 use Waterline\Http\Controllers\V2ServicesController;
 use Waterline\Http\Controllers\WorkflowsController;
-use Waterline\Http\Controllers\Remote\RemoteCapabilityController;
 use Waterline\Http\Controllers\Remote\RemoteCapacityEvidenceController;
 use Waterline\Http\Controllers\Remote\RemoteHealthController;
 use Waterline\Http\Controllers\Remote\RemoteSchedulesController;
+use Waterline\Http\Controllers\Remote\RemoteServicesController;
 use Waterline\Http\Controllers\Remote\RemoteStatsController;
 use Waterline\Http\Controllers\Remote\RemoteWorkflowsController;
 use Waterline\Support\BackendConfiguration;
@@ -24,8 +24,9 @@ $capacityEvidenceController = BackendConfiguration::serviceMode()
     : CapacityEvidenceController::class;
 $healthController = BackendConfiguration::serviceMode() ? RemoteHealthController::class : V2HealthController::class;
 $schedulesController = BackendConfiguration::serviceMode() ? RemoteSchedulesController::class : V2SchedulesController::class;
+$servicesController = BackendConfiguration::serviceMode() ? RemoteServicesController::class : V2ServicesController::class;
 
-Route::prefix('api')->group(function () use ($capacityEvidenceController, $healthController, $schedulesController, $statsController, $workflowsController) {
+Route::prefix('api')->group(function () use ($capacityEvidenceController, $healthController, $schedulesController, $servicesController, $statsController, $workflowsController) {
     Route::get('/stats', [$statsController, 'index'])->name('waterline.stats.index');
     Route::get('/v2/capacity-evidence', [$capacityEvidenceController, 'show'])->name('waterline.v2.capacity-evidence.show');
     Route::get('/v2/health', [$healthController, 'show'])->name('waterline.v2.health');
@@ -62,20 +63,14 @@ Route::prefix('api')->group(function () use ($capacityEvidenceController, $healt
     Route::post('/instances/{instanceId}/cancel', [$workflowsController, 'cancelInstance'])->name('waterline.instances.cancel');
     Route::post('/instances/{instanceId}/terminate', [$workflowsController, 'terminateInstance'])->name('waterline.instances.terminate');
     Route::post('/instances/{instanceId}/archive', [$workflowsController, 'archiveInstance'])->name('waterline.instances.archive');
-    if (BackendConfiguration::serviceMode()) {
-        Route::any('/v2/services/{path?}', [RemoteCapabilityController::class, 'unavailable'])
-            ->where('path', '.*')
-            ->name('waterline.v2.services.unavailable');
-    } else {
-        Route::get('/v2/services/endpoints', [V2ServicesController::class, 'endpointsIndex'])->name('waterline.v2.services.endpoints.index');
-        Route::get('/v2/services/endpoints/{endpointId}', [V2ServicesController::class, 'endpointShow'])->name('waterline.v2.services.endpoints.show');
-        Route::get('/v2/services/services', [V2ServicesController::class, 'servicesIndex'])->name('waterline.v2.services.services.index');
-        Route::get('/v2/services/services/{serviceId}', [V2ServicesController::class, 'serviceShow'])->name('waterline.v2.services.services.show');
-        Route::get('/v2/services/operations', [V2ServicesController::class, 'operationsIndex'])->name('waterline.v2.services.operations.index');
-        Route::get('/v2/services/operations/{operationId}', [V2ServicesController::class, 'operationShow'])->name('waterline.v2.services.operations.show');
-        Route::get('/v2/services/calls', [V2ServicesController::class, 'callsIndex'])->name('waterline.v2.services.calls.index');
-        Route::get('/v2/services/calls/{callId}', [V2ServicesController::class, 'callShow'])->name('waterline.v2.services.calls.show');
-    }
+    Route::get('/v2/services/endpoints', [$servicesController, 'endpointsIndex'])->name('waterline.v2.services.endpoints.index');
+    Route::get('/v2/services/endpoints/{endpointId}', [$servicesController, 'endpointShow'])->name('waterline.v2.services.endpoints.show');
+    Route::get('/v2/services/services', [$servicesController, 'servicesIndex'])->name('waterline.v2.services.services.index');
+    Route::get('/v2/services/services/{serviceId}', [$servicesController, 'serviceShow'])->name('waterline.v2.services.services.show');
+    Route::get('/v2/services/operations', [$servicesController, 'operationsIndex'])->name('waterline.v2.services.operations.index');
+    Route::get('/v2/services/operations/{operationId}', [$servicesController, 'operationShow'])->name('waterline.v2.services.operations.show');
+    Route::get('/v2/services/calls', [$servicesController, 'callsIndex'])->name('waterline.v2.services.calls.index');
+    Route::get('/v2/services/calls/{callId}', [$servicesController, 'callShow'])->name('waterline.v2.services.calls.show');
 
     Route::get('/v2/schedules', [$schedulesController, 'index'])->name('waterline.v2.schedules.index');
     Route::get('/v2/schedules/{scheduleId}', [$schedulesController, 'show'])->name('waterline.v2.schedules.show');

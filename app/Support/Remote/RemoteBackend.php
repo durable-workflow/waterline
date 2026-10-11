@@ -24,6 +24,8 @@ final class RemoteBackend
 
     private ?bool $workflowStreamsAvailable = null;
 
+    private ?bool $serviceCatalogAvailable = null;
+
     public function __construct(private readonly object $client)
     {
     }
@@ -69,6 +71,26 @@ final class RemoteBackend
     public function readOnly(): bool
     {
         return BackendConfiguration::accessMode() === 'read_only';
+    }
+
+    /** @return array<string, mixed> */
+    public function serviceCatalogRead(string $method, array $arguments): array
+    {
+        try {
+            $response = $this->client->{$method}(...$arguments);
+        } catch (ServerException $exception) {
+            if ($exception->status === 501
+                && $exception->reason === 'backend_capability_unavailable'
+                && ($exception->details['capability'] ?? null) === 'service_catalog_reads') {
+                $this->serviceCatalogAvailable = false;
+            }
+
+            throw $exception;
+        }
+
+        $this->serviceCatalogAvailable = true;
+
+        return $response;
     }
 
     /** @return array<string, mixed> */
@@ -259,6 +281,7 @@ final class RemoteBackend
         $capabilities['task_queues'] = $this->supports('listTaskQueues');
         $capabilities['workflow_streams'] = $this->workflowStreamsAvailable
             ?? $this->supports('listWorkflowStreams');
+        $capabilities['services'] = $this->serviceCatalogAvailable === true;
         $capabilities['repair'] = $capabilities['repair'] && $this->supports('repairWorkflow');
         $capabilities['archive'] = $capabilities['archive'] && $this->supports('archiveWorkflow');
 

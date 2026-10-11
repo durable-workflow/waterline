@@ -16,6 +16,9 @@ final class FakeRemoteClient
     /** @var list<array{method: string, arguments: array<int|string, mixed>}> */
     public array $calls = [];
 
+    /** @var array<string, array<string, mixed>> */
+    public array $catalogResponses = [];
+
     public ?Throwable $failure = null;
 
     /** @var array<string, Throwable> */
@@ -78,6 +81,56 @@ final class FakeRemoteClient
         return new WorkflowPage([
             ...array_map(static fn (array $row): WorkflowExecution => WorkflowExecution::fromArray($row), $rows),
         ], null, count($rows), ['workflows' => $rows]);
+    }
+
+    public function listServiceCatalogEndpoints(array $filters = []): array
+    {
+        return $this->catalogRead(__FUNCTION__, get_defined_vars());
+    }
+
+    public function describeServiceCatalogEndpoint(string $endpointId): array
+    {
+        return $this->catalogRead(__FUNCTION__, get_defined_vars());
+    }
+
+    public function listServiceCatalogServices(array $filters = []): array
+    {
+        return $this->catalogRead(__FUNCTION__, get_defined_vars());
+    }
+
+    public function describeServiceCatalogService(string $serviceId): array
+    {
+        return $this->catalogRead(__FUNCTION__, get_defined_vars());
+    }
+
+    public function listServiceCatalogOperations(array $filters = []): array
+    {
+        return $this->catalogRead(__FUNCTION__, get_defined_vars());
+    }
+
+    public function describeServiceCatalogOperation(string $operationId): array
+    {
+        return $this->catalogRead(__FUNCTION__, get_defined_vars());
+    }
+
+    public function listServiceCatalogCalls(array $filters = []): array
+    {
+        return $this->catalogRead(__FUNCTION__, get_defined_vars());
+    }
+
+    public function describeServiceCatalogCall(string $callId): array
+    {
+        return $this->catalogRead(__FUNCTION__, get_defined_vars());
+    }
+
+    private function catalogRead(string $method, array $arguments): array
+    {
+        $this->called($method, $arguments);
+
+        return $this->catalogResponses[$method] ?? [
+            'data' => [], 'current_page' => 1, 'per_page' => 50, 'total' => 0, 'last_page' => 1,
+            'namespace' => 'orders',
+        ];
     }
 
     public function describeWorkflow(string $workflowId, ?string $runId = null): WorkflowExecution

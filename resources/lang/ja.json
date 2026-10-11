@@ -1240,5 +1240,17 @@
     "instance /": "インスタンス /",
     "run /": "実行 /",
     "diagnostic only /": "診断用の情報 /",
-    "compatibility fallback": "互換性のためのフォールバック"
+    "compatibility fallback": "互換性のためのフォールバック",
+    "Terminal result": "最終結果",
+    "The result belongs to another namespace.": "結果は別の名前空間に属しています。",
+    "No terminal result was recorded.": "最終結果は記録されていません。",
+    "Result preview unavailable.": "結果のプレビューは利用できません。",
+    "Inspect the caller and target run histories before starting replacement work.": "代替の処理を開始する前に、呼び出し元と対象の実行履歴を確認してください。",
+    "Inspect the original deadline and active attempt. Refresh to see the next durable transition.": "元の期限と現在の試行を確認してください。更新すると、次の記録済みの状態遷移を確認できます。",
+    "Recorded attempts": "記録された試行",
+    "Related lists are limited. Browse the filtered catalog to see all rows.": "関連リストの件数には上限があります。すべての項目を見るには、絞り込んだカタログを開いてください。",
+    "Browse services": "サービスを表示",
+    "Browse operations": "操作を表示",
+    "Original deadline": "元の期限",
+    "Failure type": "失敗の種類"
 }

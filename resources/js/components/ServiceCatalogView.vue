@@ -28,6 +28,11 @@
             </div>
         </section>
 
+        <div v-if="catalogFilterEntries.length" class="alert alert-info">
+            <span v-for="[key, value] in catalogFilterEntries" :key="key" class="mr-3">{{ formatLabel(key) }}: <code>{{ value }}</code></span>
+            <button class="btn btn-sm btn-outline-secondary" @click="clearCatalogFilters">{{ $t("Clear") }}</button>
+        </div>
+
         <div v-if="activeTab === 'calls'" class="service-catalog-view__filters card">
             <div class="card-body card-bg-secondary">
                 <div class="service-catalog-view__filter-grid">
@@ -339,6 +344,20 @@
                         </section>
 
                         <section v-if="detailType === 'calls'" class="service-catalog-view__detail-section">
+                            <h6>{{ $t("Terminal result") }}</h6>
+                            <pre v-if="detail.output_available === true">{{ prettyJson(detail.output) }}</pre>
+                            <p v-else-if="detail.payloads_in_observer_namespace === false">{{ $t("The result belongs to another namespace.") }}</p>
+                            <p v-else-if="detail.output_available === false">{{ $t("No terminal result was recorded.") }}</p>
+                            <p v-else>{{ $t("Result preview unavailable.") }}</p>
+                            <p>{{ detail.is_terminal ? $t("Inspect the caller and target run histories before starting replacement work.") : $t("Inspect the original deadline and active attempt. Refresh to see the next durable transition.") }}</p>
+                        </section>
+
+                        <section v-if="detailType === 'calls' && Array.isArray(detail.service_call_attempts) && detail.service_call_attempts.length" class="service-catalog-view__detail-section">
+                            <h6>{{ $t("Recorded attempts") }}</h6>
+                            <pre>{{ prettyJson(detail.service_call_attempts) }}</pre>
+                        </section>
+
+                        <section v-if="detailType === 'calls'" class="service-catalog-view__detail-section">
                             <h6>{{ $t("References") }}</h6>
                             <div class="service-catalog-view__reference-list">
                                 <div v-if="detail.caller_link" class="service-catalog-view__reference">
@@ -372,6 +391,11 @@
 
                         <section v-if="detail.endpoint || detail.service || nestedServices.length || nestedOperations.length" class="service-catalog-view__detail-section service-catalog-view__detail-section--wide">
                             <h6>{{ $t("Catalog Links") }}</h6>
+                            <div v-if="detail.related_has_more?.services || detail.related_has_more?.operations" class="alert alert-info">
+                                <p>{{ $t("Related lists are limited. Browse the filtered catalog to see all rows.") }}</p>
+                                <button v-if="detail.related_has_more.services" class="btn btn-sm btn-outline-secondary mr-2" @click="browseRelated('services')">{{ $t("Browse services") }}</button>
+                                <button v-if="detail.related_has_more.operations" class="btn btn-sm btn-outline-secondary" @click="browseRelated('operations')">{{ $t("Browse operations") }}</button>
+                            </div>
                             <div class="service-catalog-view__nested-grid">
                                 <div v-if="detail.endpoint" class="service-catalog-view__nested-row">
                                     <strong>{{ $t("Endpoint") }}</strong>
@@ -488,6 +512,9 @@ export default {
     },
 
     computed: {
+        catalogFilterEntries() {
+            return Object.entries(this.listParams(1)).filter(([key]) => ['endpoint_id', 'service_id', 'operation_id'].includes(key));
+        },
         activeTabDefinition() {
             return this.tabs.find((tab) => tab.key === this.activeTab) || this.tabs[0];
         },
@@ -606,9 +633,15 @@ export default {
                     {key: 'target_namespace', label: this.$t("Target Namespace"), value: this.detail.target_namespace || '-'},
                     {key: 'status', label: this.$t("Status"), value: this.formatLabel(this.detail.status)},
                     {key: 'outcome', label: this.$t("Outcome"), value: this.formatLabel(this.detail.outcome)},
+                    {key: 'deadline', label: this.$t("Original deadline"), value: this.timestamp(this.detail.call_deadline_at), mono: true},
+                    {key: 'attempt_count', label: this.$t("Recorded attempts"), value: this.detail.retry_attempt_count ?? 0},
+                    {key: 'failure_type', label: this.$t("Failure type"), value: this.detail.failure_type || '-'},
                     {key: 'failure_message', label: this.$t("Failure Message"), value: this.detail.failure_message || '-'},
                     {key: 'idempotency_key', label: this.$t("Idempotency Key"), value: this.detail.idempotency_key || '-', mono: true},
                 );
+                [['accepted_at', 'Accepted'], ['started_at', 'Started'], ['completed_at', 'Completed'], ['failed_at', 'Failed'], ['cancelled_at', 'Cancelled']].forEach(([key, label]) => {
+                    rows.push({key, label: this.$t(label), value: this.timestamp(this.detail[key]), mono: true});
+                });
             }
 
             rows.push(
@@ -767,6 +800,13 @@ export default {
 
         listParams(page) {
             const params = {page};
+            const allowed = this.activeTab === 'services' ? ['endpoint_id']
+                : this.activeTab === 'operations' ? ['endpoint_id', 'service_id']
+                : this.activeTab === 'calls' ? ['endpoint_id', 'service_id', 'operation_id'] : [];
+            allowed.forEach((key) => {
+                const value = this.stringQuery(this.$route.query?.[key]);
+                if (value) params[key] = value;
+            });
 
             if (this.activeTab !== 'calls') {
                 return params;
@@ -779,6 +819,17 @@ export default {
             });
 
             return params;
+        },
+
+        browseRelated(tab) {
+            const key = this.detailType === 'endpoints' ? 'endpoint_id' : 'service_id';
+            this.$router.push({path: this.$route.path, query: {tab, [key]: this.detail.id}});
+        },
+
+        clearCatalogFilters() {
+            const query = {...this.$route.query};
+            ['endpoint_id', 'service_id', 'operation_id', 'page'].forEach((key) => delete query[key]);
+            this.$router.push({path: this.$route.path, query});
         },
 
         applyMeta(payload) {
@@ -809,7 +860,7 @@ export default {
                 const response = await axios.get(this.waterlineBasePath() + '/api/v2/services/' + type + '/' + encodeURIComponent(row.id));
                 this.detail = response.data || {};
             } catch (error) {
-                this.detailError = error.response?.data?.error || error.response?.data?.message || error.message || this.$t("Failed to load detail");
+                this.detailError = error.response?.data?.message || error.response?.data?.error || error.message || this.$t("Failed to load detail");
             } finally {
                 this.detailLoading = false;
             }
@@ -1020,7 +1071,7 @@ export default {
         },
 
         prettyJson(value) {
-            return JSON.stringify(value || {}, null, 2);
+            return JSON.stringify(value === undefined ? {} : value, null, 2);
         },
 
         hasObjectEntries(value) {
