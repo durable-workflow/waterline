@@ -1244,6 +1244,7 @@
     "Terminal result": "Résultat final",
     "The result belongs to another namespace.": "Le résultat appartient à un autre espace de noms.",
     "No terminal result was recorded.": "Aucun résultat final n’a été enregistré.",
+    "Result preview unavailable.": "Aperçu du résultat indisponible.",
     "Inspect the caller and target run histories before starting replacement work.": "Consultez les historiques d’exécution de l’appelant et de la cible avant de lancer un travail de remplacement.",
     "Inspect the original deadline and active attempt. Refresh to see the next durable transition.": "Vérifiez l’échéance initiale et la tentative active. Actualisez la vue pour voir la prochaine transition enregistrée.",
     "Recorded attempts": "Tentatives enregistrées",

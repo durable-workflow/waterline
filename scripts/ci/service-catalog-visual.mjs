@@ -111,6 +111,19 @@ try {
                 await capture(page, `${presentation}-${theme}-${width}-${status}`);
             }
 
+            fixture = callFixture('completed');
+            delete fixture.output_available;
+            delete fixture.output;
+            fixture.metadata = { nexus_result: { codec: 'avro', blob: 'recorded-result' } };
+            await page.goto(`${base}?tab=calls`, { waitUntil: 'networkidle' });
+            await page.locator('.service-catalog-view tbody').getByRole('button', { name: 'View', exact: true }).click();
+            const unavailable = page.locator('.service-catalog-view__detail section').filter({
+                has: page.getByRole('heading', { name: 'Terminal result', exact: true }),
+            });
+            await unavailable.getByText('Result preview unavailable.', { exact: true }).waitFor();
+            assert.equal(await unavailable.getByText('No terminal result was recorded.', { exact: true }).count(), 0);
+            await capture(page, `${presentation}-${theme}-${width}-recorded-preview-unavailable`);
+
             if (presentation === 'service' && width === 1440) {
                 for (const value of [0, null]) {
                     fixture = callFixture('completed', value);

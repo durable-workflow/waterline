@@ -1244,6 +1244,7 @@
     "Terminal result": "最终结果",
     "The result belongs to another namespace.": "结果属于另一个命名空间。",
     "No terminal result was recorded.": "尚未记录最终结果。",
+    "Result preview unavailable.": "结果预览不可用。",
     "Inspect the caller and target run histories before starting replacement work.": "开始替代工作之前，请检查调用方和目标的运行历史。",
     "Inspect the original deadline and active attempt. Refresh to see the next durable transition.": "检查原始截止时间和当前尝试。刷新以查看下一个已持久保存的状态变更。",
     "Recorded attempts": "已记录的尝试",

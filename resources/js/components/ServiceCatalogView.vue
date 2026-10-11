@@ -347,7 +347,8 @@
                             <h6>{{ $t("Terminal result") }}</h6>
                             <pre v-if="detail.output_available === true">{{ prettyJson(detail.output) }}</pre>
                             <p v-else-if="detail.payloads_in_observer_namespace === false">{{ $t("The result belongs to another namespace.") }}</p>
-                            <p v-else>{{ $t("No terminal result was recorded.") }}</p>
+                            <p v-else-if="detail.output_available === false">{{ $t("No terminal result was recorded.") }}</p>
+                            <p v-else>{{ $t("Result preview unavailable.") }}</p>
                             <p>{{ detail.is_terminal ? $t("Inspect the caller and target run histories before starting replacement work.") : $t("Inspect the original deadline and active attempt. Refresh to see the next durable transition.") }}</p>
                         </section>
 
