@@ -103,7 +103,7 @@ final class RemoteServicesController extends RemoteController
 
         if ($method === 'describeServiceCatalogCall' && ($payload['output_available'] ?? null) === true) {
             $payload['output'] = RemotePayloadPreview::display($payload['output'] ?? null);
-            unset($payload['output_envelope']);
+            unset($payload['output_envelope'], $payload['result_envelope'], $payload['metadata']['nexus_result']);
         }
 
         return response()->json($this->scoped($payload), 200, [], JSON_PRESERVE_ZERO_FRACTION);

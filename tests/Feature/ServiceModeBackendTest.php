@@ -1303,6 +1303,7 @@ final class ServiceModeBackendTest extends TestCase
 
     public function testReadOnlyCatalogRoutesForwardFiltersAndPreserveBoundedPagination(): void
     {
+        $catalogWasLoaded = class_exists('Workflow\\V2\\Support\\ServiceCatalog', false);
         foreach (['endpoints', 'services', 'operations', 'calls'] as $kind) {
             $method = 'listServiceCatalog'.ucfirst($kind);
             $this->client->catalogResponses[$method] = [
@@ -1324,11 +1325,12 @@ final class ServiceModeBackendTest extends TestCase
             ->assertOk();
         $calls = array_values(array_filter($this->client->calls, static fn (array $call): bool => $call['method'] === 'listServiceCatalogCalls'));
         $this->assertSame(['scope' => 'caller', 'status_bucket' => 'open', 'endpoint_id' => 'endpoint-1'], $calls[1]['arguments']['filters']);
-        $this->assertFalse(class_exists('Workflow\\V2\\Support\\ServiceCatalog', false));
+        $this->assertSame($catalogWasLoaded, class_exists('Workflow\\V2\\Support\\ServiceCatalog', false));
     }
 
     public function testCatalogDetailsPreserveOriginalIdentityDeadlineAttemptsAndForeignReferences(): void
     {
+        $catalogWasLoaded = class_exists('Workflow\\V2\\Support\\ServiceCatalog', false);
         foreach (['endpoints' => 'Endpoint', 'services' => 'Service', 'operations' => 'Operation', 'calls' => 'Call'] as $kind => $singular) {
             $method = 'describeServiceCatalog'.$singular;
             $this->client->catalogResponses[$method] = [
@@ -1351,7 +1353,7 @@ final class ServiceModeBackendTest extends TestCase
                 ->assertJsonPath('operator_scope.namespace', 'orders');
         }
         $this->assertNotContains('describeWorkflow', array_column($this->client->calls, 'method'));
-        $this->assertFalse(class_exists('Workflow\\V2\\Support\\ServiceCatalog', false));
+        $this->assertSame($catalogWasLoaded, class_exists('Workflow\\V2\\Support\\ServiceCatalog', false));
     }
 
     public function testCatalogCannotOverrideObserverNamespaceOrDiscardDetailFilters(): void
@@ -1392,9 +1394,12 @@ final class ServiceModeBackendTest extends TestCase
             $this->client->catalogResponses['describeServiceCatalogCall'] = [
                 'id' => 'call-1', 'status' => 'completed', 'outcome' => 'completed',
                 'payloads_in_observer_namespace' => true, 'output_available' => true, 'output' => $output,
+                'result_envelope' => ['codec' => 'avro', 'blob' => 'encoded-copy'],
+                'metadata' => ['nexus_result' => ['codec' => 'avro', 'blob' => 'encoded-copy']],
             ];
             $this->getJson('/waterline/api/v2/services/calls/call-1')->assertOk()
-                ->assertJsonPath('output_available', true)->assertJsonPath('output', $output);
+                ->assertJsonPath('output_available', true)->assertJsonPath('output', $output)
+                ->assertJsonMissingPath('result_envelope')->assertJsonMissingPath('metadata.nexus_result');
         }
     }
 
