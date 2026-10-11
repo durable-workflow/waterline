@@ -11,6 +11,7 @@ function argument(name) {
 
 const owner = argument('--base-url').replace(/\/$/, '');
 const foreign = argument('--foreign-base-url').replace(/\/$/, '');
+const secondForeign = argument('--second-foreign-base-url').replace(/\/$/, '');
 const evidence = path.resolve(argument('--nexus-evidence-dir'));
 const output = path.resolve(argument('--output-dir'));
 fs.mkdirSync(output, { recursive: true });
@@ -26,7 +27,7 @@ function collect(probe, caller, service, status) {
     assert.equal(probe.body.outcome, 'pass', `${caller}/${service} ${status}: actual worker outcome`);
     assert.equal(probe.body.observations.length, 2, 'same/cross-namespace executions are required');
     assert.deepEqual(probe.body.observations.map(row => row.durable_service_call.body.caller_namespace).sort(),
-        ['shared', 'tenant-a'], 'original caller namespaces');
+        ['shared', caller === 'php' ? 'tenant-a' : 'tenant-b'], 'original caller namespaces');
     for (const observation of probe.body.observations) {
         assert.equal(observation.durable_service_call.status, 200);
         assert.equal(observation.result.status, status);
@@ -107,7 +108,8 @@ page.on('pageerror', error => errors.push(error.message));
 const reports = [];
 try {
     for (const row of cases) {
-        for (const [scope, origin, namespace] of [['owner', owner, 'shared'], ['foreign', foreign, 'tenant-a']]) {
+        for (const [scope, origin, namespace] of [['owner', owner, 'shared'],
+            ['foreign-tenant-a', foreign, 'tenant-a'], ['foreign-tenant-b', secondForeign, 'tenant-b']]) {
             const response = await api(origin, `calls/${encodeURIComponent(row.id)}`);
             const relevant = scope === 'owner' || row.original.caller_namespace === namespace;
             if (!relevant) {
@@ -121,7 +123,7 @@ try {
             originalFields(detail, row.original);
             assert.equal(detail.operator_scope.namespace, namespace);
             assert.equal(detail.payloads_in_observer_namespace, scope === 'owner');
-            if (scope === 'foreign') {
+            if (scope !== 'owner') {
                 for (const field of ['input_payload_reference', 'output_payload_reference', 'failure_payload_reference']) {
                     assert.equal(detail[field], null);
                 }
@@ -152,7 +154,7 @@ try {
             assert.ok(text.includes('Inspect the caller and target run histories before starting replacement work.'));
             if (row.status === 'failed') assert.ok(text.includes(detail.failure_type));
             if (scope === 'owner' && row.status === 'completed') assert.ok(text.includes('hello, world'));
-            if (scope === 'foreign') {
+            if (scope !== 'owner') {
                 const target = panel.locator('.service-catalog-view__reference').filter({ hasText: 'Target Run' });
                 assert.equal(await target.locator('a').count(), 0);
                 assert.ok(text.includes('The result belongs to another namespace.'));
