@@ -161,7 +161,7 @@ and accepts the standalone endpoint and token from the deployment environment.
 Select the stable image before starting it:
 
 ```bash
-WATERLINE_IMAGE="durableworkflow/waterline:2.0.0" \
+WATERLINE_IMAGE="durableworkflow/waterline:2.10.0" \
   docker compose -f deploy/docker-compose.service.yml up -d
 ```
 
