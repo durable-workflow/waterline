@@ -160,7 +160,17 @@ class V2ServicesController extends Controller
             return $this->notFound('Service call');
         }
 
-        return response()->json($this->withOperatorScope(ServiceCallView::detail($call, $this->namespace())));
+        $namespace = $this->namespace();
+        $payload = ServiceCallView::detail($call, $namespace);
+        $payload['payloads_in_observer_namespace'] = $namespace === null || $call->namespace === $namespace;
+        if (! $payload['payloads_in_observer_namespace']) {
+            foreach (['input_payload_reference', 'output_payload_reference', 'failure_payload_reference'] as $field) {
+                $payload[$field] = null;
+            }
+            unset($payload['metadata']['nexus_result']);
+        }
+
+        return response()->json($this->withOperatorScope($payload));
     }
 
     /**
