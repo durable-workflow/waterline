@@ -390,6 +390,10 @@ class V2ServicesControllerTest extends TestCase
             'linked_workflow_run_id' => 'run-shipping-1',
             'linked_workflow_update_id' => 'upd-shipping-1',
             'status' => ServiceCallStatus::Started->value,
+            'input_payload_reference' => 's3://private/input',
+            'output_payload_reference' => 's3://private/output',
+            'failure_payload_reference' => 's3://private/failure',
+            'metadata' => ['nexus_result' => ['codec' => 'avro', 'blob' => 'private-result'], 'diagnostic' => 'retained'],
         ]);
 
         $this->getJson('/waterline/api/v2/services/calls/'.$call->id)
@@ -400,7 +404,24 @@ class V2ServicesControllerTest extends TestCase
             ->assertJsonPath('linked_run_ref.namespace', 'shipping')
             ->assertJsonPath('linked_run_ref.in_observer_namespace', false)
             ->assertJsonPath('linked_update_ref.namespace', 'shipping')
-            ->assertJsonPath('linked_update_ref.in_observer_namespace', false);
+            ->assertJsonPath('linked_update_ref.in_observer_namespace', false)
+            ->assertJsonPath('payloads_in_observer_namespace', false)
+            ->assertJsonPath('input_payload_reference', null)
+            ->assertJsonPath('output_payload_reference', null)
+            ->assertJsonPath('failure_payload_reference', null)
+            ->assertJsonMissingPath('metadata.nexus_result')
+            ->assertJsonPath('metadata.diagnostic', 'retained');
+
+        config()->set('waterline.namespace', 'shipping');
+        $this->getJson('/waterline/api/v2/services/calls/'.$call->id)->assertOk()
+            ->assertJsonPath('payloads_in_observer_namespace', true)
+            ->assertJsonPath('output_payload_reference', 's3://private/output')
+            ->assertJsonPath('metadata.nexus_result.blob', 'private-result');
+
+        config()->set('waterline.namespace', null);
+        $this->getJson('/waterline/api/v2/services/calls/'.$call->id)->assertOk()
+            ->assertJsonPath('payloads_in_observer_namespace', true)
+            ->assertJsonPath('output_payload_reference', 's3://private/output');
     }
 
     public function testInvalidScopeQueryParameterFallsBackToRelevant(): void
