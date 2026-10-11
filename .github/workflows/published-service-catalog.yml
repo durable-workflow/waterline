@@ -103,7 +103,7 @@ jobs:
           assert.equal(report.classification, 'published_api_browser');
           assert.equal(report.outcome, 'pass');
           assert.equal(report.original_calls, 24);
-          assert.equal(report.cases.length, 48);
+          assert.equal(report.cases.length, 72);
           assert.equal(report.cases.filter(row => row.screenshot).length, 36);
           assert.deepEqual(report.mutations, []);
           assert.deepEqual(report.page_errors, []);
