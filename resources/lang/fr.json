@@ -1240,5 +1240,16 @@
     "instance /": "instance /",
     "run /": "exécution /",
     "diagnostic only /": "diagnostic uniquement /",
-    "compatibility fallback": "repli de compatibilité"
+    "compatibility fallback": "repli de compatibilité",
+    "Terminal result": "Résultat final",
+    "The result belongs to another namespace.": "Le résultat appartient à un autre espace de noms.",
+    "No terminal result was recorded.": "Aucun résultat final n’a été enregistré.",
+    "Inspect the caller and target run histories before starting replacement work.": "Consultez les historiques d’exécution de l’appelant et de la cible avant de lancer un travail de remplacement.",
+    "Inspect the original deadline and active attempt. Refresh to see the next durable transition.": "Vérifiez l’échéance initiale et la tentative active. Actualisez la vue pour voir la prochaine transition enregistrée.",
+    "Recorded attempts": "Tentatives enregistrées",
+    "Related lists are limited. Browse the filtered catalog to see all rows.": "Les listes associées sont limitées. Consultez le catalogue filtré pour voir toutes les entrées.",
+    "Browse services": "Afficher les services",
+    "Browse operations": "Afficher les opérations",
+    "Original deadline": "Échéance initiale",
+    "Failure type": "Type d’erreur"
 }

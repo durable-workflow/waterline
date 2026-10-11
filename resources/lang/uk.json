@@ -1240,5 +1240,16 @@
     "instance /": "екземпляр /",
     "run /": "запуск /",
     "diagnostic only /": "лише діагностика /",
-    "compatibility fallback": "резервний режим сумісності"
+    "compatibility fallback": "резервний режим сумісності",
+    "Terminal result": "Кінцевий результат",
+    "The result belongs to another namespace.": "Результат належить до іншого простору імен.",
+    "No terminal result was recorded.": "Кінцевий результат не записано.",
+    "Inspect the caller and target run histories before starting replacement work.": "Перегляньте історії виклику та цільового запуску перед початком роботи на заміну.",
+    "Inspect the original deadline and active attempt. Refresh to see the next durable transition.": "Перевірте початковий кінцевий термін і поточну спробу. Оновіть сторінку, щоб побачити наступний збережений перехід.",
+    "Recorded attempts": "Записані спроби",
+    "Related lists are limited. Browse the filtered catalog to see all rows.": "Пов’язані списки обмежені. Перегляньте відфільтрований каталог, щоб побачити всі записи.",
+    "Browse services": "Переглянути сервіси",
+    "Browse operations": "Переглянути операції",
+    "Original deadline": "Початковий кінцевий термін",
+    "Failure type": "Тип помилки"
 }

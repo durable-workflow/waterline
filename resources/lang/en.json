@@ -1240,5 +1240,16 @@
     "instance /": "instance /",
     "run /": "run /",
     "diagnostic only /": "diagnostic only /",
-    "compatibility fallback": "compatibility fallback"
+    "compatibility fallback": "compatibility fallback",
+    "Terminal result": "Terminal result",
+    "The result belongs to another namespace.": "The result belongs to another namespace.",
+    "No terminal result was recorded.": "No terminal result was recorded.",
+    "Inspect the caller and target run histories before starting replacement work.": "Inspect the caller and target run histories before starting replacement work.",
+    "Inspect the original deadline and active attempt. Refresh to see the next durable transition.": "Inspect the original deadline and active attempt. Refresh to see the next durable transition.",
+    "Recorded attempts": "Recorded attempts",
+    "Related lists are limited. Browse the filtered catalog to see all rows.": "Related lists are limited. Browse the filtered catalog to see all rows.",
+    "Browse services": "Browse services",
+    "Browse operations": "Browse operations",
+    "Original deadline": "Original deadline",
+    "Failure type": "Failure type"
 }

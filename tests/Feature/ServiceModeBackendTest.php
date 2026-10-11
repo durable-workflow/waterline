@@ -6,6 +6,8 @@ namespace Waterline\Tests\Feature;
 
 use Composer\InstalledVersions;
 use DurableWorkflow\Client;
+use DurableWorkflow\Codec\AvroBinaryValue;
+use DurableWorkflow\Codec\AvroMapValue;
 use DurableWorkflow\Exception\ServerException;
 use DurableWorkflow\Exception\TransportException;
 use DurableWorkflow\Transport\Transport;
@@ -1290,11 +1292,126 @@ final class ServiceModeBackendTest extends TestCase
 
     public function testUnsupportedProductCapabilitiesAreExplicitWithoutLoadingEmbeddedCode(): void
     {
+        $this->app->instance(RemoteBackend::class, new RemoteBackend(new class {}));
+
         $this->getJson('/waterline/api/v2/services/endpoints')
             ->assertStatus(501)
             ->assertJsonPath('reason', 'backend_capability_unavailable')
             ->assertJsonPath('capability', 'services')
             ->assertJsonPath('backend.capabilities.services', false);
+    }
+
+    public function testReadOnlyCatalogRoutesForwardFiltersAndPreserveBoundedPagination(): void
+    {
+        foreach (['endpoints', 'services', 'operations', 'calls'] as $kind) {
+            $method = 'listServiceCatalog'.ucfirst($kind);
+            $this->client->catalogResponses[$method] = [
+                'data' => [['id' => $kind.'-2']], 'current_page' => 2, 'per_page' => 1,
+                'total' => 3, 'last_page' => 3, 'namespace' => 'orders',
+            ];
+            $this->getJson('/waterline/api/v2/services/'.$kind.'?page=2&per_page=1')
+                ->assertOk()->assertJsonPath('data.0.id', $kind.'-2')
+                ->assertJsonPath('current_page', 2)->assertJsonPath('per_page', 1)
+                ->assertJsonPath('total', 3)->assertJsonPath('last_page', 3)
+                ->assertJsonPath('operator_scope.namespace', 'orders')
+                ->assertJsonPath('backend.capabilities.services', true)
+                ->assertJsonPath('backend.read_only', true);
+            $this->assertSame(['filters' => ['page' => '2', 'per_page' => '1']],
+                array_values(array_filter($this->client->calls, static fn (array $call): bool => $call['method'] === $method))[0]['arguments']);
+        }
+
+        $this->getJson('/waterline/api/v2/services/calls?scope=caller&status_bucket=open&endpoint_id=endpoint-1')
+            ->assertOk();
+        $calls = array_values(array_filter($this->client->calls, static fn (array $call): bool => $call['method'] === 'listServiceCatalogCalls'));
+        $this->assertSame(['scope' => 'caller', 'status_bucket' => 'open', 'endpoint_id' => 'endpoint-1'], $calls[1]['arguments']['filters']);
+        $this->assertFalse(class_exists('Workflow\\V2\\Support\\ServiceCatalog', false));
+    }
+
+    public function testCatalogDetailsPreserveOriginalIdentityDeadlineAttemptsAndForeignReferences(): void
+    {
+        foreach (['endpoints' => 'Endpoint', 'services' => 'Service', 'operations' => 'Operation', 'calls' => 'Call'] as $kind => $singular) {
+            $method = 'describeServiceCatalog'.$singular;
+            $this->client->catalogResponses[$method] = [
+                'id' => 'original-'.$kind, 'call_deadline_at' => '2026-10-11T20:00:01.123456Z',
+                'accepted_at' => '2026-10-11T20:00:00.123456Z', 'status' => 'failed',
+                'outcome' => 'timed_out', 'failure_type' => 'ServiceCallTimedOut',
+                'service_call_attempts' => [['attempt' => 2, 'status' => 'failed']],
+                'linked_run_ref' => ['namespace' => 'foreign', 'workflow_run_id' => 'private-run', 'in_observer_namespace' => false],
+                'payloads_in_observer_namespace' => false, 'output_payload_reference' => null,
+                'related_has_more' => ['operations' => true],
+            ];
+            $this->getJson('/waterline/api/v2/services/'.$kind.'/original-'.$kind)
+                ->assertOk()->assertJsonPath('id', 'original-'.$kind)
+                ->assertJsonPath('call_deadline_at', '2026-10-11T20:00:01.123456Z')
+                ->assertJsonPath('service_call_attempts.0.attempt', 2)
+                ->assertJsonPath('failure_type', 'ServiceCallTimedOut')
+                ->assertJsonPath('linked_run_ref.in_observer_namespace', false)
+                ->assertJsonPath('output_payload_reference', null)
+                ->assertJsonPath('related_has_more.operations', true)
+                ->assertJsonPath('operator_scope.namespace', 'orders');
+        }
+        $this->assertNotContains('describeWorkflow', array_column($this->client->calls, 'method'));
+        $this->assertFalse(class_exists('Workflow\\V2\\Support\\ServiceCatalog', false));
+    }
+
+    public function testCatalogCannotOverrideObserverNamespaceOrDiscardDetailFilters(): void
+    {
+        $this->getJson('/waterline/api/v2/services/calls?namespace=foreign')->assertStatus(422);
+        $this->getJson('/waterline/api/v2/services/calls/call-1?namespace=foreign')->assertStatus(422);
+        $this->getJson('/waterline/api/v2/services/calls/call-1?scope=target')->assertStatus(422);
+        $this->assertSame([], $this->client->calls);
+        $this->postJson('/waterline/api/v2/services/calls')->assertStatus(405);
+    }
+
+    public function testConnectedCatalogCapabilityRefusalIsDistinctFromTransportAuthAndScopeFailures(): void
+    {
+        $this->client->failures['listServiceCatalogCalls'] = new ServerException(
+            'The backend does not advertise catalog reads.', 501, 'backend_capability_unavailable', [
+                'capability' => 'service_catalog_reads',
+                'required_contract' => 'durable-workflow.v2.service-catalog-read.contract',
+                'required_contract_version' => 1, 'advertised_contract' => null,
+            ],
+        );
+        $this->getJson('/waterline/api/v2/services/calls')->assertStatus(501)
+            ->assertJsonPath('reason', 'backend_capability_unavailable')
+            ->assertJsonPath('required_contract_version', 1)
+            ->assertJsonPath('required_sdk_method', 'listServiceCatalogCalls')
+            ->assertJsonPath('backend.capabilities.services', false);
+
+        foreach ([401 => 'authentication_failed', 403 => 'forbidden', 404 => 'catalog_object_not_found',
+            422 => 'validation_failed', 503 => 'backend_unavailable'] as $status => $reason) {
+            $this->client->failures['describeServiceCatalogCall'] = new ServerException('Original failure', $status, $reason);
+            $this->getJson('/waterline/api/v2/services/calls/call-1')->assertStatus($status)
+                ->assertJsonPath('reason', $reason)->assertJsonPath('remote_status', $status);
+        }
+    }
+
+    public function testCatalogTerminalOutputPreservesFalseAndNullRatherThanReportingMissing(): void
+    {
+        foreach ([false, null, 0, '', ['result' => 'done']] as $output) {
+            $this->client->catalogResponses['describeServiceCatalogCall'] = [
+                'id' => 'call-1', 'status' => 'completed', 'outcome' => 'completed',
+                'payloads_in_observer_namespace' => true, 'output_available' => true, 'output' => $output,
+            ];
+            $this->getJson('/waterline/api/v2/services/calls/call-1')->assertOk()
+                ->assertJsonPath('output_available', true)->assertJsonPath('output', $output);
+        }
+    }
+
+    public function testCatalogPayloadPreviewPreservesBinaryMapsAndLargeIntegerIdentity(): void
+    {
+        $this->client->catalogResponses['describeServiceCatalogCall'] = [
+            'id' => 'call-1', 'output_available' => true,
+            'output' => [AvroBinaryValue::fromBytes("\xff\x00"), AvroMapValue::fromPairs([
+                ['0', PHP_INT_MAX], ['empty', AvroMapValue::fromPairs([])],
+            ]), 7.0],
+        ];
+        $this->getJson('/waterline/api/v2/services/calls/call-1')->assertOk()
+            ->assertJsonPath('output.0', ['$type' => 'bytes', 'base64' => '/wA='])
+            ->assertJsonPath('output.1.entries.0.key', '0')
+            ->assertJsonPath('output.1.entries.0.value', ['$type' => 'long', 'value' => (string) PHP_INT_MAX])
+            ->assertJsonPath('output.1.entries.1.value', ['$type' => 'map', 'entries' => []])
+            ->assertJsonPath('output.2', 7.0);
     }
 
     public function testTransportFailuresAreRenderedAsTypedRemoteErrors(): void
