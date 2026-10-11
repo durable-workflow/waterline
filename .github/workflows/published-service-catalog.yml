@@ -1,0 +1,118 @@
+name: Published service catalog inspection
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_image:
+        description: Immutable published durableworkflow/server digest
+        required: true
+      server_version:
+        description: Exact published Server version
+        required: true
+      waterline_image:
+        description: Immutable published durableworkflow/waterline digest
+        required: true
+      waterline_version:
+        description: Exact published Waterline version
+        required: true
+      server_harness_commit:
+        description: Exact public Server commit containing the published Nexus producer
+        required: true
+      workflow_version:
+        description: Exact published Workflow PHP version
+        required: true
+      php_caller_version:
+        description: Exact published PHP SDK caller/service version
+        required: true
+      python_caller_version:
+        description: Exact published Python SDK caller/service version
+        required: true
+      cli_version:
+        description: Exact published CLI version
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: published-service-catalog
+  cancel-in-progress: false
+
+jobs:
+  inspection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      DW_SERVER_IMAGE: ${{ inputs.server_image }}
+      DW_SERVER_VERSION: ${{ inputs.server_version }}
+      DW_WATERLINE_VERSION: ${{ inputs.waterline_version }}
+      DW_NEXUS_WATERLINE_IMAGE: ${{ inputs.waterline_image }}
+      DW_WORKFLOW_PHP_VERSION: ${{ inputs.workflow_version }}
+      DW_PHP_SDK_VERSION: ${{ inputs.php_caller_version }}
+      DW_PYTHON_SDK_VERSION: ${{ inputs.python_caller_version }}
+      DW_CLI_VERSION: ${{ inputs.cli_version }}
+    steps:
+      - name: Validate immutable artifact and harness inputs
+        env:
+          HARNESS_COMMIT: ${{ inputs.server_harness_commit }}
+        run: |
+          set -euo pipefail
+          [[ "$DW_SERVER_IMAGE" =~ ^durableworkflow/server@sha256:[0-9a-f]{64}$ ]]
+          [[ "$DW_NEXUS_WATERLINE_IMAGE" =~ ^durableworkflow/waterline@sha256:[0-9a-f]{64}$ ]]
+          [[ "$HARNESS_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          for name in DW_SERVER_VERSION DW_WATERLINE_VERSION DW_WORKFLOW_PHP_VERSION DW_PHP_SDK_VERSION DW_CLI_VERSION; do
+            [[ "${!name}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]
+          done
+          [[ "$DW_PYTHON_SDK_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+((a|b|rc)[0-9]+)?$ ]]
+      - name: Check out the observer harness
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: waterline
+          persist-credentials: false
+      - name: Check out the exact published Nexus producer harness
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: durable-workflow/server
+          ref: ${{ inputs.server_harness_commit }}
+          path: server
+          persist-credentials: false
+      - name: Install Node 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+      - name: Install isolated browser tooling
+        run: |
+          mkdir -p "$RUNNER_TEMP/catalog-browser"
+          cd "$RUNNER_TEMP/catalog-browser"
+          npm init -y
+          npm install --save-exact playwright@1.63.0
+          npx playwright install chromium --with-deps
+      - name: Inspect actual published calls before the producer tears down
+        working-directory: server
+        run: |
+          set -euo pipefail
+          export DW_NEXUS_RESULT_DIR="$RUNNER_TEMP/catalog-proof"
+          export DW_NEXUS_RUN_ROOT="$RUNNER_TEMP/catalog-run"
+          export DW_NEXUS_WATERLINE_INSPECTOR="$GITHUB_WORKSPACE/waterline/scripts/ci/service-catalog-published.mjs"
+          export DW_NEXUS_WATERLINE_PLAYWRIGHT_ROOT="$RUNNER_TEMP/catalog-browser"
+          scripts/conformance/nexus-published-artifacts.sh
+          node - "$DW_NEXUS_RESULT_DIR/waterline-catalog/report.json" <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          assert.equal(report.classification, 'published_api_browser');
+          assert.equal(report.outcome, 'pass');
+          assert.equal(report.original_calls, 24);
+          assert.equal(report.cases.length, 48);
+          assert.equal(report.cases.filter(row => row.screenshot).length, 36);
+          assert.deepEqual(report.mutations, []);
+          assert.deepEqual(report.page_errors, []);
+          NODE
+      - name: Retain original calls, API/browser proof and cleanup receipts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: published-service-catalog-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/catalog-proof
+          if-no-files-found: error
+          retention-days: 30

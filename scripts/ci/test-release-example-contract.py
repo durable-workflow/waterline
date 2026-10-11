@@ -133,13 +133,14 @@ The install command can move and use indented Markdown instead.
             contract.validate_documented_images(
                 "SERVICE_MODE.md",
                 stale,
+                RELEASE,
                 minimum=1,
             )
 
     def test_accepts_exact_stable_image_without_prose_coupling(self) -> None:
         document = f"""
 ```bash
-WATERLINE_IMAGE="{contract.STABLE_IMAGE}"
+WATERLINE_IMAGE="{contract.SERVICE_IMAGE}:{RELEASE.waterline}"
 docker run --rm "$WATERLINE_IMAGE"
 ```
 
@@ -152,9 +153,20 @@ Retained compatibility evidence names
             contract.validate_documented_images(
                 "SERVICE_MODE.md",
                 document,
+                RELEASE,
                 minimum=1,
             ),
         )
+
+    def test_image_follows_the_current_release_instead_of_the_original_2_0(self) -> None:
+        release = contract.ReleaseTuple(waterline="2.10.0", workflow="2.5.12", sdk="2.3.0")
+        original = f'WATERLINE_IMAGE="{contract.SERVICE_IMAGE}:2.0.0"\ndocker run "$WATERLINE_IMAGE"'
+        with self.assertRaisesRegex(contract.ContractError, "must assign WATERLINE_IMAGE"):
+            contract.validate_documented_images("SERVICE_MODE.md", original, release, minimum=1)
+        current = original.replace(":2.0.0", ":2.10.0")
+        self.assertEqual(1, contract.validate_documented_images(
+            "SERVICE_MODE.md", current, release, minimum=1,
+        ))
 
     def test_rejects_default_or_unqualified_service_image(self) -> None:
         stale = (

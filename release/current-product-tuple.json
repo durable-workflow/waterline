@@ -1,8 +1,8 @@
 {
     "schema": "durable-workflow.waterline-current-product-tuple/v1",
     "versions": {
-    "waterline": "2.9.1",
-        "workflow": "2.5.3",
-        "sdk-php": "2.2.3"
+        "waterline": "2.10.0",
+        "workflow": "2.5.12",
+        "sdk-php": "2.3.0"
     }
 }

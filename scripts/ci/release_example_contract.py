@@ -19,7 +19,6 @@ WORKFLOW_PACKAGE = "durable-workflow/workflow"
 SDK_PACKAGE = "durable-workflow/sdk"
 SERVICE_IMAGE = "durableworkflow/waterline"
 ONBOARDING_CONSTRAINT = "^2.0"
-STABLE_IMAGE = f"{SERVICE_IMAGE}:2.0.0"
 EXACT_VERSION = re.compile(
     r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$"
 )
@@ -296,9 +295,11 @@ def shell_commands(document: str) -> tuple[str, ...]:
 def validate_documented_images(
     source: str,
     document: str,
+    release: ReleaseTuple,
     *,
     minimum: int,
 ) -> int:
+    stable_image = f"{SERVICE_IMAGE}:{release.waterline}"
     commands = [
         command
         for command in shell_commands(document)
@@ -329,13 +330,13 @@ def validate_documented_images(
         command
         for command in shell_commands(document)
         if command in {
-            f'WATERLINE_IMAGE="{STABLE_IMAGE}"',
-            f"WATERLINE_IMAGE={STABLE_IMAGE}",
+            f'WATERLINE_IMAGE="{stable_image}"',
+            f"WATERLINE_IMAGE={stable_image}",
         }
     ]
     if not image_assignments:
         raise ContractError(
-            f"{source} must assign WATERLINE_IMAGE to {STABLE_IMAGE}"
+            f"{source} must assign WATERLINE_IMAGE to {stable_image}"
         )
     return resolved
 
@@ -426,6 +427,7 @@ def validate_repository(root: Path = ROOT) -> RepositoryValidation:
     documented_images = validate_documented_images(
         "SERVICE_MODE.md",
         service_document,
+        release,
         minimum=1,
     )
     local_documentation_links = validate_documentation_links(root)
