@@ -12,7 +12,7 @@ The host needs Docker, but does not need PHP, Laravel, Composer, or
 `durable-workflow/workflow`.
 
 ```bash
-WATERLINE_IMAGE="durableworkflow/waterline:2.0.0"
+WATERLINE_IMAGE="durableworkflow/waterline:2.10.0"
 
 docker run --rm -p 8080:8080 \
   -v waterline-data:/data \
@@ -24,13 +24,32 @@ docker run --rm -p 8080:8080 \
   "$WATERLINE_IMAGE"
 ```
 
-The exact `2.0.0` image keeps the deployment reproducible. Stable rolling tags
+The exact `2.10.0` image keeps the deployment reproducible. Stable rolling tags
 are also published for users who deliberately opt into patch updates.
 
 Open `http://localhost:8080/waterline`. Bind the port to a private interface or
 put an authenticating reverse proxy in front of it when
 `WATERLINE_ALLOW_UNAUTHENTICATED=true` is used. The banner always identifies
 the backend, namespace, server-auth configuration, and read-only/operator mode.
+
+### Inspect service calls
+
+With Waterline 2.10.0 and Server 2.6.0, open **Services** to browse endpoints,
+services, operations and calls in the configured namespace. The image includes
+PHP SDK 2.3.0. Embedded Laravel uses the same catalog view with Workflow 2.5.12.
+
+Open a call to inspect its original identity and deadline, caller and target,
+recorded attempts, outcome and typed failure. Completed calls show a decoded
+result when it is available. A missing preview is labelled separately from an
+absent result. Related catalog entries are bounded and can be browsed with
+filters and pagination. These observations remain available in `read_only` mode.
+
+Cross-namespace calls retain their original references. Foreign payloads are
+hidden and a target run outside the observer namespace has no local navigation
+link. Inspect the caller and target histories in their respective namespaces
+before starting replacement work. An older SDK or Server without the catalog
+read contract displays a capability diagnostic. Authentication, permission,
+missing-object and backend failures retain their own diagnostic responses.
 
 ### Bounded startup and health
 
