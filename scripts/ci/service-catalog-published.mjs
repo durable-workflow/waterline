@@ -21,7 +21,8 @@ function load(name) {
 
 const cases = [];
 function collect(probe, caller, service, status) {
-    assert.equal(probe.status, 200, `${caller}/${service} ${status}: producer response`);
+    assert.equal(probe.ok, true, `${caller}/${service} ${status}: producer execution`);
+    assert.equal(probe.status, 0, `${caller}/${service} ${status}: worker process exit`);
     assert.equal(probe.body.outcome, 'pass', `${caller}/${service} ${status}: actual worker outcome`);
     assert.equal(probe.body.observations.length, 2, 'same/cross-namespace executions are required');
     assert.deepEqual(probe.body.observations.map(row => row.durable_service_call.body.caller_namespace).sort(),
