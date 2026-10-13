@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.10.2 - 2026-10-13
+
+- Make enabled secondary outline controls readable in light and dark themes,
+  including the action that loads complete workflow details. Preserve their
+  hover, active, keyboard focus and disabled states.
+
 ## 2.10.1 - 2026-10-13
 
 Missing command declarations on service SDK runs now explain their worker
