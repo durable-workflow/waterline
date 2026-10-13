@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.10.1 - 2026-10-13
+
+Missing command declarations on service SDK runs now explain their worker
+registration provenance and supported recovery without suggesting a missing
+PHP workflow class. Embedded and valid declared-contract guidance is preserved.
+
 ## 2.2.0 - 2026-10-06
 
 Applications can classify workflow types and opt in to permitted display metadata
