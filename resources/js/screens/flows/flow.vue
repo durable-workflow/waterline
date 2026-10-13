@@ -375,6 +375,14 @@
                         </div>
                         <div
                             class="small text-muted"
+                            v-else-if="flow.declared_contract_backfill_needed === true && flow.engine_source === 'service'"
+                        >
+                            <p class="mb-1">{{ $t("Command declarations are missing for this service run.") }}</p>
+                            <p class="mb-1">{{ $t("A workflow fingerprint does not identify signal, query, or update handlers. Check the run history and current worker registrations before deciding which commands are available.") }}</p>
+                            <p class="mb-0">{{ $t("For new SDK runs, register a compatible worker that publishes command-contract metadata before starting the workflow.") }}</p>
+                        </div>
+                        <div
+                            class="small text-muted"
                             v-else-if="flow.declared_contract_backfill_needed === true"
                         >
                             {{ $t("This run still needs command-contract normalization, but the current build can no longer resolve the workflow definition needed to finish it. The remaining target list is diagnostic metadata until a compatible build persists the missing durable snapshot. Named query arguments and named JSON-object signal or update payloads reject when the missing durable contract is required, and query or update execution still stays blocked when the workflow definition itself is unavailable.") }}
