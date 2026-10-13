@@ -12,7 +12,7 @@ The host needs Docker, but does not need PHP, Laravel, Composer, or
 `durable-workflow/workflow`.
 
 ```bash
-WATERLINE_IMAGE="durableworkflow/waterline:2.10.0"
+WATERLINE_IMAGE="durableworkflow/waterline:2.10.1"
 
 docker run --rm -p 8080:8080 \
   -v waterline-data:/data \
@@ -24,7 +24,7 @@ docker run --rm -p 8080:8080 \
   "$WATERLINE_IMAGE"
 ```
 
-The exact `2.10.0` image keeps the deployment reproducible. Stable rolling tags
+The exact `2.10.1` image keeps the deployment reproducible. Stable rolling tags
 are also published for users who deliberately opt into patch updates.
 
 Open `http://localhost:8080/waterline`. Bind the port to a private interface or
@@ -161,7 +161,7 @@ and accepts the standalone endpoint and token from the deployment environment.
 Select the stable image before starting it:
 
 ```bash
-WATERLINE_IMAGE="durableworkflow/waterline:2.10.0" \
+WATERLINE_IMAGE="durableworkflow/waterline:2.10.1" \
   docker compose -f deploy/docker-compose.service.yml up -d
 ```
 
