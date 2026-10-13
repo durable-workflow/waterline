@@ -172,9 +172,9 @@ export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirect
                             element.scrollLeft = element.scrollWidth;
                             const bounds = element.getBoundingClientRect();
                             const lastCell = element.querySelector('tr:last-child > :last-child').getBoundingClientRect();
-                            return { rightEdgeReachable: lastCell.right <= bounds.right + 2, width: element.clientWidth, scrollWidth: element.scrollWidth };
+                            return { rightEdgeReachable: lastCell.right <= bounds.right + 2, width: element.clientWidth, scrollWidth: element.scrollWidth, scrollLeft: element.scrollLeft, containerRight: bounds.right, lastCellRight: lastCell.right, viewportWidth: innerWidth, zoom: devicePixelRatio };
                         });
-                        assert.equal(scroll.rightEdgeReachable, true, 'The last table column must remain reachable.');
+                        assert.equal(scroll.rightEdgeReachable, true, `The last table column must remain reachable: ${JSON.stringify({ name, ...scroll })}`);
                         await table.evaluate(element => { element.scrollLeft = 0; });
                     }
                     const scope = page.locator('.wl-topbar__scope-value').first();
