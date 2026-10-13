@@ -22,7 +22,7 @@ import {
   workerStatusWorkflowIds,
   workflowIdPrefixBindingEvidence,
 } from './worker-status-shared-topology.mjs';
-import { isExact2xPrerelease, isExactSemverRelease } from './worker-status-version.mjs';
+import { isExact2xRelease, isExactSemverRelease } from './worker-status-version.mjs';
 
 const RESULT_DIR = requiredEnv('RESULT_DIR');
 const STARTED_AT = now();
@@ -211,8 +211,8 @@ function ensureExactPins() {
   if (!isExactSemverRelease(SERVER_VERSION)) failures.push('DW_SERVER_VERSION must be an exact SemVer release');
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(CLI_VERSION)) failures.push('DW_CLI_VERSION must be exact');
   if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(SDK_PHP_VERSION)) failures.push('DW_PHP_SDK_VERSION must be exact');
-  if (!isExact2xPrerelease(WORKFLOW_VERSION)) failures.push('DW_WORKFLOW_PHP_VERSION must be an exact 2.0 prerelease');
-  if (!isExact2xPrerelease(WATERLINE_VERSION)) failures.push('DW_WATERLINE_VERSION must be an exact 2.0 prerelease');
+  if (!isExact2xRelease(WORKFLOW_VERSION)) failures.push('DW_WORKFLOW_PHP_VERSION must be an exact 2.x release');
+  if (!isExact2xRelease(WATERLINE_VERSION)) failures.push('DW_WATERLINE_VERSION must be an exact 2.x release');
   const exactTag = new RegExp(`^(?:(?:docker\\.io|index\\.docker\\.io)/)?durableworkflow/server:${escapeRegex(SERVER_VERSION)}$`).test(SERVER_IMAGE);
   const exactDigest = /^(?:(?:docker\.io|index\.docker\.io)\/)?durableworkflow\/server(?::[^@]+)?@sha256:[0-9a-f]{64}$/i.test(SERVER_IMAGE);
   if (!exactTag && !exactDigest) failures.push('DW_SERVER_IMAGE must be the exact public version tag or a digest pin');
