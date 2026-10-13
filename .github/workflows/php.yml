@@ -165,7 +165,7 @@ jobs:
   conformance-contracts:
     name: Published-artifact conformance contracts
     needs: classify
-    if: ${{ needs.classify.outputs.qualification-class == 'conformance' }}
+    if: ${{ needs.classify.outputs.qualification-class == 'conformance' || needs.classify.outputs.qualification-class == 'complete' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
