@@ -1,6 +1,11 @@
 @import 'syntaxhighlight';
 @import 'bootstrap/scss/bootstrap';
 
+// Surface colors are too faint for enabled outline controls.
+.btn-outline-secondary {
+    @include button-outline-variant($secondary-outline-color);
+}
+
 // ============================================================================
 // WCAG AA Focus Indicators
 // ============================================================================
