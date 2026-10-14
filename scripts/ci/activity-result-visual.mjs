@@ -65,12 +65,14 @@ try {
             await page.keyboard.press('Enter');
             const dialog = page.getByRole('dialog');
             await dialog.waitFor();
+            await dialog.evaluate(node => Promise.all(node.getAnimations().map(animation => animation.finished)));
             assert.equal(await dialog.locator('.swal2-html-container').innerText(), JSON.stringify(result, null, 2));
             assert.equal(resultReads.length, before + 1, 'One explicit selection makes one result request');
             const geometry = await dialog.evaluate(node => ({ top: node.getBoundingClientRect().top,
                 bottom: node.getBoundingClientRect().bottom, width: node.getBoundingClientRect().width,
                 viewportWidth: innerWidth, viewportHeight: innerHeight }));
-            assert.ok(geometry.top >= 0 && geometry.bottom <= geometry.viewportHeight + 1 && geometry.width <= geometry.viewportWidth, 'Result dialog fits viewport');
+            assert.ok(geometry.top >= 0 && geometry.bottom <= geometry.viewportHeight + 1 && geometry.width <= geometry.viewportWidth,
+                `Result dialog fits viewport: ${JSON.stringify(geometry)}`);
             await dialog.getByRole('button', { name: 'Okay', exact: true }).click();
             await dialog.waitFor({ state: 'hidden' });
             assert.equal(await view.evaluate(node => document.activeElement === node), true, 'Dialog restores selection focus');
