@@ -520,6 +520,13 @@ $waterline-dialog-border: mix($body-color, $input-bg, 36%);
     scrollbar-gutter: stable;
 }
 
+.swal2-popup.waterline-dialog .waterline-activity-result {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    text-align: left;
+    font-family: monospace;
+}
+
 .swal2-popup.waterline-dialog .text-muted,
 .swal2-popup.waterline-dialog small,
 .swal2-popup.waterline-dialog .small {

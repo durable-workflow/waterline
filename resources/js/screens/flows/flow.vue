@@ -1675,7 +1675,11 @@
                             </td>
                             <td>{{ timestamp(activity.closed_at) }}</td>
                             <td>
-                                <button v-if="canViewActivityResult(activity)" :title="$t('View Result')" class="btn btn-outline-primary ml-auto"
+                                <button v-if="canInspectActivityResult(activity)" :title="$t('View Result')" class="btn btn-outline-primary ml-auto"
+                                    :disabled="activityResultLoadingId !== null" @click="inspectActivityResult(activity, $event)">
+                                    {{ $t(activityResultLoadingId === activity.id ? 'Loading' : 'View') }}
+                                </button>
+                                <button v-else-if="canViewActivityResult(activity)" :title="$t('View Result')" class="btn btn-outline-primary ml-auto"
                                     @click="showResult(activity.result)">{{ $t("View") }}</button>
                                 <span v-else class="text-muted">{{ activityResultUnavailableLabel(activity) }}</span>
                             </td>
@@ -1858,6 +1862,7 @@ import SearchAttributeRenderer from '../../components/SearchAttributeRenderer.vu
 import CancellationCascadeView from '../../components/CancellationCascadeView.vue'
 import { presentWorkflowStreams } from '../../workflow-streams.mjs'
 import { appendRunHistoryPage } from '../../run-history.mjs'
+import { activityResultSelection, activityResultPath, activityResultMatches, activityResultAvailable, activityResultMessage } from '../../activity-result.mjs'
 import { failureSummary, failureEventIndex } from '../../failure-summary.mjs'
 
 export default {
@@ -1881,6 +1886,7 @@ export default {
             loadingMoreHistory: false,
             historyLoadError: null,
             historyPageRequest: 0,
+            activityResultLoadingId: null,
             historyVirtualStart: 0,
             historyRowHeight: 92,
             historyViewportHeight: 620,
@@ -3187,6 +3193,56 @@ export default {
             }
 
             return this.hasDetailValue(activity.result)
+        },
+
+        canInspectActivityResult(activity) {
+            return activityResultSelection(this.flow, activity) !== null
+        },
+
+        async inspectActivityResult(activity, event) {
+            const selection = activityResultSelection(this.flow, activity)
+            const button = event && event.currentTarget
+            if (!selection || this.activityResultLoadingId !== null) {
+                return
+            }
+            this.activityResultLoadingId = activity.id
+            try {
+                const response = await this.$http.get(Waterline.basePath + activityResultPath(selection), { timeout: 30000 })
+                const current = activityResultSelection(this.flow, activity)
+                if (!current || activityResultPath(selection) !== activityResultPath(current)) return
+                const inspection = response.data || {}
+                if (!activityResultMatches(selection, inspection)) throw new Error('Activity result identity mismatch')
+                if (activityResultAvailable(inspection)) {
+                    await this.$dialog({
+                        title: this.$t('Activity Result'),
+                        text: JSON.stringify(inspection.result, null, 2),
+                        customClass: { htmlContainer: 'waterline-activity-result' },
+                        icon: 'info', confirmButtonText: this.$t('Okay'),
+                    })
+                } else {
+                    await this.showActivityResultUnavailable(inspection)
+                }
+            } catch (error) {
+                const current = activityResultSelection(this.flow, activity)
+                if (current && activityResultPath(selection) === activityResultPath(current)) {
+                    await this.showActivityResultUnavailable(error.response && error.response.data ? error.response.data : {})
+                }
+            } finally {
+                this.activityResultLoadingId = null
+                await this.$nextTick()
+                const current = activityResultSelection(this.flow, activity)
+                if (current && activityResultPath(selection) === activityResultPath(current) && button && button.isConnected) {
+                    button.focus()
+                }
+            }
+        },
+
+        showActivityResultUnavailable(inspection) {
+            return this.$dialog({
+                title: this.$t('Activity Result'),
+                text: this.$t(activityResultMessage(inspection)),
+                icon: 'info', confirmButtonText: this.$t('Okay'),
+            })
         },
 
         activityResultUnavailableLabel(activity) {

@@ -12,7 +12,7 @@ The host needs Docker, but does not need PHP, Laravel, Composer, or
 `durable-workflow/workflow`.
 
 ```bash
-WATERLINE_IMAGE="durableworkflow/waterline:2.10.3"
+WATERLINE_IMAGE="durableworkflow/waterline:2.11.0"
 
 docker run --rm -p 8080:8080 \
   -v waterline-data:/data \
@@ -36,7 +36,7 @@ the backend, namespace, server-auth configuration, and read-only/operator mode.
 
 With Waterline 2.10.0 and Server 2.6.0, open **Services** to browse endpoints,
 services, operations and calls in the configured namespace. The image includes
-PHP SDK 2.3.0. Embedded Laravel uses the same catalog view with Workflow 2.5.12.
+the pinned PHP SDK. Embedded Laravel uses the same catalog view with Workflow 2.5.12.
 
 Open a call to inspect its original identity and deadline, caller and target,
 recorded attempts, outcome and typed failure. Completed calls show a decoded
@@ -50,6 +50,21 @@ link. Inspect the caller and target histories in their respective namespaces
 before starting replacement work. An older SDK or Server without the catalog
 read contract displays a capability diagnostic. Authentication, permission,
 missing-object and backend failures retain their own diagnostic responses.
+
+### Inspect activity results
+
+Open a run, choose **Inspect full details**, then **View** in a completed
+activity's Result column. Waterline reads that activity's canonical result from
+the selected run. The activity list remains metadata-only. Null and false are
+valid results, and large integers retain their exact decimal value. External
+payloads use the authenticated runtime transport.
+
+This requires PHP SDK 2.4.0 or later and a Server that advertises
+`workflow_activity_result_inspection`. The service image includes the required
+SDK. A custom Laravel host can update its SDK independently. Older SDKs or
+Servers show an explicit upgrade diagnostic. Pending, failed, cancelled,
+pruned and undecodable results remain distinguishable. Local activity result
+inspection is currently unsupported.
 
 ### Bounded startup and health
 
@@ -161,7 +176,7 @@ and accepts the standalone endpoint and token from the deployment environment.
 Select the stable image before starting it:
 
 ```bash
-WATERLINE_IMAGE="durableworkflow/waterline:2.10.3" \
+WATERLINE_IMAGE="durableworkflow/waterline:2.11.0" \
   docker compose -f deploy/docker-compose.service.yml up -d
 ```
 

@@ -591,6 +591,13 @@ jobs:
         --service-base-url "${WATERLINE_SERVICE_VISUAL_URL}"
         --output-dir run-detail-evidence
 
+    - name: Qualify selected activity results and diagnostics
+      working-directory: sample-app
+      run: >-
+        node ../waterline/scripts/ci/activity-result-visual.mjs
+        --service-base-url "${WATERLINE_SERVICE_VISUAL_URL}"
+        --output-dir run-detail-evidence/activity-results
+
     - name: Qualify service catalog call inspection and navigation
       working-directory: sample-app
       run: >-

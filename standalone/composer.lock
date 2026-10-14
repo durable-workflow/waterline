@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "124862c8577a7b572023b9697a107236",
+    "content-hash": "7818a720bd03315ef98230a3dc91deb0",
     "packages": [
         {
             "name": "apache/avro",
@@ -505,16 +505,16 @@
         },
         {
             "name": "durable-workflow/sdk",
-            "version": "2.3.0",
+            "version": "2.4.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/durable-workflow/sdk-php.git",
-                "reference": "dfb01b9bbe28131b54c16522108a042dbf436a56"
+                "reference": "821716a92f179ec360e045c28979a86a5f587075"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/dfb01b9bbe28131b54c16522108a042dbf436a56",
-                "reference": "dfb01b9bbe28131b54c16522108a042dbf436a56",
+                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/821716a92f179ec360e045c28979a86a5f587075",
+                "reference": "821716a92f179ec360e045c28979a86a5f587075",
                 "shasum": ""
             },
             "require": {
@@ -555,7 +555,7 @@
                         "laravel": "^9.0|^10.0|^11.0|^12.0|^13.0",
                         "symfony": "^6.4|^7.0|^8.0"
                     },
-                    "product-train": "2.3.0",
+                    "product-train": "2.4.0",
                     "payload-codecs": [
                         "avro"
                     ],
@@ -582,7 +582,7 @@
                         "patched",
                         "deprecatePatch"
                     ],
-                    "worker-protocol-version": "1.19",
+                    "worker-protocol-version": "1.20",
                     "supported-server-versions": "2.5.0",
                     "version-marker-history-event": "VersionMarkerRecorded",
                     "message-streams-minimum-worker-protocol-version": "1.15",
@@ -621,7 +621,7 @@
                 "issues": "https://github.com/durable-workflow/sdk-php/issues",
                 "source": "https://github.com/durable-workflow/sdk-php"
             },
-            "time": "2026-10-11T20:34:37+00:00"
+            "time": "2026-10-14T00:51:58+00:00"
         },
         {
             "name": "egulias/email-validator",
