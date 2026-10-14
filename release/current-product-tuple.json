@@ -3,6 +3,6 @@
     "versions": {
         "waterline": "2.10.3",
         "workflow": "2.5.12",
-        "sdk-php": "2.3.0"
+        "sdk-php": "2.4.0"
     }
 }
