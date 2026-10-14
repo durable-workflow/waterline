@@ -3216,6 +3216,7 @@ export default {
                     await this.$dialog({
                         title: this.$t('Activity Result'),
                         text: JSON.stringify(inspection.result, null, 2),
+                        customClass: { htmlContainer: 'waterline-activity-result' },
                         icon: 'info', confirmButtonText: this.$t('Okay'),
                     })
                 } else {
