@@ -1676,7 +1676,7 @@
                             <td>{{ timestamp(activity.closed_at) }}</td>
                             <td>
                                 <button v-if="canInspectActivityResult(activity)" :title="$t('View Result')" class="btn btn-outline-primary ml-auto"
-                                    :disabled="activityResultLoadingId !== null" @click="inspectActivityResult(activity)">
+                                    :disabled="activityResultLoadingId !== null" @click="inspectActivityResult(activity, $event)">
                                     {{ $t(activityResultLoadingId === activity.id ? 'Loading' : 'View') }}
                                 </button>
                                 <button v-else-if="canViewActivityResult(activity)" :title="$t('View Result')" class="btn btn-outline-primary ml-auto"
@@ -3199,8 +3199,9 @@ export default {
             return activityResultSelection(this.flow, activity) !== null
         },
 
-        async inspectActivityResult(activity) {
+        async inspectActivityResult(activity, event) {
             const selection = activityResultSelection(this.flow, activity)
+            const button = event && event.currentTarget
             if (!selection || this.activityResultLoadingId !== null) {
                 return
             }
@@ -3212,26 +3213,31 @@ export default {
                 const inspection = response.data || {}
                 if (!activityResultMatches(selection, inspection)) throw new Error('Activity result identity mismatch')
                 if (activityResultAvailable(inspection)) {
-                    this.$dialog({
+                    await this.$dialog({
                         title: this.$t('Activity Result'),
                         text: JSON.stringify(inspection.result, null, 2),
                         icon: 'info', confirmButtonText: this.$t('Okay'),
                     })
                 } else {
-                    this.showActivityResultUnavailable(inspection)
+                    await this.showActivityResultUnavailable(inspection)
                 }
             } catch (error) {
                 const current = activityResultSelection(this.flow, activity)
                 if (current && activityResultPath(selection) === activityResultPath(current)) {
-                    this.showActivityResultUnavailable(error.response && error.response.data ? error.response.data : {})
+                    await this.showActivityResultUnavailable(error.response && error.response.data ? error.response.data : {})
                 }
             } finally {
                 this.activityResultLoadingId = null
+                await this.$nextTick()
+                const current = activityResultSelection(this.flow, activity)
+                if (current && activityResultPath(selection) === activityResultPath(current) && button && button.isConnected) {
+                    button.focus()
+                }
             }
         },
 
         showActivityResultUnavailable(inspection) {
-            this.$dialog({
+            return this.$dialog({
                 title: this.$t('Activity Result'),
                 text: this.$t(activityResultMessage(inspection)),
                 icon: 'info', confirmButtonText: this.$t('Okay'),
