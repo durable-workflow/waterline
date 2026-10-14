@@ -281,7 +281,7 @@ def expected_results(
     if classification == COMPLETE:
         matrix_result = "success"
         frontend_result = "success"
-        conformance_result = "skipped"
+        conformance_result = "success"
     elif classification in {CONFORMANCE, NON_RUNTIME, RELEASE}:
         matrix_result = "skipped"
         frontend_result = "skipped"
@@ -312,7 +312,7 @@ def focused_checks(classification: str) -> tuple[str, ...]:
     if classification == NON_RUNTIME:
         return COMMON_FOCUSED_CHECKS + NON_RUNTIME_FOCUSED_CHECKS
     if classification == COMPLETE:
-        return COMMON_FOCUSED_CHECKS + (
+        return COMMON_FOCUSED_CHECKS + CONFORMANCE_FOCUSED_CHECKS + (
             "frontend-production-build",
             "laravel-compatibility-matrix",
             "complete-database-matrix",

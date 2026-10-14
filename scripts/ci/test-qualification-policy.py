@@ -140,6 +140,24 @@ class ChangeClassificationTest(unittest.TestCase):
             qualification.evaluate_results(qualification.COMPLETE, observed),
         )
 
+    def test_complete_gate_requires_conformance_checks_for_mixed_runtime_changes(self) -> None:
+        classification = qualification.classify_paths(
+            [
+                "app/Console/WorkerStatusConformanceCommand.php",
+                "scripts/conformance/worker-status-published-artifacts.mjs",
+            ]
+        )
+        self.assertEqual(qualification.COMPLETE, classification.name)
+        expected = qualification.expected_results(classification.name)
+        self.assertEqual("success", expected["conformance-contracts"])
+        self.assertIn(
+            "conformance-contracts:expected-success:observed-skipped",
+            qualification.evaluate_results(
+                classification.name,
+                {**expected, "conformance-contracts": "skipped"},
+            ),
+        )
+
 
 class WorkflowContractTest(unittest.TestCase):
     @classmethod
@@ -204,6 +222,13 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn("release-contracts", gate["needs"])
         self.assertIn("workflow-current-retention", gate["needs"])
         self.assertIn("classification", qualification.expected_results("release"))
+
+    def test_conformance_job_runs_for_both_focused_and_complete_changes(self) -> None:
+        job = self.build["jobs"]["conformance-contracts"]
+        self.assertEqual(
+            "${{ needs.classify.outputs.qualification-class == 'conformance' || needs.classify.outputs.qualification-class == 'complete' }}",
+            job["if"],
+        )
 
 
 class WorkflowTrustPolicyTest(unittest.TestCase):

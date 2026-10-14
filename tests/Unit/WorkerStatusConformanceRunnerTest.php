@@ -11,6 +11,71 @@ use Waterline\Support\WorkerStatusObservationGate;
 
 final class WorkerStatusConformanceRunnerTest extends TestCase
 {
+    public function testActualPublishedArtifactPreflightAcceptsStablePinsAndRejectsInstalledMismatch(): void
+    {
+        $originalInstalled = \Composer\InstalledVersions::getRawData();
+        $sdkVersion = \DurableWorkflow\SdkIdentity::version();
+        $cli = tempnam(sys_get_temp_dir(), 'waterline-preflight-cli-');
+        $this->assertIsString($cli);
+        file_put_contents($cli, "#!/bin/sh\nexit 0\n");
+        chmod($cli, 0700);
+
+        try {
+            $versions = $originalInstalled['versions'];
+            $versions['durable-workflow/workflow']['pretty_version'] = '2.5.12';
+            $versions['durable-workflow/workflow']['version'] = '2.5.12.0';
+            $versions['durable-workflow/waterline']['pretty_version'] = '2.10.0';
+            $versions['durable-workflow/waterline']['version'] = '2.10.0.0';
+            \Composer\InstalledVersions::reload([
+                'root' => $originalInstalled['root'],
+                'versions' => $versions,
+            ]);
+            $options = [];
+            foreach (['server' => '2.6.1', 'cli' => '2.2.3', 'sdk-php' => $sdkVersion, 'workflow' => '2.5.12', 'waterline' => '2.10.0'] as $name => $version) {
+                $options['--'.$name.'-version'] = $version;
+            }
+            $options += [
+                '--server-source' => 'docker://durableworkflow/server@sha256:'.str_repeat('a', 64),
+                '--cli-source' => 'https://github.com/durable-workflow/cli/releases/download/2.2.3/dw',
+                '--sdk-php-source' => 'packagist://durable-workflow/sdk@'.$sdkVersion,
+                '--workflow-source' => 'packagist://durable-workflow/workflow@2.5.12',
+                '--waterline-source' => 'packagist://durable-workflow/waterline@2.10.0',
+            ];
+            $command = new \Waterline\Console\WorkerStatusConformanceCommand;
+            $input = new \ReflectionProperty($command, 'input');
+            $input->setValue($command, new ArrayInput($options, $command->getDefinition()));
+            $preflight = new \ReflectionMethod($command, 'assertPublishedArtifacts');
+            $invoke = static function () use ($preflight, $command, $cli): mixed {
+                // Composer reads registered vendor data before reload() overrides.
+                $loaders = \Composer\Autoload\ClassLoader::getRegisteredLoaders();
+                foreach ($loaders as $loader) {
+                    $loader->unregister();
+                }
+                try {
+                    return $preflight->invoke($command, $cli);
+                } finally {
+                    foreach (array_reverse($loaders) as $loader) {
+                        $loader->register(true);
+                    }
+                }
+            };
+            $this->assertNull($invoke());
+
+            $options['--waterline-version'] = '2.10.2';
+            $options['--waterline-source'] = 'packagist://durable-workflow/waterline@2.10.2';
+            $input->setValue($command, new ArrayInput($options, $command->getDefinition()));
+            try {
+                $invoke();
+                $this->fail('A declared stable version cannot replace the installed package identity.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('installed Waterline package does not match waterline-version', $exception->getMessage());
+            }
+        } finally {
+            \Composer\InstalledVersions::reload($originalInstalled);
+            unlink($cli);
+        }
+    }
+
     public function testExerciseCrashesTheWorkerDesignatedForTheStaleTransition(): void
     {
         $exercise = new \ReflectionMethod(
@@ -491,7 +556,7 @@ REGEX,
         );
         $packageValidator = new \ReflectionMethod(
             \Waterline\Console\WorkerStatusConformanceCommand::class,
-            'isExact2xPrerelease',
+            'isExact2xRelease',
         );
 
         foreach ([
@@ -527,6 +592,12 @@ REGEX,
             '2.0.0-alpha.1',
             '2.0.0-beta.1',
             '2.0.0-rc.5',
+            '2.0.0',
+            '2.5.12',
+            '2.10.0',
+            '2.0.1-beta.1',
+            '2.0.0-preview.1',
+            '2.0.0-beta',
         ] as $version) {
             $this->assertTrue($packageValidator->invoke(null, $version), $version);
         }
@@ -537,11 +608,9 @@ REGEX,
             '^2.0.0-beta.1',
             '2.0.x-dev',
             'dev-v2',
-            '2.0.0',
-            '2.0.1-beta.1',
             '1.0.0-rc.1',
-            '2.0.0-preview.1',
-            '2.0.0-beta',
+            '3.0.0',
+            '2.0.0-latest',
             '2.0.0-beta.01',
             '2.0.0-beta.1 || 2.0.0',
         ] as $version) {
@@ -562,7 +631,8 @@ REGEX,
         $runtimeSources = (string) file_get_contents($root.'/app/Console/WorkerStatusConformanceCommand.php')
             .(string) file_get_contents($root.'/scripts/conformance/worker-status-published-artifacts.mjs');
         $this->assertStringContainsString('must be an exact SemVer release', $runtimeSources);
-        $this->assertStringContainsString('must be an exact 2.0 prerelease', $runtimeSources);
+        $this->assertStringContainsString('must be an exact 2.x release', $runtimeSources);
+        $this->assertStringNotContainsString('must be an exact 2.0 prerelease', $runtimeSources);
         $this->assertStringNotContainsString('must be an exact 2.0 alpha release', $runtimeSources);
     }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.10.3 - 2026-10-13
+
+Published worker-status qualification accepts exact stable Workflow and
+Waterline 2.x packages. Exact prereleases remain supported, and installed-version
+identity, provenance, ranges and rolling-pin refusals remain enforced. Complete
+CI qualification also runs the focused PHP and Node conformance regressions.
+
 ## 2.10.2 - 2026-10-13
 
 - Make enabled secondary outline controls readable in light and dark themes,

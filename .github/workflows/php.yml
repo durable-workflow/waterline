@@ -165,7 +165,7 @@ jobs:
   conformance-contracts:
     name: Published-artifact conformance contracts
     needs: classify
-    if: ${{ needs.classify.outputs.qualification-class == 'conformance' }}
+    if: ${{ needs.classify.outputs.qualification-class == 'conformance' || needs.classify.outputs.qualification-class == 'complete' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -382,8 +382,9 @@ jobs:
     - name: Install pinned-browser tooling
       working-directory: sample-app
       run: |
-        npm install --no-save playwright
-        npx playwright install chromium --with-deps
+        npm install --no-save --package-lock=false playwright@1.64.0
+        node -e "const version = require('playwright/package.json').version; if (version !== '1.64.0') throw new Error('Unexpected Playwright: ' + version); console.log('Playwright ' + version, require('./node_modules/playwright-core/browsers.json').browsers.find(browser => browser.name === 'chromium'));"
+        npx --no-install playwright install chromium --with-deps
 
     - name: Qualify the eight opened-dialog cases
       working-directory: sample-app
@@ -578,8 +579,9 @@ jobs:
     - name: Install pinned-browser tooling
       working-directory: sample-app
       run: |
-        npm install --no-save playwright
-        npx playwright install chromium --with-deps
+        npm install --no-save --package-lock=false playwright@1.64.0
+        node -e "const version = require('playwright/package.json').version; if (version !== '1.64.0') throw new Error('Unexpected Playwright: ' + version); console.log('Playwright ' + version, require('./node_modules/playwright-core/browsers.json').browsers.find(browser => browser.name === 'chromium'));"
+        npx --no-install playwright install chromium --with-deps
 
     - name: Qualify the complete run-detail matrix
       working-directory: sample-app

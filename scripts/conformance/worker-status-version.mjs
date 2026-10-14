@@ -13,6 +13,10 @@ export function isExact2xPrerelease(version) {
   return EXACT_2X_PRERELEASE.test(version);
 }
 
+export function isExact2xRelease(version) {
+  return isExactSemverRelease(version) && version.startsWith('2.');
+}
+
 export function isExactSemverRelease(version) {
   if (typeof version !== 'string' || !EXACT_SEMVER_RELEASE.test(version)) return false;
   const prerelease = version.includes('-') ? version.slice(version.indexOf('-') + 1).split('.') : [];
