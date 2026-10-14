@@ -46,7 +46,7 @@ try {
             }
             return route.fulfill({ json: {} });
         });
-        const url = `${origin}/waterline/instances/${identity.instance_id}/runs/${identity.run_id}`;
+        const url = `${origin}/waterline/flows/instances/${identity.instance_id}/runs/${identity.run_id}`;
         await page.goto(url, { waitUntil: 'networkidle' });
         if (/\/login(?:$|\?)/.test(page.url())) {
             await page.fill('input[name=email]', process.env.WATERLINE_VISUAL_EMAIL || 'demo@example.com');
