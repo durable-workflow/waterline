@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.11.0 - 2026-10-14
+
+- View one completed service activity result on demand from its exact run.
+  Preserve null, false, large integers and external payload values. Explain
+  unavailable, pruned or unsupported results and keep keyboard focus on the
+  selected activity after inspection. Requires a Server with activity-result
+  inspection and PHP SDK 2.4.0 or later.
+
 ## 2.10.3 - 2026-10-13
 
 Published worker-status qualification accepts exact stable Workflow and
