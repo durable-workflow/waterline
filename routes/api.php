@@ -15,6 +15,7 @@ use Waterline\Http\Controllers\Remote\RemoteSchedulesController;
 use Waterline\Http\Controllers\Remote\RemoteServicesController;
 use Waterline\Http\Controllers\Remote\RemoteStatsController;
 use Waterline\Http\Controllers\Remote\RemoteWorkflowsController;
+use Waterline\Http\Controllers\Remote\RemoteActivityResultsController;
 use Waterline\Support\BackendConfiguration;
 
 $workflowsController = BackendConfiguration::serviceMode() ? RemoteWorkflowsController::class : WorkflowsController::class;
@@ -47,6 +48,10 @@ Route::prefix('api')->group(function () use ($capacityEvidenceController, $healt
     Route::get('/instances/{instanceId}/runs/{runId}', [$workflowsController, 'showSelection'])->name('waterline.instances.runs.show');
     Route::get('/instances/{instanceId}/history-export', [$workflowsController, 'historyExportInstance'])->name('waterline.instances.history-export');
     Route::get('/instances/{instanceId}/runs/{runId}/history-export', [$workflowsController, 'historyExportSelection'])->name('waterline.instances.runs.history-export');
+    if ($workflowsController === RemoteWorkflowsController::class) {
+        Route::get('/instances/{instanceId}/runs/{runId}/activities/{activityId}/result', [RemoteActivityResultsController::class, 'show'])
+            ->name('waterline.instances.runs.activities.result');
+    }
     Route::get('/instances/{instanceId}/runs/{runId}/updates/{updateId}', [$workflowsController, 'showUpdateSelection'])->name('waterline.instances.runs.updates.show');
     Route::post('/instances/{instanceId}/runs/{runId}/queries/{query}', [$workflowsController, 'querySelection'])->name('waterline.instances.runs.query');
     Route::post('/instances/{instanceId}/runs/{runId}/signals/{signal}', [$workflowsController, 'signalSelection'])->name('waterline.instances.runs.signal');
