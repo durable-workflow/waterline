@@ -393,14 +393,16 @@ jobs:
         --base-url "${APP_URL}"
         --output-dir dialog-evidence
 
-    - name: Upload responsive dialog evidence
-      if: ${{ always() }}
+    - name: Upload dialog failure diagnostics
+      if: ${{ failure() }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
       with:
         name: waterline-dialog-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-        path: sample-app/dialog-evidence
-        if-no-files-found: error
-        retention-days: 30
+        path: |
+          sample-app/dialog-evidence/**/*.json
+          dialog-web.log
+        if-no-files-found: warn
+        retention-days: 1
 
     - name: Stop Sample App
       if: ${{ always() }}
@@ -832,14 +834,17 @@ jobs:
         --service-base-url http://127.0.0.1:8013
         --locale de --output-dir run-detail-evidence/german-zoom
 
-    - name: Upload responsive run-detail evidence
-      if: ${{ always() }}
+    - name: Upload run-detail failure diagnostics
+      if: ${{ failure() }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
       with:
         name: waterline-run-detail-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-        path: sample-app/run-detail-evidence
-        if-no-files-found: error
-        retention-days: 30
+        path: |
+          sample-app/run-detail-evidence/**/*.json
+          run-detail-web.log
+          run-detail-service-web.log
+        if-no-files-found: warn
+        retention-days: 1
 
     - name: Stop Sample App
       if: ${{ always() }}
