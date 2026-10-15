@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -46,6 +47,94 @@ def composer_command(*, graph: str = "embedded", upgrade: bool = False) -> str:
 
 
 class ReleaseExampleContractTest(unittest.TestCase):
+    def repository_fixture(self, root: Path) -> None:
+        (root / "release").mkdir()
+        (root / "deploy").mkdir()
+        (root / "composer.json").write_text(json.dumps({
+            "name": contract.WATERLINE_PACKAGE,
+            "require-dev": {
+                contract.WORKFLOW_PACKAGE: RELEASE.workflow,
+                contract.SDK_PACKAGE: RELEASE.sdk,
+            },
+            "extra": {"durable-workflow": {"product-train": "2.1.0"}},
+        }), encoding="utf-8")
+        (root / "release/current-product-tuple.json").write_text(json.dumps({
+            "schema": "durable-workflow.waterline-current-product-tuple/v1",
+            "versions": {
+                "waterline": RELEASE.waterline,
+                "workflow": RELEASE.workflow,
+                "sdk-php": RELEASE.sdk,
+            },
+        }), encoding="utf-8")
+        (root / "README.md").write_text(
+            composer_command() + "\n" + composer_command(upgrade=True),
+            encoding="utf-8",
+        )
+        (root / "SERVICE_MODE.md").write_text("\n".join((
+            composer_command(),
+            composer_command(graph="service"),
+            f'WATERLINE_IMAGE="{contract.SERVICE_IMAGE}:{RELEASE.waterline}"',
+            'docker run --rm "$WATERLINE_IMAGE"',
+        )), encoding="utf-8")
+        (root / "deploy/docker-compose.service.yml").write_text(
+            "services:\n  waterline:\n"
+            "    image: ${WATERLINE_IMAGE:?set-exact-waterline-image}\n",
+            encoding="utf-8",
+        )
+
+    def test_candidate_version_does_not_replace_published_example_authority(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository_fixture(root)
+
+            result = contract.validate_repository(root)
+
+            self.assertEqual(RELEASE, result.release)
+            self.assertEqual(1, result.resolved_images)
+
+    def test_documenting_an_unpublished_candidate_image_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository_fixture(root)
+            source = root / "SERVICE_MODE.md"
+            source.write_text(
+                source.read_text(encoding="utf-8").replace(
+                    f"{contract.SERVICE_IMAGE}:{RELEASE.waterline}",
+                    f"{contract.SERVICE_IMAGE}:2.1.0",
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(contract.ContractError, "must assign WATERLINE_IMAGE"):
+                contract.validate_repository(root)
+
+    def test_missing_published_tuple_does_not_fall_back_to_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository_fixture(root)
+            (root / "release/current-product-tuple.json").unlink()
+
+            with self.assertRaisesRegex(contract.ContractError, "current-product-tuple"):
+                contract.validate_repository(root)
+
+    def test_invalid_published_tuple_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.repository_fixture(root)
+            source = root / "release/current-product-tuple.json"
+            original = json.loads(source.read_text(encoding="utf-8"))
+            for value in (
+                {**original, "schema": "unknown"},
+                {**original, "versions": None},
+                {**original, "extra": "unrecognized"},
+                {**original, "versions": {"waterline": "2.0.0"}},
+                {**original, "versions": {**original["versions"], "waterline": 2}},
+            ):
+                with self.subTest(value=value):
+                    source.write_text(json.dumps(value), encoding="utf-8")
+                    with self.assertRaisesRegex(contract.ContractError, "current-product-tuple"):
+                        contract.validate_repository(root)
+
     def test_accepts_independent_tuple_without_prose_or_layout_coupling(self) -> None:
         document = f"""
 Arbitrary prose before a reordered upgrade command.

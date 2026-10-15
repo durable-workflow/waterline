@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate public install examples against the declared release tuple."""
+"""Validate public install examples against the current published tuple."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).parents[2]
+PUBLISHED_TUPLE = Path("release/current-product-tuple.json")
+PUBLISHED_TUPLE_SCHEMA = "durable-workflow.waterline-current-product-tuple/v1"
 WATERLINE_PACKAGE = "durable-workflow/waterline"
 WORKFLOW_PACKAGE = "durable-workflow/workflow"
 SDK_PACKAGE = "durable-workflow/sdk"
@@ -110,7 +112,7 @@ def nested_value(
     for key in path:
         if not isinstance(value, dict) or key not in value:
             raise ContractError(
-                f"composer.json must declare release identity {'.'.join(path)}"
+                f"{PUBLISHED_TUPLE} must declare release identity {'.'.join(path)}"
             )
         value = value[key]
     return value
@@ -120,25 +122,31 @@ def exact_version(document: Mapping[str, Any], path: Sequence[str]) -> str:
     value = nested_value(document, path)
     if not isinstance(value, str) or EXACT_VERSION.fullmatch(value) is None:
         raise ContractError(
-            f"composer.json {'.'.join(path)} must be an exact release version"
+            f"{PUBLISHED_TUPLE} {'.'.join(path)} must be an exact release version"
         )
     return value
 
 
-def declared_release_tuple(manifest: Mapping[str, Any]) -> ReleaseTuple:
-    if manifest.get("name") != WATERLINE_PACKAGE:
-        raise ContractError(f"composer.json must identify {WATERLINE_PACKAGE}")
+def published_release_tuple(document: Mapping[str, Any]) -> ReleaseTuple:
+    versions = document.get("versions")
+    if (
+        set(document) != {"schema", "versions"}
+        or document.get("schema") != PUBLISHED_TUPLE_SCHEMA
+        or not isinstance(versions, dict)
+        or set(versions) != {"waterline", "workflow", "sdk-php"}
+    ):
+        raise ContractError(f"{PUBLISHED_TUPLE} must declare the current published tuple")
 
     return ReleaseTuple(
         waterline=exact_version(
-            manifest,
-            ("extra", "durable-workflow", "product-train"),
+            document,
+            ("versions", "waterline"),
         ),
         workflow=exact_version(
-            manifest,
-            ("require-dev", WORKFLOW_PACKAGE),
+            document,
+            ("versions", "workflow"),
         ),
-        sdk=exact_version(manifest, ("require-dev", SDK_PACKAGE)),
+        sdk=exact_version(document, ("versions", "sdk-php")),
     )
 
 
@@ -406,7 +414,7 @@ def validate_documentation_links(root: Path) -> int:
 
 
 def validate_repository(root: Path = ROOT) -> RepositoryValidation:
-    release = declared_release_tuple(read_json(root / "composer.json"))
+    release = published_release_tuple(read_json(root / PUBLISHED_TUPLE))
     readme_examples = validate_composer_examples(
         "README.md",
         read_text(root / "README.md"),
