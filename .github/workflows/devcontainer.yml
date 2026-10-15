@@ -1,0 +1,56 @@
+name: Development container
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .devcontainer/**
+      - .github/workflows/devcontainer.yml
+      - package.json
+      - package-lock.json
+  push:
+    branches: [main]
+    paths:
+      - .devcontainer/**
+      - .github/workflows/devcontainer.yml
+      - package.json
+      - package-lock.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Development image and locked frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build the development image
+        run: docker build --force-rm --tag waterline-devcontainer:ci .devcontainer/docker
+      - name: Use the installed tools for the locked frontend
+        run: |
+          docker run --rm --name waterline-devcontainer-check \
+            --user "$(id -u):$(id -g)" --cpus 2 --memory 2g --memory-swap 2g \
+            --mount "type=bind,source=$PWD,target=/source,readonly" \
+            --tmpfs "/tmp:rw,size=1g,uid=$(id -u),gid=$(id -g)" \
+            --env NPM_CONFIG_CACHE=/tmp/npm --env COMPOSER_HOME=/tmp/composer \
+            --entrypoint bash waterline-devcontainer:ci -euc '
+              php --version
+              composer --version
+              node --version
+              npm --version
+              cp -a /source/. /tmp/project
+              cd /tmp/project
+              npm ci --ignore-scripts --engine-strict
+              npm test
+              npm run production
+            '
+      - name: Remove the task container and image
+        if: always()
+        run: |
+          docker rm --force waterline-devcontainer-check 2>/dev/null || true
+          docker image rm waterline-devcontainer:ci 2>/dev/null || true
