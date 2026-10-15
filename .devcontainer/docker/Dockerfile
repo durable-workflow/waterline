@@ -30,8 +30,11 @@ RUN apt-get update \
        php8.4-ldap \
        php8.4-msgpack php8.4-igbinary php8.4-redis php8.4-swoole \
        php8.4-memcached php8.4-pcov php8.4-xdebug \
-    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o /tmp/nodesource.asc \
-    && test "$(gpg --batch --show-keys --with-colons /tmp/nodesource.asc | awk -F: '$1 == "fpr" { print $10; exit }')" = '6F71F525282841EEDAF851B42F59B5F99B1BE0B4' \
+    && curl -fsSL --proto '=https' --proto-redir '=https' \
+       https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o /tmp/nodesource.asc \
+    && nodesource_fingerprint="$(gpg --batch --show-keys --with-colons /tmp/nodesource.asc \
+       | awk -F: '$1 == "fpr" { print $10; exit }')" \
+    && test "$nodesource_fingerprint" = '6F71F525282841EEDAF851B42F59B5F99B1BE0B4' \
     && gpg --batch --dearmor -o /etc/apt/keyrings/nodesource.gpg /tmp/nodesource.asc \
     && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_VERSION}.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
     && apt-get update \
@@ -64,11 +67,10 @@ RUN apt-get update \
 
 COPY --from=composer /usr/bin/composer /usr/bin/composer
 
-RUN setcap "cap_net_bind_service=+ep" /usr/bin/php8.4
-
-RUN groupadd --force -g 1000 laravel
-RUN useradd -ms /bin/bash --no-user-group -g 1000 -u 1337 laravel
-RUN echo "laravel ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+RUN setcap "cap_net_bind_service=+ep" /usr/bin/php8.4 \
+    && groupadd --force -g 1000 laravel \
+    && useradd -ms /bin/bash --no-user-group -g 1000 -u 1337 laravel \
+    && echo "laravel ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 COPY start-container /usr/local/bin/start-container
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf

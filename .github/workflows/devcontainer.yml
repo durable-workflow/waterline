@@ -36,7 +36,7 @@ jobs:
           docker run --rm --name waterline-devcontainer-check \
             --user "$(id -u):$(id -g)" --cpus 2 --memory 2g --memory-swap 2g \
             --mount "type=bind,source=$PWD,target=/source,readonly" \
-            --tmpfs "/tmp:rw,size=1g,uid=$(id -u),gid=$(id -g)" \
+            --tmpfs "/tmp:rw,exec,size=1g,uid=$(id -u),gid=$(id -g)" \
             --env NPM_CONFIG_CACHE=/tmp/npm --env COMPOSER_HOME=/tmp/composer \
             --entrypoint bash waterline-devcontainer:ci -euc '
               php --version
