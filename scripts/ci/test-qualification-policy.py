@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import copy
 import sys
 import unittest
 from pathlib import Path
@@ -234,6 +235,25 @@ class WorkflowContractTest(unittest.TestCase):
 class WorkflowTrustPolicyTest(unittest.TestCase):
     def test_repository_workflows_satisfy_policy(self) -> None:
         self.assertEqual((), trust.audit_repository(ROOT))
+
+    def test_sonar_analysis_credential_requires_the_same_repository_guard(self) -> None:
+        document = workflow("sonar.yml")
+        self.assertEqual((), trust.validate_document("sonar.yml", document))
+        for change in ("fork", "other token", "secret name", "custom scanner"):
+            changed = copy.deepcopy(document)
+            job = changed["jobs"]["analysis"]
+            scanner = job["steps"][-1]
+            if change == "fork":
+                job["if"] = "true"
+            elif change == "other token":
+                scanner["env"]["SONAR_TOKEN"] = "${{ secrets.DEPLOY_TOKEN }}"
+            elif change == "secret name":
+                scanner["name"] = "${{ secrets.DEPLOY_TOKEN }}"
+            else:
+                scanner["with"]["scannerBinariesUrl"] = "https://example.com"
+            with self.subTest(change=change):
+                codes = {violation.code for violation in trust.validate_document("sonar.yml", changed)}
+                self.assertIn("untrusted-secret", codes)
 
     def test_untrusted_workflow_cannot_use_target_event_secrets_or_writes(self) -> None:
         document = yaml.load(

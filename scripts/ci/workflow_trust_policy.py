@@ -92,6 +92,25 @@ def references_secret(value: object) -> bool:
     return any("secrets." in item.lower() for item in scalar_values(value))
 
 
+def trusted_sonar_step(job: Mapping[str, object], step: Mapping[str, object]) -> bool:
+    condition = job.get("if", "")
+    if not isinstance(condition, str):
+        return False
+    condition = condition.strip()
+    if condition.startswith("${{") and condition.endswith("}}"):
+        condition = condition[3:-2].strip()
+    # Approved action commits are also enforced by the central policy preflight.
+    return (
+        condition == "github.event_name != 'pull_request' || "
+        "github.event.pull_request.head.repo.full_name == github.repository"
+        and re.fullmatch(r"SonarSource/sonarqube-scan-action@[0-9a-f]{40}", action_name(step)) is not None
+        and set(step).issubset({"name", "uses", "env", "with"})
+        and step.get("env") == {"SONAR_TOKEN": "${{ secrets.SONAR_TOKEN }}"}
+        and step.get("with") == {"args": "-Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300"}
+        and not references_secret({key: value for key, value in step.items() if key != "env"})
+    )
+
+
 def validate_focused_workflow(
     workflow_name: str,
     document: Mapping[str, object],
@@ -187,7 +206,7 @@ def validate_document(
                     violations.add(
                         Violation(workflow_name, "unpinned-action", job_identifier)
                     )
-            if untrusted and references_secret(step):
+            if untrusted and references_secret(step) and not trusted_sonar_step(job, step):
                 violations.add(
                     Violation(workflow_name, "untrusted-secret", job_identifier)
                 )
