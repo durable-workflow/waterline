@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { dashboardFixture, dashboardGeometry } from './dashboard-visual.mjs';
+import { waitForDialogReady } from './dialog-readiness.mjs';
 import { runDetailFixture } from './run-detail-visual.mjs';
 import { auditContrast } from './workflow-list-dialog-visual.mjs';
 
@@ -164,12 +165,7 @@ try {
                             const label = action[0].toUpperCase() + action.slice(1);
                             await page.getByRole('button', { name: text(label), exact: true }).click();
                             const dialog = page.getByRole('dialog', { name: text(`${label} run?`), exact: true });
-                            await dialog.waitFor();
-                            await page.waitForFunction(() => {
-                                const popup = document.querySelector('.swal2-popup');
-                                return popup && getComputedStyle(popup).opacity === '1'
-                                    && popup.getAnimations().every(animation => animation.playState !== 'running');
-                            }, null, { timeout: 3000 });
+                            await waitForDialogReady(page, dialog);
                             if (action === 'cancel') assert.ok((await dialog.innerText()).includes(text(
                                 'This immediately closes the current active run as Cancelled without cooperative cleanup. Previously completed external side effects are not undone.')));
                             if (action === 'terminate') assert.ok((await dialog.innerText()).includes(text(
