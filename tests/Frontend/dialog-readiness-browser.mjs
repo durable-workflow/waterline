@@ -40,6 +40,7 @@ test('a visible popup without animation is ready', async () => {
     try {
         await page.setContent('<div role="dialog">Result</div>');
         await waitForDialogReady(page, page.getByRole('dialog'));
+        assert.equal(await page.getByRole('dialog').evaluate(node => node.getAnimations().length), 0);
     } finally {
         await page.close();
     }
