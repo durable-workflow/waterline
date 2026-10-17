@@ -10,7 +10,8 @@
             </div>
 
             <div class="schedule-view__actions">
-                <select v-model="statusFilter" class="form-control form-control-sm schedule-view__filter">
+                <label for="waterline-schedule-status" class="sr-only">{{ $t("Status") }}</label>
+                <select id="waterline-schedule-status" v-model="statusFilter" class="form-control form-control-sm schedule-view__filter">
                     <option value="">{{ $t("All statuses") }}</option>
                     <option value="active">{{ $t("Active") }}</option>
                     <option value="paused">{{ $t("Paused") }}</option>
@@ -253,18 +254,18 @@
                     </p>
 
                     <div class="form-group">
-                        <label class="schedule-view__field-label">{{ $t("From") }}</label>
-                        <input v-model="backfillFrom" type="datetime-local" class="form-control schedule-view__field" />
+                        <label for="waterline-backfill-from" class="schedule-view__field-label">{{ $t("From") }}</label>
+                        <input id="waterline-backfill-from" v-model="backfillFrom" type="datetime-local" class="form-control schedule-view__field" />
                     </div>
 
                     <div class="form-group">
-                        <label class="schedule-view__field-label">{{ $t("To") }}</label>
-                        <input v-model="backfillTo" type="datetime-local" class="form-control schedule-view__field" />
+                        <label for="waterline-backfill-to" class="schedule-view__field-label">{{ $t("To") }}</label>
+                        <input id="waterline-backfill-to" v-model="backfillTo" type="datetime-local" class="form-control schedule-view__field" />
                     </div>
 
                     <div class="form-group mb-0">
-                        <label class="schedule-view__field-label">{{ $t("Overlap Policy") }}</label>
-                        <select v-model="backfillOverlapPolicy" class="form-control schedule-view__field">
+                        <label for="waterline-backfill-overlap" class="schedule-view__field-label">{{ $t("Overlap Policy") }}</label>
+                        <select id="waterline-backfill-overlap" v-model="backfillOverlapPolicy" class="form-control schedule-view__field">
                             <option value="">{{ $t("Use schedule default") }}</option>
                             <option value="skip">{{ $t("Skip") }}</option>
                             <option value="allow">{{ $t("Allow") }}</option>

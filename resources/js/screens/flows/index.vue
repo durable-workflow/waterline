@@ -1667,7 +1667,9 @@
                 </div>
 
                 <div class="flow-index__toolbar">
+                    <label v-if="savedViews.length" for="waterline-saved-view" class="sr-only">{{ $t("View") }}</label>
                     <select v-if="savedViews.length"
+                            id="waterline-saved-view"
                             v-model="selectedSavedView"
                             @change="selectSavedView"
                             class="custom-select custom-select-sm flow-index__view-select">
