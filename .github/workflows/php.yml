@@ -585,6 +585,10 @@ jobs:
         node -e "const version = require('playwright/package.json').version; if (version !== '1.64.0') throw new Error('Unexpected Playwright: ' + version); console.log('Playwright ' + version, require('./node_modules/playwright-core/browsers.json').browsers.find(browser => browser.name === 'chromium'));"
         npx --no-install playwright install chromium --with-deps
 
+    - name: Check dialog opening observer contracts
+      working-directory: sample-app
+      run: node --test ../waterline/tests/Frontend/dialog-readiness-browser.mjs
+
     - name: Qualify the complete run-detail matrix
       working-directory: sample-app
       run: >-

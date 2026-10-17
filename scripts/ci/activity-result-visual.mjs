@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { waitForDialogReady } from './dialog-readiness.mjs';
 import { runDetailFixture } from './run-detail-visual.mjs';
 
 function argument(name) {
@@ -64,8 +65,7 @@ try {
             await view.focus();
             await page.keyboard.press('Enter');
             const dialog = page.getByRole('dialog');
-            await dialog.waitFor();
-            await dialog.evaluate(node => Promise.all(node.getAnimations().map(animation => animation.finished)));
+            await waitForDialogReady(page, dialog);
             assert.equal(await dialog.locator('.swal2-html-container').innerText(), JSON.stringify(result, null, 2));
             assert.equal(resultReads.length, before + 1, 'One explicit selection makes one result request');
             const geometry = await dialog.evaluate(node => ({ top: node.getBoundingClientRect().top,
