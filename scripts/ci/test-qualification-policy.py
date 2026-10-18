@@ -60,10 +60,37 @@ class ChangeClassificationTest(unittest.TestCase):
 
     def test_documentation_files_do_not_select_runtime_matrices(self) -> None:
         result = qualification.classify_paths(
-            ["README.md", "docs/screenshots/dashboard.png"]
+            ["README.md", "SERVICE_MODE.md", "docs/screenshots/dashboard.png"]
         )
 
         self.assertEqual(qualification.NON_RUNTIME, result.name)
+
+    def test_release_changes_can_include_documentation(self) -> None:
+        for paths in (
+            ["release/current-product-tuple.json", "SERVICE_MODE.md"],
+            ["scripts/ci/waterline_release_identity.py", "docs/install.md"],
+        ):
+            with self.subTest(paths=paths):
+                result = qualification.classify_paths(paths)
+                self.assertEqual(qualification.RELEASE, result.name)
+                self.assertEqual("release-and-documentation-paths-only", result.reason)
+
+    def test_documentation_does_not_downgrade_other_changes(self) -> None:
+        for path in (
+            "app/Http/Controllers/WorkflowsController.php",
+            "config/waterline.php",
+            "composer.json",
+            "standalone/composer.lock",
+            ".github/workflows/php.yml",
+            "scripts/ci/unknown-check.py",
+            "scripts/conformance/worker-status-network.mjs",
+            "../docs/install.md",
+        ):
+            with self.subTest(path=path):
+                result = qualification.classify_paths(
+                    ["release/current-product-tuple.json", "SERVICE_MODE.md", path]
+                )
+                self.assertEqual(qualification.COMPLETE, result.name)
 
     def test_runtime_or_mixed_changes_fail_closed_to_complete(self) -> None:
         for paths in (
