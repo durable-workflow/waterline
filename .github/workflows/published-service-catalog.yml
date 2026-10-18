@@ -51,11 +51,14 @@ jobs:
       DW_PHP_SDK_VERSION: ${{ inputs.php_caller_version }}
       DW_PYTHON_SDK_VERSION: ${{ inputs.python_caller_version }}
       DW_CLI_VERSION: ${{ inputs.cli_version }}
-      DW_NEXUS_RESULT_DIR: ${{ runner.temp }}/catalog-proof
-      DW_NEXUS_RUN_ROOT: ${{ runner.temp }}/catalog-run
       DW_NEXUS_WATERLINE_INSPECTOR: ${{ github.workspace }}/waterline/scripts/ci/service-catalog-published.mjs
-      DW_NEXUS_WATERLINE_PLAYWRIGHT_ROOT: ${{ runner.temp }}/catalog-browser
     steps:
+      - name: Set paths for this execution
+        run: |
+          printf '%s\n' \
+            "DW_NEXUS_RESULT_DIR=$RUNNER_TEMP/catalog-proof" \
+            "DW_NEXUS_RUN_ROOT=$RUNNER_TEMP/catalog-run" \
+            "DW_NEXUS_WATERLINE_PLAYWRIGHT_ROOT=$RUNNER_TEMP/catalog-browser" >> "$GITHUB_ENV"
       - name: Validate immutable artifact and harness inputs
         env:
           HARNESS_COMMIT: ${{ inputs.server_harness_commit }}
