@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {parseExactJson, requireOriginalCall, requireOriginalHistory} from '../../scripts/ci/service-catalog-cli-published.mjs';
+import {parseExactJson, requireNotFoundReply, requireOriginalCall, requireOriginalHistory} from '../../scripts/ci/service-catalog-cli-published.mjs';
 
 test('CLI evidence preserves integer changes that ordinary JSON decoding collapses', () => {
     const original = '{"long":9223372036854775807}';
@@ -8,6 +8,15 @@ test('CLI evidence preserves integer changes that ordinary JSON decoding collaps
     assert.deepEqual(JSON.parse(original), JSON.parse(changed));
     assert.notDeepEqual(parseExactJson(original), parseExactJson(changed));
     assert.deepEqual(parseExactJson('{"n":null,"text":"λ雪"}'), {n: null, text: 'λ雪'});
+});
+
+test('a failed request mentioning 404 or a refusal in another namespace is not a canonical not-found result', () => {
+    const reply = (status, statusCode, namespace) => ({status, stdout: JSON.stringify({
+        exit_code: status, status_code: statusCode, namespace, error: 'lookup 404',
+    })});
+    requireNotFoundReply(reply(5, 404, '017'), '017');
+    assert.throws(() => requireNotFoundReply(reply(6, 500, '017'), '017'));
+    assert.throws(() => requireNotFoundReply(reply(5, 404, '17'), '017'));
 });
 
 test('matching CLI/API call details cannot substitute another original target or alter typed results', () => {

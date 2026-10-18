@@ -107,10 +107,16 @@ function successfulCli(connection, args) {
     return parseExactJson(result.stdout);
 }
 
-function requireNotFound(connection, args) {
-    const result = invokeCli(connection, args);
-    assert.ok(Number.isInteger(result.status) && result.status > 0 && /404|not found|run_not_found|workflow_not_found/i.test(`${result.stdout || ''} ${result.stderr || ''}`),
-        'The published CLI must refuse the wrong original selector');
+export function requireNotFoundReply(result, namespace) {
+    assert.equal(result.status, 5, 'The published CLI must return its canonical not-found exit');
+    const error = parseExactJson(result.stdout);
+    assert.equal(error.exit_code, 5);
+    assert.equal(error.status_code, 404);
+    assert.equal(error.namespace, namespace);
+}
+
+function requireNotFound(connection, args, namespace) {
+    requireNotFoundReply(invokeCli(connection, args), namespace);
 }
 
 async function api(connection, namespace, suffix) {
@@ -151,7 +157,7 @@ async function inspectOriginal(connection, original) {
     }
     const cliHistory = successfulCli(connection, ['workflow:history', workflow, run, '--namespace', namespace, '--json']);
     requireOriginalHistory(cliHistory, before, original);
-    requireNotFound(connection, ['workflow:history', workflow, original.linked_workflow_run_id, '--namespace', namespace, '--json']);
+    requireNotFound(connection, ['workflow:history', workflow, original.linked_workflow_run_id, '--namespace', namespace, '--json'], namespace);
     const callId = original.id || original.service_call_id;
     const callPath = ['service-endpoints', original.endpoint_name, 'services', original.service_name,
         'operations', original.operation_name, 'service-calls', callId].map(encodeURIComponent).join('/');
@@ -159,7 +165,7 @@ async function inspectOriginal(connection, original) {
     const callArgs = ['service-call:describe', original.endpoint_name, original.service_name, original.operation_name];
     const detail = successfulCli(connection, [...callArgs, callId, '--namespace', original.namespace, '--json']);
     requireOriginalCall(detail, call, original);
-    requireNotFound(connection, [...callArgs, run, '--namespace', original.namespace, '--json']);
+    requireNotFound(connection, [...callArgs, run, '--namespace', original.namespace, '--json'], original.namespace);
     const after = await history(connection, original);
     requireOriginalHistory(after, before, original);
     return {call_id: original.id || original.service_call_id, namespace, workflow_id: workflow, run_id: run,
