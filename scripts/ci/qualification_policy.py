@@ -179,6 +179,8 @@ def classify_paths(paths: Iterable[str]) -> Classification:
         return Classification(CONFORMANCE, "conformance-paths-only", normalized)
     if all(is_non_runtime_path(path) for path in normalized):
         return Classification(NON_RUNTIME, "non-runtime-paths-only", normalized)
+    if all(path in RELEASE_ONLY_PATHS or is_non_runtime_path(path) for path in normalized):
+        return Classification(RELEASE, "release-and-documentation-paths-only", normalized)
 
     return Classification(COMPLETE, "complete-path-present", normalized)
 
