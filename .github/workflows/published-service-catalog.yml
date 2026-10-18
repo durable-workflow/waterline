@@ -176,7 +176,7 @@ jobs:
             full_platform_exit: read('full-platform-status.txt'),
             nexus_assertions_exit: read('nexus-assertions-status.txt'),
             platform_outcome: platform?.outcome ?? null,
-            scenarios: Object.fromEntries(Object.entries(platform?.scenario_results ?? {}).map(([name, row]) => [name, {
+            scenarios: Object.fromEntries(Object.entries(platform?.scenario_results ?? {}).map(([name, row]) => [row.scenario_id ?? name, {
               status: row.status, classification: row.classification, findings: row.linked_findings,
             }])),
             browser: browser && {outcome: browser.outcome, classification: browser.classification,
