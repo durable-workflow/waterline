@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {parseExactJson, requireOriginalHistory} from '../../scripts/ci/service-catalog-cli-published.mjs';
+import {parseExactJson, requireOriginalCall, requireOriginalHistory} from '../../scripts/ci/service-catalog-cli-published.mjs';
 
 test('CLI evidence preserves integer changes that ordinary JSON decoding collapses', () => {
     const original = '{"long":9223372036854775807}';
@@ -8,6 +8,18 @@ test('CLI evidence preserves integer changes that ordinary JSON decoding collaps
     assert.deepEqual(JSON.parse(original), JSON.parse(changed));
     assert.notDeepEqual(parseExactJson(original), parseExactJson(changed));
     assert.deepEqual(parseExactJson('{"n":null,"text":"λ雪"}'), {n: null, text: 'λ雪'});
+});
+
+test('matching CLI/API call details cannot substitute another original target or alter typed results', () => {
+    const original = {id: 'call', namespace: 'shared', caller_namespace: 'tenant-a', caller_workflow_instance_id: 'caller',
+        caller_workflow_run_id: 'caller-run', target_namespace: 'shared', linked_workflow_instance_id: 'target',
+        linked_workflow_run_id: 'original-target', status: 'completed', call_deadline_at: '2026-10-18T03:00:00.123456Z'};
+    const detail = {...original, service_call_attempts: [{attempt: 1}], retry_attempt_count: 1,
+        result_envelope: {codec: 'avro', blob: 'original'}};
+    requireOriginalCall(detail, structuredClone(detail), original);
+    const changed = {...detail, linked_workflow_run_id: 'another-target'};
+    assert.throws(() => requireOriginalCall(changed, structuredClone(changed), original));
+    assert.throws(() => requireOriginalCall({...detail, result_envelope: {codec: 'avro', blob: 'changed'}}, detail, original));
 });
 
 test('matching CLI/API histories cannot qualify a different original call or run', () => {

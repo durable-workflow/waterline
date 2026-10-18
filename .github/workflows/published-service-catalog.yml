@@ -116,8 +116,8 @@ jobs:
           cli_root="$RUNNER_TEMP/catalog-cli"
           mkdir -p "$cli_root"
           base="https://github.com/durable-workflow/cli/releases/download/$DW_CLI_VERSION"
-          curl --fail --silent --location --max-time 120 "$base/SHA256SUMS" -o "$cli_root/SHA256SUMS"
-          curl --fail --silent --location --max-time 120 "$base/dw-linux-x86_64" -o "$DW_NEXUS_CLI_BINARY"
+          curl --fail --silent --location --proto '=https' --proto-redir '=https' --max-time 120 "$base/SHA256SUMS" -o "$cli_root/SHA256SUMS"
+          curl --fail --silent --location --proto '=https' --proto-redir '=https' --max-time 120 "$base/dw-linux-x86_64" -o "$DW_NEXUS_CLI_BINARY"
           cd "$cli_root"
           awk '$2 == "dw-linux-x86_64" {print}' SHA256SUMS > selected-sha256.txt
           test "$(wc -l < selected-sha256.txt)" -eq 1
@@ -178,6 +178,8 @@ jobs:
           assert.equal(cli.original_calls, 24);
           assert.equal(cli.cases.length, 24);
           assert.equal(cli.cases.filter(row => row.wrong_selector_refused).length, 24);
+          assert.equal(cli.cases.filter(row => row.call_detail_verified).length, 24);
+          assert.equal(cli.cases.filter(row => row.wrong_call_refused).length, 24);
           assert.equal(cli.history_mutations, 0);
           NODE
       - name: Export bounded results and failure tails
@@ -214,6 +216,8 @@ jobs:
               mutations: browser.mutations?.length, page_errors: browser.page_errors?.length},
             cli: cli && {outcome: cli.outcome, classification: cli.classification, version: cli.version,
               original_calls: cli.original_calls, wrong_selector_refusals: cli.cases?.filter(row => row.wrong_selector_refused).length,
+              call_details: cli.cases?.filter(row => row.call_detail_verified).length,
+              wrong_call_refusals: cli.cases?.filter(row => row.wrong_call_refused).length,
               history_mutations: cli.history_mutations},
           };
           const json = `${JSON.stringify(report, null, 2)}\n`;

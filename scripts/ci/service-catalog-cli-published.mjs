@@ -34,6 +34,19 @@ export function requireOriginalHistory(actual, expected, original) {
     assert.deepEqual(historyProjection(actual), historyProjection(expected));
 }
 
+export function requireOriginalCall(actual, expected, original) {
+    for (const document of [actual, expected]) {
+        assert.equal(document.id || document.service_call_id, original.id || original.service_call_id);
+        for (const field of ['namespace', 'caller_namespace', 'caller_workflow_instance_id', 'caller_workflow_run_id',
+            'target_namespace', 'linked_workflow_instance_id', 'linked_workflow_run_id', 'status', 'call_deadline_at']) {
+            assert.equal(document[field], original[field], `Call inspection changed the original ${field}`);
+        }
+        assert.ok(Array.isArray(document.service_call_attempts));
+        assert.equal(document.retry_attempt_count, document.service_call_attempts.length);
+    }
+    assert.deepEqual(actual, expected);
+}
+
 function argument(name) {
     const index = process.argv.indexOf(name);
     assert.ok(index > 0 && process.argv[index + 1], `${name} is required`);
@@ -41,7 +54,7 @@ function argument(name) {
 }
 
 function docker(args) {
-    const result = spawnSync('docker', args, {encoding: 'utf8', timeout: 15000});
+    const result = spawnSync('/usr/bin/docker', args, {encoding: 'utf8', timeout: 15000});
     assert.equal(result.status, 0, 'Cannot inspect the owned test Server');
     return result.stdout;
 }
@@ -94,6 +107,12 @@ function successfulCli(connection, args) {
     return parseExactJson(result.stdout);
 }
 
+function requireNotFound(connection, args) {
+    const result = invokeCli(connection, args);
+    assert.ok(Number.isInteger(result.status) && result.status > 0 && /404|not found|run_not_found|workflow_not_found/i.test(`${result.stdout || ''} ${result.stderr || ''}`),
+        'The published CLI must refuse the wrong original selector');
+}
+
 async function api(connection, namespace, suffix) {
     const response = await fetch(`${connection.base}/api/${suffix}`, {redirect: 'error', signal: AbortSignal.timeout(10000),
         headers: {Authorization: `Bearer ${connection.token}`, 'X-Namespace': namespace,
@@ -109,8 +128,11 @@ async function history(connection, original) {
     let cursor = null;
     let pages = 0;
     do {
+        // The next request depends on the cursor returned by this page.
         assert.ok(pages++ < 20, 'Unexpected history pagination');
-        document = await api(connection, original.caller_namespace, `${suffix}?page_size=100${cursor ? `&next_page_token=${encodeURIComponent(cursor)}` : ''}`);
+        const query = new URLSearchParams({page_size: '100'});
+        if (cursor) query.set('next_page_token', cursor);
+        document = await api(connection, original.caller_namespace, `${suffix}?${query}`);
         events.push(...document.events);
         cursor = document.next_page_token;
     } while (cursor);
@@ -129,13 +151,20 @@ async function inspectOriginal(connection, original) {
     }
     const cliHistory = successfulCli(connection, ['workflow:history', workflow, run, '--namespace', namespace, '--json']);
     requireOriginalHistory(cliHistory, before, original);
-    const wrong = invokeCli(connection, ['workflow:history', workflow, original.linked_workflow_run_id, '--namespace', namespace, '--json']);
-    assert.ok(Number.isInteger(wrong.status) && wrong.status > 0 && /404|not found|run_not_found|workflow_not_found/i.test(`${wrong.stdout || ''} ${wrong.stderr || ''}`),
-        'The CLI must refuse another original run under this workflow selector');
+    requireNotFound(connection, ['workflow:history', workflow, original.linked_workflow_run_id, '--namespace', namespace, '--json']);
+    const callId = original.id || original.service_call_id;
+    const callPath = ['service-endpoints', original.endpoint_name, 'services', original.service_name,
+        'operations', original.operation_name, 'service-calls', callId].map(encodeURIComponent).join('/');
+    const call = await api(connection, original.namespace, callPath);
+    const callArgs = ['service-call:describe', original.endpoint_name, original.service_name, original.operation_name];
+    const detail = successfulCli(connection, [...callArgs, callId, '--namespace', original.namespace, '--json']);
+    requireOriginalCall(detail, call, original);
+    requireNotFound(connection, [...callArgs, run, '--namespace', original.namespace, '--json']);
     const after = await history(connection, original);
     requireOriginalHistory(after, before, original);
     return {call_id: original.id || original.service_call_id, namespace, workflow_id: workflow, run_id: run,
-        target_run_id: original.linked_workflow_run_id, status: original.status, events: before.events.length, wrong_selector_refused: true};
+        target_run_id: original.linked_workflow_run_id, status: original.status, events: before.events.length,
+        wrong_selector_refused: true, call_detail_verified: true, wrong_call_refused: true};
 }
 
 async function main() {
@@ -150,11 +179,17 @@ async function main() {
     assert.equal(version.status, 0);
     assert.ok(version.stdout.includes(process.env.DW_CLI_VERSION), 'Wrong published CLI version');
     const cases = [];
+    // Keep each before/CLI/after span together without multiplying backend load.
     for (const original of collectOriginals(root)) cases.push(await inspectOriginal(connection, original));
     fs.writeFileSync(path.join(output, 'cli-report.json'), `${JSON.stringify({outcome: 'pass', classification: 'published_cli',
         version: process.env.DW_CLI_VERSION, original_calls: cases.length, cases, history_mutations: 0}, null, 2)}\n`);
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    main().catch(error => { console.error(error.message); process.exitCode = 1; });
+    try {
+        await main();
+    } catch (error) {
+        console.error(error.message);
+        process.exitCode = 1;
+    }
 }
