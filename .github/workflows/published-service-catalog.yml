@@ -51,6 +51,10 @@ jobs:
       DW_PHP_SDK_VERSION: ${{ inputs.php_caller_version }}
       DW_PYTHON_SDK_VERSION: ${{ inputs.python_caller_version }}
       DW_CLI_VERSION: ${{ inputs.cli_version }}
+      DW_NEXUS_RESULT_DIR: ${{ runner.temp }}/catalog-proof
+      DW_NEXUS_RUN_ROOT: ${{ runner.temp }}/catalog-run
+      DW_NEXUS_WATERLINE_INSPECTOR: ${{ github.workspace }}/waterline/scripts/ci/service-catalog-published.mjs
+      DW_NEXUS_WATERLINE_PLAYWRIGHT_ROOT: ${{ runner.temp }}/catalog-browser
     steps:
       - name: Validate immutable artifact and harness inputs
         env:
@@ -76,6 +80,15 @@ jobs:
           ref: ${{ inputs.server_harness_commit }}
           path: server
           persist-credentials: false
+      - name: Check out the unchanged bounded report exporter
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: durable-workflow/server
+          ref: 964f9e3d5b713376757294fd38c2cb3b4cba1400
+          path: server-summary
+          sparse-checkout: scripts/conformance/server-parity/artifact-summary.mjs
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Install Node 24
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -87,15 +100,46 @@ jobs:
           npm init -y
           npm install --save-exact playwright@1.63.0
           npx playwright install chromium --with-deps
-      - name: Inspect actual published calls before the producer tears down
+      - name: Check constructed evidence refusals
+        working-directory: server
+        run: node --test tests/Unit/NexusSdkCallerEvidenceTest.mjs
+      - name: Execute original published calls and record the broader platform outcome
         working-directory: server
         run: |
           set -euo pipefail
-          export DW_NEXUS_RESULT_DIR="$RUNNER_TEMP/catalog-proof"
-          export DW_NEXUS_RUN_ROOT="$RUNNER_TEMP/catalog-run"
-          export DW_NEXUS_WATERLINE_INSPECTOR="$GITHUB_WORKSPACE/waterline/scripts/ci/service-catalog-published.mjs"
-          export DW_NEXUS_WATERLINE_PLAYWRIGHT_ROOT="$RUNNER_TEMP/catalog-browser"
-          scripts/conformance/nexus-published-artifacts.sh
+          mkdir -p "$DW_NEXUS_RESULT_DIR"
+          set +e
+          scripts/conformance/nexus-published-artifacts.sh > "$DW_NEXUS_RESULT_DIR/producer.log" 2>&1
+          status=$?
+          printf '%s\n' "$status" > "$DW_NEXUS_RESULT_DIR/full-platform-status.txt"
+          # Broader platform coverage remains separate from the strict Nexus
+          # and real-browser assertions below; its outcome is always retained.
+          exit 0
+      - name: Require the original strict Nexus assertions
+        working-directory: server
+        env:
+          NEXUS_SDK_CLIENT_MATRIX: ${{ runner.temp }}/catalog-proof/nexus-sdk-client-matrix.json
+          NEXUS_CONFORMANCE_RESULT: ${{ runner.temp }}/catalog-proof/nexus-conformance-result.json
+          NEXUS_PYTHON_WORKFLOW_PROBE: ${{ runner.temp }}/catalog-proof/nexus-python-workflow-probe.json
+          NEXUS_PHP_WORKFLOW_PROBE: ${{ runner.temp }}/catalog-proof/nexus-php-workflow-probe.json
+          NEXUS_PHP_PHP_WORKFLOW_PROBE: ${{ runner.temp }}/catalog-proof/nexus-php-php-workflow-probe.json
+          NEXUS_PYTHON_PYTHON_WORKFLOW_PROBE: ${{ runner.temp }}/catalog-proof/nexus-python-python-workflow-probe.json
+          NEXUS_TYPED_FAILURE_PROBES: ${{ runner.temp }}/catalog-proof/nexus-typed-failure-probes.json
+          NEXUS_CANCELLATION_PROBES: ${{ runner.temp }}/catalog-proof/nexus-cancellation-probes.json
+          NEXUS_WAITING_CALLER_CANCELLATION_PROBES: ${{ runner.temp }}/catalog-proof/nexus-waiting-caller-cancellation-probes.json
+          NEXUS_CALLER_RECOVERY_PROBES: ${{ runner.temp }}/catalog-proof/nexus-caller-recovery-probes.json
+          NEXUS_BACKEND_INTERRUPTION_PROBES: ${{ runner.temp }}/catalog-proof/nexus-backend-interruption-probes.json
+          NEXUS_DEADLINE_PROBE: ${{ runner.temp }}/catalog-proof/nexus-deadline-probe.json
+        run: |
+          set +e
+          node --test tests/Unit/NexusSdkCallerEvidenceTest.mjs > "$DW_NEXUS_RESULT_DIR/nexus-assertions.log" 2>&1
+          status=$?
+          printf '%s\n' "$status" > "$DW_NEXUS_RESULT_DIR/nexus-assertions-status.txt"
+          tail -n 60 "$DW_NEXUS_RESULT_DIR/nexus-assertions.log"
+          exit "$status"
+      - name: Require real API and browser inspection of all original calls
+        working-directory: server
+        run: |
           node - "$DW_NEXUS_RESULT_DIR/waterline-catalog/report.json" <<'NODE'
           const assert = require('node:assert/strict');
           const fs = require('node:fs');
@@ -108,11 +152,74 @@ jobs:
           assert.deepEqual(report.mutations, []);
           assert.deepEqual(report.page_errors, []);
           NODE
-      - name: Retain original calls, API/browser proof and cleanup receipts
+      - name: Export bounded results and failure tails
+        if: always()
+        env:
+          INSPECTION_OUTCOME: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/catalog-summary-input"
+          node --input-type=module <<'NODE'
+          import {existsSync, readFileSync, writeFileSync} from 'node:fs';
+          const root = process.env.DW_NEXUS_RESULT_DIR;
+          const read = name => {
+            const path = `${root}/${name}`;
+            if (!existsSync(path)) return null;
+            try { return JSON.parse(readFileSync(path, 'utf8')); }
+            catch { return {decode_error: true}; }
+          };
+          const platform = read('nexus-conformance-result.json');
+          const browser = read('waterline-catalog/report.json');
+          const report = {
+            outcome: process.env.INSPECTION_OUTCOME,
+            artifacts: Object.fromEntries(Object.entries(process.env).filter(([key]) => /^DW_(?:SERVER_IMAGE|SERVER_VERSION|WORKFLOW_PHP_VERSION|PHP_SDK_VERSION|PYTHON_SDK_VERSION|CLI_VERSION|WATERLINE_VERSION|NEXUS_WATERLINE_IMAGE)$/.test(key))),
+            full_platform_exit: read('full-platform-status.txt'),
+            nexus_assertions_exit: read('nexus-assertions-status.txt'),
+            platform_outcome: platform?.outcome ?? null,
+            scenarios: Object.fromEntries(Object.entries(platform?.scenario_results ?? {}).map(([name, row]) => [name, {
+              status: row.status, classification: row.classification, findings: row.linked_findings,
+            }])),
+            browser: browser && {outcome: browser.outcome, classification: browser.classification,
+              original_calls: browser.original_calls, cases: browser.cases?.length,
+              screenshots: browser.cases?.filter(row => row.screenshot).length,
+              mutations: browser.mutations?.length, page_errors: browser.page_errors?.length},
+          };
+          const json = `${JSON.stringify(report, null, 2)}\n`;
+          writeFileSync(`${process.env.RUNNER_TEMP}/catalog-summary-input/comparison.json`, json);
+          process.stdout.write(json);
+          NODE
+          if [ "$INSPECTION_OUTCOME" != success ]; then
+            for name in producer nexus-assertions nexus-waterline-inspection; do
+              if [ -f "$DW_NEXUS_RESULT_DIR/$name.log" ]; then
+                tail -c 65536 "$DW_NEXUS_RESULT_DIR/$name.log" > "$RUNNER_TEMP/catalog-summary-input/$name-error.log"
+              fi
+            done
+          fi
+          node server-summary/scripts/conformance/server-parity/artifact-summary.mjs "$RUNNER_TEMP/catalog-summary-input" "$RUNNER_TEMP/catalog-summary"
+      - name: Retain bounded results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: published-service-catalog-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/catalog-proof
+          path: ${{ runner.temp }}/catalog-summary
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1
+      - name: Remove resources and raw output from this execution
+        if: always()
+        run: |
+          set -euo pipefail
+          projects=$(docker ps -a --filter "label=com.docker.compose.project.working_dir=$DW_NEXUS_RUN_ROOT" --format '{{.Label "com.docker.compose.project"}}' | sort -u)
+          for project in $projects; do
+            [[ "$project" =~ ^dw-nexus-[a-f0-9]{10}$ ]]
+            docker rm -f "$project-php-workflow-service" "$project-python-sdk-service" 2>/dev/null || true
+            if [ -f "$DW_NEXUS_RUN_ROOT/compose.yml" ]; then
+              docker compose -p "$project" -f "$DW_NEXUS_RUN_ROOT/compose.yml" down --volumes --remove-orphans
+            else
+              docker ps -aq --filter "label=com.docker.compose.project=$project" | xargs -r docker rm -f
+              docker volume ls -q --filter "label=com.docker.compose.project=$project" | xargs -r docker volume rm
+              docker network ls -q --filter "label=com.docker.compose.project=$project" | xargs -r docker network rm
+            fi
+          done
+          for path in "$DW_NEXUS_RESULT_DIR" "$DW_NEXUS_RUN_ROOT" "$DW_NEXUS_WATERLINE_PLAYWRIGHT_ROOT" "$RUNNER_TEMP/catalog-summary-input" "$RUNNER_TEMP/catalog-summary"; do
+            if [ -d "$path" ]; then rm -r -- "$path"; fi
+          done
