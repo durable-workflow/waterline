@@ -1321,6 +1321,8 @@ export default {
 .service-catalog-view__detail-section {
     border: 1px solid var(--wl-border);
     border-radius: var(--wl-radius-md);
+    min-width: 0;
+    overflow-wrap: anywhere;
     padding: 1rem;
 }
 
@@ -1359,6 +1361,9 @@ export default {
     border-radius: var(--wl-radius-md);
     color: var(--wl-text);
     margin: 0 0 0.75rem;
+    max-height: 24rem;
+    max-width: 100%;
+    overflow: auto;
     padding: 0.75rem;
     white-space: pre-wrap;
 }
