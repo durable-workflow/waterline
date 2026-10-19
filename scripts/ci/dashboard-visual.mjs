@@ -71,6 +71,23 @@ export async function dashboardGeometry(page) {
     });
 }
 
+export async function inspectDashboardTables(page, name) {
+    for (const table of await page.locator('.wl-dashboard-view .table-responsive').all()) {
+        assert.equal(await table.getAttribute('tabindex'), '0');
+        assert.ok(await table.getAttribute('aria-label'));
+        await table.focus();
+        assert.equal(await table.evaluate(element => document.activeElement === element), true);
+        const scroll = await table.evaluate(element => {
+            element.scrollLeft = element.scrollWidth;
+            const bounds = element.getBoundingClientRect();
+            const lastCell = element.querySelector('tr:last-child > :last-child').getBoundingClientRect();
+            return { rightEdgeReachable: lastCell.right <= bounds.right + 2, width: element.clientWidth, scrollWidth: element.scrollWidth, scrollLeft: element.scrollLeft, containerRight: bounds.right, lastCellRight: lastCell.right, viewportWidth: innerWidth, zoom: devicePixelRatio };
+        });
+        assert.equal(scroll.rightEdgeReachable, true, `The last table column must remain reachable: ${JSON.stringify({ name, ...scroll })}`);
+        await table.evaluate(element => { element.scrollLeft = 0; });
+    }
+}
+
 function loadPlaywright() {
     for (const root of [process.cwd(), execFileSync('npm', ['root', '--global'], { encoding: 'utf8' }).trim()]) {
         try { return createRequire(path.join(root, 'package.json'))('playwright'); } catch { /* Try the next installed location. */ }
@@ -163,20 +180,7 @@ export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirect
                     await page.locator('.wl-screen-hero__actions button').click();
                     await refreshed;
                     await page.locator('.wl-operator-metrics-grid').waitFor();
-                    for (const table of await page.locator('.wl-dashboard-view .table-responsive').all()) {
-                        assert.equal(await table.getAttribute('tabindex'), '0');
-                        assert.ok(await table.getAttribute('aria-label'));
-                        await table.focus();
-                        assert.equal(await table.evaluate(element => document.activeElement === element), true);
-                        const scroll = await table.evaluate(element => {
-                            element.scrollLeft = element.scrollWidth;
-                            const bounds = element.getBoundingClientRect();
-                            const lastCell = element.querySelector('tr:last-child > :last-child').getBoundingClientRect();
-                            return { rightEdgeReachable: lastCell.right <= bounds.right + 2, width: element.clientWidth, scrollWidth: element.scrollWidth, scrollLeft: element.scrollLeft, containerRight: bounds.right, lastCellRight: lastCell.right, viewportWidth: innerWidth, zoom: devicePixelRatio };
-                        });
-                        assert.equal(scroll.rightEdgeReachable, true, `The last table column must remain reachable: ${JSON.stringify({ name, ...scroll })}`);
-                        await table.evaluate(element => { element.scrollLeft = 0; });
-                    }
+                    await inspectDashboardTables(page, name);
                     const scope = page.locator('.wl-topbar__scope-value').first();
                     assert.equal(await scope.getAttribute('title'), await scope.textContent());
                     await page.locator('.wl-sidebar__link[href$="/dashboard"]').click();
