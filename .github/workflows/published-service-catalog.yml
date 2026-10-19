@@ -103,8 +103,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/catalog-browser"
           cd "$RUNNER_TEMP/catalog-browser"
           npm init -y
-          npm install --save-exact playwright@1.63.0
-          npx playwright install chromium --with-deps
+          npm install --ignore-scripts --save-exact playwright@1.63.0
+          npx --no-install playwright install chromium --with-deps
       - name: Check constructed evidence refusals
         working-directory: server
         run: |
