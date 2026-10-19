@@ -589,6 +589,10 @@ jobs:
       working-directory: sample-app
       run: node --test ../waterline/tests/Frontend/dialog-readiness-browser.mjs
 
+    - name: Check dashboard table observer contracts
+      working-directory: sample-app
+      run: node --test ../waterline/tests/Frontend/dashboard-table-browser.mjs
+
     - name: Qualify the complete run-detail matrix
       working-directory: sample-app
       run: >-

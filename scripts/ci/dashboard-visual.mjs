@@ -72,19 +72,38 @@ export async function dashboardGeometry(page) {
 }
 
 export async function inspectDashboardTables(page, name) {
-    for (const table of await page.locator('.wl-dashboard-view .table-responsive').all()) {
-        assert.equal(await table.getAttribute('tabindex'), '0');
-        assert.ok(await table.getAttribute('aria-label'));
-        await table.focus();
-        assert.equal(await table.evaluate(element => document.activeElement === element), true);
-        const scroll = await table.evaluate(element => {
-            element.scrollLeft = element.scrollWidth;
-            const bounds = element.getBoundingClientRect();
-            const lastCell = element.querySelector('tr:last-child > :last-child').getBoundingClientRect();
-            return { rightEdgeReachable: lastCell.right <= bounds.right + 2, width: element.clientWidth, scrollWidth: element.scrollWidth, scrollLeft: element.scrollLeft, containerRight: bounds.right, lastCellRight: lastCell.right, viewportWidth: innerWidth, zoom: devicePixelRatio };
-        });
-        assert.equal(scroll.rightEdgeReachable, true, `The last table column must remain reachable: ${JSON.stringify({ name, ...scroll })}`);
-        await table.evaluate(element => { element.scrollLeft = 0; });
+    try {
+        const root = page.locator('.wl-dashboard-view');
+        const labels = await root.locator('.table-responsive').evaluateAll(tables => tables.map(table => table.getAttribute('aria-label')));
+        assert.equal(labels.length, 4, 'The populated fixture must render four dashboard tables.');
+        assert.ok(labels.every(label => typeof label === 'string' && label.trim().length > 0));
+        assert.equal(new Set(labels).size, 4, 'Dashboard table labels must be distinct.');
+        for (const label of labels) {
+            const table = root.getByRole('region', {name: label, exact: true});
+            assert.equal(await table.getAttribute('tabindex'), '0');
+            await table.focus();
+            assert.equal(await table.evaluate(element => document.activeElement === element), true);
+            const scroll = await table.evaluate(element => {
+                element.scrollLeft = element.scrollWidth;
+                const bounds = element.getBoundingClientRect();
+                const lastCell = element.querySelector('tr:last-child > :last-child').getBoundingClientRect();
+                return { rightEdgeReachable: lastCell.right <= bounds.right + 2, width: element.clientWidth, scrollWidth: element.scrollWidth, scrollLeft: element.scrollLeft, containerRight: bounds.right, lastCellRight: lastCell.right, viewportWidth: innerWidth, zoom: devicePixelRatio };
+            });
+            assert.equal(scroll.rightEdgeReachable, true, `The last table column must remain reachable: ${JSON.stringify({ name, label, ...scroll })}`);
+            await table.evaluate(element => { element.scrollLeft = 0; });
+        }
+    } catch (error) {
+        const observed = await page.evaluate(() => ({
+            path: location.pathname,
+            metricsVisible: Boolean(document.querySelector('.wl-operator-metrics-grid')),
+            errorVisible: Boolean(document.querySelector('.wl-screen-state--error')),
+            focusedRegion: document.activeElement?.closest('[role="region"]')?.getAttribute('aria-label') || null,
+            tables: [...document.querySelectorAll('.wl-dashboard-view .table-responsive')].map(table => ({
+                label: table.getAttribute('aria-label'), rows: table.querySelectorAll('tbody tr').length,
+            })),
+        })).catch(() => ({documentAvailable: false}));
+        console.error(JSON.stringify({phase: 'dashboard_table_observation_failed', name, ...observed}));
+        throw error;
     }
 }
 
