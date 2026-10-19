@@ -382,7 +382,7 @@ jobs:
     - name: Install pinned-browser tooling
       working-directory: sample-app
       run: |
-        npm install --no-save --package-lock=false playwright@1.64.0
+        npm install --ignore-scripts --no-save --package-lock=false playwright@1.64.0
         node -e "const version = require('playwright/package.json').version; if (version !== '1.64.0') throw new Error('Unexpected Playwright: ' + version); console.log('Playwright ' + version, require('./node_modules/playwright-core/browsers.json').browsers.find(browser => browser.name === 'chromium'));"
         npx --no-install playwright install chromium --with-deps
 
@@ -581,7 +581,7 @@ jobs:
     - name: Install pinned-browser tooling
       working-directory: sample-app
       run: |
-        npm install --no-save --package-lock=false playwright@1.64.0
+        npm install --ignore-scripts --no-save --package-lock=false playwright@1.64.0
         node -e "const version = require('playwright/package.json').version; if (version !== '1.64.0') throw new Error('Unexpected Playwright: ' + version); console.log('Playwright ' + version, require('./node_modules/playwright-core/browsers.json').browsers.find(browser => browser.name === 'chromium'));"
         npx --no-install playwright install chromium --with-deps
 
