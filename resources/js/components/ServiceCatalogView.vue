@@ -158,36 +158,36 @@
                         <table class="table table-hover table-sm mb-0">
                             <thead>
                                 <tr v-if="activeTab === 'endpoints'">
-                                    <th>{{ $t("Endpoint") }}</th>
-                                    <th>{{ $t("Namespace") }}</th>
-                                    <th>{{ $t("Description") }}</th>
-                                    <th class="text-right">{{ $t("Created") }}</th>
-                                    <th class="text-right">{{ $t("Action") }}</th>
+                                    <th scope="col">{{ $t("Endpoint") }}</th>
+                                    <th scope="col">{{ $t("Namespace") }}</th>
+                                    <th scope="col">{{ $t("Description") }}</th>
+                                    <th scope="col" class="text-right">{{ $t("Created") }}</th>
+                                    <th scope="col" class="text-right">{{ $t("Action") }}</th>
                                 </tr>
                                 <tr v-else-if="activeTab === 'services'">
-                                    <th>{{ $t("Service") }}</th>
-                                    <th>{{ $t("Endpoint") }}</th>
-                                    <th>{{ $t("Namespace") }}</th>
-                                    <th>{{ $t("Description") }}</th>
-                                    <th class="text-right">{{ $t("Action") }}</th>
+                                    <th scope="col">{{ $t("Service") }}</th>
+                                    <th scope="col">{{ $t("Endpoint") }}</th>
+                                    <th scope="col">{{ $t("Namespace") }}</th>
+                                    <th scope="col">{{ $t("Description") }}</th>
+                                    <th scope="col" class="text-right">{{ $t("Action") }}</th>
                                 </tr>
                                 <tr v-else-if="activeTab === 'operations'">
-                                    <th>{{ $t("Operation") }}</th>
-                                    <th>{{ $t("Service") }}</th>
-                                    <th>{{ $t("Mode") }}</th>
-                                    <th>{{ $t("Binding") }}</th>
-                                    <th>{{ $t("Namespace") }}</th>
-                                    <th class="text-right">{{ $t("Action") }}</th>
+                                    <th scope="col">{{ $t("Operation") }}</th>
+                                    <th scope="col">{{ $t("Service") }}</th>
+                                    <th scope="col">{{ $t("Mode") }}</th>
+                                    <th scope="col">{{ $t("Binding") }}</th>
+                                    <th scope="col">{{ $t("Namespace") }}</th>
+                                    <th scope="col" class="text-right">{{ $t("Action") }}</th>
                                 </tr>
                                 <tr v-else>
-                                    <th>{{ $t("Call") }}</th>
-                                    <th>{{ $t("Operation") }}</th>
-                                    <th>{{ $t("Caller") }}</th>
-                                    <th>{{ $t("Target") }}</th>
-                                    <th>{{ $t("Status") }}</th>
-                                    <th>{{ $t("Outcome") }}</th>
-                                    <th class="text-right">{{ $t("Accepted") }}</th>
-                                    <th class="text-right">{{ $t("Action") }}</th>
+                                    <th scope="col">{{ $t("Call") }}</th>
+                                    <th scope="col">{{ $t("Operation") }}</th>
+                                    <th scope="col">{{ $t("Caller") }}</th>
+                                    <th scope="col">{{ $t("Target") }}</th>
+                                    <th scope="col">{{ $t("Status") }}</th>
+                                    <th scope="col">{{ $t("Outcome") }}</th>
+                                    <th scope="col" class="text-right">{{ $t("Accepted") }}</th>
+                                    <th scope="col" class="text-right">{{ $t("Action") }}</th>
                                 </tr>
                             </thead>
                             <tbody>
