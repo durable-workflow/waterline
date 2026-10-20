@@ -285,6 +285,11 @@ class V2SchedulesController extends Controller
                 ?? $this->scheduleNotFound();
         }
 
+        return $this->findClusterSchedule($scheduleId);
+    }
+
+    private function findClusterSchedule(string $scheduleId): WorkflowSchedule|JsonResponse
+    {
         $matches = WorkflowSchedule::query()
             ->where('schedule_id', $scheduleId)
             ->orderBy('namespace')

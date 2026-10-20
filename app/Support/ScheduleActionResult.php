@@ -61,8 +61,7 @@ final class ScheduleActionResult
 
             $workflowId = self::string($row['workflow_id'] ?? $row['instance_id'] ?? null);
             $reason = self::string($row['reason'] ?? $row['error'] ?? null);
-            $outcome = self::string($row['outcome'] ?? null)
-                ?? (array_key_exists('error', $row) ? 'failed' : ($workflowId !== null ? 'started' : 'skipped'));
+            $outcome = self::string($row['outcome'] ?? null) ?? self::embeddedOutcome($row, $workflowId);
 
             $fireTime = self::string($row['fire_time'] ?? $row['cron_time'] ?? null);
 
@@ -93,6 +92,21 @@ final class ScheduleActionResult
             'failed_count' => $count('failed'),
             'results' => $results,
         ];
+    }
+
+    /**
+     * Embedded backfill rows carry no outcome: an error means the start
+     * failed, a workflow means it started, and neither means it was skipped.
+     *
+     * @param array<string, mixed> $row
+     */
+    private static function embeddedOutcome(array $row, ?string $workflowId): string
+    {
+        if (array_key_exists('error', $row)) {
+            return 'failed';
+        }
+
+        return $workflowId !== null ? 'started' : 'skipped';
     }
 
     public static function validOverlapPolicy(?string $policy): bool

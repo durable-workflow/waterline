@@ -115,19 +115,13 @@ final class RemoteSchedulesController extends RemoteController
 
         $from = $this->stringInput($request, 'from');
         $to = $this->stringInput($request, 'to');
-        if ($from === null || $to === null) {
-            return response()->json([
-                'message' => 'Both "from" and "to" ISO 8601 timestamps are required.',
-                'reason' => 'invalid_backfill_window',
-            ], 422);
-        }
-
         $overlapPolicy = $this->stringInput($request, 'overlap_policy');
-        if ($response = $this->rejectUnknownOverlapPolicy($overlapPolicy)) {
+
+        if ($response = $this->rejectInvalidBackfill($from, $to, $overlapPolicy)) {
             return $response;
         }
 
-        $result = $this->backend->client()->backfillSchedule($scheduleId, $from, $to, $overlapPolicy);
+        $result = $this->backend->client()->backfillSchedule($scheduleId, (string) $from, (string) $to, $overlapPolicy);
 
         return response()->json($this->scoped(ScheduleActionResult::backfill(
             $scheduleId,
@@ -233,6 +227,18 @@ final class RemoteSchedulesController extends RemoteController
             'message' => 'Schedule not found.',
             'reason' => 'schedule_not_found',
         ]), 404);
+    }
+
+    private function rejectInvalidBackfill(?string $from, ?string $to, ?string $overlapPolicy): ?JsonResponse
+    {
+        if ($from === null || $to === null) {
+            return response()->json([
+                'message' => 'Both "from" and "to" ISO 8601 timestamps are required.',
+                'reason' => 'invalid_backfill_window',
+            ], 422);
+        }
+
+        return $this->rejectUnknownOverlapPolicy($overlapPolicy);
     }
 
     private function rejectUnknownOverlapPolicy(?string $policy): ?JsonResponse

@@ -6,7 +6,6 @@
 // it was taken from, and the page must show what the backend stored.
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -21,26 +20,9 @@ function argumentValue(name, fallback = null) {
     return index === -1 ? fallback : process.argv[index + 1];
 }
 
+// The job installs the pinned Playwright into the host directory it runs from.
 function loadPlaywright() {
-    const roots = [process.cwd()];
-
-    try {
-        roots.push(execFileSync('npm', ['root', '--global'], { encoding: 'utf8' }).trim());
-    } catch {
-        // The local project resolution below reports the actionable module error.
-    }
-
-    let lastError = null;
-
-    for (const root of roots.filter(Boolean)) {
-        try {
-            return createRequire(path.join(root, 'package.json'))('playwright');
-        } catch (error) {
-            lastError = error;
-        }
-    }
-
-    throw lastError;
+    return createRequire(path.join(process.cwd(), 'package.json'))('playwright');
 }
 
 const baseUrl = argumentValue('--base-url');
@@ -92,7 +74,7 @@ async function openSchedules(page) {
     }
 
     await page.waitForFunction(() => (
-        document.getElementById('waterline')?.getAttribute('data-waterline-mounted') === 'true'
+        document.getElementById('waterline')?.dataset.waterlineMounted === 'true'
     ), { timeout: 20_000 });
     await row(page, 'default', 'nightly-invoice-sync').waitFor({ state: 'visible', timeout: 20_000 });
 }

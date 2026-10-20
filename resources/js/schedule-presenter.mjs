@@ -23,8 +23,33 @@ const OUTCOMES = {
     failed: { label: 'Failed', tone: 'danger' },
 };
 
-const DURATION_UNITS = ['year', 'month', 'week', 'day', 'hour', 'minute', 'second'];
-const DURATION = /^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/;
+const DATE_UNITS = { Y: 'year', M: 'month', W: 'week', D: 'day' };
+const TIME_UNITS = { H: 'hour', M: 'minute', S: 'second' };
+const DURATION_PART = /^(\d+(?:\.\d+)?)([A-Z])/;
+
+// Reads "1Y2M" or "1H30M" into [{unit, amount}], or null when a designator is
+// unknown or out of order.
+function durationParts(section, units) {
+    const order = Object.keys(units);
+    const parts = [];
+    let rest = section;
+    let last = -1;
+
+    while (rest !== '') {
+        const match = DURATION_PART.exec(rest);
+        const position = match ? order.indexOf(match[2]) : -1;
+
+        if (position <= last) {
+            return null;
+        }
+
+        parts.push({ unit: units[match[2]], amount: Number(match[1]) });
+        last = position;
+        rest = rest.slice(match[0].length);
+    }
+
+    return parts;
+}
 
 function text(value) {
     return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
@@ -69,21 +94,22 @@ export function formatIsoDuration(value, locale) {
     }
 
     const normalized = source.toUpperCase();
-    const match = DURATION.exec(normalized);
+    const sections = normalized.startsWith('P') ? normalized.slice(1).split('T') : [];
 
-    if (!match || normalized === 'P' || normalized.endsWith('T')) {
+    if (sections.length === 0 || sections.length > 2 || (sections.length === 2 && sections[1] === '')) {
         return source;
     }
 
-    const parts = [];
+    const dateParts = durationParts(sections[0], DATE_UNITS);
+    const timeParts = sections.length === 2 ? durationParts(sections[1], TIME_UNITS) : [];
 
-    DURATION_UNITS.forEach((unit, index) => {
-        const amount = match[index + 1];
+    if (dateParts === null || timeParts === null) {
+        return source;
+    }
 
-        if (amount !== undefined && Number(amount) !== 0) {
-            parts.push(new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'short' }).format(Number(amount)));
-        }
-    });
+    const parts = [...dateParts, ...timeParts]
+        .filter((part) => part.amount !== 0)
+        .map((part) => new Intl.NumberFormat(locale, { style: 'unit', unit: part.unit, unitDisplay: 'short' }).format(part.amount));
 
     return parts.length > 0 ? parts.join(' ') : source;
 }
