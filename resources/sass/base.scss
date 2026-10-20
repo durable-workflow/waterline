@@ -1,9 +1,70 @@
 @import 'syntaxhighlight';
 @import 'bootstrap/scss/bootstrap';
 
+// Solid text tokens. Translucent text changes contrast with every surface it
+// crosses, so each theme sets colors measured against its own surfaces.
+$wl-text-muted: mix($body-color, $card-cap-bg, 78%) !default;
+$wl-text-soft: mix($body-color, $card-cap-bg, 68%) !default;
+$wl-success-text: $success !default;
+$wl-danger-text: $danger !default;
+$wl-warning-text: $warning !default;
+$wl-info-text: $info !default;
+// Accent text on the page, cards and purple tints. Solid buttons keep $primary.
+$wl-accent-text: $primary !default;
+$wl-alert-secondary-text: null !default;
+
+// Text inside the dark code surfaces, which keep a dark background in the
+// light theme.
+$wl-code-text: #f8f9fa !default;
+$wl-code-text-muted: #ced4da !default;
+$wl-code-text-soft: #b6bdc4 !default;
+$wl-code-accent: #c5b3ff !default;
+$wl-code-surface-emphasis: rgba(#ffffff, 0.06) !default;
+$wl-code-border: rgba(#ffffff, 0.12) !default;
+
 // Surface colors are too faint for enabled outline controls.
 .btn-outline-secondary {
     @include button-outline-variant($secondary-outline-color);
+}
+
+// Theme fill colors are tuned for badges and solid buttons. Outline controls
+// draw text in the status text colors instead.
+.btn-outline-success {
+    @include button-outline-variant($wl-success-text);
+}
+
+.btn-outline-danger {
+    @include button-outline-variant($wl-danger-text);
+}
+
+.btn-outline-warning {
+    @include button-outline-variant($wl-warning-text);
+}
+
+.btn-outline-info {
+    @include button-outline-variant($wl-info-text);
+}
+
+.text-success {
+    color: $wl-success-text !important;
+}
+
+.text-danger {
+    color: $wl-danger-text !important;
+}
+
+.text-warning {
+    color: $wl-warning-text !important;
+}
+
+.text-info {
+    color: $wl-info-text !important;
+}
+
+@if $wl-alert-secondary-text {
+    .alert-secondary {
+        color: $wl-alert-secondary-text;
+    }
 }
 
 // ============================================================================
@@ -701,12 +762,14 @@ $waterline-dialog-border: mix($body-color, $input-bg, 36%);
     --wl-border: #{$border-color};
     --wl-border-strong: #{mix($border-color, $body-color, 80%)};
     --wl-text: #{$body-color};
-    --wl-text-muted: #{rgba($body-color, 0.72)};
-    --wl-text-soft: #{rgba($body-color, 0.52)};
-    --wl-accent: #{$primary};
-    --wl-danger: #{$danger};
-    --wl-warning: #{$warning};
-    --wl-success: #{$success};
+    --wl-text-muted: #{$wl-text-muted};
+    --wl-text-soft: #{$wl-text-soft};
+    --wl-accent: #{$wl-accent-text};
+    // Status tokens are text colors. Components tint backgrounds from them.
+    --wl-danger: #{$wl-danger-text};
+    --wl-warning: #{$wl-warning-text};
+    --wl-success: #{$wl-success-text};
+    --wl-info: #{$wl-info-text};
     --wl-radius-lg: 18px;
     --wl-radius-md: 12px;
     --wl-shadow: 0 24px 60px #{rgba(#000000, 0.16)};
@@ -985,7 +1048,17 @@ $waterline-dialog-border: mix($body-color, $input-bg, 36%);
 }
 
 .wl-main .code-bg {
+    --wl-text: #{$wl-code-text};
+    --wl-text-muted: #{$wl-code-text-muted};
+    --wl-text-soft: #{$wl-code-text-soft};
+    --wl-surface-emphasis: #{$wl-code-surface-emphasis};
+    --wl-border: #{$wl-code-border};
+
     background: rgba($code-bg, 0.92);
+}
+
+.wl-main .code-bg .btn-outline-primary {
+    @include button-outline-variant($wl-code-accent);
 }
 
 @media (max-width: 1100px) {

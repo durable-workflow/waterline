@@ -5,9 +5,10 @@ $badge-font-size: 0.95rem;
 $primary: #adadff;
 $secondary: #494444;
 $secondary-outline-color: #bcc5cd;
-$success: #1f9d55;
+// Fill colors carry white or dark badge and button text at 4.5:1 or more.
+$success: #157a41;
 $info: #1c3d5a;
-$warning: #b08d2f;
+$warning: #8a6d1f;
 $danger: #aa2e28;
 $gray-800: $secondary;
 
@@ -65,6 +66,16 @@ $container-max-widths: (
     lg: 1139px,
     xl: 1140px
 ) !default;
+
+// Text colors for secondary text and status, measured against every surface
+// they render on: body, its gradient, cards, table headers and status tints.
+$wl-text-muted: #c0c9cf;
+$wl-text-soft: #a2abb2;
+$wl-success-text: #5fd38f;
+$wl-danger-text: #ff8a80;
+$wl-warning-text: #e3b341;
+$wl-info-text: #8cc4ff;
+$code-color: #ff8fc1;
 
 @import 'base';
 
