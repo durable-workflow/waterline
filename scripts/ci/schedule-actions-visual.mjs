@@ -42,6 +42,11 @@ function record(name, details = {}) {
     console.log(`ok - ${name}`);
 }
 
+// Text as authored, ignoring CSS text-transform such as uppercase pills.
+async function content(locator) {
+    return (await locator.textContent()).replace(/\s+/g, ' ');
+}
+
 function row(page, namespace, scheduleId) {
     return page.locator(`tr[data-schedule-id="${scheduleId}"][data-schedule-namespace="${namespace}"]`);
 }
@@ -117,13 +122,13 @@ async function assertRowsShowStoredState(page) {
 
     await assert.doesNotReject(nightly.getByText('Namespace default').waitFor({ timeout: 5_000 }));
     await assert.doesNotReject(tenant.getByText('Namespace tenant-b').waitFor({ timeout: 5_000 }));
-    assert.match(await nightly.innerText(), /Cron 0 2 \* \* \*/);
-    assert.match(await nightly.innerText(), /Timezone America\/Chicago/);
-    assert.match(await tenant.innerText(), /Cron 30 3 \* \* \*/);
-    assert.match(await hourly.innerText(), /Every 1 hr/);
-    assert.match(await hourly.innerText(), /Offset 5 min/);
-    assert.doesNotMatch(await nightly.innerText(), /Custom/);
-    assert.match(await nightly.innerText(), /Never/);
+    assert.match(await content(nightly), /Cron 0 2 \* \* \*/);
+    assert.match(await content(nightly), /Timezone America\/Chicago/);
+    assert.match(await content(tenant), /Cron 30 3 \* \* \*/);
+    assert.match(await content(hourly), /Every 1 hr/);
+    assert.match(await content(hourly), /Offset 5 min/);
+    assert.doesNotMatch(await content(nightly), /Custom/);
+    assert.match(await content(nightly), /Never/);
     record('rows show schedule IDs, namespaces, cadence and timezone from storage');
 }
 
@@ -214,8 +219,8 @@ async function historyAndDetailsForTheDefaultRow(page) {
     const detailDialog = page.getByRole('dialog', { name: 'Schedule details' });
     await detailDialog.getByText('Recent fires', { exact: true }).waitFor({ timeout: 10_000 });
     assert.ok(await detailDialog.locator('table tbody tr').count() >= 2, 'recent fires list the trigger and backfill');
-    assert.match(await detailDialog.innerText(), /Namespace default/);
-    assert.match(await detailDialog.innerText(), /Latest workflow/);
+    assert.match(await content(detailDialog), /Namespace default/);
+    assert.match(await content(detailDialog), /Latest workflow/);
     await closeWithEscapeRestoresFocus(page, detailDialog, detailOpener);
     record('history and details open for the default row, close on Escape and restore focus');
 }
