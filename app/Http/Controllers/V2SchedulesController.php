@@ -42,7 +42,7 @@ class V2SchedulesController extends Controller
         }
 
         $payload = $query->paginate(50)
-            ->through(fn (WorkflowSchedule $schedule): array => ScheduleRow::row($this->scheduleSource($schedule)))
+            ->through(fn (WorkflowSchedule $schedule): array => ScheduleRow::detail($this->scheduleSource($schedule)))
             ->toArray();
         $payload['operator_scope'] = OperatorScope::payload();
 
@@ -145,6 +145,10 @@ class V2SchedulesController extends Controller
             $toDate = new DateTimeImmutable($to);
         } catch (\Exception) {
             return response()->json(['error' => 'Invalid date format. Use ISO 8601 timestamps.'], 422);
+        }
+
+        if ($toDate <= $fromDate) {
+            return response()->json(['error' => 'The backfill end must be after its start.', 'reason' => 'invalid_time_range'], 422);
         }
 
         $overlapOverride = $this->overlapPolicy($request);
@@ -270,7 +274,7 @@ class V2SchedulesController extends Controller
         $requested = $request->input('namespace');
         $requested = is_string($requested) && trim($requested) !== '' ? trim($requested) : null;
 
-        if ($scope !== null && $requested !== null && $requested !== $scope) {
+        if ($scope !== null && $requested !== null && strcasecmp($requested, $scope) !== 0) {
             return $this->scheduleNotFound();
         }
 
@@ -336,12 +340,12 @@ class V2SchedulesController extends Controller
     {
         return [
             'schedule_id' => $schedule->schedule_id,
-            'namespace' => $schedule->namespace,
+            'namespace' => $schedule->namespace ?? 'default',
             'spec' => $schedule->spec,
             'action' => $schedule->action,
             'status' => $schedule->status,
             'note' => $schedule->note,
-            'overlap_policy' => $schedule->overlap_policy,
+            'overlap_policy' => $schedule->overlap_policy ?? 'skip',
             'next_fire_at' => $schedule->next_fire_at,
             'last_fired_at' => $schedule->last_fired_at,
             'recent_actions' => $schedule->recent_actions,

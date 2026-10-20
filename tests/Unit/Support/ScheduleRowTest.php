@@ -215,10 +215,79 @@ final class ScheduleRowTest extends TestCase
 
         self::assertSame($empty, ScheduleRow::row(['schedule_id' => 'a'])['spec']);
         self::assertSame($empty, ScheduleRow::row(['schedule_id' => 'b', 'spec' => 'every hour'])['spec']);
-        self::assertSame($empty, ScheduleRow::row([
+        self::assertSame([...$empty, 'cron' => '0 0 * * *'], ScheduleRow::row([
             'schedule_id' => 'c',
             'spec' => ['cron' => '0 0 * * *', 'cron_expressions' => '0 0 * * *', 'intervals' => 'PT1H'],
         ])['spec']);
+    }
+
+    public function testUnknownSpecKeysAreKeptAfterTheCadence(): void
+    {
+        self::assertSame([
+            'cron_expressions' => ['0 2 * * *'],
+            'intervals' => [],
+            'timezone' => 'UTC',
+            'start_at' => '2026-11-01T00:00:00Z',
+        ], ScheduleRow::row([
+            'schedule_id' => 'a',
+            'spec' => ['start_at' => '2026-11-01T00:00:00Z', 'timezone' => 'UTC', 'cron_expressions' => ['0 2 * * *']],
+        ])['spec']);
+    }
+
+    public function testIdentityIsPassedThroughWithoutTrimming(): void
+    {
+        $row = ScheduleRow::row(['schedule_id' => ' padded ', 'namespace' => 'Orders ']);
+
+        self::assertSame(' padded ', $row['schedule_id']);
+        self::assertSame(' padded ', $row['id']);
+        self::assertSame('Orders ', $row['namespace']);
+    }
+
+    public function testFinerLastFireTimeOrdersAFireAfterASkipInTheSameSecond(): void
+    {
+        $outcome = ScheduleRow::lastOutcome([
+            'last_fired_at' => '2026-10-20T12:30:00.700000+00:00',
+            'recent_actions' => [['outcome' => 'scheduled', 'fired_at' => '2026-10-20T12:30:00+00:00', 'workflow_id' => 'wf-1']],
+            'last_skipped_at' => '2026-10-20T12:30:00.200000+00:00',
+            'last_skip_reason' => 'overlap_policy_skip',
+        ]);
+
+        self::assertSame('scheduled', $outcome['outcome']);
+        self::assertSame('wf-1', $outcome['workflow_id']);
+    }
+
+    public function testFinerLastFireTimeOrdersASkipAfterAFireInTheSameSecond(): void
+    {
+        $outcome = ScheduleRow::lastOutcome([
+            'last_fired_at' => '2026-10-20T12:30:00.200000+00:00',
+            'recent_actions' => [['outcome' => 'scheduled', 'fired_at' => '2026-10-20T12:30:00+00:00']],
+            'last_skipped_at' => '2026-10-20T12:30:00.700000+00:00',
+        ]);
+
+        self::assertSame('skipped', $outcome['outcome']);
+    }
+
+    public function testASkipAndFireWithTheSameWholeSecondReportTheSkip(): void
+    {
+        $outcome = ScheduleRow::lastOutcome([
+            'last_fired_at' => '2026-10-20T12:30:00+00:00',
+            'info' => [
+                'recent_actions' => [['outcome' => 'backfilled', 'fired_at' => '2026-10-20T12:30:00+00:00']],
+                'last_skipped_at' => '2026-10-20T12:30:00+00:00',
+                'last_skip_reason' => 'overlap_policy_skip',
+            ],
+        ]);
+
+        self::assertSame('skipped', $outcome['outcome']);
+        self::assertSame('overlap_policy_skip', $outcome['reason']);
+    }
+
+    public function testDetailKeepsTheEarlierLatestInstanceName(): void
+    {
+        $detail = ScheduleRow::detail(['schedule_id' => 'a', 'latest_workflow_instance_id' => 'wf-9']);
+
+        self::assertSame('wf-9', $detail['latest_workflow_instance_id']);
+        self::assertSame('wf-9', $detail['latest_instance_id']);
     }
 
     public function testLastOutcomeComesFromTheLatestRecentAction(): void

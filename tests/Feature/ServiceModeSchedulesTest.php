@@ -132,7 +132,7 @@ final class ServiceModeSchedulesTest extends TestCase
         $this->assertSame(['region' => 'eu'], $nightly['search_attributes']);
         $this->assertArrayNotHasKey('state', $nightly);
         $this->assertArrayNotHasKey('info', $nightly);
-        $this->assertArrayNotHasKey('recent_actions', $nightly);
+        $this->assertSame('scheduled', $nightly['recent_actions'][array_key_last($nightly['recent_actions'])]['outcome']);
 
         $reconcile = $response->json('data.1');
         $this->assertSame('hourly-reconcile', $reconcile['id']);
@@ -449,6 +449,10 @@ final class ServiceModeSchedulesTest extends TestCase
                 'workflow_id' => 'schedule:nightly-orders:backfill:1786320000',
                 'outcome' => 'started',
                 'reason' => null,
+                'schedule_id' => 'nightly-orders',
+                'cron_time' => '2026-08-10T00:00:00+00:00',
+                'instance_id' => 'schedule:nightly-orders:backfill:1786320000',
+                'error' => null,
             ])
             ->assertJsonPath('operator_scope.namespace', 'orders');
 
@@ -542,6 +546,26 @@ final class ServiceModeSchedulesTest extends TestCase
      *
      * @return list<array{method: string, arguments: array<int|string, mixed>}>
      */
+    public function testRowNamespaceMatchesAConfiguredNamespaceInAnotherCase(): void
+    {
+        config()->set('waterline.service.access_mode', 'operator');
+        config()->set('waterline.service.namespace', 'Orders');
+
+        $this->postJson('/waterline/api/v2/schedules/nightly-orders/pause?namespace=orders')
+            ->assertOk()
+            ->assertJsonPath('schedule_id', 'nightly-orders');
+
+        $this->assertContains('pauseSchedule', array_column($this->scheduleCalls(), 'method'));
+    }
+
+    public function testListRowsCarryTheDetailFacts(): void
+    {
+        $this->getJson('/waterline/api/v2/schedules')
+            ->assertOk()
+            ->assertJsonPath('data.0.action.workflow_type', 'orders.process')
+            ->assertJsonPath('data.0.latest_instance_id', 'schedule:nightly-orders:1786492800000');
+    }
+
     private function scheduleCalls(): array
     {
         return array_values(array_filter(

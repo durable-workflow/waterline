@@ -64,11 +64,18 @@ final class ScheduleActionResult
             $outcome = self::string($row['outcome'] ?? null)
                 ?? (array_key_exists('error', $row) ? 'failed' : ($workflowId !== null ? 'started' : 'skipped'));
 
+            $fireTime = self::string($row['fire_time'] ?? $row['cron_time'] ?? null);
+
             $results[] = [
-                'fire_time' => self::string($row['fire_time'] ?? $row['cron_time'] ?? null),
+                'fire_time' => $fireTime,
                 'workflow_id' => $workflowId,
                 'outcome' => $outcome,
                 'reason' => $reason,
+                // Earlier embedded responses used these names.
+                'schedule_id' => $scheduleId,
+                'cron_time' => $fireTime,
+                'instance_id' => $workflowId,
+                'error' => $outcome === 'failed' ? $reason : null,
             ];
         }
 

@@ -183,16 +183,16 @@ final class RemoteSchedulesController extends RemoteController
         $scheduleId = is_string($listItem['schedule_id'] ?? null) ? $listItem['schedule_id'] : '';
 
         if ($scheduleId === '') {
-            return ScheduleRow::row($this->withNamespace($listItem));
+            return ScheduleRow::detail($this->withNamespace($listItem));
         }
 
         try {
             $detail = $this->backend->client()->describeSchedule($scheduleId)->raw;
         } catch (DurableWorkflowException) {
-            return ScheduleRow::row($this->withNamespace($listItem));
+            return ScheduleRow::detail($this->withNamespace($listItem));
         }
 
-        return ScheduleRow::row($this->withNamespace([...$listItem, ...$detail]));
+        return ScheduleRow::detail($this->withNamespace([...$listItem, ...$detail]));
     }
 
     private function detailResponse(string $scheduleId): JsonResponse
@@ -223,7 +223,9 @@ final class RemoteSchedulesController extends RemoteController
     {
         $requested = $this->stringInput($request, 'namespace');
 
-        if ($requested === null || $requested === BackendConfiguration::namespace()) {
+        // The server stores namespaces in lower case, so rows may differ in
+        // case from the configured namespace.
+        if ($requested === null || strcasecmp($requested, BackendConfiguration::namespace()) === 0) {
             return null;
         }
 

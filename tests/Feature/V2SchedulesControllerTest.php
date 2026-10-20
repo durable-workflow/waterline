@@ -437,6 +437,66 @@ final class V2SchedulesControllerTest extends TestCase
             ->assertJsonPath('reason', 'schedule_not_found');
     }
 
+    public function testScheduleIdsWithSlashesCanBeOpenedAndActedOn(): void
+    {
+        $schedule = $this->createSchedule('billing/daily run');
+        $path = '/waterline/api/v2/schedules/'.rawurlencode('billing/daily run');
+
+        $this->getJson($path)
+            ->assertOk()
+            ->assertJsonPath('schedule_id', 'billing/daily run');
+        $this->postJson($path.'/pause')
+            ->assertOk()
+            ->assertJsonPath('status', 'paused');
+        $this->getJson($path.'/history')
+            ->assertOk()
+            ->assertJsonPath('schedule_id', 'billing/daily run')
+            ->assertJsonPath('events.1.event_type', HistoryEventType::SchedulePaused->value);
+        $this->assertSame(ScheduleStatus::Paused, $schedule->refresh()->status);
+    }
+
+    public function testBackfillRefusesAWindowThatEndsBeforeItStarts(): void
+    {
+        $this->createSchedule('reversed-window');
+
+        $this->postJson('/waterline/api/v2/schedules/reversed-window/backfill', [
+            'from' => '2026-10-20T10:00:00Z',
+            'to' => '2026-10-20T09:00:00Z',
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('reason', 'invalid_time_range');
+    }
+
+    public function testListRowsCarryTheDetailFacts(): void
+    {
+        $schedule = $this->createSchedule('detailed-row');
+        $instanceId = ScheduleManager::trigger($schedule);
+
+        $this->getJson('/waterline/api/v2/schedules')
+            ->assertOk()
+            ->assertJsonPath('data.0.action.workflow_class', TestOperatorCommandWorkflow::class)
+            ->assertJsonPath('data.0.recent_actions.0.workflow_id', $instanceId)
+            ->assertJsonPath('data.0.latest_workflow_instance_id', $instanceId)
+            ->assertJsonPath('data.0.latest_instance_id', $instanceId)
+            ->assertJsonPath('data.0.overlap_policy', 'skip');
+    }
+
+    public function testBackfillKeepsTheEarlierResultNames(): void
+    {
+        $this->createSchedule('named-results');
+
+        $this->postJson('/waterline/api/v2/schedules/named-results/backfill', [
+            'from' => '2026-10-20T09:30:00Z',
+            'to' => '2026-10-20T10:30:00Z',
+            'overlap_policy' => 'allow_all',
+        ])
+            ->assertOk()
+            ->assertJsonPath('results.0.cron_time', '2026-10-20T10:00:00+00:00')
+            ->assertJsonPath('results.0.fire_time', '2026-10-20T10:00:00+00:00')
+            ->assertJsonPath('results.0.schedule_id', 'named-results')
+            ->assertJsonPath('results.0.error', null);
+    }
+
     private function createSchedule(string $scheduleId, string $namespace = 'default'): WorkflowSchedule
     {
         return ScheduleManager::createFromSpec(

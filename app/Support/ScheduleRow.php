@@ -30,14 +30,16 @@ final class ScheduleRow
     {
         $source = self::flatten($source);
         $action = is_array($source['action'] ?? null) ? $source['action'] : [];
-        $scheduleId = self::string($source['schedule_id'] ?? null) ?? '';
+        // Identity is passed through unchanged; a trimmed ID would name a
+        // different schedule.
+        $scheduleId = self::identity($source['schedule_id'] ?? null) ?? '';
         $status = self::string($source['status'] ?? null);
 
         return [
             // Kept for clients that read `id`; it always equals schedule_id.
             'id' => $scheduleId,
             'schedule_id' => $scheduleId,
-            'namespace' => self::string($source['namespace'] ?? null),
+            'namespace' => self::identity($source['namespace'] ?? null),
             'workflow_type' => self::string($source['workflow_type'] ?? null)
                 ?? self::string($action['workflow_type'] ?? null),
             'workflow_class' => self::string($source['workflow_class'] ?? null)
@@ -69,6 +71,7 @@ final class ScheduleRow
     public static function detail(array $source): array
     {
         $flat = self::flatten($source);
+        $latestInstanceId = self::string($flat['latest_workflow_instance_id'] ?? $flat['latest_instance_id'] ?? null);
 
         return [
             ...self::row($source),
@@ -78,9 +81,9 @@ final class ScheduleRow
             'paused_at' => self::timestamp($flat['paused_at'] ?? null),
             'last_skip_reason' => self::string($flat['last_skip_reason'] ?? null),
             'last_skipped_at' => self::timestamp($flat['last_skipped_at'] ?? null),
-            'latest_workflow_instance_id' => self::string(
-                $flat['latest_workflow_instance_id'] ?? $flat['latest_instance_id'] ?? null
-            ),
+            'latest_workflow_instance_id' => $latestInstanceId,
+            // Earlier embedded detail responses used this name.
+            'latest_instance_id' => $latestInstanceId,
             'recent_actions' => self::recentActions($flat['recent_actions'] ?? null),
             'buffered_actions' => self::list($flat['buffered_actions'] ?? null),
             'memo' => is_array($flat['memo'] ?? null) ? $flat['memo'] : null,
@@ -92,7 +95,12 @@ final class ScheduleRow
      *
      * Workflow appends started and failed fires to `recent_actions` and keeps
      * the latest skipped trigger in `last_skip_reason`/`last_skipped_at`, so the
-     * newer of the two is the schedule's last outcome.
+     * newer of the two is the schedule's last outcome. Recent actions record
+     * whole seconds while `last_fired_at`, written by the same fire, can carry
+     * microseconds; the finer time is used when both name the same second.
+     * When the two events still share a timestamp, the skip is reported,
+     * because a backfill or trigger that starts and then skips occurrences
+     * within one second ends on the skip.
      *
      * @param array<string, mixed> $source
      * @return array{outcome: string, at: string|null, reason: string|null, workflow_id: string|null, run_id: string|null}|null
@@ -124,7 +132,20 @@ final class ScheduleRow
             return $fire ?? $skip;
         }
 
-        return self::isAfter($skip['at'], $fire['at']) ? $skip : $fire;
+        $fireTime = self::instant($fire['at']);
+        $lastFiredAt = self::instant(self::timestamp($source['last_fired_at'] ?? $source['last_fire'] ?? null));
+
+        if ($fireTime !== null && $lastFiredAt !== null && $fireTime->format('U') === $lastFiredAt->format('U')) {
+            $fireTime = $lastFiredAt;
+        }
+
+        $skipTime = self::instant($skip['at']);
+
+        if ($skipTime === null || $fireTime === null) {
+            return $skipTime === null ? $fire : $skip;
+        }
+
+        return $skipTime >= $fireTime ? $skip : $fire;
     }
 
     /**
@@ -149,7 +170,10 @@ final class ScheduleRow
     }
 
     /**
-     * @return array{cron_expressions: list<string>, intervals: list<array{every: string, offset?: string}>, timezone: string|null}
+     * The stored spec with its cadence fields normalized. Other spec keys are
+     * kept as stored.
+     *
+     * @return array<string, mixed>
      */
     private static function spec(mixed $spec): array
     {
@@ -174,11 +198,13 @@ final class ScheduleRow
             $intervals[] = $offset === null ? ['every' => $every] : ['every' => $every, 'offset' => $offset];
         }
 
-        return [
+        $cadence = [
             'cron_expressions' => $cronExpressions,
             'intervals' => $intervals,
             'timezone' => self::string($spec['timezone'] ?? null),
         ];
+
+        return [...$cadence, ...array_diff_key($spec, $cadence)];
     }
 
     /**
@@ -214,20 +240,16 @@ final class ScheduleRow
         return is_array($value) ? array_values($value) : [];
     }
 
-    private static function isAfter(?string $left, ?string $right): bool
+    private static function instant(?string $value): ?DateTimeImmutable
     {
-        if ($left === null) {
-            return false;
-        }
-
-        if ($right === null) {
-            return true;
+        if ($value === null) {
+            return null;
         }
 
         try {
-            return new DateTimeImmutable($left) > new DateTimeImmutable($right);
+            return new DateTimeImmutable($value);
         } catch (Exception) {
-            return false;
+            return null;
         }
     }
 
@@ -238,6 +260,15 @@ final class ScheduleRow
         }
 
         return self::string($value);
+    }
+
+    private static function identity(mixed $value): ?string
+    {
+        if ($value instanceof \BackedEnum) {
+            $value = $value->value;
+        }
+
+        return is_string($value) && $value !== '' ? $value : null;
     }
 
     private static function string(mixed $value): ?string
