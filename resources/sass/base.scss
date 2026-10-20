@@ -1076,6 +1076,9 @@ $waterline-dialog-border: mix($body-color, $input-bg, 36%);
         overflow-x: auto;
         overflow-y: visible;
         scrollbar-gutter: auto;
+        // As a row above the page, a drop shadow would darken the heading
+        // directly below it.
+        box-shadow: none;
     }
 
     .wl-sidebar__label {

@@ -108,6 +108,8 @@ RUN_DETAIL_VISUAL_PATHS = frozenset(
         "scripts/ci/interface-language-visual.mjs",
         "scripts/ci/schedule-actions-visual.mjs",
         "scripts/ci/seed-schedule-visual.php",
+        "scripts/ci/seed-theme-contrast.php",
+        "scripts/ci/theme-contrast-visual.mjs",
         "scripts/ci/workflow-list-dialog-visual.mjs",
     }
 )

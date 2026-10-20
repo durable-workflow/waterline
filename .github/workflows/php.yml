@@ -854,6 +854,19 @@ jobs:
         --base-url "${APP_URL}"
         --output-dir run-detail-evidence/schedules
 
+    # These runs change the list and dashboard data, and add a schedule, so
+    # this check runs after the schedule check.
+    - name: Seed completed, failed and cancelled runs
+      working-directory: sample-app
+      run: php ../waterline/scripts/ci/seed-theme-contrast.php
+
+    - name: Qualify secondary text and badge contrast in both themes
+      working-directory: sample-app
+      run: >-
+        node ../waterline/scripts/ci/theme-contrast-visual.mjs
+        --base-url "${APP_URL}"
+        --output-dir run-detail-evidence/theme-contrast
+
     - name: Upload run-detail failure diagnostics
       if: ${{ failure() }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
