@@ -111,7 +111,7 @@
                             </thead>
                             <tbody>
                                 <tr v-for="row in scheduleRows" :key="row.key" :class="scheduleRowClass(row.schedule)" :data-schedule-id="row.id" :data-schedule-namespace="row.schedule.namespace || ''">
-                                    <td v-if="columnEnabled('schedule_id')">
+                                    <td v-if="columnEnabled('schedule_id')" :data-label="$t('Schedule')">
                                         <div class="schedule-view__cell-main">
                                             <code :title="row.id">{{ truncateId(row.id) }}</code>
                                             <div class="schedule-view__cell-meta" v-if="row.id && row.id !== truncateId(row.id)">{{ row.id }}</div>
@@ -121,7 +121,7 @@
                                         </div>
                                     </td>
 
-                                    <td v-if="columnEnabled('workflow_type')">
+                                    <td v-if="columnEnabled('workflow_type')" :data-label="$t('Workflow Type')">
                                         <div class="schedule-view__cell-main">
                                             <code>{{ row.schedule.workflow_type || row.schedule.workflow_class || '-' }}</code>
                                             <div class="schedule-view__cell-meta" v-if="row.schedule.workflow_class && row.schedule.workflow_type && row.schedule.workflow_type !== row.schedule.workflow_class">
@@ -130,7 +130,7 @@
                                         </div>
                                     </td>
 
-                                    <td v-if="columnEnabled('spec')">
+                                    <td v-if="columnEnabled('spec')" :data-label="$t('Spec')">
                                         <div class="schedule-view__cell-main">
                                             <span v-for="(expression, index) in row.cadence.cron" :key="`cron-${index}`" class="schedule-view__pill schedule-view__pill--muted">
                                                 {{ $t("Cron") }} {{ expression }}
@@ -149,13 +149,13 @@
                                         </div>
                                     </td>
 
-                                    <td v-if="columnEnabled('status')">
+                                    <td v-if="columnEnabled('status')" :data-label="$t('Status')">
                                         <span class="schedule-view__pill" :class="statusToneClass(row.schedule.status)">
                                             {{ stateLabel(row.schedule.status || 'unknown') }}
                                         </span>
                                     </td>
 
-                                    <td v-if="columnEnabled('next_fire')">
+                                    <td v-if="columnEnabled('next_fire')" :data-label="$t('Next Fire')">
                                         <div class="schedule-view__cell-main">
                                             <span :class="nextFireClass(row.schedule)">
                                                 {{ row.schedule.next_fire_at ? formatTimestamp(row.schedule.next_fire_at) : '—' }}
@@ -166,7 +166,7 @@
                                         </div>
                                     </td>
 
-                                    <td v-if="columnEnabled('last_result')">
+                                    <td v-if="columnEnabled('last_result')" :data-label="$t('Last Result')">
                                         <div class="schedule-view__cell-main">
                                             <span v-if="row.lastResult.at">{{ formatTimestamp(row.lastResult.at) }}</span>
                                             <span v-else class="text-muted">{{ $t("Never") }}</span>
@@ -180,7 +180,7 @@
                                         </div>
                                     </td>
 
-                                    <td v-if="columnEnabled('actions')">
+                                    <td v-if="columnEnabled('actions')" :data-label="$t('Actions')">
                                         <div class="schedule-view__action-group">
                                             <button
                                                 v-if="row.schedule.status === 'active'"
@@ -716,7 +716,7 @@ export default {
         },
 
         schedulesTableClass() {
-            const classes = ['table', 'table-hover', 'mb-0'];
+            const classes = ['table', 'table-hover', 'mb-0', 'schedule-view__table'];
 
             if (this.schedulesListDensity() === 'dense') {
                 classes.push('table-sm');
@@ -761,7 +761,7 @@ export default {
                     total: response.data.total
                 };
             } catch (e) {
-                this.error = e.response?.data?.message || e.response?.data?.error || e.message || this.$t("Failed to load schedules");
+                this.error = this.responseMessage(e, this.$t("Failed to load schedules"));
                 console.error('Schedule load error:', e);
             } finally {
                 this.loading = false;
@@ -1200,10 +1200,7 @@ export default {
                 this.historyHasMore = Boolean(response.data?.has_more);
                 this.historyNextCursor = response.data?.next_cursor ?? null;
             } catch (e) {
-                this.historyError = e.response?.data?.error
-                    || e.response?.data?.message
-                    || e.message
-                    || this.$t("Failed to load audit history");
+                this.historyError = this.responseMessage(e, this.$t("Failed to load audit history"));
             } finally {
                 this.historyLoading = false;
                 this.historyLoadingMore = false;
@@ -1261,10 +1258,7 @@ export default {
                 }
             } catch (e) {
                 if (this.detailSchedule === schedule) {
-                    this.detailError = e.response?.data?.error
-                        || e.response?.data?.message
-                        || e.message
-                        || this.$t("Request failed");
+                    this.detailError = this.responseMessage(e, this.$t("Request failed"));
                 }
             } finally {
                 this.detailLoading = false;
@@ -1404,7 +1398,7 @@ export default {
         },
 
         showActionError(title, error) {
-            const text = error.response?.data?.error || error.response?.data?.message || error.message || this.$t("Request failed");
+            const text = this.responseMessage(error, this.$t("Request failed"));
 
             this.$dialog({
                 title,
@@ -1413,6 +1407,14 @@ export default {
                 confirmButtonText: this.$t("Okay"),
                 background: this.swalBackground(),
             });
+        },
+
+        // Service-mode errors carry a machine code in `error` and the
+        // operator-facing text in `message`; embedded errors use `error` for text.
+        responseMessage(error, fallback) {
+            const data = error?.response?.data;
+
+            return data?.message || data?.error || error?.message || fallback;
         },
 
         swalBackground() {
@@ -1838,6 +1840,46 @@ export default {
 .schedule-view__detail-heading {
     margin-bottom: 0.65rem;
     color: var(--wl-text);
+}
+
+/* Narrow screens stack each schedule into labelled fields so the row
+   actions stay on screen instead of behind a horizontal table scroll. */
+@media (max-width: 768px) {
+    .schedule-view__table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    .schedule-view__table,
+    .schedule-view__table tbody,
+    .schedule-view__table tr,
+    .schedule-view__table td {
+        display: block;
+        width: 100%;
+    }
+
+    .schedule-view__table tr {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--wl-border);
+    }
+
+    .schedule-view__table td {
+        padding: 0.35rem 0;
+        border: 0;
+    }
+
+    .schedule-view__table td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 0.2rem;
+        color: var(--wl-text-muted);
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
 }
 
 @media (max-width: 576px) {
