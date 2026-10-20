@@ -4,9 +4,11 @@ import {
     OVERLAP_POLICIES,
     backfillCounts,
     formatIsoDuration,
+    outcomeTone,
     scheduleCadence,
     scheduleLastResult,
     scheduleRequest,
+    scheduleId,
     scheduleRowKey,
 } from '../../resources/js/schedule-presenter.mjs'
 
@@ -104,4 +106,21 @@ test('backfill offers exactly the overlap policies both backends accept', () => 
     assert.deepEqual(OVERLAP_POLICIES.map((policy) => policy.value), [
         'skip', 'buffer_one', 'buffer_all', 'cancel_other', 'terminate_other', 'allow_all',
     ])
+})
+
+test('schedule identity is used exactly as stored', () => {
+    assert.equal(scheduleId({ schedule_id: ' padded ' }), ' padded ')
+    assert.deepEqual(scheduleRequest(endpoint, { schedule_id: ' padded ', namespace: 'Orders ' }), {
+        url: '/waterline/api/v2/schedules/%20padded%20',
+        params: { namespace: 'Orders ' },
+    })
+    assert.notEqual(scheduleRowKey({ schedule_id: 'a', namespace: 'b' }), scheduleRowKey({ schedule_id: 'a', namespace: 'b ' }))
+})
+
+test('outcome tones separate started, skipped and failed fires', () => {
+    assert.equal(outcomeTone('scheduled'), 'success')
+    assert.equal(outcomeTone('backfilled'), 'success')
+    assert.equal(outcomeTone('skipped'), 'warning')
+    assert.equal(outcomeTone('failed'), 'danger')
+    assert.equal(outcomeTone('future_outcome'), 'muted')
 })

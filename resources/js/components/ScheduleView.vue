@@ -97,7 +97,7 @@
 
                 <div class="card-body card-bg-secondary p-0">
                     <div v-if="schedules.length > 0" class="table-responsive">
-                        <table :class="schedulesTableClass">
+                        <table :class="schedulesTableClass" :aria-busy="refreshing ? 'true' : 'false'">
                             <thead>
                                 <tr>
                                     <th v-if="columnEnabled('schedule_id')">{{ $t("Schedule") }}</th>
@@ -185,38 +185,44 @@
                                             <button
                                                 v-if="row.schedule.status === 'active'"
                                                 class="btn btn-sm btn-outline-warning"
-                                                :disabled="mutationsUnavailable || pendingRowKey === row.key"
+                                                :disabled="mutationsUnavailable || isPending(row.key)"
+                                                data-row-action="pause"
                                                 @click="pauseSchedule(row.schedule)">
                                                 {{ $t("Pause") }}
                                             </button>
                                             <button
                                                 v-if="row.schedule.status === 'paused'"
                                                 class="btn btn-sm btn-outline-success"
-                                                :disabled="mutationsUnavailable || pendingRowKey === row.key"
+                                                :disabled="mutationsUnavailable || isPending(row.key)"
+                                                data-row-action="resume"
                                                 @click="resumeSchedule(row.schedule)">
                                                 {{ $t("Resume") }}
                                             </button>
                                             <button
                                                 v-if="row.schedule.status !== 'deleted'"
                                                 class="btn btn-sm btn-outline-primary"
-                                                :disabled="mutationsUnavailable || pendingRowKey === row.key"
+                                                :disabled="mutationsUnavailable || isPending(row.key)"
+                                                data-row-action="trigger"
                                                 @click="triggerNow(row.schedule)">
                                                 {{ $t("Trigger") }}
                                             </button>
                                             <button
                                                 v-if="row.schedule.status !== 'deleted'"
                                                 class="btn btn-sm btn-outline-info"
-                                                :disabled="mutationsUnavailable || pendingRowKey === row.key"
+                                                :disabled="mutationsUnavailable || isPending(row.key)"
+                                                data-row-action="backfill"
                                                 @click="showBackfillDialog(row.schedule, $event)">
                                                 {{ $t("Backfill") }}
                                             </button>
                                             <button
                                                 class="btn btn-sm btn-outline-secondary"
+                                                data-row-action="history"
                                                 @click="showHistoryDialog(row.schedule, $event)">
                                                 {{ $t("History") }}
                                             </button>
                                             <button
                                                 class="btn btn-sm btn-outline-secondary"
+                                                data-row-action="details"
                                                 @click="showDetailDialog(row.schedule, $event)">
                                                 {{ $t("Details") }}
                                             </button>
@@ -258,7 +264,7 @@
             </article>
         </div>
 
-        <div v-if="showBackfill" class="schedule-view__modal" @click.self="closeBackfillDialog" @keydown.esc="closeBackfillDialog">
+        <div v-if="showBackfill" class="schedule-view__modal" @click.self="closeBackfillDialog" @keydown.esc="closeBackfillDialog" @keydown.tab="trapDialogFocus">
             <div ref="backfillDialog" class="schedule-view__dialog card" role="dialog" aria-modal="true" aria-labelledby="waterline-backfill-title" tabindex="-1">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
@@ -305,7 +311,7 @@
             </div>
         </div>
 
-        <div v-if="showHistory" class="schedule-view__modal" @click.self="closeHistoryDialog" @keydown.esc="closeHistoryDialog">
+        <div v-if="showHistory" class="schedule-view__modal" @click.self="closeHistoryDialog" @keydown.esc="closeHistoryDialog" @keydown.tab="trapDialogFocus">
             <div ref="historyDialog" class="schedule-view__dialog schedule-view__dialog--wide card" role="dialog" aria-modal="true" aria-labelledby="waterline-schedule-history-title" tabindex="-1">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
@@ -396,7 +402,7 @@
             </div>
         </div>
 
-        <div v-if="showDetail" class="schedule-view__modal" @click.self="closeDetailDialog" @keydown.esc="closeDetailDialog">
+        <div v-if="showDetail" class="schedule-view__modal" @click.self="closeDetailDialog" @keydown.esc="closeDetailDialog" @keydown.tab="trapDialogFocus">
             <div ref="detailDialog" class="schedule-view__dialog schedule-view__dialog--wide card" role="dialog" aria-modal="true" aria-labelledby="waterline-schedule-detail-title" tabindex="-1">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
@@ -439,7 +445,7 @@
                             <dt>{{ $t("Workflow Type") }}</dt>
                             <dd><code>{{ detail.workflow_type || detail.workflow_class || '-' }}</code></dd>
 
-                            <template v-if="detail.workflow_class && detail.workflow_class !== detail.workflow_type">
+                            <template v-if="detail.workflow_class && detail.workflow_type && detail.workflow_class !== detail.workflow_type">
                                 <dt>{{ $t("Workflow class") }}</dt>
                                 <dd><code>{{ detail.workflow_class }}</code></dd>
                             </template>
@@ -555,24 +561,13 @@ import {
     backfillCounts,
     formatIsoDuration,
     outcomeLabel,
+    outcomeTone,
     scheduleCadence,
     scheduleId,
     scheduleLastResult,
     scheduleRequest,
     scheduleRowKey,
 } from '../schedule-presenter.mjs';
-
-const OUTCOME_TONES = {
-    scheduled: 'success',
-    triggered: 'success',
-    started: 'success',
-    drained: 'success',
-    backfilled: 'success',
-    buffered: 'warning',
-    skipped: 'warning',
-    buffer_full: 'warning',
-    failed: 'danger',
-};
 
 export default {
     name: 'ScheduleView',
@@ -593,7 +588,8 @@ export default {
             operatorScope: null,
             statusFilter: '',
             currentPage: 1,
-            pendingRowKey: null,
+            pendingRowKeys: {},
+            refreshing: false,
             dialogReturnFocus: null,
             showBackfill: false,
             backfillSchedule: null,
@@ -739,7 +735,10 @@ export default {
 
     methods: {
         async loadData() {
-            this.loading = true;
+            // A refresh keeps the current rows on screen so a row action keeps
+            // its place and keyboard focus.
+            this.loading = this.schedules.length === 0;
+            this.refreshing = !this.loading;
             this.error = null;
 
             try {
@@ -765,6 +764,7 @@ export default {
                 console.error('Schedule load error:', e);
             } finally {
                 this.loading = false;
+                this.refreshing = false;
             }
         },
 
@@ -949,44 +949,76 @@ export default {
             this.loadData();
         },
 
+        isPending(key) {
+            return this.pendingRowKeys[key] === true;
+        },
+
+        // Runs one row's action while its buttons are disabled, then focuses
+        // the row control the action names, once the buttons are enabled again.
         async runRowAction(schedule, action) {
             const key = scheduleRowKey(schedule);
 
-            if (this.pendingRowKey === key) {
+            if (this.isPending(key)) {
                 return;
             }
 
-            this.pendingRowKey = key;
+            this.pendingRowKeys = { ...this.pendingRowKeys, [key]: true };
+            let focusTarget = null;
 
             try {
-                await action();
+                focusTarget = await action();
             } finally {
-                this.pendingRowKey = null;
+                const pending = { ...this.pendingRowKeys };
+                delete pending[key];
+                this.pendingRowKeys = pending;
+            }
+
+            if (focusTarget) {
+                await this.$nextTick();
+                this.focusRowAction(schedule, focusTarget);
+            }
+        },
+
+        focusRowAction(schedule, action) {
+            const id = scheduleId(schedule);
+            const namespace = typeof schedule?.namespace === 'string' ? schedule.namespace : '';
+            const row = Array.from(this.$el?.querySelectorAll?.('tr[data-schedule-id]') || [])
+                .find((element) => element.dataset.scheduleId === id && (element.dataset.scheduleNamespace || '') === namespace);
+            const button = row?.querySelector(`[data-row-action="${action}"]`);
+
+            if (button && !button.disabled) {
+                button.focus();
             }
         },
 
         pauseSchedule(schedule) {
             return this.runRowAction(schedule, async () => {
-                const request = this.scheduleRequest(schedule, '/pause');
-
                 try {
+                    const request = this.scheduleRequest(schedule, '/pause');
                     await axios.post(request.url, {}, { params: request.params });
                     await this.loadData();
+
+                    return 'resume';
                 } catch (e) {
-                    this.showActionError(this.$t("Failed to pause schedule"), e);
+                    await this.showActionError(this.$t("Failed to pause schedule"), e);
+
+                    return 'pause';
                 }
             });
         },
 
         resumeSchedule(schedule) {
             return this.runRowAction(schedule, async () => {
-                const request = this.scheduleRequest(schedule, '/resume');
-
                 try {
+                    const request = this.scheduleRequest(schedule, '/resume');
                     await axios.post(request.url, {}, { params: request.params });
                     await this.loadData();
+
+                    return 'pause';
                 } catch (e) {
-                    this.showActionError(this.$t("Failed to resume schedule"), e);
+                    await this.showActionError(this.$t("Failed to resume schedule"), e);
+
+                    return 'resume';
                 }
             });
         },
@@ -1006,9 +1038,8 @@ export default {
             }
 
             await this.runRowAction(schedule, async () => {
-                const request = this.scheduleRequest(schedule, '/trigger');
-
                 try {
+                    const request = this.scheduleRequest(schedule, '/trigger');
                     const response = await axios.post(request.url, {}, { params: request.params });
                     await this.$dialog({
                         ...this.triggerResultDialog(response.data || {}),
@@ -1018,8 +1049,10 @@ export default {
 
                     await this.loadData();
                 } catch (e) {
-                    this.showActionError(this.$t("Failed to trigger schedule"), e);
+                    await this.showActionError(this.$t("Failed to trigger schedule"), e);
                 }
+
+                return 'trigger';
             });
         },
 
@@ -1122,7 +1155,10 @@ export default {
                 const response = await axios.post(request.url, payload, { params: request.params });
                 const counts = backfillCounts(response.data || {});
 
-                this.closeBackfillDialog();
+                // The result dialog takes focus first. Focus returns to the
+                // row's Backfill button only after that dialog closes.
+                this.showBackfill = false;
+                this.dialogReturnFocus = null;
 
                 await this.$dialog({
                     title: this.$t("Backfill complete"),
@@ -1140,6 +1176,8 @@ export default {
                 });
 
                 await this.loadData();
+                await this.$nextTick();
+                this.focusRowAction(schedule, 'backfill');
             } catch (e) {
                 this.showActionError(this.$t("Backfill failed"), e);
             } finally {
@@ -1252,16 +1290,25 @@ export default {
             try {
                 const request = this.scheduleRequest(schedule);
                 const response = await axios.get(request.url, { params: request.params });
+                const detail = response.data;
 
-                if (this.detailSchedule === schedule) {
-                    this.detail = response.data || null;
+                if (this.detailSchedule !== schedule) {
+                    return;
+                }
+
+                if (!detail || typeof detail !== 'object' || Array.isArray(detail) || scheduleId(detail) === null) {
+                    this.detailError = this.$t("Request failed");
+                } else {
+                    this.detail = detail;
                 }
             } catch (e) {
                 if (this.detailSchedule === schedule) {
                     this.detailError = this.responseMessage(e, this.$t("Request failed"));
                 }
             } finally {
-                this.detailLoading = false;
+                if (this.detailSchedule === schedule) {
+                    this.detailLoading = false;
+                }
             }
         },
 
@@ -1317,7 +1364,38 @@ export default {
         },
 
         outcomeTone(outcome) {
-            return OUTCOME_TONES[outcome] || 'muted';
+            return outcomeTone(outcome);
+        },
+
+        // Keeps Tab and Shift+Tab inside an open schedule dialog.
+        trapDialogFocus(event) {
+            const dialog = event.currentTarget.querySelector('[role="dialog"]');
+
+            if (!dialog) {
+                return;
+            }
+
+            const focusable = Array.from(dialog.querySelectorAll(
+                'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            )).filter((element) => element.getClientRects().length > 0);
+
+            if (focusable.length === 0) {
+                event.preventDefault();
+                dialog.focus();
+                return;
+            }
+
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            const active = document.activeElement;
+
+            if (event.shiftKey && (active === first || active === dialog || !dialog.contains(active))) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+                event.preventDefault();
+                first.focus();
+            }
         },
 
         outcomeLabelFor(outcome) {
@@ -1400,7 +1478,7 @@ export default {
         showActionError(title, error) {
             const text = this.responseMessage(error, this.$t("Request failed"));
 
-            this.$dialog({
+            return this.$dialog({
                 title,
                 text,
                 icon: 'error',

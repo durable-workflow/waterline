@@ -30,13 +30,18 @@ function text(value) {
     return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
 }
 
+// Identity is used exactly as stored; a trimmed ID would name another schedule.
+function identity(value) {
+    return typeof value === 'string' && value !== '' ? value : null;
+}
+
 export function scheduleId(schedule) {
-    return text(schedule?.schedule_id) ?? text(schedule?.id);
+    return identity(schedule?.schedule_id) ?? identity(schedule?.id);
 }
 
 // Schedule IDs are unique only within a namespace.
 export function scheduleRowKey(schedule) {
-    return JSON.stringify([text(schedule?.namespace), scheduleId(schedule)]);
+    return JSON.stringify([identity(schedule?.namespace), scheduleId(schedule)]);
 }
 
 export function scheduleRequest(endpoint, schedule, suffix = '') {
@@ -46,7 +51,7 @@ export function scheduleRequest(endpoint, schedule, suffix = '') {
         throw new Error('The schedule row has no schedule_id.');
     }
 
-    const namespace = text(schedule?.namespace);
+    const namespace = identity(schedule?.namespace);
 
     return {
         url: `${endpoint}/${encodeURIComponent(id)}${suffix}`,
@@ -129,6 +134,10 @@ export function scheduleLastResult(schedule) {
 
 export function outcomeLabel(outcome) {
     return OUTCOMES[outcome]?.label ?? null;
+}
+
+export function outcomeTone(outcome) {
+    return OUTCOMES[outcome]?.tone ?? 'muted';
 }
 
 export function backfillCounts(response) {
