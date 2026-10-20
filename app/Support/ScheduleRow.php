@@ -54,6 +54,7 @@ final class ScheduleRow
             'failures_count' => self::integer($source['failures_count'] ?? null),
             'skipped_trigger_count' => self::integer($source['skipped_trigger_count'] ?? null),
             'remaining_actions' => self::integer($source['remaining_actions'] ?? null),
+            'search_attributes' => is_array($source['search_attributes'] ?? null) ? $source['search_attributes'] : null,
             'created_at' => self::timestamp($source['created_at'] ?? null),
             'updated_at' => self::timestamp($source['updated_at'] ?? null),
         ];
@@ -83,7 +84,6 @@ final class ScheduleRow
             'recent_actions' => self::recentActions($flat['recent_actions'] ?? null),
             'buffered_actions' => self::list($flat['buffered_actions'] ?? null),
             'memo' => is_array($flat['memo'] ?? null) ? $flat['memo'] : null,
-            'search_attributes' => is_array($flat['search_attributes'] ?? null) ? $flat['search_attributes'] : null,
         ];
     }
 
