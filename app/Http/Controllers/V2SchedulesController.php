@@ -12,6 +12,7 @@ use Workflow\V2\Models\WorkflowSchedule;
 use Workflow\V2\Models\WorkflowScheduleHistoryEvent;
 use Workflow\V2\Support\ScheduleManager;
 use Waterline\Support\OperatorScope;
+use Waterline\Support\ScheduleActionResult;
 use Waterline\Support\ScheduleRow;
 use Waterline\Waterline;
 
@@ -101,18 +102,27 @@ class V2SchedulesController extends Controller
             return $schedule;
         }
 
-        $instanceId = ScheduleManager::trigger(
+        $overlapPolicy = $this->overlapPolicy($request);
+
+        if ($overlapPolicy instanceof JsonResponse) {
+            return $overlapPolicy;
+        }
+
+        $result = ScheduleManager::triggerDetailed(
             $schedule,
-            context: $this->commandContext($request),
+            $overlapPolicy,
+            $this->commandContext($request),
         );
 
-        return response()->json([
-            'schedule_id' => $schedule->schedule_id,
-            'namespace' => $schedule->namespace,
-            'instance_id' => $instanceId,
-            'triggered' => $instanceId !== null,
-            'operator_scope' => OperatorScope::payload(),
+        $payload = ScheduleActionResult::trigger($schedule->schedule_id, $schedule->namespace, [
+            'outcome' => $result->outcome,
+            'workflow_id' => $result->instanceId,
+            'run_id' => $result->runId,
+            'reason' => $result->reason,
         ]);
+        $payload['operator_scope'] = OperatorScope::payload();
+
+        return response()->json($payload);
     }
 
     public function backfill(Request $request, string $scheduleId): JsonResponse
@@ -137,10 +147,10 @@ class V2SchedulesController extends Controller
             return response()->json(['error' => 'Invalid date format. Use ISO 8601 timestamps.'], 422);
         }
 
-        $overlapOverride = null;
-        $policyInput = $request->input('overlap_policy');
-        if (is_string($policyInput) && $policyInput !== '') {
-            $overlapOverride = ScheduleOverlapPolicy::tryFrom($policyInput);
+        $overlapOverride = $this->overlapPolicy($request);
+
+        if ($overlapOverride instanceof JsonResponse) {
+            return $overlapOverride;
         }
 
         try {
@@ -155,12 +165,10 @@ class V2SchedulesController extends Controller
             return response()->json(['error' => $e->getMessage()], 422);
         }
 
-        return response()->json([
-            'schedule_id' => $schedule->schedule_id,
-            'namespace' => $schedule->namespace,
-            'results' => $results,
-            'operator_scope' => OperatorScope::payload(),
-        ]);
+        $payload = ScheduleActionResult::backfill($schedule->schedule_id, $schedule->namespace, $results);
+        $payload['operator_scope'] = OperatorScope::payload();
+
+        return response()->json($payload);
     }
 
     public function history(Request $request, string $scheduleId): JsonResponse
@@ -289,6 +297,24 @@ class V2SchedulesController extends Controller
         }
 
         return $matches->first() ?? $this->scheduleNotFound();
+    }
+
+    private function overlapPolicy(Request $request): ScheduleOverlapPolicy|JsonResponse|null
+    {
+        $input = $request->input('overlap_policy');
+
+        if (! is_string($input) || trim($input) === '') {
+            return null;
+        }
+
+        return ScheduleOverlapPolicy::tryFrom(trim($input)) ?? response()->json([
+            'error' => sprintf(
+                'Unknown overlap policy [%s]. Use one of: %s.',
+                trim($input),
+                implode(', ', ScheduleActionResult::OVERLAP_POLICIES),
+            ),
+            'reason' => 'invalid_overlap_policy',
+        ], 422);
     }
 
     private function scheduleNotFound(): JsonResponse

@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\RemoteBackend;
+use Waterline\Support\ScheduleActionResult;
 use Waterline\Support\ScheduleRow;
 
 final class RemoteSchedulesController extends RemoteController
@@ -94,13 +95,16 @@ final class RemoteSchedulesController extends RemoteController
             return $response;
         }
 
-        return response()->json($this->scoped([
-            'namespace' => BackendConfiguration::namespace(),
-            ...$this->backend->client()->triggerSchedule(
-                $scheduleId,
-                $this->stringInput($request, 'overlap_policy'),
-            ),
-        ]));
+        $overlapPolicy = $this->stringInput($request, 'overlap_policy');
+        if ($response = $this->rejectUnknownOverlapPolicy($overlapPolicy)) {
+            return $response;
+        }
+
+        return response()->json($this->scoped(ScheduleActionResult::trigger(
+            $scheduleId,
+            BackendConfiguration::namespace(),
+            $this->backend->client()->triggerSchedule($scheduleId, $overlapPolicy),
+        )));
     }
 
     public function backfill(Request $request, string $scheduleId): JsonResponse
@@ -118,15 +122,18 @@ final class RemoteSchedulesController extends RemoteController
             ], 422);
         }
 
-        return response()->json($this->scoped([
-            'namespace' => BackendConfiguration::namespace(),
-            ...$this->backend->client()->backfillSchedule(
-                $scheduleId,
-                $from,
-                $to,
-                $this->stringInput($request, 'overlap_policy'),
-            ),
-        ]));
+        $overlapPolicy = $this->stringInput($request, 'overlap_policy');
+        if ($response = $this->rejectUnknownOverlapPolicy($overlapPolicy)) {
+            return $response;
+        }
+
+        $result = $this->backend->client()->backfillSchedule($scheduleId, $from, $to, $overlapPolicy);
+
+        return response()->json($this->scoped(ScheduleActionResult::backfill(
+            $scheduleId,
+            BackendConfiguration::namespace(),
+            is_array($result['results'] ?? null) ? array_values($result['results']) : [],
+        )));
     }
 
     public function history(Request $request, string $scheduleId): JsonResponse
@@ -224,6 +231,22 @@ final class RemoteSchedulesController extends RemoteController
             'message' => 'Schedule not found.',
             'reason' => 'schedule_not_found',
         ]), 404);
+    }
+
+    private function rejectUnknownOverlapPolicy(?string $policy): ?JsonResponse
+    {
+        if (ScheduleActionResult::validOverlapPolicy($policy)) {
+            return null;
+        }
+
+        return response()->json($this->scoped([
+            'message' => sprintf(
+                'Unknown overlap policy [%s]. Use one of: %s.',
+                $policy,
+                implode(', ', ScheduleActionResult::OVERLAP_POLICIES),
+            ),
+            'reason' => 'invalid_overlap_policy',
+        ]), 422);
     }
 
     private function stringQuery(Request $request, string $key): ?string
