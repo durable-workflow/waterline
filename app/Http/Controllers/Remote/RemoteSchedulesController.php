@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace Waterline\Http\Controllers\Remote;
 
+use DurableWorkflow\Exception\DurableWorkflowException;
+use DurableWorkflow\Model\ScheduleDescription;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\RemoteBackend;
+use Waterline\Support\ScheduleRow;
 
 final class RemoteSchedulesController extends RemoteController
 {
@@ -39,7 +43,7 @@ final class RemoteSchedulesController extends RemoteController
         }
 
         $schedules = array_map(
-            static fn ($schedule): array => self::schedulePayload($schedule->raw),
+            fn (ScheduleDescription $schedule): array => $this->listRow($schedule->raw),
             $page?->schedules ?? [],
         );
 
@@ -53,50 +57,55 @@ final class RemoteSchedulesController extends RemoteController
         ]));
     }
 
-    public function show(string $scheduleId): JsonResponse
+    public function show(Request $request, string $scheduleId): JsonResponse
     {
-        $schedule = $this->backend->client()->describeSchedule($scheduleId);
+        if ($response = $this->rejectOtherNamespace($request)) {
+            return $response;
+        }
 
-        return response()->json($this->scoped(self::schedulePayload($schedule->raw)));
+        return $this->detailResponse($scheduleId);
     }
 
     public function pause(Request $request, string $scheduleId): JsonResponse
     {
-        if ($response = $this->requireWriteAccess('schedule.pause')) {
+        if ($response = $this->requireWriteAccess('schedule.pause') ?? $this->rejectOtherNamespace($request)) {
             return $response;
         }
 
         $this->backend->client()->pauseSchedule($scheduleId, $this->stringInput($request, 'note'));
 
-        return $this->show($scheduleId);
+        return $this->detailResponse($scheduleId);
     }
 
     public function resume(Request $request, string $scheduleId): JsonResponse
     {
-        if ($response = $this->requireWriteAccess('schedule.resume')) {
+        if ($response = $this->requireWriteAccess('schedule.resume') ?? $this->rejectOtherNamespace($request)) {
             return $response;
         }
 
         $this->backend->client()->resumeSchedule($scheduleId, $this->stringInput($request, 'note'));
 
-        return $this->show($scheduleId);
+        return $this->detailResponse($scheduleId);
     }
 
     public function trigger(Request $request, string $scheduleId): JsonResponse
     {
-        if ($response = $this->requireWriteAccess('schedule.trigger')) {
+        if ($response = $this->requireWriteAccess('schedule.trigger') ?? $this->rejectOtherNamespace($request)) {
             return $response;
         }
 
-        return response()->json($this->scoped($this->backend->client()->triggerSchedule(
-            $scheduleId,
-            $this->stringInput($request, 'overlap_policy'),
-        )));
+        return response()->json($this->scoped([
+            'namespace' => BackendConfiguration::namespace(),
+            ...$this->backend->client()->triggerSchedule(
+                $scheduleId,
+                $this->stringInput($request, 'overlap_policy'),
+            ),
+        ]));
     }
 
     public function backfill(Request $request, string $scheduleId): JsonResponse
     {
-        if ($response = $this->requireWriteAccess('schedule.backfill')) {
+        if ($response = $this->requireWriteAccess('schedule.backfill') ?? $this->rejectOtherNamespace($request)) {
             return $response;
         }
 
@@ -109,52 +118,112 @@ final class RemoteSchedulesController extends RemoteController
             ], 422);
         }
 
-        return response()->json($this->scoped($this->backend->client()->backfillSchedule(
-            $scheduleId,
-            $from,
-            $to,
-            $this->stringInput($request, 'overlap_policy'),
-        )));
+        return response()->json($this->scoped([
+            'namespace' => BackendConfiguration::namespace(),
+            ...$this->backend->client()->backfillSchedule(
+                $scheduleId,
+                $from,
+                $to,
+                $this->stringInput($request, 'overlap_policy'),
+            ),
+        ]));
     }
 
     public function history(Request $request, string $scheduleId): JsonResponse
     {
-        return response()->json($this->scoped($this->backend->client()->scheduleHistory(
-            $scheduleId,
-            max(1, min(500, (int) $request->query('limit', 100))),
-            $request->integer('after_sequence') ?: null,
-        )));
+        if ($response = $this->rejectOtherNamespace($request)) {
+            return $response;
+        }
+
+        return response()->json($this->scoped([
+            'namespace' => BackendConfiguration::namespace(),
+            ...$this->backend->client()->scheduleHistory(
+                $scheduleId,
+                max(1, min(500, (int) $request->query('limit', 100))),
+                $request->integer('after_sequence') ?: null,
+            ),
+        ]));
     }
 
-    public function destroy(string $scheduleId): JsonResponse
+    public function destroy(Request $request, string $scheduleId): JsonResponse
     {
-        if ($response = $this->requireWriteAccess('schedule.delete')) {
+        if ($response = $this->requireWriteAccess('schedule.delete') ?? $this->rejectOtherNamespace($request)) {
             return $response;
         }
 
         $this->backend->client()->deleteSchedule($scheduleId);
 
         return response()->json($this->scoped([
+            'id' => $scheduleId,
             'schedule_id' => $scheduleId,
+            'namespace' => BackendConfiguration::namespace(),
             'status' => 'deleted',
         ]));
     }
 
-    /** @param array<string, mixed> $payload
+    /**
+     * Build a list row from the server's list item and the schedule's detail.
+     *
+     * The server's list item has no fire outcomes, so each listed schedule's
+     * detail supplies its last outcome. When that read fails, the row keeps the
+     * list facts and reports no outcome rather than failing the whole page.
+     *
+     * @param array<string, mixed> $listItem
      * @return array<string, mixed>
      */
-    private static function schedulePayload(array $payload): array
+    private function listRow(array $listItem): array
     {
-        $action = is_array($payload['action'] ?? null) ? $payload['action'] : [];
+        $scheduleId = is_string($listItem['schedule_id'] ?? null) ? $listItem['schedule_id'] : '';
 
-        return [
-            ...$payload,
-            'id' => (string) ($payload['schedule_id'] ?? $payload['id'] ?? ''),
-            'workflow_type' => $payload['workflow_type'] ?? $action['workflow_type'] ?? null,
-            'workflow_class' => $payload['workflow_class'] ?? $action['workflow_class'] ?? null,
-            'last_fire_at' => $payload['last_fire_at'] ?? $payload['last_fired_at'] ?? null,
-            'last_fire_result' => $payload['last_fire_result'] ?? null,
-        ];
+        if ($scheduleId === '') {
+            return ScheduleRow::row($this->withNamespace($listItem));
+        }
+
+        try {
+            $detail = $this->backend->client()->describeSchedule($scheduleId)->raw;
+        } catch (DurableWorkflowException) {
+            return ScheduleRow::row($this->withNamespace($listItem));
+        }
+
+        return ScheduleRow::row($this->withNamespace([...$listItem, ...$detail]));
+    }
+
+    private function detailResponse(string $scheduleId): JsonResponse
+    {
+        $schedule = $this->backend->client()->describeSchedule($scheduleId);
+
+        return response()->json($this->scoped(ScheduleRow::detail($this->withNamespace($schedule->raw))));
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function withNamespace(array $payload): array
+    {
+        if (! is_string($payload['namespace'] ?? null) || trim($payload['namespace']) === '') {
+            $payload['namespace'] = BackendConfiguration::namespace();
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Service mode observes exactly one namespace, so a row from any other
+     * namespace is not visible here.
+     */
+    private function rejectOtherNamespace(Request $request): ?JsonResponse
+    {
+        $requested = $this->stringInput($request, 'namespace');
+
+        if ($requested === null || $requested === BackendConfiguration::namespace()) {
+            return null;
+        }
+
+        return response()->json($this->scoped([
+            'message' => 'Schedule not found.',
+            'reason' => 'schedule_not_found',
+        ]), 404);
     }
 
     private function stringQuery(Request $request, string $key): ?string
