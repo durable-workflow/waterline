@@ -69,7 +69,7 @@ class V2SchedulesController extends Controller
         }
 
         try {
-            ScheduleManager::pause($schedule, context: $this->commandContext($request));
+            ScheduleManager::pause($schedule, $this->note($request), $this->commandContext($request));
         } catch (\LogicException $e) {
             return response()->json(['error' => $e->getMessage()], 422);
         }
@@ -315,6 +315,13 @@ class V2SchedulesController extends Controller
             ),
             'reason' => 'invalid_overlap_policy',
         ], 422);
+    }
+
+    private function note(Request $request): ?string
+    {
+        $note = $request->input('note');
+
+        return is_string($note) && trim($note) !== '' ? trim($note) : null;
     }
 
     private function scheduleNotFound(): JsonResponse
