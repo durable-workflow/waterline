@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.12.0 - 2026-10-20
+
+- Schedule rows are identified by namespace and schedule ID in embedded and
+  service mode. Pause, resume, trigger, backfill and history act on the listed
+  schedule instead of returning "Schedule not found." for user-chosen IDs, and
+  IDs that contain a slash work too. Every schedule route accepts a
+  `namespace` parameter. A cluster-wide embedded Waterline refuses an ID that
+  exists in more than one namespace until the request names one, and a
+  namespace-scoped Waterline treats other namespaces as not found.
+- The Spec column lists every stored cron expression and interval with its
+  offset and timezone, and Last Result shows the recorded fire outcome. A
+  Details dialog shows each schedule's counters, note, latest workflow and
+  recent fires.
+- Trigger and backfill report the actual outcome in both modes. Service mode
+  no longer reports a started trigger as skipped. Backfill offers only the
+  overlap policies the backends accept, and unknown policies and empty windows
+  are refused.
+- Read-only service mode disables schedule mutations and explains why.
+  Service errors show their message instead of an error code. On narrow
+  screens each schedule stacks into labelled fields, and focus stays with the
+  row after each action.
+- Embedded API clients that read a schedule row's `id` now receive the
+  schedule ID instead of Workflow's internal key. Earlier response keys remain
+  available, including `instance_id`, `latest_instance_id` and the backfill
+  `cron_time`, `instance_id` and `error` result names.
+
 ## 2.11.0 - 2026-10-14
 
 - View one completed service activity result on demand from its exact run.

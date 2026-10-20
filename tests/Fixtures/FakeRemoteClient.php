@@ -60,6 +60,21 @@ final class FakeRemoteClient
     /** @var list<array<string, mixed>>|null */
     public ?array $activities = null;
 
+    /** @var list<array<string, mixed>>|null Server list items; null uses the default fixture. */
+    public ?array $scheduleListItems = null;
+
+    /** @var array<string, array<string, mixed>> Server detail payloads keyed by schedule ID. */
+    public array $scheduleDetails = [];
+
+    /** @var array<string, Throwable> describeSchedule failures keyed by schedule ID. */
+    public array $describeScheduleFailures = [];
+
+    /** @var array<string, mixed>|null */
+    public ?array $triggerScheduleResponse = null;
+
+    /** @var array<string, mixed>|null */
+    public ?array $backfillScheduleResponse = null;
+
     public function listWorkflows(
         ?string $workflowType = null,
         ?string $status = null,
@@ -301,26 +316,32 @@ final class FakeRemoteClient
         ?string $nextPageToken = null,
     ): SchedulePage {
         $this->called(__FUNCTION__, get_defined_vars());
-        $raw = [
-            'schedule_id' => 'nightly-orders',
-            'status' => 'active',
-            'spec' => ['cron' => '0 0 * * *'],
-            'action' => ['workflow_type' => 'orders.process'],
-            'next_fire_at' => '2026-07-23T00:00:00Z',
-        ];
 
-        return new SchedulePage([ScheduleDescription::fromArray($raw)], null, ['schedules' => [$raw]]);
+        $items = array_values(array_filter(
+            $this->scheduleListItems ?? self::defaultScheduleListItems(),
+            static fn (array $item): bool => ($status === null || ($item['status'] ?? null) === $status)
+                && ($workflowType === null || ($item['workflow_type'] ?? null) === $workflowType),
+        ));
+
+        return new SchedulePage(
+            array_map(static fn (array $item): ScheduleDescription => ScheduleDescription::fromArray($item), $items),
+            null,
+            ['schedules' => $items, 'next_page_token' => null],
+        );
     }
 
     public function describeSchedule(string $scheduleId): ScheduleDescription
     {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        return ScheduleDescription::fromArray([
-            'schedule_id' => $scheduleId,
-            'status' => 'active',
-            'action' => ['workflow_type' => 'orders.process'],
-        ]);
+        if (isset($this->describeScheduleFailures[$scheduleId])) {
+            throw $this->describeScheduleFailures[$scheduleId];
+        }
+
+        return ScheduleDescription::fromArray(
+            $this->scheduleDetails[$scheduleId] ?? self::defaultScheduleDetail($scheduleId),
+            $scheduleId,
+        );
     }
 
     /** @return array<string, mixed> */
@@ -328,7 +349,151 @@ final class FakeRemoteClient
     {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        return ['schedule_id' => $scheduleId, 'events' => []];
+        return [
+            'schedule_id' => $scheduleId,
+            'namespace' => 'orders',
+            'events' => [[
+                'id' => '01JAHX3Q8V5T6W7Y8Z9A0B1C2D',
+                'sequence' => 1,
+                'event_type' => 'ScheduleCreated',
+                'payload' => ['overlap_policy' => 'skip'],
+                'workflow_instance_id' => null,
+                'workflow_run_id' => null,
+                'recorded_at' => '2026-07-01T09:00:00+00:00',
+            ]],
+            'next_cursor' => null,
+            'has_more' => false,
+        ];
+    }
+
+    /**
+     * Server 2.9.8 ScheduleController::formatListItem output. List items carry
+     * no recent actions, failure counts or skip facts.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function defaultScheduleListItems(): array
+    {
+        return [
+            [
+                'schedule_id' => 'nightly-orders',
+                'workflow_type' => 'orders.process',
+                'status' => 'active',
+                'paused' => false,
+                'next_fire' => '2026-08-13T00:00:00+00:00',
+                'last_fire' => '2026-08-12T00:00:00+00:00',
+                'overlap_policy' => 'skip',
+                'note' => null,
+                'namespace' => 'orders',
+                'spec' => ['cron_expressions' => ['0 0 * * *'], 'timezone' => 'UTC'],
+                'action' => ['workflow_type' => 'orders.process', 'task_queue' => 'orders'],
+                'next_fire_at' => '2026-08-13T00:00:00+00:00',
+                'last_fired_at' => '2026-08-12T00:00:00+00:00',
+                'search_attributes' => ['region' => 'eu'],
+                'created_at' => '2026-07-01T09:00:00+00:00',
+                'updated_at' => '2026-08-12T00:00:01+00:00',
+                'fires_count' => 42,
+            ],
+            [
+                'schedule_id' => 'hourly-reconcile',
+                'workflow_type' => 'orders.reconcile',
+                'status' => 'paused',
+                'paused' => true,
+                'next_fire' => '2026-08-12T12:05:00+00:00',
+                'last_fire' => '2026-08-12T11:05:00+00:00',
+                'overlap_policy' => 'buffer_one',
+                'note' => 'Paused during ledger migration.',
+                'namespace' => 'orders',
+                'spec' => ['intervals' => [['every' => 'PT1H', 'offset' => 'PT5M']], 'timezone' => 'UTC'],
+                'action' => ['workflow_type' => 'orders.reconcile', 'task_queue' => 'orders'],
+                'next_fire_at' => '2026-08-12T12:05:00+00:00',
+                'last_fired_at' => '2026-08-12T11:05:00+00:00',
+                'search_attributes' => null,
+                'created_at' => '2026-07-15T09:00:00+00:00',
+                'updated_at' => '2026-08-12T11:30:00+00:00',
+                'fires_count' => 7,
+                'max_runs' => 10,
+                'remaining_actions' => 3,
+            ],
+        ];
+    }
+
+    /**
+     * Server 2.9.8 ScheduleController::formatDetail output: Workflow's
+     * toDetail() with `state`/`info` groups plus the server's flat additions.
+     *
+     * @return array<string, mixed>
+     */
+    public static function defaultScheduleDetail(string $scheduleId): array
+    {
+        $item = [];
+        foreach (self::defaultScheduleListItems() as $candidate) {
+            if ($candidate['schedule_id'] === $scheduleId) {
+                $item = $candidate;
+            }
+        }
+
+        $status = $item['status'] ?? 'active';
+        $recentActions = match ($scheduleId) {
+            'nightly-orders' => [
+                ['outcome' => 'failed', 'reason' => 'Task queue [orders] has no workers.', 'fired_at' => '2026-08-11T00:00:00+00:00'],
+                [
+                    'workflow_id' => 'schedule:nightly-orders:1786492800000',
+                    'run_id' => '01JAHX5M2N3P4Q5R6S7T8V9W0X',
+                    'outcome' => 'scheduled',
+                    'fired_at' => '2026-08-12T00:00:00+00:00',
+                    'occurrence_time' => '2026-08-12T00:00:00.000000+00:00',
+                    'fire_lag_ms' => 412,
+                ],
+            ],
+            'hourly-reconcile' => [[
+                'workflow_id' => 'schedule:hourly-reconcile:1786532700000',
+                'run_id' => '01JAHX6A1B2C3D4E5F6G7H8J9K',
+                'outcome' => 'scheduled',
+                'fired_at' => '2026-08-12T11:05:00+00:00',
+            ]],
+            default => [],
+        };
+        $skip = $scheduleId === 'hourly-reconcile'
+            ? ['count' => 2, 'reason' => 'overlap_policy_buffer_one', 'at' => '2026-08-12T11:30:00+00:00']
+            : ['count' => 0, 'reason' => null, 'at' => null];
+        $latest = $recentActions === [] ? null : $recentActions[array_key_last($recentActions)];
+
+        return [
+            'schedule_id' => $scheduleId,
+            'spec' => $item['spec'] ?? ['cron_expressions' => ['0 * * * *'], 'timezone' => 'UTC'],
+            'action' => $item['action'] ?? ['workflow_type' => 'orders.process', 'task_queue' => 'orders'],
+            'overlap_policy' => $item['overlap_policy'] ?? 'skip',
+            'state' => ['status' => $status, 'paused' => $status === 'paused', 'note' => $item['note'] ?? null],
+            'info' => [
+                'next_fire' => $item['next_fire_at'] ?? null,
+                'last_fire' => $item['last_fired_at'] ?? null,
+                'fires_count' => $item['fires_count'] ?? 0,
+                'failures_count' => $scheduleId === 'nightly-orders' ? 1 : 0,
+                'recent_actions' => $recentActions,
+                'buffered_actions' => [],
+                'skipped_trigger_count' => $skip['count'],
+                'last_skip_reason' => $skip['reason'],
+                'last_skipped_at' => $skip['at'],
+            ],
+            'memo' => null,
+            'search_attributes' => $item['search_attributes'] ?? null,
+            'created_at' => $item['created_at'] ?? null,
+            'updated_at' => $item['updated_at'] ?? null,
+            'namespace' => 'orders',
+            'status' => $status,
+            'paused' => $status === 'paused',
+            'note' => $item['note'] ?? null,
+            'fires_count' => $item['fires_count'] ?? 0,
+            'failures_count' => $scheduleId === 'nightly-orders' ? 1 : 0,
+            'next_fire_at' => $item['next_fire_at'] ?? null,
+            'last_fired_at' => $item['last_fired_at'] ?? null,
+            'paused_at' => $status === 'paused' ? '2026-08-12T11:20:00+00:00' : null,
+            'jitter_seconds' => 0,
+            'max_runs' => $item['max_runs'] ?? null,
+            'remaining_actions' => $item['remaining_actions'] ?? null,
+            'latest_workflow_instance_id' => $latest['workflow_id'] ?? null,
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -407,7 +572,12 @@ final class FakeRemoteClient
     {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        return ['schedule_id' => $scheduleId, 'triggered' => true];
+        return $this->triggerScheduleResponse ?? [
+            'schedule_id' => $scheduleId,
+            'outcome' => 'triggered',
+            'workflow_id' => 'schedule:'.$scheduleId.':1786536015000',
+            'run_id' => '01JAHX7B2C3D4E5F6G7H8J9K0M',
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -415,7 +585,23 @@ final class FakeRemoteClient
     {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        return ['schedule_id' => $scheduleId, 'results' => []];
+        return $this->backfillScheduleResponse ?? [
+            'schedule_id' => $scheduleId,
+            'outcome' => 'backfill_started',
+            'fires_attempted' => 2,
+            'results' => [
+                [
+                    'fire_time' => '2026-08-10T00:00:00+00:00',
+                    'workflow_id' => 'schedule:'.$scheduleId.':backfill:1786320000',
+                    'outcome' => 'started',
+                ],
+                [
+                    'fire_time' => '2026-08-11T00:00:00+00:00',
+                    'workflow_id' => 'schedule:'.$scheduleId.':backfill:1786406400',
+                    'outcome' => 'started',
+                ],
+            ],
+        ];
     }
 
     public function deleteSchedule(string $scheduleId): void

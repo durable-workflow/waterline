@@ -842,6 +842,18 @@ jobs:
         --service-base-url http://127.0.0.1:8013
         --locale de --output-dir run-detail-evidence/german-zoom
 
+    # Row actions start workflow runs, so this check runs after the others.
+    - name: Seed schedules in two namespaces
+      working-directory: sample-app
+      run: php ../waterline/scripts/ci/seed-schedule-visual.php 'App\Workflows\Simple\SimpleWorkflow'
+
+    - name: Qualify schedule rows and row actions
+      working-directory: sample-app
+      run: >-
+        node ../waterline/scripts/ci/schedule-actions-visual.mjs
+        --base-url "${APP_URL}"
+        --output-dir run-detail-evidence/schedules
+
     - name: Upload run-detail failure diagnostics
       if: ${{ failure() }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7

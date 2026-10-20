@@ -77,14 +77,16 @@ Route::prefix('api')->group(function () use ($capacityEvidenceController, $healt
     Route::get('/v2/services/calls', [$servicesController, 'callsIndex'])->name('waterline.v2.services.calls.index');
     Route::get('/v2/services/calls/{callId}', [$servicesController, 'callShow'])->name('waterline.v2.services.calls.show');
 
+    // Schedule IDs may contain slashes, so the ID matches across segments and
+    // the history route is registered before the detail route.
     Route::get('/v2/schedules', [$schedulesController, 'index'])->name('waterline.v2.schedules.index');
-    Route::get('/v2/schedules/{scheduleId}', [$schedulesController, 'show'])->name('waterline.v2.schedules.show');
-    Route::get('/v2/schedules/{scheduleId}/history', [$schedulesController, 'history'])->name('waterline.v2.schedules.history');
-    Route::post('/v2/schedules/{scheduleId}/pause', [$schedulesController, 'pause'])->name('waterline.v2.schedules.pause');
-    Route::post('/v2/schedules/{scheduleId}/resume', [$schedulesController, 'resume'])->name('waterline.v2.schedules.resume');
-    Route::post('/v2/schedules/{scheduleId}/trigger', [$schedulesController, 'trigger'])->name('waterline.v2.schedules.trigger');
-    Route::post('/v2/schedules/{scheduleId}/backfill', [$schedulesController, 'backfill'])->name('waterline.v2.schedules.backfill');
-    Route::delete('/v2/schedules/{scheduleId}', [$schedulesController, 'destroy'])->name('waterline.v2.schedules.destroy');
+    Route::get('/v2/schedules/{scheduleId}/history', [$schedulesController, 'history'])->where('scheduleId', '.+')->name('waterline.v2.schedules.history');
+    Route::get('/v2/schedules/{scheduleId}', [$schedulesController, 'show'])->where('scheduleId', '.+')->name('waterline.v2.schedules.show');
+    Route::post('/v2/schedules/{scheduleId}/pause', [$schedulesController, 'pause'])->where('scheduleId', '.+')->name('waterline.v2.schedules.pause');
+    Route::post('/v2/schedules/{scheduleId}/resume', [$schedulesController, 'resume'])->where('scheduleId', '.+')->name('waterline.v2.schedules.resume');
+    Route::post('/v2/schedules/{scheduleId}/trigger', [$schedulesController, 'trigger'])->where('scheduleId', '.+')->name('waterline.v2.schedules.trigger');
+    Route::post('/v2/schedules/{scheduleId}/backfill', [$schedulesController, 'backfill'])->where('scheduleId', '.+')->name('waterline.v2.schedules.backfill');
+    Route::delete('/v2/schedules/{scheduleId}', [$schedulesController, 'destroy'])->where('scheduleId', '.+')->name('waterline.v2.schedules.destroy');
 
     Route::get('/flows/{id}', [$workflowsController, 'show'])->name('waterline.show');
     Route::get('/flows/{id}/history-export', [$workflowsController, 'historyExport'])->name('waterline.history-export');
