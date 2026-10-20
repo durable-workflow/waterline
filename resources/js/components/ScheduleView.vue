@@ -15,7 +15,7 @@
                     <option value="">{{ $t("All statuses") }}</option>
                     <option value="active">{{ $t("Active") }}</option>
                     <option value="paused">{{ $t("Paused") }}</option>
-                    <option value="deleted">{{ $t("Deleted") }}</option>
+                    <option v-if="!serviceMode" value="deleted">{{ $t("Deleted") }}</option>
                 </select>
 
                 <button class="btn btn-sm btn-outline-secondary" @click="editViewOptions" :disabled="savingOperatorPreferences">
@@ -23,7 +23,7 @@
                 </button>
 
                 <button class="btn btn-sm btn-outline-secondary" @click="refresh">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon fill-text-color schedule-view__button-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon fill-text-color schedule-view__button-icon" aria-hidden="true">
                         <path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"></path>
                     </svg>
                     {{ $t("Refresh") }}
@@ -32,7 +32,7 @@
         </section>
 
         <div v-if="loading" class="schedule-view__state card card-bg-secondary">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color schedule-view__state-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color schedule-view__state-icon" aria-hidden="true">
                 <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
             </svg>
             <p class="schedule-view__state-copy">{{ $t("Loading schedules…") }}</p>
@@ -91,6 +91,10 @@
                     </span>
                 </div>
 
+                <div v-if="mutationsUnavailable && schedules.length > 0" class="schedule-view__notice" role="note">
+                    {{ $t("This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.") }}
+                </div>
+
                 <div class="card-body card-bg-secondary p-0">
                     <div v-if="schedules.length > 0" class="table-responsive">
                         <table :class="schedulesTableClass">
@@ -106,51 +110,57 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="schedule in schedules" :key="schedule.id" :class="scheduleRowClass(schedule)">
+                                <tr v-for="row in scheduleRows" :key="row.key" :class="scheduleRowClass(row.schedule)" :data-schedule-id="row.id" :data-schedule-namespace="row.schedule.namespace || ''">
                                     <td v-if="columnEnabled('schedule_id')">
                                         <div class="schedule-view__cell-main">
-                                            <code>{{ truncateId(schedule.id) }}</code>
-                                            <div class="schedule-view__cell-meta">{{ schedule.id }}</div>
+                                            <code :title="row.id">{{ truncateId(row.id) }}</code>
+                                            <div class="schedule-view__cell-meta" v-if="row.id && row.id !== truncateId(row.id)">{{ row.id }}</div>
+                                            <div class="schedule-view__cell-meta" v-if="clusterScope && row.schedule.namespace">
+                                                {{ $t("Namespace") }} {{ row.schedule.namespace }}
+                                            </div>
                                         </div>
                                     </td>
 
                                     <td v-if="columnEnabled('workflow_type')">
                                         <div class="schedule-view__cell-main">
-                                            <code>{{ schedule.workflow_type || schedule.workflow_class || '-' }}</code>
-                                            <div class="schedule-view__cell-meta" v-if="schedule.workflow_class && schedule.workflow_type && schedule.workflow_type !== schedule.workflow_class">
-                                                {{ schedule.workflow_class }}
+                                            <code>{{ row.schedule.workflow_type || row.schedule.workflow_class || '-' }}</code>
+                                            <div class="schedule-view__cell-meta" v-if="row.schedule.workflow_class && row.schedule.workflow_type && row.schedule.workflow_type !== row.schedule.workflow_class">
+                                                {{ row.schedule.workflow_class }}
                                             </div>
                                         </div>
                                     </td>
 
                                     <td v-if="columnEnabled('spec')">
                                         <div class="schedule-view__cell-main">
-                                            <span v-if="schedule.spec && schedule.spec.cron" class="schedule-view__pill schedule-view__pill--muted">
-                                                {{ $t("Cron") }} {{ schedule.spec.cron }}
+                                            <span v-for="(expression, index) in row.cadence.cron" :key="`cron-${index}`" class="schedule-view__pill schedule-view__pill--muted">
+                                                {{ $t("Cron") }} {{ expression }}
                                             </span>
-                                            <span v-else-if="schedule.spec && schedule.spec.interval" class="schedule-view__pill schedule-view__pill--muted">
-                                                {{ $t("Every") }} {{ formatInterval(schedule.spec.interval) }}
+                                            <span v-for="(interval, index) in row.cadence.intervals" :key="`interval-${index}`" class="schedule-view__pill schedule-view__pill--muted" :title="interval.every">
+                                                {{ $t("Every") }} {{ formatDuration(interval.every) }}
                                             </span>
-                                            <span v-else class="text-muted">{{ $t("Custom") }}</span>
+                                            <span v-if="row.cadence.empty" class="text-muted">{{ $t("Custom") }}</span>
 
-                                            <div class="schedule-view__cell-meta" v-if="schedule.spec && schedule.spec.timezone">
-                                                {{ $t("Timezone") }} {{ schedule.spec.timezone }}
+                                            <div class="schedule-view__cell-meta" v-for="(interval, index) in row.cadence.intervals.filter((item) => item.offset)" :key="`offset-${index}`">
+                                                {{ $t("Offset") }} {{ formatDuration(interval.offset) }}
+                                            </div>
+                                            <div class="schedule-view__cell-meta" v-if="row.cadence.timezone">
+                                                {{ $t("Timezone") }} {{ row.cadence.timezone }}
                                             </div>
                                         </div>
                                     </td>
 
                                     <td v-if="columnEnabled('status')">
-                                        <span class="schedule-view__pill" :class="statusToneClass(schedule.status)">
-                                            {{ stateLabel(schedule.status || 'unknown') }}
+                                        <span class="schedule-view__pill" :class="statusToneClass(row.schedule.status)">
+                                            {{ stateLabel(row.schedule.status || 'unknown') }}
                                         </span>
                                     </td>
 
                                     <td v-if="columnEnabled('next_fire')">
                                         <div class="schedule-view__cell-main">
-                                            <span :class="nextFireClass(schedule.next_fire_at)">
-                                                {{ schedule.next_fire_at ? formatTimestamp(schedule.next_fire_at) : '—' }}
+                                            <span :class="nextFireClass(row.schedule)">
+                                                {{ row.schedule.next_fire_at ? formatTimestamp(row.schedule.next_fire_at) : '—' }}
                                             </span>
-                                            <div class="schedule-view__cell-meta" v-if="schedule.next_fire_at && isOverdue(schedule)">
+                                            <div class="schedule-view__cell-meta" v-if="row.schedule.next_fire_at && isOverdue(row.schedule)">
                                                 {{ $t("Overdue trigger window") }}
                                             </div>
                                         </div>
@@ -158,12 +168,14 @@
 
                                     <td v-if="columnEnabled('last_result')">
                                         <div class="schedule-view__cell-main">
-                                            <span v-if="schedule.last_fire_at">
-                                                {{ formatTimestamp(schedule.last_fire_at) }}
-                                            </span>
+                                            <span v-if="row.lastResult.at">{{ formatTimestamp(row.lastResult.at) }}</span>
                                             <span v-else class="text-muted">{{ $t("Never") }}</span>
-                                            <div class="schedule-view__cell-meta" v-if="schedule.last_fire_result">
-                                                <span :class="resultClass(schedule.last_fire_result)">{{ schedule.last_fire_result }}</span>
+                                            <div class="schedule-view__cell-meta" v-if="row.lastResult.state === 'recorded'">
+                                                <span :class="toneTextClass(row.lastResult.tone)">{{ outcomeText(row.lastResult) }}</span>
+                                                <span v-if="row.lastResult.reason" class="schedule-view__reason" :title="row.lastResult.reason"> · {{ row.lastResult.reason }}</span>
+                                            </div>
+                                            <div class="schedule-view__cell-meta" v-else-if="row.lastResult.state === 'unreported'">
+                                                {{ $t("Outcome not reported") }}
                                             </div>
                                         </div>
                                     </td>
@@ -171,31 +183,42 @@
                                     <td v-if="columnEnabled('actions')">
                                         <div class="schedule-view__action-group">
                                             <button
-                                                v-if="schedule.status === 'active'"
+                                                v-if="row.schedule.status === 'active'"
                                                 class="btn btn-sm btn-outline-warning"
-                                                @click="pauseSchedule(schedule.id)">
+                                                :disabled="mutationsUnavailable || pendingRowKey === row.key"
+                                                @click="pauseSchedule(row.schedule)">
                                                 {{ $t("Pause") }}
                                             </button>
                                             <button
-                                                v-if="schedule.status === 'paused'"
+                                                v-if="row.schedule.status === 'paused'"
                                                 class="btn btn-sm btn-outline-success"
-                                                @click="resumeSchedule(schedule.id)">
+                                                :disabled="mutationsUnavailable || pendingRowKey === row.key"
+                                                @click="resumeSchedule(row.schedule)">
                                                 {{ $t("Resume") }}
                                             </button>
                                             <button
+                                                v-if="row.schedule.status !== 'deleted'"
                                                 class="btn btn-sm btn-outline-primary"
-                                                @click="triggerNow(schedule.id)">
+                                                :disabled="mutationsUnavailable || pendingRowKey === row.key"
+                                                @click="triggerNow(row.schedule)">
                                                 {{ $t("Trigger") }}
                                             </button>
                                             <button
+                                                v-if="row.schedule.status !== 'deleted'"
                                                 class="btn btn-sm btn-outline-info"
-                                                @click="showBackfillDialog(schedule)">
+                                                :disabled="mutationsUnavailable || pendingRowKey === row.key"
+                                                @click="showBackfillDialog(row.schedule, $event)">
                                                 {{ $t("Backfill") }}
                                             </button>
                                             <button
                                                 class="btn btn-sm btn-outline-secondary"
-                                                @click="showHistoryDialog(schedule)">
+                                                @click="showHistoryDialog(row.schedule, $event)">
                                                 {{ $t("History") }}
+                                            </button>
+                                            <button
+                                                class="btn btn-sm btn-outline-secondary"
+                                                @click="showDetailDialog(row.schedule, $event)">
+                                                {{ $t("Details") }}
                                             </button>
                                         </div>
                                     </td>
@@ -235,15 +258,18 @@
             </article>
         </div>
 
-        <div v-if="showBackfill" class="schedule-view__modal" @click.self="showBackfill = false">
-            <div class="schedule-view__dialog card">
+        <div v-if="showBackfill" class="schedule-view__modal" @click.self="closeBackfillDialog" @keydown.esc="closeBackfillDialog">
+            <div ref="backfillDialog" class="schedule-view__dialog card" role="dialog" aria-modal="true" aria-labelledby="waterline-backfill-title" tabindex="-1">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
-                        <h5 class="mb-0">{{ $t("Backfill schedule") }}</h5>
-                        <small class="text-muted">{{ $t("Trigger missed executions across a historical window.") }}</small>
+                        <h5 id="waterline-backfill-title" class="mb-0">{{ $t("Backfill schedule") }}</h5>
+                        <small class="text-muted">
+                            {{ $t("Trigger missed executions across a historical window.") }}
+                            <code>{{ backfillSchedule ? backfillSchedule.schedule_id : '—' }}</code>
+                        </small>
                     </div>
 
-                    <button type="button" class="btn btn-sm btn-outline-secondary" @click="showBackfill = false">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @click="closeBackfillDialog">
                         {{ $t("Close") }}
                     </button>
                 </div>
@@ -267,29 +293,29 @@
                         <label for="waterline-backfill-overlap" class="schedule-view__field-label">{{ $t("Overlap Policy") }}</label>
                         <select id="waterline-backfill-overlap" v-model="backfillOverlapPolicy" class="form-control schedule-view__field">
                             <option value="">{{ $t("Use schedule default") }}</option>
-                            <option value="skip">{{ $t("Skip") }}</option>
-                            <option value="allow">{{ $t("Allow") }}</option>
-                            <option value="terminate">{{ $t("Terminate") }}</option>
-                            <option value="cancel">{{ $t("Cancel") }}</option>
+                            <option v-for="policy in overlapPolicies" :key="policy.value" :value="policy.value">{{ $t(policy.label) }}</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="card-footer d-flex justify-content-end schedule-view__dialog-actions">
-                    <button class="btn btn-secondary" @click="showBackfill = false">{{ $t("Cancel") }}</button>
-                    <button class="btn btn-primary" @click="executeBackfill">{{ $t("Backfill") }}</button>
+                    <button class="btn btn-secondary" @click="closeBackfillDialog">{{ $t("Cancel") }}</button>
+                    <button class="btn btn-primary" :disabled="backfillSubmitting" @click="executeBackfill">{{ $t("Backfill") }}</button>
                 </div>
             </div>
         </div>
 
-        <div v-if="showHistory" class="schedule-view__modal" @click.self="closeHistoryDialog">
-            <div class="schedule-view__dialog schedule-view__dialog--wide card">
+        <div v-if="showHistory" class="schedule-view__modal" @click.self="closeHistoryDialog" @keydown.esc="closeHistoryDialog">
+            <div ref="historyDialog" class="schedule-view__dialog schedule-view__dialog--wide card" role="dialog" aria-modal="true" aria-labelledby="waterline-schedule-history-title" tabindex="-1">
                 <div class="card-header d-flex align-items-center justify-content-between">
                     <div>
-                        <h5 class="mb-0">{{ $t("Schedule audit history") }}</h5>
+                        <h5 id="waterline-schedule-history-title" class="mb-0">{{ $t("Schedule audit history") }}</h5>
                         <small class="text-muted">
                             {{ $t("Lifecycle events recorded for") }}
-                            <code>{{ historyScheduleId || '—' }}</code>.
+                            <code>{{ historySchedule ? historySchedule.schedule_id : '—' }}</code>.
+                            <template v-if="clusterScope && historySchedule && historySchedule.namespace">
+                                {{ $t("Namespace") }} {{ historySchedule.namespace }}
+                            </template>
                         </small>
                     </div>
 
@@ -300,7 +326,7 @@
 
                 <div class="card-body card-bg-secondary schedule-view__history-body">
                     <div v-if="historyLoading && historyEvents.length === 0" class="schedule-view__state">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color schedule-view__state-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color schedule-view__state-icon" aria-hidden="true">
                             <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
                         </svg>
                         <p class="schedule-view__state-copy">{{ $t("Loading audit history…") }}</p>
@@ -369,12 +395,184 @@
                 </div>
             </div>
         </div>
+
+        <div v-if="showDetail" class="schedule-view__modal" @click.self="closeDetailDialog" @keydown.esc="closeDetailDialog">
+            <div ref="detailDialog" class="schedule-view__dialog schedule-view__dialog--wide card" role="dialog" aria-modal="true" aria-labelledby="waterline-schedule-detail-title" tabindex="-1">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                    <div>
+                        <h5 id="waterline-schedule-detail-title" class="mb-0">{{ $t("Schedule details") }}</h5>
+                        <small class="text-muted">
+                            <code>{{ detailSchedule ? detailSchedule.schedule_id : '—' }}</code>
+                            <template v-if="detailSchedule && detailSchedule.namespace">
+                                · {{ $t("Namespace") }} {{ detailSchedule.namespace }}
+                            </template>
+                        </small>
+                    </div>
+
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @click="closeDetailDialog">
+                        {{ $t("Close") }}
+                    </button>
+                </div>
+
+                <div class="card-body card-bg-secondary schedule-view__history-body">
+                    <div v-if="detailLoading" class="schedule-view__state">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color schedule-view__state-icon" aria-hidden="true">
+                            <path d="M12 10a2 2 0 0 1-3.41 1.41A2 2 0 0 1 10 8V0a9.97 9.97 0 0 1 10 10h-8zm7.9 1.41A10 10 0 1 1 8.59.1v2.03a8 8 0 1 0 9.29 9.29h2.02zm-4.07 0a6 6 0 1 1-7.25-7.25v2.1a3.99 3.99 0 0 0-1.4 6.57 4 4 0 0 0 6.56-1.42h2.1z"></path>
+                        </svg>
+                        <p class="schedule-view__state-copy">{{ $t("Loading schedule details…") }}</p>
+                    </div>
+
+                    <div v-else-if="detailError" class="schedule-view__state schedule-view__state--error">
+                        <strong>{{ $t("Unable to load schedule details") }}</strong>
+                        <p class="schedule-view__state-copy">{{ detailError }}</p>
+                        <button class="btn btn-sm btn-outline-primary" @click="loadDetail">{{ $t("Retry") }}</button>
+                    </div>
+
+                    <template v-else-if="detail">
+                        <dl class="schedule-view__detail-grid">
+                            <dt>{{ $t("Status") }}</dt>
+                            <dd>
+                                <span class="schedule-view__pill" :class="statusToneClass(detail.status)">{{ stateLabel(detail.status || 'unknown') }}</span>
+                                <span v-if="detail.paused_at" class="schedule-view__cell-meta"> {{ formatTimestamp(detail.paused_at) }}</span>
+                            </dd>
+
+                            <dt>{{ $t("Workflow Type") }}</dt>
+                            <dd><code>{{ detail.workflow_type || detail.workflow_class || '-' }}</code></dd>
+
+                            <template v-if="detail.workflow_class && detail.workflow_class !== detail.workflow_type">
+                                <dt>{{ $t("Workflow class") }}</dt>
+                                <dd><code>{{ detail.workflow_class }}</code></dd>
+                            </template>
+
+                            <dt>{{ $t("Spec") }}</dt>
+                            <dd>
+                                <div class="schedule-view__cell-main">
+                                    <span v-for="(expression, index) in detailCadence.cron" :key="`detail-cron-${index}`">{{ $t("Cron") }} <code>{{ expression }}</code></span>
+                                    <span v-for="(interval, index) in detailCadence.intervals" :key="`detail-interval-${index}`">
+                                        {{ $t("Every") }} {{ formatDuration(interval.every) }} <code>{{ interval.every }}</code>
+                                        <template v-if="interval.offset"> · {{ $t("Offset") }} {{ formatDuration(interval.offset) }}</template>
+                                    </span>
+                                    <span v-if="detailCadence.empty" class="text-muted">{{ $t("Custom") }}</span>
+                                    <span v-if="detailCadence.timezone" class="schedule-view__cell-meta">{{ $t("Timezone") }} {{ detailCadence.timezone }}</span>
+                                </div>
+                            </dd>
+
+                            <dt>{{ $t("Overlap Policy") }}</dt>
+                            <dd>{{ overlapPolicyLabel(detail.overlap_policy) }}</dd>
+
+                            <dt>{{ $t("Next Fire") }}</dt>
+                            <dd>{{ detail.next_fire_at ? formatTimestamp(detail.next_fire_at) : '—' }}</dd>
+
+                            <dt>{{ $t("Last Result") }}</dt>
+                            <dd>
+                                <template v-if="detailLastResult.state === 'recorded'">
+                                    <span :class="toneTextClass(detailLastResult.tone)">{{ outcomeText(detailLastResult) }}</span>
+                                    <span v-if="detailLastResult.at"> · {{ formatTimestamp(detailLastResult.at) }}</span>
+                                    <div v-if="detailLastResult.reason" class="schedule-view__cell-meta schedule-view__reason">{{ detailLastResult.reason }}</div>
+                                </template>
+                                <template v-else-if="detailLastResult.state === 'unreported'">
+                                    {{ formatTimestamp(detailLastResult.at) }} · <span class="text-muted">{{ $t("Outcome not reported") }}</span>
+                                </template>
+                                <span v-else class="text-muted">{{ $t("Never") }}</span>
+                            </dd>
+
+                            <dt>{{ $t("Fires") }}</dt>
+                            <dd>{{ formatCount(detail.fires_count) }}</dd>
+
+                            <dt>{{ $t("Failures") }}</dt>
+                            <dd>{{ formatCount(detail.failures_count) }}</dd>
+
+                            <dt>{{ $t("Skipped triggers") }}</dt>
+                            <dd>
+                                {{ formatCount(detail.skipped_trigger_count) }}
+                                <span v-if="detail.last_skip_reason" class="schedule-view__cell-meta"> · {{ detail.last_skip_reason }}</span>
+                            </dd>
+
+                            <template v-if="detail.remaining_actions !== null && detail.remaining_actions !== undefined">
+                                <dt>{{ $t("Remaining actions") }}</dt>
+                                <dd>{{ formatCount(detail.remaining_actions) }}</dd>
+                            </template>
+
+                            <template v-if="detail.note">
+                                <dt>{{ $t("Note") }}</dt>
+                                <dd class="schedule-view__reason">{{ detail.note }}</dd>
+                            </template>
+
+                            <template v-if="detail.latest_workflow_instance_id">
+                                <dt>{{ $t("Latest workflow") }}</dt>
+                                <dd>
+                                    <router-link :to="{ name: 'flow-detail', params: { instanceId: detail.latest_workflow_instance_id } }" @click="closeDetailDialog">
+                                        <code>{{ detail.latest_workflow_instance_id }}</code>
+                                    </router-link>
+                                </dd>
+                            </template>
+                        </dl>
+
+                        <h6 class="schedule-view__detail-heading">{{ $t("Recent fires") }}</h6>
+                        <div v-if="detailRecentActions.length > 0" class="table-responsive">
+                            <table class="table table-sm mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>{{ $t("Fired") }}</th>
+                                        <th>{{ $t("Outcome") }}</th>
+                                        <th>{{ $t("Workflow") }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(action, index) in detailRecentActions" :key="`recent-${index}`">
+                                        <td>{{ action.fired_at ? formatTimestamp(action.fired_at) : '—' }}</td>
+                                        <td>
+                                            <span :class="toneTextClass(outcomeTone(action.outcome))">{{ outcomeText({ outcome: action.outcome, label: outcomeLabelFor(action.outcome) }) }}</span>
+                                            <div v-if="action.reason" class="schedule-view__cell-meta schedule-view__reason">{{ action.reason }}</div>
+                                        </td>
+                                        <td>
+                                            <router-link v-if="action.workflow_id" :to="{ name: 'flow-detail', params: { instanceId: action.workflow_id } }" @click="closeDetailDialog">
+                                                <code>{{ truncateId(action.workflow_id) }}</code>
+                                            </router-link>
+                                            <span v-else>—</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <p v-else class="mb-0 text-muted">{{ $t("No fires recorded.") }}</p>
+                    </template>
+                </div>
+
+                <div class="card-footer d-flex justify-content-end schedule-view__dialog-actions">
+                    <button class="btn btn-sm btn-outline-secondary" @click="openHistoryFromDetail">{{ $t("History") }}</button>
+                    <button class="btn btn-sm btn-secondary" @click="closeDetailDialog">{{ $t("Close") }}</button>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
 <script>
 import axios from 'axios';
-import Swal from 'sweetalert2';
+import {
+    OVERLAP_POLICIES,
+    backfillCounts,
+    formatIsoDuration,
+    outcomeLabel,
+    scheduleCadence,
+    scheduleId,
+    scheduleLastResult,
+    scheduleRequest,
+    scheduleRowKey,
+} from '../schedule-presenter.mjs';
+
+const OUTCOME_TONES = {
+    scheduled: 'success',
+    triggered: 'success',
+    started: 'success',
+    drained: 'success',
+    backfilled: 'success',
+    buffered: 'warning',
+    skipped: 'warning',
+    buffer_full: 'warning',
+    failed: 'danger',
+};
 
 export default {
     name: 'ScheduleView',
@@ -392,29 +590,82 @@ export default {
             error: null,
             schedules: [],
             pagination: null,
+            operatorScope: null,
             statusFilter: '',
             currentPage: 1,
+            pendingRowKey: null,
+            dialogReturnFocus: null,
             showBackfill: false,
-            backfillScheduleId: null,
+            backfillSchedule: null,
             backfillFrom: '',
             backfillTo: '',
             backfillOverlapPolicy: '',
+            backfillSubmitting: false,
             operatorPreferences: {},
             effectiveOperatorPreferences: {},
             savingOperatorPreferences: false,
             showHistory: false,
-            historyScheduleId: null,
+            historySchedule: null,
             historyEvents: [],
             historyLoading: false,
             historyLoadingMore: false,
             historyError: null,
             historyHasMore: false,
             historyNextCursor: null,
-            historyPageLimit: 100
+            historyPageLimit: 100,
+            showDetail: false,
+            detailSchedule: null,
+            detail: null,
+            detailLoading: false,
+            detailError: null
         };
     },
 
     computed: {
+        overlapPolicies() {
+            return OVERLAP_POLICIES;
+        },
+
+        backend() {
+            return typeof Waterline !== 'undefined' && Waterline.backend ? Waterline.backend : {};
+        },
+
+        serviceMode() {
+            return this.backend.mode === 'service';
+        },
+
+        mutationsUnavailable() {
+            return this.backend.read_only === true;
+        },
+
+        clusterScope() {
+            return this.operatorScope?.mode === 'cluster';
+        },
+
+        scheduleRows() {
+            return this.schedules.map((schedule) => ({
+                schedule,
+                key: scheduleRowKey(schedule),
+                id: scheduleId(schedule),
+                cadence: scheduleCadence(schedule.spec),
+                lastResult: scheduleLastResult(schedule),
+            }));
+        },
+
+        detailCadence() {
+            return scheduleCadence(this.detail?.spec);
+        },
+
+        detailLastResult() {
+            return scheduleLastResult(this.detail);
+        },
+
+        detailRecentActions() {
+            const actions = Array.isArray(this.detail?.recent_actions) ? this.detail.recent_actions : [];
+
+            return actions.slice().reverse();
+        },
+
         totalSchedules() {
             return this.pagination?.total || this.schedules.length;
         },
@@ -502,6 +753,7 @@ export default {
 
                 const response = await axios.get(this.resolvedApiEndpoint(), { params });
                 this.schedules = response.data.data || [];
+                this.operatorScope = response.data.operator_scope || null;
                 this.pagination = {
                     current_page: response.data.current_page,
                     last_page: response.data.last_page,
@@ -509,7 +761,7 @@ export default {
                     total: response.data.total
                 };
             } catch (e) {
-                this.error = e.response?.data?.message || e.message || this.$t("Failed to load schedules");
+                this.error = e.response?.data?.message || e.response?.data?.error || e.message || this.$t("Failed to load schedules");
                 console.error('Schedule load error:', e);
             } finally {
                 this.loading = false;
@@ -526,6 +778,10 @@ export default {
             }
 
             return this.waterlineBasePath() + '/api/v2/schedules';
+        },
+
+        scheduleRequest(schedule, suffix = '') {
+            return scheduleRequest(this.resolvedApiEndpoint(), schedule, suffix);
         },
 
         preferenceEndpoint() {
@@ -693,25 +949,49 @@ export default {
             this.loadData();
         },
 
-        async pauseSchedule(scheduleId) {
+        async runRowAction(schedule, action) {
+            const key = scheduleRowKey(schedule);
+
+            if (this.pendingRowKey === key) {
+                return;
+            }
+
+            this.pendingRowKey = key;
+
             try {
-                await axios.post(`${this.resolvedApiEndpoint()}/${scheduleId}/pause`);
-                await this.loadData();
-            } catch (e) {
-                this.showActionError(this.$t("Failed to pause schedule"), e);
+                await action();
+            } finally {
+                this.pendingRowKey = null;
             }
         },
 
-        async resumeSchedule(scheduleId) {
-            try {
-                await axios.post(`${this.resolvedApiEndpoint()}/${scheduleId}/resume`);
-                await this.loadData();
-            } catch (e) {
-                this.showActionError(this.$t("Failed to resume schedule"), e);
-            }
+        pauseSchedule(schedule) {
+            return this.runRowAction(schedule, async () => {
+                const request = this.scheduleRequest(schedule, '/pause');
+
+                try {
+                    await axios.post(request.url, {}, { params: request.params });
+                    await this.loadData();
+                } catch (e) {
+                    this.showActionError(this.$t("Failed to pause schedule"), e);
+                }
+            });
         },
 
-        async triggerNow(scheduleId) {
+        resumeSchedule(schedule) {
+            return this.runRowAction(schedule, async () => {
+                const request = this.scheduleRequest(schedule, '/resume');
+
+                try {
+                    await axios.post(request.url, {}, { params: request.params });
+                    await this.loadData();
+                } catch (e) {
+                    this.showActionError(this.$t("Failed to resume schedule"), e);
+                }
+            });
+        },
+
+        async triggerNow(schedule) {
             const confirmation = await this.$dialog({
                 title: this.$t("Trigger this schedule now?"),
                 text: this.$t("Waterline will attempt an immediate schedule dispatch."),
@@ -725,32 +1005,88 @@ export default {
                 return;
             }
 
-            try {
-                const response = await axios.post(`${this.resolvedApiEndpoint()}/${scheduleId}/trigger`);
-                const text = response.data.triggered
-                    ? this.$t("Schedule triggered. Instance ID: {value1}", { value1: response.data.instance_id || 'unknown' })
-                    : this.$t("Schedule trigger was skipped, likely because of the configured overlap policy.");
+            await this.runRowAction(schedule, async () => {
+                const request = this.scheduleRequest(schedule, '/trigger');
 
-                await this.$dialog({
-                    title: response.data.triggered ? this.$t("Schedule triggered") : this.$t("Trigger skipped"),
-                    text,
-                    icon: response.data.triggered ? 'success' : 'info',
-                    confirmButtonText: this.$t("Okay"),
-                    background: this.swalBackground(),
-                });
+                try {
+                    const response = await axios.post(request.url, {}, { params: request.params });
+                    await this.$dialog({
+                        ...this.triggerResultDialog(response.data || {}),
+                        confirmButtonText: this.$t("Okay"),
+                        background: this.swalBackground(),
+                    });
 
-                await this.loadData();
-            } catch (e) {
-                this.showActionError(this.$t("Failed to trigger schedule"), e);
-            }
+                    await this.loadData();
+                } catch (e) {
+                    this.showActionError(this.$t("Failed to trigger schedule"), e);
+                }
+            });
         },
 
-        showBackfillDialog(schedule) {
-            this.backfillScheduleId = schedule.id;
+        triggerResultDialog(result) {
+            if (result.triggered === true || result.outcome === 'triggered') {
+                return {
+                    title: this.$t("Schedule triggered"),
+                    text: this.$t("Schedule triggered. Instance ID: {value1}", { value1: result.workflow_id || result.instance_id || this.$t("Unavailable") }),
+                    icon: 'success',
+                };
+            }
+
+            if (result.outcome === 'buffered') {
+                return {
+                    title: this.$t("Trigger buffered"),
+                    text: this.$t("The trigger was buffered and starts when the running workflow finishes."),
+                    icon: 'info',
+                };
+            }
+
+            return {
+                title: this.$t("Trigger skipped"),
+                text: result.reason
+                    ? this.$t("The schedule trigger was skipped. Reason: {value1}", { value1: result.reason })
+                    : this.$t("Schedule trigger was skipped, likely because of the configured overlap policy."),
+                icon: 'info',
+            };
+        },
+
+        rememberDialogFocus(event) {
+            this.dialogReturnFocus = event?.currentTarget || document.activeElement || null;
+        },
+
+        focusDialog(ref) {
+            this.$nextTick(() => {
+                const dialog = this.$refs[ref];
+
+                if (dialog && typeof dialog.focus === 'function') {
+                    dialog.focus();
+                }
+            });
+        },
+
+        restoreDialogFocus() {
+            const target = this.dialogReturnFocus;
+            this.dialogReturnFocus = null;
+
+            this.$nextTick(() => {
+                if (target && target.isConnected && typeof target.focus === 'function') {
+                    target.focus();
+                }
+            });
+        },
+
+        showBackfillDialog(schedule, event) {
+            this.rememberDialogFocus(event);
+            this.backfillSchedule = schedule;
             this.backfillFrom = '';
             this.backfillTo = '';
             this.backfillOverlapPolicy = '';
             this.showBackfill = true;
+            this.focusDialog('backfillDialog');
+        },
+
+        closeBackfillDialog() {
+            this.showBackfill = false;
+            this.restoreDialogFocus();
         },
 
         async executeBackfill() {
@@ -765,6 +1101,14 @@ export default {
                 return;
             }
 
+            const schedule = this.backfillSchedule;
+
+            if (!schedule || this.backfillSubmitting) {
+                return;
+            }
+
+            this.backfillSubmitting = true;
+
             try {
                 const from = new Date(this.backfillFrom).toISOString();
                 const to = new Date(this.backfillTo).toISOString();
@@ -774,17 +1118,23 @@ export default {
                     payload.overlap_policy = this.backfillOverlapPolicy;
                 }
 
-                const response = await axios.post(
-                    `${this.resolvedApiEndpoint()}/${this.backfillScheduleId}/backfill`,
-                    payload
-                );
+                const request = this.scheduleRequest(schedule, '/backfill');
+                const response = await axios.post(request.url, payload, { params: request.params });
+                const counts = backfillCounts(response.data || {});
 
-                this.showBackfill = false;
+                this.closeBackfillDialog();
 
                 await this.$dialog({
-                    title: this.$t("Backfill queued"),
-                    text: this.$t("Backfill completed. Results: {value1}", { value1: JSON.stringify(response.data.results || {}) }),
-                    icon: 'success',
+                    title: this.$t("Backfill complete"),
+                    text: counts.attempted === 0
+                        ? this.$t("No schedule times fell inside this window.")
+                        : this.$t("Schedule times: {attempted}. Started: {started}. Skipped: {skipped}. Failed: {failed}.", {
+                            attempted: counts.attempted.toLocaleString(this.$i18n.locale),
+                            started: counts.started.toLocaleString(this.$i18n.locale),
+                            skipped: counts.skipped.toLocaleString(this.$i18n.locale),
+                            failed: counts.failed.toLocaleString(this.$i18n.locale),
+                        }),
+                    icon: counts.failed > 0 ? 'warning' : 'success',
                     confirmButtonText: this.$t("Okay"),
                     background: this.swalBackground(),
                 });
@@ -792,25 +1142,33 @@ export default {
                 await this.loadData();
             } catch (e) {
                 this.showActionError(this.$t("Backfill failed"), e);
+            } finally {
+                this.backfillSubmitting = false;
             }
         },
 
-        showHistoryDialog(schedule) {
-            this.historyScheduleId = schedule.id;
+        showHistoryDialog(schedule, event) {
+            if (event) {
+                this.rememberDialogFocus(event);
+            }
+
+            this.historySchedule = schedule;
             this.historyEvents = [];
             this.historyError = null;
             this.historyHasMore = false;
             this.historyNextCursor = null;
             this.showHistory = true;
+            this.focusDialog('historyDialog');
             this.loadHistoryEvents(true);
         },
 
         closeHistoryDialog() {
             this.showHistory = false;
+            this.restoreDialogFocus();
         },
 
         async loadHistoryEvents(reset = false) {
-            if (!this.historyScheduleId) {
+            if (!this.historySchedule) {
                 return;
             }
 
@@ -823,15 +1181,13 @@ export default {
             }
 
             try {
-                const params = { limit: this.historyPageLimit };
+                const request = this.scheduleRequest(this.historySchedule, '/history');
+                const params = { ...request.params, limit: this.historyPageLimit };
                 if (!reset && this.historyNextCursor !== null) {
                     params.after_sequence = this.historyNextCursor;
                 }
 
-                const response = await axios.get(
-                    `${this.resolvedApiEndpoint()}/${this.historyScheduleId}/history`,
-                    { params }
-                );
+                const response = await axios.get(request.url, { params });
 
                 const events = Array.isArray(response.data?.events) ? response.data.events : [];
 
@@ -860,6 +1216,59 @@ export default {
             }
             this.historyLoadingMore = true;
             await this.loadHistoryEvents(false);
+        },
+
+        showDetailDialog(schedule, event) {
+            this.rememberDialogFocus(event);
+            this.detailSchedule = schedule;
+            this.detail = null;
+            this.detailError = null;
+            this.showDetail = true;
+            this.focusDialog('detailDialog');
+            this.loadDetail();
+        },
+
+        closeDetailDialog() {
+            this.showDetail = false;
+            this.restoreDialogFocus();
+        },
+
+        openHistoryFromDetail() {
+            const schedule = this.detailSchedule;
+            this.showDetail = false;
+
+            if (schedule) {
+                this.showHistoryDialog(schedule);
+            }
+        },
+
+        async loadDetail() {
+            const schedule = this.detailSchedule;
+
+            if (!schedule) {
+                return;
+            }
+
+            this.detailLoading = true;
+            this.detailError = null;
+
+            try {
+                const request = this.scheduleRequest(schedule);
+                const response = await axios.get(request.url, { params: request.params });
+
+                if (this.detailSchedule === schedule) {
+                    this.detail = response.data || null;
+                }
+            } catch (e) {
+                if (this.detailSchedule === schedule) {
+                    this.detailError = e.response?.data?.error
+                        || e.response?.data?.message
+                        || e.message
+                        || this.$t("Request failed");
+                }
+            } finally {
+                this.detailLoading = false;
+            }
         },
 
         formatHistoryEventType(type) {
@@ -905,6 +1314,42 @@ export default {
             }[status] || 'is-muted';
         },
 
+        toneTextClass(tone) {
+            return {
+                success: 'text-success',
+                warning: 'text-warning',
+                danger: 'text-danger',
+            }[tone] || 'text-muted';
+        },
+
+        outcomeTone(outcome) {
+            return OUTCOME_TONES[outcome] || 'muted';
+        },
+
+        outcomeLabelFor(outcome) {
+            return outcomeLabel(outcome);
+        },
+
+        // Known outcomes are translated; an unrecognized outcome is a machine
+        // value and is shown as reported.
+        outcomeText(result) {
+            if (result?.label) {
+                return this.$t(result.label);
+            }
+
+            return result?.outcome || this.$t("Unknown");
+        },
+
+        overlapPolicyLabel(policy) {
+            const known = OVERLAP_POLICIES.find((item) => item.value === policy);
+
+            if (known) {
+                return this.$t(known.label);
+            }
+
+            return policy || '—';
+        },
+
         scheduleRowClass(schedule) {
             return this.isOverdue(schedule) ? 'schedule-view__row--overdue' : '';
         },
@@ -917,23 +1362,15 @@ export default {
             return new Date(schedule.next_fire_at) < new Date();
         },
 
-        nextFireClass(timestamp) {
-            if (!timestamp) return '';
-            const fireTime = new Date(timestamp);
+        nextFireClass(schedule) {
+            if (!schedule?.next_fire_at || schedule.status !== 'active') return '';
+            const fireTime = new Date(schedule.next_fire_at);
             const now = new Date();
             const diffMinutes = (fireTime - now) / (1000 * 60);
 
             if (diffMinutes < 0) return 'text-danger';
             if (diffMinutes < 60) return 'text-warning';
             return 'text-success';
-        },
-
-        resultClass(result) {
-            return {
-                started: 'text-success',
-                skipped: 'text-warning',
-                failed: 'text-danger'
-            }[result] || 'text-muted';
         },
 
         formatTimestamp(timestamp) {
@@ -945,12 +1382,12 @@ export default {
             }
         },
 
-        formatInterval(interval) {
-            if (!interval) return '';
-            if (interval < 60) return `${interval}s`;
-            if (interval < 3600) return `${Math.floor(interval / 60)}m`;
-            if (interval < 86400) return `${Math.floor(interval / 3600)}h`;
-            return `${Math.floor(interval / 86400)}d`;
+        formatDuration(value) {
+            return formatIsoDuration(value, this.$i18n.locale);
+        },
+
+        formatCount(value) {
+            return Number.isFinite(value) ? value.toLocaleString(this.$i18n.locale) : '—';
         },
 
         truncateId(id) {
@@ -1365,6 +1802,52 @@ export default {
 
     .schedule-view__pagination-pages {
         justify-content: center;
+    }
+}
+
+.schedule-view__notice {
+    padding: 0.65rem 1.25rem;
+    border-bottom: 1px solid var(--wl-border);
+    color: var(--wl-text-muted);
+    font-size: 0.86rem;
+}
+
+.schedule-view__reason {
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.schedule-view__detail-grid {
+    display: grid;
+    grid-template-columns: minmax(9rem, max-content) minmax(0, 1fr);
+    gap: 0.55rem 1.25rem;
+    margin-bottom: 1.25rem;
+}
+
+.schedule-view__detail-grid dt {
+    color: var(--wl-text-muted);
+    font-weight: 600;
+}
+
+.schedule-view__detail-grid dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.schedule-view__detail-heading {
+    margin-bottom: 0.65rem;
+    color: var(--wl-text);
+}
+
+@media (max-width: 576px) {
+    .schedule-view__detail-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.2rem;
+    }
+
+    .schedule-view__detail-grid dd {
+        margin-bottom: 0.55rem;
     }
 }
 </style>

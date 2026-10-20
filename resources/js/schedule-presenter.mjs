@@ -1,0 +1,144 @@
+// Presentation rules for the Schedules page. Rows come from either backend in
+// the same shape: identified by namespace and schedule_id, with the stored
+// spec (cron_expressions, intervals, timezone) and the last recorded outcome.
+
+export const OVERLAP_POLICIES = [
+    { value: 'skip', label: 'Skip' },
+    { value: 'buffer_one', label: 'Buffer one' },
+    { value: 'buffer_all', label: 'Buffer all' },
+    { value: 'cancel_other', label: 'Cancel running workflow' },
+    { value: 'terminate_other', label: 'Terminate running workflow' },
+    { value: 'allow_all', label: 'Allow overlapping runs' },
+];
+
+const OUTCOMES = {
+    scheduled: { label: 'Started', tone: 'success' },
+    triggered: { label: 'Started', tone: 'success' },
+    started: { label: 'Started', tone: 'success' },
+    drained: { label: 'Started from buffer', tone: 'success' },
+    backfilled: { label: 'Backfilled', tone: 'success' },
+    buffered: { label: 'Buffered', tone: 'warning' },
+    skipped: { label: 'Skipped', tone: 'warning' },
+    buffer_full: { label: 'Skipped', tone: 'warning' },
+    failed: { label: 'Failed', tone: 'danger' },
+};
+
+const DURATION_UNITS = ['year', 'month', 'week', 'day', 'hour', 'minute', 'second'];
+const DURATION = /^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/;
+
+function text(value) {
+    return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+}
+
+export function scheduleId(schedule) {
+    return text(schedule?.schedule_id) ?? text(schedule?.id);
+}
+
+// Schedule IDs are unique only within a namespace.
+export function scheduleRowKey(schedule) {
+    return JSON.stringify([text(schedule?.namespace), scheduleId(schedule)]);
+}
+
+export function scheduleRequest(endpoint, schedule, suffix = '') {
+    const id = scheduleId(schedule);
+
+    if (id === null) {
+        throw new Error('The schedule row has no schedule_id.');
+    }
+
+    const namespace = text(schedule?.namespace);
+
+    return {
+        url: `${endpoint}/${encodeURIComponent(id)}${suffix}`,
+        params: namespace === null ? {} : { namespace },
+    };
+}
+
+// Formats an ISO 8601 duration such as PT1H30M with the locale's unit names.
+// Anything that is not a duration is returned unchanged so it stays visible.
+export function formatIsoDuration(value, locale) {
+    const source = text(value);
+
+    if (source === null) {
+        return '';
+    }
+
+    const normalized = source.toUpperCase();
+    const match = DURATION.exec(normalized);
+
+    if (!match || normalized === 'P' || normalized.endsWith('T')) {
+        return source;
+    }
+
+    const parts = [];
+
+    DURATION_UNITS.forEach((unit, index) => {
+        const amount = match[index + 1];
+
+        if (amount !== undefined && Number(amount) !== 0) {
+            parts.push(new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'short' }).format(Number(amount)));
+        }
+    });
+
+    return parts.length > 0 ? parts.join(' ') : source;
+}
+
+export function scheduleCadence(spec) {
+    const source = spec && typeof spec === 'object' && !Array.isArray(spec) ? spec : {};
+    const cron = (Array.isArray(source.cron_expressions) ? source.cron_expressions : [])
+        .map(text)
+        .filter((expression) => expression !== null);
+    const intervals = (Array.isArray(source.intervals) ? source.intervals : [])
+        .filter((interval) => interval && text(interval.every) !== null)
+        .map((interval) => ({ every: text(interval.every), offset: text(interval.offset) }));
+
+    return {
+        cron,
+        intervals,
+        timezone: text(source.timezone),
+        empty: cron.length === 0 && intervals.length === 0,
+    };
+}
+
+// state is "recorded" (an outcome exists), "unreported" (the backend has a
+// last fire time but no outcome for it) or "never" (no fire recorded).
+export function scheduleLastResult(schedule) {
+    const outcome = schedule?.last_outcome;
+    const lastFiredAt = text(schedule?.last_fired_at);
+
+    if (outcome && typeof outcome === 'object' && text(outcome.outcome) !== null) {
+        const known = OUTCOMES[outcome.outcome];
+
+        return {
+            state: 'recorded',
+            at: text(outcome.at) ?? lastFiredAt,
+            outcome: outcome.outcome,
+            label: known ? known.label : null,
+            tone: known ? known.tone : 'muted',
+            reason: text(outcome.reason),
+            workflowId: text(outcome.workflow_id),
+        };
+    }
+
+    if (lastFiredAt !== null) {
+        return { state: 'unreported', at: lastFiredAt, outcome: null, label: null, tone: 'muted', reason: null, workflowId: null };
+    }
+
+    return { state: 'never', at: null, outcome: null, label: null, tone: 'muted', reason: null, workflowId: null };
+}
+
+export function outcomeLabel(outcome) {
+    return OUTCOMES[outcome]?.label ?? null;
+}
+
+export function backfillCounts(response) {
+    const results = Array.isArray(response?.results) ? response.results : [];
+    const count = (outcome) => results.filter((result) => result?.outcome === outcome).length;
+
+    return {
+        attempted: Number.isInteger(response?.fires_attempted) ? response.fires_attempted : results.length,
+        started: Number.isInteger(response?.started_count) ? response.started_count : count('started'),
+        skipped: Number.isInteger(response?.skipped_count) ? response.skipped_count : count('skipped'),
+        failed: Number.isInteger(response?.failed_count) ? response.failed_count : count('failed'),
+    };
+}
