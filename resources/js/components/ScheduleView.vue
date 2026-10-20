@@ -559,6 +559,7 @@ import axios from 'axios';
 import {
     OVERLAP_POLICIES,
     backfillCounts,
+    backfillIcon,
     formatIsoDuration,
     outcomeLabel,
     outcomeTone,
@@ -1170,7 +1171,7 @@ export default {
                             skipped: counts.skipped.toLocaleString(this.$i18n.locale),
                             failed: counts.failed.toLocaleString(this.$i18n.locale),
                         }),
-                    icon: counts.failed > 0 ? 'warning' : 'success',
+                    icon: backfillIcon(counts),
                     confirmButtonText: this.$t("Okay"),
                     background: this.swalBackground(),
                 });

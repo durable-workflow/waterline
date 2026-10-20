@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
     OVERLAP_POLICIES,
     backfillCounts,
+    backfillIcon,
     formatIsoDuration,
     outcomeTone,
     scheduleCadence,
@@ -123,4 +124,11 @@ test('outcome tones separate started, skipped and failed fires', () => {
     assert.equal(outcomeTone('skipped'), 'warning')
     assert.equal(outcomeTone('failed'), 'danger')
     assert.equal(outcomeTone('future_outcome'), 'muted')
+})
+
+test('a backfill that started nothing is not shown as a success', () => {
+    assert.equal(backfillIcon({ attempted: 2, started: 2, skipped: 0, failed: 0 }), 'success')
+    assert.equal(backfillIcon({ attempted: 1, started: 0, skipped: 1, failed: 0 }), 'info')
+    assert.equal(backfillIcon({ attempted: 0, started: 0, skipped: 0, failed: 0 }), 'info')
+    assert.equal(backfillIcon({ attempted: 3, started: 2, skipped: 0, failed: 1 }), 'warning')
 })

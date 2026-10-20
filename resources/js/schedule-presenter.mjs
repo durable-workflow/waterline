@@ -151,3 +151,13 @@ export function backfillCounts(response) {
         failed: Number.isInteger(response?.failed_count) ? response.failed_count : count('failed'),
     };
 }
+
+// A failed fire is a warning. A window where nothing started is information,
+// not success.
+export function backfillIcon(counts) {
+    if (counts.failed > 0) {
+        return 'warning';
+    }
+
+    return counts.started > 0 ? 'success' : 'info';
+}
