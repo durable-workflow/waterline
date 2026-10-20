@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.12.1 - 2026-10-20
+
+- Secondary text, status colors and badges reach WCAG AA contrast (4.5:1) in
+  the light and dark themes at desktop and mobile widths. Muted and soft text
+  use solid colors chosen for every surface they render on and stay below
+  primary text. Run-list ID lines, table headers, card subtitles, run-detail
+  metadata, sidebar labels and the failed, cancelled and completed badges
+  are readable in both themes.
+- Status pills, `text-*` utilities and outline buttons use status text colors
+  that stay readable on their own tints. The light theme's dark detail cards
+  (activities, exceptions and timers) show readable tables and metadata.
+
 ## 2.12.0 - 2026-10-20
 
 - Schedule rows are identified by namespace and schedule ID in embedded and
