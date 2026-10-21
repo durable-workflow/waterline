@@ -11,7 +11,7 @@ final class ServiceModeRequirements
 {
     public const SDK_QUALIFIED_VERSION = '2.1.0';
 
-    public const SDK_ONBOARDING_CONSTRAINT = '^2.0';
+    public const SDK_ONBOARDING_CONSTRAINT = '^2.0 || ^3.0';
 
     /**
      * @param  (callable(class-string): bool)|null  $classExists
@@ -47,7 +47,7 @@ final class ServiceModeRequirements
             return false;
         }
 
-        return preg_match('/\A2\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\z/D', $version) === 1
+        return preg_match('/\A[23]\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\z/D', $version) === 1
             || (preg_match('/\A2\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-rc\.[1-9][0-9]*\z/D', $version) === 1
                 && version_compare($version, '2.2.0-rc.1', '>='));
     }

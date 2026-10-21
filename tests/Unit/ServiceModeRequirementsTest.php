@@ -22,7 +22,7 @@ final class ServiceModeRequirementsTest extends TestCase
 
     public function testServiceModeAcceptsCompatibleStablePhpSdkReleases(): void
     {
-        foreach (['2.0.0', '2.0.2', '2.1.0', '2.99.99'] as $version) {
+        foreach (['2.0.0', '2.0.2', '2.1.0', '2.99.99', '3.0.0', '3.1.0', '3.99.99'] as $version) {
             ServiceModeRequirements::assertSdkInstalled(
                 static fn (string $class): bool => true,
                 static fn (): string => $version,
@@ -40,7 +40,7 @@ final class ServiceModeRequirementsTest extends TestCase
             $message = $exception->getMessage();
 
             $this->assertStringContainsString(
-                'composer require --with-all-dependencies "durable-workflow/sdk:^2.0"',
+                'composer require --with-all-dependencies "durable-workflow/sdk:^2.0 || ^3.0"',
                 $message,
             );
             $this->assertDoesNotMatchRegularExpression(
@@ -64,7 +64,7 @@ final class ServiceModeRequirementsTest extends TestCase
     public function testServiceModeRejectsHistoricalPrereleaseAndIncompatiblePhpSdkVersions(): void
     {
         foreach (['2.0.0-rc.54', '2.1.0-rc.1', '2.2.0-beta.1', '2.2.0-rc.0', '2.2.0-rc.01',
-            '1.99.0', '3.0.0', '2.0.x-dev', 'invalid'] as $version) {
+            '1.99.0', '4.0.0', '3.0.0-rc.1', '3.1.x-dev', '03.1.0', '3.01.0', '2.0.x-dev', 'invalid'] as $version) {
             try {
                 ServiceModeRequirements::assertSdkInstalled(
                     static fn (string $class): bool => true,
@@ -73,7 +73,7 @@ final class ServiceModeRequirementsTest extends TestCase
                 $this->fail("Incompatible PHP SDK {$version} must be rejected.");
             } catch (LogicException $exception) {
                 $this->assertStringContainsString(
-                    "requires a compatible durable-workflow/sdk release matching ^2.0, including cancellation release candidates; installed {$version}",
+                    "requires a compatible durable-workflow/sdk release matching ^2.0 || ^3.0, including cancellation release candidates; installed {$version}",
                     $exception->getMessage(),
                 );
             }
