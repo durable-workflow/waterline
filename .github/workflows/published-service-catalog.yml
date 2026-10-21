@@ -84,7 +84,20 @@ jobs:
           repository: durable-workflow/server
           ref: ${{ inputs.server_harness_commit }}
           path: server
+          fetch-depth: 0
           persist-credentials: false
+      - name: Require the harness commit to come from trusted Server main
+        working-directory: server
+        env:
+          HARNESS_COMMIT: ${{ inputs.server_harness_commit }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$HARNESS_COMMIT"
+          git fetch --no-tags --force origin '+refs/heads/main:refs/remotes/origin/main'
+          if ! git merge-base --is-ancestor "$HARNESS_COMMIT" refs/remotes/origin/main; then
+            echo 'server_harness_commit must be an ancestor of durable-workflow/server main' >&2
+            exit 1
+          fi
       - name: Check out the unchanged bounded report exporter
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
