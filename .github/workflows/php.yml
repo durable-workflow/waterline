@@ -40,6 +40,8 @@ jobs:
       uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
       with:
         python-version: "3.13"
+    - name: Bootstrap patched pip trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Install policy dependencies
       run: python -m pip install PyYAML==6.0.2
     - name: Require centrally approved immutable action commits
@@ -83,13 +85,26 @@ jobs:
         --base="$BASE_SHA"
         --head="$HEAD_SHA"
 
-    - name: Install isolated workflow policy parser
+    - name: Select the reviewed policy-parser runtime
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+
+    - name: Prepare isolated workflow policy parser
       run: |
         python -m venv "$RUNNER_TEMP/workflow-policy"
-        "$RUNNER_TEMP/workflow-policy/bin/python" -m pip install \
+        echo "$RUNNER_TEMP/workflow-policy/bin" >> "$GITHUB_PATH"
+
+    - name: Bootstrap isolated parser pip trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+
+    - name: Install isolated workflow policy parser
+      run: |
+        "$RUNNER_TEMP/workflow-policy/bin/python" -I -m pip --isolated install \
           --disable-pip-version-check \
           --no-cache-dir \
           --no-deps \
+          --require-hashes \
           --only-binary=:all: \
           --requirement scripts/ci/workflow-requirements.txt
 
@@ -119,12 +134,23 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - name: Select authenticated dependency trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        clients: pip,python,composer,curl,git
     - name: Install Composer for public package verification
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
       with:
         php-version: '8.3'
-        tools: composer
+        tools: composer:2.10.3
         coverage: none
+    - name: Verify Composer configuration before requests
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        working-directory: standalone
 
     - name: Audit the locked standalone Composer graph
       run: >-
@@ -144,6 +170,12 @@ jobs:
         --standalone-lock standalone/composer.lock
         --evidence waterline-release-identity-evidence.json
 
+    - name: Install stable release parser
+      run: >-
+        python -I -m pip --isolated install
+        --require-hashes --only-binary=:all: --no-deps
+        --requirement scripts/ci/workflow-requirements.txt
+
     - name: Validate stable release tooling
       run: |
         python -m py_compile \
@@ -159,6 +191,8 @@ jobs:
         python scripts/ci/release_example_contract.py
         python scripts/ci/standalone_lock_contract.py
 
+    - name: Verify Composer before clean-root resolution
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Solve both stable public Composer graphs from clean roots
       run: scripts/ci/check-onboarding-composer.sh
 
@@ -174,19 +208,30 @@ jobs:
       with:
         persist-credentials: false
 
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - name: Select authenticated dependency trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        clients: pip,python,composer,curl,git,npm
     - name: Install PHP and Composer
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
       with:
         php-version: '8.3'
         extensions: pdo_sqlite
-        tools: composer
+        tools: composer:2.10.3
         coverage: none
+    - name: Verify Composer configuration before requests
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
 
     - name: Install Node 22
       uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
       with:
-        node-version: '22'
+        node-version: '22.23.4'
 
+    - name: Verify Composer after runtime setup
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Install focused PHP test dependencies
       run: >-
         composer install
@@ -280,19 +325,34 @@ jobs:
         persist-credentials: false
         ref: main
 
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - name: Select authenticated dependency trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        clients: pip,python,composer,curl,git,npm
     - name: Install PHP 8.4 and Composer
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
       with:
         php-version: '8.4'
         extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, redis, bcmath
         coverage: none
-        tools: composer:v2
+        tools: composer:2.10.3
+    - name: Verify Composer configuration before requests
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        working-directory: sample-app
 
     - name: Install Node 22
       uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
       with:
-        node-version: '22'
+        node-version: '22.23.4'
 
+    - name: Verify Sample App Composer after runtime setup
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        working-directory: sample-app
     - name: Install the candidate in Sample App
       working-directory: sample-app
       env:
@@ -471,19 +531,34 @@ jobs:
         persist-credentials: false
         ref: main
 
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - name: Select authenticated dependency trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        clients: pip,python,composer,curl,git,npm
     - name: Install PHP 8.4 and Composer
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
       with:
         php-version: '8.4'
         extensions: mbstring, xml, ctype, iconv, intl, pdo, pdo_mysql, redis, bcmath
         coverage: none
-        tools: composer:v2
+        tools: composer:2.10.3
+    - name: Verify Composer configuration before requests
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        working-directory: sample-app
 
     - name: Install Node 22
       uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
       with:
-        node-version: '22'
+        node-version: '22.23.4'
 
+    - name: Verify Sample App Composer after runtime setup
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        working-directory: sample-app
     - name: Install the candidate in Sample App
       working-directory: sample-app
       env:
@@ -925,14 +1000,25 @@ jobs:
         fetch-depth: 10
         persist-credentials: false
 
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - name: Select authenticated dependency trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        clients: pip,python,composer,curl,git
     - name: Install PHP
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
       with:
         php-version: '8.2'
         extensions: pdo_sqlite
         coverage: none
+        tools: composer:2.10.3
       env:
         fail-fast: true
+
+    - name: Verify Composer configuration before requests
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
 
     - name: Validate Composer manifest
       run: composer validate --strict --no-check-all
@@ -945,12 +1031,18 @@ jobs:
         restore-keys: |
           ${{ github.event_name }}-${{ runner.os }}-php-8.2-
 
+    - name: Verify Composer after cache restoration
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Install maintained qualification dependencies
       run: composer install --prefer-dist --no-progress --no-interaction
 
+    - name: Verify Composer before the dependency audit
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Audit qualification dependencies
       run: composer audit --no-interaction
 
+    - name: Verify Composer before Workbench scaffolding
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Build Laravel 12 Workbench scaffold
       run: composer build
 
@@ -966,12 +1058,22 @@ jobs:
       with:
         persist-credentials: false
 
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - name: Select authenticated dependency trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        clients: pip,python,composer,curl,git
     - name: Install PHP 8.4
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
       with:
         php-version: '8.4'
         extensions: pdo_sqlite
         coverage: none
+        tools: composer:2.10.3
+    - name: Verify Composer configuration before requests
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
 
     - name: Install published Workflow 2.2.12
       run: |
@@ -979,6 +1081,8 @@ jobs:
         composer require --dev --prefer-dist --no-progress --no-interaction --no-scripts durable-workflow/workflow:2.2.12
         php -r 'require "vendor/autoload.php"; if (Composer\InstalledVersions::getPrettyVersion("durable-workflow/workflow") !== "2.2.12" || Workflow\V2\Support\PlatformConformanceSuite::workflowSourceRelease() !== "2.2.12") { exit(1); }'
 
+    - name: Verify Composer before the retention scaffold
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Verify retained-run pruning in embedded mode
       run: |
         composer build
@@ -998,11 +1102,19 @@ jobs:
       with:
         persist-credentials: false
 
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - name: Select authenticated dependency trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        clients: pip,python,composer,curl,git
     - name: Install matrix validator PHP
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
       with:
         php-version: '8.3'
         coverage: none
+        tools: composer:2.10.3
 
     - name: Validate and export dependency matrix
       id: matrix
@@ -1027,14 +1139,25 @@ jobs:
         fetch-depth: 10
         persist-credentials: false
 
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - name: Select authenticated dependency trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        clients: pip,python,composer,curl,git
     - name: Install PHP ${{ matrix.php }}
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
       with:
         php-version: ${{ matrix.php }}
         extensions: pdo_sqlite
         coverage: none
+        tools: composer:2.10.3
       env:
         fail-fast: true
+
+    - name: Verify Composer configuration before requests
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
 
     - name: Validate ${{ matrix.label }} dependency contract
       run: >-
@@ -1054,6 +1177,8 @@ jobs:
         key: >-
           ${{ github.event_name }}-${{ runner.os }}-laravel-${{ matrix.laravel }}-php-${{ matrix.php }}-testbench-${{ matrix.testbench }}-workbench-${{ matrix.workbench }}-phpunit-${{ matrix.phpunit }}-${{ hashFiles('composer.json') }}
 
+    - name: Verify Composer after compatibility cache restoration
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Pin ${{ matrix.label }} qualification dependencies
       run: |
         composer require --dev --no-update \
@@ -1062,6 +1187,8 @@ jobs:
           "orchestra/workbench:${{ matrix.workbench }}" \
           "phpunit/phpunit:${{ matrix.phpunit }}"
 
+    - name: Verify Composer before legacy resolution
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Resolve isolated legacy compatibility graph
       if: ${{ matrix.resolution == 'legacy' }}
       env:
@@ -1074,6 +1201,8 @@ jobs:
         --no-interaction
         --no-security-blocking
 
+    - name: Verify Composer before current resolution
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Resolve isolated current compatibility graph
       if: ${{ matrix.resolution == 'strict' }}
       env:
@@ -1096,9 +1225,13 @@ jobs:
         --scaffold=${{ matrix.scaffold }}
         --resolution=${{ matrix.resolution }}
 
+    - name: Verify Composer before the compatibility scaffold
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Build ${{ matrix.label }} Workbench scaffold
       run: composer build
 
+    - name: Verify Composer before compatibility execution
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Run ${{ matrix.label }} SQLite qualification
       run: composer test-sqlite
 
@@ -1238,14 +1371,25 @@ jobs:
       if: ${{ matrix.database == 'mssql' }}
       run: scripts/ci/install-sqlserver-odbc.sh
 
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - name: Select authenticated dependency trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        clients: pip,python,composer,curl,git
     - name: Install PHP database drivers
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
       with:
         php-version: '8.2'
         extensions: ${{ matrix.extension }}
         coverage: none
+        tools: composer:2.10.3
       env:
         fail-fast: true
+
+    - name: Verify Composer configuration before requests
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
 
     - name: Validate Composer manifest
       run: composer validate --strict --no-check-all
@@ -1258,6 +1402,8 @@ jobs:
         restore-keys: |
           ${{ github.event_name }}-${{ runner.os }}-php-8.2-
 
+    - name: Verify Composer after database cache restoration
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress --no-interaction
 
@@ -1287,6 +1433,8 @@ jobs:
         --shard-index="${{ matrix.shard-index }}"
         --shard-count="${{ matrix.shard-count }}"
 
+    - name: Verify Composer before database qualification
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Run ${{ matrix.label }} complete test scope
       timeout-minutes: ${{ matrix.step_timeout }}
       env:
@@ -1398,12 +1546,22 @@ jobs:
         ref: ${{ inputs.cancellation_workflow_commit }}
         path: candidate-workflow
         persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - name: Select authenticated dependency trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        clients: pip,python,composer,curl,git
     - name: Install PHP and Composer
       uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
       with:
         php-version: '8.4'
         extensions: pdo_sqlite, pdo_mysql, pdo_pgsql
         coverage: none
+        tools: composer:2.10.3
+    - name: Verify Composer configuration before requests
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Install the locked baseline and bind exact candidate source
       run: |
         set -euo pipefail

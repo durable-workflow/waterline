@@ -18,6 +18,24 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringContainsString('docker-php-ext-install mbstring pdo_mysql pdo_pgsql pdo_sqlite zip', $dockerfile);
     }
 
+    public function testImageChecksEffectiveTrustBeforeDownloadingPackages(): void
+    {
+        $stages = explode("\nFROM ", (string) file_get_contents(dirname(__DIR__, 2).'/Dockerfile'));
+        $verifier = 'php /usr/local/share/waterline/verify-ca-trust.php';
+        $builderCheck = strpos($stages[0], $verifier);
+        $builderDownload = strpos($stages[0], 'RUN composer install');
+        $runtimeCheck = strpos($stages[1], $verifier);
+        $runtimeDownload = strpos($stages[1], 'apk add');
+        $runtimeRecheck = strrpos($stages[1], $verifier);
+
+        foreach ([$builderCheck, $builderDownload, $runtimeCheck, $runtimeDownload, $runtimeRecheck] as $position) {
+            $this->assertIsInt($position);
+        }
+        $this->assertLessThan($builderDownload, $builderCheck);
+        $this->assertLessThan($runtimeDownload, $runtimeCheck);
+        $this->assertGreaterThan($runtimeDownload, $runtimeRecheck);
+    }
+
     public function testEntrypointUsesBoundedOfflineInitializationAndDropsPrivileges(): void
     {
         $entrypoint = (string) file_get_contents(dirname(__DIR__, 2).'/standalone/entrypoint.sh');
@@ -116,7 +134,7 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringContainsString('WATERLINE_IMAGE: durableworkflow/waterline:${{ github.ref_name }}', $workflow);
     }
 
-    public function testProtectedPublisherSharesRegistryCacheAndRecordsItsBuildBudget(): void
+    public function testProtectedPublisherRebuildsTrustLayersAndRecordsItsBuildBudget(): void
     {
         $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/service-image.yml');
 
@@ -124,11 +142,12 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringContainsString('SERVICE_IMAGE_ARM_CACHE: durableworkflow/waterline:buildcache-arm64-v1', $workflow);
         $this->assertStringContainsString('runs-on: ubuntu-24.04-arm', $workflow);
         $this->assertStringContainsString('needs: [qualify-release-source, smoke, prewarm_arm64]', $workflow);
-        $this->assertStringContainsString('docker buildx imagetools inspect "$CACHE_REF"', $workflow);
         $this->assertStringContainsString('type=registry,ref=${{ env.SERVICE_IMAGE_ARM_CACHE }}', $workflow);
         $this->assertStringContainsString('cache-to: ${{ steps.cache.outputs.cache_to }}', $workflow);
         $this->assertStringContainsString('mode=max,ignore-error=true', $workflow);
-        $this->assertStringContainsString('pull: true', $workflow);
+        $this->assertSame(2, substr_count($workflow, 'pull: true'));
+        $this->assertSame(2, substr_count($workflow, 'no-cache: true'));
+        $this->assertStringContainsString('cache_state=cold', $workflow);
         $this->assertStringContainsString('node scripts/ci/record-service-image-build-timing.mjs', $workflow);
         $this->assertStringContainsString('WARM_CACHE_TARGET_SECONDS: 600', $workflow);
         $this->assertStringContainsString('run: test "$MEETS_REPEAT_BUDGET" = true', $workflow);
@@ -136,7 +155,7 @@ final class ServiceImageReleaseContractTest extends TestCase
 
         $environment = strpos($workflow, 'environment: release-publication');
         $login = strpos($workflow, 'docker/login-action@');
-        $cache = strpos($workflow, 'name: Resolve the protected publication cache');
+        $cache = strpos($workflow, 'name: Record the cold security rebuild');
         $publish = strpos($workflow, 'name: Build and publish immutable version tag');
         $this->assertIsInt($environment);
         $this->assertIsInt($login);
@@ -212,6 +231,22 @@ final class ServiceImageReleaseContractTest extends TestCase
             $this->assertSame(631, $slowEvidence['timing']['build_seconds']);
             $this->assertFalse($slowEvidence['timing']['meets_repeat_budget']);
             $this->assertNull($slowEvidence['timing']['minimum_improvement_seconds']);
+
+            $coldCommand = str_replace('CACHE_STATE=warm', 'CACHE_STATE=cold', $slowCommand);
+            exec($coldCommand, $coldProcessOutput, $coldStatus);
+            $this->assertSame(0, $coldStatus, implode("\n", $coldProcessOutput));
+
+            $coldEvidence = json_decode(
+                (string) file_get_contents($temporary),
+                true,
+                flags: JSON_THROW_ON_ERROR,
+            );
+            $this->assertSame('cold', $coldEvidence['cache']['state']);
+            $this->assertSame(631, $coldEvidence['timing']['build_seconds']);
+            $this->assertNull($coldEvidence['timing']['meets_repeat_budget']);
+            $this->assertNull($coldEvidence['timing']['minimum_improvement_seconds']);
+            $this->assertNull($coldEvidence['timing']['minimum_improvement_percent']);
+            $this->assertStringContainsString('meets_repeat_budget=not-applicable', (string) file_get_contents($output));
 
             $missingArmTime = str_replace('NATIVE_ARM_PREWARM_SECONDS=30 ', '', $command);
             exec($missingArmTime.' 2>/dev/null', $missingOutput, $missingStatus);

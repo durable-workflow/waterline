@@ -2,6 +2,7 @@
 set -eu
 
 image="${WATERLINE_IMAGE:-waterline-service-smoke:local}"
+. scripts/ci/service-image-features.sh
 container="waterline-service-smoke-${GITHUB_RUN_ID:-local}-$$"
 memory_database_container="${container}-memory-database"
 server_container="${container}-server"
@@ -144,6 +145,17 @@ fi
 if [ -n "$expected_waterline_version" ] && [ "$image_release" != "$expected_waterline_version" ]; then
     echo "Service image release label [$image_release] does not match [$expected_waterline_version]." >&2
     exit 1
+fi
+
+if image_requires_brotli_guard "$image_release"; then
+    docker run --rm --entrypoint php "$image" /usr/local/share/waterline/verify-brotli.php
+else
+    brotli_feature_status=$?
+    if [ "$brotli_feature_status" -ne 1 ]; then
+        echo 'Cannot determine the decoder contract for this image version.' >&2
+        exit 1
+    fi
+    echo 'Historical application smoke only: this image predates decoder qualification.' >&2
 fi
 
 if docker run --name "$memory_database_container" \

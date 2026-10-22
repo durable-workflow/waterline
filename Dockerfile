@@ -1,4 +1,10 @@
-FROM composer:2.8 AS vendor
+FROM composer:2.10.3@sha256:da624c2c705d54e2f5a9bb77a5dc6c7d091711433ebefd7035672e84c2010fee AS vendor
+
+COPY docker/verify-ca-trust.php docker/verify-brotli.php /usr/local/share/waterline/
+RUN php /usr/local/share/waterline/verify-ca-trust.php /usr/bin/composer \
+    && apk add --no-cache --upgrade 'brotli-libs>=1.2.1-r0' \
+    && php /usr/local/share/waterline/verify-brotli.php \
+    && php /usr/local/share/waterline/verify-ca-trust.php /usr/bin/composer
 
 WORKDIR /build/standalone
 COPY standalone/composer.json standalone/composer.lock ./
@@ -34,12 +40,20 @@ RUN composer dump-autoload \
             exit(1); \
         }'
 
-FROM php:8.3-cli-alpine
+FROM php:8.3.36-cli-alpine@sha256:2424931b23ed08b65764a0efe258f9b62fe4e5bc363f685c9d39e7607433381e
 
-RUN apk add --no-cache libpq libzip oniguruma sqlite-libs su-exec \
+COPY docker/verify-ca-trust.php docker/verify-brotli.php /usr/local/share/waterline/
+
+RUN php -r 'exit(PHP_MAJOR_VERSION === 8 && PHP_MINOR_VERSION === 3 && PHP_VERSION_ID >= 80336 ? 0 : 1);' \
+    && php /usr/local/share/waterline/verify-ca-trust.php \
+    && apk add --no-cache --upgrade 'brotli-libs>=1.2.1-r0' \
+    && php /usr/local/share/waterline/verify-brotli.php \
+    && apk add --no-cache libpq libzip oniguruma sqlite-libs su-exec \
     && apk add --no-cache --virtual .build-deps libpq-dev libzip-dev oniguruma-dev sqlite-dev \
     && docker-php-ext-install mbstring pdo_mysql pdo_pgsql pdo_sqlite zip \
-    && apk del .build-deps
+    && apk del .build-deps \
+    && php /usr/local/share/waterline/verify-ca-trust.php \
+    && php /usr/local/share/waterline/verify-brotli.php
 
 WORKDIR /app
 COPY standalone /app
