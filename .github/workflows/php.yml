@@ -1001,7 +1001,7 @@ jobs:
     name: Resolve Laravel dependency matrix
     needs: [classify, build]
     if: ${{ needs.classify.outputs.qualification-class == 'complete' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
@@ -1027,7 +1027,7 @@ jobs:
     name: ${{ matrix.label }} compatibility
     needs: [classify, build, laravel-matrix]
     if: ${{ needs.classify.outputs.qualification-class == 'complete' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
 
     strategy:

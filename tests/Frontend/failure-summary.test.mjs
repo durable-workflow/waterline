@@ -3,6 +3,30 @@ import test from 'node:test'
 import { failureSummary, failureEventIndex } from '../../resources/js/failure-summary.mjs'
 import { appendRunHistoryPage } from '../../resources/js/run-history.mjs'
 
+test('service task replay failures remain visible without inventing a history failure event', () => {
+    const flow = {
+        engine_source: 'service', recent_failures: [], timeline: [],
+        latest_workflow_task_failure: {
+            task_id: 'task-original', type: 'WorkflowEntryArgumentsMismatchError',
+            reason: 'workflow_entry_arguments_mismatch',
+            message: 'workflow_entry_arguments_mismatch: restore compatible code and repair.',
+            recorded_at: '2026-10-22T00:03:26.912358Z', replay_blocked: true,
+        },
+    }
+    const summary = failureSummary(flow)
+    assert.equal(summary.state, 'available')
+    assert.equal(summary.rows.length, 1)
+    assert.equal(summary.rows[0].type, 'WorkflowEntryArgumentsMismatchError')
+    assert.match(summary.rows[0].message, /workflow_entry_arguments_mismatch/)
+    assert.equal(summary.rows[0].source_id, 'task-original')
+    assert.equal(summary.rows[0].recorded_at, flow.latest_workflow_task_failure.recorded_at)
+    assert.equal(summary.rows[0].event_sequence, null)
+    assert.equal(summary.rows[0].history_page_token, null)
+    assert.equal(summary.rows[0].handled, null)
+    assert.equal(failureSummary({ ...flow, engine_source: 'v2', exceptions: [] }).rows.length, 0)
+    assert.equal(failureSummary({ ...flow, latest_workflow_task_failure: { message: 'unbound' } }).rows.length, 0)
+})
+
 const event = {
     sequence: 42, event_type: 'ActivityFailed',
     payload: { failure_id: 'failure-1', activity_execution_id: 'activity-1' },
