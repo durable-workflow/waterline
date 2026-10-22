@@ -30,7 +30,7 @@ jobs:
         with:
           python-version: '3.13'
       - name: Select authenticated dependency trust
-        uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
+        uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
         with:
           clients: pip,python,composer,curl,git
       - name: Install PHP and Composer
@@ -42,13 +42,13 @@ jobs:
           tools: composer:2.10.3
           coverage: none
       - name: Verify Waterline Composer configuration before requests
-        uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
+        uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
 
       - name: Install the Waterline tuple dependencies
         run: composer install --prefer-dist --no-progress --no-interaction
 
       - name: Verify Server Composer configuration before requests
-        uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
+        uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
         with:
           working-directory: server
       - name: Install the current Server dependencies
