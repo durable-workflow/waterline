@@ -85,6 +85,11 @@ jobs:
         --base="$BASE_SHA"
         --head="$HEAD_SHA"
 
+    - name: Select the reviewed policy-parser runtime
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+
     - name: Prepare isolated workflow policy parser
       run: |
         python -m venv "$RUNNER_TEMP/workflow-policy"
