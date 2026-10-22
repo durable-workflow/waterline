@@ -6,12 +6,27 @@ const FAILURE_EVENTS = new Set([
 
 const scalar = value => typeof value === 'string' && value.trim() ? value.slice(0, 512) : null
 
+function workflowTaskFailure(flow) {
+    const failure = flow.latest_workflow_task_failure
+    if (flow.engine_source !== 'service' || !scalar(failure?.task_id) || !scalar(failure?.message)) {
+        return []
+    }
+    return [{
+        id: `workflow-task:${failure.task_id}`,
+        exception_class: failure.type,
+        message: failure.message,
+        source_kind: 'workflow_task',
+        source_id: failure.task_id,
+        created_at: failure.recorded_at,
+    }]
+}
+
 // Use only the selected run's response and loaded history window. This does not
 // fetch history or infer that an absent event never happened.
 export function failureSummary(flow) {
     const recent = flow.engine_source === 'service' || flow.read_mode === 'bounded'
     const source = recent ? flow.recent_failures : flow.exceptions
-    const known = Array.isArray(source) ? source : []
+    const known = [...workflowTaskFailure(flow), ...(Array.isArray(source) ? source : [])]
     const selected = recent ? known.slice(0, 20) : known.slice(-20).reverse()
     const events = new Map()
 
