@@ -39,13 +39,14 @@ RUN composer dump-autoload \
 
 FROM php:8.3.36-cli-alpine@sha256:2424931b23ed08b65764a0efe258f9b62fe4e5bc363f685c9d39e7607433381e
 
-RUN apk add --no-cache libpq libzip oniguruma sqlite-libs su-exec \
+COPY docker/verify-ca-trust.php /usr/local/share/waterline/verify-ca-trust.php
+
+RUN php -r 'exit(PHP_MAJOR_VERSION === 8 && PHP_MINOR_VERSION === 3 && PHP_VERSION_ID >= 80336 ? 0 : 1);' \
+    && php /usr/local/share/waterline/verify-ca-trust.php \
+    && apk add --no-cache libpq libzip oniguruma sqlite-libs su-exec \
     && apk add --no-cache --virtual .build-deps libpq-dev libzip-dev oniguruma-dev sqlite-dev \
     && docker-php-ext-install mbstring pdo_mysql pdo_pgsql pdo_sqlite zip \
-    && apk del .build-deps
-
-COPY docker/verify-ca-trust.php /usr/local/share/waterline/verify-ca-trust.php
-RUN php -r 'exit(PHP_MAJOR_VERSION === 8 && PHP_MINOR_VERSION === 3 && PHP_VERSION_ID >= 80336 ? 0 : 1);' \
+    && apk del .build-deps \
     && php /usr/local/share/waterline/verify-ca-trust.php
 
 WORKDIR /app
