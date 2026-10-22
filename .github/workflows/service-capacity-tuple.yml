@@ -26,18 +26,31 @@ jobs:
           path: server
           persist-credentials: false
 
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Select authenticated dependency trust
+        uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
+        with:
+          clients: pip,python,composer,curl,git
       - name: Install PHP and Composer
         # shivammathur/setup-php v2
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
         with:
           php-version: '8.3'
           extensions: pdo_sqlite
-          tools: composer
+          tools: composer:2.10.3
           coverage: none
+      - name: Verify Waterline Composer configuration before requests
+        uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
 
       - name: Install the Waterline tuple dependencies
         run: composer install --prefer-dist --no-progress --no-interaction
 
+      - name: Verify Server Composer configuration before requests
+        uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
+        with:
+          working-directory: server
       - name: Install the current Server dependencies
         run: >-
           composer install --working-dir=server
