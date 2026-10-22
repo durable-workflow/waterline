@@ -95,10 +95,11 @@ jobs:
 
     - name: Install isolated workflow policy parser
       run: |
-        "$RUNNER_TEMP/workflow-policy/bin/python" -m pip install \
+        "$RUNNER_TEMP/workflow-policy/bin/python" -I -m pip --isolated install \
           --disable-pip-version-check \
           --no-cache-dir \
           --no-deps \
+          --require-hashes \
           --only-binary=:all: \
           --requirement scripts/ci/workflow-requirements.txt
 
@@ -163,6 +164,12 @@ jobs:
         --standalone-composer standalone/composer.json
         --standalone-lock standalone/composer.lock
         --evidence waterline-release-identity-evidence.json
+
+    - name: Install stable release parser
+      run: >-
+        python -I -m pip --isolated install
+        --require-hashes --only-binary=:all: --no-deps
+        --requirement scripts/ci/workflow-requirements.txt
 
     - name: Validate stable release tooling
       run: |
