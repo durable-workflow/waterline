@@ -12,6 +12,7 @@ require_once dirname(__DIR__, 2).'/docker/verify-brotli.php';
 
 final class ServiceImageBrotliTest extends TestCase
 {
+    /** @dataProvider versions */
     #[DataProvider('versions')]
     public function testDecoderFloorRejectsUnpatchedAndUnknownVersions(string $version, bool $allowed): void
     {
@@ -42,5 +43,24 @@ final class ServiceImageBrotliTest extends TestCase
         }
         $this->assertLessThan(strpos($stages[0], 'RUN composer install'), strpos($stages[0], 'php /usr/local/share/waterline/verify-brotli.php'));
         $this->assertGreaterThan(strpos($stages[1], 'apk del .build-deps'), strrpos($stages[1], 'php /usr/local/share/waterline/verify-brotli.php'));
+    }
+
+    /** @dataProvider imageVersions */
+    #[DataProvider('imageVersions')]
+    public function testHistoricalSmokeCannotBeMistakenForDecoderQualification(string $version, int $expected): void
+    {
+        $helper = dirname(__DIR__, 2).'/scripts/ci/service-image-features.sh';
+        $process = proc_open(['sh', '-c', '. "$1"; image_requires_brotli_guard "$2"', '--', $helper, $version], [], $pipes);
+        $this->assertIsResource($process);
+        $this->assertSame($expected, proc_close($process));
+    }
+
+    public static function imageVersions(): array
+    {
+        return [
+            ['0.0.0-service-smoke', 0], ['2.12.2', 1], ['2.12.3', 0],
+            ['2.12.10', 0], ['2.13.0-rc.1', 0], ['2.0.0-rc.32', 1],
+            ['unknown', 2], ['2.12.bad', 2], ['2.012.3', 2],
+        ];
     }
 }
