@@ -179,6 +179,8 @@ jobs:
         python scripts/ci/release_example_contract.py
         python scripts/ci/standalone_lock_contract.py
 
+    - name: Verify Composer before clean-root resolution
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Solve both stable public Composer graphs from clean roots
       run: scripts/ci/check-onboarding-composer.sh
 
@@ -214,8 +216,10 @@ jobs:
     - name: Install Node 22
       uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
       with:
-        node-version: '22'
+        node-version: '22.23.4'
 
+    - name: Verify Composer after runtime setup
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Install focused PHP test dependencies
       run: >-
         composer install
@@ -331,8 +335,12 @@ jobs:
     - name: Install Node 22
       uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
       with:
-        node-version: '22'
+        node-version: '22.23.4'
 
+    - name: Verify Sample App Composer after runtime setup
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
+      with:
+        working-directory: sample-app
     - name: Install the candidate in Sample App
       working-directory: sample-app
       env:
@@ -533,8 +541,12 @@ jobs:
     - name: Install Node 22
       uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6
       with:
-        node-version: '22'
+        node-version: '22.23.4'
 
+    - name: Verify Sample App Composer after runtime setup
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
+      with:
+        working-directory: sample-app
     - name: Install the candidate in Sample App
       working-directory: sample-app
       env:
@@ -1007,12 +1019,18 @@ jobs:
         restore-keys: |
           ${{ github.event_name }}-${{ runner.os }}-php-8.2-
 
+    - name: Verify Composer after cache restoration
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Install maintained qualification dependencies
       run: composer install --prefer-dist --no-progress --no-interaction
 
+    - name: Verify Composer before the dependency audit
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Audit qualification dependencies
       run: composer audit --no-interaction
 
+    - name: Verify Composer before Workbench scaffolding
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Build Laravel 12 Workbench scaffold
       run: composer build
 
@@ -1051,6 +1069,8 @@ jobs:
         composer require --dev --prefer-dist --no-progress --no-interaction --no-scripts durable-workflow/workflow:2.2.12
         php -r 'require "vendor/autoload.php"; if (Composer\InstalledVersions::getPrettyVersion("durable-workflow/workflow") !== "2.2.12" || Workflow\V2\Support\PlatformConformanceSuite::workflowSourceRelease() !== "2.2.12") { exit(1); }'
 
+    - name: Verify Composer before the retention scaffold
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Verify retained-run pruning in embedded mode
       run: |
         composer build
@@ -1145,6 +1165,8 @@ jobs:
         key: >-
           ${{ github.event_name }}-${{ runner.os }}-laravel-${{ matrix.laravel }}-php-${{ matrix.php }}-testbench-${{ matrix.testbench }}-workbench-${{ matrix.workbench }}-phpunit-${{ matrix.phpunit }}-${{ hashFiles('composer.json') }}
 
+    - name: Verify Composer after compatibility cache restoration
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Pin ${{ matrix.label }} qualification dependencies
       run: |
         composer require --dev --no-update \
@@ -1153,6 +1175,8 @@ jobs:
           "orchestra/workbench:${{ matrix.workbench }}" \
           "phpunit/phpunit:${{ matrix.phpunit }}"
 
+    - name: Verify Composer before legacy resolution
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Resolve isolated legacy compatibility graph
       if: ${{ matrix.resolution == 'legacy' }}
       env:
@@ -1165,6 +1189,8 @@ jobs:
         --no-interaction
         --no-security-blocking
 
+    - name: Verify Composer before current resolution
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Resolve isolated current compatibility graph
       if: ${{ matrix.resolution == 'strict' }}
       env:
@@ -1187,9 +1213,13 @@ jobs:
         --scaffold=${{ matrix.scaffold }}
         --resolution=${{ matrix.resolution }}
 
+    - name: Verify Composer before the compatibility scaffold
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Build ${{ matrix.label }} Workbench scaffold
       run: composer build
 
+    - name: Verify Composer before compatibility execution
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Run ${{ matrix.label }} SQLite qualification
       run: composer test-sqlite
 
@@ -1360,6 +1390,8 @@ jobs:
         restore-keys: |
           ${{ github.event_name }}-${{ runner.os }}-php-8.2-
 
+    - name: Verify Composer after database cache restoration
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Install dependencies
       run: composer install --prefer-dist --no-progress --no-interaction
 
@@ -1389,6 +1421,8 @@ jobs:
         --shard-index="${{ matrix.shard-index }}"
         --shard-count="${{ matrix.shard-count }}"
 
+    - name: Verify Composer before database qualification
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@4414f6fcdbb8cca75dac1358db5af9aadd8c65f6 # clean-trust
     - name: Run ${{ matrix.label }} complete test scope
       timeout-minutes: ${{ matrix.step_timeout }}
       env:
