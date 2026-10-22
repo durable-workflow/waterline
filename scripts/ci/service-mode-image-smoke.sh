@@ -113,6 +113,7 @@ else
 fi
 
 image_revision="$(image_label org.opencontainers.image.revision)"
+docker run --rm --entrypoint php "$image" /usr/local/share/waterline/verify-brotli.php
 image_release="$(image_label dev.durable-workflow.release.tag)"
 workflow_streams_required=0
 
