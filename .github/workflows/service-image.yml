@@ -74,6 +74,7 @@ jobs:
             SOURCE_COMMIT=${{ steps.source.outputs.commit }}
           platforms: linux/arm64
           pull: true
+          no-cache: true
           push: false
           cache-from: type=registry,ref=${{ env.SERVICE_IMAGE_ARM_CACHE }}
           cache-to: type=registry,ref=${{ env.SERVICE_IMAGE_ARM_CACHE }},mode=max
@@ -105,18 +106,15 @@ jobs:
           NATIVE_SOURCE_COMMIT: ${{ needs.prewarm_arm64.outputs.source_commit }}
           RELEASE_SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
         run: test "$NATIVE_SOURCE_COMMIT" = "$RELEASE_SOURCE_COMMIT"
-      - name: Resolve the protected publication cache
+      - name: Record the cold security rebuild
         id: cache
         env:
           CACHE_REF: ${{ env.SERVICE_IMAGE_CACHE }}
         run: |
           set -euo pipefail
+          # Rebuild trust-sensitive layers instead of consuming older caches.
           cache_state=cold
           cache_from=
-          if docker buildx imagetools inspect "$CACHE_REF" >/dev/null 2>&1; then
-            cache_state=warm
-            cache_from="type=registry,ref=$CACHE_REF"
-          fi
           {
             printf 'ref=%s\n' "$CACHE_REF"
             printf 'state=%s\n' "$cache_state"
@@ -136,6 +134,7 @@ jobs:
             SOURCE_COMMIT=${{ steps.source.outputs.commit }}
           platforms: ${{ env.SERVICE_IMAGE_PLATFORMS }}
           pull: true
+          no-cache: true
           push: true
           tags: durableworkflow/waterline:${{ github.ref_name }}
           cache-from: |
