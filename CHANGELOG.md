@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 2.13.0 - 2026-10-23
+
+- Embedded Laravel applications can grant separate operator permissions for
+  messages, repair, cancellation, termination, archival and schedule changes.
+  Optional Laravel gates and a global read-only setting protect every mutation
+  route; viewers keep read access and receive clear reasons for unavailable
+  actions. Existing applications retain their behavior until they opt in.
 
 - Secondary text, status colors and badges reach WCAG AA contrast (4.5:1) in
   the light and dark themes at desktop and mobile widths. Muted and soft text

@@ -31,6 +31,130 @@ permissions:
   contents: read
 
 jobs:
+  embedded:
+    name: Published Composer consumer and browser
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/2.'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_WATERLINE_VERSION: ${{ inputs.release_version }}
+      EXPECTED_WATERLINE_SOURCE: ${{ inputs.source_commit }}
+      WATERLINE_ACCEPTANCE_URL: http://127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Bind the consumer to the immutable release
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_WATERLINE_VERSION" =~ ^2\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$EXPECTED_WATERLINE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin "refs/tags/$EXPECTED_WATERLINE_VERSION"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$EXPECTED_WATERLINE_SOURCE"
+          printf 'WATERLINE_CONSUMER_ROOT=%s\n' "$RUNNER_TEMP/waterline-consumer" >> "$GITHUB_ENV"
+          printf 'EXPECTED_WORKFLOW_VERSION=%s\n' "$(jq -r '.versions.workflow' release/current-product-tuple.json)" >> "$GITHUB_ENV"
+      - name: Select authenticated dependency trust
+        uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+        with:
+          clients: composer,curl,git
+      - name: Install PHP and Composer
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite
+          tools: composer:v2
+          coverage: none
+      - name: Install fixed Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.22.1'
+      - name: Verify Node version and raw TLS roots
+        run: node .devcontainer/docker/verify-node-runtime.mjs
+      - name: Prepare the ordinary published consumer
+        shell: bash
+        run: |
+          mkdir -p "$WATERLINE_CONSUMER_ROOT"/{bootstrap/cache,storage/framework/views,storage/logs,public}
+          touch "$WATERLINE_CONSUMER_ROOT/database.sqlite"
+          cp scripts/ci/published-embedded-host.php "$WATERLINE_CONSUMER_ROOT/host.php"
+          php -r '
+            $manifest = [
+              "name" => "durable-workflow/published-waterline-acceptance",
+              "require" => [
+                "php" => "^8.3",
+                "durable-workflow/waterline" => getenv("EXPECTED_WATERLINE_VERSION"),
+                "durable-workflow/workflow" => getenv("EXPECTED_WORKFLOW_VERSION"),
+                "laravel/framework" => "12.70.1",
+              ],
+              "config" => ["allow-plugins" => new stdClass(), "preferred-install" => "dist"],
+              "minimum-stability" => "stable",
+              "prefer-stable" => true,
+            ];
+            file_put_contents(getenv("WATERLINE_CONSUMER_ROOT")."/composer.json", json_encode($manifest, JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR).PHP_EOL);
+          '
+          printf '%s\n' '{"private":true}' > "$WATERLINE_CONSUMER_ROOT/package.json"
+      - name: Verify Composer before published package requests
+        uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      - name: Install exact published packages without source overrides
+        working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
+        run: composer install --prefer-dist --no-interaction --no-progress
+      - name: Install pinned browser tooling
+        working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
+        run: |
+          npm install --ignore-scripts --no-save --package-lock=false playwright@1.64.0
+          npx --no-install playwright install chromium --with-deps
+      - name: Seed real outcomes and publish installed assets
+        working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
+        run: |
+          mkdir -p published-embedded-evidence
+          php host.php seed > published-embedded-evidence/installed-before.json
+          php -S 127.0.0.1:8080 host.php > published-embedded-evidence/server.log 2>&1 &
+          echo $! > published-embedded-evidence/server.pid
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/waterline > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Exercise installed permissions and actual controls
+        working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
+        run: node "$GITHUB_WORKSPACE/scripts/ci/published-embedded-browser.mjs"
+      - name: Measure all installed contrast surfaces
+        working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
+        run: >-
+          node "$GITHUB_WORKSPACE/scripts/ci/theme-contrast-visual.mjs"
+          --base-url "$WATERLINE_ACCEPTANCE_URL"
+          --output-dir published-embedded-evidence/contrast
+      - name: Verify stored outcomes after acceptance
+        working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
+        run: |
+          php host.php audit > published-embedded-evidence/installed-after.json
+          php -r '
+            $before = json_decode(file_get_contents("published-embedded-evidence/installed-before.json"), true, flags: JSON_THROW_ON_ERROR);
+            $after = json_decode(file_get_contents("published-embedded-evidence/installed-after.json"), true, flags: JSON_THROW_ON_ERROR);
+            $commands = $after["commands"];
+            $signal = array_pop($commands);
+            if ($before["runs"] !== $after["runs"] || $before["assets"] !== $after["assets"] || $after["schedule"] !== "paused" || $commands !== $before["commands"] || ($signal["command_type"] ?? null) !== "signal" || ($signal["status"] ?? null) !== "accepted") {
+              throw new RuntimeException("Installed acceptance changed unexpected state or missed the accepted command.");
+            }
+          '
+      - name: Retain installed package and browser evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: waterline-published-embedded-${{ inputs.release_version }}-${{ github.run_id }}
+          path: ${{ env.WATERLINE_CONSUMER_ROOT }}/published-embedded-evidence
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Stop the acceptance application
+        if: always()
+        shell: bash
+        run: |
+          if test -f "$WATERLINE_CONSUMER_ROOT/published-embedded-evidence/server.pid"; then
+            kill "$(cat "$WATERLINE_CONSUMER_ROOT/published-embedded-evidence/server.pid")" || true
+          fi
+
   qualify:
     name: Published image on ${{ matrix.platform }}
     if: >-
