@@ -17,6 +17,18 @@ test "$GITHUB_SHA" = "$PUBLISHER_COMMIT"
 
 work="$RUNNER_TEMP/waterline-publication"
 mkdir -p "$work"
+check_registry_version() {
+    local expected actual
+    expected="$(jq -r .image_digest "$work/verified.json")"
+    if skopeo inspect --raw --authfile "$work/anonymous-auth.json" \
+        docker://docker.io/durableworkflow/waterline:2.13.2 > "$work/existing-index.json" 2> "$work/existing-index-error.txt"; then
+        actual="sha256:$(sha256sum "$work/existing-index.json" | cut -d ' ' -f 1)"
+        test "$actual" = "$expected"
+    elif ! rg --ignore-case 'manifest unknown|manifest_unknown' "$work/existing-index-error.txt" >/dev/null; then
+        echo 'Cannot establish fixed registry tag absence; publication refused.' >&2
+        return 1
+    fi
+}
 gh api repos/durable-workflow/waterline/git/ref/tags/2.13.2 > "$work/tag-ref.json"
 if [[ "$(jq -r .object.type "$work/tag-ref.json")" = tag ]]; then
     tag_object="$(jq -r .object.sha "$work/tag-ref.json")"
@@ -37,6 +49,7 @@ python -I scripts/ci/oci_release.py plan --directory "$work" --output "$work/pla
 
 if [[ "$mode" = recheck ]]; then
     cmp --silent "$work/plan.json" "$work/plan-next.json"
+    check_registry_version
     exit 0
 fi
 mv "$work/plan-next.json" "$work/plan.json"
@@ -57,13 +70,4 @@ skopeo copy --all --preserve-digests --authfile "$work/anonymous-auth.json" \
     "oci:$work/verified-oci:2.13.2" "oci:$work/roundtrip-oci:2.13.2"
 test "$(cat "$work/roundtrip-digest.txt")" = "$expected"
 rm -r -- "$work/roundtrip-oci"
-if skopeo inspect --raw --authfile "$work/anonymous-auth.json" \
-    docker://docker.io/durableworkflow/waterline:2.13.2 > "$work/existing-index.json" 2> "$work/existing-index-error.txt"; then
-    actual="sha256:$(sha256sum "$work/existing-index.json" | cut -d ' ' -f 1)"
-    test "$actual" = "$expected"
-else
-    if ! rg --ignore-case 'manifest unknown|manifest_unknown' "$work/existing-index-error.txt" >/dev/null; then
-        echo 'Cannot establish fixed registry tag absence; publication refused.' >&2
-        exit 1
-    fi
-fi
+check_registry_version
