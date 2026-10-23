@@ -4,6 +4,20 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_digest:
+        description: Exact published Waterline image index digest
+        required: true
+        type: string
+      release_version:
+        description: Exact stable Waterline release tag
+        required: true
+        type: string
+      source_commit:
+        description: Exact commit of the published tag
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -11,6 +25,7 @@ permissions:
 jobs:
   arm64-build:
     name: Build service image on native arm64
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 20
     steps:
@@ -36,6 +51,7 @@ jobs:
 
   smoke:
     name: Self-contained service image smoke
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -52,3 +68,12 @@ jobs:
           WATERLINE_IMAGE="durableworkflow/waterline:${EXPECTED_WATERLINE_VERSION}"
           export WATERLINE_IMAGE EXPECTED_WATERLINE_VERSION
           SERVICE_IMAGE_SKIP_BUILD=1 scripts/ci/service-mode-image-smoke.sh
+
+  qualify-published:
+    name: Qualify the selected published image
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/published-image-qualification.yml # local
+    with:
+      image_digest: ${{ inputs.image_digest }}
+      release_version: ${{ inputs.release_version }}
+      source_commit: ${{ inputs.source_commit }}

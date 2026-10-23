@@ -34,7 +34,7 @@ jobs:
   qualify:
     name: Published image on ${{ matrix.platform }}
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/2.'))
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
