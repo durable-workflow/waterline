@@ -86,6 +86,7 @@
     "added last minute,": "件を直近1分間に追加、",
     "Added vs dispatched durable tasks.": "永続タスクの追加数とディスパッチ数。",
     "All statuses": "すべての状態",
+    "Schedule visibility query": "スケジュールの可視性クエリ",
     "All workflow types": "すべてのワークフロー型",
     "and then rerun that command without": "その後、次の指定を外して同じコマンドを再実行してください:",
     "Any outcome": "すべての結果",
