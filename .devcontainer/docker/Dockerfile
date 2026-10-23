@@ -1,11 +1,11 @@
 FROM composer:2.10.3@sha256:af98f42dfff7c68ba8d53c2164fd9fde1087b7d449514baa38c418b1f6bc4bac AS composer
+FROM node:24.22.1-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 AS node
 
 FROM ubuntu:22.04
 
 LABEL maintainer="Taylor Otwell"
 
 ARG WWWGROUP
-ARG NODE_VERSION=24
 ARG POSTGRES_VERSION=15
 
 WORKDIR /var/www/html
@@ -14,6 +14,10 @@ ENV DEBIAN_FRONTEND noninteractive
 ENV TZ=UTC
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+COPY --from=node /usr/local/ /usr/local/
+COPY --from=node /opt/yarn-v1.22.22/ /opt/yarn-v1.22.22/
+COPY verify-node-runtime.mjs /usr/local/share/waterline/verify-node-runtime.mjs
 
 RUN apt-get update \
     && apt-get install -y gnupg gosu curl ca-certificates zip unzip git sqlite3 libcap2-bin libpng-dev python2 dnsutils sudo supervisor \
@@ -30,21 +34,10 @@ RUN apt-get update \
        php8.4-ldap \
        php8.4-msgpack php8.4-igbinary php8.4-redis php8.4-swoole \
        php8.4-memcached php8.4-pcov php8.4-xdebug \
-    && curl -fsSL --proto '=https' --proto-redir '=https' \
-       https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o /tmp/nodesource.asc \
-    && nodesource_fingerprint="$(gpg --batch --show-keys --with-colons /tmp/nodesource.asc \
-       | awk -F: '$1 == "fpr" { print $10; exit }')" \
-    && test "$nodesource_fingerprint" = '6F71F525282841EEDAF851B42F59B5F99B1BE0B4' \
-    && gpg --batch --dearmor -o /etc/apt/keyrings/nodesource.gpg /tmp/nodesource.asc \
-    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_VERSION}.x nodistro main" > /etc/apt/sources.list.d/nodesource.list \
-    && apt-get update \
-    && apt-get install -y nodejs \
-    && curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | gpg --dearmor | tee /etc/apt/keyrings/yarn.gpg >/dev/null \
-    && echo "deb [signed-by=/etc/apt/keyrings/yarn.gpg] https://dl.yarnpkg.com/debian/ stable main" > /etc/apt/sources.list.d/yarn.list \
+    && node /usr/local/share/waterline/verify-node-runtime.mjs \
     && curl -sS https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor | tee /etc/apt/keyrings/pgdg.gpg >/dev/null \
     && echo "deb [signed-by=/etc/apt/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt jammy-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
-    && apt-get install -y yarn \
     && apt-get install -y mysql-client \
     && apt-get install -y postgresql-client-$POSTGRES_VERSION \
     && apt-get install -y unixodbc-dev unixodbc odbcinst \

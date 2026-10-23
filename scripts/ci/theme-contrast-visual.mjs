@@ -111,10 +111,16 @@ async function settle(page) {
 function auditContrast(categories) {
     // Computed colours serialize as rgb()/rgba(), or color(srgb ...) after color-mix().
     const parse = (value) => {
-        const m = value.match(/^(rgba?|color)\((?:srgb\s+)?([-\d.e]+)[ ,]+([-\d.e]+)[ ,]+([-\d.e]+)(?:\s*[,/]\s*([\d.]+)(%?))?\s*\)$/);
-        if (!m) return value === 'transparent' ? { r: 0, g: 0, b: 0, a: 0 } : null;
-        const scale = m[1] === 'color' ? 255 : 1;
-        return { r: m[2] * scale, g: m[3] * scale, b: m[4] * scale, a: m[5] === undefined ? 1 : Number(m[5]) / (m[6] ? 100 : 1) };
+        const wrapper = value.match(/^(rgba?|color)\((.*)\)$/);
+        if (!wrapper) return value === 'transparent' ? { r: 0, g: 0, b: 0, a: 0 } : null;
+        const channels = wrapper[2].replace(/^srgb\s+/, '').trim().split(/[ ,/]+/);
+        if (channels.length !== 3 && channels.length !== 4) return null;
+        const numbers = channels.map((channel, index) => Number(index === 3 ? channel.replace(/%$/, '') : channel));
+        if (numbers.some((number) => !Number.isFinite(number))) return null;
+        const scale = wrapper[1] === 'color' ? 255 : 1;
+        let alpha = numbers[3] ?? 1;
+        if (channels[3]?.endsWith('%')) alpha /= 100;
+        return { r: numbers[0] * scale, g: numbers[1] * scale, b: numbers[2] * scale, a: alpha };
     };
     const over = (top, bottom) => {
         const a = top.a + bottom.a * (1 - top.a);
@@ -153,14 +159,14 @@ function auditContrast(categories) {
         for (const node of chain) {
             const style = getComputedStyle(node);
             if (Number(style.opacity) < 1) stack.push({ canvas: { r: 0, g: 0, b: 0, a: 0 }, opacity: Number(style.opacity) });
-            const top = stack[stack.length - 1];
+            const top = stack.at(-1);
             top.canvas = over(parse(style.backgroundColor) || { r: 0, g: 0, b: 0, a: 0 }, top.canvas);
             if (stop && node === stop.node) top.canvas = over(stop.color, top.canvas);
         }
-        if (text) stack[stack.length - 1].canvas = over(text, stack[stack.length - 1].canvas);
+        if (text) stack.at(-1).canvas = over(text, stack.at(-1).canvas);
         while (stack.length > 1) {
             const group = stack.pop();
-            stack[stack.length - 1].canvas = over({ ...group.canvas, a: group.canvas.a * group.opacity }, stack[stack.length - 1].canvas);
+            stack.at(-1).canvas = over({ ...group.canvas, a: group.canvas.a * group.opacity }, stack.at(-1).canvas);
         }
         return stack[0].canvas;
     };
@@ -182,7 +188,7 @@ function auditContrast(categories) {
             const bg = render(chain, null, stop);
             return { fg, bg, ratio: contrast(fg, bg) };
         }).sort((a, b) => a.ratio - b.ratio)[0];
-        const size = parseFloat(style.fontSize);
+        const size = Number.parseFloat(style.fontSize);
         const weight = Number.parseInt(style.fontWeight, 10) || 400;
         const minimum = 4.5;
         return {
@@ -309,8 +315,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
         console.log(`${entry.status === 'passed' ? 'PASS' : 'FAIL'} ${entry.theme} ${entry.viewport} ${entry.page}: ${counts.join(', ') || entry.url}`);
     }
     for (const f of report.failures) {
-        console.log(`  ${f.theme} ${f.viewport} ${f.page} ${f.category}: ${f.message
-            || `${f.ratio.toFixed(2)} < ${f.minimum} ${f.fg} on ${f.bg} ${f.fontSize}px/${f.fontWeight} "${f.text}" (${f.selector})`}`);
+        const detail = f.message || `${f.ratio.toFixed(2)} < ${f.minimum} ${f.fg} on ${f.bg} ${f.fontSize}px/${f.fontWeight} "${f.text}" (${f.selector})`;
+        console.log(`  ${f.theme} ${f.viewport} ${f.page} ${f.category}: ${detail}`);
     }
     console.log(`${report.passedCases} passed, ${report.failedCases} failed; report: ${path.join(outputDirectory, 'theme-contrast-report.json')}`);
     process.exitCode = report.failedCases > 0 ? 1 : 0;
