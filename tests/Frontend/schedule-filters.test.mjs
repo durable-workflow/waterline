@@ -27,6 +27,7 @@ test('schedule filters apply together, reset the page and persist across paginat
     requests[0].resolve(response('matching'));
     await load;
     state.currentPage = 2;
+    state.statusFilter = 'active';
     state.workflowTypeFilter = 'unapplied edit';
     const next = state.loadData();
     assert.deepEqual(requests[1].options.params, {...requests[0].options.params, page: 2});

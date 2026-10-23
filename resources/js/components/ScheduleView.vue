@@ -604,6 +604,7 @@ export default {
             operatorScope: null,
             observedBackend: null,
             statusFilter: '',
+            appliedStatus: '',
             workflowTypeFilter: '',
             visibilityQueryFilter: '',
             appliedWorkflowType: '',
@@ -707,7 +708,7 @@ export default {
         },
 
         currentFilterLabel() {
-            return this.statusFilter ? this.$t("{value1} only", { value1: this.stateLabel(this.statusFilter) }) : this.$t('all statuses');
+            return this.appliedStatus ? this.$t("{value1} only", { value1: this.stateLabel(this.appliedStatus) }) : this.$t('all statuses');
         },
 
         visiblePages() {
@@ -750,19 +751,13 @@ export default {
         }
     },
 
-    watch: {
-        statusFilter() {
-            this.currentPage = 1;
-            this.loadData();
-        }
-    },
-
     mounted() {
         this.loadOperatorPreferences().finally(() => this.loadData());
     },
 
     methods: {
         applyFilters() {
+            this.appliedStatus = this.statusFilter;
             this.appliedWorkflowType = this.workflowTypeFilter.trim();
             this.appliedVisibilityQuery = this.visibilityQueryFilter.trim();
             this.currentPage = 1;
@@ -771,7 +766,7 @@ export default {
 
         listParams() {
             const params = {page: this.currentPage};
-            if (this.statusFilter) params.status = this.statusFilter;
+            if (this.appliedStatus) params.status = this.appliedStatus;
             if (this.appliedWorkflowType) params.workflow_type = this.appliedWorkflowType;
             if (this.appliedVisibilityQuery) params.query = this.appliedVisibilityQuery;
             return params;
