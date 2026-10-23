@@ -37,32 +37,37 @@ class OnboardingComposerTest(unittest.TestCase):
         self.assertFalse(evidence["full_release_acceptance"])
 
     def test_published_check_rejects_an_earlier_registry_selection(self):
+        cohort, selection = authority(), locks()
         with self.assertRaisesRegex(ValueError, "selected 2.13.1, expected 2.13.2"):
-            contract.validate(authority(), "2.13.2", locks(), "2.13.2")
+            contract.validate(cohort, "2.13.2", selection, "2.13.2")
 
     def test_published_check_requires_exact_candidate_identity(self):
         result = contract.validate(authority(), "2.13.2", locks("2.13.2"), "2.13.2")
         self.assertEqual(result["strict_expected_waterline"], "2.13.2")
+        cohort, selection = authority(), locks()
         with self.assertRaisesRegex(ValueError, "immutable candidate"):
-            contract.validate(authority(), "2.13.2", locks(), "2.13.1")
+            contract.validate(cohort, "2.13.2", selection, "2.13.1")
 
     def test_current_cohort_retains_strict_ordinary_selection(self):
         result = contract.validate(authority(), "2.13.0", locks("2.13.0"))
         self.assertEqual(result["strict_expected_waterline"], "2.13.0")
+        cohort, selection = authority(), locks("2.13.1")
         with self.assertRaises(ValueError):
-            contract.validate(authority(), "2.13.0", locks("2.13.1"))
+            contract.validate(cohort, "2.13.0", selection)
 
     def test_baseline_cannot_be_replaced_by_newer_registry_packages(self):
+        cohort = authority()
         wrong = locks()
         wrong["approved-embedded"]["packages"][0]["version"] = "2.13.1"
         with self.assertRaisesRegex(ValueError, "Approved cohort"):
-            contract.validate(authority(), "2.13.2", wrong)
+            contract.validate(cohort, "2.13.2", wrong)
 
     def test_mismatched_default_graphs_fail(self):
+        cohort = authority()
         wrong = locks()
         wrong["onboarding-service"]["packages"][0]["version"] = "2.13.2"
         with self.assertRaisesRegex(ValueError, "different Waterline"):
-            contract.validate(authority(), "2.13.2", wrong)
+            contract.validate(cohort, "2.13.2", wrong)
 
     def test_new_approved_sdk_does_not_change_legacy_onboarding_constraint(self):
         result = contract.validate(authority("3.4.1"), "2.13.2", locks(sdk="3.4.1"))
@@ -70,6 +75,7 @@ class OnboardingComposerTest(unittest.TestCase):
         self.assertEqual(result["graphs"]["onboarding-service"][contract.SDK], "2.4.0")
 
     def test_missing_mutable_or_unsupported_routes_fail(self):
+        cohort = authority()
         for mutate in (
             lambda packages: packages.pop(),
             lambda packages: packages[0]["source"].update(reference="main"),
@@ -82,11 +88,12 @@ class OnboardingComposerTest(unittest.TestCase):
                 wrong = copy.deepcopy(locks())
                 mutate(wrong["onboarding-service"]["packages"])
                 with self.assertRaises(ValueError):
-                    contract.validate(authority(), "2.13.2", wrong)
+                    contract.validate(cohort, "2.13.2", wrong)
 
     def test_candidate_and_authority_cannot_fall_back_or_downgrade(self):
+        cohort, selection = authority(), locks()
         with self.assertRaisesRegex(ValueError, "predates"):
-            contract.validate(authority(), "2.12.3", locks())
+            contract.validate(cohort, "2.12.3", selection)
         with self.assertRaises(ValueError):
             contract.manifests({"schema": "unknown", "versions": {}})
 

@@ -18,6 +18,7 @@ for kind in approved onboarding; do
         case "$graph" in
             embedded) peer_class='Workflow\V2\Workflow' ;;
             service) peer_class='DurableWorkflow\Client' ;;
+            *) echo "Unknown onboarding graph: $graph" >&2; exit 1 ;;
         esac
         php -r '
             require $argv[1];

@@ -71,6 +71,7 @@ try {
     ];
     // One fixture server is shared. Drain its abandoned request before changing
     // mode, and keep the viewport/theme phases ordered to preserve attribution.
+    await page.emulateMedia({reducedMotion:'reduce'});
     for (const view of views) {
         for (const theme of ['dark','light']) {
             for (const width of [390,1440]) {
@@ -81,7 +82,13 @@ try {
                 let requestedAt;
                 const onRequest = request => {if (new URL(request.url()).pathname===fixture.browser_path) requestedAt=Date.now();};
                 page.on('request',onRequest);
+                const started = page.waitForRequest(request => new URL(request.url()).pathname===fixture.browser_path);
                 await page.goto(base+'/waterline/'+view.name);
+                await started;
+                if (view.name!=='services') {
+                    const animation = await page.locator(view.selector+' .icon.spin').first().evaluate(element=>getComputedStyle(element).animationName);
+                    assert.equal(animation,'none','Loading must respect reduced-motion preferences.');
+                }
                 const error = page.locator(view.selector+'__state--error');
                 await error.waitFor({timeout:2000});
                 const elapsed = (Date.now()-requestedAt)/1000;

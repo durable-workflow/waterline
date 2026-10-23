@@ -143,6 +143,9 @@ jobs:
       - name: Install exact published packages without source overrides
         working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
         run: composer install --prefer-dist --no-interaction --no-progress
+      - name: Verify Composer before ordinary onboarding requests
+        if: needs.request-budget-scope.outputs.onboarding_required == 'true'
+        uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
       - name: Require ordinary onboarding to select the exact newly published release
         if: needs.request-budget-scope.outputs.onboarding_required == 'true'
         run: scripts/ci/check-onboarding-composer.sh --expected-waterline "$EXPECTED_WATERLINE_VERSION"

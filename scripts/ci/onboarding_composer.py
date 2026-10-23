@@ -13,8 +13,8 @@ WORKFLOW = "durable-workflow/workflow"
 SDK = "durable-workflow/sdk"
 PEERS = {"embedded": WORKFLOW, "service": SDK}
 SCHEMA = "durable-workflow.waterline-current-product-tuple/v1"
-# Package versions are ASCII; Python's Unicode-aware \d would broaden identity.
-VERSION = re.compile(r"^(?P<major>[23])\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)$")
+# ASCII mode keeps package identities separate from Unicode decimal digits.
+VERSION = re.compile(r"^(?P<major>[23])\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)$", re.ASCII)
 
 
 def version(value: object, *, sdk: bool = False) -> tuple[int, int, int]:
@@ -66,12 +66,7 @@ def locked_roots(lock: dict, graph: str, *, approved: bool) -> dict[str, str]:
     return roots
 
 
-def validate(authority: dict, candidate: str, locks: dict[str, dict], expected: str | None = None) -> dict:
-    approved = approved_packages(authority)
-    candidate_order = version(candidate)
-    approved_order = version(approved[WATERLINE])
-    if candidate_order < approved_order:
-        raise ValueError("Candidate source predates the approved Waterline release")
+def resolve_graphs(approved: dict[str, str], locks: dict[str, dict]) -> dict[str, dict]:
     resolved = {}
     for kind in ("approved", "onboarding"):
         for graph, peer in PEERS.items():
@@ -80,6 +75,16 @@ def validate(authority: dict, candidate: str, locks: dict[str, dict], expected: 
             if kind == "approved" and roots != {WATERLINE: approved[WATERLINE], peer: approved[peer]}:
                 raise ValueError("Approved cohort installation differs from its exact authority")
             resolved[name] = roots
+    return resolved
+
+
+def validate(authority: dict, candidate: str, locks: dict[str, dict], expected: str | None = None) -> dict:
+    approved = approved_packages(authority)
+    candidate_order = version(candidate)
+    approved_order = version(approved[WATERLINE])
+    if candidate_order < approved_order:
+        raise ValueError("Candidate source predates the approved Waterline release")
+    resolved = resolve_graphs(approved, locks)
     defaults = {resolved[f"onboarding-{graph}"][WATERLINE] for graph in PEERS}
     if len(defaults) != 1:
         raise ValueError("Ordinary onboarding graphs selected different Waterline releases")
@@ -103,6 +108,8 @@ def validate(authority: dict, candidate: str, locks: dict[str, dict], expected: 
 
 
 def main() -> None:
+    # Repository CI CLI: the shell launcher supplies checkout files and a private
+    # mktemp directory. File-path selection is an intentional caller capability.
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--authority", type=Path, required=True)
     parser.add_argument("--candidate-composer", type=Path, required=True)

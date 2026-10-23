@@ -1985,6 +1985,10 @@ export default {
     animation: spin 1s linear infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .worker-health .icon.spin { animation: none; }
+}
+
 @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
