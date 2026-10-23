@@ -65,7 +65,7 @@ jobs:
         with:
           php-version: '8.3'
           extensions: pdo_sqlite
-          tools: composer:v2
+          tools: composer:2.10.3
           coverage: none
       - name: Install fixed Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -97,6 +97,8 @@ jobs:
           printf '%s\n' '{"private":true}' > "$WATERLINE_CONSUMER_ROOT/package.json"
       - name: Verify Composer before published package requests
         uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+        with:
+          working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
       - name: Install exact published packages without source overrides
         working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
         run: composer install --prefer-dist --no-interaction --no-progress
