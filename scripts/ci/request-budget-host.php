@@ -2,6 +2,58 @@
 
 declare(strict_types=1);
 
+if (PHP_SAPI !== 'cli') {
+    $path = (string) parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+    $mode = json_decode(file_get_contents(__DIR__.'/mode.json'), true, flags: JSON_THROW_ON_ERROR);
+    if (($mode['schedule_write_stall'] ?? false) && $_SERVER['REQUEST_METHOD'] === 'POST'
+        && $path === '/waterline/api/v2/schedules/budget-schedule/pause') {
+        file_put_contents(__DIR__.'/schedule-writes.jsonl', json_encode([
+            'method' => 'POST', 'path' => $path, 'schedule_id' => 'budget-schedule', 'status' => 'paused',
+        ], JSON_THROW_ON_ERROR).PHP_EOL, FILE_APPEND | LOCK_EX);
+        usleep(3_000_000);
+        header('Content-Type: application/json');
+        echo json_encode(['schedule_id' => 'budget-schedule', 'status' => 'paused'], JSON_THROW_ON_ERROR);
+        return;
+    }
+    // View wiring uses controlled HTTP responses. Run-list cases continue to
+    // the real package/image and its actual SDK/protocol backend.
+    if (isset($mode['browser_path'], $mode['browser_response']) && $path === $mode['browser_path']) {
+        if ($mode['mode'] === 'browser-stall') usleep(3_000_000);
+        header('Content-Type: application/json');
+        echo json_encode($mode['browser_response'], JSON_THROW_ON_ERROR);
+        return;
+    }
+    if ($mode['mode'] === 'browser-stall' && $path === '/waterline/api/flows/running') usleep(3_000_000);
+
+    $nativePort = getenv('BUDGET_NATIVE_PORT');
+    if ($nativePort !== false) {
+        $port = filter_var($nativePort, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]);
+        if ($port === false || !str_starts_with($_SERVER['REQUEST_URI'], '/')) {
+            throw new RuntimeException('Expected a local native-image port and request path.');
+        }
+        $headers = ['Host: 127.0.0.1:8080'];
+        foreach (getallheaders() as $name => $value) {
+            if (!in_array(strtolower($name), ['host', 'connection', 'content-length'], true)) $headers[] = $name.': '.$value;
+        }
+        $context = stream_context_create(['http' => [
+            'method' => $_SERVER['REQUEST_METHOD'], 'header' => implode("\r\n", $headers),
+            'content' => file_get_contents('php://input'), 'ignore_errors' => true,
+            'follow_location' => 0, 'timeout' => 5,
+        ]]);
+        $body = file_get_contents('http://127.0.0.1:'.$port.$_SERVER['REQUEST_URI'], false, $context);
+        if ($body === false) throw new RuntimeException('Native image HTTP fixture proxy failed.');
+        foreach ($http_response_header as $index => $line) {
+            if ($index === 0 && preg_match('/^HTTP\/\S+ (\d{3})/', $line, $match)) {
+                http_response_code((int) $match[1]);
+            } elseif (!preg_match('/^(?:connection|transfer-encoding|content-length):/i', $line)) {
+                header($line, false);
+            }
+        }
+        echo $body;
+        return;
+    }
+}
+
 require __DIR__.'/vendor/autoload.php';
 
 use Illuminate\Foundation\Application;
@@ -78,29 +130,5 @@ if (str_starts_with($path, '/vendor/waterline/')) {
         $response->send();
         return;
     }
-}
-$mode = json_decode(file_get_contents(__DIR__.'/mode.json'), true, flags: JSON_THROW_ON_ERROR);
-if (($mode['schedule_write_stall'] ?? false) && $_SERVER['REQUEST_METHOD'] === 'POST'
-    && $path === '/waterline/api/v2/schedules/budget-schedule/pause') {
-    file_put_contents(__DIR__.'/schedule-writes.jsonl', json_encode([
-        'method' => 'POST', 'path' => $path, 'schedule_id' => 'budget-schedule', 'status' => 'paused',
-    ], JSON_THROW_ON_ERROR).PHP_EOL, FILE_APPEND | LOCK_EX);
-    usleep(3_000_000);
-    header('Content-Type: application/json');
-    echo json_encode(['schedule_id' => 'budget-schedule', 'status' => 'paused'], JSON_THROW_ON_ERROR);
-    return;
-}
-// Additional view controls exercise real browser HTTP against fixture responses;
-// the workflow cases below continue through the real SDK and protocol backend.
-if (isset($mode['browser_path'], $mode['browser_response']) && $path === $mode['browser_path']) {
-    if ($mode['mode'] === 'browser-stall') {
-        usleep(3_000_000);
-    }
-    header('Content-Type: application/json');
-    echo json_encode($mode['browser_response'], JSON_THROW_ON_ERROR);
-    return;
-}
-if ($mode['mode'] === 'browser-stall' && $path === '/waterline/api/flows/running') {
-    usleep(3_000_000);
 }
 $app->handleRequest(\Illuminate\Http\Request::capture());

@@ -219,6 +219,73 @@ jobs:
             kill "$(cat "$WATERLINE_CONSUMER_ROOT/published-embedded-evidence/server.pid")" || true
           fi
 
+  native-browser:
+    name: Published browser recovery on ${{ matrix.platform }}
+    needs: request-budget-scope
+    if: needs.request-budget-scope.outputs.onboarding_required == 'true'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux/amd64
+            machine: x86_64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            machine: aarch64
+    env:
+      IMAGE_DIGEST: ${{ inputs.image_digest }}
+      EXPECTED_WATERLINE_VERSION: ${{ inputs.release_version }}
+      EXPECTED_SOURCE_COMMIT: ${{ inputs.source_commit }}
+      EXPECTED_PLATFORM: ${{ matrix.platform }}
+      EXPECTED_MACHINE: ${{ matrix.machine }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Bind native image and immutable release data
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$EXPECTED_WATERLINE_VERSION" =~ ^2\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$EXPECTED_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$(uname -m)" = "$EXPECTED_MACHINE"
+          git fetch --no-tags origin "refs/tags/$EXPECTED_WATERLINE_VERSION"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$EXPECTED_SOURCE_COMMIT"
+          mkdir -p "$RUNNER_TEMP/native-budget" "$RUNNER_TEMP/native-budget-source" "$RUNNER_TEMP/native-budget-docker"
+          git archive "$EXPECTED_SOURCE_COMMIT" composer.json standalone/composer.lock | tar -x -C "$RUNNER_TEMP/native-budget-source"
+          printf '%s\n' '{"private":true}' > "$RUNNER_TEMP/native-budget/package.json"
+          printf '%s\n' '{"auths":{}}' > "$RUNNER_TEMP/native-budget-docker/config.json"
+          {
+            printf 'NATIVE_BUDGET_ROOT=%s\n' "$RUNNER_TEMP/native-budget"
+            printf 'WATERLINE_SOURCE_DATA=%s\n' "$RUNNER_TEMP/native-budget-source"
+            printf 'DOCKER_CONFIG=%s\n' "$RUNNER_TEMP/native-budget-docker"
+            printf 'WATERLINE_IMAGE=durableworkflow/waterline@%s\n' "$IMAGE_DIGEST"
+          } >> "$GITHUB_ENV"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.22.1'
+      - name: Verify raw Node version and trust roots
+        run: node .devcontainer/docker/verify-node-runtime.mjs
+      - name: Install pinned browser tooling
+        working-directory: ${{ env.NATIVE_BUDGET_ROOT }}
+        run: |
+          npm install --ignore-scripts --no-save --package-lock=false playwright@1.64.0
+          npx --no-install playwright install chromium --with-deps
+      - name: Exercise actual native image UI, SDK bounds and safe recovery
+        run: bash scripts/ci/request-budget-native.sh
+      - name: Retain native browser and SDK identity evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: waterline-published-browser-${{ matrix.machine }}-${{ github.run_id }}
+          path: ${{ env.NATIVE_BUDGET_ROOT }}/request-budget-evidence
+          if-no-files-found: warn
+          retention-days: 7
+
   qualify:
     name: Published image on ${{ matrix.platform }}
     if: >-

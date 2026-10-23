@@ -6,7 +6,11 @@ const require = createRequire(path.join(process.cwd(),'package.json'));
 const {chromium} = require('playwright');
 const output = 'request-budget-evidence';
 fs.mkdirSync(output,{recursive:true});
-const mode = (value, extra = {}) => fs.writeFileSync('mode.json',JSON.stringify({mode:value,service_budget:0.2,browser_budget:value==='browser-stall'?0.8:2,...extra}));
+const browserBudget = value => Number(process.env.FIXED_BROWSER_BUDGET_SECONDS) || (value==='browser-stall'?0.8:2);
+const mode = (value, extra = {}) => {
+    fs.writeFileSync('mode.json.tmp',JSON.stringify({mode:value,service_budget:0.2,browser_budget:browserBudget(value),...extra}));
+    fs.renameSync('mode.json.tmp','mode.json');
+};
 const browser = await chromium.launch({args:['--no-sandbox']});
 const report = {source:process.env.EXPECTED_CANDIDATE_SOURCE,checks:[],errors:[]};
 try {
@@ -32,6 +36,7 @@ try {
             await page.waitForTimeout(100);
             assert.equal(api[0]?.http,502);
             assert.equal(api[0]?.body?.reason,'request_timeout');
+            assert.equal(api[0]?.body?.remote_details?.timeout_seconds,0.2);
         }
         await page.screenshot({path:`${output}/${scenario}-error.png`,fullPage:true});
         // The synthetic PHP server must finish its abandoned read before the
@@ -43,7 +48,7 @@ try {
         assert.equal(await page.locator('.flow-row').count(),2);
         assert.equal(await page.getByRole('button',{name:'Retry',exact:true}).count(),0);
         await page.screenshot({path:`${output}/${scenario}-recovered.png`,fullPage:true});
-        report.checks.push({scenario,elapsed,serviceBudget:0.2,browserBudget:scenario==='browser-stall'?0.8:2,api,recoveredRows:2});
+        report.checks.push({scenario,elapsed,serviceBudget:0.2,browserBudget:browserBudget(scenario),api,recoveredRows:2});
         page.off('request',onRequest); page.off('response',onResponse);
     }
     mode('healthy');
@@ -85,6 +90,7 @@ try {
                 const started = page.waitForRequest(request => new URL(request.url()).pathname===fixture.browser_path);
                 await page.goto(base+'/waterline/'+view.name);
                 await started;
+                assert.equal(await page.evaluate(()=>window.Waterline.request_timeout_ms),800);
                 if (view.name!=='services') {
                     const animation = await page.locator(view.selector+' .icon.spin').first().evaluate(element=>getComputedStyle(element).animationName);
                     assert.equal(animation,'none','Loading must respect reduced-motion preferences.');
