@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.13.1 - 2026-10-23
+
+- Service control requests can use an explicit budget with PHP SDK 3.4 or
+  later. Unset settings inherit the installed SDK policy; unsupported explicit
+  settings fail with a clear diagnostic instead of being ignored. The service
+  image includes SDK 3.4.1. Optional package requirements and embedded PHP 8.0.2
+  compatibility are unchanged.
+- Browser requests have a finite configurable budget. Read-only run lists offer
+  explicit Retry with the selected page and filters. Stale responses cannot
+  overwrite newer results. Uncertain writes remain unknown and are never
+  silently resubmitted; caller-selected update waits and business deadlines
+  retain their own meaning.
+
 ## 2.13.0 - 2026-10-23
 
 - Embedded Laravel applications can grant separate operator permissions for

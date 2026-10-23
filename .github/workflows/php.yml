@@ -1658,6 +1658,12 @@ jobs:
         path: cancellation-evidence/
         retention-days: 90
 
+  service-request-budget:
+    name: Service request budget and browser recovery
+    needs: classify
+    if: ${{ needs.classify.outputs.qualification-class == 'conformance' || needs.classify.outputs.qualification-class == 'complete' }}
+    uses: ./.github/workflows/request-budget-qualification.yml # local
+
   target-branch-qualification:
     name: Target branch qualification
     if: ${{ always() }}
@@ -1674,6 +1680,7 @@ jobs:
       - laravel-matrix
       - laravel-compatibility
       - qualification
+      - service-request-budget
     runs-on: ubuntu-latest
     timeout-minutes: 2
 
@@ -1682,6 +1689,16 @@ jobs:
       env:
         ACTION_POLICY_RESULT: ${{ needs.action-policy.result }}
       run: test "$ACTION_POLICY_RESULT" = success
+
+    - name: Require applicable service request budget controls
+      env:
+        SELECTED_CLASS: ${{ needs.classify.outputs.qualification-class }}
+        BUDGET_RESULT: ${{ needs.service-request-budget.result }}
+      run: |
+        case "$SELECTED_CLASS" in
+          conformance|complete) test "$BUDGET_RESULT" = success ;;
+          *) test "$BUDGET_RESULT" = skipped ;;
+        esac
 
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       with:

@@ -93,6 +93,21 @@ final class ServiceModeBackendTest extends TestCase
         parent::tearDown();
     }
 
+    public function testOlderSdkExplicitBudgetIsRefusedBeforeAnyRemoteRequest(): void
+    {
+        foreach ((new \ReflectionMethod(Client::class, '__construct'))->getParameters() as $parameter) {
+            if ($parameter->getName() === 'requestTimeoutSeconds') {
+                $this->markTestSkipped('Legacy optional SDK control.');
+            }
+        }
+        config()->set('waterline.service.request_timeout_seconds', 0.2);
+        $this->app->forgetInstance(RemoteBackend::class);
+        $this->app->scoped(RemoteBackend::class, static fn () => RemoteBackend::fromConfig());
+        $this->getJson('/waterline/api/flows/running')->assertStatus(501)
+            ->assertJsonPath('reason', 'backend_capability_unavailable')
+            ->assertJsonPath('capability', 'control_request_timeout');
+    }
+
     public function testWorkflowListAndSelectedRunUseTheSharedWaterlineContract(): void
     {
         $this->getJson('/waterline/api/flows/running')

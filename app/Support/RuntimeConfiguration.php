@@ -77,6 +77,8 @@ final class RuntimeConfiguration
         'WATERLINE_RUNTIME_ENVIRONMENT_OVERRIDES',
         'WATERLINE_SERVER_ENDPOINT',
         'WATERLINE_SERVER_TOKEN',
+        'WATERLINE_SERVER_REQUEST_TIMEOUT',
+        'WATERLINE_BROWSER_REQUEST_TIMEOUT',
         'WATERLINE_WORKER_STALE_AFTER_SECONDS',
     ];
 
@@ -106,6 +108,8 @@ final class RuntimeConfiguration
         self::setStringConfigFromEnvironment('WATERLINE_BACKEND', 'waterline.backend');
         self::setStringConfigFromEnvironment('WATERLINE_SERVER_ENDPOINT', 'waterline.service.endpoint');
         self::setStringConfigFromEnvironment('WATERLINE_SERVER_TOKEN', 'waterline.service.token');
+        self::setStringConfigFromEnvironment('WATERLINE_SERVER_REQUEST_TIMEOUT', 'waterline.service.request_timeout_seconds');
+        self::setStringConfigFromEnvironment('WATERLINE_BROWSER_REQUEST_TIMEOUT', 'waterline.browser.request_timeout_seconds');
         self::setStringConfigFromEnvironment('WATERLINE_ACCESS_MODE', 'waterline.service.access_mode');
         self::setStringConfigFromEnvironment('WATERLINE_ENGINE_SOURCE', 'waterline.engine_source');
         self::setStringConfigFromEnvironment('WATERLINE_NAMESPACE', 'waterline.namespace');

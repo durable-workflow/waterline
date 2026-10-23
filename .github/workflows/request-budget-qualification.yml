@@ -1,0 +1,151 @@
+name: Request budget qualification
+
+on:
+  workflow_call:
+    inputs:
+      release_version:
+        required: false
+        type: string
+        default: ''
+      source_commit:
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  service-request-budget:
+    name: Service request budget and browser recovery
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_CANDIDATE_SOURCE: ${{ inputs.source_commit || github.sha }}
+      EXPECTED_WATERLINE_VERSION: ${{ inputs.release_version }}
+      EXPECTED_WATERLINE_SOURCE: ${{ inputs.source_commit }}
+    steps:
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      with:
+        persist-credentials: false
+        ref: ${{ inputs.source_commit || github.sha }}
+    - name: Bind the exact selected SDK cohort
+      shell: bash
+      run: |
+        printf 'EXPECTED_BUDGET_SDK_VERSION=%s\n' "$(jq -r '."require-dev"."durable-workflow/sdk"' composer.json)" >> "$GITHUB_ENV"
+        printf 'EXPECTED_BUDGET_SDK_SOURCE=%s\n' "$(jq -r '.packages[] | select(.name == "durable-workflow/sdk") | .source.reference' standalone/composer.lock)" >> "$GITHUB_ENV"
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      with:
+        python-version: '3.13'
+    - name: Select authenticated dependency trust
+      uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        clients: composer,curl,git
+    - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+      with:
+        php-version: '8.3'
+        extensions: pdo_sqlite, curl
+        tools: composer:2.10.3
+        coverage: none
+    - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      with:
+        node-version: '24.22.1'
+    - name: Verify raw Node roots before package requests
+      run: node .devcontainer/docker/verify-node-runtime.mjs
+    - name: Prepare candidate consumer with the exact normal SDK
+      shell: bash
+      run: |
+        printf 'BUDGET_APP_ROOT=%s\n' "$RUNNER_TEMP/request-budget" >> "$GITHUB_ENV"
+        mkdir -p "$RUNNER_TEMP/request-budget"/{bootstrap/cache,storage/framework/views,storage/logs,public,request-budget-evidence}
+        touch "$RUNNER_TEMP/request-budget/database.sqlite"
+        cp scripts/ci/request-budget-host.php "$RUNNER_TEMP/request-budget/host.php"
+        cp scripts/ci/request-budget-server.php "$RUNNER_TEMP/request-budget/server.php"
+        cp tests/Fixtures/service-mode-server.php "$RUNNER_TEMP/request-budget/protocol-server.php"
+        printf '%s\n' '{"mode":"healthy","service_budget":0.2,"browser_budget":0.8}' > "$RUNNER_TEMP/request-budget/mode.json"
+        printf '%s\n' '{"private":true}' > "$RUNNER_TEMP/request-budget/package.json"
+        php <<'PHP'
+        <?php
+        $published = getenv('EXPECTED_WATERLINE_VERSION');
+        $manifest = ['name' => 'durable-workflow/waterline-request-budget-qualification',
+          'require' => ['php' => '^8.3', 'durable-workflow/waterline' => $published ?: 'dev-candidate@dev', 'durable-workflow/sdk' => getenv('EXPECTED_BUDGET_SDK_VERSION'), 'laravel/framework' => '12.70.1'],
+          'config' => ['allow-plugins' => new stdClass(), 'preferred-install' => 'dist'], 'minimum-stability' => 'stable', 'prefer-stable' => true];
+        if (!$published) $manifest['repositories'] = [['type' => 'path', 'url' => getenv('GITHUB_WORKSPACE'), 'options' => ['symlink' => true, 'versions' => ['durable-workflow/waterline' => 'dev-candidate']]]];
+        file_put_contents(getenv('RUNNER_TEMP').'/request-budget/composer.json', json_encode($manifest, JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));
+        PHP
+    - name: Verify the actual consumer Composer trust
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        working-directory: ${{ env.BUDGET_APP_ROOT }}
+    - name: Install candidate and normal SDK dependencies
+      working-directory: ${{ env.BUDGET_APP_ROOT }}
+      run: |
+        composer install --prefer-dist --no-interaction --no-progress
+        npm install --ignore-scripts --no-save --package-lock=false playwright@1.64.0
+        npx --no-install playwright install chromium --with-deps
+    - name: Prepare isolated normal SDK 2.4 compatibility consumer
+      shell: bash
+      run: |
+        printf 'LEGACY_APP_ROOT=%s\n' "$RUNNER_TEMP/request-budget-legacy" >> "$GITHUB_ENV"
+        mkdir -p "$RUNNER_TEMP/request-budget-legacy"/{bootstrap/cache,storage/framework/views,storage/logs,public}
+        touch "$RUNNER_TEMP/request-budget-legacy/database.sqlite"
+        cp "$BUDGET_APP_ROOT"/{host.php,server.php,protocol-server.php,composer.json} "$RUNNER_TEMP/request-budget-legacy/"
+        printf '%s\n' '{"mode":"healthy","browser_budget":2}' > "$RUNNER_TEMP/request-budget-legacy/mode.json"
+        php -r '$p=getenv("RUNNER_TEMP")."/request-budget-legacy/composer.json"; $m=json_decode(file_get_contents($p),flags:JSON_THROW_ON_ERROR); $m->{"require"}->{"durable-workflow/sdk"}="2.4.0"; file_put_contents($p,json_encode($m,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));'
+    - name: Verify actual legacy consumer Composer trust
+      uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+      with:
+        working-directory: ${{ env.LEGACY_APP_ROOT }}
+    - name: Exercise normal SDK 2.4 defaults and unsupported explicit budget
+      working-directory: ${{ env.LEGACY_APP_ROOT }}
+      env:
+        EXPECTED_BUDGET_SDK_VERSION: '2.4.0'
+        EXPECTED_BUDGET_SDK_SOURCE: '821716a92f179ec360e045c28979a86a5f587075'
+      run: |
+        composer install --prefer-dist --no-interaction --no-progress
+        php host.php > "$BUDGET_APP_ROOT/request-budget-evidence/legacy-source-identity.json"
+        php -S 127.0.0.1:8081 server.php > "$BUDGET_APP_ROOT/request-budget-evidence/legacy-backend.log" 2>&1 &
+        echo $! > "$BUDGET_APP_ROOT/request-budget-evidence/legacy-backend.pid"
+        php -S 127.0.0.1:8080 host.php > "$BUDGET_APP_ROOT/request-budget-evidence/legacy-host.log" 2>&1 &
+        echo $! > "$BUDGET_APP_ROOT/request-budget-evidence/legacy-host.pid"
+        for attempt in $(seq 1 30); do
+          if curl --fail --silent http://127.0.0.1:8080/waterline > /dev/null; then break; fi
+          sleep 1
+        done
+        php "$GITHUB_WORKSPACE/scripts/ci/legacy-sdk-budget.php" > "$BUDGET_APP_ROOT/request-budget-evidence/legacy-sdk-budget.json"
+        cp composer.lock "$BUDGET_APP_ROOT/request-budget-evidence/legacy-composer.lock"
+        kill "$(cat "$BUDGET_APP_ROOT/request-budget-evidence/legacy-host.pid")" "$(cat "$BUDGET_APP_ROOT/request-budget-evidence/legacy-backend.pid")"
+        rm "$BUDGET_APP_ROOT/request-budget-evidence/legacy-host.pid" "$BUDGET_APP_ROOT/request-budget-evidence/legacy-backend.pid"
+    - name: Start isolated synthetic backend and actual browser host
+      working-directory: ${{ env.BUDGET_APP_ROOT }}
+      run: |
+        php host.php > request-budget-evidence/source-identity.json
+        php -S 127.0.0.1:8081 server.php > request-budget-evidence/backend.log 2>&1 &
+        echo $! > request-budget-evidence/backend.pid
+        php -S 127.0.0.1:8080 host.php > request-budget-evidence/host.log 2>&1 &
+        echo $! > request-budget-evidence/host.pid
+        for attempt in $(seq 1 30); do
+          if curl --fail --silent http://127.0.0.1:8080/waterline > /dev/null; then exit 0; fi
+          sleep 1
+        done
+        exit 1
+    - name: Exercise actual stalls, typed errors, explicit read recovery and unknown writes
+      working-directory: ${{ env.BUDGET_APP_ROOT }}
+      run: node "$GITHUB_WORKSPACE/scripts/ci/request-budget-browser.mjs"
+    - name: Retain source and actual browser evidence
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: waterline-request-budget-${{ github.run_id }}
+        path: ${{ env.BUDGET_APP_ROOT }}/request-budget-evidence
+        if-no-files-found: warn
+        retention-days: 7
+    - name: Stop the task-owned host and backend
+      if: always()
+      shell: bash
+      run: |
+        for name in host backend legacy-host legacy-backend; do
+          if test -f "$BUDGET_APP_ROOT/request-budget-evidence/$name.pid"; then
+            kill "$(cat "$BUDGET_APP_ROOT/request-budget-evidence/$name.pid")" || true
+          fi
+        done
+

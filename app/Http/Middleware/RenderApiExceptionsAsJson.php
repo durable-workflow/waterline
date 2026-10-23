@@ -17,6 +17,7 @@ use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
+use Waterline\Support\RequestTimeoutException;
 
 class RenderApiExceptionsAsJson
 {
@@ -107,6 +108,14 @@ class RenderApiExceptionsAsJson
 
     private function jsonExceptionResponse(Throwable $exception): JsonResponse
     {
+        if ($exception instanceof RequestTimeoutException) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+                'error' => 'waterline_request_configuration_invalid',
+                'reason' => $exception->reason,
+                'capability' => 'control_request_timeout',
+            ], $exception->status);
+        }
         if ($exception instanceof ServerException || $exception instanceof TransportException) {
             return $this->remoteExceptionResponse($exception);
         }

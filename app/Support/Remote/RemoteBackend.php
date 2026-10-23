@@ -11,6 +11,7 @@ use DurableWorkflow\Exception\ServerException;
 use Throwable;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\CapacityEvidence;
+use Waterline\Support\RequestTimeouts;
 
 final class RemoteBackend
 {
@@ -40,11 +41,12 @@ final class RemoteBackend
 
         $token = trim((string) config('waterline.service.token', ''));
 
-        return new self(new Client(
-            $endpoint,
-            namespace: BackendConfiguration::namespace(),
-            controlToken: $token !== '' ? $token : null,
-        ));
+        $options = [
+            'namespace' => BackendConfiguration::namespace(),
+            'controlToken' => $token !== '' ? $token : null,
+        ] + RequestTimeouts::serviceClientOptions(Client::class);
+
+        return new self(new Client($endpoint, ...$options));
     }
 
     public function client(): object

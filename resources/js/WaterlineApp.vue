@@ -97,6 +97,10 @@
                     </template>
                 </div>
 
+                <div v-if="bootstrap.backend.configuration_error" class="alert alert-danger" role="alert">
+                    {{ bootstrap.backend.configuration_error.message }}
+                </div>
+
                 <div v-if="!bootstrap.assets_current" class="alert alert-warning">
                     {{ $t("The published Waterline assets are not up-to-date with the installed version. To update, run:") }}<br/><code>php artisan waterline:publish</code>
                 </div>

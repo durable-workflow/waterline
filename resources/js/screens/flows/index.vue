@@ -195,6 +195,7 @@
              */
             loadFlows(page = 1, refreshing = false) {
                 const request = ++this.listRequest
+                this.page = page
                 this.listLoadError = null
                 if (!refreshing) {
                     this.ready = false;
@@ -1749,6 +1750,7 @@
         <section class="flow-index__panel card">
             <div v-if="listLoadError" class="alert alert-warning m-3" role="alert">
                 {{ listLoadError }}
+                <button class="btn btn-sm btn-outline-primary ml-2" @click="loadFlows(page)">{{ $t("Retry") }}</button>
                 <button v-if="$route.query.classification" class="btn btn-sm btn-outline-secondary ml-2"
                         @click="changeClassification('')">{{ $t("Show all workflow types") }}</button>
             </div>
