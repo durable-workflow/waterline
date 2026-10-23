@@ -30,7 +30,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Build the development image
-        run: docker build --force-rm --tag waterline-devcontainer:ci .devcontainer/docker
+        run: docker build --pull --no-cache --force-rm --tag waterline-devcontainer:ci .devcontainer/docker
       - name: Use the installed tools for the locked frontend
         run: |
           docker run --rm --name waterline-devcontainer-check \
@@ -42,6 +42,7 @@ jobs:
               php --version
               composer --version
               node --version
+              node /usr/local/share/waterline/verify-node-runtime.mjs
               npm --version
               cp -a /source/. /tmp/project
               cd /tmp/project
