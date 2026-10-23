@@ -36,6 +36,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       required: ${{ steps.scope.outputs.required }}
+      onboarding_required: ${{ steps.scope.outputs.onboarding_required }}
     steps:
       - id: scope
         env:
@@ -47,8 +48,10 @@ jobs:
           if match is None:
               raise SystemExit('Expected an exact stable Waterline 2.x version.')
           required = (2, int(match[1]), int(match[2])) >= (2, 13, 1)
+          onboarding_required = (2, int(match[1]), int(match[2])) >= (2, 13, 2)
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f'required={str(required).lower()}\n')
+              output.write(f'onboarding_required={str(onboarding_required).lower()}\n')
           PY
 
   service-request-budget:
@@ -62,6 +65,7 @@ jobs:
 
   embedded:
     name: Published Composer consumer and browser
+    needs: request-budget-scope
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/2.'))
@@ -75,6 +79,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          ref: ${{ inputs.source_commit }}
       - name: Bind the consumer to the immutable release
         shell: bash
         run: |
@@ -138,6 +143,9 @@ jobs:
       - name: Install exact published packages without source overrides
         working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
         run: composer install --prefer-dist --no-interaction --no-progress
+      - name: Require ordinary onboarding to select the exact newly published release
+        if: needs.request-budget-scope.outputs.onboarding_required == 'true'
+        run: scripts/ci/check-onboarding-composer.sh --expected-waterline "$EXPECTED_WATERLINE_VERSION"
       - name: Install pinned browser tooling
         working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
         run: |
