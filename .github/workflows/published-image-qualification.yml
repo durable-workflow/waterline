@@ -135,7 +135,7 @@ jobs:
           php -r '
             $before = json_decode(file_get_contents("uncertain-outcomes-evidence/seed.json"), true, flags: JSON_THROW_ON_ERROR);
             $after = json_decode(file_get_contents("uncertain-outcomes-evidence/after-inspection.json"), true, flags: JSON_THROW_ON_ERROR);
-            if ($before["runs"] !== $after["runs"] || $before["oracle"] !== $after["oracle"]) throw new RuntimeException("Inspection/refused actions changed run state or external effects.");
+            if ($before["runs"] !== $after["runs"] || $before["activities"] !== $after["activities"] || $before["attempts"] !== $after["attempts"] || $before["oracle"] !== $after["oracle"]) throw new RuntimeException("Inspection/refused actions changed run/attempt identity, state or external effects.");
           '
       - name: Resolve only the application-authored reconciliation control
         working-directory: ${{ env.UNCERTAIN_APP_ROOT }}
@@ -147,6 +147,17 @@ jobs:
             $before = json_decode(file_get_contents("uncertain-outcomes-evidence/seed.json"), true, flags: JSON_THROW_ON_ERROR);
             $after = json_decode(file_get_contents("uncertain-outcomes-evidence/after-reconciliation.json"), true, flags: JSON_THROW_ON_ERROR);
             if ($before["oracle"] !== $after["oracle"]) throw new RuntimeException("Reconciliation repeated an external submission.");
+            $originalRuns = array_column($before["runs"], "id");
+            $remainingRuns = array_column($after["runs"], "id");
+            sort($originalRuns);
+            sort($remainingRuns);
+            if ($originalRuns !== $remainingRuns) throw new RuntimeException("Authored reconciliation replaced an original run identity.");
+            foreach (["activities", "attempts"] as $kind) {
+              $remaining = array_column($after[$kind], null, "id");
+              foreach ($before[$kind] as $original) {
+                if (($remaining[$original["id"]] ?? null) !== $original) throw new RuntimeException("Reconciliation altered an original activity or attempt.");
+              }
+            }
           '
       - name: Measure duplicate effects from naive fresh restarts
         working-directory: ${{ env.UNCERTAIN_APP_ROOT }}

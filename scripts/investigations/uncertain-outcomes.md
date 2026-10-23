@@ -26,6 +26,9 @@ records repair/signal/update refusals on each terminal original, captures all
 three pages in both themes at desktop/mobile widths, and records which inputs,
 messages and completed receipts are visible. These observations are findings,
 not a requirement that every field already be present.
+The internal runtime oracle records original run, activity and attempt identities
+separately from the operator-visible evidence, checking that observation/refusal
+does not alter them and authored reconciliation does not replace them.
 
 A separate application-authored control represents an unknown result explicitly
 and waits for reconciliation. Its authorized update records an operator note;

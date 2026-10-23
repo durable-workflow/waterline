@@ -213,6 +213,8 @@ function runUncertainOutcomesCli(Application $app, array $arguments): void
         'waterline' => ['version' => InstalledVersions::getPrettyVersion('durable-workflow/waterline'), 'source' => InstalledVersions::getReference('durable-workflow/waterline')],
         'workflow' => ['version' => InstalledVersions::getPrettyVersion('durable-workflow/workflow'), 'source' => InstalledVersions::getReference('durable-workflow/workflow')],
         'runs' => \Workflow\V2\Models\WorkflowRun::query()->get(['id','workflow_instance_id','status'])->toArray(),
+        'activities' => \Workflow\V2\Models\ActivityExecution::query()->get(['id','workflow_run_id','status','attempt_count'])->toArray(),
+        'attempts' => \Workflow\V2\Models\ActivityAttempt::query()->get(['id','workflow_run_id','activity_execution_id','attempt_number','status'])->toArray(),
         'oracle' => providerLedger(),
         'authored_control_output' => $controlOutput,
     ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT).PHP_EOL;
