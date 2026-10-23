@@ -26,6 +26,10 @@ MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 CONFIG = "application/vnd.oci.image.config.v1+json"
 MAX_ARCHIVE = 1024 * 1024 * 1024
 MAX_JSON = 1024 * 1024
+SHA256_PREFIX = "sha256:"
+BLOBS_DIRECTORY = "blobs/sha256"
+INDEX_FILE = "index.json"
+PROVENANCE_FILE = "provenance.json"
 SHA = re.compile(r"[0-9a-f]{40}", re.ASCII)
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}", re.ASCII)
 SDK = {"sdk": "3.4.1", "sdk_source": "cb1d11e57767e20e1fdb8081024f67057ff66714"}
@@ -70,11 +74,11 @@ def encode(value: dict) -> bytes:
 
 def digest_file(path: Path) -> str:
     with path.open("rb") as stream:
-        return "sha256:" + hashlib.file_digest(stream, "sha256").hexdigest()
+        return SHA256_PREFIX + hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def positive(value: object) -> int:
-    require(isinstance(value, str) and re.fullmatch(r"[1-9][0-9]{0,19}", value, re.ASCII) is not None, "Expected positive decimal identity")
+    require(isinstance(value, str) and re.fullmatch(r"[1-9]\d{0,19}", value, re.ASCII) is not None, "Expected positive decimal identity")
     return int(value)
 
 
@@ -102,11 +106,11 @@ def unpack_oci(archive: Path, root: Path) -> None:
             require(name not in seen, "Duplicate OCI archive path")
             seen.add(name)
             if member.isdir():
-                require(name in {"blobs", "blobs/sha256"}, "Unexpected OCI directory")
+                require(name in {"blobs", BLOBS_DIRECTORY}, "Unexpected OCI directory")
                 (root / name).mkdir(parents=True, exist_ok=True)
                 continue
             require(member.isfile(), "OCI links and special files are forbidden")
-            require(name in {"index.json", "oci-layout"} or re.fullmatch(r"blobs/sha256/[0-9a-f]{64}", name, re.ASCII) is not None, "Unexpected OCI file")
+            require(name in {INDEX_FILE, "oci-layout"} or re.fullmatch(r"blobs/sha256/[0-9a-f]{64}", name, re.ASCII) is not None, "Unexpected OCI file")
             total += member.size
             require(0 <= member.size <= MAX_ARCHIVE and total <= MAX_ARCHIVE, "Oversized OCI contents")
             target = root / name
@@ -116,21 +120,21 @@ def unpack_oci(archive: Path, root: Path) -> None:
             with stream, target.open("xb") as output:
                 shutil.copyfileobj(stream, output, 1024 * 1024)
             if name.startswith("blobs/"):
-                require(digest_file(target) == "sha256:" + target.name, "OCI blob digest mismatch")
+                require(digest_file(target) == SHA256_PREFIX + target.name, "OCI blob digest mismatch")
 
 
 def blob(root: Path, descriptor: dict) -> Path:
     require(isinstance(descriptor, dict) and DIGEST.fullmatch(str(descriptor.get("digest", ""))) is not None, "Unsupported OCI descriptor digest")
     size = descriptor.get("size")
     require(type(size) is int and 0 <= size <= MAX_ARCHIVE and "urls" not in descriptor, "Invalid OCI descriptor size or external URL")
-    path = root / "blobs/sha256" / descriptor["digest"].split(":")[1]
+    path = root / BLOBS_DIRECTORY / descriptor["digest"].split(":")[1]
     require(path.is_file() and path.stat().st_size == size and digest_file(path) == descriptor["digest"], "Missing or changed OCI descriptor content")
     return path
 
 
 def inspect_oci(root: Path, architecture: str, source: str) -> tuple[dict, str]:
     require(read_json(root / "oci-layout") == {"imageLayoutVersion": "1.0.0"}, "Unsupported OCI layout")
-    index = read_json(root / "index.json")
+    index = read_json(root / INDEX_FILE)
     descriptor = None
     for _depth in range(3):
         require(index.get("schemaVersion") == 2 and isinstance(index.get("manifests"), list) and len(index["manifests"]) == 1, "Expected one native OCI image")
@@ -188,12 +192,28 @@ def validate_tag(root: Path, source: str) -> None:
     require(target.get("type") == "commit" and target.get("sha") == source, "Release tag does not resolve to reviewed source")
 
 
+def selected_artifacts(directory: Path, run_id: int, attempt: int) -> dict:
+    artifacts = read_json(directory / "artifacts.json").get("artifacts", [])
+    require(isinstance(artifacts, list) and len(artifacts) <= 20, "Unexpected evidence artifact inventory")
+    chosen = {}
+    for architecture in ("amd64", "arm64"):
+        name = f"waterline-oci-{architecture}-{run_id}-{attempt}"
+        matches = [item for item in artifacts if item.get("name") == name]
+        require(len(matches) == 1, "Missing or duplicate native artifact")
+        item = matches[0]
+        require(type(item.get("id")) is int and item["id"] > 0 and item.get("expired") is False, "Invalid native artifact identity")
+        require(type(item.get("size_in_bytes")) is int and 0 < item["size_in_bytes"] <= MAX_ARCHIVE + MAX_JSON, "Oversized native artifact")
+        require(isinstance(item.get("digest"), str) and DIGEST.fullmatch(item["digest"]) is not None, "Missing immutable Actions artifact digest")
+        chosen[architecture] = {key: item[key] for key in ("id", "digest", "size_in_bytes")}
+    return chosen
+
+
 def plan(args: argparse.Namespace) -> None:
     source, tree, runner = commit(args.source), commit(args.tree), commit(args.runner)
     run_id, attempt = positive(args.run), positive(args.attempt)
     require(os.environ.get("GITHUB_REPOSITORY") == REPOSITORY and os.environ.get("GITHUB_REF") == "refs/heads/main", "Publisher requires the fixed protected main repository")
     require(os.environ.get("GITHUB_SHA") == commit(args.publisher), "Publisher source changed after independent review")
-    require(digest_file(Path(PUBLISHER)) == "sha256:" + sha256(args.publisher_hash), "Publisher workflow changed after review")
+    require(digest_file(Path(PUBLISHER)) == SHA256_PREFIX + sha256(args.publisher_hash), "Publisher workflow changed after review")
     validate_tag(args.directory, source)
     selected = read_json(args.directory / "commit.json")
     require(selected.get("sha") == source and selected.get("commit", {}).get("tree", {}).get("sha") == tree, "Reviewed source/tree mismatch")
@@ -217,18 +237,7 @@ def plan(args: argparse.Namespace) -> None:
     require(content.get("encoding") == "base64" and content.get("size", MAX_JSON + 1) <= MAX_JSON, "Invalid reviewed build workflow response")
     raw = base64.b64decode(content.get("content", ""), validate=False)
     require(hashlib.sha256(raw).hexdigest() == sha256(args.build_hash), "Build workflow changed after review")
-    artifacts = read_json(args.directory / "artifacts.json").get("artifacts", [])
-    require(isinstance(artifacts, list) and len(artifacts) <= 20, "Unexpected evidence artifact inventory")
-    chosen = {}
-    for architecture in ("amd64", "arm64"):
-        name = f"waterline-oci-{architecture}-{run_id}-{attempt}"
-        matches = [item for item in artifacts if item.get("name") == name]
-        require(len(matches) == 1, "Missing or duplicate native artifact")
-        item = matches[0]
-        require(type(item.get("id")) is int and item["id"] > 0 and item.get("expired") is False, "Invalid native artifact identity")
-        require(type(item.get("size_in_bytes")) is int and 0 < item["size_in_bytes"] <= MAX_ARCHIVE + MAX_JSON, "Oversized native artifact")
-        require(isinstance(item.get("digest"), str) and DIGEST.fullmatch(item["digest"]) is not None, "Missing immutable Actions artifact digest")
-        chosen[architecture] = {key: item[key] for key in ("id", "digest", "size_in_bytes")}
+    chosen = selected_artifacts(args.directory, run_id, attempt)
     args.output.write_bytes(encode({"source": source, "tree": tree, "source_pull": merged[0]["number"], "qualified_head": merged[0]["head"]["sha"], "runner_commit": runner, "run_id": run_id,
                                   "run_attempt": attempt, "build_workflow_sha256": args.build_hash, "artifacts": chosen}) + b"\n")
 
@@ -238,9 +247,9 @@ def unpack_artifact(path: Path, target: Path, metadata: dict) -> None:
     target.mkdir()
     with zipfile.ZipFile(path) as archive:
         members = archive.infolist()
-        require(len(members) == 2 and {item.filename for item in members} == {"image.oci.tar", "provenance.json"}, "Unexpected artifact files")
+        require(len(members) == 2 and {item.filename for item in members} == {"image.oci.tar", PROVENANCE_FILE}, "Unexpected artifact files")
         for member in members:
-            limit = MAX_JSON if member.filename == "provenance.json" else MAX_ARCHIVE
+            limit = MAX_JSON if member.filename == PROVENANCE_FILE else MAX_ARCHIVE
             require(0 < member.file_size <= limit and not member.is_dir() and member.flag_bits & 1 == 0, "Invalid artifact member")
             with archive.open(member) as source, (target / member.filename).open("xb") as output:
                 shutil.copyfileobj(source, output, 1024 * 1024)
@@ -252,7 +261,7 @@ def prepare(args: argparse.Namespace) -> None:
     for architecture in ("amd64", "arm64"):
         target = args.directory / architecture
         unpack_artifact(args.directory / f"{architecture}.zip", target, selected["artifacts"][architecture])
-        provenance = read_json(target / "provenance.json")
+        provenance = read_json(target / PROVENANCE_FILE)
         expected = {"schema": "waterline.native-oci/v1", "version": VERSION, "source": selected["source"], "tree": selected["tree"],
                     "architecture": architecture, **{key: selected[key] for key in ("runner_commit", "run_id", "run_attempt", "build_workflow_sha256")}, **SDK}
         require(set(provenance) == set(expected) | {"manifest_digest", "config_digest", "archive_digest"}, "Unexpected provenance fields")
@@ -266,17 +275,17 @@ def prepare(args: argparse.Namespace) -> None:
         layouts.append(layout)
         descriptors.append(descriptor)
     merged = args.directory / "verified-oci"
-    (merged / "blobs/sha256").mkdir(parents=True)
+    (merged / BLOBS_DIRECTORY).mkdir(parents=True)
     for layout in layouts:
-        for source in (layout / "blobs/sha256").iterdir():
-            target = merged / "blobs/sha256" / source.name
+        for source in (layout / BLOBS_DIRECTORY).iterdir():
+            target = merged / BLOBS_DIRECTORY / source.name
             if not target.exists():
                 shutil.copyfile(source, target)
     index = encode({"schemaVersion": 2, "mediaType": INDEX, "manifests": descriptors})
-    index_digest = "sha256:" + hashlib.sha256(index).hexdigest()
-    (merged / "blobs/sha256" / index_digest.split(":")[1]).write_bytes(index)
+    index_digest = SHA256_PREFIX + hashlib.sha256(index).hexdigest()
+    (merged / BLOBS_DIRECTORY / index_digest.split(":")[1]).write_bytes(index)
     (merged / "oci-layout").write_bytes(encode({"imageLayoutVersion": "1.0.0"}))
-    (merged / "index.json").write_bytes(encode({"schemaVersion": 2, "manifests": [{"mediaType": INDEX, "digest": index_digest,
+    (merged / INDEX_FILE).write_bytes(encode({"schemaVersion": 2, "manifests": [{"mediaType": INDEX, "digest": index_digest,
         "size": len(index), "annotations": {"org.opencontainers.image.ref.name": VERSION}}]}))
     (args.directory / "verified.json").write_bytes(encode({"image_digest": index_digest, "source": selected["source"],
         "tree": selected["tree"], "version": VERSION, "destination": DESTINATION, "manifests": descriptors}) + b"\n")
@@ -304,6 +313,6 @@ def main() -> None:
 if __name__ == "__main__":
     try:
         main()
-    except (EvidenceError, OSError, ValueError, KeyError, TypeError, tarfile.TarError, zipfile.BadZipFile) as error:
+    except (OSError, ValueError, KeyError, TypeError, tarfile.TarError, zipfile.BadZipFile) as error:
         print(f"OCI publication refused: {error}", file=sys.stderr)
         raise SystemExit(1) from None

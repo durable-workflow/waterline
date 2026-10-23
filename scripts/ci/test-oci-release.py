@@ -173,7 +173,7 @@ class OciReleaseTest(unittest.TestCase):
             data[name][key] = value
             with self.subTest(field=key), self.assertRaises(oci.EvidenceError):
                 self.admit(data, publisher, args)
-        for invalid in ["../42", "1/other", "1e3", "０", "0", "-1"]:
+        for invalid in ["../42", "1/other", "1e3", "０", "1０", "0", "-1"]:
             bad = copy.copy(args)
             bad.run = invalid
             with self.subTest(run=invalid), self.assertRaises(oci.EvidenceError):
@@ -230,8 +230,9 @@ class OciReleaseTest(unittest.TestCase):
         selected = self.artifact_fixture()
         archive = self.root / "amd64.zip"
         archive.write_bytes(archive.read_bytes() + b"changed")
+        arguments = argparse.Namespace(directory=self.root)
         with self.assertRaises(oci.EvidenceError):
-            oci.prepare(argparse.Namespace(directory=self.root))
+            oci.prepare(arguments)
         self.assertFalse((self.root / "verified.json").exists())
         attack = self.root / "commands.zip"
         with zipfile.ZipFile(attack, "w") as zipped:

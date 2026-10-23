@@ -13,7 +13,7 @@ for fingerprint in "$BUILD_HASH" "$PUBLISHER_HASH"; do
 done
 [[ "$BUILD_RUN" =~ ^[1-9][0-9]{0,19}$ ]]
 [[ "$BUILD_ATTEMPT" =~ ^[1-9][0-9]{0,19}$ ]]
-test "$GITHUB_SHA" = "$PUBLISHER_COMMIT"
+[[ "$GITHUB_SHA" = "$PUBLISHER_COMMIT" ]]
 
 work="$RUNNER_TEMP/waterline-publication"
 mkdir -p "$work"
@@ -23,7 +23,7 @@ check_registry_version() {
     if skopeo inspect --raw --authfile "$work/anonymous-auth.json" \
         docker://docker.io/durableworkflow/waterline:2.13.2 > "$work/existing-index.json" 2> "$work/existing-index-error.txt"; then
         actual="sha256:$(sha256sum "$work/existing-index.json" | cut -d ' ' -f 1)"
-        test "$actual" = "$expected"
+        [[ "$actual" = "$expected" ]]
     elif ! rg --ignore-case 'manifest unknown|manifest_unknown' "$work/existing-index-error.txt" >/dev/null; then
         echo 'Cannot establish fixed registry tag absence; publication refused.' >&2
         return 1
@@ -68,6 +68,6 @@ expected="$(jq -r .image_digest "$work/verified.json")"
 skopeo copy --all --preserve-digests --authfile "$work/anonymous-auth.json" \
     --digestfile "$work/roundtrip-digest.txt" \
     "oci:$work/verified-oci:2.13.2" "oci:$work/roundtrip-oci:2.13.2"
-test "$(cat "$work/roundtrip-digest.txt")" = "$expected"
+[[ "$(cat "$work/roundtrip-digest.txt")" = "$expected" ]]
 rm -r -- "$work/roundtrip-oci"
 check_registry_version

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -269,8 +270,8 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         self.assertIn("standalone/composer.lock", matching[0]["run"])
 
     def test_service_image_publication_needs_tag_source_qualification(self) -> None:
-        jobs = workflow("service-image.yml")["jobs"]
-        qualification = jobs["qualify-release-source"]
+        build = workflow("service-image.yml")
+        qualification = build["jobs"]["native"]
         matching = [
             step
             for step in qualification["steps"]
@@ -278,10 +279,30 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         ]
 
         self.assertEqual(1, len(matching))
-        self.assertIn('--release-version "$GITHUB_REF_NAME"', matching[0]["run"])
-        self.assertEqual("qualify-release-source", jobs["smoke"]["needs"])
-        self.assertEqual(["qualify-release-source", "smoke"], jobs["prewarm_arm64"]["needs"])
-        self.assertEqual(["qualify-release-source", "smoke", "prewarm_arm64"], jobs["publish"]["needs"])
+        self.assertIn('--release-version "$RELEASE_VERSION"', matching[0]["run"])
+        self.assertNotIn("if", matching[0])
+        self.assertEqual("read", build["permissions"]["contents"])
+        self.assertNotIn("environment", qualification)
+        self.assertNotIn("secrets.", json.dumps(qualification))
+        self.assertEqual(
+            {"amd64", "arm64"},
+            {cell["architecture"] for cell in qualification["strategy"]["matrix"]["include"]},
+        )
+        scripts = [step.get("run", "") for step in qualification["steps"]]
+        self.assertTrue(any("scripts/ci/service-mode-image-smoke.sh" in run for run in scripts))
+        self.assertTrue(any("scripts/ci/oci_release.py native" in run for run in scripts))
+
+        publication = workflow("service-image-publish.yml")
+        publisher = publication["jobs"]["publish"]
+        self.assertEqual("github.ref == 'refs/heads/main'", publisher["if"])
+        self.assertEqual("release-publication", publisher["environment"])
+        self.assertEqual("publish", publication["jobs"]["qualify-published"]["needs"])
+        self.assertNotIn("docker/build-push-action", json.dumps(publisher))
+        verification = next(index for index, step in enumerate(publisher["steps"])
+                            if "scripts/ci/prepare-oci-publication.sh" in step.get("run", ""))
+        login = next(index for index, step in enumerate(publisher["steps"])
+                     if "DOCKERHUB_TOKEN" in step.get("env", {}))
+        self.assertLess(verification, login)
 
 if __name__ == "__main__":
     unittest.main()
