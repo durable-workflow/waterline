@@ -160,7 +160,7 @@ $app = Application::configure(basePath: __DIR__)->withProviders([
     \Workflow\Providers\WorkflowServiceProvider::class,
     \Waterline\WaterlineServiceProvider::class,
     UncertainOutcomesProvider::class,
-], withBootstrapProviders: false)->create();
+], withBootstrapProviders: false)->withExceptions()->create();
 
 function drainInvestigationTasks(): void
 {
