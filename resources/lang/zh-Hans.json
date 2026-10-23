@@ -1,6 +1,6 @@
 {
     "Command outcome unknown": "命令结果未知",
-    "The request timed out or lost its response. The command outcome is unknown. Inspect the run before sending it again.": "请求已超时或响应丢失。命令结果未知。再次发送前，请检查该次运行。",
+    "The command outcome is unknown. Inspect the run before sending it again.": "命令结果未知。再次发送前，请检查该次运行。",
     "You are not authorized to perform this Waterline action.": "您无权执行此 Waterline 操作。",
     "Waterline is configured read-only; this action is unavailable.": "Waterline 已配置为只读模式；此操作不可用。",
     "You are not authorized to change schedules.": "您无权更改计划。",

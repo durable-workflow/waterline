@@ -1,6 +1,6 @@
 {
     "Command outcome unknown": "コマンドの結果は不明です",
-    "The request timed out or lost its response. The command outcome is unknown. Inspect the run before sending it again.": "リクエストがタイムアウトしたか、応答が失われました。コマンドの結果は不明です。再送信する前に実行を確認してください。",
+    "The command outcome is unknown. Inspect the run before sending it again.": "コマンドの結果は不明です。再送信する前に実行を確認してください。",
     "You are not authorized to perform this Waterline action.": "この Waterline 操作を実行する権限がありません。",
     "Waterline is configured read-only; this action is unavailable.": "Waterline は読み取り専用に設定されているため、この操作は利用できません。",
     "You are not authorized to change schedules.": "スケジュールを変更する権限がありません。",

@@ -1,6 +1,6 @@
 {
     "Command outcome unknown": "Command outcome unknown",
-    "The request timed out or lost its response. The command outcome is unknown. Inspect the run before sending it again.": "The request timed out or lost its response. The command outcome is unknown. Inspect the run before sending it again.",
+    "The command outcome is unknown. Inspect the run before sending it again.": "The command outcome is unknown. Inspect the run before sending it again.",
     "You are not authorized to perform this Waterline action.": "You are not authorized to perform this Waterline action.",
     "Waterline is configured read-only; this action is unavailable.": "Waterline is configured read-only; this action is unavailable.",
     "You are not authorized to change schedules.": "You are not authorized to change schedules.",

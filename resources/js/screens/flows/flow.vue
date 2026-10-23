@@ -4956,7 +4956,7 @@ export default {
         commandFailureMessage(error, commandType) {
             if (!error?.response && commandType === 'query') return this.$t("Query failed")
             if (ambiguousCommandError(error, commandType)) {
-                return this.$t("The request timed out or lost its response. The command outcome is unknown. Inspect the run before sending it again.")
+                return this.$t("The command outcome is unknown. Inspect the run before sending it again.")
             }
             const data = error.response?.data || {}
             const validationMessages = this.commandValidationMessages(data)

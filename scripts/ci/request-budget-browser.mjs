@@ -55,7 +55,7 @@ try {
     mode('write-stall');
     await page.getByRole('button',{name:'Cancel',exact:true}).first().click();
     await page.locator('.swal2-confirm').click();
-    await page.getByText('The request timed out or lost its response. The command outcome is unknown. Inspect the run before sending it again.',{exact:true}).waitFor();
+    await page.getByText('The command outcome is unknown. Inspect the run before sending it again.',{exact:true}).waitFor();
     assert.equal(await page.locator('.swal2-success').count(),0);
     await page.waitForTimeout(2300);
     const writes = fs.readFileSync('writes.jsonl','utf8').trim().split('\n').map(line=>JSON.parse(line));
