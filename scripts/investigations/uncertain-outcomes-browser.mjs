@@ -39,6 +39,7 @@ async function inspectPage(context, id, runId, name) {
     page.on('pageerror',error=>report.errors.push(String(error)));
     await page.goto(`${base}/waterline/flows/instances/${id}/runs/${runId}`);
     await page.locator('.wl-flow-detail__title').waitFor();
+    await page.locator('.wl-flow-detail__status').waitFor();
     const inspect = page.getByRole('button',{name:'Inspect full details',exact:true});
     if (await inspect.count()) await inspect.click();
     await page.locator('#collapseArguments').waitFor({state:'attached'});
