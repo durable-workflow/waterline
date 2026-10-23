@@ -91,6 +91,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: release-publication
+    outputs:
+      image_digest: ${{ steps.publish.outputs.digest }}
+      source_commit: ${{ steps.source.outputs.commit }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4
@@ -184,3 +187,12 @@ jobs:
           name: waterline-service-image-build-${{ github.run_id }}-${{ github.run_attempt }}
           path: service-image-build-evidence.json
           if-no-files-found: warn
+
+  qualify-published:
+    name: Qualify published architectures
+    needs: publish
+    uses: ./.github/workflows/published-image-qualification.yml # local
+    with:
+      image_digest: ${{ needs.publish.outputs.image_digest }}
+      release_version: ${{ github.ref_name }}
+      source_commit: ${{ needs.publish.outputs.source_commit }}

@@ -148,6 +148,7 @@ if [ -n "$expected_waterline_version" ] && [ "$image_release" != "$expected_wate
 fi
 
 if image_requires_brotli_guard "$image_release"; then
+    docker run --rm --entrypoint php "$image" /usr/local/share/waterline/verify-ca-trust.php
     docker run --rm --entrypoint php "$image" /usr/local/share/waterline/verify-brotli.php
 else
     brotli_feature_status=$?
