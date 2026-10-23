@@ -24,7 +24,16 @@ class V2SchedulesController extends Controller
     {
         $filters = Validator::make($request->query(), [
             'workflow_type' => ['sometimes', 'required', 'string', 'min:1', 'max:255', 'regex:/\S/'],
+            'query' => ['sometimes', 'required', 'string', 'min:1', 'max:2048'],
         ])->validate();
+
+        if (isset($filters['query'])) {
+            return response()->json([
+                'message' => 'This embedded backend does not support schedule visibility queries. Workflow type and status filters remain available.',
+                'reason' => 'backend_capability_unavailable',
+                'capability' => 'schedule_visibility_query',
+            ], 501);
+        }
 
         $query = WorkflowSchedule::query()
             ->orderByDesc('created_at')

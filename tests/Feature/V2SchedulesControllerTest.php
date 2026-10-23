@@ -128,6 +128,29 @@ final class V2SchedulesControllerTest extends TestCase
         }
     }
 
+    public function testVisibilityQueryCannotSilentlyReturnAnUnfilteredSuccess(): void
+    {
+        $this->createSchedule('matching');
+        $this->createSchedule('other');
+
+        foreach (['ScheduleId = "matching"', 'Count = 4'] as $query) {
+            $this->getJson('/waterline/api/v2/schedules?'.http_build_query(['query' => $query]))
+                ->assertStatus(501)
+                ->assertJsonPath('reason', 'backend_capability_unavailable')
+                ->assertJsonPath('capability', 'schedule_visibility_query')
+                ->assertJsonMissingPath('data');
+        }
+    }
+
+    public function testVisibilityQueryValidatesInputsBeforeCapabilityRefusal(): void
+    {
+        foreach (['', ['unexpected'], str_repeat('x', 2049)] as $query) {
+            $this->getJson('/waterline/api/v2/schedules?'.http_build_query(['query' => $query]))
+                ->assertStatus(422)
+                ->assertJsonValidationErrors('query');
+        }
+    }
+
     public function testEveryRowActionResolvesTheListedScheduleIdAndNamespace(): void
     {
         $schedule = $this->createSchedule('row-actions');
