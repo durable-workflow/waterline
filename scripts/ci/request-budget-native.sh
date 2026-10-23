@@ -99,6 +99,19 @@ start_proxy() {
 }
 start_application 0.8
 start_proxy
+docker exec "$proxy" php -r '
+    $checks = [];
+    foreach (["/up", "/waterline/api/flows/running?page=1", "/vendor/waterline/app.js?id=123", "/waterline/../up", "/waterline/%2e%2e/up", "/vendor/waterline/..%2fprivate", "/private"] as $index => $path) {
+        $request = curl_init("http://127.0.0.1:8080".$path);
+        curl_setopt_array($request, [CURLOPT_RETURNTRANSFER => true, CURLOPT_PATH_AS_IS => true, CURLOPT_TIMEOUT_MS => 3000]);
+        curl_exec($request);
+        $status = curl_getinfo($request, CURLINFO_RESPONSE_CODE);
+        $expected = $index < 3 ? 200 : 400;
+        if ($status !== $expected) { fwrite(STDERR, "Native fixture proxy guard failed.\n"); exit(1); }
+        $checks[] = ["path" => $path, "http" => $status];
+    }
+    echo json_encode(["checks" => $checks], JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR).PHP_EOL;
+' > "$evidence/native-proxy-controls.json"
 export EXPECTED_CANDIDATE_SOURCE="$EXPECTED_SOURCE_COMMIT"
 export FIXED_BROWSER_BUDGET_SECONDS=0.8
 cd "$work"
