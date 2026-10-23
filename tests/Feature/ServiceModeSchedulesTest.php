@@ -166,7 +166,8 @@ final class ServiceModeSchedulesTest extends TestCase
 
     public function testListFiltersAreForwardedToTheServer(): void
     {
-        $this->getJson('/waterline/api/v2/schedules?status=paused&workflow_type=orders.reconcile')
+        $filters = ['status' => 'paused', 'workflow_type' => 'orders.reconcile', 'query' => 'Note = "nightly"'];
+        $this->getJson('/waterline/api/v2/schedules?'.http_build_query($filters))
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', 'hourly-reconcile');
@@ -175,6 +176,20 @@ final class ServiceModeSchedulesTest extends TestCase
         $this->assertSame('listSchedules', $list['method']);
         $this->assertSame('paused', $list['arguments']['status']);
         $this->assertSame('orders.reconcile', $list['arguments']['workflowType']);
+        $this->assertSame('Note = "nightly"', $list['arguments']['query']);
+    }
+
+    public function testInvalidTypeOrQueryIsRefusedBeforeAnyUpstreamScheduleRead(): void
+    {
+        foreach (['workflow_type' => 255, 'query' => 2048] as $field => $maximum) {
+            foreach (['', ['unexpected'], str_repeat('x', $maximum + 1)] as $value) {
+                $this->getJson('/waterline/api/v2/schedules?'.http_build_query([$field => $value]))
+                    ->assertStatus(422)
+                    ->assertJsonValidationErrors($field);
+            }
+        }
+
+        $this->assertSame([], $this->scheduleCalls());
     }
 
     public function testListRowFallsBackToTheListItemWhenItsDetailCannotBeRead(): void

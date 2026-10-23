@@ -10,14 +10,6 @@
             </div>
 
             <div class="schedule-view__actions">
-                <label for="waterline-schedule-status" class="sr-only">{{ $t("Status") }}</label>
-                <select id="waterline-schedule-status" v-model="statusFilter" class="form-control form-control-sm schedule-view__filter">
-                    <option value="">{{ $t("All statuses") }}</option>
-                    <option value="active">{{ $t("Active") }}</option>
-                    <option value="paused">{{ $t("Paused") }}</option>
-                    <option v-if="!serviceMode" value="deleted">{{ $t("Deleted") }}</option>
-                </select>
-
                 <button class="btn btn-sm btn-outline-secondary" @click="editViewOptions" :disabled="savingOperatorPreferences">
                     {{ $t("View Options") }}
                 </button>
@@ -30,6 +22,27 @@
                 </button>
             </div>
         </section>
+
+        <form class="schedule-view__filters card card-bg-secondary" @submit.prevent="applyFilters">
+            <div>
+                <label for="waterline-schedule-status">{{ $t("Status") }}</label>
+                <select id="waterline-schedule-status" v-model="statusFilter" class="form-control form-control-sm">
+                    <option value="">{{ $t("All statuses") }}</option>
+                    <option value="active">{{ $t("Active") }}</option>
+                    <option value="paused">{{ $t("Paused") }}</option>
+                    <option v-if="!serviceMode" value="deleted">{{ $t("Deleted") }}</option>
+                </select>
+            </div>
+            <div>
+                <label for="waterline-schedule-type">{{ $t("Workflow Type") }}</label>
+                <input id="waterline-schedule-type" v-model="workflowTypeFilter" class="form-control form-control-sm" type="text">
+            </div>
+            <div>
+                <label for="waterline-schedule-query">{{ $t("Schedule visibility query") }}</label>
+                <input id="waterline-schedule-query" v-model="visibilityQueryFilter" class="form-control form-control-sm" type="text">
+            </div>
+            <button class="btn btn-sm btn-primary" type="submit">{{ $t("Apply Filters") }}</button>
+        </form>
 
         <div v-if="loading" class="schedule-view__state card card-bg-secondary">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" class="icon spin fill-text-color schedule-view__state-icon" aria-hidden="true">
@@ -591,6 +604,12 @@ export default {
             operatorScope: null,
             observedBackend: null,
             statusFilter: '',
+            appliedStatus: '',
+            workflowTypeFilter: '',
+            visibilityQueryFilter: '',
+            appliedWorkflowType: '',
+            appliedVisibilityQuery: '',
+            listRequest: 0,
             currentPage: 1,
             pendingRowKeys: {},
             refreshing: false,
@@ -689,7 +708,7 @@ export default {
         },
 
         currentFilterLabel() {
-            return this.statusFilter ? this.$t("{value1} only", { value1: this.stateLabel(this.statusFilter) }) : this.$t('all statuses');
+            return this.appliedStatus ? this.$t("{value1} only", { value1: this.stateLabel(this.appliedStatus) }) : this.$t('all statuses');
         },
 
         visiblePages() {
@@ -732,19 +751,29 @@ export default {
         }
     },
 
-    watch: {
-        statusFilter() {
-            this.currentPage = 1;
-            this.loadData();
-        }
-    },
-
     mounted() {
         this.loadOperatorPreferences().finally(() => this.loadData());
     },
 
     methods: {
+        applyFilters() {
+            this.appliedStatus = this.statusFilter;
+            this.appliedWorkflowType = this.workflowTypeFilter.trim();
+            this.appliedVisibilityQuery = this.visibilityQueryFilter.trim();
+            this.currentPage = 1;
+            return this.loadData();
+        },
+
+        listParams() {
+            const params = {page: this.currentPage};
+            if (this.appliedStatus) params.status = this.appliedStatus;
+            if (this.appliedWorkflowType) params.workflow_type = this.appliedWorkflowType;
+            if (this.appliedVisibilityQuery) params.query = this.appliedVisibilityQuery;
+            return params;
+        },
+
         async loadData() {
+            const request = ++this.listRequest;
             // A refresh keeps the current rows on screen so a row action keeps
             // its place and keyboard focus.
             this.loading = this.schedules.length === 0;
@@ -752,15 +781,8 @@ export default {
             this.error = null;
 
             try {
-                const params = {
-                    page: this.currentPage
-                };
-
-                if (this.statusFilter) {
-                    params.status = this.statusFilter;
-                }
-
-                const response = await axios.get(this.resolvedApiEndpoint(), { params });
+                const response = await axios.get(this.resolvedApiEndpoint(), {params: this.listParams()});
+                if (request !== this.listRequest) return;
                 this.schedules = response.data.data || [];
                 this.operatorScope = response.data.operator_scope || null;
                 this.observedBackend = response.data.backend || null;
@@ -771,11 +793,13 @@ export default {
                     total: response.data.total
                 };
             } catch (e) {
+                if (request !== this.listRequest) return;
                 this.error = this.responseMessage(e, this.$t("Failed to load schedules"));
-                console.error('Schedule load error:', e);
             } finally {
-                this.loading = false;
-                this.refreshing = false;
+                if (request === this.listRequest) {
+                    this.loading = false;
+                    this.refreshing = false;
+                }
             }
         },
 
@@ -1561,8 +1585,24 @@ export default {
     gap: 0.75rem;
 }
 
-.schedule-view__filter {
-    min-width: 11rem;
+.schedule-view__filters {
+    display: grid;
+    grid-template-columns: minmax(8rem, 0.7fr) minmax(10rem, 1fr) minmax(12rem, 1.5fr) auto;
+    gap: 1rem;
+    align-items: end;
+    padding: 1rem;
+}
+
+.schedule-view__filters > div {
+    min-width: 0;
+}
+
+.schedule-view__filters label {
+    color: var(--wl-text-muted);
+}
+
+.schedule-view__filters .form-control {
+    width: 100%;
 }
 
 .schedule-view__button-icon {
@@ -1873,6 +1913,7 @@ export default {
 }
 
 @media (max-width: 1200px) {
+    .schedule-view__filters,
     .schedule-view__summary-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -1979,6 +2020,10 @@ export default {
 }
 
 @media (max-width: 576px) {
+    .schedule-view__filters {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .schedule-view__detail-grid {
         grid-template-columns: minmax(0, 1fr);
         gap: 0.2rem;
