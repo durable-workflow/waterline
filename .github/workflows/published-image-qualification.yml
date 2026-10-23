@@ -54,6 +54,9 @@ jobs:
           [[ "$EXPECTED_WATERLINE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
           git fetch --no-tags origin "refs/tags/$EXPECTED_WATERLINE_VERSION"
           test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$EXPECTED_WATERLINE_SOURCE"
+          mkdir -p "$RUNNER_TEMP/waterline-qualified-source"
+          git archive "$EXPECTED_WATERLINE_SOURCE" public | tar -x -C "$RUNNER_TEMP/waterline-qualified-source"
+          printf 'WATERLINE_QUALIFIED_ASSET_ROOT=%s\n' "$RUNNER_TEMP/waterline-qualified-source/public" >> "$GITHUB_ENV"
           printf 'WATERLINE_CONSUMER_ROOT=%s\n' "$RUNNER_TEMP/waterline-consumer" >> "$GITHUB_ENV"
           printf 'EXPECTED_WORKFLOW_VERSION=%s\n' "$(jq -r '.versions.workflow' release/current-product-tuple.json)" >> "$GITHUB_ENV"
       - name: Select authenticated dependency trust
@@ -119,6 +122,20 @@ jobs:
             sleep 1
           done
           exit 1
+      - name: Match installed assets to the exact qualified release source
+        working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
+        run: |
+          php -r '
+            $installed = json_decode(file_get_contents("published-embedded-evidence/installed-before.json"), true, flags: JSON_THROW_ON_ERROR)["assets"];
+            $root = getenv("WATERLINE_QUALIFIED_ASSET_ROOT");
+            $expected = [];
+            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)) as $file) {
+              if ($file->isFile()) $expected[substr($file->getPathname(), strlen($root) + 1)] = hash_file("sha256", $file->getPathname());
+            }
+            ksort($installed);
+            ksort($expected);
+            if ($installed !== $expected) throw new RuntimeException("Installed browser assets differ from the exact qualified release tag.");
+          '
       - name: Exercise installed permissions and actual controls
         working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
         run: node "$GITHUB_WORKSPACE/scripts/ci/published-embedded-browser.mjs"
