@@ -85,6 +85,39 @@ initialization failure instead leaves an `exited` container and its exit code,
 while a running service that later stops answering `/up` becomes `unhealthy`
 within 30 seconds.
 
+## Request budgets and read-only Retry
+
+`waterline.service.request_timeout_seconds` (`WATERLINE_SERVER_REQUEST_TIMEOUT`)
+sets the SDK-owned control-request budget in seconds. For example, set it to
+`5` for a five-second budget. It requires PHP SDK **3.4.0 or later**. Values must
+be finite, at least `0.001`, and at most `intdiv(PHP_INT_MAX, 1000)` seconds.
+Invalid settings fail with a typed configuration diagnostic. An explicit budget
+with an older optional SDK returns HTTP 501 `backend_capability_unavailable`;
+it is never silently ignored.
+
+The default is `null`: inherit the installed SDK policy. SDK 3.4 uses a
+60-second owned control-request budget. Older SDKs retain their previous policy,
+which may be unbounded; upgrade the optional SDK to bound backend work. This
+does not change the embedded PHP requirement or install an SDK in embedded mode.
+Custom application-injected clients retain their own HTTP policy.
+
+`waterline.browser.request_timeout_seconds` (`WATERLINE_BROWSER_REQUEST_TIMEOUT`)
+defaults to **65 seconds** and bounds ordinary browser requests. Set a positive
+finite value of at least `0.001` and at most `2147483.647` seconds. Existing
+explicit per-read budgets remain in effect. An explicitly selected update wait
+keeps its allowance plus transport headroom; these settings do not rewrite
+business deadlines, worker polls or payload-transfer clocks.
+
+After a run-list read fails, **Retry** issues another read with the selected
+filters/page. It does not replay a write. A timed-out mutation may already have
+been accepted: its outcome remains unknown until inspected. Waterline does not
+silently retry it or display an invented success. Check the selected run before
+submitting it again.
+
+Refresh Laravel's cached configuration and publish Waterline assets after an
+upgrade. Ordinary Laravel hosts use resolved configuration; standalone service
+deployments apply these environment values when starting the process.
+
 ## Deployment inputs
 
 | Input | Purpose | Default |

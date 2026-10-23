@@ -71,6 +71,20 @@ final class ApiExceptionRendererTest extends TestCase
         $this->assertSame($callbacksBefore, $this->renderCallbackCount($handler));
     }
 
+    public function testRequestBudgetConfigurationAndOldSdkFailuresAreTyped(): void
+    {
+        $renderer = new \Waterline\Http\Middleware\RenderApiExceptionsAsJson();
+        foreach ([['waterline_request_timeout_invalid', 500], ['backend_capability_unavailable', 501]] as [$reason, $status]) {
+            $response = $renderer->renderException(
+                \Illuminate\Http\Request::create('/waterline/api/flows/running'),
+                new \Waterline\Support\RequestTimeoutException('Safe configuration diagnostic.', $reason, $status),
+            );
+            $this->assertSame($status, $response->getStatusCode());
+            $this->assertSame($reason, $response->getData(true)['reason']);
+            $this->assertSame('control_request_timeout', $response->getData(true)['capability']);
+        }
+    }
+
     private function renderCallbackCount(object $handler): int
     {
         $reflection = new ReflectionObject($handler);

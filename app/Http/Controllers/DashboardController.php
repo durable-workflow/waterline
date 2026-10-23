@@ -10,6 +10,7 @@ use Waterline\Support\BackendConfiguration;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Waterline;
+use Waterline\Support\RequestTimeouts;
 
 class DashboardController extends Controller
 {
@@ -47,6 +48,7 @@ class DashboardController extends Controller
                 'locale' => UiLocale::resolve(),
                 'assets_current' => $assetsAreCurrent,
                 'maintenance' => App::isDownForMaintenance(),
+                'request_timeout_ms' => RequestTimeouts::browserMilliseconds(),
             ],
             'operatorScope' => $operatorScope,
             'uiLocale' => UiLocale::resolve(),

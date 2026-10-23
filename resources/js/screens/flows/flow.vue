@@ -1865,6 +1865,7 @@ import { appendRunHistoryPage } from '../../run-history.mjs'
 import { activityResultSelection, activityResultPath, activityResultMatches, activityResultAvailable, activityResultMessage } from '../../activity-result.mjs'
 import { failureSummary, failureEventIndex } from '../../failure-summary.mjs'
 import { operatorPermission } from '../../operator-permissions.mjs'
+import { ambiguousCommandError, browserTimeoutMilliseconds, commandRequestOptions } from '../../request-budget.mjs'
 
 export default {
     components: {
@@ -4888,7 +4889,7 @@ export default {
                 return this.handleCommandSuccess(commandType, interactiveCommand, response)
             } catch (error) {
                 this.$dialog({
-                    title: commandType === 'query' ? this.$t("Query failed") : this.$t("Command rejected"),
+                    title: commandType === 'query' ? this.$t("Query failed") : (ambiguousCommandError(error, commandType) ? this.$t("Command outcome unknown") : this.$t("Command rejected")),
                     text: this.commandFailureMessage(error, commandType),
                     icon: 'error',
                     confirmButtonText: this.$t("Okay"),
@@ -4901,6 +4902,7 @@ export default {
             return this.$http.post(
                 this.commandEndpoint(commandType, interactiveCommand ? interactiveCommand.targetName : null),
                 interactiveCommand ? this.commandRequestBody(interactiveCommand) : {},
+                commandRequestOptions(interactiveCommand, browserTimeoutMilliseconds(Waterline)),
             )
         },
 
@@ -4946,6 +4948,10 @@ export default {
         },
 
         commandFailureMessage(error, commandType) {
+            if (!error?.response && commandType === 'query') return this.$t("Query failed")
+            if (ambiguousCommandError(error, commandType)) {
+                return this.$t("The request timed out or lost its response. The command outcome is unknown. Inspect the run before sending it again.")
+            }
             const validationMessages = error.response && error.response.data
                 ? this.commandValidationMessages(error.response.data)
                 : []

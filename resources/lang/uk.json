@@ -1,4 +1,6 @@
 {
+    "Command outcome unknown": "Результат команди невідомий",
+    "The request timed out or lost its response. The command outcome is unknown. Inspect the run before sending it again.": "Час очікування запиту минув або відповідь втрачено. Результат команди невідомий. Перевірте запуск, перш ніж надсилати її знову.",
     "You are not authorized to perform this Waterline action.": "Ви не маєте дозволу на виконання цієї дії у Waterline.",
     "Waterline is configured read-only; this action is unavailable.": "Waterline налаштовано лише для читання; ця дія недоступна.",
     "You are not authorized to change schedules.": "Ви не маєте дозволу змінювати розклади.",

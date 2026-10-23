@@ -122,6 +122,12 @@ return [
         'token' => env('WATERLINE_SERVER_TOKEN'),
         'namespace' => env('WATERLINE_NAMESPACE', 'default'),
         'access_mode' => env('WATERLINE_ACCESS_MODE', 'read_only'),
+        // Null inherits the installed SDK policy (60s with SDK 3.4+).
+        'request_timeout_seconds' => env('WATERLINE_SERVER_REQUEST_TIMEOUT'),
+    ],
+
+    'browser' => [
+        'request_timeout_seconds' => env('WATERLINE_BROWSER_REQUEST_TIMEOUT', 65),
     ],
 
     /*

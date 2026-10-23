@@ -33,6 +33,7 @@ import { createWaterlineDialogOptions } from './dialogs.mjs';
 import { applyThemeStylesheet } from './theme.mjs';
 
 import 'bootstrap';
+import { browserTimeoutMilliseconds } from './request-budget.mjs';
 import 'vue-json-pretty/lib/styles.css';
 
 const mountElement = document.getElementById('waterline');
@@ -60,7 +61,7 @@ if (mountElement && waterline) {
 
     const app = createApp(WaterlineApp, { bootstrap: waterline });
 
-    app.config.globalProperties.$http = axios.create();
+    app.config.globalProperties.$http = axios.create({timeout: browserTimeoutMilliseconds(waterline)});
     app.config.errorHandler = function (err, instance, info) {
         // eslint-disable-next-line no-console
         console.error('[Vue:errorHandler]', err, info);

@@ -1,4 +1,6 @@
 {
+    "Command outcome unknown": "Résultat de la commande inconnu",
+    "The request timed out or lost its response. The command outcome is unknown. Inspect the run before sending it again.": "La requête a expiré ou sa réponse a été perdue. Le résultat de la commande est inconnu. Vérifiez l’exécution avant de la renvoyer.",
     "You are not authorized to perform this Waterline action.": "Vous n’êtes pas autorisé à effectuer cette action Waterline.",
     "Waterline is configured read-only; this action is unavailable.": "Waterline est configuré en lecture seule ; cette action est indisponible.",
     "You are not authorized to change schedules.": "Vous n’êtes pas autorisé à modifier les planifications.",
