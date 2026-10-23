@@ -117,15 +117,15 @@ jobs:
           skopeo copy "oci-archive:$RUNNER_TEMP/native-oci/image.oci.tar" "docker-daemon:$image"
           (
             cd "$CANDIDATE_ROOT"
-            SERVICE_IMAGE_SKIP_BUILD=1 WATERLINE_IMAGE="$image" \
+            SERVICE_IMAGE_SKIP_BUILD=1 SERVICE_IMAGE_LOCAL_ONLY=1 WATERLINE_IMAGE="$image" \
               EXPECTED_WATERLINE_VERSION="$RELEASE_VERSION" EXPECTED_SOURCE_COMMIT="$SOURCE_COMMIT" \
               scripts/ci/service-mode-image-smoke.sh
           )
           docker run --rm --network none --user 1000:1000 --cpus 1 --memory 128m \
             --tmpfs /data:rw,size=1m --entrypoint php "$image" -r '
               require "/app/vendor/autoload.php";
-              echo json_encode(["sdk"=>Composer\\InstalledVersions::getPrettyVersion("durable-workflow/sdk"),
-                "sdk_source"=>Composer\\InstalledVersions::getReference("durable-workflow/sdk")],JSON_THROW_ON_ERROR).PHP_EOL;
+              echo json_encode(["sdk"=>Composer\InstalledVersions::getPrettyVersion("durable-workflow/sdk"),
+                "sdk_source"=>Composer\InstalledVersions::getReference("durable-workflow/sdk")],JSON_THROW_ON_ERROR).PHP_EOL;
             ' > "$RUNNER_TEMP/native-oci/sdk.json"
           python -I scripts/ci/oci_release.py native \
             --archive "$RUNNER_TEMP/native-oci/image.oci.tar" \
