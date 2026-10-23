@@ -945,14 +945,15 @@ jobs:
         candidate_assets="$RUNNER_TEMP/waterline-contrast-candidate-assets"
         published_assets=public/vendor/waterline
         restore_candidate() {
-          if [ -d "$candidate_assets" ]; then
-            if [ -d "$published_assets" ]; then rm -r -- "$published_assets"; fi
+          if [ -e "$candidate_assets" ] || [ -L "$candidate_assets" ]; then
+            if [ -e "$published_assets" ] || [ -L "$published_assets" ]; then rm -r -- "$published_assets"; fi
             mv "$candidate_assets" "$published_assets"
           fi
           docker rm "$baseline_container" >/dev/null 2>&1 || true
         }
         trap restore_candidate EXIT
         docker create --name "$baseline_container" "$CONTRAST_BASELINE_IMAGE"
+        test -d "$published_assets"
         mv "$published_assets" "$candidate_assets"
         mkdir -p "$published_assets"
         docker cp "$baseline_container:/app/waterline/public/." "$published_assets/"
