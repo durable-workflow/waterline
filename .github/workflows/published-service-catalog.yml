@@ -110,7 +110,9 @@ jobs:
       - name: Install Node 24
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: '24'
+          node-version: '24.22.1'
+      - name: Verify raw Node trust before package requests
+        run: node waterline/.devcontainer/docker/verify-node-runtime.mjs
       - name: Install isolated browser tooling
         run: |
           mkdir -p "$RUNNER_TEMP/catalog-browser"
