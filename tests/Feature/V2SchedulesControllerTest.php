@@ -99,6 +99,35 @@ final class V2SchedulesControllerTest extends TestCase
             ->assertJsonPath('data.0.last_outcome.workflow_id', null);
     }
 
+    public function testWorkflowTypeFilterCombinesWithStatusAndNamespace(): void
+    {
+        config()->set('waterline.namespace', 'default');
+        $matching = $this->createSchedule('matching');
+        $matching->update(['status' => ScheduleStatus::Paused]);
+        $this->createSchedule('still-active');
+        $this->createSchedule('foreign', 'tenant-b')->update(['status' => ScheduleStatus::Paused]);
+        $otherType = $this->createSchedule('different-type');
+        $otherType->update([
+            'status' => ScheduleStatus::Paused,
+            'action' => [...$otherType->action, 'workflow_type' => 'workflow.operator-command.extra'],
+        ]);
+
+        $this->getJson('/waterline/api/v2/schedules?workflow_type=workflow.operator-command&status=paused')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.schedule_id', 'matching')
+            ->assertJsonPath('data.0.namespace', 'default');
+    }
+
+    public function testWorkflowTypeFilterRefusesInvalidInputsInsteadOfIgnoringThem(): void
+    {
+        foreach (['', '   ', str_repeat('x', 256), ['unexpected']] as $value) {
+            $this->getJson('/waterline/api/v2/schedules?'.http_build_query(['workflow_type' => $value]))
+                ->assertStatus(422)
+                ->assertJsonValidationErrors('workflow_type');
+        }
+    }
+
     public function testEveryRowActionResolvesTheListedScheduleIdAndNamespace(): void
     {
         $schedule = $this->createSchedule('row-actions');

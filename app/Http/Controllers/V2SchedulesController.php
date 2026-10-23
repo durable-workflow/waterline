@@ -5,6 +5,7 @@ namespace Waterline\Http\Controllers;
 use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Enums\ScheduleOverlapPolicy;
 use Workflow\V2\Enums\ScheduleStatus;
@@ -21,6 +22,10 @@ class V2SchedulesController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
+        $filters = Validator::make($request->query(), [
+            'workflow_type' => ['sometimes', 'required', 'string', 'min:1', 'max:255', 'regex:/\S/'],
+        ])->validate();
+
         $query = WorkflowSchedule::query()
             ->orderByDesc('created_at')
             ->orderBy('namespace')
@@ -29,6 +34,10 @@ class V2SchedulesController extends Controller
         $namespace = OperatorScope::namespace();
         if ($namespace !== null) {
             $query->where('namespace', $namespace);
+        }
+
+        if (isset($filters['workflow_type'])) {
+            $query->where('action->workflow_type', $filters['workflow_type']);
         }
 
         $status = $request->query('status');
