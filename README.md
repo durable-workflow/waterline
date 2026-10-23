@@ -70,6 +70,51 @@ Gate::define('viewWaterline', function ($user) {
 
 This will allow only the single admin user to access the Waterline UI.
 
+### Embedded operator permissions
+
+By default, anyone authorized to view embedded Waterline can use its operator
+actions. To restrict writes for every viewer, set `'read_only' => true` in
+`config/waterline.php`, or set `WATERLINE_READ_ONLY=true` before building the
+host's configuration cache. Viewing, history exports, queries and personal
+saved views/preferences remain available under their existing authorization.
+This setting does not prevent the host's workers from executing workflows.
+
+For different permissions per host user, define Laravel gates in your host's
+service provider and name them in `config/waterline.php`:
+
+```php
+Gate::define('waterline-messages', fn ($user) => $user->can('support-workflows'));
+Gate::define('waterline-operations', fn ($user) => $user->can('operate-workflows'));
+
+// config/waterline.php
+'authorization' => [
+    'gates' => [
+        'messages' => 'waterline-messages', // Signals and updates.
+        'repair' => 'waterline-operations',
+        'cancel' => 'waterline-operations',
+        'terminate' => 'waterline-operations',
+        'archive' => 'waterline-operations',
+        'schedules' => 'waterline-operations', // Pause, resume, trigger, backfill, delete.
+    ],
+],
+```
+
+Each gate receives the current host user and the HTTP request as an optional
+second argument. A `null` or omitted gate preserves the default action access.
+A configured gate must authorize the user. Missing gates and invalid gate
+settings refuse the action. Laravel's normal guest and `Gate::before` rules
+apply. These gates grant no viewing access and do not bypass namespace or
+runtime action restrictions. Global read-only takes precedence over all gates,
+including administrator overrides and unauthenticated observer access.
+
+Every write route enforces this policy, including legacy flow URLs and exact
+run URLs. A refused write returns HTTP 403 with `reason=waterline_action_forbidden`
+or `reason=waterline_read_only` and a `capability` identifying the refused action.
+The UI hides unavailable run controls, explains the refusal in action details,
+and disables schedule controls with a reason. Service mode continues to use
+`WATERLINE_ACCESS_MODE=read_only` and its upstream token permissions instead
+of host-user gates.
+
 Isolated observer stacks that have no application users can opt in to
 unauthenticated Waterline access:
 
@@ -161,10 +206,25 @@ Waterline can display a thin environment strip above the dashboard so production
 
 ```dotenv
 WATERLINE_ENV_NAME=production
-WATERLINE_ENV_COLOR=#dc3545
+WATERLINE_ENV_COLOR="#dc3545"
 ```
 
-`WATERLINE_ENV_COLOR` accepts hex colors. Invalid values fall back to a neutral gray.
+These settings work in embedded Laravel and standalone service mode.
+`WATERLINE_ENV_COLOR` selects one of these fixed palette colors:
+
+| Accepted value | Banner color |
+| --- | --- |
+| `#0d6efd` or `#2563eb` | Blue |
+| `#198754` or `#28a745` | Green |
+| `#6f42c1` or `#7746ec` | Purple |
+| `#dc3545` | Red |
+| `#fd7e14` | Orange |
+| `#ffc107` | Yellow |
+
+Every other value renders neutral gray, including other valid hex colors such
+as `#ff0000`. Embedded hosts can also set `env_name` and `env_color` in
+`config/waterline.php`. Rebuild the host's configuration cache after changing
+environment-based configuration.
 
 If your workflow IDs are strings (for example UUIDs) and do not sort in a useful order, publish the config and set `workflow_sort_column` to a timestamp column such as `created_at`:
 

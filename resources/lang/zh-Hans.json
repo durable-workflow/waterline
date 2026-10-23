@@ -1,4 +1,7 @@
 {
+    "You are not authorized to perform this Waterline action.": "您无权执行此 Waterline 操作。",
+    "Waterline is configured read-only; this action is unavailable.": "Waterline 已配置为只读模式；此操作不可用。",
+    "You are not authorized to change schedules.": "您无权更改计划。",
     "Update the PHP SDK to inspect this activity result.": "请更新 PHP SDK 以查看此活动的结果。",
     "The connected Server does not support activity result inspection.": "连接的 Server 不支持查看活动结果。",
     "The recorded activity result could not be decoded.": "无法解码已记录的活动结果。",
