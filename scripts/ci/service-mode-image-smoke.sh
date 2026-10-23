@@ -108,7 +108,12 @@ if [ "${SERVICE_IMAGE_SKIP_BUILD:-0}" != "1" ]; then
     expected_source_commit="$source_commit"
     expected_waterline_version="$smoke_version"
 else
-    docker pull "$image"
+    if [ "${SERVICE_IMAGE_LOCAL_ONLY:-0}" = "1" ]; then
+        # OCI qualification must exercise the imported image without a registry fallback.
+        docker image inspect "$image" >/dev/null
+    else
+        docker pull "$image"
+    fi
     expected_source_commit="${EXPECTED_SOURCE_COMMIT:-}"
     expected_waterline_version="${EXPECTED_WATERLINE_VERSION:-}"
 fi

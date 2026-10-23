@@ -1,0 +1,144 @@
+name: Promote reviewed native release artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Independently reviewed immutable 2.13.2 tag commit
+        required: true
+        type: string
+      source_tree:
+        description: Independently reviewed source tree
+        required: true
+        type: string
+      build_run_id:
+        description: Successful unprivileged native OCI run
+        required: true
+        type: string
+      build_run_attempt:
+        description: Exact successful run attempt
+        required: true
+        default: '1'
+        type: string
+      build_runner_commit:
+        description: Independently reviewed native build workflow commit
+        required: true
+        type: string
+      build_workflow_sha256:
+        description: Independently reviewed native build workflow SHA-256
+        required: true
+        type: string
+      publisher_commit:
+        description: Independently reviewed protected main publisher commit
+        required: true
+        type: string
+      publisher_workflow_sha256:
+        description: Independently reviewed protected publisher workflow SHA-256
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: waterline-protected-publication-2.13.2
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Promote verified OCI from protected main
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: release-publication
+    outputs:
+      image_digest: ${{ steps.publish.outputs.image_digest }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REVIEWED_SOURCE: ${{ inputs.source_commit }}
+      REVIEWED_TREE: ${{ inputs.source_tree }}
+      BUILD_RUN: ${{ inputs.build_run_id }}
+      BUILD_ATTEMPT: ${{ inputs.build_run_attempt }}
+      BUILD_RUNNER: ${{ inputs.build_runner_commit }}
+      BUILD_HASH: ${{ inputs.build_workflow_sha256 }}
+      PUBLISHER_COMMIT: ${{ inputs.publisher_commit }}
+      PUBLISHER_HASH: ${{ inputs.publisher_workflow_sha256 }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Select authenticated tool trust
+        uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+        with:
+          clients: python,curl,git
+      - name: Install the distribution OCI copy tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y skopeo
+          skopeo --version
+      - name: Read and bind the exact independent evidence
+        shell: bash
+        run: scripts/ci/prepare-oci-publication.sh
+      - name: Re-read tag and evidence immediately before login
+        run: scripts/ci/prepare-oci-publication.sh recheck
+      - name: Log in only after inert evidence verification
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$DOCKERHUB_USERNAME"
+          test -n "$DOCKERHUB_TOKEN"
+          printf '%s' "$DOCKERHUB_TOKEN" | skopeo login \
+            --authfile "$RUNNER_TEMP/waterline-registry-auth.json" \
+            --username "$DOCKERHUB_USERNAME" --password-stdin docker.io
+      - name: Copy verified inert content to the fixed version
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          scripts/ci/prepare-oci-publication.sh recheck
+          skopeo copy --all --preserve-digests \
+            --authfile "$RUNNER_TEMP/waterline-registry-auth.json" \
+            --digestfile "$RUNNER_TEMP/waterline-published-digest.txt" \
+            "oci:$RUNNER_TEMP/waterline-publication/verified-oci:2.13.2" \
+            docker://docker.io/durableworkflow/waterline:2.13.2
+          expected="$(jq -r .image_digest "$RUNNER_TEMP/waterline-publication/verified.json")"
+          test "$(cat "$RUNNER_TEMP/waterline-published-digest.txt")" = "$expected"
+          printf 'image_digest=%s\n' "$expected" >> "$GITHUB_OUTPUT"
+      - name: Remove publication authentication before any follow-through
+        if: always()
+        shell: bash
+        run: |
+          skopeo logout --authfile "$RUNNER_TEMP/waterline-registry-auth.json" docker.io || true
+          rm -f -- "$RUNNER_TEMP/waterline-registry-auth.json"
+      - name: Retain publication identities
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: waterline-protected-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/waterline-publication/verified.json
+            ${{ runner.temp }}/waterline-publication/plan.json
+            ${{ runner.temp }}/waterline-published-digest.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+  qualify-published:
+    name: Anonymous installed and native acceptance on fresh runners
+    needs: publish
+    permissions:
+      contents: read
+    uses: ./.github/workflows/published-image-qualification.yml # local
+    with:
+      image_digest: ${{ needs.publish.outputs.image_digest }}
+      release_version: '2.13.2'
+      source_commit: ${{ inputs.source_commit }}

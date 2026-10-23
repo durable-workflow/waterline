@@ -109,7 +109,7 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringContainsString('ARG SOURCE_COMMIT=', $dockerfile);
         $this->assertStringContainsString('org.opencontainers.image.revision="$SOURCE_COMMIT"', $dockerfile);
         $this->assertStringContainsString('dev.durable-workflow.release.tag="$WATERLINE_VERSION"', $dockerfile);
-        $this->assertStringContainsString('WATERLINE_VERSION=${{ github.ref_name }}', $workflow);
+        $this->assertStringContainsString('WATERLINE_VERSION=${{ env.RELEASE_VERSION }}', $workflow);
         $this->assertStringContainsString('SOURCE_COMMIT=${{ steps.source.outputs.commit }}', $workflow);
         $this->assertGreaterThan(
             strpos($dockerfile, 'docker-php-ext-install'),
@@ -118,52 +118,47 @@ final class ServiceImageReleaseContractTest extends TestCase
         );
     }
 
-    public function testPublisherIsOnlyReachableFromAnImmutableVersionTagPush(): void
+    public function testCandidateBuildsCannotReachRegistryCredentialsOrCaches(): void
     {
         $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/service-image.yml');
 
         $this->assertStringContainsString("tags: ['2.*']", $workflow);
         $this->assertStringNotContainsString('pull_request:', $workflow);
-        $this->assertStringNotContainsString('workflow_dispatch:', $workflow);
-        $this->assertStringNotContainsString('branches: [v2]', $workflow);
-        $this->assertStringContainsString("if: startsWith(github.ref, 'refs/tags/2.')", $workflow);
-        $this->assertStringContainsString('environment: release-publication', $workflow);
-        $this->assertStringContainsString('SERVICE_IMAGE_PLATFORMS: linux/amd64,linux/arm64', $workflow);
-        $this->assertStringContainsString('platforms: ${{ env.SERVICE_IMAGE_PLATFORMS }}', $workflow);
-        $this->assertStringContainsString("SERVICE_IMAGE_SKIP_BUILD: '1'", $workflow);
-        $this->assertStringContainsString('WATERLINE_IMAGE: durableworkflow/waterline:${{ github.ref_name }}', $workflow);
+        $this->assertStringNotContainsString('environment:', $workflow);
+        $this->assertStringNotContainsString('secrets.', $workflow);
+        $this->assertStringNotContainsString('login-action', $workflow);
+        $this->assertStringNotContainsString('type=registry', $workflow);
+        $this->assertStringContainsString('contents: read', $workflow);
+        $this->assertStringContainsString('runner: ubuntu-24.04-arm', $workflow);
+        $this->assertStringContainsString('outputs: type=oci,', $workflow);
+        $this->assertStringContainsString('push: false', $workflow);
+        $this->assertStringContainsString('no-cache: true', $workflow);
+        $this->assertStringContainsString('scripts/ci/service-mode-image-smoke.sh', $workflow);
+        $this->assertStringContainsString('scripts/ci/oci_release.py native', $workflow);
+        $this->assertStringContainsString('compression-level: 0', $workflow);
     }
 
-    public function testProtectedPublisherRebuildsTrustLayersAndRecordsItsBuildBudget(): void
+    public function testProtectedPublisherOnlyPromotesInertArtifactsFromReviewedMain(): void
     {
-        $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/service-image.yml');
+        $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/service-image-publish.yml');
 
-        $this->assertSame(1, substr_count($workflow, 'SERVICE_IMAGE_CACHE: durableworkflow/waterline:buildcache-v1'));
-        $this->assertStringContainsString('SERVICE_IMAGE_ARM_CACHE: durableworkflow/waterline:buildcache-arm64-v1', $workflow);
-        $this->assertStringContainsString('runs-on: ubuntu-24.04-arm', $workflow);
-        $this->assertStringContainsString('needs: [qualify-release-source, smoke, prewarm_arm64]', $workflow);
-        $this->assertStringContainsString('type=registry,ref=${{ env.SERVICE_IMAGE_ARM_CACHE }}', $workflow);
-        $this->assertStringContainsString('cache-to: ${{ steps.cache.outputs.cache_to }}', $workflow);
-        $this->assertStringContainsString('mode=max,ignore-error=true', $workflow);
-        $this->assertSame(2, substr_count($workflow, 'pull: true'));
-        $this->assertSame(2, substr_count($workflow, 'no-cache: true'));
-        $this->assertStringContainsString('cache_state=cold', $workflow);
-        $this->assertStringContainsString('node scripts/ci/record-service-image-build-timing.mjs', $workflow);
-        $this->assertStringContainsString('WARM_CACHE_TARGET_SECONDS: 600', $workflow);
-        $this->assertStringContainsString('run: test "$MEETS_REPEAT_BUDGET" = true', $workflow);
-        $this->assertStringContainsString('path: service-image-build-evidence.json', $workflow);
-
-        $environment = strpos($workflow, 'environment: release-publication');
-        $login = strpos($workflow, 'docker/login-action@');
-        $cache = strpos($workflow, 'name: Record the cold security rebuild');
-        $publish = strpos($workflow, 'name: Build and publish immutable version tag');
-        $this->assertIsInt($environment);
+        $this->assertStringContainsString('workflow_dispatch:', $workflow);
+        $this->assertStringContainsString("if: github.ref == 'refs/heads/main'", $workflow);
+        $this->assertStringContainsString('environment: release-publication', $workflow);
+        $this->assertStringContainsString('ref: ${{ github.sha }}', $workflow);
+        $this->assertStringContainsString('skopeo copy --all --preserve-digests', $workflow);
+        $this->assertStringContainsString('docker://docker.io/durableworkflow/waterline:2.13.2', $workflow);
+        $this->assertStringNotContainsString('docker/build-push-action', $workflow);
+        $this->assertStringNotContainsString('docker run', $workflow);
+        $this->assertStringNotContainsString('service-mode-image-smoke.sh', $workflow);
+        $this->assertStringNotContainsString('ref: ${{ inputs.source_commit }}', $workflow);
+        $this->assertStringContainsString('uses: ./.github/workflows/published-image-qualification.yml', $workflow);
+        $verification = strpos($workflow, 'scripts/ci/prepare-oci-publication.sh');
+        $login = strpos($workflow, 'name: Log in only after inert evidence verification');
+        $this->assertIsInt($verification);
         $this->assertIsInt($login);
-        $this->assertIsInt($cache);
-        $this->assertIsInt($publish);
-        $this->assertLessThan($login, $environment);
-        $this->assertLessThan($cache, $login);
-        $this->assertLessThan($publish, $cache);
+        $this->assertLessThan($login, $verification);
+        $this->assertStringContainsString('skopeo logout', $workflow);
     }
 
     public function testBuildTimingEvidenceMeasuresWarmCacheImprovement(): void
