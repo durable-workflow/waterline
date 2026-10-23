@@ -1913,16 +1913,13 @@ export default {
 }
 
 @media (max-width: 1200px) {
+    .schedule-view__filters,
     .schedule-view__summary-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
 @media (max-width: 768px) {
-    .schedule-view__filters {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
     .schedule-view__hero {
         flex-direction: column;
         align-items: flex-start;
