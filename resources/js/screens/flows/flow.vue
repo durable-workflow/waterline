@@ -4889,7 +4889,7 @@ export default {
                 return this.handleCommandSuccess(commandType, interactiveCommand, response)
             } catch (error) {
                 this.$dialog({
-                    title: commandType === 'query' ? this.$t("Query failed") : (ambiguousCommandError(error, commandType) ? this.$t("Command outcome unknown") : this.$t("Command rejected")),
+                    title: this.commandFailureTitle(error, commandType),
                     text: this.commandFailureMessage(error, commandType),
                     icon: 'error',
                     confirmButtonText: this.$t("Okay"),
@@ -4947,30 +4947,23 @@ export default {
             }[commandType] || this.$t("Waterline recorded the command durably.")
         },
 
+        commandFailureTitle(error, commandType) {
+            if (commandType === 'query') return this.$t("Query failed")
+            if (ambiguousCommandError(error, commandType)) return this.$t("Command outcome unknown")
+            return this.$t("Command rejected")
+        },
+
         commandFailureMessage(error, commandType) {
             if (!error?.response && commandType === 'query') return this.$t("Query failed")
             if (ambiguousCommandError(error, commandType)) {
                 return this.$t("The request timed out or lost its response. The command outcome is unknown. Inspect the run before sending it again.")
             }
-            const validationMessages = error.response && error.response.data
-                ? this.commandValidationMessages(error.response.data)
-                : []
-
-            return validationMessages.length
-                ? validationMessages.join(' ')
-                : (error.response
-                    && error.response.data
-                    && error.response.data.blocked_reason
-                    ? this.commandRejectionMessage(error.response.data.blocked_reason, commandType)
-                    : error.response
-                    && error.response.data
-                    && error.response.data.rejection_reason
-                    ? this.commandRejectionMessage(error.response.data.rejection_reason, commandType)
-                    : error.response
-                    && error.response.data
-                    && error.response.data.message
-                    ? error.response.data.message
-                    : this.$t("Command was rejected."))
+            const data = error.response?.data || {}
+            const validationMessages = this.commandValidationMessages(data)
+            if (validationMessages.length) return validationMessages.join(' ')
+            const reason = data.blocked_reason || data.rejection_reason
+            if (reason) return this.commandRejectionMessage(reason, commandType)
+            return data.message || this.$t("Command was rejected.")
         },
 
         commandEndpoint(commandType, targetName = null) {

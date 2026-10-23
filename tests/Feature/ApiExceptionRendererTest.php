@@ -85,6 +85,23 @@ final class ApiExceptionRendererTest extends TestCase
         }
     }
 
+    public function testOlderOptionalSdkBudgetFailureKeepsTheObserverShellLegible(): void
+    {
+        if (!class_exists(\DurableWorkflow\Client::class)) {
+            $this->markTestSkipped('This platform does not install the optional service SDK.');
+        }
+        foreach ((new \ReflectionMethod(\DurableWorkflow\Client::class, '__construct'))->getParameters() as $parameter) {
+            if ($parameter->getName() === 'requestTimeoutSeconds') $this->markTestSkipped('Legacy SDK compatibility control.');
+        }
+        config()->set('waterline.backend', 'service');
+        config()->set('waterline.service.endpoint', 'http://unused.invalid');
+        config()->set('waterline.service.request_timeout_seconds', 0.2);
+        $this->app->scoped(\Waterline\Support\Remote\RemoteBackend::class,
+            static fn () => \Waterline\Support\Remote\RemoteBackend::fromConfig());
+        $this->get('/waterline')->assertOk()->assertViewHas('waterlineBootstrap',
+            static fn ($bootstrap) => str_contains($bootstrap['backend']['configuration_error']['message'] ?? '', '3.4.0'));
+    }
+
     private function renderCallbackCount(object $handler): int
     {
         $reflection = new ReflectionObject($handler);

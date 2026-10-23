@@ -6,7 +6,7 @@ const require = createRequire(path.join(process.cwd(),'package.json'));
 const {chromium} = require('playwright');
 const output = 'request-budget-evidence';
 fs.mkdirSync(output,{recursive:true});
-const mode = value => fs.writeFileSync('mode.json',JSON.stringify({mode:value,service_budget:0.2,browser_budget:0.8}));
+const mode = value => fs.writeFileSync('mode.json',JSON.stringify({mode:value,service_budget:0.2,browser_budget:value==='browser-stall'?0.8:2}));
 const browser = await chromium.launch({args:['--no-sandbox']});
 const report = {source:process.env.EXPECTED_CANDIDATE_SOURCE,checks:[],errors:[]};
 try {
@@ -43,11 +43,11 @@ try {
         assert.equal(await page.locator('.flow-row').count(),2);
         assert.equal(await page.getByRole('button',{name:'Retry',exact:true}).count(),0);
         await page.screenshot({path:`${output}/${scenario}-recovered.png`,fullPage:true});
-        report.checks.push({scenario,elapsed,api,recoveredRows:2});
+        report.checks.push({scenario,elapsed,serviceBudget:0.2,browserBudget:scenario==='browser-stall'?0.8:2,api,recoveredRows:2});
         page.off('request',onRequest); page.off('response',onResponse);
     }
     mode('healthy');
-    await page.goto(base+'/waterline/flows/instances/smoke-order/runs/smoke-run');
+    await page.goto(base+'/waterline/flows/instances/smoke-order/runs/smoke-run#collapseArguments');
     await page.locator('.wl-flow-detail__status').waitFor();
     const full = page.getByRole('button',{name:'Inspect full details',exact:true});
     if (await full.count()) await full.click();

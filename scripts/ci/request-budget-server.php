@@ -14,5 +14,15 @@ if ($mode['mode'] === 'write-stall' && $_SERVER['REQUEST_METHOD'] !== 'GET') {
     usleep(2_000_000);
     header('Content-Type: application/json'); echo '{"accepted":true}'; return;
 }
-if ($mode['mode'] === 'backend-stall' && $path === '/api/workflows') usleep(2_000_000);
-require __DIR__.'/protocol-server.php';
+if ($mode['mode'] === 'backend-stall' && $path === '/api/workflows') {
+    usleep(2_000_000);
+}
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $path === '/api/workflows/smoke-order/runs/smoke-run') {
+    ob_start();
+    require_once __DIR__.'/protocol-server.php';
+    $description = json_decode(ob_get_clean(), true, flags: JSON_THROW_ON_ERROR);
+    $description['actions']['can_cancel'] = true;
+    echo json_encode($description, JSON_THROW_ON_ERROR);
+    return;
+}
+require_once __DIR__.'/protocol-server.php';

@@ -10,8 +10,11 @@ use Illuminate\Support\ServiceProvider;
 
 putenv('WATERLINE_BACKEND=service');
 
+final class UnexpectedRequestBudgetSdk extends RuntimeException {}
+
 final class RequestBudgetFixtureProvider extends ServiceProvider
 {
+    public const SDK_PACKAGE = 'durable-workflow/sdk';
     public function register(): void
     {
         $mode = json_decode(file_get_contents(__DIR__.'/mode.json'), true, flags: JSON_THROW_ON_ERROR);
@@ -36,9 +39,9 @@ $app = Application::configure(basePath: __DIR__)->withProviders([
 ], withBootstrapProviders: false)->withExceptions()->create();
 
 if (PHP_SAPI === 'cli') {
-    if (\Composer\InstalledVersions::getPrettyVersion('durable-workflow/sdk') !== '3.4.0'
-        || \Composer\InstalledVersions::getReference('durable-workflow/sdk') !== '1bf25b5848f2031e72a3da38794b51db1d533546') {
-        throw new RuntimeException('Expected the exact normally published SDK 3.4.0.');
+    if (\Composer\InstalledVersions::getPrettyVersion(RequestBudgetFixtureProvider::SDK_PACKAGE) !== '3.4.0'
+        || \Composer\InstalledVersions::getReference(RequestBudgetFixtureProvider::SDK_PACKAGE) !== '1bf25b5848f2031e72a3da38794b51db1d533546') {
+        throw new UnexpectedRequestBudgetSdk('Expected the exact normally published SDK 3.4.0.');
     }
     $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
     Artisan::call('migrate', ['--force' => true]);
@@ -46,8 +49,8 @@ if (PHP_SAPI === 'cli') {
     echo json_encode([
         'source' => getenv('EXPECTED_CANDIDATE_SOURCE'), 'kind' => 'candidate-path-source qualification',
         'php' => PHP_VERSION, 'loaded_backend' => (new ReflectionClass(\Waterline\Support\Remote\RemoteBackend::class))->getFileName(),
-        'sdk' => \Composer\InstalledVersions::getPrettyVersion('durable-workflow/sdk'),
-        'sdk_source' => \Composer\InstalledVersions::getReference('durable-workflow/sdk'),
+        'sdk' => \Composer\InstalledVersions::getPrettyVersion(RequestBudgetFixtureProvider::SDK_PACKAGE),
+        'sdk_source' => \Composer\InstalledVersions::getReference(RequestBudgetFixtureProvider::SDK_PACKAGE),
     ], JSON_THROW_ON_ERROR).PHP_EOL;
     exit;
 }
@@ -65,5 +68,7 @@ if (str_starts_with($path, '/vendor/waterline/')) {
     }
 }
 $mode = json_decode(file_get_contents(__DIR__.'/mode.json'), true, flags: JSON_THROW_ON_ERROR);
-if ($mode['mode'] === 'browser-stall' && $path === '/waterline/api/flows/running') usleep(3_000_000);
+if ($mode['mode'] === 'browser-stall' && $path === '/waterline/api/flows/running') {
+    usleep(3_000_000);
+}
 $app->handleRequest(\Illuminate\Http\Request::capture());

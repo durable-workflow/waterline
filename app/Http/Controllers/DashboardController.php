@@ -11,6 +11,7 @@ use Waterline\Support\OperatorScope;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Waterline;
 use Waterline\Support\RequestTimeouts;
+use Waterline\Support\RequestTimeoutException;
 
 class DashboardController extends Controller
 {
@@ -29,9 +30,17 @@ class DashboardController extends Controller
     public function index(Request $request)
     {
         $operatorScope = OperatorScope::payload();
-        $backend = BackendConfiguration::serviceMode()
-            ? app(RemoteBackend::class)->status()
-            : BackendConfiguration::payload();
+        $backend = BackendConfiguration::payload();
+        if (BackendConfiguration::serviceMode()) {
+            try {
+                $backend = app(RemoteBackend::class)->status();
+            } catch (RequestTimeoutException $error) {
+                // Keep the observer shell usable so a configuration failure is
+                // legible; API requests still refuse before contacting the SDK.
+                $backend['configuration_error'] = ['message' => $error->getMessage(), 'reason' => $error->reason];
+                $backend['capabilities'] = array_fill_keys(array_keys($backend['capabilities']), false);
+            }
+        }
         $assetsAreCurrent = $this->assetsAreCurrent();
         $cssFile = 'app-dark.css';
 
