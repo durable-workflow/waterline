@@ -227,7 +227,9 @@ if (PHP_SAPI === 'cli') {
         $file = realpath(__DIR__.'/public'.$path);
         if ($file && str_starts_with($file, __DIR__.'/public/vendor/waterline/') && is_file($file)) {
             $response = new \Symfony\Component\HttpFoundation\BinaryFileResponse($file);
-            $response->headers->set('Content-Type', str_ends_with($file, '.css') ? 'text/css' : 'application/javascript');
+            $response->headers->set('Content-Type', match (pathinfo($file, PATHINFO_EXTENSION)) {
+                'css' => 'text/css', 'png' => 'image/png', 'json' => 'application/json', default => 'application/javascript',
+            });
             $response->send();
             return;
         }

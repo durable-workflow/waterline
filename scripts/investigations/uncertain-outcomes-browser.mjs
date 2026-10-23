@@ -75,6 +75,9 @@ try {
             }
             selections.push({scenario,id,runId:selected.run_id});
         }
+        const viewerControl = await detail(viewer,controlId);
+        assert.equal((await post(viewer,controlId,viewerControl.run_id,'updates/note',{arguments:['unauthorized note'],wait_for:'accepted'})).status(),403);
+        assert.equal((await post(viewer,controlId,viewerControl.run_id,'signals/reconcile',{arguments:[]})).status(),403);
         await viewer.close();
         for (const theme of ['light','dark']) {
             for (const width of [1440,390]) {
