@@ -5093,10 +5093,6 @@ export default {
     color: var(--wl-accent);
 }
 
-.wl-flow-detail__status-slash {
-    opacity: 0.55;
-}
-
 .wl-flow-detail__header-actions {
     gap: 0.6rem;
 }

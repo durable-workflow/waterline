@@ -392,7 +392,7 @@ export default {
 }
 
 .event-details {
-    color: #6c757d;
+    color: var(--wl-text-muted);
 }
 
 .event-details div {
@@ -401,7 +401,7 @@ export default {
 
 .event-details code {
     font-size: 0.8rem;
-    background-color: #f8f9fa;
+    background-color: var(--wl-surface-muted);
     padding: 0.1rem 0.3rem;
     border-radius: 0.2rem;
 }

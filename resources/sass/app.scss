@@ -9,7 +9,8 @@ $secondary-outline-color: #52606d;
 $success: #51d88a;
 $info: #bcdefa;
 $warning: #ffa260;
-$danger: #ef5753;
+// Fill colors carry white or dark badge and button text at 4.5:1 or more.
+$danger: #c62828;
 
 $body-bg: #ebebeb;
 
@@ -53,5 +54,17 @@ $container-max-widths: (
     lg: 1139px,
     xl: 1140px
 ) !default;
+
+// Text colors for secondary text and status, measured against every surface
+// they render on: body, its gradient, cards, table headers and status tints.
+$wl-text-muted: #4b5056;
+$wl-text-soft: #575d63;
+$wl-success-text: #17693b;
+$wl-danger-text: #b42222;
+$wl-warning-text: #8a4100;
+$wl-info-text: #185082;
+$wl-accent-text: #5530bd;
+$wl-alert-secondary-text: #4b5056;
+$code-color: #b0175a;
 
 @import 'base';
