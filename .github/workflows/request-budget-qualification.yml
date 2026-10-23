@@ -28,12 +28,24 @@ jobs:
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       with:
         persist-credentials: false
-        ref: ${{ inputs.source_commit || github.sha }}
     - name: Bind the exact selected SDK cohort
       shell: bash
       run: |
-        printf 'EXPECTED_BUDGET_SDK_VERSION=%s\n' "$(jq -r '."require-dev"."durable-workflow/sdk"' composer.json)" >> "$GITHUB_ENV"
-        printf 'EXPECTED_BUDGET_SDK_SOURCE=%s\n' "$(jq -r '.packages[] | select(.name == "durable-workflow/sdk") | .source.reference' standalone/composer.lock)" >> "$GITHUB_ENV"
+        set -euo pipefail
+        source_data="$GITHUB_WORKSPACE"
+        if [[ -n "$EXPECTED_WATERLINE_VERSION" ]]; then
+          [[ "$EXPECTED_WATERLINE_VERSION" =~ ^2\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$EXPECTED_WATERLINE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin "refs/tags/$EXPECTED_WATERLINE_VERSION"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$EXPECTED_WATERLINE_SOURCE"
+          source_data="$RUNNER_TEMP/request-budget-release-data"
+          mkdir -p "$source_data"
+          git archive "$EXPECTED_WATERLINE_SOURCE" composer.json standalone/composer.lock | tar -x -C "$source_data"
+        elif [[ -n "$EXPECTED_WATERLINE_SOURCE" ]]; then
+          test "$EXPECTED_WATERLINE_SOURCE" = "$GITHUB_SHA"
+        fi
+        printf 'EXPECTED_BUDGET_SDK_VERSION=%s\n' "$(jq -r '."require-dev"."durable-workflow/sdk"' "$source_data/composer.json")" >> "$GITHUB_ENV"
+        printf 'EXPECTED_BUDGET_SDK_SOURCE=%s\n' "$(jq -r '.packages[] | select(.name == "durable-workflow/sdk") | .source.reference' "$source_data/standalone/composer.lock")" >> "$GITHUB_ENV"
     - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
       with:
         python-version: '3.13'
