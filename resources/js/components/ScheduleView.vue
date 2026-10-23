@@ -92,7 +92,7 @@
                 </div>
 
                 <div v-if="mutationsUnavailable && schedules.length > 0" class="schedule-view__notice" role="note">
-                    {{ $t("This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.") }}
+                    {{ mutationUnavailableMessage }}
                 </div>
 
                 <div class="card-body card-bg-secondary p-0">
@@ -556,6 +556,7 @@
 
 <script>
 import axios from 'axios';
+import { operatorPermission } from '../operator-permissions.mjs';
 import {
     OVERLAP_POLICIES,
     backfillCounts,
@@ -587,6 +588,7 @@ export default {
             schedules: [],
             pagination: null,
             operatorScope: null,
+            observedBackend: null,
             statusFilter: '',
             currentPage: 1,
             pendingRowKeys: {},
@@ -624,7 +626,7 @@ export default {
         },
 
         backend() {
-            return typeof Waterline !== 'undefined' && Waterline.backend ? Waterline.backend : {};
+            return this.observedBackend || (typeof Waterline !== 'undefined' && Waterline.backend ? Waterline.backend : {});
         },
 
         serviceMode() {
@@ -632,7 +634,13 @@ export default {
         },
 
         mutationsUnavailable() {
-            return this.backend.read_only === true;
+            return !operatorPermission('schedules', this.backend).allowed;
+        },
+
+        mutationUnavailableMessage() {
+            return operatorPermission('schedules', this.backend).reason === 'waterline_action_forbidden'
+                ? this.$t("You are not authorized to change schedules.")
+                : this.$t("This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.");
         },
 
         clusterScope() {
@@ -754,6 +762,7 @@ export default {
                 const response = await axios.get(this.resolvedApiEndpoint(), { params });
                 this.schedules = response.data.data || [];
                 this.operatorScope = response.data.operator_scope || null;
+                this.observedBackend = response.data.backend || null;
                 this.pagination = {
                     current_page: response.data.current_page,
                     last_page: response.data.last_page,

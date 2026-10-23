@@ -52,6 +52,11 @@ class DashboardWorkflowTest extends TestCase
             ->assertStatus(200)
             ->assertJson(
                 fn (AssertableJson $json) => $json
+                    ->has('backend', fn (AssertableJson $backend) => $backend
+                        ->where('mode', 'embedded')
+                        ->where('read_only', false)
+                        ->where('permissions.signal.allowed', true)
+                        ->etc())
                     ->where('id', $storedWorkflow->id)
                     ->where('class', 'WorkflowClass')
                     ->where('arguments', 'N;')

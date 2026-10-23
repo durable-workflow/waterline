@@ -48,7 +48,8 @@ final class BackendConfiguration
             'transport' => $service ? 'durable-workflow/sdk' : 'workflow-package',
             'namespace' => $service ? self::namespace() : OperatorScope::namespace(),
             'access_mode' => $service ? $accessMode : 'host_authorized',
-            'read_only' => $service && $accessMode === 'read_only',
+            'read_only' => OperatorAuthorization::readOnly(),
+            'permissions' => OperatorAuthorization::permissions(),
             'authentication' => $service
                 ? (self::serviceTokenConfigured() ? 'configured' : 'missing')
                 : 'host_application',
@@ -61,7 +62,7 @@ final class BackendConfiguration
     public static function declaredCapabilities(): array
     {
         $service = self::serviceMode();
-        $operator = ! $service || self::accessMode() === 'operator';
+        $permissions = OperatorAuthorization::permissions();
 
         return [
             'workflows' => true,
@@ -76,12 +77,12 @@ final class BackendConfiguration
             'schedules' => true,
             'services' => ! $service,
             'query' => true,
-            'signal' => $operator,
-            'update' => $operator,
-            'cancel' => $operator,
-            'terminate' => $operator,
-            'repair' => $operator,
-            'archive' => $operator,
+            'signal' => $permissions['signal']['allowed'],
+            'update' => $permissions['update']['allowed'],
+            'cancel' => $permissions['cancel']['allowed'],
+            'terminate' => $permissions['terminate']['allowed'],
+            'repair' => $permissions['repair']['allowed'],
+            'archive' => $permissions['archive']['allowed'],
         ];
     }
 
