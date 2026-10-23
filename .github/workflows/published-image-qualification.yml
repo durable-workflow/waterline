@@ -66,6 +66,10 @@ jobs:
           git fetch --no-tags https://github.com/durable-workflow/workflow.git "refs/tags/$EXPECTED_WORKFLOW_VERSION"
           test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$EXPECTED_WORKFLOW_SOURCE"
           printf 'UNCERTAIN_APP_ROOT=%s\n' "$RUNNER_TEMP/uncertain-outcomes" >> "$GITHUB_ENV"
+      - name: Install isolated Python for dependency trust
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
       - name: Select authenticated dependency trust
         uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
         with:
