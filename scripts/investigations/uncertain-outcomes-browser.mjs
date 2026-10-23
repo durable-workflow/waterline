@@ -88,6 +88,7 @@ try {
             }
         }
         const control = await detail(operator,controlId);
+        report.observations.push(await inspectPage(operator,controlId,control.run_id,'authored-control-waiting'));
         const accepted = await post(operator,controlId,control.run_id,'updates/note',{arguments:['operator requested lookup'],wait_for:'accepted'});
         assert.ok([200,202].includes(accepted.status()));
     } else if (phase === 'resolve') {

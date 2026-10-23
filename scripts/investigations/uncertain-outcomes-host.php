@@ -118,7 +118,7 @@ final class AuthoredReconciliationWorkflow extends Workflow
     public function handle(string $key): array
     {
         $observation = \Workflow\V2\activity(SubmitUnknownOperation::class, new ActivityOptions(maxAttempts: 1), $key);
-        \Workflow\V2\signal('reconcile');
+        \Workflow\V2\await('reconcile');
         $confirmed = \Workflow\V2\activity(LookupSyntheticReceipt::class, new ActivityOptions(maxAttempts: 1), $key);
         return ['initial' => $observation, 'confirmed' => $confirmed, 'operator_note' => $this->operatorNote];
     }
