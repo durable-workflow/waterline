@@ -35,16 +35,27 @@ if (PHP_SAPI !== 'cli') {
     if ($nativePort !== false) {
         $port = filter_var($nativePort, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]);
         if ($port === false || !str_starts_with($_SERVER['REQUEST_URI'], '/')) {
+            http_response_code(400);
             throw new NativeBudgetFixtureException('Expected a local native-image port and request path.');
         }
+        $decodedPath = rawurldecode($path);
+        $segments = explode('/', ltrim($decodedPath, '/'));
+        $allowed = preg_match('#^(?:/up|/favicon\.ico|/waterline(?:/[A-Za-z0-9_-]+)*|/vendor/waterline/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_.-]+)$#D', $decodedPath);
+        if ($allowed !== 1 || array_intersect(['.', '..'], $segments) !== []) {
+            http_response_code(400);
+            throw new NativeBudgetFixtureException('Unexpected native proxy request path.');
+        }
+        $targetPath = '/'.implode('/', array_map('rawurlencode', $segments));
+        $query = parse_url($_SERVER['REQUEST_URI'], PHP_URL_QUERY);
+        $target = 'http://127.0.0.1:'.$port.$targetPath.($query === null ? '' : '?'.$query);
         $headers = ['Host: 127.0.0.1:8080'];
         foreach (getallheaders() as $name => $value) {
-            if (!in_array(strtolower($name), ['host', 'connection', 'content-length'], true)) {
+            if (!in_array(strtolower($name), ['host', 'connection', 'content-length', 'transfer-encoding'], true)) {
                 $headers[] = $name.': '.$value;
             }
         }
         $responseHeaders = [];
-        $connection = curl_init('http://127.0.0.1:'.$port.$_SERVER['REQUEST_URI']);
+        $connection = curl_init($target);
         curl_setopt_array($connection, [
             CURLOPT_CUSTOMREQUEST => $_SERVER['REQUEST_METHOD'], CURLOPT_HTTPHEADER => $headers,
             CURLOPT_POSTFIELDS => file_get_contents('php://input'), CURLOPT_RETURNTRANSFER => true,
@@ -56,6 +67,7 @@ if (PHP_SAPI !== 'cli') {
         ]);
         $body = curl_exec($connection);
         if ($body === false) {
+            http_response_code(502);
             throw new NativeBudgetFixtureException('Native image HTTP fixture proxy failed.');
         }
         http_response_code(curl_getinfo($connection, CURLINFO_RESPONSE_CODE));

@@ -2079,6 +2079,10 @@
     animation: flow-index-spin 1s linear infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .flow-index .icon.spin { animation: none; }
+}
+
 @keyframes flow-index-spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
