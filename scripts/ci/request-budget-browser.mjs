@@ -98,6 +98,20 @@ try {
             }
         }
     }
+    const scheduleFixture = {browser_budget:0.8,browser_path:'/waterline/api/v2/schedules',
+        browser_response:{...listResponse,total:1,data:[{schedule_id:'budget-schedule',id:'budget-schedule',namespace:'smoke',status:'active',workflow_type:'smoke.order'}]},
+        schedule_write_stall:true};
+    mode('healthy',scheduleFixture);
+    await page.goto(base+'/waterline/schedules');
+    await page.locator('[data-row-action="pause"]').click();
+    await page.getByText('The command outcome is unknown. Inspect the schedule before sending it again.',{exact:true}).waitFor();
+    assert.equal(await page.locator('.swal2-success').count(),0);
+    await page.waitForTimeout(3300);
+    const scheduleWrites = fs.readFileSync('schedule-writes.jsonl','utf8').trim().split('\n').map(line=>JSON.parse(line));
+    assert.equal(scheduleWrites.length,1,'An uncertain schedule write must never be resubmitted.');
+    assert.equal(scheduleWrites[0].status,'paused');
+    await page.screenshot({path:`${output}/schedule-write-outcome-unknown.png`,fullPage:true});
+    report.checks.push({scenario:'schedule-write-stall',writes:scheduleWrites,outcome:'unknown',transport:'actual HTTP fixture'});
     assert.deepEqual(report.errors,[]);
     await page.close();
 } finally {

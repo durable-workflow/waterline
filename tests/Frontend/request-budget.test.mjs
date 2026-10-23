@@ -18,7 +18,7 @@ test('caller-selected update waits retain their allowance without changing the c
 });
 
 test('uncertain writes remain unknown while read errors and definite refusals stay distinct', () => {
-    for (const action of ['signal','update','repair','cancel','terminate','archive']) {
+    for (const action of ['signal','update','repair','cancel','terminate','archive','schedule']) {
         assert.equal(ambiguousCommandError({code:'ECONNABORTED'},action),true);
         assert.equal(ambiguousCommandError({response:{status:502,data:{reason:'request_timeout'}}},action),true);
         assert.equal(ambiguousCommandError({response:{status:403,data:{reason:'waterline_action_forbidden'}}},action),false);

@@ -6,7 +6,9 @@
   request budget with run lists and run details. A stalled read exposes the
   existing Retry control instead of waiting indefinitely. The shared client
   keeps Waterline's CSRF headers and leaves a host application's Axios defaults
-  unchanged. No mutation is automatically retried.
+  unchanged. Uncertain schedule writes explicitly report an unknown outcome;
+  no mutation is automatically retried. The schedule guidance is translated in
+  all eight supported locales.
 
 ## 2.13.1 - 2026-10-23
 
