@@ -193,6 +193,9 @@ jobs:
           [[ "$EXPECTED_WATERLINE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
           git fetch --no-tags origin "refs/tags/$EXPECTED_WATERLINE_VERSION"
           test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$EXPECTED_WATERLINE_SOURCE"
+          mkdir -p "$RUNNER_TEMP/waterline-qualified-source"
+          git archive "$EXPECTED_WATERLINE_SOURCE" public | tar -x -C "$RUNNER_TEMP/waterline-qualified-source"
+          printf 'WATERLINE_QUALIFIED_ASSET_ROOT=%s\n' "$RUNNER_TEMP/waterline-qualified-source/public" >> "$GITHUB_ENV"
           printf 'WATERLINE_CONSUMER_ROOT=%s\n' "$RUNNER_TEMP/waterline-consumer" >> "$GITHUB_ENV"
           printf 'EXPECTED_WORKFLOW_VERSION=%s\n' "$(jq -r '.versions.workflow' release/current-product-tuple.json)" >> "$GITHUB_ENV"
       - name: Select authenticated dependency trust
@@ -258,6 +261,20 @@ jobs:
             sleep 1
           done
           exit 1
+      - name: Match installed assets to the exact qualified release source
+        working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
+        run: |
+          php -r '
+            $installed = json_decode(file_get_contents("published-embedded-evidence/installed-before.json"), true, flags: JSON_THROW_ON_ERROR)["assets"];
+            $root = getenv("WATERLINE_QUALIFIED_ASSET_ROOT");
+            $expected = [];
+            foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)) as $file) {
+              if ($file->isFile()) $expected[substr($file->getPathname(), strlen($root) + 1)] = hash_file("sha256", $file->getPathname());
+            }
+            ksort($installed);
+            ksort($expected);
+            if ($installed !== $expected) throw new RuntimeException("Installed browser assets differ from the exact qualified release tag.");
+          '
       - name: Exercise installed permissions and actual controls
         working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
         run: node "$GITHUB_WORKSPACE/scripts/ci/published-embedded-browser.mjs"
@@ -341,6 +358,43 @@ jobs:
         env:
           SERVICE_IMAGE_SKIP_BUILD: '1'
         run: scripts/ci/service-mode-image-smoke.sh
+      - name: Match package and served image assets to the exact release source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/waterline-qualified-source"
+          git archive "$EXPECTED_SOURCE_COMMIT" public | tar -x -C "$RUNNER_TEMP/waterline-qualified-source"
+          docker run --rm --network none --user 1000:1000 --cpus 1 --memory 256m \
+            --tmpfs /data:rw,uid=1000,gid=1000,size=1m \
+            --entrypoint php "$WATERLINE_IMAGE" -r '
+              $assets = [];
+              foreach (["package" => "/app/waterline/public", "served" => "/app/public/vendor/waterline"] as $kind => $root) {
+                foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS)) as $file) {
+                  if ($file->isFile()) $assets[$kind][substr($file->getPathname(), strlen($root) + 1)] = hash_file("sha256", $file->getPathname());
+                }
+              }
+              echo json_encode($assets, JSON_THROW_ON_ERROR).PHP_EOL;
+            ' > "$RUNNER_TEMP/waterline-published-assets.json"
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'waterline-qualified-source/public'
+          expected = {str(file.relative_to(root)): hashlib.sha256(file.read_bytes()).hexdigest() for file in root.rglob('*') if file.is_file()}
+          receipt = Path(os.environ['RUNNER_TEMP']) / 'waterline-published-assets.json'
+          actual = json.loads(receipt.read_text())
+          if actual.get('package') != expected or actual.get('served') != expected:
+              raise SystemExit('Published image browser assets differ from the exact release source.')
+          receipt.write_text(json.dumps({'source': os.environ['EXPECTED_SOURCE_COMMIT'], 'version': os.environ['EXPECTED_WATERLINE_VERSION'], 'image': os.environ['WATERLINE_IMAGE'], 'platform': os.environ['EXPECTED_PLATFORM'], 'assets': actual}, indent=2) + '\n')
+          print(f'Verified all {len(expected)} package and served browser assets against the exact release source.')
+          PY
+      - name: Retain published image asset identity
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: waterline-published-assets-${{ matrix.machine }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/waterline-published-assets.json
+          if-no-files-found: warn
+          retention-days: 7
       - name: Record the qualified artifact
         shell: bash
         run: |
