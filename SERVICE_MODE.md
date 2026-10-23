@@ -115,7 +115,7 @@ business deadlines, worker polls or payload-transfer clocks.
 After a run-list read fails, **Retry** issues another read with the selected
 filters/page. It does not replay a write. A timed-out mutation may already have
 been accepted: its outcome remains unknown until inspected. Waterline does not
-silently retry it or display an invented success. Check the selected run before
+silently retry it or display an invented success. Check the selected run or schedule before
 submitting it again.
 
 Refresh Laravel's cached configuration and publish Waterline assets after an
