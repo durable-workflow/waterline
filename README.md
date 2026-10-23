@@ -206,10 +206,25 @@ Waterline can display a thin environment strip above the dashboard so production
 
 ```dotenv
 WATERLINE_ENV_NAME=production
-WATERLINE_ENV_COLOR=#dc3545
+WATERLINE_ENV_COLOR="#dc3545"
 ```
 
-`WATERLINE_ENV_COLOR` accepts hex colors. Invalid values fall back to a neutral gray.
+These settings work in embedded Laravel and standalone service mode.
+`WATERLINE_ENV_COLOR` selects one of these fixed palette colors:
+
+| Accepted value | Banner color |
+| --- | --- |
+| `#0d6efd` or `#2563eb` | Blue |
+| `#198754` or `#28a745` | Green |
+| `#6f42c1` or `#7746ec` | Purple |
+| `#dc3545` | Red |
+| `#fd7e14` | Orange |
+| `#ffc107` | Yellow |
+
+Every other value renders neutral gray, including other valid hex colors such
+as `#ff0000`. Embedded hosts can also set `env_name` and `env_color` in
+`config/waterline.php`. Rebuild the host's configuration cache after changing
+environment-based configuration.
 
 If your workflow IDs are strings (for example UUIDs) and do not sort in a useful order, publish the config and set `workflow_sort_column` to a timestamp column such as `created_at`:
 
