@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require getcwd().'/vendor/autoload.php';
+require_once getcwd().'/vendor/autoload.php';
 
 final class LegacyBudgetCompatibilityFailure extends RuntimeException {}
 

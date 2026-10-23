@@ -1662,7 +1662,7 @@ jobs:
     name: Service request budget and browser recovery
     needs: classify
     if: ${{ needs.classify.outputs.qualification-class == 'conformance' || needs.classify.outputs.qualification-class == 'complete' }}
-    uses: ./.github/workflows/request-budget-qualification.yml
+    uses: ./.github/workflows/request-budget-qualification.yml # local
 
   target-branch-qualification:
     name: Target branch qualification

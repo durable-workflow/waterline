@@ -90,7 +90,7 @@ jobs:
         touch "$RUNNER_TEMP/request-budget-legacy/database.sqlite"
         cp "$BUDGET_APP_ROOT"/{host.php,server.php,protocol-server.php,composer.json} "$RUNNER_TEMP/request-budget-legacy/"
         printf '%s\n' '{"mode":"healthy","browser_budget":2}' > "$RUNNER_TEMP/request-budget-legacy/mode.json"
-        php -r '$p=getenv("RUNNER_TEMP")."/request-budget-legacy/composer.json"; $m=json_decode(file_get_contents($p),true,flags:JSON_THROW_ON_ERROR); $m["require"]["durable-workflow/sdk"]="2.4.0"; file_put_contents($p,json_encode($m,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));'
+        php -r '$p=getenv("RUNNER_TEMP")."/request-budget-legacy/composer.json"; $m=json_decode(file_get_contents($p),flags:JSON_THROW_ON_ERROR); $m->{"require"}->{"durable-workflow/sdk"}="2.4.0"; file_put_contents($p,json_encode($m,JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));'
     - name: Verify actual legacy consumer Composer trust
       uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
       with:

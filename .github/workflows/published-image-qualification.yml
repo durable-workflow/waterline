@@ -55,7 +55,7 @@ jobs:
     name: Published service request budget and browser recovery
     needs: request-budget-scope
     if: needs.request-budget-scope.outputs.required == 'true'
-    uses: ./.github/workflows/request-budget-qualification.yml
+    uses: ./.github/workflows/request-budget-qualification.yml # local
     with:
       release_version: ${{ inputs.release_version }}
       source_commit: ${{ inputs.source_commit }}

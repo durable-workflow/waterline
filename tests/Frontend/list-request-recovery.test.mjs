@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import test from 'node:test';
+import test, {before} from 'node:test';
 
 // Execute the production list method, rather than a second implementation of
 // request ordering, with only its HTTP boundary and surrounding Vue state faked.
 const source = fs.readFileSync(new URL('../../resources/js/screens/flows/index.vue',import.meta.url),'utf8');
 const method = source.match(/loadFlows\(page = 1, refreshing = false\) \{[\s\S]*?\n            \},(?=\n\n            changeClassification)/)?.[0];
-assert.ok(method,'The production list loading method must be exercised.');
-const loadFlows = vm.runInNewContext(`({${method}}).loadFlows`,{Waterline:{basePath:'/waterline'}});
+let loadFlows;
+before(()=>{
+    assert.ok(method,'The production list loading method must be exercised.');
+    loadFlows = vm.runInNewContext(`({${method}}).loadFlows`,{Waterline:{basePath:'/waterline'}});
+});
 
 function fixture() {
     const requests = [];

@@ -107,6 +107,23 @@ def workflow(name: str) -> dict:
 
 
 class WaterlineReleaseIdentityTest(unittest.TestCase):
+    def test_sdk3_selection_is_allowed_without_expanding_other_component_majors(self) -> None:
+        candidate = manifest()
+        service = standalone()
+        locked = lock()
+        candidate['require-dev'][identity.SDK_PACKAGE] = '3.4.1'
+        service['require'][identity.SDK_PACKAGE] = '3.4.1'
+        locked['packages'][0]['version'] = '3.4.1'
+        evidence = validate(candidate, service, locked)
+        self.assertEqual('3.4.1', evidence['candidate_source']['sdk-php'])
+        self.assertEqual(CURRENT_PUBLIC, evidence['current_public_artifacts'])
+        self.assertGreater(identity.version_order('3.0.0'), identity.version_order('2.99.99'))
+        for package in (identity.SDK_PACKAGE, identity.WORKFLOW_PACKAGE):
+            rejected = manifest()
+            rejected['require-dev'][package] = '4.0.0' if package == identity.SDK_PACKAGE else '3.0.0'
+            with self.assertRaises(identity.IdentityError):
+                validate(candidate_manifest=rejected)
+
     def test_candidate_source_is_distinct_from_current_public_artifact(self) -> None:
         evidence = validate()
 

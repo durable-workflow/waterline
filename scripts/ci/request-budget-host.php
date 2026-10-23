@@ -15,6 +15,7 @@ final class UnexpectedRequestBudgetSdk extends RuntimeException {}
 final class RequestBudgetFixtureProvider extends ServiceProvider
 {
     public const SDK_PACKAGE = 'durable-workflow/sdk';
+    public const WATERLINE_PACKAGE = 'durable-workflow/waterline';
     public function register(): void
     {
         $mode = json_decode(file_get_contents(__DIR__.'/mode.json'), true, flags: JSON_THROW_ON_ERROR);
@@ -48,8 +49,8 @@ if (PHP_SAPI === 'cli') {
         throw new UnexpectedRequestBudgetSdk('Expected the exact normally published SDK identity.');
     }
     $published = getenv('EXPECTED_WATERLINE_VERSION');
-    if ($published && (ltrim((string) \Composer\InstalledVersions::getPrettyVersion('durable-workflow/waterline'), 'v') !== $published
-        || \Composer\InstalledVersions::getReference('durable-workflow/waterline') !== getenv('EXPECTED_WATERLINE_SOURCE'))) {
+    if ($published && (ltrim((string) \Composer\InstalledVersions::getPrettyVersion(RequestBudgetFixtureProvider::WATERLINE_PACKAGE), 'v') !== $published
+        || \Composer\InstalledVersions::getReference(RequestBudgetFixtureProvider::WATERLINE_PACKAGE) !== getenv('EXPECTED_WATERLINE_SOURCE'))) {
         throw new UnexpectedRequestBudgetSdk('Expected the exact normally published Waterline identity.');
     }
     $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
@@ -57,8 +58,8 @@ if (PHP_SAPI === 'cli') {
     Artisan::call('vendor:publish', ['--tag' => 'waterline-assets', '--force' => true]);
     echo json_encode([
         'source' => getenv('EXPECTED_CANDIDATE_SOURCE'), 'kind' => $published ? 'normal published-package qualification' : 'candidate-path-source qualification',
-        'waterline_version' => \Composer\InstalledVersions::getPrettyVersion('durable-workflow/waterline'),
-        'waterline_reference' => \Composer\InstalledVersions::getReference('durable-workflow/waterline'),
+        'waterline_version' => \Composer\InstalledVersions::getPrettyVersion(RequestBudgetFixtureProvider::WATERLINE_PACKAGE),
+        'waterline_reference' => \Composer\InstalledVersions::getReference(RequestBudgetFixtureProvider::WATERLINE_PACKAGE),
         'php' => PHP_VERSION, 'loaded_backend' => (new ReflectionClass(\Waterline\Support\Remote\RemoteBackend::class))->getFileName(),
         'sdk' => \Composer\InstalledVersions::getPrettyVersion(RequestBudgetFixtureProvider::SDK_PACKAGE),
         'sdk_source' => \Composer\InstalledVersions::getReference(RequestBudgetFixtureProvider::SDK_PACKAGE),
