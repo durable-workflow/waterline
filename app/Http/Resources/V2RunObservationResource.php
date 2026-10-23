@@ -4,6 +4,7 @@ namespace Waterline\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 use Waterline\Support\RunApplicationContext;
+use Waterline\Support\BackendConfiguration;
 use Waterline\Support\RunObservationHistoryToken;
 use Waterline\Support\RunObservationPresenter;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
@@ -47,6 +48,8 @@ class V2RunObservationResource extends JsonResource
         $detail['search_attributes'] = $this->allowedSearchAttributes($detail['workflow_type']);
         $detail = RunApplicationContext::annotate($detail);
         unset($detail['visibility_labels'], $detail['search_attributes']);
+
+        $detail['backend'] = BackendConfiguration::payload();
 
         return $detail;
     }

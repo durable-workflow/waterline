@@ -12,6 +12,7 @@ use Workflow\V2\Models\WorkflowSchedule;
 use Workflow\V2\Models\WorkflowScheduleHistoryEvent;
 use Workflow\V2\Support\ScheduleManager;
 use Waterline\Support\OperatorScope;
+use Waterline\Support\BackendConfiguration;
 use Waterline\Support\ScheduleActionResult;
 use Waterline\Support\ScheduleRow;
 use Waterline\Waterline;
@@ -45,6 +46,7 @@ class V2SchedulesController extends Controller
             ->through(fn (WorkflowSchedule $schedule): array => ScheduleRow::detail($this->scheduleSource($schedule)))
             ->toArray();
         $payload['operator_scope'] = OperatorScope::payload();
+        $payload['backend'] = BackendConfiguration::payload();
 
         return response()->json($payload);
     }

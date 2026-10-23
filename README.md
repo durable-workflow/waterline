@@ -70,6 +70,51 @@ Gate::define('viewWaterline', function ($user) {
 
 This will allow only the single admin user to access the Waterline UI.
 
+### Embedded operator permissions
+
+By default, anyone authorized to view embedded Waterline can use its operator
+actions. To restrict writes for every viewer, set `'read_only' => true` in
+`config/waterline.php`, or set `WATERLINE_READ_ONLY=true` before building the
+host's configuration cache. Viewing, history exports, queries and personal
+saved views/preferences remain available under their existing authorization.
+This setting does not prevent the host's workers from executing workflows.
+
+For different permissions per host user, define Laravel gates in your host's
+service provider and name them in `config/waterline.php`:
+
+```php
+Gate::define('waterline-messages', fn ($user) => $user->can('support-workflows'));
+Gate::define('waterline-operations', fn ($user) => $user->can('operate-workflows'));
+
+// config/waterline.php
+'authorization' => [
+    'gates' => [
+        'messages' => 'waterline-messages', // Signals and updates.
+        'repair' => 'waterline-operations',
+        'cancel' => 'waterline-operations',
+        'terminate' => 'waterline-operations',
+        'archive' => 'waterline-operations',
+        'schedules' => 'waterline-operations', // Pause, resume, trigger, backfill, delete.
+    ],
+],
+```
+
+Each gate receives the current host user and the HTTP request as an optional
+second argument. A `null` or omitted gate preserves the default action access.
+A configured gate must authorize the user. Missing gates and invalid gate
+settings refuse the action. Laravel's normal guest and `Gate::before` rules
+apply. These gates grant no viewing access and do not bypass namespace or
+runtime action restrictions. Global read-only takes precedence over all gates,
+including administrator overrides and unauthenticated observer access.
+
+Every write route enforces this policy, including legacy flow URLs and exact
+run URLs. A refused write returns HTTP 403 with `reason=waterline_action_forbidden`
+or `reason=waterline_read_only` and a `capability` identifying the refused action.
+The UI hides unavailable run controls, explains the refusal in action details,
+and disables schedule controls with a reason. Service mode continues to use
+`WATERLINE_ACCESS_MODE=read_only` and its upstream token permissions instead
+of host-user gates.
+
 Isolated observer stacks that have no application users can opt in to
 unauthenticated Waterline access:
 

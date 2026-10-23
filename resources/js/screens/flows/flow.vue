@@ -1864,6 +1864,7 @@ import { presentWorkflowStreams } from '../../workflow-streams.mjs'
 import { appendRunHistoryPage } from '../../run-history.mjs'
 import { activityResultSelection, activityResultPath, activityResultMatches, activityResultAvailable, activityResultMessage } from '../../activity-result.mjs'
 import { failureSummary, failureEventIndex } from '../../failure-summary.mjs'
+import { operatorPermission } from '../../operator-permissions.mjs'
 
 export default {
     components: {
@@ -3864,7 +3865,15 @@ export default {
                 .replace(/'/g, '&#039;')
         },
 
+        operatorPermission(name) {
+            const backend = this.flow.backend || (typeof Waterline !== 'undefined' ? Waterline.backend : {})
+            return operatorPermission(name, backend || {})
+        },
+
         canAction(name, fallback = false) {
+            if (!this.operatorPermission(name).allowed) {
+                return false
+            }
             if (this.flow.read_mode === 'bounded') {
                 return false
             }
@@ -3884,6 +3893,10 @@ export default {
         },
 
         actionBlockedReason(name) {
+            const permission = this.operatorPermission(name)
+            if (!permission.allowed) {
+                return permission.reason
+            }
             const action = this.actionabilityAction(name)
 
             if (action && this.hasDetailValue(action.reason)) {
@@ -3910,6 +3923,10 @@ export default {
 
         commandRejectionMessage(reason, commandType = null) {
             switch (reason) {
+                case 'waterline_action_forbidden':
+                    return this.$t("You are not authorized to perform this Waterline action.")
+                case 'waterline_read_only':
+                    return this.$t("Waterline is configured read-only; this action is unavailable.")
                 case 'earlier_signal_pending':
                     return commandType === 'update'
                         ? this.$t("An earlier accepted signal is still waiting to be applied. Retry the update after the worker drains it.")
@@ -3939,7 +3956,7 @@ export default {
 
         actionStateRows() {
             const hasExplicitContract = ['query', 'signal', 'update', 'repair', 'cancel', 'terminate', 'archive']
-                .some((name) => this.actionabilityAction(name)
+                .some((name) => !this.operatorPermission(name).allowed || this.actionabilityAction(name)
                     || this.hasDetailValue(this.flow['can_' + name])
                     || this.hasDetailValue(this.flow[name + '_blocked_reason']))
 

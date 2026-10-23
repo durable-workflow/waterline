@@ -84,6 +84,21 @@ return [
 
     'allow_unauthenticated' => env('WATERLINE_ALLOW_UNAUTHENTICATED', false),
 
+    // Embedded-only restrictions. Null gates preserve existing viewer access
+    // to actions. A configured gate must allow the current host user.
+    'read_only' => env('WATERLINE_READ_ONLY', false),
+
+    'authorization' => [
+        'gates' => [
+            'messages' => null,
+            'repair' => null,
+            'cancel' => null,
+            'terminate' => null,
+            'archive' => null,
+            'schedules' => null,
+        ],
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Backend Mode

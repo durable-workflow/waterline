@@ -8,6 +8,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 use Throwable;
 use Waterline\Models\WorkerRegistration;
 use Waterline\Support\ActionabilityContract;
+use Waterline\Support\OperatorAuthorization;
 use Waterline\Support\CompatibilitySemantics;
 use Waterline\Support\CompensationVisibility;
 use Waterline\Support\DurableCommandAttribution;
@@ -83,8 +84,7 @@ class V2StoredWorkflowResource extends JsonResource
         $detail = CompatibilitySemantics::annotateRun($detail);
         $detail['namespace'] = $this->resource->namespace;
         $detail['operator_scope'] = OperatorScope::payload();
-
-        return $this->displayTypedValues(ActionabilityContract::annotateRun($detail));
+        return $this->displayTypedValues(OperatorAuthorization::annotateRun(ActionabilityContract::annotateRun($detail)));
     }
 
     private function displayTypedValues(mixed $value): mixed

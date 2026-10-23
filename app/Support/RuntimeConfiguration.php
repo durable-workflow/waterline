@@ -73,6 +73,7 @@ final class RuntimeConfiguration
         'WATERLINE_LOCALE',
         'WATERLINE_NAMESPACE',
         'WATERLINE_PATH',
+        'WATERLINE_READ_ONLY',
         'WATERLINE_RUNTIME_ENVIRONMENT_OVERRIDES',
         'WATERLINE_SERVER_ENDPOINT',
         'WATERLINE_SERVER_TOKEN',
@@ -116,6 +117,7 @@ final class RuntimeConfiguration
         self::setStringConfigFromEnvironment('WATERLINE_HEALTH_TASK_DISPATCH_MODE', 'waterline.health.task_dispatch_mode');
         self::setBooleanConfigFromEnvironment('WATERLINE_HYBRID_MIGRATION_VIEW', 'waterline.hybrid_migration_view');
         self::setBooleanConfigFromEnvironment('WATERLINE_ALLOW_UNAUTHENTICATED', 'waterline.allow_unauthenticated');
+        self::setBooleanConfigFromEnvironment('WATERLINE_READ_ONLY', 'waterline.read_only');
     }
 
     private static function hydrateWorkflowRuntimeConfig(): void

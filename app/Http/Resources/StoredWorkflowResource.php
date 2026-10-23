@@ -5,6 +5,7 @@ namespace Waterline\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
 use Waterline\Transformer\WorkflowToChartDataTransformer;
+use Waterline\Support\BackendConfiguration;
 use Workflow\Models\StoredWorkflow;
 use Workflow\Serializers\Serializer;
 
@@ -20,6 +21,7 @@ class StoredWorkflowResource extends JsonResource
         $arguments = $this->normalizeArguments();
 
         return [
+            'backend' => BackendConfiguration::payload(),
             "id" => $this->id,
             "class" => $this->class,
             "arguments" => serialize($arguments['arguments']),
