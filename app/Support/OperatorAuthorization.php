@@ -40,9 +40,12 @@ final class OperatorAuthorization
 
         // Service authorization remains the deployment's access mode and the
         // upstream token. Host user gates apply only to embedded Laravel.
-        $gate = BackendConfiguration::serviceMode()
-            ? null
-            : config('waterline.authorization.gates.'.$group);
+        $gate = null;
+        if (! BackendConfiguration::serviceMode()) {
+            $authorization = config('waterline.authorization', []);
+            $gates = is_array($authorization) ? ($authorization['gates'] ?? []) : false;
+            $gate = is_array($gates) ? ($gates[$group] ?? null) : false;
+        }
         $request ??= request();
         $allowed = $gate === null
             || (is_string($gate) && trim($gate) !== ''

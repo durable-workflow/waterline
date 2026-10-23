@@ -119,6 +119,13 @@ final class OperatorAuthorizationTest extends TestCase
                 ->assertJsonPath('reason', 'waterline_action_forbidden');
         }
 
+        foreach ([false, ['gates' => 'misconfigured']] as $authorization) {
+            config()->set('waterline.authorization', $authorization);
+            $this->postJson('/waterline/api/instances/missing/cancel')->assertForbidden()
+                ->assertJsonPath('reason', 'waterline_action_forbidden');
+        }
+        config()->set('waterline.authorization', ['gates' => ['cancel' => 'waterline-cancel']]);
+
         $this->app['auth']->forgetGuards();
         Waterline::auth(static fn (): bool => true);
         config()->set('waterline.authorization.gates.cancel', 'waterline-cancel');
