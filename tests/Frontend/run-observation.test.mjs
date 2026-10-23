@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import vm from 'node:vm'
 import test from 'node:test'
 import { appendRunHistoryPage } from '../../resources/js/run-history.mjs'
+import { operatorPermission } from '../../resources/js/operator-permissions.mjs'
 import { createWaterlineI18n } from '../../resources/js/localization.mjs'
 
 const source = fs.readFileSync(new URL('../../resources/js/screens/flows/flow.vue', import.meta.url), 'utf8')
@@ -14,6 +15,7 @@ function loadComponent(backend = 'embedded') {
         Waterline: { basePath: '/waterline', backend: { mode: backend } },
         TimelineEventRenderer: {}, SearchAttributeRenderer: {}, CancellationCascadeView: {},
         appendRunHistoryPage,
+        operatorPermission,
     }
     vm.runInNewContext(script, sandbox)
     return sandbox.component
@@ -35,6 +37,34 @@ function detail(overrides = {}, backend = 'embedded') {
 }
 
 const run = { instance_id: 'order', selected_run_id: 'run', run_id: 'run', read_mode: 'bounded', engine_source: 'v2' }
+
+test('host authorization vetoes runtime affordances and explains each denied action', () => {
+    for (const name of ['signal', 'update', 'repair', 'cancel', 'terminate', 'archive']) {
+        const context = detail({ flow: {
+            ['can_' + name]: true,
+            actionability: { actions: { [name]: { allowed: true, reason: null } } },
+            backend: { permissions: { [name]: { allowed: false, reason: 'waterline_action_forbidden' } } },
+        } })
+        assert.equal(context.canAction(name, true), false)
+        assert.equal(context.actionBlockedReason(name), 'waterline_action_forbidden')
+        const row = context.actionStateRows().find((row) => row.name === name)
+        assert.equal(row.allowed, false)
+        assert.equal(context.actionReasonLabel(row.reason), 'You are not authorized to perform this Waterline action.')
+    }
+})
+
+test('an allowed host gate cannot enable a runtime refusal and read-only keeps queries available', () => {
+    const context = detail({ flow: {
+        can_cancel: false, cancel_blocked_reason: 'run_closed',
+        backend: { permissions: { cancel: { allowed: true, reason: null } } },
+    } })
+    assert.equal(context.canAction('cancel', true), false)
+    assert.equal(context.actionBlockedReason('cancel'), 'run_closed')
+    context.flow = { can_query: true, can_signal: true, backend: { read_only: true } }
+    assert.equal(context.canAction('query'), true)
+    assert.equal(context.canAction('signal'), false)
+    assert.equal(context.actionBlockedReason('signal'), 'waterline_read_only')
+})
 
 test('localized chart tooltips preserve diagnostic data as escaped text', () => {
     const context = detail({ $t: createWaterlineI18n('uk').global.t })

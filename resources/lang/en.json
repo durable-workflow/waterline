@@ -1,4 +1,7 @@
 {
+    "You are not authorized to perform this Waterline action.": "You are not authorized to perform this Waterline action.",
+    "Waterline is configured read-only; this action is unavailable.": "Waterline is configured read-only; this action is unavailable.",
+    "You are not authorized to change schedules.": "You are not authorized to change schedules.",
     "Update the PHP SDK to inspect this activity result.": "Update the PHP SDK to inspect this activity result.",
     "The connected Server does not support activity result inspection.": "The connected Server does not support activity result inspection.",
     "The recorded activity result could not be decoded.": "The recorded activity result could not be decoded.",

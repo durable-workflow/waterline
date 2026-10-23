@@ -61,4 +61,31 @@ final class OperatorAuthorization
 
         return $permissions;
     }
+
+    /** @param array<string, mixed> $payload
+     *  @return array<string, mixed>
+     */
+    public static function annotateRun(array $payload): array
+    {
+        $payload['backend'] = BackendConfiguration::payload();
+        foreach ($payload['backend']['permissions'] as $action => $permission) {
+            if ($action === 'schedules' || $permission['allowed']) {
+                continue;
+            }
+            $payload['can_'.$action] = false;
+            $payload[$action.'_blocked_reason'] = $permission['reason'];
+            if (isset($payload['actionability']['actions'])) {
+                $payload['actionability']['actions'][$action] = [
+                    ...$permission,
+                    'derived_from' => 'operator_authorization',
+                ];
+            }
+        }
+        if (! $payload['backend']['permissions']['cancel']['allowed']
+            && ! $payload['backend']['permissions']['terminate']['allowed']) {
+            $payload['can_issue_terminal_commands'] = false;
+        }
+
+        return $payload;
+    }
 }
