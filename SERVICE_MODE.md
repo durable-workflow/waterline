@@ -12,7 +12,7 @@ The host needs Docker, but does not need PHP, Laravel, Composer, or
 `durable-workflow/workflow`.
 
 ```bash
-WATERLINE_IMAGE="durableworkflow/waterline:2.12.3"
+WATERLINE_IMAGE="durableworkflow/waterline:2.13.0"
 
 docker run --rm -p 8080:8080 \
   -v waterline-data:/data \
@@ -176,7 +176,7 @@ and accepts the standalone endpoint and token from the deployment environment.
 Select the stable image before starting it:
 
 ```bash
-WATERLINE_IMAGE="durableworkflow/waterline:2.12.3" \
+WATERLINE_IMAGE="durableworkflow/waterline:2.13.0" \
   docker compose -f deploy/docker-compose.service.yml up -d
 ```
 
