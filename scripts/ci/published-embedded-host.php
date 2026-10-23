@@ -18,6 +18,11 @@ use Workflow\V2\Workflow;
 use Workflow\V2\WorkflowStub;
 use Workflow\V2\WorkflowTaskBridge;
 
+const INSTALLED_ACCEPTANCE_ASSET_DIRECTORY = __DIR__.'/public/vendor/waterline/';
+
+final class InstalledAcceptanceFailure extends RuntimeException {}
+final class SyntheticInstalledWorkflowFailure extends RuntimeException {}
+
 #[Type('installed.operator-command')]
 #[Signal('name-provided', [['name' => 'name', 'type' => 'string']])]
 final class TestOperatorCommandWorkflow extends Workflow
@@ -34,7 +39,7 @@ final class InstalledCompletedWorkflow extends Workflow
 #[Type('installed.contrast-failed')]
 final class InstalledFailedWorkflow extends Workflow
 {
-    public function handle(): array { throw new RuntimeException('Synthetic installed acceptance failure.'); }
+    public function handle(): array { throw new SyntheticInstalledWorkflowFailure('Synthetic installed acceptance failure.'); }
 }
 
 final class InstalledAcceptanceProvider extends ServiceProvider
@@ -77,60 +82,91 @@ $app = Application::configure(basePath: __DIR__)
         InstalledAcceptanceProvider::class,
     ], withBootstrapProviders: false)->create();
 
-function runAcceptanceCli(Application $app, array $arguments): void
+function drainAcceptanceTasks(): void
 {
-    $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-    $operation = $arguments[1] ?? 'identity';
-    if ($operation === 'seed') {
-        Artisan::call('migrate:fresh', ['--force' => true]);
-        $runs = [];
-        foreach ([
-            'authorization-browser' => TestOperatorCommandWorkflow::class,
-            'theme-contrast-completed' => InstalledCompletedWorkflow::class,
-            'theme-contrast-failed' => InstalledFailedWorkflow::class,
-            'theme-contrast-cancelled' => TestOperatorCommandWorkflow::class,
-        ] as $id => $class) {
-            $runs[$id] = WorkflowStub::make($class, $id);
-            $runs[$id]->start();
+    for ($round = 0; $round < 30; ++$round) {
+        $tasks = WorkflowTaskBridge::poll(null, null, 10);
+        if (!$tasks) {
+            return;
         }
-        $drain = static function (): void {
-            for ($round = 0; $round < 30; ++$round) {
-                $tasks = WorkflowTaskBridge::poll(null, null, 10);
-                if (!$tasks) return;
-                foreach ($tasks as $task) WorkflowTaskBridge::execute($task['task_id']);
-            }
-            throw new RuntimeException('Acceptance fixture exceeded its bounded task drain.');
-        };
-        $drain();
-        $runs['theme-contrast-cancelled']->cancel('Synthetic installed acceptance');
-        $drain();
-        \Workflow\V2\Support\ScheduleManager::create('authorization-browser-schedule', TestOperatorCommandWorkflow::class, '0 * * * *');
-        Artisan::call('vendor:publish', ['--tag' => 'waterline-assets', '--force' => true]);
-        foreach ($runs as $id => $run) {
-            $expected = $id === 'authorization-browser' ? 'waiting' : substr($id, strlen('theme-contrast-'));
-            $actual = $run->refresh()->status();
-            if ($actual !== $expected) throw new RuntimeException("$id expected $expected, got $actual");
+        foreach ($tasks as $task) {
+            WorkflowTaskBridge::execute($task['task_id']);
         }
     }
+    throw new InstalledAcceptanceFailure('Acceptance fixture exceeded its bounded task drain.');
+}
+
+function seedAcceptanceRuns(): void
+{
+    Artisan::call('migrate:fresh', ['--force' => true]);
+    $runs = [];
+    foreach ([
+        'authorization-browser' => TestOperatorCommandWorkflow::class,
+        'theme-contrast-completed' => InstalledCompletedWorkflow::class,
+        'theme-contrast-failed' => InstalledFailedWorkflow::class,
+        'theme-contrast-cancelled' => TestOperatorCommandWorkflow::class,
+    ] as $id => $class) {
+        $runs[$id] = WorkflowStub::make($class, $id);
+        $runs[$id]->start();
+    }
+    drainAcceptanceTasks();
+    $runs['theme-contrast-cancelled']->cancel('Synthetic installed acceptance');
+    drainAcceptanceTasks();
+    \Workflow\V2\Support\ScheduleManager::create('authorization-browser-schedule', TestOperatorCommandWorkflow::class, '0 * * * *');
+    Artisan::call('vendor:publish', ['--tag' => 'waterline-assets', '--force' => true]);
+    foreach ($runs as $id => $run) {
+        $expected = $id === 'authorization-browser' ? 'waiting' : substr($id, strlen('theme-contrast-'));
+        $actual = $run->refresh()->status();
+        if ($actual !== $expected) {
+            throw new InstalledAcceptanceFailure("$id expected $expected, got $actual");
+        }
+    }
+}
+
+function acceptancePackageIdentity(): array
+{
     $identity = [];
     foreach (['durable-workflow/waterline' => (string) getenv('EXPECTED_WATERLINE_VERSION'), 'durable-workflow/workflow' => (string) getenv('EXPECTED_WORKFLOW_VERSION'), 'laravel/framework' => 'v12.70.1'] as $package => $expected) {
         $version = InstalledVersions::getPrettyVersion($package);
-        if (ltrim((string) $version, 'v') !== ltrim($expected, 'v')) throw new RuntimeException("Unexpected $package $version");
+        if (ltrim((string) $version, 'v') !== ltrim($expected, 'v')) {
+            throw new InstalledAcceptanceFailure("Unexpected $package $version");
+        }
         $identity[$package] = ['version' => $version, 'reference' => InstalledVersions::getReference($package)];
     }
     $reference = getenv('EXPECTED_WATERLINE_SOURCE');
-    if (!$reference || $identity['durable-workflow/waterline']['reference'] !== $reference) throw new RuntimeException('Installed Waterline reference does not match the qualified tag.');
+    if (!$reference || $identity['durable-workflow/waterline']['reference'] !== $reference) {
+        throw new InstalledAcceptanceFailure('Installed Waterline reference does not match the qualified tag.');
+    }
+    return $identity;
+}
+
+function acceptanceAssets(): array
+{
     $assets = [];
     $source = InstalledVersions::getInstallPath('durable-workflow/waterline').'/public';
     foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($source, FilesystemIterator::SKIP_DOTS)) as $file) {
-        if (!$file->isFile()) continue;
+        if (!$file->isFile()) {
+            continue;
+        }
         $relative = substr($file->getPathname(), strlen($source) + 1);
         $digest = hash_file('sha256', $file->getPathname());
-        if (!is_file(__DIR__.'/public/vendor/waterline/'.$relative) || hash_file('sha256', __DIR__.'/public/vendor/waterline/'.$relative) !== $digest) throw new RuntimeException('Published asset mismatch: '.$relative);
+        $published = INSTALLED_ACCEPTANCE_ASSET_DIRECTORY.$relative;
+        if (!is_file($published) || hash_file('sha256', $published) !== $digest) {
+            throw new InstalledAcceptanceFailure('Published asset mismatch: '.$relative);
+        }
         $assets[$relative] = $digest;
     }
+    return $assets;
+}
+
+function runAcceptanceCli(Application $app, array $arguments): void
+{
+    $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+    if (($arguments[1] ?? 'identity') === 'seed') {
+        seedAcceptanceRuns();
+    }
     echo json_encode([
-        'php' => PHP_VERSION, 'packages' => $identity, 'assets' => $assets,
+        'php' => PHP_VERSION, 'packages' => acceptancePackageIdentity(), 'assets' => acceptanceAssets(),
         'runs' => \Workflow\V2\Models\WorkflowRun::query()->get(['id', 'workflow_instance_id', 'status'])->toArray(),
         'commands' => \Workflow\V2\Models\WorkflowCommand::query()->get(['command_type', 'status', 'outcome'])->toArray(),
         'schedule' => \Workflow\V2\Models\WorkflowSchedule::query()->first()?->status,
@@ -148,7 +184,7 @@ if (PHP_SAPI === 'cli') {
     $requestPath = (string) parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
     if (str_starts_with($requestPath, '/vendor/waterline/')) {
         $asset = realpath(__DIR__.'/public'.$requestPath);
-        $root = __DIR__.'/public/vendor/waterline/';
+        $root = INSTALLED_ACCEPTANCE_ASSET_DIRECTORY;
         if ($asset && str_starts_with($asset, $root) && is_file($asset)) {
             $response = new \Symfony\Component\HttpFoundation\BinaryFileResponse($asset);
             $response->headers->set('Content-Type', match (pathinfo($asset, PATHINFO_EXTENSION)) {
