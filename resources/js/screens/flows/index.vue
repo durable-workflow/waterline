@@ -24,6 +24,7 @@
                 listTimeWindows: null,
                 listLoadError: null,
                 listRequest: 0,
+                listRequestPending: false,
                 filterDefinition: null,
                 operatorPreferences: {},
                 effectiveOperatorPreferences: {},
@@ -194,16 +195,19 @@
              * Load the flows of the given tag.
              */
             loadFlows(page = 1, refreshing = false) {
+                if (refreshing && this.listRequestPending) return
                 const request = ++this.listRequest
+                this.listRequestPending = true
                 this.page = page
-                this.listLoadError = null
                 if (!refreshing) {
+                    this.listLoadError = null
                     this.ready = false;
                 }
 
                 return this.$http.get(Waterline.basePath + '/api/flows/' + this.$route.params.type + '?' + this.apiQueryString(page))
                     .then(response => {
                         if (request !== this.listRequest) return
+                        this.listLoadError = null
                         this.classificationScope = response.data.classification_scope || null
                         this.listOperatorScope = response.data.operator_scope || null
                         this.listTimeWindows = response.data.time_windows || null
@@ -239,6 +243,9 @@
                         }
 
                         this.ready = true;
+                    })
+                    .finally(() => {
+                        if (request === this.listRequest) this.listRequestPending = false
                     });
             },
 

@@ -9,6 +9,9 @@
   unchanged. Uncertain schedule writes explicitly report an unknown outcome;
   no mutation is automatically retried. The schedule guidance is translated in
   all eight supported locales.
+- Automatic list refresh waits for an outstanding read instead of superseding
+  it. Timeout errors remain visible until a successful read, including when
+  the request budget exceeds the refresh cadence.
 
 ## 2.13.1 - 2026-10-23
 

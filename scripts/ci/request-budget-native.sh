@@ -48,7 +48,7 @@ locked = json.loads((source / 'standalone/composer.lock').read_text())
 expected = [package for package in locked['packages'] if package['name'] == 'durable-workflow/sdk']
 if len(expected) != 1 or sdk != {'sdk': expected[0]['version'], 'sdk_source': expected[0]['source']['reference']}:
     raise SystemExit('Published native SDK differs from its exact release lock.')
-if labels.get('org.opencontainers.image.revision') != os.environ['EXPECTED_SOURCE_COMMIT'] or labels.get('org.opencontainers.image.version') != os.environ['EXPECTED_WATERLINE_VERSION']:
+if labels.get('org.opencontainers.image.revision') != os.environ['EXPECTED_SOURCE_COMMIT'] or labels.get('dev.durable-workflow.release.tag') != os.environ['EXPECTED_WATERLINE_VERSION']:
     raise SystemExit('Published native image source/version identity mismatch.')
 if platform.machine() != os.environ['EXPECTED_MACHINE']:
     raise SystemExit('Browser qualification must run on the actual native architecture.')
@@ -65,34 +65,47 @@ docker run -d --name "$backend" --network "$network" --network-alias budget-back
     --tmpfs /data:rw,size=1m \
     --mount "type=bind,src=$work,dst=/budget" --workdir /budget --entrypoint php \
     "$image" -S 0.0.0.0:18081 server.php >/dev/null
-docker run -d --name "$application" --network "$network" \
+start_application() {
+    local browser_seconds="$1"
+    docker run -d --name "$application" --network "$network" \
     --cpus 2 --memory 768m --tmpfs /data:rw,size=64m -p 127.0.0.1::8080 \
     -e WATERLINE_SERVER_ENDPOINT=http://budget-backend:18081 \
     -e WATERLINE_SERVER_TOKEN=smoke-token -e WATERLINE_NAMESPACE=smoke \
     -e WATERLINE_ACCESS_MODE=operator -e WATERLINE_ALLOW_UNAUTHENTICATED=true \
-    -e WATERLINE_SERVER_REQUEST_TIMEOUT=0.2 -e WATERLINE_BROWSER_REQUEST_TIMEOUT=0.8 \
+    -e WATERLINE_SERVER_REQUEST_TIMEOUT=0.2 -e "WATERLINE_BROWSER_REQUEST_TIMEOUT=$browser_seconds" \
     "$image" >/dev/null
-port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort}}' "$application")"
-ready=0
-for attempt in $(seq 1 30); do
-    if curl --fail --silent --connect-timeout 1 --max-time 1 "http://127.0.0.1:$port/up" >/dev/null; then ready=1; break; fi
-    sleep 1
-done
-test "$ready" = 1
+    port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "8080/tcp") 0).HostPort}}' "$application")"
+    ready=0
+    for attempt in $(seq 1 30); do
+        if curl --fail --silent --connect-timeout 1 --max-time 1 "http://127.0.0.1:$port/up" >/dev/null; then ready=1; break; fi
+        sleep 1
+    done
+    [[ "$ready" = 1 ]]
+}
 
 # Proxy only the controlled faults; HTML/assets and run APIs come from the actual
 # immutable application image. The protocol backend is a separate real HTTP peer.
-docker run -d --name "$proxy" --network host --user "$(id -u):$(id -g)" \
+start_proxy() {
+    docker run -d --name "$proxy" --network host --user "$(id -u):$(id -g)" \
     --cpus 1 --memory 128m --tmpfs /data:rw,size=1m --mount "type=bind,src=$work,dst=/budget" --workdir /budget \
     -e "BUDGET_NATIVE_PORT=$port" --entrypoint php "$image" \
     -S 127.0.0.1:8080 host.php >/dev/null
+    proxy_ready=0
+    for attempt in $(seq 1 15); do
+        if curl --fail --silent --max-time 1 http://127.0.0.1:8080/up >/dev/null; then proxy_ready=1; break; fi
+        sleep 1
+    done
+    [[ "$proxy_ready" = 1 ]]
+}
+start_application 0.8
+start_proxy
 export EXPECTED_CANDIDATE_SOURCE="$EXPECTED_SOURCE_COMMIT"
 export FIXED_BROWSER_BUDGET_SECONDS=0.8
 cd "$work"
-proxy_ready=0
-for attempt in $(seq 1 15); do
-    if curl --fail --silent --max-time 1 http://127.0.0.1:8080/up >/dev/null; then proxy_ready=1; break; fi
-    sleep 1
-done
-test "$proxy_ready" = 1
 node "$root/scripts/ci/request-budget-browser.mjs"
+docker logs "$application" > "$evidence/native-primary-app.log" 2>&1
+docker logs "$proxy" > "$evidence/native-primary-proxy.log" 2>&1
+docker rm -f "$proxy" "$application" >/dev/null
+start_application 3.5
+start_proxy
+node "$root/scripts/ci/request-budget-auto.mjs"

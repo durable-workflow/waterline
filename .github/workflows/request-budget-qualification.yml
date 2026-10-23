@@ -131,6 +131,9 @@ jobs:
     - name: Exercise actual stalls, typed errors, explicit read recovery and unknown writes
       working-directory: ${{ env.BUDGET_APP_ROOT }}
       run: node "$GITHUB_WORKSPACE/scripts/ci/request-budget-browser.mjs"
+    - name: Prove automatic refresh cannot hide a slow read timeout
+      working-directory: ${{ env.BUDGET_APP_ROOT }}
+      run: node "$GITHUB_WORKSPACE/scripts/ci/request-budget-auto.mjs"
     - name: Retain source and actual browser evidence
       if: always()
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

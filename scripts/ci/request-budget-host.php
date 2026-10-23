@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+final class NativeBudgetFixtureException extends RuntimeException {}
+
 if (PHP_SAPI !== 'cli') {
     $path = (string) parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
     $mode = json_decode(file_get_contents(__DIR__.'/mode.json'), true, flags: JSON_THROW_ON_ERROR);
@@ -18,34 +20,47 @@ if (PHP_SAPI !== 'cli') {
     // View wiring uses controlled HTTP responses. Run-list cases continue to
     // the real package/image and its actual SDK/protocol backend.
     if (isset($mode['browser_path'], $mode['browser_response']) && $path === $mode['browser_path']) {
-        if ($mode['mode'] === 'browser-stall') usleep(3_000_000);
+        if ($mode['mode'] === 'browser-stall') {
+            usleep(3_000_000);
+        }
         header('Content-Type: application/json');
         echo json_encode($mode['browser_response'], JSON_THROW_ON_ERROR);
         return;
     }
-    if ($mode['mode'] === 'browser-stall' && $path === '/waterline/api/flows/running') usleep(3_000_000);
+    if ($mode['mode'] === 'browser-stall' && $path === '/waterline/api/flows/running') {
+        usleep((int) ($mode['browser_stall_microseconds'] ?? 3_000_000));
+    }
 
     $nativePort = getenv('BUDGET_NATIVE_PORT');
     if ($nativePort !== false) {
         $port = filter_var($nativePort, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]);
         if ($port === false || !str_starts_with($_SERVER['REQUEST_URI'], '/')) {
-            throw new RuntimeException('Expected a local native-image port and request path.');
+            throw new NativeBudgetFixtureException('Expected a local native-image port and request path.');
         }
         $headers = ['Host: 127.0.0.1:8080'];
         foreach (getallheaders() as $name => $value) {
-            if (!in_array(strtolower($name), ['host', 'connection', 'content-length'], true)) $headers[] = $name.': '.$value;
+            if (!in_array(strtolower($name), ['host', 'connection', 'content-length'], true)) {
+                $headers[] = $name.': '.$value;
+            }
         }
-        $context = stream_context_create(['http' => [
-            'method' => $_SERVER['REQUEST_METHOD'], 'header' => implode("\r\n", $headers),
-            'content' => file_get_contents('php://input'), 'ignore_errors' => true,
-            'follow_location' => 0, 'timeout' => 5,
-        ]]);
-        $body = file_get_contents('http://127.0.0.1:'.$port.$_SERVER['REQUEST_URI'], false, $context);
-        if ($body === false) throw new RuntimeException('Native image HTTP fixture proxy failed.');
-        foreach ($http_response_header as $index => $line) {
-            if ($index === 0 && preg_match('/^HTTP\/\S+ (\d{3})/', $line, $match)) {
-                http_response_code((int) $match[1]);
-            } elseif (!preg_match('/^(?:connection|transfer-encoding|content-length):/i', $line)) {
+        $responseHeaders = [];
+        $connection = curl_init('http://127.0.0.1:'.$port.$_SERVER['REQUEST_URI']);
+        curl_setopt_array($connection, [
+            CURLOPT_CUSTOMREQUEST => $_SERVER['REQUEST_METHOD'], CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_POSTFIELDS => file_get_contents('php://input'), CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => false, CURLOPT_PROTOCOLS => CURLPROTO_HTTP, CURLOPT_TIMEOUT_MS => 7000,
+            CURLOPT_HEADERFUNCTION => static function ($_handle, string $line) use (&$responseHeaders): int {
+                $responseHeaders[] = trim($line);
+                return strlen($line);
+            },
+        ]);
+        $body = curl_exec($connection);
+        if ($body === false) {
+            throw new NativeBudgetFixtureException('Native image HTTP fixture proxy failed.');
+        }
+        http_response_code(curl_getinfo($connection, CURLINFO_RESPONSE_CODE));
+        foreach ($responseHeaders as $line) {
+            if ($line !== '' && !preg_match('/^(?:HTTP\/|connection:|transfer-encoding:|content-length:)/i', $line)) {
                 header($line, false);
             }
         }
