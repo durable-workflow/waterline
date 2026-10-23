@@ -49,12 +49,26 @@ async function inspectPage(context, id, runId, name) {
         if (!await button.isVisible()) break;
         await button.click();
     }
-    const text = await page.locator('body').innerText();
+    let text = await page.locator('body').innerText();
     fs.writeFileSync(`${directory}/${name}.txt`,text);
     await page.screenshot({path:`${directory}/${name}.png`,fullPage:true});
     const buttons = await page.locator('.wl-flow-detail__header-actions button').allTextContents();
+    const resultButtons = page.locator('#collapseActivities button[title="View Result"]');
+    const activityResults = [];
+    for (let index=0; index<await resultButtons.count(); ++index) {
+        await resultButtons.nth(index).click();
+        const dialog = page.getByRole('dialog');
+        await dialog.waitFor({state:'visible'});
+        const resultText = await dialog.innerText();
+        activityResults.push(resultText);
+        text += '\n'+resultText;
+        fs.writeFileSync(`${directory}/${name}-activity-${index}.txt`,resultText);
+        await page.screenshot({path:`${directory}/${name}-activity-${index}.png`,fullPage:true});
+        await dialog.getByRole('button',{name:'Okay',exact:true}).click();
+        await dialog.waitFor({state:'hidden'});
+    }
     await page.close();
-    return {id,runId,name,buttons,operationKeyVisible:text.includes(id.replace('uncertain-','operation-')),recordedReceiptVisible:text.includes('synthetic-operation-processing-failure-1'),authoredReceiptVisible:text.includes('synthetic-operation-authored-reconciliation-1'),operatorNoteVisible:text.includes('operator requested lookup'),lostResponseVisible:text.includes('Response lost after submission'),confirmedRejectionVisible:text.includes('confirmed rejection'),processingFailureVisible:text.includes('local processing failure')};
+    return {id,runId,name,buttons,activityResults,operationKeyVisible:text.includes(id.replace('uncertain-','operation-')),recordedReceiptVisible:text.includes('synthetic-operation-processing-failure-1'),authoredReceiptVisible:text.includes('synthetic-operation-authored-reconciliation-1'),operatorNoteVisible:text.includes('operator requested lookup'),lostResponseVisible:text.includes('Response lost after submission'),confirmedRejectionVisible:text.includes('confirmed rejection'),processingFailureVisible:text.includes('local processing failure')};
 }
 
 try {
