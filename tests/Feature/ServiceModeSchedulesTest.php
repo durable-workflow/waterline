@@ -179,6 +179,19 @@ final class ServiceModeSchedulesTest extends TestCase
         $this->assertSame('Note = "nightly"', $list['arguments']['query']);
     }
 
+    public function testInvalidTypeOrQueryIsRefusedBeforeAnyUpstreamScheduleRead(): void
+    {
+        foreach (['workflow_type' => 255, 'query' => 2048] as $field => $maximum) {
+            foreach (['', ['unexpected'], str_repeat('x', $maximum + 1)] as $value) {
+                $this->getJson('/waterline/api/v2/schedules?'.http_build_query([$field => $value]))
+                    ->assertStatus(422)
+                    ->assertJsonValidationErrors($field);
+            }
+        }
+
+        $this->assertSame([], $this->scheduleCalls());
+    }
+
     public function testListRowFallsBackToTheListItemWhenItsDetailCannotBeRead(): void
     {
         $this->client->describeScheduleFailures['nightly-orders'] = new ServerException(
