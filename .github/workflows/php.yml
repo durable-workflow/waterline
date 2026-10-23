@@ -980,6 +980,15 @@ jobs:
         --base-url "${APP_URL}"
         --output-dir run-detail-evidence/theme-contrast/after
 
+    - name: Retain schedule action and filter acceptance
+      if: ${{ always() }}
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: waterline-schedule-actions-${{ github.run_id }}-${{ github.run_attempt }}
+        path: sample-app/run-detail-evidence/schedules/
+        if-no-files-found: warn
+        retention-days: 7
+
     - name: Upload contrast measurements and screenshots
       if: ${{ always() }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
