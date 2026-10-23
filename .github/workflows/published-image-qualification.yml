@@ -14,6 +14,14 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      uncertain_core_version:
+        description: Optional exact published Core for the isolated Waterline 232 investigation
+        required: false
+        type: string
+      uncertain_core_commit:
+        description: Exact published Core tag commit; required with uncertain_core_version
+        required: false
+        type: string
       image_digest:
         description: Exact published image index digest (sha256 followed by 64 hex characters)
         required: true
@@ -31,6 +39,137 @@ permissions:
   contents: read
 
 jobs:
+  uncertain-outcomes:
+    name: Published uncertain-outcome investigation
+    if: github.event_name == 'workflow_dispatch' && inputs.uncertain_core_version != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      EXPECTED_WATERLINE_VERSION: ${{ inputs.release_version }}
+      EXPECTED_WATERLINE_SOURCE: ${{ inputs.source_commit }}
+      EXPECTED_WORKFLOW_VERSION: ${{ inputs.uncertain_core_version }}
+      EXPECTED_WORKFLOW_SOURCE: ${{ inputs.uncertain_core_commit }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate immutable published identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_WATERLINE_VERSION" =~ ^2\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$EXPECTED_WORKFLOW_VERSION" =~ ^2\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$EXPECTED_WATERLINE_SOURCE" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_WORKFLOW_SOURCE" =~ ^[0-9a-f]{40}$ ]]
+          git fetch --no-tags origin "refs/tags/$EXPECTED_WATERLINE_VERSION"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$EXPECTED_WATERLINE_SOURCE"
+          git fetch --no-tags https://github.com/durable-workflow/workflow.git "refs/tags/$EXPECTED_WORKFLOW_VERSION"
+          test "$(git rev-parse 'FETCH_HEAD^{commit}')" = "$EXPECTED_WORKFLOW_SOURCE"
+          printf 'UNCERTAIN_APP_ROOT=%s\n' "$RUNNER_TEMP/uncertain-outcomes" >> "$GITHUB_ENV"
+      - name: Select authenticated dependency trust
+        uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+        with:
+          clients: composer,curl,git
+      - name: Install PHP and Composer
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite, curl
+          tools: composer:2.10.3
+          coverage: none
+      - name: Install fixed Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.22.1'
+      - name: Verify raw Node trust before package requests
+        run: node .devcontainer/docker/verify-node-runtime.mjs
+      - name: Prepare isolated ordinary consumer
+        shell: bash
+        run: |
+          mkdir -p "$UNCERTAIN_APP_ROOT"/{bootstrap/cache,storage/framework/views,storage/logs,public}
+          touch "$UNCERTAIN_APP_ROOT/database.sqlite"
+          cp scripts/investigations/uncertain-outcomes-host.php "$UNCERTAIN_APP_ROOT/host.php"
+          cp scripts/investigations/uncertain-outcomes-provider.php "$UNCERTAIN_APP_ROOT/provider.php"
+          php -r '
+            $manifest = ["name" => "durable-workflow/uncertain-outcome-investigation", "require" => [
+              "php" => "^8.3", "ext-curl" => "*", "laravel/framework" => "12.70.1",
+              "durable-workflow/waterline" => getenv("EXPECTED_WATERLINE_VERSION"),
+              "durable-workflow/workflow" => getenv("EXPECTED_WORKFLOW_VERSION"),
+            ], "config" => ["allow-plugins" => new stdClass(), "preferred-install" => "dist"], "minimum-stability" => "stable"];
+            file_put_contents(getenv("UNCERTAIN_APP_ROOT")."/composer.json", json_encode($manifest, JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR).PHP_EOL);
+          '
+          printf '%s\n' '{"private":true}' > "$UNCERTAIN_APP_ROOT/package.json"
+      - name: Verify actual consumer Composer context
+        uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+        with:
+          working-directory: ${{ env.UNCERTAIN_APP_ROOT }}
+      - name: Install exact published packages and browser
+        working-directory: ${{ env.UNCERTAIN_APP_ROOT }}
+        run: |
+          composer install --prefer-dist --no-interaction --no-progress
+          npm install --ignore-scripts --no-save --package-lock=false playwright@1.64.0
+          npx --no-install playwright install chromium --with-deps
+      - name: Execute real synthetic workflows and start operator UI
+        working-directory: ${{ env.UNCERTAIN_APP_ROOT }}
+        run: |
+          mkdir -p uncertain-outcomes-evidence
+          php -S 127.0.0.1:8081 provider.php > uncertain-outcomes-evidence/provider.log 2>&1 &
+          echo $! > uncertain-outcomes-evidence/provider.pid
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8081/health > /dev/null; then break; fi
+            sleep 1
+          done
+          php host.php seed > uncertain-outcomes-evidence/seed.json
+          php -S 127.0.0.1:8080 host.php > uncertain-outcomes-evidence/server.log 2>&1 &
+          echo $! > uncertain-outcomes-evidence/server.pid
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/waterline > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Inspect actual UI and authorized recovery refusals
+        working-directory: ${{ env.UNCERTAIN_APP_ROOT }}
+        run: |
+          node "$GITHUB_WORKSPACE/scripts/investigations/uncertain-outcomes-browser.mjs" inspect
+          php host.php drain > uncertain-outcomes-evidence/after-inspection.json
+          php -r '
+            $before = json_decode(file_get_contents("uncertain-outcomes-evidence/seed.json"), true, flags: JSON_THROW_ON_ERROR);
+            $after = json_decode(file_get_contents("uncertain-outcomes-evidence/after-inspection.json"), true, flags: JSON_THROW_ON_ERROR);
+            if ($before["runs"] !== $after["runs"] || $before["oracle"] !== $after["oracle"]) throw new RuntimeException("Inspection/refused actions changed run state or external effects.");
+          '
+      - name: Resolve only the application-authored reconciliation control
+        working-directory: ${{ env.UNCERTAIN_APP_ROOT }}
+        run: |
+          node "$GITHUB_WORKSPACE/scripts/investigations/uncertain-outcomes-browser.mjs" resolve
+          php host.php drain > uncertain-outcomes-evidence/after-reconciliation.json
+          node "$GITHUB_WORKSPACE/scripts/investigations/uncertain-outcomes-browser.mjs" resolved
+          php -r '
+            $before = json_decode(file_get_contents("uncertain-outcomes-evidence/seed.json"), true, flags: JSON_THROW_ON_ERROR);
+            $after = json_decode(file_get_contents("uncertain-outcomes-evidence/after-reconciliation.json"), true, flags: JSON_THROW_ON_ERROR);
+            if ($before["oracle"] !== $after["oracle"]) throw new RuntimeException("Reconciliation repeated an external submission.");
+          '
+      - name: Measure duplicate effects from naive fresh restarts
+        working-directory: ${{ env.UNCERTAIN_APP_ROOT }}
+        run: php host.php unsafe-restart-control > uncertain-outcomes-evidence/naive-restart-control.json
+      - name: Retain scenario, operator and independent oracle evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: waterline-uncertain-outcomes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.UNCERTAIN_APP_ROOT }}/uncertain-outcomes-evidence
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Stop the synthetic application
+        if: always()
+        shell: bash
+        run: |
+          if test -f "$UNCERTAIN_APP_ROOT/uncertain-outcomes-evidence/server.pid"; then
+            kill "$(cat "$UNCERTAIN_APP_ROOT/uncertain-outcomes-evidence/server.pid")" || true
+          fi
+          if test -f "$UNCERTAIN_APP_ROOT/uncertain-outcomes-evidence/provider.pid"; then
+            kill "$(cat "$UNCERTAIN_APP_ROOT/uncertain-outcomes-evidence/provider.pid")" || true
+          fi
+
   embedded:
     name: Published Composer consumer and browser
     if: >-
