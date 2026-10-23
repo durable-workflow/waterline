@@ -80,6 +80,16 @@ if (str_starts_with($path, '/vendor/waterline/')) {
     }
 }
 $mode = json_decode(file_get_contents(__DIR__.'/mode.json'), true, flags: JSON_THROW_ON_ERROR);
+// Additional view controls exercise real browser HTTP against fixture responses;
+// the workflow cases below continue through the real SDK and protocol backend.
+if (isset($mode['browser_path'], $mode['browser_response']) && $path === $mode['browser_path']) {
+    if ($mode['mode'] === 'browser-stall') {
+        usleep(3_000_000);
+    }
+    header('Content-Type: application/json');
+    echo json_encode($mode['browser_response'], JSON_THROW_ON_ERROR);
+    return;
+}
 if ($mode['mode'] === 'browser-stall' && $path === '/waterline/api/flows/running') {
     usleep(3_000_000);
 }

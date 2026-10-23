@@ -437,7 +437,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import axios from '../http.mjs';
 
 export default {
     name: 'ServiceCatalogView',

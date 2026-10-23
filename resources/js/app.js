@@ -1,6 +1,6 @@
 import { createApp } from 'vue';
 import Base from './base';
-import axios from 'axios';
+import { configureWaterlineHttp } from './http.mjs';
 import Routes from './routes';
 import { createRouter, createWebHistory } from 'vue-router';
 import VueJsonPretty from 'vue-json-pretty';
@@ -33,7 +33,6 @@ import { createWaterlineDialogOptions } from './dialogs.mjs';
 import { applyThemeStylesheet } from './theme.mjs';
 
 import 'bootstrap';
-import { browserTimeoutMilliseconds } from './request-budget.mjs';
 import 'vue-json-pretty/lib/styles.css';
 
 const mountElement = document.getElementById('waterline');
@@ -46,12 +45,6 @@ if (mountElement && waterline) {
 
     const token = document.head.querySelector('meta[name="csrf-token"]');
 
-    axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
-
-    if (token) {
-        axios.defaults.headers.common['X-CSRF-TOKEN'] = token.content;
-    }
-
     const routerBasePath = waterline.basePath === '' ? '/' : `${waterline.basePath}/`;
 
     const router = createRouter({
@@ -61,7 +54,7 @@ if (mountElement && waterline) {
 
     const app = createApp(WaterlineApp, { bootstrap: waterline });
 
-    app.config.globalProperties.$http = axios.create({timeout: browserTimeoutMilliseconds(waterline)});
+    app.config.globalProperties.$http = configureWaterlineHttp(waterline, token?.content);
     app.config.errorHandler = function (err, instance, info) {
         // eslint-disable-next-line no-console
         console.error('[Vue:errorHandler]', err, info);

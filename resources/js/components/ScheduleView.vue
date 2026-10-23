@@ -555,7 +555,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import axios from '../http.mjs';
 import { operatorPermission } from '../operator-permissions.mjs';
 import {
     OVERLAP_POLICIES,

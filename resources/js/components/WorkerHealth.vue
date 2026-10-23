@@ -487,7 +487,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import axios from '../http.mjs';
 import Swal from 'sweetalert2';
 
 export default {
