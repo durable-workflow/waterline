@@ -54,7 +54,7 @@ async function inspectPage(context, id, runId, name) {
     await page.screenshot({path:`${directory}/${name}.png`,fullPage:true});
     const buttons = await page.locator('.wl-flow-detail__header-actions button').allTextContents();
     await page.close();
-    return {id,runId,name,buttons,operationKeyVisible:text.includes(id.replace('uncertain-','operation-')),recordedReceiptVisible:text.includes('synthetic-operation-processing-failure-1'),lostResponseVisible:text.includes('Response lost after submission'),confirmedRejectionVisible:text.includes('confirmed rejection'),processingFailureVisible:text.includes('local processing failure')};
+    return {id,runId,name,buttons,operationKeyVisible:text.includes(id.replace('uncertain-','operation-')),recordedReceiptVisible:text.includes('synthetic-operation-processing-failure-1'),authoredReceiptVisible:text.includes('synthetic-operation-authored-reconciliation-1'),operatorNoteVisible:text.includes('operator requested lookup'),lostResponseVisible:text.includes('Response lost after submission'),confirmedRejectionVisible:text.includes('confirmed rejection'),processingFailureVisible:text.includes('local processing failure')};
 }
 
 try {
@@ -93,8 +93,6 @@ try {
     } else if (phase === 'resolved') {
         const control = await detail(operator,controlId);
         assert.equal(String(control.status_bucket || control.status).toLowerCase(),'completed');
-        assert.ok(JSON.stringify(control).includes('synthetic-operation-authored-reconciliation-1'));
-        assert.ok(JSON.stringify(control).includes('operator requested lookup'));
         fs.writeFileSync(`${directory}/authored-control-api.json`,JSON.stringify(control,null,2));
         report.observations.push(await inspectPage(operator,controlId,control.run_id,'authored-control-completed'));
     } else {

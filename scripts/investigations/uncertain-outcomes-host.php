@@ -203,12 +203,18 @@ function runUncertainOutcomesCli(Application $app, array $arguments): void
         drainInvestigationTasks();
         foreach (['lost-response','processing-failure'] as $scenario) if (count(providerLedger()['operation-'.$scenario]['receipts']) !== 2) throw new RuntimeException('Duplicate-effect control did not reproduce.');
     }
+    $controlRun = \Workflow\V2\Models\WorkflowRun::query()->where('workflow_instance_id', 'uncertain-authored-reconciliation')->first();
+    $controlOutput = $controlRun?->status->value === 'completed' ? $controlRun->workflowOutput() : null;
+    if ($controlOutput !== null && (($controlOutput['initial']['outcome'] ?? null) !== 'unknown' || ($controlOutput['confirmed']['receipt_id'] ?? null) !== 'synthetic-operation-authored-reconciliation-1' || ($controlOutput['operator_note'] ?? null) !== 'operator requested lookup')) {
+        throw new RuntimeException('Authored reconciliation did not preserve the confirmed receipt and operator update.');
+    }
     echo json_encode([
         'generated_at' => gmdate(DATE_ATOM), 'php' => PHP_VERSION,
         'waterline' => ['version' => InstalledVersions::getPrettyVersion('durable-workflow/waterline'), 'source' => InstalledVersions::getReference('durable-workflow/waterline')],
         'workflow' => ['version' => InstalledVersions::getPrettyVersion('durable-workflow/workflow'), 'source' => InstalledVersions::getReference('durable-workflow/workflow')],
         'runs' => \Workflow\V2\Models\WorkflowRun::query()->get(['id','workflow_instance_id','status'])->toArray(),
         'oracle' => providerLedger(),
+        'authored_control_output' => $controlOutput,
     ], JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT).PHP_EOL;
 }
 
