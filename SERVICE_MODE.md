@@ -87,7 +87,9 @@ within 30 seconds.
 
 ## Request budgets and read-only Retry
 
-Available in Waterline **2.13.1 and later**.
+Service budgets and run-list Retry are available in Waterline **2.13.1 and later**.
+Use **2.13.2 or later** to apply the browser budget to schedule, worker and service
+views as well. The 2.13.1 tag/package retains direct Axios calls in those views.
 
 `waterline.service.request_timeout_seconds` (`WATERLINE_SERVER_REQUEST_TIMEOUT`)
 sets the SDK-owned control-request budget in seconds. For example, set it to
@@ -111,9 +113,10 @@ keeps its allowance plus transport headroom; these settings do not rewrite
 business deadlines, worker polls or payload-transfer clocks.
 
 After a run-list read fails, **Retry** issues another read with the selected
-filters/page. It does not replay a write. A timed-out mutation may already have
+filters/page. Automatic refresh waits for an outstanding list read and keeps
+its error visible until a successful response. A timed-out mutation may already have
 been accepted: its outcome remains unknown until inspected. Waterline does not
-silently retry it or display an invented success. Check the selected run before
+silently retry it or display an invented success. Check the selected run or schedule before
 submitting it again.
 
 Refresh Laravel's cached configuration and publish Waterline assets after an

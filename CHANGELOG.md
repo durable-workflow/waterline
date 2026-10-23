@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.13.2 - 2026-10-23
+
+- Schedule, worker and service views now share the configured finite browser
+  request budget with run lists and run details. A stalled read exposes the
+  existing Retry control instead of waiting indefinitely. The shared client
+  keeps Waterline's CSRF headers and leaves a host application's Axios defaults
+  unchanged. Uncertain schedule writes explicitly report an unknown outcome;
+  no mutation is automatically retried. The schedule guidance is translated in
+  all eight supported locales.
+- Automatic list refresh waits for an outstanding read instead of superseding
+  it. Timeout errors remain visible until a successful read, including when
+  the request budget exceeds the refresh cadence.
+
 ## 2.13.1 - 2026-10-23
 
 - Service control requests can use an explicit budget with PHP SDK 3.4 or
@@ -7,7 +20,9 @@
   settings fail with a clear diagnostic instead of being ignored. The service
   image includes SDK 3.4.1. Optional package requirements and embedded PHP 8.0.2
   compatibility are unchanged.
-- Browser requests have a finite configurable budget. Read-only run lists offer
+- Run-list and run-detail requests have a finite configurable budget. Schedule,
+  worker and service requests require 2.13.2 for the same browser bound.
+  Read-only run lists offer
   explicit Retry with the selected page and filters. Stale responses cannot
   overwrite newer results. Uncertain writes remain unknown and are never
   silently resubmitted; caller-selected update waits and business deadlines

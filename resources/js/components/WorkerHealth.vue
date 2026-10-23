@@ -487,7 +487,7 @@
 </template>
 
 <script>
-import axios from 'axios';
+import axios from '../http.mjs';
 import Swal from 'sweetalert2';
 
 export default {
@@ -1983,6 +1983,10 @@ export default {
 
 .worker-health .icon.spin {
     animation: spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .worker-health .icon.spin { animation: none; }
 }
 
 @keyframes spin {

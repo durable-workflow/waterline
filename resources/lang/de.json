@@ -1,4 +1,5 @@
 {
+    "The command outcome is unknown. Inspect the schedule before sending it again.": "Der Ausgang des Befehls ist unbekannt. Prüfen Sie den Zeitplan, bevor Sie ihn erneut senden.",
     "Command outcome unknown": "Ausgang des Befehls unbekannt",
     "The command outcome is unknown. Inspect the run before sending it again.": "Der Ausgang des Befehls ist unbekannt. Prüfen Sie den Lauf, bevor Sie ihn erneut senden.",
     "You are not authorized to perform this Waterline action.": "Sie sind nicht berechtigt, diese Waterline-Aktion auszuführen.",

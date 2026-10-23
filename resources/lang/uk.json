@@ -1,4 +1,5 @@
 {
+    "The command outcome is unknown. Inspect the schedule before sending it again.": "Результат команди невідомий. Перевірте розклад, перш ніж надсилати її знову.",
     "Command outcome unknown": "Результат команди невідомий",
     "The command outcome is unknown. Inspect the run before sending it again.": "Результат команди невідомий. Перевірте запуск, перш ніж надсилати її знову.",
     "You are not authorized to perform this Waterline action.": "Ви не маєте дозволу на виконання цієї дії у Waterline.",

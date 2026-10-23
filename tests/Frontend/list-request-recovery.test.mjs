@@ -54,3 +54,20 @@ test('late success or failure cannot replace a newer read result',async()=>{
         assert.equal(context.listLoadError,null);
     }
 });
+
+test('periodic refresh cannot supersede a pending read and hide its timeout',async()=>{
+    const {context,requests} = fixture();
+    const first = loadFlows.call(context,1);
+    const periodic = loadFlows.call(context,1,true);
+    assert.equal(requests.length,1,'Only one periodic read may be outstanding.');
+    requests[0].reject({response:{data:{message:'Timed out'}}});
+    await first;
+    await periodic;
+    assert.equal(context.listLoadError,'Timed out');
+    assert.equal(context.listRequestPending,false);
+    const recovery = loadFlows.call(context,1,true);
+    assert.equal(requests.length,2);
+    requests[1].resolve(response('recovered'));
+    await recovery;
+    assert.equal(context.flows[0].id,'recovered');
+});

@@ -555,7 +555,8 @@
 </template>
 
 <script>
-import axios from 'axios';
+import axios from '../http.mjs';
+import { ambiguousCommandError } from '../request-budget.mjs';
 import { operatorPermission } from '../operator-permissions.mjs';
 import {
     OVERLAP_POLICIES,
@@ -1486,10 +1487,13 @@ export default {
         },
 
         showActionError(title, error) {
-            const text = this.responseMessage(error, this.$t("Request failed"));
+            const unknown = ambiguousCommandError(error, 'schedule');
+            const text = unknown
+                ? this.$t("The command outcome is unknown. Inspect the schedule before sending it again.")
+                : this.responseMessage(error, this.$t("Request failed"));
 
             return this.$dialog({
-                title,
+                title: unknown ? this.$t("Command outcome unknown") : title,
                 text,
                 icon: 'error',
                 confirmButtonText: this.$t("Okay"),
@@ -1857,6 +1861,10 @@ export default {
 
 .schedule-view .icon.spin {
     animation: spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .schedule-view .icon.spin { animation: none; }
 }
 
 @keyframes spin {

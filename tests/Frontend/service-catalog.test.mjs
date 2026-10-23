@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const source = fs.readFileSync(new URL('../../resources/js/components/ServiceCatalogView.vue', import.meta.url), 'utf8');
 const script = source.match(/<script>([\s\S]*?)<\/script>/)[1];
-const component = Function(script.replace(/import axios from 'axios';/, '').replace('export default', 'return'))();
+const component = Function(script.replace(/^import .+ from .+;$/gm, '').replace('export default', 'return'))();
 
 test('call details retain the original microsecond deadline, attempt count and typed failure', () => {
     const state = {

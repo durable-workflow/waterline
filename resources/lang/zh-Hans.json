@@ -1,4 +1,5 @@
 {
+    "The command outcome is unknown. Inspect the schedule before sending it again.": "命令结果未知。再次发送前，请检查该计划。",
     "Command outcome unknown": "命令结果未知",
     "The command outcome is unknown. Inspect the run before sending it again.": "命令结果未知。再次发送前，请检查该次运行。",
     "You are not authorized to perform this Waterline action.": "您无权执行此 Waterline 操作。",

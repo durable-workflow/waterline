@@ -180,12 +180,15 @@ jobs:
       run: |
         python -m py_compile \
           scripts/ci/release_example_contract.py \
+          scripts/ci/onboarding_composer.py \
+          scripts/ci/test-onboarding-composer.py \
           scripts/ci/standalone_lock_contract.py \
           scripts/ci/test-release-example-contract.py \
           scripts/ci/test-standalone-lock-contract.py \
           scripts/ci/test-waterline-release-identity.py \
           scripts/ci/waterline_release_identity.py
         python scripts/ci/test-release-example-contract.py
+        python scripts/ci/test-onboarding-composer.py
         python scripts/ci/test-standalone-lock-contract.py
         python scripts/ci/test-waterline-release-identity.py
         python scripts/ci/release_example_contract.py
