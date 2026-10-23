@@ -9,6 +9,9 @@ if (($headers['Authorization'] ?? '') !== 'Bearer smoke-token' || ($headers['X-N
     http_response_code(403); echo '{"reason":"authorization_failed"}'; return;
 }
 $mode = json_decode(file_get_contents(__DIR__.'/mode.json'), true, flags: JSON_THROW_ON_ERROR);
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $path === '/api/workflows') {
+    file_put_contents(__DIR__.'/reads.jsonl', json_encode(['path' => $path], JSON_THROW_ON_ERROR).PHP_EOL, FILE_APPEND | LOCK_EX);
+}
 if ($mode['mode'] === 'write-stall' && $_SERVER['REQUEST_METHOD'] !== 'GET') {
     file_put_contents(__DIR__.'/writes.jsonl', json_encode(['method' => $_SERVER['REQUEST_METHOD'], 'path' => $path], JSON_THROW_ON_ERROR).PHP_EOL, FILE_APPEND | LOCK_EX);
     usleep(2_000_000);

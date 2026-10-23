@@ -28,9 +28,11 @@ final class RequestBudgetFixtureProvider extends ServiceProvider
             'waterline.service.endpoint' => 'http://127.0.0.1:8081',
             'waterline.service.namespace' => 'smoke', 'waterline.service.token' => 'smoke-token',
             'waterline.service.access_mode' => 'operator',
-            'waterline.service.request_timeout_seconds' => $mode['service_budget'],
             'waterline.browser.request_timeout_seconds' => $mode['browser_budget'],
         ]);
+        if (array_key_exists('service_budget', $mode)) {
+            config()->set('waterline.service.request_timeout_seconds', $mode['service_budget']);
+        }
     }
 }
 
@@ -39,15 +41,24 @@ $app = Application::configure(basePath: __DIR__)->withProviders([
 ], withBootstrapProviders: false)->withExceptions()->create();
 
 if (PHP_SAPI === 'cli') {
-    if (\Composer\InstalledVersions::getPrettyVersion(RequestBudgetFixtureProvider::SDK_PACKAGE) !== '3.4.0'
-        || \Composer\InstalledVersions::getReference(RequestBudgetFixtureProvider::SDK_PACKAGE) !== '1bf25b5848f2031e72a3da38794b51db1d533546') {
-        throw new UnexpectedRequestBudgetSdk('Expected the exact normally published SDK 3.4.0.');
+    $sdkVersion = getenv('EXPECTED_BUDGET_SDK_VERSION') ?: '3.4.1';
+    $sdkSource = getenv('EXPECTED_BUDGET_SDK_SOURCE') ?: 'cb1d11e57767e20e1fdb8081024f67057ff66714';
+    if (\Composer\InstalledVersions::getPrettyVersion(RequestBudgetFixtureProvider::SDK_PACKAGE) !== $sdkVersion
+        || \Composer\InstalledVersions::getReference(RequestBudgetFixtureProvider::SDK_PACKAGE) !== $sdkSource) {
+        throw new UnexpectedRequestBudgetSdk('Expected the exact normally published SDK identity.');
+    }
+    $published = getenv('EXPECTED_WATERLINE_VERSION');
+    if ($published && (ltrim((string) \Composer\InstalledVersions::getPrettyVersion('durable-workflow/waterline'), 'v') !== $published
+        || \Composer\InstalledVersions::getReference('durable-workflow/waterline') !== getenv('EXPECTED_WATERLINE_SOURCE'))) {
+        throw new UnexpectedRequestBudgetSdk('Expected the exact normally published Waterline identity.');
     }
     $app->make(\Illuminate\Contracts\Console\Kernel::class)->bootstrap();
     Artisan::call('migrate', ['--force' => true]);
     Artisan::call('vendor:publish', ['--tag' => 'waterline-assets', '--force' => true]);
     echo json_encode([
-        'source' => getenv('EXPECTED_CANDIDATE_SOURCE'), 'kind' => 'candidate-path-source qualification',
+        'source' => getenv('EXPECTED_CANDIDATE_SOURCE'), 'kind' => $published ? 'normal published-package qualification' : 'candidate-path-source qualification',
+        'waterline_version' => \Composer\InstalledVersions::getPrettyVersion('durable-workflow/waterline'),
+        'waterline_reference' => \Composer\InstalledVersions::getReference('durable-workflow/waterline'),
         'php' => PHP_VERSION, 'loaded_backend' => (new ReflectionClass(\Waterline\Support\Remote\RemoteBackend::class))->getFileName(),
         'sdk' => \Composer\InstalledVersions::getPrettyVersion(RequestBudgetFixtureProvider::SDK_PACKAGE),
         'sdk_source' => \Composer\InstalledVersions::getReference(RequestBudgetFixtureProvider::SDK_PACKAGE),

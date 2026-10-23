@@ -87,6 +87,8 @@ within 30 seconds.
 
 ## Request budgets and read-only Retry
 
+Available in Waterline **2.13.1 and later**.
+
 `waterline.service.request_timeout_seconds` (`WATERLINE_SERVER_REQUEST_TIMEOUT`)
 sets the SDK-owned control-request budget in seconds. For example, set it to
 `5` for a five-second budget. It requires PHP SDK **3.4.0 or later**. Values must

@@ -31,6 +31,35 @@ permissions:
   contents: read
 
 jobs:
+  request-budget-scope:
+    name: Select published request budget acceptance scope
+    runs-on: ubuntu-24.04
+    outputs:
+      required: ${{ steps.scope.outputs.required }}
+    steps:
+      - id: scope
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          match = re.fullmatch(r'2\.(\d+)\.(\d+)', os.environ['RELEASE_VERSION'])
+          if match is None:
+              raise SystemExit('Expected an exact stable Waterline 2.x version.')
+          required = (2, int(match[1]), int(match[2])) >= (2, 13, 1)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'required={str(required).lower()}\n')
+          PY
+
+  service-request-budget:
+    name: Published service request budget and browser recovery
+    needs: request-budget-scope
+    if: needs.request-budget-scope.outputs.required == 'true'
+    uses: ./.github/workflows/request-budget-qualification.yml
+    with:
+      release_version: ${{ inputs.release_version }}
+      source_commit: ${{ inputs.source_commit }}
+
   embedded:
     name: Published Composer consumer and browser
     if: >-
