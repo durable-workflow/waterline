@@ -19,7 +19,9 @@ final class ExceptionSourceContextTest extends TestCase
     protected function tearDown(): void
     {
         foreach (array_reverse($this->paths) as $path) {
-            if (is_file($path) || is_link($path)) {
+            if (is_dir($path) && ! is_link($path)) {
+                rmdir($path);
+            } elseif (file_exists($path) || is_link($path)) {
                 chmod($path, 0600);
                 unlink($path);
             }
@@ -52,7 +54,12 @@ final class ExceptionSourceContextTest extends TestCase
         $unreadable = $this->fixture('not readable');
         chmod($unreadable, 0000);
         $directory = dirname($valid);
-        $forgedConfig = $this->fixture('<?php return ["secret" => "fixture"];', '.php', app()->bootstrapPath('cache'));
+        $cache = app()->bootstrapPath('cache/source-context-'.bin2hex(random_bytes(8)));
+        mkdir($cache, 0700, true);
+        $this->paths[] = $cache;
+        $forgedConfig = $cache.'/config.php';
+        file_put_contents($forgedConfig, '<?php return ["secret" => "fixture"];');
+        $this->paths[] = $forgedConfig;
         foreach ([
             [$valid, 0], [$valid, -1], [$valid, '1'], [$valid, 3], [$valid, PHP_INT_MAX],
             ['relative.php', 1], [$valid."\0", 1], ['php://filter/resource='.$valid, 1],
@@ -76,6 +83,20 @@ final class ExceptionSourceContextTest extends TestCase
         self::assertSame('unavailable', $this->annotate($path, 1)['source_context']['status']);
         config()->set('waterline.source_context.additional_roots', [dirname($path)]);
         self::assertSame('available', $this->annotate($path, 1)['source_context']['status']);
+    }
+
+    public function testPhpNamedDirectoriesAndFifosAreRejectedBeforeOpening(): void
+    {
+        $directory = $this->fixture('');
+        unlink($directory);
+        mkdir($directory);
+        self::assertSame('unavailable', $this->annotate($directory, 1)['source_context']['status']);
+        if (function_exists('posix_mkfifo')) {
+            $fifo = $this->fixture('');
+            unlink($fifo);
+            posix_mkfifo($fifo, 0600);
+            self::assertSame('unavailable', $this->annotate($fifo, 1)['source_context']['status']);
+        }
     }
 
     public function testDisabledUnauthenticatedAndServiceModesDoNotReadMatchingLocalSource(): void
