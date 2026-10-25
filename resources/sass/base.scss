@@ -528,6 +528,11 @@ button:hover {
     max-width: min(64rem, calc(100vw - 6rem));
 }
 
+.wl-exception-source pre {
+    color: inherit;
+    overflow: visible;
+}
+
 .wl-exception-source__excerpt,
 .wl-exception-source__trace {
     max-width: 100%;

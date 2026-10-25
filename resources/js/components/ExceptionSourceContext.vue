@@ -1,19 +1,19 @@
 <template>
-    <section class="wl-exception-source" :aria-label="$t('Source')">
+    <div class="wl-exception-source">
         <b>{{ $t('Source') }}</b>
-        <pre v-if="available" class="wl-exception-source__excerpt" tabindex="0" role="region" :aria-label="$t('Source')"><code><span
+        <section v-if="available" class="wl-exception-source__excerpt" tabindex="0" :aria-label="$t('Source')"><pre class="mb-0"><code><span
             v-for="(line, index) in lines" :key="index"
             class="wl-exception-source__line"
             :class="{ 'wl-exception-source__line--throw': lineNumber(index) === context.throw_line }"
             :aria-current="lineNumber(index) === context.throw_line ? 'true' : undefined"
             :data-line="lineNumber(index)"
-        ><span class="wl-exception-source__number">{{ lineNumber(index) === context.throw_line ? '▶' : ' ' }} {{ lineNumber(index) }}</span><span>{{ line || ' ' }}</span></span></code></pre>
+        ><span class="wl-exception-source__number">{{ lineNumber(index) === context.throw_line ? '▶' : ' ' }} {{ lineNumber(index) }}</span><span>{{ line || ' ' }}</span></span></code></pre></section>
         <p v-else class="mb-3">{{ $t('Unavailable') }}</p>
         <template v-if="tracePreview">
             <b>{{ $t('Trace') }}</b>
-            <pre class="wl-exception-source__trace" tabindex="0" role="region" :aria-label="$t('Trace')">{{ tracePreview }}</pre>
+            <section class="wl-exception-source__trace" tabindex="0" :aria-label="$t('Trace')"><pre class="mb-0">{{ tracePreview }}</pre></section>
         </template>
-    </section>
+    </div>
 </template>
 
 <script>
