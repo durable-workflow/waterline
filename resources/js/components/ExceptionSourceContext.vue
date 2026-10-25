@@ -1,7 +1,7 @@
 <template>
     <section class="wl-exception-source" :aria-label="$t('Source')">
         <b>{{ $t('Source') }}</b>
-        <pre v-if="available" class="wl-exception-source__excerpt"><code><span
+        <pre v-if="available" class="wl-exception-source__excerpt" tabindex="0"><code><span
             v-for="(line, index) in lines" :key="index"
             class="wl-exception-source__line"
             :class="{ 'wl-exception-source__line--throw': lineNumber(index) === context.throw_line }"
@@ -11,7 +11,7 @@
         <p v-else class="mb-3">{{ $t('Unavailable') }}</p>
         <template v-if="tracePreview">
             <b>{{ $t('Trace') }}</b>
-            <pre class="wl-exception-source__trace">{{ tracePreview }}</pre>
+            <pre class="wl-exception-source__trace" tabindex="0">{{ tracePreview }}</pre>
         </template>
     </section>
 </template>

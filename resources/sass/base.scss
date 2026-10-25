@@ -524,6 +524,10 @@ button:hover {
     background-color: #424242;
 }
 
+.wl-exception-source {
+    max-width: min(64rem, calc(100vw - 6rem));
+}
+
 .wl-exception-source__excerpt,
 .wl-exception-source__trace {
     max-width: 100%;

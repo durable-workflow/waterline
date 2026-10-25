@@ -70,23 +70,20 @@ final class ExceptionSourceContext
 
     private static function unavailableReason(Request $request): ?string
     {
-        if (BackendConfiguration::serviceMode()) {
-            return 'unsupported_mode';
-        }
-        if (! filter_var(config('waterline.source_context.enabled', true), FILTER_VALIDATE_BOOLEAN)) {
-            return 'disabled';
-        }
-        if (Waterline::allowsUnauthenticatedAccess() || ! Waterline::check($request)) {
-            return 'unauthenticated';
-        }
-
-        return null;
+        return match (true) {
+            BackendConfiguration::serviceMode() => 'unsupported_mode',
+            ! filter_var(config('waterline.source_context.enabled', true), FILTER_VALIDATE_BOOLEAN) => 'disabled',
+            Waterline::allowsUnauthenticatedAccess() || ! Waterline::check($request) => 'unauthenticated',
+            default => null,
+        };
     }
 
     private static function unavailable(?string $reason = 'source_unavailable'): array
     {
-        return ['status' => 'unavailable', 'reason' => $reason,
-            'excerpt' => null, 'start_line' => null, 'throw_line' => null];
+        return [
+            'status' => 'unavailable', 'reason' => $reason,
+            'excerpt' => null, 'start_line' => null, 'throw_line' => null,
+        ];
     }
 
     private function excerpt(mixed $path, mixed $line): array
@@ -96,37 +93,45 @@ final class ExceptionSourceContext
             return self::unavailable('response_budget_exhausted');
         }
         $candidate = $this->candidate($path, $line);
-        if ($candidate === null) {
+        $source = $candidate === null ? null : $this->readStableFile($candidate[0], $candidate[1], $line);
+        if ($source === null) {
             return self::unavailable();
         }
-        [$canonical, $before] = $candidate;
-        $this->readBytes += $before['size'];
-        $handle = @fopen($canonical, 'rb');
-        if ($handle === false) {
-            return self::unavailable();
-        }
-        try {
-            if (! $this->sameFile($before, fstat($handle)) || realpath($canonical) !== $canonical) {
-                return self::unavailable();
-            }
-            $source = $this->readExcerpt($handle, $line, $before['size']);
-            clearstatcache(true, $canonical);
-            if ($source === null || ! $this->sameFile($before, fstat($handle))
-                || ! $this->sameFile($before, @lstat($canonical)) || realpath($canonical) !== $canonical) {
-                return self::unavailable();
-            }
-            $bytes = strlen($source['excerpt']);
-            if ($bytes > self::MAX_RESPONSE_BYTES - $this->responseBytes) {
-                return self::unavailable('response_budget_exhausted');
-            }
+        $bytes = strlen($source['excerpt']);
+        $fits = $bytes <= self::MAX_RESPONSE_BYTES - $this->responseBytes;
+        if ($fits) {
             $this->responseBytes += $bytes;
+        }
 
-            return array_merge(['status' => 'available', 'reason' => null], $source, ['throw_line' => $line]);
+        return $fits
+            ? array_merge(['status' => 'available', 'reason' => null], $source, ['throw_line' => $line])
+            : self::unavailable('response_budget_exhausted');
+    }
+
+    private function readStableFile(string $path, array $before, int $line): ?array
+    {
+        $this->readBytes += $before['size'];
+        $handle = @fopen($path, 'rb');
+        if ($handle === false) {
+            return null;
+        }
+        $result = null;
+        try {
+            if ($this->sameFile($before, fstat($handle)) && realpath($path) === $path) {
+                $source = $this->readExcerpt($handle, $line, $before['size']);
+                clearstatcache(true, $path);
+                if ($source !== null && $this->sameFile($before, fstat($handle))
+                    && $this->sameFile($before, @lstat($path)) && realpath($path) === $path) {
+                    $result = $source;
+                }
+            }
         } catch (Throwable) {
-            return self::unavailable();
+            // Filesystem failures leave source unavailable without retaining contents.
         } finally {
             fclose($handle);
         }
+
+        return $result;
     }
 
     private function candidate(mixed $path, mixed $line): ?array
@@ -142,13 +147,10 @@ final class ExceptionSourceContext
         }
         clearstatcache(true, $canonical);
         $before = @lstat($canonical);
-        if (! $this->regularFile($before) || ! is_readable($canonical)
-            || $before['size'] > self::MAX_FILE_BYTES || $before['size'] > self::MAX_READ_BYTES - $this->readBytes
-            || $line > $before['size'] + 1) {
-            return null;
-        }
 
-        return [$canonical, $before];
+        return $this->regularFile($before) && is_readable($canonical)
+            && $before['size'] <= self::MAX_FILE_BYTES && $before['size'] <= self::MAX_READ_BYTES - $this->readBytes
+            && $line <= $before['size'] + 1 ? [$canonical, $before] : null;
     }
 
     private function allowedPath(string $path): bool

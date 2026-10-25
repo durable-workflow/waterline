@@ -1768,7 +1768,7 @@
                 </a>
             </div>
 
-            <div class="card-body code-bg text-white collapse show" id="collapseExceptions">
+            <div class="card-body code-bg text-white table-responsive collapse show" id="collapseExceptions">
                 <table class="table" id="accordion">
                     <thead>
                         <tr>
