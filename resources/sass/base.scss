@@ -524,6 +524,44 @@ button:hover {
     background-color: #424242;
 }
 
+.wl-exception-source {
+    max-width: min(64rem, calc(100vw - 6rem));
+}
+
+.wl-exception-source pre {
+    color: inherit;
+    overflow: visible;
+}
+
+.wl-exception-source__excerpt,
+.wl-exception-source__trace {
+    max-width: 100%;
+    overflow: auto;
+    color: #f5f5f5;
+    background: #242424;
+    padding: 0.5rem;
+}
+
+.wl-exception-source__line {
+    display: block;
+    min-width: max-content;
+    padding-right: 0.5rem;
+}
+
+.wl-exception-source__line--throw {
+    color: #fff3c4;
+    background: #5b4300;
+    font-weight: bold;
+}
+
+.wl-exception-source__number {
+    display: inline-block;
+    min-width: 4.5em;
+    padding-right: 1em;
+    text-align: right;
+    user-select: none;
+}
+
 .wl-chart-tooltip {
     padding: 1em;
 }

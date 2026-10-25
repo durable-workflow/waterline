@@ -1768,7 +1768,7 @@
                 </a>
             </div>
 
-            <div class="card-body code-bg text-white collapse show" id="collapseExceptions">
+            <div class="card-body code-bg text-white table-responsive collapse show" id="collapseExceptions">
                 <table class="table" id="accordion">
                     <thead>
                         <tr>
@@ -1793,10 +1793,9 @@
                                 </td>
                                 <td>{{ exception.exception_type || '-' }}</td>
                                 <td>{{ exception.failure_category || '-' }}<span v-if="exception.non_retryable" class="badge badge-warning ml-1">{{ $t("non-retryable") }}</span></td>
-                                <td v-if="exception.code"><button :title="$t('View Exception')" class="btn btn-outline-primary ml-auto"
+                                <td><button :title="$t('View Exception')" class="btn btn-outline-primary ml-auto"
                                         data-toggle="collapse" :href="'#collapse' + exception.id" aria-expanded="false"
                                         :aria-controls="'collapse' + exception.id">{{ $t("View") }}</button></td>
-                                <td v-else>-</td>
                                 <td>{{ timestamp(exception.created_at) }}</td>
                             </tr>
                             <tr :id="'collapse' + exception.id" class="collapse">
@@ -1830,7 +1829,12 @@
                                                 </div>
                                             </div>
                                         </div>
-                                        <prism-editor :id="'prism' + exception.id" class="wl-exception-editor" v-model="exception.code"
+                                        <ExceptionSourceContext
+                                            v-if="flow.engine_source === 'v2' || flow.engine_source === 'service' || exception.source_context"
+                                            :context="exception.source_context"
+                                            :trace-preview="exception.trace_preview || exception.code || ''"
+                                        />
+                                        <prism-editor v-else :id="'prism' + exception.id" class="wl-exception-editor" v-model="exception.code"
                                             :highlight="highlighter" line-numbers readonly></prism-editor>
                                         <br />
                                         <div v-for="trace in unserialize(exception.exception).trace">
@@ -1860,6 +1864,7 @@ import 'prismjs/themes/prism-tomorrow.css'
 import TimelineEventRenderer from '../../components/TimelineEventRenderer.vue'
 import SearchAttributeRenderer from '../../components/SearchAttributeRenderer.vue'
 import CancellationCascadeView from '../../components/CancellationCascadeView.vue'
+import ExceptionSourceContext from '../../components/ExceptionSourceContext.vue'
 import { presentWorkflowStreams } from '../../workflow-streams.mjs'
 import { appendRunHistoryPage } from '../../run-history.mjs'
 import { activityResultSelection, activityResultPath, activityResultMatches, activityResultAvailable, activityResultMessage } from '../../activity-result.mjs'
@@ -1872,6 +1877,7 @@ export default {
         TimelineEventRenderer,
         SearchAttributeRenderer,
         CancellationCascadeView,
+        ExceptionSourceContext,
     },
     /**
      * The component's data.

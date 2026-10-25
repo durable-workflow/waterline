@@ -83,7 +83,7 @@ class WorkflowsController extends Controller
         $flow = $repository->findFlow($id);
 
         if ($flow instanceof WorkflowRun) {
-            return V2StoredWorkflowResource::make($flow);
+            return V2StoredWorkflowResource::make($flow)->withSourceContext();
         }
 
         return $repository instanceof HybridWorkflowRepository
@@ -101,7 +101,7 @@ class WorkflowsController extends Controller
 
         $flow = $repository->findFlowSelection($instanceId, $runId);
 
-        return V2StoredWorkflowResource::make($flow);
+        return V2StoredWorkflowResource::make($flow)->withSourceContext();
     }
 
     private function boundedObservation(
