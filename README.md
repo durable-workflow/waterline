@@ -124,6 +124,25 @@ WATERLINE_ALLOW_UNAUTHENTICATED=true
 
 ## Configuration
 
+### Embedded exception source
+
+Embedded v2 exception details show up to seven lines of local PHP source and
+highlight the throwing line. Source is read only when an authorized viewer opens
+the full run detail. It is not stored in workflow history. Disable excerpts with
+`WATERLINE_SOURCE_CONTEXT=false`. They are always unavailable when
+`WATERLINE_ALLOW_UNAUTHENTICATED=true`.
+
+Only files beneath the application's `app_path()` are eligible by default.
+To include another source directory, add its absolute path to
+`waterline.source_context.additional_roots` in the published configuration. Use
+narrow source directories; do not include cache, configuration or runtime data
+directories. Reads and excerpts have size limits. Missing, excluded or oversized
+source displays **Unavailable**, while the file, line and trace remain visible.
+
+Service mode does not read observer-local files or collect source from SDK
+workers. SDK source capture and storage would require a separate optional
+capability.
+
 ### Worker runtime
 
 The Workers roster's **Worker runtime** column identifies the worker language

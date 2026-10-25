@@ -13,7 +13,7 @@ const script = source.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1]
 function loadComponent(backend = 'embedded') {
     const sandbox = {
         Waterline: { basePath: '/waterline', backend: { mode: backend } },
-        TimelineEventRenderer: {}, SearchAttributeRenderer: {}, CancellationCascadeView: {},
+        TimelineEventRenderer: {}, SearchAttributeRenderer: {}, CancellationCascadeView: {}, ExceptionSourceContext: {},
         appendRunHistoryPage,
         operatorPermission,
     }
@@ -78,6 +78,17 @@ test('localized chart tooltips preserve diagnostic data as escaped text', () => 
     assert.ok(html.includes('&lt;script&gt;'))
     assert.ok(!html.includes('<img') && !html.includes('<script>'))
     assert.deepEqual(event, before)
+})
+
+test('exception chart tooltips do not include local source excerpts', () => {
+    const context = detail({ flow: { exceptions: [{
+        code: 'trace preview', source_context: { excerpt: 'private-source-marker' },
+        exception: { __constructor: 'RuntimeException', message: 'failure', file: 'app/Failure.php', line: 5 },
+    }] } })
+    const chart = loadComponent().data.call(context).chartOptions
+    const html = chart.tooltip.custom({ seriesIndex: 1, dataPointIndex: 0 })
+    assert.ok(html.includes('RuntimeException'))
+    assert.ok(!html.includes('private-source-marker'))
 })
 
 test('initial embedded and service selections stay bounded, while full inspection remains explicit', () => {
