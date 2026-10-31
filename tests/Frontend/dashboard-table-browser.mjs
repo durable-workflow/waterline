@@ -50,3 +50,53 @@ test('a missing fixture table is refused rather than reducing coverage', async (
         await page.close();
     }
 });
+
+test('table observation waits for a replacement theme stylesheet to load', async () => {
+    const page = await fixture();
+    try {
+        await page.route('http://theme.test/*.css', async route => {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            await route.fulfill({contentType: 'text/css', body: '.table-responsive {width:100px;overflow:auto} table {width:600px}'});
+        });
+        await page.evaluate(() => {
+            for (const cell of document.querySelectorAll('td:first-child')) cell.textContent = 'WorkflowType'.repeat(40);
+            document.querySelector('style').remove();
+            const link = document.createElement('link');
+            link.id = 'app-stylesheet';
+            link.rel = 'stylesheet';
+            link.href = 'http://theme.test/theme.css';
+            document.head.append(link);
+        });
+        assert.equal(await page.locator('#app-stylesheet').evaluate(link => link.sheet === null), true);
+        await inspectDashboardTables(page, 'theme-loading');
+        assert.equal(await page.locator('#app-stylesheet').evaluate(link => link.sheet !== null), true);
+        const alternateRequested = page.waitForRequest('http://theme.test/alternate.css');
+        await page.locator('#app-stylesheet').evaluate(link => { link.href = 'http://theme.test/alternate.css'; });
+        await alternateRequested;
+        await page.locator('#app-stylesheet').evaluate(link => { link.href = 'http://theme.test/theme.css'; });
+        assert.equal(await page.locator('#app-stylesheet').evaluate(link => [...document.styleSheets].includes(link.sheet)), false);
+        await inspectDashboardTables(page, 'cached-theme-loading');
+        assert.equal(await page.locator('#app-stylesheet').evaluate(link => [...document.styleSheets].includes(link.sheet)), true);
+    } finally {
+        await page.close();
+    }
+});
+
+test('a failed theme cannot pass the table reachability check', async () => {
+    const page = await fixture();
+    try {
+        await page.route('http://theme.test/missing.css', route => route.abort());
+        await page.evaluate(() => {
+            for (const cell of document.querySelectorAll('td:first-child')) cell.textContent = 'WorkflowType'.repeat(40);
+            document.querySelector('style').remove();
+            const link = document.createElement('link');
+            link.id = 'app-stylesheet';
+            link.rel = 'stylesheet';
+            link.href = 'http://theme.test/missing.css';
+            document.head.append(link);
+        });
+        await assert.rejects(inspectDashboardTables(page, 'theme-failed'), /last table column must remain reachable|Timeout/);
+    } finally {
+        await page.close();
+    }
+});
