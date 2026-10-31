@@ -1,0 +1,66 @@
+name: Rescan published service image
+
+on:
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan published image (${{ matrix.architecture }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Select authenticated tool trust
+        uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+        with:
+          clients: python,curl,git
+      - name: Scan the exact published platform without credentials
+        shell: bash
+        env:
+          ARCHITECTURE: ${{ matrix.architecture }}
+        run: |
+          set -euo pipefail
+          export DOCKER_CONFIG="$RUNNER_TEMP/anonymous-docker"
+          mkdir -p "$DOCKER_CONFIG" "$RUNNER_TEMP/security"
+          printf '%s\n' '{}' > "$DOCKER_CONFIG/config.json"
+          stable="$(python -c 'import json; print(json.load(open("release/service-image-security.json"))["stable_image"])')"
+          scanner="$(python -c 'import json; print(json.load(open("release/service-image-security.json"))["scanner_image"])')"
+          docker manifest inspect "$stable" > "$RUNNER_TEMP/security/index.json"
+          digest="$(jq -er --arg architecture "$ARCHITECTURE" \
+            '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == $architecture)] \
+             | if length == 1 then .[0].digest else error("Expected one exact platform") end' \
+            "$RUNNER_TEMP/security/index.json")"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          image="docker.io/durableworkflow/waterline@$digest"
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$RUNNER_TEMP/security,dst=/scan" \
+            "$scanner" image --image-src remote --platform "linux/$ARCHITECTURE" "$image" \
+            --cache-dir /scan/cache --scanners vuln --list-all-pkgs \
+            --no-progress --format json --output /scan/report.json
+          python -I scripts/ci/oci_release.py scan \
+            --report "$RUNNER_TEMP/security/report.json" \
+            --database "$RUNNER_TEMP/security/cache/db/metadata.json" \
+            --image "$image" --architecture "$ARCHITECTURE" \
+            --output "$RUNNER_TEMP/security/summary.json"
+      - name: Retain compact scan evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: service-image-security-${{ matrix.architecture }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/security/summary.json
+          if-no-files-found: ignore
+          retention-days: 7

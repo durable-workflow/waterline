@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -33,6 +34,7 @@ PROVENANCE_FILE = "provenance.json"
 SHA = re.compile(r"[0-9a-f]{40}", re.ASCII)
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}", re.ASCII)
 SDK = {"sdk": "3.4.1", "sdk_source": "cb1d11e57767e20e1fdb8081024f67057ff66714"}
+SECURITY_POLICY = Path(__file__).resolve().parents[2] / "release/service-image-security.json"
 
 
 class EvidenceError(ValueError):
@@ -163,6 +165,62 @@ def inspect_oci(root: Path, architecture: str, source: str) -> tuple[dict, str]:
     return {"mediaType": MANIFEST, "digest": descriptor["digest"], "size": descriptor["size"], "platform": {"os": "linux", "architecture": architecture}}, config_descriptor["digest"]
 
 
+def validate_image_security(value: dict, subject: str, architecture: str, config_digest: str) -> None:
+    policy = read_json(SECURITY_POLICY)
+    require(isinstance(value, dict), "Missing image security evidence")
+    require(value.get("schema") == "waterline.image-security/v1" and value.get("status") == "pass", "Image security did not pass")
+    require(value.get("subject") == subject and value.get("architecture") == architecture
+            and value.get("config_digest") == config_digest, "Image security evidence does not bind this exact image")
+    require(value.get("scanner_image") == policy["scanner_image"], "Image security scanner identity changed")
+    require(value.get("findings") == [] and type(value.get("high_critical_count")) is int
+            and value["high_critical_count"] == 0, "Unreviewed high/critical image findings")
+    require(value.get("inventory", {}).get("alpine", 0) > 0, "Image scan has no operating-system package inventory")
+    database = value.get("database", {})
+    require(database.get("Version") == 2, "Unsupported vulnerability database")
+    updated = datetime.fromisoformat(database["UpdatedAt"].replace("Z", "+00:00"))
+    require(updated.tzinfo is not None, "Vulnerability database timestamp has no timezone")
+    age = datetime.now(timezone.utc) - updated
+    require(-timedelta(minutes=5) <= age <= timedelta(hours=policy["database_max_age_hours"]), "Vulnerability database is stale or in the future")
+
+
+def scan(args: argparse.Namespace) -> None:
+    report, database, policy = read_json(args.report), read_json(args.database), read_json(SECURITY_POLICY)
+    require(report.get("SchemaVersion") == 2 and report.get("ArtifactType") == "container_image", "Expected a complete container vulnerability report")
+    metadata = report.get("Metadata", {})
+    require(metadata.get("OS", {}).get("Family") == "alpine", "Expected the Alpine service runtime")
+    config_digest = metadata.get("ImageID")
+    require(DIGEST.fullmatch(str(config_digest)) is not None, "Missing scanned image config digest")
+    require(metadata.get("ImageConfig", {}).get("architecture") == args.architecture, "Scanned architecture differs from the selected platform")
+    subject = digest_file(args.archive) if args.archive else args.image
+    require(isinstance(subject, str) and (DIGEST.fullmatch(subject) is not None
+            or re.fullmatch(r"docker\.io/durableworkflow/waterline@sha256:[0-9a-f]{64}", subject) is not None), "Scan subject must be an exact archive or platform digest")
+    inventory, counts, findings = {}, {}, []
+    results = report.get("Results")
+    require(isinstance(results, list) and results, "Vulnerability report has no inventory results")
+    for result in results:
+        kind = result.get("Type", "unknown")
+        inventory[kind] = inventory.get(kind, 0) + len(result.get("Packages", []))
+        for item in result.get("Vulnerabilities", []):
+            severity = item["Severity"]
+            counts[severity] = counts.get(severity, 0) + 1
+            if severity in {"HIGH", "CRITICAL"}:
+                findings.append({key: item.get(key, "") for key in
+                                 ("VulnerabilityID", "PkgName", "InstalledVersion", "FixedVersion", "Severity")})
+    summary = {"schema": "waterline.image-security/v1", "status": "fail" if findings else "pass",
+               "subject": subject, "architecture": args.architecture, "config_digest": config_digest,
+               "scanner_image": policy["scanner_image"], "database": database, "os": metadata["OS"],
+               "inventory": inventory, "severity_counts": counts, "high_critical_count": len(findings),
+               "findings": findings, "report_digest": digest_file(args.report)}
+    args.output.write_bytes(encode(summary) + b"\n")
+    validate_image_security(summary, subject, args.architecture, config_digest)
+    print(f"Exact {args.architecture} image scan passed: {sum(inventory.values())} packages; zero high/critical findings.")
+
+
+def scan_layout(args: argparse.Namespace) -> None:
+    unpack_oci(args.archive, args.directory)
+    inspect_oci(args.directory, args.architecture, commit(args.source))
+
+
 def native(args: argparse.Namespace) -> None:
     source, tree = commit(args.source), commit(args.tree)
     require(args.version == VERSION and args.architecture in {"amd64", "arm64"}, "Unsupported bounded release or architecture")
@@ -173,11 +231,13 @@ def native(args: argparse.Namespace) -> None:
         unpack_oci(args.archive, root)
         descriptor, config_digest = inspect_oci(root, args.architecture, source)
     require(args.image_id == config_digest, "Tested Docker image differs from exported OCI config")
+    security = read_json(args.security)
+    validate_image_security(security, digest_file(args.archive), args.architecture, config_digest)
     provenance = {"schema": "waterline.native-oci/v1", "version": VERSION, "source": source, "tree": tree,
                   "architecture": args.architecture, "manifest_digest": descriptor["digest"], "config_digest": config_digest,
                   "archive_digest": digest_file(args.archive), "runner_commit": commit(os.environ["GITHUB_SHA"]),
                   "run_id": positive(os.environ["GITHUB_RUN_ID"]), "run_attempt": positive(os.environ["GITHUB_RUN_ATTEMPT"]),
-                  "build_workflow_sha256": digest_file(args.workflow).split(":")[1], **sdk}
+                  "build_workflow_sha256": digest_file(args.workflow).split(":")[1], "image_security": security, **sdk}
     args.output.write_bytes(encode(provenance) + b"\n")
 
 
@@ -264,7 +324,7 @@ def prepare(args: argparse.Namespace) -> None:
         provenance = read_json(target / PROVENANCE_FILE)
         expected = {"schema": "waterline.native-oci/v1", "version": VERSION, "source": selected["source"], "tree": selected["tree"],
                     "architecture": architecture, **{key: selected[key] for key in ("runner_commit", "run_id", "run_attempt", "build_workflow_sha256")}, **SDK}
-        require(set(provenance) == set(expected) | {"manifest_digest", "config_digest", "archive_digest"}, "Unexpected provenance fields")
+        require(set(provenance) == set(expected) | {"manifest_digest", "config_digest", "archive_digest", "image_security"}, "Unexpected provenance fields")
         require(all(provenance.get(key) == value for key, value in expected.items()), "Native provenance differs from reviewed run/cohort")
         archive = target / "image.oci.tar"
         require(digest_file(archive) == provenance["archive_digest"], "Native OCI archive hash mismatch")
@@ -272,6 +332,7 @@ def prepare(args: argparse.Namespace) -> None:
         unpack_oci(archive, layout)
         descriptor, config_digest = inspect_oci(layout, architecture, selected["source"])
         require(descriptor["digest"] == provenance["manifest_digest"] and config_digest == provenance["config_digest"], "Native manifest/config provenance mismatch")
+        validate_image_security(provenance["image_security"], provenance["archive_digest"], architecture, config_digest)
         layouts.append(layout)
         descriptors.append(descriptor)
     merged = args.directory / "verified-oci"
@@ -295,7 +356,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     local = sub.add_parser("native")
-    for name in ("archive", "sdk", "workflow", "output"):
+    for name in ("archive", "sdk", "workflow", "security", "output"):
         local.add_argument("--" + name, type=Path, required=True)
     for name in ("source", "tree", "version", "architecture", "image-id"):
         local.add_argument("--" + name, required=True)
@@ -306,8 +367,20 @@ def main() -> None:
         admission.add_argument("--" + name, required=True)
     promotion = sub.add_parser("prepare")
     promotion.add_argument("--directory", type=Path, required=True)
+    security = sub.add_parser("scan")
+    for name in ("report", "database", "output"):
+        security.add_argument("--" + name, type=Path, required=True)
+    subject = security.add_mutually_exclusive_group(required=True)
+    subject.add_argument("--archive", type=Path)
+    subject.add_argument("--image")
+    security.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
+    layout = sub.add_parser("scan-layout")
+    layout.add_argument("--archive", type=Path, required=True)
+    layout.add_argument("--directory", type=Path, required=True)
+    layout.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
+    layout.add_argument("--source", required=True)
     args = parser.parse_args()
-    {"native": native, "plan": plan, "prepare": prepare}[args.command](args)
+    {"native": native, "plan": plan, "prepare": prepare, "scan": scan, "scan-layout": scan_layout}[args.command](args)
 
 
 if __name__ == "__main__":

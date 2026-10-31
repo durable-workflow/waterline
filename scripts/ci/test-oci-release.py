@@ -54,6 +54,14 @@ def write_tar(path, entries):
             archive.addfile(info, io.BytesIO(raw))
 
 
+def security_evidence(subject, architecture, config):
+    return {"schema": "waterline.image-security/v1", "status": "pass", "subject": subject,
+            "architecture": architecture, "config_digest": config,
+            "scanner_image": oci.read_json(oci.SECURITY_POLICY)["scanner_image"],
+            "findings": [], "high_critical_count": 0, "inventory": {"alpine": 45},
+            "database": {"Version": 2, "UpdatedAt": oci.datetime.now(oci.timezone.utc).isoformat()}}
+
+
 class OciReleaseTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -207,7 +215,8 @@ class OciReleaseTest(unittest.TestCase):
             provenance = {"schema": "waterline.native-oci/v1", "version": oci.VERSION, "source": SOURCE, "tree": TREE,
                 "architecture": architecture, "runner_commit": RUNNER, "run_id": 12345, "run_attempt": 1,
                 "build_workflow_sha256": "f" * 64, "manifest_digest": manifest, "config_digest": config,
-                "archive_digest": oci.digest_file(archive), **oci.SDK}
+                "archive_digest": oci.digest_file(archive),
+                "image_security": security_evidence(oci.digest_file(archive), architecture, config), **oci.SDK}
             target = self.root / f"{architecture}.zip"
             with zipfile.ZipFile(target, "w") as zipped:
                 zipped.write(archive, "image.oci.tar")
@@ -241,6 +250,60 @@ class OciReleaseTest(unittest.TestCase):
         metadata = {"digest": oci.digest_file(attack), "size_in_bytes": attack.stat().st_size}
         with self.assertRaises(oci.EvidenceError):
             oci.unpack_artifact(attack, self.root / "commands", metadata)
+
+    def test_security_requires_exact_subject_platform_scanner_and_fresh_database(self):
+        original = security_evidence("sha256:" + "a" * 64, "amd64", "sha256:" + "b" * 64)
+        oci.validate_image_security(original, original["subject"], "amd64", original["config_digest"])
+        for change in [{"subject": "sha256:" + "c" * 64}, {"architecture": "arm64"},
+                       {"config_digest": "sha256:" + "c" * 64}, {"scanner_image": "unreviewed:latest"},
+                       {"status": "fail"}, {"findings": [{"Severity": "HIGH"}]},
+                       {"high_critical_count": 1}, {"inventory": {}},
+                       {"database": {"Version": 2, "UpdatedAt": "2026-01-01T00:00:00Z"}}]:
+            with self.subTest(change=change), self.assertRaises(oci.EvidenceError):
+                oci.validate_image_security({**original, **change}, original["subject"], "amd64", original["config_digest"])
+
+    def test_scan_retains_compact_inventory_and_refuses_a_fixed_high(self):
+        archive, _entries, _manifest, config = native_archive(self.root, "amd64")
+        report = {"SchemaVersion": 2, "ArtifactType": "container_image", "Metadata": {
+            "OS": {"Family": "alpine", "Name": "3.24.3"}, "ImageID": config,
+            "ImageConfig": {"architecture": "amd64"}}, "Results": [{"Type": "alpine", "Packages": [{"Name": "curl"}]}]}
+        report_path, database, output = self.root / "scan.json", self.root / "db.json", self.root / "summary.json"
+        database.write_bytes(oci.encode(security_evidence("unused", "amd64", config)["database"]))
+        args = argparse.Namespace(report=report_path, database=database, archive=archive,
+            image=None, architecture="amd64", output=output)
+        report_path.write_bytes(oci.encode(report))
+        oci.scan(args)
+        self.assertEqual(oci.read_json(output)["inventory"], {"alpine": 1})
+        outside = self.root.parent / (self.root.name + "-report-target")
+        report["Metadata"]["OS"]["Name"] = "../" + outside.name
+        report_path.write_bytes(oci.encode(report))
+        oci.scan(args)
+        self.assertEqual(oci.read_json(output)["os"]["Name"], "../" + outside.name)
+        self.assertFalse(outside.exists())
+        report["Results"][0]["Vulnerabilities"] = [{"VulnerabilityID": "CVE-test", "PkgName": "curl",
+            "InstalledVersion": "8.22.0", "FixedVersion": "8.23.0", "Severity": "HIGH"}]
+        report_path.write_bytes(oci.encode(report))
+        with self.assertRaises(oci.EvidenceError):
+            oci.scan(args)
+        self.assertEqual(oci.read_json(output)["status"], "fail")
+        self.assertEqual(oci.read_json(output)["high_critical_count"], 1)
+
+    def test_missing_scan_cannot_reach_verified_publication_output(self):
+        selected = self.artifact_fixture()
+        path = self.root / "amd64.zip"
+        with zipfile.ZipFile(path) as archive:
+            raw = archive.read("image.oci.tar")
+            provenance = oci.document(archive.read("provenance.json"))
+        del provenance["image_security"]
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("image.oci.tar", raw)
+            archive.writestr("provenance.json", oci.encode(provenance))
+        selected["artifacts"]["amd64"].update(digest=oci.digest_file(path), size_in_bytes=path.stat().st_size)
+        (self.root / "plan.json").write_bytes(oci.encode(selected))
+        arguments = argparse.Namespace(directory=self.root)
+        with self.assertRaises(oci.EvidenceError):
+            oci.prepare(arguments)
+        self.assertFalse((self.root / "verified.json").exists())
 
 
 if __name__ == "__main__":

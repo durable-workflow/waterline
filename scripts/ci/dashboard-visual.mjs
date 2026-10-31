@@ -33,9 +33,20 @@ export function dashboardFixture() {
     };
 }
 
+async function waitForDashboardStyles(page) {
+    // Changing themes replaces the stylesheet asynchronously. Measure the
+    // requested theme. Chromium can retain a cached sheet object while that
+    // sheet is detached during another request for the same URL.
+    await page.waitForFunction(() => {
+        const stylesheet = document.querySelector('#app-stylesheet');
+        return !stylesheet || (stylesheet.sheet?.href === stylesheet.href && [...document.styleSheets].includes(stylesheet.sheet));
+    }, null, {timeout: 5000});
+}
+
 // Check painted text against its own tile and every clipping ancestor. A page
 // can have no horizontal scrollbar while a card silently hides its contents.
 export async function dashboardGeometry(page) {
+    await waitForDashboardStyles(page);
     return page.evaluate(() => {
         const failures = [];
         const walker = document.createTreeWalker(document.querySelector('.wl-app-shell'), NodeFilter.SHOW_TEXT);
@@ -73,6 +84,7 @@ export async function dashboardGeometry(page) {
 
 export async function inspectDashboardTables(page, name) {
     try {
+        await waitForDashboardStyles(page);
         const root = page.locator('.wl-dashboard-view');
         const labels = await root.locator('.table-responsive').evaluateAll(tables => tables.map(table => table.getAttribute('aria-label')));
         assert.equal(labels.length, 4, 'The populated fixture must render four dashboard tables.');
