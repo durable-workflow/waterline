@@ -48,7 +48,7 @@ jobs:
           image="docker.io/durableworkflow/waterline@$digest"
           docker run --rm --user "$(id -u):$(id -g)" \
             --mount "type=bind,src=$RUNNER_TEMP/security,dst=/scan" \
-            "$scanner" image --image-src remote "$image" \
+            "$scanner" image --image-src remote --platform "linux/$ARCHITECTURE" "$image" \
             --cache-dir /scan/cache --scanners vuln --list-all-pkgs \
             --no-progress --format json --output /scan/report.json
           python -I scripts/ci/oci_release.py scan \

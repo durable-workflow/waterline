@@ -216,6 +216,11 @@ def scan(args: argparse.Namespace) -> None:
     print(f"Exact {args.architecture} image scan passed: {sum(inventory.values())} packages; zero high/critical findings.")
 
 
+def scan_layout(args: argparse.Namespace) -> None:
+    unpack_oci(args.archive, args.directory)
+    inspect_oci(args.directory, args.architecture, commit(args.source))
+
+
 def native(args: argparse.Namespace) -> None:
     source, tree = commit(args.source), commit(args.tree)
     require(args.version == VERSION and args.architecture in {"amd64", "arm64"}, "Unsupported bounded release or architecture")
@@ -369,8 +374,13 @@ def main() -> None:
     subject.add_argument("--archive", type=Path)
     subject.add_argument("--image")
     security.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
+    layout = sub.add_parser("scan-layout")
+    layout.add_argument("--archive", type=Path, required=True)
+    layout.add_argument("--directory", type=Path, required=True)
+    layout.add_argument("--architecture", choices=("amd64", "arm64"), required=True)
+    layout.add_argument("--source", required=True)
     args = parser.parse_args()
-    {"native": native, "plan": plan, "prepare": prepare, "scan": scan}[args.command](args)
+    {"native": native, "plan": plan, "prepare": prepare, "scan": scan, "scan-layout": scan_layout}[args.command](args)
 
 
 if __name__ == "__main__":

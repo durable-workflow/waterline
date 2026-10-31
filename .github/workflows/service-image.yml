@@ -112,9 +112,13 @@ jobs:
         run: |
           set -euo pipefail
           scanner="$(python -c 'import json; print(json.load(open("release/service-image-security.json"))["scanner_image"])')"
+          python -I scripts/ci/oci_release.py scan-layout \
+            --archive "$RUNNER_TEMP/native-oci/image.oci.tar" \
+            --directory "$RUNNER_TEMP/native-oci/scan-layout" \
+            --architecture "${{ matrix.architecture }}" --source "${{ steps.source.outputs.commit }}"
           docker run --rm --user "$(id -u):$(id -g)" \
             --mount "type=bind,src=$RUNNER_TEMP/native-oci,dst=/scan" \
-            "$scanner" image --input /scan/image.oci.tar \
+            "$scanner" image --input /scan/scan-layout --platform "${{ env.EXPECTED_PLATFORM }}" \
             --cache-dir /scan/security-cache --scanners vuln --list-all-pkgs \
             --no-progress --format json --output /scan/security-report.json
           python -I scripts/ci/oci_release.py scan \
