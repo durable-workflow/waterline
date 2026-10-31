@@ -274,6 +274,12 @@ class OciReleaseTest(unittest.TestCase):
         report_path.write_bytes(oci.encode(report))
         oci.scan(args)
         self.assertEqual(oci.read_json(output)["inventory"], {"alpine": 1})
+        outside = self.root.parent / (self.root.name + "-report-target")
+        report["Metadata"]["OS"]["Name"] = "../" + outside.name
+        report_path.write_bytes(oci.encode(report))
+        oci.scan(args)
+        self.assertEqual(oci.read_json(output)["os"]["Name"], "../" + outside.name)
+        self.assertFalse(outside.exists())
         report["Results"][0]["Vulnerabilities"] = [{"VulnerabilityID": "CVE-test", "PkgName": "curl",
             "InstalledVersion": "8.22.0", "FixedVersion": "8.23.0", "Severity": "HIGH"}]
         report_path.write_bytes(oci.encode(report))
@@ -294,8 +300,9 @@ class OciReleaseTest(unittest.TestCase):
             archive.writestr("provenance.json", oci.encode(provenance))
         selected["artifacts"]["amd64"].update(digest=oci.digest_file(path), size_in_bytes=path.stat().st_size)
         (self.root / "plan.json").write_bytes(oci.encode(selected))
+        arguments = argparse.Namespace(directory=self.root)
         with self.assertRaises(oci.EvidenceError):
-            oci.prepare(argparse.Namespace(directory=self.root))
+            oci.prepare(arguments)
         self.assertFalse((self.root / "verified.json").exists())
 
 
