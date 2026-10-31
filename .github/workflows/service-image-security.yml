@@ -41,7 +41,7 @@ jobs:
           scanner="$(python -c 'import json; print(json.load(open("release/service-image-security.json"))["scanner_image"])')"
           docker manifest inspect "$stable" > "$RUNNER_TEMP/security/index.json"
           digest="$(jq -er --arg architecture "$ARCHITECTURE" \
-            '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == $architecture)] \
+            '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == $architecture)]
              | if length == 1 then .[0].digest else error("Expected one exact platform") end' \
             "$RUNNER_TEMP/security/index.json")"
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
