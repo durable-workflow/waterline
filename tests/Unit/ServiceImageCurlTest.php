@@ -44,4 +44,23 @@ final class ServiceImageCurlTest extends TestCase
         $this->assertLessThan(strpos($stages[0], 'RUN composer install'), strpos($stages[0], 'php /usr/local/share/waterline/verify-curl.php'));
         $this->assertGreaterThan(strpos($stages[1], 'apk del .build-deps'), strrpos($stages[1], 'php /usr/local/share/waterline/verify-curl.php'));
     }
+
+    /** @dataProvider imageVersions */
+    #[DataProvider('imageVersions')]
+    public function testHistoricalSmokeCannotQualifyTheCurlPolicy(string $version, int $expected): void
+    {
+        $helper = dirname(__DIR__, 2).'/scripts/ci/service-image-features.sh';
+        $process = proc_open(['sh', '-c', '. "$1"; image_requires_curl_guard "$2"', '--', $helper, $version], [], $pipes);
+        $this->assertIsResource($process);
+        $this->assertSame($expected, proc_close($process));
+    }
+
+    public static function imageVersions(): array
+    {
+        return [
+            ['0.0.0-service-smoke', 0], ['2.12.3', 1], ['2.13.1', 1],
+            ['2.13.2', 0], ['2.13.10', 0], ['2.14.0-rc.1', 0],
+            ['unknown', 2], ['2.13.bad', 2], ['2.013.2', 2],
+        ];
+    }
 }

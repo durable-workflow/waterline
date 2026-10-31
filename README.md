@@ -396,6 +396,26 @@ composer require --with-all-dependencies \
 php artisan waterline:publish
 ```
 
+### Service image security checks
+
+Native image builds verify PHP's loaded libcurl, the curl executable and its
+library against the patched curl floor, alongside the PHP, CA-store and Brotli
+checks. The exact exported OCI archive is scanned with the pinned scanner and
+a current vulnerability database before native HTTP and health qualification.
+
+The compact scan summary is part of native provenance. Publication requires
+that it matches the archive, image config and architecture, includes package
+inventory, has no high or critical findings, and uses a database updated within
+24 hours. Missing, failed or stale scan evidence refuses promotion.
+
+The daily **Rescan published service image** workflow resolves both platform
+digests from the immutable stable index in
+[`release/service-image-security.json`](release/service-image-security.json).
+Update that index only after the replacement image has been published and
+accepted. The workflow retains compact inventory and finding summaries.
+Historical application smoke tests do not qualify an older image against the
+new curl policy.
+
 ## Screenshots
 
 These screenshots show the stable 2.0 operator surface.

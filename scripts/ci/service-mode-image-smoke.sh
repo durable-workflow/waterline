@@ -164,6 +164,18 @@ else
     echo 'Historical application smoke only: this image predates decoder qualification.' >&2
 fi
 
+if image_requires_curl_guard "$image_release"; then
+    docker run --rm --init --user 1000:1000 --network none --entrypoint php \
+        "$image" /usr/local/share/waterline/verify-curl.php
+else
+    curl_feature_status=$?
+    if [ "$curl_feature_status" -ne 1 ]; then
+        echo 'Cannot determine the curl contract for this image version.' >&2
+        exit 1
+    fi
+    echo 'Historical application smoke only: this image predates curl qualification.' >&2
+fi
+
 if docker run --name "$memory_database_container" \
     -e APP_KEY=base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= \
     -e DB_CONNECTION=sqlite \

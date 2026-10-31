@@ -1,0 +1,5 @@
+{
+    "scanner_image": "aquasec/trivy:0.76.1@sha256:2e6c00d711ab4ae41d8a30c2c1fd3bd3b62704c177bb120f95012e939edfb3df",
+    "database_max_age_hours": 24,
+    "stable_image": "docker.io/durableworkflow/waterline@sha256:5d1ed06761d05ce4a0cea12dde1ca85efd5787e20633253fac6bc20b69268f32"
+}

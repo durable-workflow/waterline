@@ -107,6 +107,22 @@ jobs:
           provenance: false
           sbom: false
           outputs: type=oci,dest=${{ runner.temp }}/native-oci/image.oci.tar,oci-mediatypes=true
+      - name: Scan the exact native OCI before acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          scanner="$(python -c 'import json; print(json.load(open("release/service-image-security.json"))["scanner_image"])')"
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --mount "type=bind,src=$RUNNER_TEMP/native-oci,dst=/scan" \
+            "$scanner" image --input /scan/image.oci.tar \
+            --cache-dir /scan/security-cache --scanners vuln --list-all-pkgs \
+            --no-progress --format json --output /scan/security-report.json
+          python -I scripts/ci/oci_release.py scan \
+            --report "$RUNNER_TEMP/native-oci/security-report.json" \
+            --database "$RUNNER_TEMP/native-oci/security-cache/db/metadata.json" \
+            --archive "$RUNNER_TEMP/native-oci/image.oci.tar" \
+            --architecture "${{ matrix.architecture }}" \
+            --output "$RUNNER_TEMP/native-oci/security-summary.json"
       - name: Import and exercise that exact OCI image without credentials
         env:
           SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
@@ -129,6 +145,7 @@ jobs:
             ' > "$RUNNER_TEMP/native-oci/sdk.json"
           python -I scripts/ci/oci_release.py native \
             --archive "$RUNNER_TEMP/native-oci/image.oci.tar" \
+            --security "$RUNNER_TEMP/native-oci/security-summary.json" \
             --sdk "$RUNNER_TEMP/native-oci/sdk.json" --workflow .github/workflows/service-image.yml \
             --version "$RELEASE_VERSION" --source "$SOURCE_COMMIT" --tree "${{ steps.source.outputs.tree }}" \
             --architecture "${{ matrix.architecture }}" --image-id "$(docker image inspect --format '{{.Id}}' "$image")" \
