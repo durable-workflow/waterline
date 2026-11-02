@@ -6,7 +6,11 @@ namespace Waterline\Tests\Feature;
 
 use Composer\InstalledVersions;
 use DurableWorkflow\Waterline\CI\SqlServerQualificationTls;
+use Illuminate\Foundation\Http\Middleware\TrimStrings;
+use Illuminate\Http\Exceptions\HttpResponseException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use ReflectionProperty;
 use Orchestra\Testbench\TestCase;
 use function Orchestra\Testbench\artisan;
 use Waterline\Support\Remote\CursorPageReplay;
@@ -181,6 +185,41 @@ final class ServiceModePageReplayTest extends TestCase
             $this->assertSame([], $this->listTokens($method), $name.' page[]');
 
             $this->getJson($path.'?page=')->assertOk()->assertJsonPath('current_page', 1);
+        }
+
+        // PHP's `$` also matches before a final newline. Laravel's default
+        // TrimStrings turns "3\n" into the valid page 3 before Waterline sees
+        // it, so refuse these directly and through hosts without trimming.
+        $padded = ["3\n", "3\r\n", "\n3", ' 3', '3 ', "3\t"];
+
+        foreach ($padded as $page) {
+            try {
+                CursorPageReplay::requestedPage(Request::create('/?page='.urlencode($page)));
+                $this->fail('Accepted page '.json_encode($page));
+            } catch (HttpResponseException $refusal) {
+                $this->assertSame(422, $refusal->getResponse()->getStatusCode(), json_encode($page));
+                $this->assertSame('invalid_page', $refusal->getResponse()->getData(true)['reason'] ?? null);
+            }
+        }
+
+        TrimStrings::skipWhen(static fn (): bool => true);
+
+        try {
+            foreach (self::LISTS as $name => [$path, $method]) {
+                foreach ($padded as $page) {
+                    $this->client->calls = [];
+
+                    $this->getJson($path.'?page='.urlencode($page))
+                        ->assertStatus(422)
+                        ->assertJsonPath('reason', 'invalid_page');
+
+                    $this->assertSame([], $this->listTokens($method), $name.' page='.json_encode($page));
+                }
+            }
+        } finally {
+            $callbacks = new ReflectionProperty(TrimStrings::class, 'skipCallbacks');
+            $callbacks->setAccessible(true);
+            $callbacks->setValue(null, []);
         }
     }
 

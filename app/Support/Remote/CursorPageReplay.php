@@ -33,7 +33,7 @@ final class CursorPageReplay
             return 1;
         }
 
-        if (! is_string($raw) || preg_match('/^[1-9]\d{0,8}$/', $raw) !== 1) {
+        if (! is_string($raw) || preg_match('/\A[1-9]\d{0,8}\z/', $raw) !== 1) {
             self::refuse(422, 'invalid_page', 'The page must be a positive whole number.');
         }
 
