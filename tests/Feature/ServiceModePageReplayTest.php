@@ -144,6 +144,7 @@ final class ServiceModePageReplayTest extends TestCase
 
     public function testMalformedAndOversizedPagesAreRefusedBeforeAnyServerCall(): void
     {
+        // Numeric-string keys become ints in PHP arrays; cast back when building URLs.
         $refusals = [
             'abc' => 'invalid_page',
             '0' => 'invalid_page',
@@ -159,7 +160,7 @@ final class ServiceModePageReplayTest extends TestCase
             foreach ($refusals as $page => $reason) {
                 $this->client->calls = [];
 
-                $this->getJson($path.'?page='.urlencode($page))
+                $this->getJson($path.'?page='.urlencode((string) $page))
                     ->assertStatus(422)
                     ->assertJsonPath('reason', $reason)
                     ->assertJsonPath('max_page', CursorPageReplay::MAX_PAGE);
