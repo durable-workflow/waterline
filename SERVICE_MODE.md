@@ -125,10 +125,13 @@ pages** (5,000 rows) and starts no further server call once its replay budget
 has elapsed. The replay budget ends five seconds before the browser request
 budget (and is never less than half of it), so the refusal normally reaches the
 browser first; the call already in flight keeps its own control-request budget.
+The budget is measured on a monotonic clock, so a wall-clock change cannot
+extend it.
 A request that runs out of time returns HTTP 504 with reason
 `page_replay_budget_exceeded` and can be retried. `page` must be a whole number
-from 1 to 100; other values return HTTP 422 before the server is called. Use
-filters to reach rows beyond the page limit.
+from 1 to 100; other values return HTTP 422 before the server is called. When
+page 100 still has more rows, the response sets `page_limit_reached` and the run
+and schedule lists tell the operator to narrow the filters to reach them.
 
 Refresh Laravel's cached configuration and publish Waterline assets after an
 upgrade. Ordinary Laravel hosts use resolved configuration; standalone service

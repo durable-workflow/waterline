@@ -18,7 +18,10 @@
   seconds before the browser request budget elapses (HTTP 504
   `page_replay_budget_exceeded`, retryable). Malformed or
   out-of-range `page` values return 422 before any server call, and a page past
-  the end of the data reports the last page actually read.
+  the end of the data reports the last page actually read. The replay budget
+  uses a monotonic clock, so wall-clock changes cannot extend it. When page 100
+  still has more rows, both lists say so and ask the operator to narrow the
+  filters instead of presenting the list as complete.
 
 ## 2.13.1 - 2026-10-23
 
