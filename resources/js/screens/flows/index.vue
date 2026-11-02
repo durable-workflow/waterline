@@ -14,6 +14,8 @@
                 hasNewEntries: false,
                 page: 1,
                 totalPages: 1,
+                pageLimit: null,
+                pageLimitReached: false,
                 flows: [],
                 savedViews: [],
                 savedViewsEnabled: false,
@@ -225,7 +227,14 @@
                         } else {
                             this.flows = response.data.data;
 
+                            // Service mode answers a page past the end with the
+                            // last page it read; adopt it so Previous follows it.
+                            if (Number.isInteger(response.data.current_page) && response.data.current_page >= 1) {
+                                this.page = response.data.current_page;
+                            }
                             this.totalPages = response.data.last_page;
+                            this.pageLimit = response.data.page_limit ?? null;
+                            this.pageLimitReached = response.data.page_limit_reached === true;
                         }
 
                         this.ready = true;
@@ -239,6 +248,7 @@
                         if (!refreshing) {
                             this.flows = [];
                             this.totalPages = 1;
+                            this.pageLimitReached = false;
                             this.visibilityFilters = null;
                         }
 
@@ -1834,9 +1844,14 @@
             </div>
 
             <div v-if="ready && flows.length" class="flow-index__pagination">
-                <p class="flow-index__pagination-copy">
-                    {{ $t('Showing {count} flows on page {page} of {pages}.', { count: flows.length.toLocaleString($i18n.locale), page, pages: Math.max(totalPages, 1) }, flows.length) }}
-                </p>
+                <div>
+                    <p class="flow-index__pagination-copy">
+                        {{ $t('Showing {count} flows on page {page} of {pages}.', { count: flows.length.toLocaleString($i18n.locale), page, pages: Math.max(totalPages, 1) }, flows.length) }}
+                    </p>
+                    <p v-if="pageLimitReached" class="flow-index__pagination-copy flow-index__pagination-limit" role="status">
+                        {{ $t('Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.', { limit: (pageLimit ?? totalPages).toLocaleString($i18n.locale) }) }}
+                    </p>
+                </div>
 
                 <div class="flow-index__pagination-actions">
                     <button @click="previous" class="btn btn-secondary btn-md" :disabled="page==1">{{ $t("Previous") }}</button>
@@ -2059,6 +2074,10 @@
 
 .flow-index__new-entries a {
     color: var(--wl-accent);
+}
+
+.flow-index__pagination-limit {
+    font-weight: 600;
 }
 
 .flow-index__pagination {
