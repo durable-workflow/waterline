@@ -9,6 +9,7 @@ use DurableWorkflow\Model\SchedulePage;
 use DurableWorkflow\Model\WorkflowExecution;
 use DurableWorkflow\Model\WorkflowPage;
 use DurableWorkflow\Model\WorkflowRun;
+use Illuminate\Support\Carbon;
 use Throwable;
 
 final class FakeRemoteClient
@@ -75,6 +76,12 @@ final class FakeRemoteClient
     /** @var array<string, mixed>|null */
     public ?array $backfillScheduleResponse = null;
 
+    /** @var int|null Pages each list reports before its next token runs out; null serves one page. */
+    public ?int $listPageCount = null;
+
+    /** Seconds the test clock advances during each list call, to simulate slow server pages. */
+    public int $listCallSeconds = 0;
+
     public function listWorkflows(
         ?string $workflowType = null,
         ?string $status = null,
@@ -95,7 +102,7 @@ final class FakeRemoteClient
 
         return new WorkflowPage([
             ...array_map(static fn (array $row): WorkflowExecution => WorkflowExecution::fromArray($row), $rows),
-        ], null, count($rows), ['workflows' => $rows]);
+        ], $this->listedNextPageToken($nextPageToken), count($rows), ['workflows' => $rows]);
     }
 
     public function listServiceCatalogEndpoints(array $filters = []): array
@@ -323,11 +330,24 @@ final class FakeRemoteClient
                 && ($workflowType === null || ($item['workflow_type'] ?? null) === $workflowType),
         ));
 
+        $next = $this->listedNextPageToken($nextPageToken);
+
         return new SchedulePage(
             array_map(static fn (array $item): ScheduleDescription => ScheduleDescription::fromArray($item), $items),
-            null,
-            ['schedules' => $items, 'next_page_token' => null],
+            $next,
+            ['schedules' => $items, 'next_page_token' => $next],
         );
+    }
+
+    private function listedNextPageToken(?string $token): ?string
+    {
+        if ($this->listCallSeconds > 0) {
+            Carbon::setTestNow(Carbon::now()->addSeconds($this->listCallSeconds));
+        }
+
+        $page = $token === null ? 1 : (int) substr($token, strlen('page-'));
+
+        return $this->listPageCount !== null && $page < $this->listPageCount ? 'page-'.($page + 1) : null;
     }
 
     public function describeSchedule(string $scheduleId): ScheduleDescription

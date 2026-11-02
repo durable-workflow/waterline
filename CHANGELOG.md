@@ -12,6 +12,12 @@
 - Automatic list refresh waits for an outstanding read instead of superseding
   it. Timeout errors remain visible until a successful read, including when
   the request budget exceeds the refresh cadence.
+- Service-mode run and schedule lists bound page navigation. The server pages
+  by opaque cursor, so page N costs N list calls; one request now reads at most
+  100 pages and starts no further call after the browser request budget
+  elapses (HTTP 504 `page_replay_budget_exceeded`, retryable). Malformed or
+  out-of-range `page` values return 422 before any server call, and a page past
+  the end of the data reports the last page actually read.
 
 ## 2.13.1 - 2026-10-23
 
