@@ -227,6 +227,11 @@
                         } else {
                             this.flows = response.data.data;
 
+                            // Service mode answers a page past the end with the
+                            // last page it read; adopt it so Previous follows it.
+                            if (Number.isInteger(response.data.current_page) && response.data.current_page >= 1) {
+                                this.page = response.data.current_page;
+                            }
                             this.totalPages = response.data.last_page;
                             this.pageLimit = response.data.page_limit ?? null;
                             this.pageLimitReached = response.data.page_limit_reached === true;

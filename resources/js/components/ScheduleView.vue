@@ -778,6 +778,11 @@ export default {
                 this.schedules = response.data.data || [];
                 this.operatorScope = response.data.operator_scope || null;
                 this.observedBackend = response.data.backend || null;
+                // Service mode answers a page past the end with the last page
+                // it read; adopt it so Previous, Next and Refresh follow it.
+                if (Number.isInteger(response.data.current_page) && response.data.current_page >= 1) {
+                    this.currentPage = response.data.current_page;
+                }
                 this.pagination = {
                     current_page: response.data.current_page,
                     last_page: response.data.last_page,
