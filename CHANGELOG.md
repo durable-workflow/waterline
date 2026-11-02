@@ -1,7 +1,13 @@
 # Changelog
 
-## 2.13.2 - 2026-10-23
+## 2.13.2 - 2026-11-02
 
+- The service image upgrades Alpine `curl` and `libcurl` to 8.23.0-r0 or later
+  for CVE-2026-92392, an HTTP/2 upload use-after-free that affects the 8.22.0-r0
+  packages in the 2.12.3 and 2.13.0 images. The build refuses an image whose PHP
+  runtime does not load the patched library, and both platform images are
+  scanned before publication. Waterline makes outbound HTTP calls to its
+  configured Server, so upgrade service-mode deployments to this image.
 - Schedule, worker and service views now share the configured finite browser
   request budget with run lists and run details. A stalled read exposes the
   existing Retry control instead of waiting indefinitely. The shared client
@@ -17,8 +23,10 @@
   100 pages and starts no further call once a replay budget ending five
   seconds before the browser request budget elapses (HTTP 504
   `page_replay_budget_exceeded`, retryable). Malformed or
-  out-of-range `page` values return 422 before any server call, and a page past
-  the end of the data reports the last page actually read. The replay budget
+  out-of-range `page` values, including ones with surrounding whitespace or a
+  trailing newline, return 422 before any server call. A page past the end of
+  the data reports the last page actually read, and both lists adopt that page
+  for Previous, Next and Refresh. The replay budget
   uses a monotonic clock, so wall-clock changes cannot extend it. When page 100
   still has more rows, both lists say so and ask the operator to narrow the
   filters instead of presenting the list as complete.
