@@ -14,12 +14,16 @@ use Waterline\Support\RequestTimeouts;
  *
  * The server only hands out opaque next-page tokens, so showing page N costs N
  * sequential list calls. One Waterline request makes at most MAX_PAGE calls and
- * starts no further call once the browser request budget has elapsed. The
- * per-call SDK timeout still bounds the call already in flight.
+ * starts no further call once the replay budget has elapsed. The replay budget
+ * ends RESPONSE_MARGIN_MS before the browser request budget, so the refusal
+ * normally reaches the browser before it gives up. The per-call SDK timeout
+ * still bounds the call already in flight.
  */
 final class CursorPageReplay
 {
     public const MAX_PAGE = 100;
+
+    public const RESPONSE_MARGIN_MS = 5000;
 
     public static function requestedPage(Request $request): int
     {
@@ -29,7 +33,7 @@ final class CursorPageReplay
             return 1;
         }
 
-        if (! is_string($raw) || preg_match('/^[1-9][0-9]{0,8}$/', $raw) !== 1) {
+        if (! is_string($raw) || preg_match('/^[1-9]\d{0,8}$/', $raw) !== 1) {
             self::refuse(422, 'invalid_page', 'The page must be a positive whole number.');
         }
 
@@ -57,7 +61,7 @@ final class CursorPageReplay
     public static function replay(int $requestedPage, callable $fetch): array
     {
         $requestedPage = max(1, min($requestedPage, self::MAX_PAGE));
-        $deadline = Date::now()->addMilliseconds(RequestTimeouts::browserMilliseconds());
+        $deadline = Date::now()->addMilliseconds(self::budgetMilliseconds());
         $token = null;
         $page = null;
         $current = 0;
@@ -86,6 +90,17 @@ final class CursorPageReplay
             'next_page_token' => $token,
             'page_limit_reached' => $token !== null && $current >= self::MAX_PAGE,
         ];
+    }
+
+    /**
+     * The browser request budget minus a response margin, never less than
+     * half of the browser budget.
+     */
+    public static function budgetMilliseconds(): int
+    {
+        $browser = RequestTimeouts::browserMilliseconds();
+
+        return max(intdiv($browser, 2), $browser - self::RESPONSE_MARGIN_MS);
     }
 
     private static function nextToken(object $page): ?string

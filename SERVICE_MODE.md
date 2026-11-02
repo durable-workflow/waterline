@@ -121,9 +121,11 @@ submitting it again.
 
 The server pages run and schedule lists by opaque cursor, so Waterline reaches
 list page N by reading pages 1 through N. One list request reads at most **100
-pages** (5,000 rows) and starts no further server call once the browser request
-budget has elapsed; the call already in flight keeps its own control-request
-budget. A request that runs out of time returns HTTP 504 with reason
+pages** (5,000 rows) and starts no further server call once its replay budget
+has elapsed. The replay budget ends five seconds before the browser request
+budget (and is never less than half of it), so the refusal normally reaches the
+browser first; the call already in flight keeps its own control-request budget.
+A request that runs out of time returns HTTP 504 with reason
 `page_replay_budget_exceeded` and can be retried. `page` must be a whole number
 from 1 to 100; other values return HTTP 422 before the server is called. Use
 filters to reach rows beyond the page limit.

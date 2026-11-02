@@ -207,12 +207,36 @@ final class ServiceModePageReplayTest extends TestCase
             $this->getJson($path.'?page=50')
                 ->assertStatus(504)
                 ->assertJsonPath('reason', 'page_replay_budget_exceeded')
-                ->assertJsonPath('pages_read', 4)
+                ->assertJsonPath('pages_read', 3)
                 ->assertJsonPath('requested_page', 50);
 
-            // 20s pages cross the 65s budget during the fourth call; no fifth call starts.
-            $this->assertCount(4, $this->listTokens($method), $name);
-            $this->assertSame(80, (int) $started->diffInSeconds(Carbon::now(), true), $name);
+            // The replay budget is 65s - 5s = 60s. Three 20s pages reach it; no
+            // fourth call starts, and the refusal arrives before the browser budget.
+            $this->assertCount(3, $this->listTokens($method), $name);
+            $this->assertSame(60, (int) $started->diffInSeconds(Carbon::now(), true), $name);
+            $this->assertLessThan(65, (int) $started->diffInSeconds(Carbon::now(), true), $name);
+        }
+    }
+
+    public function testShortBrowserBudgetsKeepHalfTheBudgetForReplay(): void
+    {
+        config()->set('waterline.browser.request_timeout_seconds', 8);
+        $this->assertSame(4000, CursorPageReplay::budgetMilliseconds());
+
+        config()->set('waterline.browser.request_timeout_seconds', 65);
+        $this->assertSame(60000, CursorPageReplay::budgetMilliseconds());
+
+        foreach (self::LISTS as $name => [$path, $method]) {
+            config()->set('waterline.browser.request_timeout_seconds', 8);
+            $this->client->calls = [];
+            $this->client->listPageCount = PHP_INT_MAX;
+            $this->client->listCallSeconds = 2;
+
+            $this->getJson($path.'?page=50')
+                ->assertStatus(504)
+                ->assertJsonPath('pages_read', 2);
+
+            $this->assertCount(2, $this->listTokens($method), $name);
         }
     }
 

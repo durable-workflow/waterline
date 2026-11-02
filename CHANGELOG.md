@@ -14,8 +14,9 @@
   the request budget exceeds the refresh cadence.
 - Service-mode run and schedule lists bound page navigation. The server pages
   by opaque cursor, so page N costs N list calls; one request now reads at most
-  100 pages and starts no further call after the browser request budget
-  elapses (HTTP 504 `page_replay_budget_exceeded`, retryable). Malformed or
+  100 pages and starts no further call once a replay budget ending five
+  seconds before the browser request budget elapses (HTTP 504
+  `page_replay_budget_exceeded`, retryable). Malformed or
   out-of-range `page` values return 422 before any server call, and a page past
   the end of the data reports the last page actually read.
 
