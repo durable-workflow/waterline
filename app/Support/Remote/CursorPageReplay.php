@@ -6,7 +6,6 @@ namespace Waterline\Support\Remote;
 
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Date;
 use Waterline\Support\RequestTimeouts;
 
 /**
@@ -17,7 +16,8 @@ use Waterline\Support\RequestTimeouts;
  * starts no further call once the replay budget has elapsed. The replay budget
  * ends RESPONSE_MARGIN_MS before the browser request budget, so the refusal
  * normally reaches the browser before it gives up. The per-call SDK timeout
- * still bounds the call already in flight.
+ * still bounds the call already in flight. Elapsed time comes from the
+ * monotonic clock, so a wall-clock step cannot extend the replay.
  */
 final class CursorPageReplay
 {
@@ -61,13 +61,14 @@ final class CursorPageReplay
     public static function replay(int $requestedPage, callable $fetch): array
     {
         $requestedPage = max(1, min($requestedPage, self::MAX_PAGE));
-        $deadline = Date::now()->addMilliseconds(self::budgetMilliseconds());
+        $clock = app(MonotonicClock::class);
+        $deadline = $clock->milliseconds() + self::budgetMilliseconds();
         $token = null;
         $page = null;
         $current = 0;
 
         while ($current < $requestedPage) {
-            if ($current > 0 && Date::now()->greaterThanOrEqualTo($deadline)) {
+            if ($current > 0 && $clock->milliseconds() >= $deadline) {
                 self::refuse(504, 'page_replay_budget_exceeded', sprintf(
                     'Waterline stopped after reading %d of %d server pages because the request budget elapsed. Retry, or narrow the filters.',
                     $current,

@@ -10,8 +10,10 @@ use Illuminate\Support\Carbon;
 use Orchestra\Testbench\TestCase;
 use function Orchestra\Testbench\artisan;
 use Waterline\Support\Remote\CursorPageReplay;
+use Waterline\Support\Remote\MonotonicClock;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ServiceModeRequirements;
+use Waterline\Tests\Fixtures\FakeMonotonicClock;
 use Waterline\Tests\Fixtures\FakeRemoteClient;
 use Waterline\Waterline;
 use Waterline\WaterlineServiceProvider;
@@ -34,6 +36,8 @@ final class ServiceModePageReplayTest extends TestCase
     private static array $installedVersions;
 
     private FakeRemoteClient $client;
+
+    private FakeMonotonicClock $clock;
 
     public static function setUpBeforeClass(): void
     {
@@ -87,7 +91,10 @@ final class ServiceModePageReplayTest extends TestCase
 
         Carbon::setTestNow('2026-08-12T12:00:15Z');
         Waterline::auth(static fn (): bool => true);
+        $this->clock = new FakeMonotonicClock();
+        $this->app->instance(MonotonicClock::class, $this->clock);
         $this->client = new FakeRemoteClient();
+        $this->client->clock = $this->clock;
         $this->app->instance(RemoteBackend::class, new RemoteBackend($this->client));
     }
 
@@ -202,7 +209,7 @@ final class ServiceModePageReplayTest extends TestCase
             $this->client->calls = [];
             $this->client->listPageCount = PHP_INT_MAX;
             $this->client->listCallSeconds = 20;
-            $started = Carbon::now();
+            $started = $this->clock->now;
 
             $this->getJson($path.'?page=50')
                 ->assertStatus(504)
@@ -213,9 +220,84 @@ final class ServiceModePageReplayTest extends TestCase
             // The replay budget is 65s - 5s = 60s. Three 20s pages reach it; no
             // fourth call starts, and the refusal arrives before the browser budget.
             $this->assertCount(3, $this->listTokens($method), $name);
-            $this->assertSame(60, (int) $started->diffInSeconds(Carbon::now(), true), $name);
-            $this->assertLessThan(65, (int) $started->diffInSeconds(Carbon::now(), true), $name);
+            $this->assertSame(60000.0, $this->clock->now - $started, $name);
+            $this->assertLessThan(65000.0, $this->clock->now - $started, $name);
         }
+    }
+
+    public function testAWallClockSteppedBackwardsCannotExtendTheReplay(): void
+    {
+        config()->set('waterline.browser.request_timeout_seconds', 65);
+
+        foreach (self::LISTS as $name => [$path, $method]) {
+            $this->client->calls = [];
+            $this->client->listPageCount = PHP_INT_MAX;
+            $this->client->listCallSeconds = 20;
+            $this->client->listCallWallClockSeconds = -3600;
+            $wallStarted = Carbon::now();
+
+            $this->getJson($path.'?page=50')
+                ->assertStatus(504)
+                ->assertJsonPath('reason', 'page_replay_budget_exceeded')
+                ->assertJsonPath('pages_read', 3);
+
+            $this->assertCount(3, $this->listTokens($method), $name);
+            $this->assertTrue(Carbon::now()->lessThan($wallStarted), $name.' wall clock moved backwards');
+        }
+    }
+
+    public function testAFrozenWallClockCannotExtendTheReplay(): void
+    {
+        config()->set('waterline.browser.request_timeout_seconds', 65);
+
+        foreach (self::LISTS as $name => [$path, $method]) {
+            $this->client->calls = [];
+            $this->client->listPageCount = PHP_INT_MAX;
+            $this->client->listCallSeconds = 20;
+            $this->client->listCallWallClockSeconds = 0;
+            $wallStarted = Carbon::now()->toJSON();
+
+            $this->getJson($path.'?page=50')
+                ->assertStatus(504)
+                ->assertJsonPath('reason', 'page_replay_budget_exceeded')
+                ->assertJsonPath('pages_read', 3);
+
+            $this->assertCount(3, $this->listTokens($method), $name);
+            $this->assertSame($wallStarted, Carbon::now()->toJSON(), $name.' wall clock stayed frozen');
+        }
+    }
+
+    public function testAWallClockJumpForwardDoesNotCutTheReplayShort(): void
+    {
+        config()->set('waterline.browser.request_timeout_seconds', 65);
+
+        foreach (self::LISTS as $name => [$path, $method]) {
+            $this->client->calls = [];
+            $this->client->listPageCount = PHP_INT_MAX;
+            $this->client->listCallSeconds = 1;
+            $this->client->listCallWallClockSeconds = 3600;
+
+            $this->getJson($path.'?page=10')
+                ->assertOk()
+                ->assertJsonPath('current_page', 10);
+
+            $this->assertCount(10, $this->listTokens($method), $name);
+        }
+    }
+
+    public function testTheDefaultClockIsMonotonicAndIgnoresTheTestClock(): void
+    {
+        $clock = new MonotonicClock();
+        $first = $clock->milliseconds();
+
+        Carbon::setTestNow('2020-01-01T00:00:00Z');
+        $second = $clock->milliseconds();
+        Carbon::setTestNow('2030-01-01T00:00:00Z');
+        $third = $clock->milliseconds();
+
+        $this->assertGreaterThanOrEqual($first, $second);
+        $this->assertGreaterThanOrEqual($second, $third);
+        $this->assertLessThan(60000.0, $third - $first);
     }
 
     public function testShortBrowserBudgetsKeepHalfTheBudgetForReplay(): void
