@@ -50,7 +50,8 @@
                     <div class="card-body card-bg-secondary">
                         <div class="schedule-view__summary-label">{{ $t("Returned schedules") }}</div>
                         <div class="schedule-view__summary-value">{{ totalSchedules.toLocaleString($i18n.locale) }}</div>
-                        <div class="schedule-view__summary-meta">{{ pagination ? pagination.total.toLocaleString($i18n.locale) : schedules.length.toLocaleString($i18n.locale) }} {{ $t("total in the filtered result set.") }}</div>
+                        <div v-if="pageLimitReached" class="schedule-view__summary-meta">{{ pageLimitMessage }}</div>
+                        <div v-else class="schedule-view__summary-meta">{{ pagination ? pagination.total.toLocaleString($i18n.locale) : schedules.length.toLocaleString($i18n.locale) }} {{ $t("total in the filtered result set.") }}</div>
                     </div>
                 </article>
 
@@ -260,6 +261,8 @@
                     <button class="btn btn-secondary btn-sm" @click="goToPage(pagination.current_page + 1)" :disabled="pagination.current_page === pagination.last_page">
                         {{ $t("Next") }}
                     </button>
+
+                    <p v-if="pageLimitReached" class="schedule-view__pagination-limit" role="status">{{ pageLimitMessage }}</p>
                 </div>
             </article>
         </div>
@@ -676,6 +679,17 @@ export default {
             return this.pagination?.total || this.schedules.length;
         },
 
+        // Service mode replays at most page_limit server pages per request.
+        pageLimitReached() {
+            return this.pagination?.page_limit_reached === true;
+        },
+
+        pageLimitMessage() {
+            const limit = this.pagination?.page_limit ?? this.pagination?.last_page ?? 0;
+
+            return this.$t('Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.', { limit: limit.toLocaleString(this.$i18n.locale) });
+        },
+
         activeScheduleCount() {
             return this.schedules.filter((schedule) => schedule.status === 'active').length;
         },
@@ -768,7 +782,9 @@ export default {
                     current_page: response.data.current_page,
                     last_page: response.data.last_page,
                     per_page: response.data.per_page,
-                    total: response.data.total
+                    total: response.data.total,
+                    page_limit: response.data.page_limit ?? null,
+                    page_limit_reached: response.data.page_limit_reached === true
                 };
             } catch (e) {
                 this.error = this.responseMessage(e, this.$t("Failed to load schedules"));
@@ -1733,6 +1749,13 @@ export default {
     align-items: center;
     flex-wrap: wrap;
     gap: 0.45rem;
+}
+
+.schedule-view__pagination-limit {
+    flex-basis: 100%;
+    margin: 0;
+    color: var(--wl-text-muted);
+    font-weight: 600;
 }
 
 .schedule-view__pagination-ellipsis {

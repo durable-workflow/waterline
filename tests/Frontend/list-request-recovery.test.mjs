@@ -71,3 +71,33 @@ test('periodic refresh cannot supersede a pending read and hide its timeout',asy
     await recovery;
     assert.equal(context.flows[0].id,'recovered');
 });
+
+test('the service-mode page limit is surfaced and cleared with the list it belongs to',async()=>{
+    const {context,requests} = fixture();
+    const limited = loadFlows.call(context,100);
+    requests[0].resolve({data:{data:[{id:'last'}],current_page:100,last_page:100,page_limit:100,page_limit_reached:true}});
+    await limited;
+    assert.equal(context.pageLimitReached,true);
+    assert.equal(context.pageLimit,100);
+    assert.equal(context.totalPages,100);
+
+    const ordinary = loadFlows.call(context,2);
+    requests[1].resolve({data:{data:[{id:'second'}],current_page:2,last_page:3,page_limit:100,page_limit_reached:false}});
+    await ordinary;
+    assert.equal(context.pageLimitReached,false);
+
+    const olderServer = loadFlows.call(context,100);
+    requests[2].resolve(response('embedded'));
+    await olderServer;
+    assert.equal(context.pageLimitReached,false);
+    assert.equal(context.pageLimit,null);
+
+    const limitedAgain = loadFlows.call(context,100);
+    requests[3].resolve({data:{data:[{id:'last'}],last_page:100,page_limit:100,page_limit_reached:true}});
+    await limitedAgain;
+    const failed = loadFlows.call(context,100);
+    requests[4].reject({response:{data:{message:'Timed out'}}});
+    await failed;
+    assert.equal(context.listLoadError,'Timed out');
+    assert.equal(context.pageLimitReached,false);
+});
