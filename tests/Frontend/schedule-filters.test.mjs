@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
+import {parse} from '@vue/compiler-sfc';
 import {createSSRApp} from 'vue';
 import {renderToString} from 'vue/server-renderer';
 
 const source = fs.readFileSync(new URL('../../resources/js/components/ScheduleView.vue', import.meta.url), 'utf8');
-const script = source.match(/<script>([\s\S]*?)<\/script>/)[1];
+const script = parse(source).descriptor.script.content;
 
 function fixture(mode = 'service') {
     const requests = [];
