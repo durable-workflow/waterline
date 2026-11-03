@@ -946,6 +946,8 @@
     "no typed history": "型付き履歴なし",
     "Continued from": "継続元",
     "Continued as": "継続先",
+    "Redriven from": "再実行元",
+    "Redriven as": "再実行先",
     "Repair run?": "実行を修復しますか?",
     "This recreates the durable next task for the current active run when liveness shows repair is needed. It does not restart an activity that is already marked running. For scripted recovery, the matching CLI sweep is workflow:v2:repair-pass --run-id=<current-run-id>.": "稼働状況から修復が必要と判断された場合、現在の稼働中の実行に次の永続タスクを再作成します。すでに実行中と記録されているアクティビティを再起動する操作ではありません。スクリプトによる復旧で対応するCLIの走査は、workflow:v2:repair-pass --run-id=<current-run-id>です。",
     "Repair run": "実行を修復",

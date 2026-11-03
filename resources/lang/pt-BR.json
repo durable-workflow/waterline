@@ -946,6 +946,8 @@
     "no typed history": "sem histórico tipado",
     "Continued from": "Continuado de",
     "Continued as": "Continuado como",
+    "Redriven from": "Reexecutado de",
+    "Redriven as": "Reexecutado como",
     "Repair run?": "Reparar a execução?",
     "This recreates the durable next task for the current active run when liveness shows repair is needed. It does not restart an activity that is already marked running. For scripted recovery, the matching CLI sweep is workflow:v2:repair-pass --run-id=<current-run-id>.": "Isto recria a próxima tarefa durável da execução ativa atual quando os sinais de vida indicam que um reparo é necessário. Não reinicia uma atividade que já está marcada como em execução. Para recuperação por script, a varredura equivalente na CLI é workflow:v2:repair-pass --run-id=<current-run-id>.",
     "Repair run": "Reparar execução",

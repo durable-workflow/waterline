@@ -946,6 +946,8 @@
     "no typed history": "无有类型的历史",
     "Continued from": "继续自",
     "Continued as": "继续为",
+    "Redriven from": "重新驱动自",
+    "Redriven as": "重新驱动为",
     "Repair run?": "修复运行？",
     "This recreates the durable next task for the current active run when liveness shows repair is needed. It does not restart an activity that is already marked running. For scripted recovery, the matching CLI sweep is workflow:v2:repair-pass --run-id=<current-run-id>.": "当存活状态显示需要修复时，此操作会为当前活跃运行重建持久化的下个任务。它不会重新启动已标记为运行中的活动。脚本化恢复可使用对应的 CLI 扫描命令 workflow:v2:repair-pass --run-id=<current-run-id>。",
     "Repair run": "修复运行",
