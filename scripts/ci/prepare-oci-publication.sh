@@ -18,16 +18,7 @@ done
 work="$RUNNER_TEMP/waterline-publication"
 mkdir -p "$work"
 check_registry_version() {
-    local expected actual
-    expected="$(jq -r .image_digest "$work/verified.json")"
-    if skopeo inspect --raw --authfile "$work/anonymous-auth.json" \
-        docker://docker.io/durableworkflow/waterline:2.13.2 > "$work/existing-index.json" 2> "$work/existing-index-error.txt"; then
-        actual="sha256:$(sha256sum "$work/existing-index.json" | cut -d ' ' -f 1)"
-        [[ "$actual" = "$expected" ]]
-    elif ! rg --ignore-case 'manifest unknown|manifest_unknown' "$work/existing-index-error.txt" >/dev/null; then
-        echo 'Cannot establish fixed registry tag absence; publication refused.' >&2
-        return 1
-    fi
+    scripts/ci/check-registry-version.sh "$work" "$(jq -r .image_digest "$work/verified.json")"
 }
 gh api repos/durable-workflow/waterline/git/ref/tags/2.13.2 > "$work/tag-ref.json"
 if [[ "$(jq -r .object.type "$work/tag-ref.json")" = tag ]]; then
