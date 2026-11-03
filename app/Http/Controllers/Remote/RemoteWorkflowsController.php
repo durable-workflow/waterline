@@ -11,6 +11,7 @@ use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\BackendConfiguration;
+use Waterline\Support\Remote\CursorPageReplay;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ServiceVisibilityFilters;
 use Waterline\Support\RunWaitSummary;
@@ -209,7 +210,7 @@ final class RemoteWorkflowsController extends RemoteController
     private function list(string $bucket, Request $request): JsonResponse
     {
         $classification = WorkflowClassification::selection($request);
-        $pageNumber = max(1, (int) $request->query('page', 1));
+        $requestedPage = CursorPageReplay::requestedPage($request);
         $context = V2VisibilityFilterContext::resolve($request, $bucket);
         $filterPlan = ServiceVisibilityFilters::plan(
             $context['applied_filters'],
@@ -223,34 +224,32 @@ final class RemoteWorkflowsController extends RemoteController
             : ($context['saved_view_applied'] === true && $savedViewPlan['unavailable_filters'] === []);
         $savedViewWarning = $context['saved_view_warning']
             ?? ($context['saved_view'] === null ? null : $savedViewPlan['warning']);
-        $token = null;
-        $page = null;
-
-        for ($current = 1; $current <= $pageNumber; $current++) {
-            $page = $this->backend->client()->listWorkflows(
+        $replay = CursorPageReplay::replay(
+            $requestedPage,
+            fn (?string $token) => $this->backend->client()->listWorkflows(
                 workflowType: $filterPlan['workflow_type'],
                 status: $bucket,
                 query: $filterPlan['query'],
                 pageSize: self::PAGE_SIZE,
                 nextPageToken: $token,
-            );
-            $token = $page->nextPageToken;
+            ),
+        );
+        $pageNumber = $replay['page_number'];
+        $token = $replay['next_page_token'];
+        $hasMore = $token !== null && ! $replay['page_limit_reached'];
 
-            if ($current < $pageNumber && $token === null) {
-                break;
-            }
-        }
-
-        $items = array_map(fn ($execution): array => $this->listItem($execution->raw), $page?->executions ?? []);
-        $lastPage = $token === null ? $pageNumber : $pageNumber + 1;
+        $items = array_map(fn ($execution): array => $this->listItem($execution->raw), $replay['page']->executions);
+        $lastPage = $hasMore ? $pageNumber + 1 : $pageNumber;
 
         return response()->json($this->scoped([
             'data' => $items,
             'current_page' => $pageNumber,
             'last_page' => $lastPage,
             'per_page' => self::PAGE_SIZE,
-            'total' => (($pageNumber - 1) * self::PAGE_SIZE) + count($items) + ($token === null ? 0 : 1),
+            'total' => (($pageNumber - 1) * self::PAGE_SIZE) + count($items) + ($hasMore ? 1 : 0),
             'next_page_token' => $token,
+            'page_limit' => CursorPageReplay::MAX_PAGE,
+            'page_limit_reached' => $replay['page_limit_reached'],
             'classification_scope' => [...$classification, 'available' => true],
             'time_windows' => ['generated_at' => now()->toJSON(), 'status_bucket' => $bucket, 'retention_scope' => 'all_retained_runs'],
             'visibility_filters' => [

@@ -9,6 +9,7 @@ use DurableWorkflow\Model\SchedulePage;
 use DurableWorkflow\Model\WorkflowExecution;
 use DurableWorkflow\Model\WorkflowPage;
 use DurableWorkflow\Model\WorkflowRun;
+use Illuminate\Support\Carbon;
 use Throwable;
 
 final class FakeRemoteClient
@@ -75,6 +76,18 @@ final class FakeRemoteClient
     /** @var array<string, mixed>|null */
     public ?array $backfillScheduleResponse = null;
 
+    /** @var int|null Pages each list reports before its next token runs out; null serves one page. */
+    public ?int $listPageCount = null;
+
+    /** Elapsed seconds each list call takes on the monotonic clock, to simulate slow server pages. */
+    public int $listCallSeconds = 0;
+
+    /** Seconds the wall clock moves during each list call; null moves it with the elapsed time. Negative steps it backwards. */
+    public ?int $listCallWallClockSeconds = null;
+
+    /** Monotonic clock advanced by $listCallSeconds during each list call. */
+    public ?FakeMonotonicClock $clock = null;
+
     public function listWorkflows(
         ?string $workflowType = null,
         ?string $status = null,
@@ -95,7 +108,7 @@ final class FakeRemoteClient
 
         return new WorkflowPage([
             ...array_map(static fn (array $row): WorkflowExecution => WorkflowExecution::fromArray($row), $rows),
-        ], null, count($rows), ['workflows' => $rows]);
+        ], $this->listedNextPageToken($nextPageToken), count($rows), ['workflows' => $rows]);
     }
 
     public function listServiceCatalogEndpoints(array $filters = []): array
@@ -323,11 +336,27 @@ final class FakeRemoteClient
                 && ($workflowType === null || ($item['workflow_type'] ?? null) === $workflowType),
         ));
 
+        $next = $this->listedNextPageToken($nextPageToken);
+
         return new SchedulePage(
             array_map(static fn (array $item): ScheduleDescription => ScheduleDescription::fromArray($item), $items),
-            null,
-            ['schedules' => $items, 'next_page_token' => null],
+            $next,
+            ['schedules' => $items, 'next_page_token' => $next],
         );
+    }
+
+    private function listedNextPageToken(?string $token): ?string
+    {
+        $this->clock?->advanceSeconds($this->listCallSeconds);
+        $wallSeconds = $this->listCallWallClockSeconds ?? $this->listCallSeconds;
+
+        if ($wallSeconds !== 0) {
+            Carbon::setTestNow(Carbon::now()->addSeconds($wallSeconds));
+        }
+
+        $page = $token === null ? 1 : (int) substr($token, strlen('page-'));
+
+        return $this->listPageCount !== null && $page < $this->listPageCount ? 'page-'.($page + 1) : null;
     }
 
     public function describeSchedule(string $scheduleId): ScheduleDescription

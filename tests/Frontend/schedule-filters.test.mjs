@@ -1,16 +1,18 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
+import {createSSRApp} from 'vue';
+import {renderToString} from 'vue/server-renderer';
 
 const source = fs.readFileSync(new URL('../../resources/js/components/ScheduleView.vue', import.meta.url), 'utf8');
 const script = source.match(/<script>([\s\S]*?)<\/script>/)[1];
 
-function fixture() {
+function fixture(mode = 'service') {
     const requests = [];
     const axios = {get: (url, options) => new Promise((resolve, reject) => requests.push({url, options, resolve, reject}))};
     const component = Function('axios', script.replace(/^import[\s\S]*?from ['"][^'"]+['"];$/gm, '').replace('export default', 'return'))(axios);
     const state = {
-        ...component.data(), ...component.methods,
+        ...component.data(), ...component.methods, serviceMode: mode === 'service',
         $t: value => value, resolvedApiEndpoint: () => '/waterline/api/v2/schedules',
     };
     return {state, requests};
@@ -73,4 +75,38 @@ test('a refused query preserves entered values and an open dialog for explicit r
     requests[1].resolve(response('recovered'));
     await retried;
     assert.equal(state.error, null);
+});
+
+const filterForm = source.match(/<form class="schedule-view__filters[\s\S]*?<\/form>/)[0];
+
+async function renderFilters(mode) {
+    const app = createSSRApp({
+        template: filterForm,
+        data: () => ({statusFilter: '', workflowTypeFilter: '', visibilityQueryFilter: ''}),
+        computed: {serviceMode: () => mode === 'service'},
+        methods: {applyFilters() {}},
+    });
+    app.config.globalProperties.$t = value => value;
+    return renderToString(app);
+}
+
+test('the visibility query field and its parameter are service-only', async () => {
+    const service = await renderFilters('service');
+    assert.match(service, /id="waterline-schedule-query"/);
+    assert.match(service, /id="waterline-schedule-type"/);
+    assert.doesNotMatch(service, /value="deleted"/);
+    assert.doesNotMatch(service, /schedule-view__filters--embedded/);
+
+    const embedded = await renderFilters('embedded');
+    assert.doesNotMatch(embedded, /waterline-schedule-query|Schedule visibility query/);
+    assert.match(embedded, /id="waterline-schedule-type"/);
+    assert.match(embedded, /value="deleted"/);
+    assert.match(embedded, /schedule-view__filters--embedded/);
+
+    const {state, requests} = fixture('embedded');
+    Object.assign(state, {workflowTypeFilter: 'orders.process', visibilityQueryFilter: 'ScheduleId = "nightly"'});
+    const load = state.applyFilters();
+    assert.deepEqual(requests[0].options.params, {page: 1, workflow_type: 'orders.process'});
+    requests[0].resolve(response('embedded'));
+    await load;
 });

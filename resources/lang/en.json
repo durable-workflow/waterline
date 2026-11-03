@@ -1300,5 +1300,7 @@
     "The schedule trigger was skipped. Reason: {value1}": "The schedule trigger was skipped. Reason: {value1}",
     "Trigger buffered": "Trigger buffered",
     "The trigger was buffered and starts when the running workflow finishes.": "The trigger was buffered and starts when the running workflow finishes.",
-    "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable."
+    "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.",
+    "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.": "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.",
+    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them."
 }

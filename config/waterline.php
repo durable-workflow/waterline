@@ -84,6 +84,13 @@ return [
 
     'allow_unauthenticated' => env('WATERLINE_ALLOW_UNAUTHENTICATED', false),
 
+    // Embedded exception excerpts are read on demand from app_path() only.
+    // Add narrow, trusted PHP source directories explicitly; never cache/config directories.
+    'source_context' => [
+        'enabled' => env('WATERLINE_SOURCE_CONTEXT', true),
+        'additional_roots' => [],
+    ],
+
     // Embedded-only restrictions. Null gates preserve existing viewer access
     // to actions. A configured gate must allow the current host user.
     'read_only' => env('WATERLINE_READ_ONLY', false),

@@ -12,6 +12,7 @@ use Waterline\Support\OperatorAuthorization;
 use Waterline\Support\CompatibilitySemantics;
 use Waterline\Support\CompensationVisibility;
 use Waterline\Support\DurableCommandAttribution;
+use Waterline\Support\ExceptionSourceContext;
 use Waterline\Support\ObserverStateEnvelope;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\RunApplicationContext;
@@ -42,6 +43,22 @@ class V2StoredWorkflowResource extends JsonResource
     private const DEFAULT_TIMELINE_WINDOW = 200;
     private const MIN_TIMELINE_WINDOW = 50;
     private const MAX_TIMELINE_WINDOW = 1000;
+
+    private bool $includeSourceContext = false;
+
+    public function withSourceContext(): self
+    {
+        $this->includeSourceContext = true;
+
+        return $this;
+    }
+
+    public function withResponse($request, $response): void
+    {
+        if ($this->includeSourceContext) {
+            $response->headers->set('Cache-Control', 'private, no-store');
+        }
+    }
 
     public function toArray($request)
     {
@@ -84,7 +101,9 @@ class V2StoredWorkflowResource extends JsonResource
         $detail = CompatibilitySemantics::annotateRun($detail);
         $detail['namespace'] = $this->resource->namespace;
         $detail['operator_scope'] = OperatorScope::payload();
-        return $this->displayTypedValues(OperatorAuthorization::annotateRun(ActionabilityContract::annotateRun($detail)));
+        $detail = $this->displayTypedValues(OperatorAuthorization::annotateRun(ActionabilityContract::annotateRun($detail)));
+
+        return $this->includeSourceContext ? ExceptionSourceContext::annotate($detail, $request) : $detail;
     }
 
     private function displayTypedValues(mixed $value): mixed

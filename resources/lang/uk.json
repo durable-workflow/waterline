@@ -1300,5 +1300,7 @@
     "The schedule trigger was skipped. Reason: {value1}": "Запуск розкладу пропущено. Причина: {value1}",
     "Trigger buffered": "Запуск буферизовано",
     "The trigger was buffered and starts when the running workflow finishes.": "Запуск буферизовано. Він почнеться, коли поточний робочий процес завершиться.",
-    "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "Цей Waterline працює лише для читання. Призупинення, поновлення, запуск і заповнення пропусків недоступні."
+    "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "Цей Waterline працює лише для читання. Призупинення, поновлення, запуск і заповнення пропусків недоступні.",
+    "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.": "Waterline показує щонайбільше {limit} сторінок цього списку. Є ще відповідні запуски. Звузьте фільтри, щоб дістатися до них.",
+    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline показує щонайбільше {limit} сторінок цього списку. Є ще відповідні розклади. Звузьте фільтри, щоб дістатися до них."
 }

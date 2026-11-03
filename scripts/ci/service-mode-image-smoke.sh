@@ -108,7 +108,12 @@ if [ "${SERVICE_IMAGE_SKIP_BUILD:-0}" != "1" ]; then
     expected_source_commit="$source_commit"
     expected_waterline_version="$smoke_version"
 else
-    docker pull "$image"
+    if [ "${SERVICE_IMAGE_LOCAL_ONLY:-0}" = "1" ]; then
+        # OCI qualification must exercise the imported image without a registry fallback.
+        docker image inspect "$image" >/dev/null
+    else
+        docker pull "$image"
+    fi
     expected_source_commit="${EXPECTED_SOURCE_COMMIT:-}"
     expected_waterline_version="${EXPECTED_WATERLINE_VERSION:-}"
 fi
@@ -157,6 +162,18 @@ else
         exit 1
     fi
     echo 'Historical application smoke only: this image predates decoder qualification.' >&2
+fi
+
+if image_requires_curl_guard "$image_release"; then
+    docker run --rm --init --user 1000:1000 --network none --entrypoint php \
+        "$image" /usr/local/share/waterline/verify-curl.php
+else
+    curl_feature_status=$?
+    if [ "$curl_feature_status" -ne 1 ]; then
+        echo 'Cannot determine the curl contract for this image version.' >&2
+        exit 1
+    fi
+    echo 'Historical application smoke only: this image predates curl qualification.' >&2
 fi
 
 if docker run --name "$memory_database_container" \

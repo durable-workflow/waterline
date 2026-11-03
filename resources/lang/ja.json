@@ -1300,5 +1300,7 @@
     "The schedule trigger was skipped. Reason: {value1}": "スケジュールの発火がスキップされました。理由: {value1}",
     "Trigger buffered": "発火がバッファされました",
     "The trigger was buffered and starts when the running workflow finishes.": "発火はバッファされ、実行中のワークフローが終了すると開始されます。",
-    "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "この Waterline は読み取り専用です。一時停止、再開、発火、未実行分の補完は使用できません。"
+    "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "この Waterline は読み取り専用です。一時停止、再開、発火、未実行分の補完は使用できません。",
+    "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.": "Waterline はこの一覧を最大 {limit} ページまで表示します。条件に一致する実行はさらにあります。表示するにはフィルターを絞り込んでください。",
+    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline はこの一覧を最大 {limit} ページまで表示します。条件に一致するスケジュールはさらにあります。表示するにはフィルターを絞り込んでください。"
 }

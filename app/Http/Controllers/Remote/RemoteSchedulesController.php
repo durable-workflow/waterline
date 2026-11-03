@@ -10,6 +10,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Waterline\Support\BackendConfiguration;
+use Waterline\Support\Remote\CursorPageReplay;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ScheduleActionResult;
 use Waterline\Support\ScheduleRow;
@@ -30,37 +31,34 @@ final class RemoteSchedulesController extends RemoteController
             'query' => ['sometimes', 'required', 'string', 'min:1', 'max:2048'],
         ])->validate();
 
-        $pageNumber = max(1, (int) $request->query('page', 1));
-        $token = null;
-        $page = null;
-
-        for ($current = 1; $current <= $pageNumber; $current++) {
-            $page = $this->backend->client()->listSchedules(
+        $replay = CursorPageReplay::replay(
+            CursorPageReplay::requestedPage($request),
+            fn (?string $token) => $this->backend->client()->listSchedules(
                 status: $this->stringQuery($request, 'status'),
                 workflowType: $this->stringQuery($request, 'workflow_type'),
                 query: $this->stringQuery($request, 'query'),
                 pageSize: self::PAGE_SIZE,
                 nextPageToken: $token,
-            );
-            $token = $page->nextPageToken;
-
-            if ($current < $pageNumber && $token === null) {
-                break;
-            }
-        }
+            ),
+        );
+        $pageNumber = $replay['page_number'];
+        $token = $replay['next_page_token'];
+        $hasMore = $token !== null && ! $replay['page_limit_reached'];
 
         $schedules = array_map(
             fn (ScheduleDescription $schedule): array => $this->listRow($schedule->raw),
-            $page?->schedules ?? [],
+            $replay['page']->schedules,
         );
 
         return response()->json($this->scoped([
             'data' => $schedules,
             'current_page' => $pageNumber,
-            'last_page' => $token === null ? $pageNumber : $pageNumber + 1,
+            'last_page' => $hasMore ? $pageNumber + 1 : $pageNumber,
             'per_page' => self::PAGE_SIZE,
-            'total' => (($pageNumber - 1) * self::PAGE_SIZE) + count($schedules) + ($token === null ? 0 : 1),
+            'total' => (($pageNumber - 1) * self::PAGE_SIZE) + count($schedules) + ($hasMore ? 1 : 0),
             'next_page_token' => $token,
+            'page_limit' => CursorPageReplay::MAX_PAGE,
+            'page_limit_reached' => $replay['page_limit_reached'],
         ]));
     }
 

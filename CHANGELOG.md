@@ -1,7 +1,27 @@
 # Changelog
 
-## 2.13.2 - 2026-10-23
+## Unreleased
 
+- The schedule list filters by workflow type in embedded and service mode. The
+  filter combines with the status filter and stays applied while you page
+  through results.
+- Service mode adds a schedule visibility query filter, which the server
+  evaluates. It needs a Server that accepts `workflow_type` and `query` on
+  schedule list requests, such as Server 3.0.4. Embedded mode does not show the
+  field. A direct embedded API request with `query` returns HTTP 501
+  `backend_capability_unavailable`.
+- An empty, non-string or overlong `workflow_type` or `query` returns 422 before
+  Waterline reads any schedules. A rejected query leaves the entered filters in
+  place so you can correct them and retry.
+
+## 2.13.2 - 2026-11-02
+
+- The service image upgrades Alpine `curl` and `libcurl` to 8.23.0-r0 or later
+  for CVE-2026-92392, an HTTP/2 upload use-after-free that affects the 8.22.0-r0
+  packages in the 2.12.3 and 2.13.0 images. The build refuses an image whose PHP
+  runtime does not load the patched library, and both platform images are
+  scanned before publication. Waterline makes outbound HTTP calls to its
+  configured Server, so upgrade service-mode deployments to this image.
 - Schedule, worker and service views now share the configured finite browser
   request budget with run lists and run details. A stalled read exposes the
   existing Retry control instead of waiting indefinitely. The shared client
@@ -12,6 +32,18 @@
 - Automatic list refresh waits for an outstanding read instead of superseding
   it. Timeout errors remain visible until a successful read, including when
   the request budget exceeds the refresh cadence.
+- Service-mode run and schedule lists bound page navigation. The server pages
+  by opaque cursor, so page N costs N list calls; one request now reads at most
+  100 pages and starts no further call once a replay budget ending five
+  seconds before the browser request budget elapses (HTTP 504
+  `page_replay_budget_exceeded`, retryable). Malformed or
+  out-of-range `page` values, including ones with surrounding whitespace or a
+  trailing newline, return 422 before any server call. A page past the end of
+  the data reports the last page actually read, and both lists adopt that page
+  for Previous, Next and Refresh. The replay budget
+  uses a monotonic clock, so wall-clock changes cannot extend it. When page 100
+  still has more rows, both lists say so and ask the operator to narrow the
+  filters instead of presenting the list as complete.
 
 ## 2.13.1 - 2026-10-23
 

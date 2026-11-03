@@ -23,7 +23,7 @@
             </div>
         </section>
 
-        <form class="schedule-view__filters card card-bg-secondary" @submit.prevent="applyFilters">
+        <form class="schedule-view__filters card card-bg-secondary" :class="{'schedule-view__filters--embedded': !serviceMode}" @submit.prevent="applyFilters">
             <div>
                 <label for="waterline-schedule-status">{{ $t("Status") }}</label>
                 <select id="waterline-schedule-status" v-model="statusFilter" class="form-control form-control-sm">
@@ -37,7 +37,7 @@
                 <label for="waterline-schedule-type">{{ $t("Workflow Type") }}</label>
                 <input id="waterline-schedule-type" v-model="workflowTypeFilter" class="form-control form-control-sm" type="text">
             </div>
-            <div>
+            <div v-if="serviceMode">
                 <label for="waterline-schedule-query">{{ $t("Schedule visibility query") }}</label>
                 <input id="waterline-schedule-query" v-model="visibilityQueryFilter" class="form-control form-control-sm" type="text">
             </div>
@@ -63,7 +63,8 @@
                     <div class="card-body card-bg-secondary">
                         <div class="schedule-view__summary-label">{{ $t("Returned schedules") }}</div>
                         <div class="schedule-view__summary-value">{{ totalSchedules.toLocaleString($i18n.locale) }}</div>
-                        <div class="schedule-view__summary-meta">{{ pagination ? pagination.total.toLocaleString($i18n.locale) : schedules.length.toLocaleString($i18n.locale) }} {{ $t("total in the filtered result set.") }}</div>
+                        <div v-if="pageLimitReached" class="schedule-view__summary-meta">{{ pageLimitMessage }}</div>
+                        <div v-else class="schedule-view__summary-meta">{{ pagination ? pagination.total.toLocaleString($i18n.locale) : schedules.length.toLocaleString($i18n.locale) }} {{ $t("total in the filtered result set.") }}</div>
                     </div>
                 </article>
 
@@ -273,6 +274,8 @@
                     <button class="btn btn-secondary btn-sm" @click="goToPage(pagination.current_page + 1)" :disabled="pagination.current_page === pagination.last_page">
                         {{ $t("Next") }}
                     </button>
+
+                    <p v-if="pageLimitReached" class="schedule-view__pagination-limit" role="status">{{ pageLimitMessage }}</p>
                 </div>
             </article>
         </div>
@@ -695,6 +698,17 @@ export default {
             return this.pagination?.total || this.schedules.length;
         },
 
+        // Service mode replays at most page_limit server pages per request.
+        pageLimitReached() {
+            return this.pagination?.page_limit_reached === true;
+        },
+
+        pageLimitMessage() {
+            const limit = this.pagination?.page_limit ?? this.pagination?.last_page ?? 0;
+
+            return this.$t('Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.', { limit: limit.toLocaleString(this.$i18n.locale) });
+        },
+
         activeScheduleCount() {
             return this.schedules.filter((schedule) => schedule.status === 'active').length;
         },
@@ -768,7 +782,9 @@ export default {
             const params = {page: this.currentPage};
             if (this.appliedStatus) params.status = this.appliedStatus;
             if (this.appliedWorkflowType) params.workflow_type = this.appliedWorkflowType;
-            if (this.appliedVisibilityQuery) params.query = this.appliedVisibilityQuery;
+            // Embedded backends answer a visibility query with 501, so the
+            // field is service-only and a value applied earlier is not sent.
+            if (this.serviceMode && this.appliedVisibilityQuery) params.query = this.appliedVisibilityQuery;
             return params;
         },
 
@@ -786,11 +802,18 @@ export default {
                 this.schedules = response.data.data || [];
                 this.operatorScope = response.data.operator_scope || null;
                 this.observedBackend = response.data.backend || null;
+                // Service mode answers a page past the end with the last page
+                // it read; adopt it so Previous, Next and Refresh follow it.
+                if (Number.isInteger(response.data.current_page) && response.data.current_page >= 1) {
+                    this.currentPage = response.data.current_page;
+                }
                 this.pagination = {
                     current_page: response.data.current_page,
                     last_page: response.data.last_page,
                     per_page: response.data.per_page,
-                    total: response.data.total
+                    total: response.data.total,
+                    page_limit: response.data.page_limit ?? null,
+                    page_limit_reached: response.data.page_limit_reached === true
                 };
             } catch (e) {
                 if (request !== this.listRequest) return;
@@ -1593,6 +1616,10 @@ export default {
     padding: 1rem;
 }
 
+.schedule-view__filters--embedded {
+    grid-template-columns: minmax(8rem, 0.7fr) minmax(12rem, 1.5fr) auto;
+}
+
 .schedule-view__filters > div {
     min-width: 0;
 }
@@ -1773,6 +1800,13 @@ export default {
     align-items: center;
     flex-wrap: wrap;
     gap: 0.45rem;
+}
+
+.schedule-view__pagination-limit {
+    flex-basis: 100%;
+    margin: 0;
+    color: var(--wl-text-muted);
+    font-weight: 600;
 }
 
 .schedule-view__pagination-ellipsis {
