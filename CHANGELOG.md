@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- The schedule list filters by workflow type in embedded and service mode. The
+  filter combines with the status filter and stays applied while you page
+  through results.
+- Service mode adds a schedule visibility query filter, which the server
+  evaluates. It needs a Server that accepts `workflow_type` and `query` on
+  schedule list requests, such as Server 3.0.4. Embedded mode does not show the
+  field. A direct embedded API request with `query` returns HTTP 501
+  `backend_capability_unavailable`.
+- An empty, non-string or overlong `workflow_type` or `query` returns 422 before
+  Waterline reads any schedules. A rejected query leaves the entered filters in
+  place so you can correct them and retry.
+
 ## 2.13.2 - 2026-11-02
 
 - The service image upgrades Alpine `curl` and `libcurl` to 8.23.0-r0 or later

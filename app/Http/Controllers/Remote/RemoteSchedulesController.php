@@ -8,6 +8,7 @@ use DurableWorkflow\Exception\DurableWorkflowException;
 use DurableWorkflow\Model\ScheduleDescription;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\CursorPageReplay;
 use Waterline\Support\Remote\RemoteBackend;
@@ -25,6 +26,11 @@ final class RemoteSchedulesController extends RemoteController
 
     public function index(Request $request): JsonResponse
     {
+        Validator::make($request->query(), [
+            'workflow_type' => ['sometimes', 'required', 'string', 'min:1', 'max:255', 'regex:/\S/'],
+            'query' => ['sometimes', 'required', 'string', 'min:1', 'max:2048'],
+        ])->validate();
+
         $replay = CursorPageReplay::replay(
             CursorPageReplay::requestedPage($request),
             fn (?string $token) => $this->backend->client()->listSchedules(

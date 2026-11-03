@@ -120,7 +120,7 @@ test('a past-end run page adopts the returned page so Previous follows it',async
 
 test('a past-end schedule page adopts the returned page so Refresh repeats it',async()=>{
     const schedules = fs.readFileSync(new URL('../../resources/js/components/ScheduleView.vue',import.meta.url),'utf8');
-    const methods = ['async loadData() {','refresh() {','goToPage(page) {'].map(start=>{
+    const methods = ['async loadData() {','listParams() {','refresh() {','goToPage(page) {'].map(start=>{
         const at = schedules.indexOf('\n        '+start);
         assert.ok(at>0,`The production ${start} method must be exercised.`);
         return schedules.slice(at+1,schedules.indexOf('\n        },',at)+11);
@@ -129,7 +129,7 @@ test('a past-end schedule page adopts the returned page so Refresh repeats it',a
     const axios = {get:(url,options)=>new Promise(resolve=>requests.push({url,params:{...options.params},resolve}))};
     const component = vm.runInNewContext(`({${methods.join('\n')}})`,{axios,console});
     const context = {
-        ...component,schedules:[],currentPage:9,statusFilter:'',pagination:null,
+        ...component,schedules:[],currentPage:9,listRequest:0,appliedStatus:'',pagination:null,
         resolvedApiEndpoint:()=>'/waterline/api/v2/schedules',$t:value=>value,responseMessage:(error,fallback)=>fallback,
     };
     for (const name of Object.keys(component)) context[name] = component[name].bind(context);

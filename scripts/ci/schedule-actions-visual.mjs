@@ -11,6 +11,7 @@ import path from 'node:path';
 
 const VIEWPORTS = [
     { name: 'desktop', width: 1440, height: 900 },
+    { name: 'tablet', width: 900, height: 900 },
     { name: 'mobile', width: 390, height: 844 },
 ];
 
@@ -130,6 +131,61 @@ async function assertRowsShowStoredState(page) {
     assert.doesNotMatch(await content(nightly), /Custom/);
     assert.match(await content(nightly), /Never/);
     record('rows show schedule IDs, namespaces, cadence and timezone from storage');
+}
+
+async function applyScheduleFilters(page, expectedStatus) {
+    const response = page.waitForResponse((result) => (
+        new URL(result.url()).pathname === new URL(apiUrl).pathname
+        && result.request().method() === 'GET'
+    ));
+    await page.locator('.schedule-view__filters').getByRole('button', {name: 'Apply Filters', exact: true}).click();
+    const result = await response;
+    assert.equal(result.status(), expectedStatus, 'filtered list response');
+    return result.json();
+}
+
+async function scheduleFilterCase(page, theme, viewport, workflowType, expectedRows) {
+    await page.setViewportSize({width: viewport.width, height: viewport.height});
+    await page.evaluate(value => localStorage.setItem('waterline-theme', value), theme);
+    await openSchedules(page);
+    const filters = page.locator('.schedule-view__filters');
+    const type = filters.getByLabel('Workflow Type', {exact: true});
+    const query = filters.getByLabel('Schedule visibility query', {exact: true});
+    const status = filters.getByLabel('Status', {exact: true});
+    await type.fill(workflowType);
+    await status.selectOption('paused');
+    assert.equal((await applyScheduleFilters(page, 200)).data.length, 0, 'status and type combine');
+    await page.getByText('No schedules found', {exact: true}).waitFor();
+    await status.selectOption('active');
+    const matched = await applyScheduleFilters(page, 200);
+    assert.deepEqual(matched.data.map(item => [item.namespace, item.schedule_id]).sort(), expectedRows);
+    await page.waitForFunction(count => document.querySelectorAll('tr[data-schedule-id]').length === count, expectedRows.length);
+
+    // Embedded backends cannot answer visibility queries, so the field is
+    // service-only. The 501 refusal itself is covered by the feature tests.
+    assert.equal(await query.count(), 0, 'embedded mode hides the visibility query field');
+    await type.fill('');
+    assert.equal((await applyScheduleFilters(page, 200)).data.length, 3, 'clearing filters recovers the list');
+    await row(page, 'default', 'nightly-invoice-sync').waitFor();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 1, `${theme}/${viewport.name}: filter form does not overflow (${overflow}px)`);
+    await page.screenshot({path: path.join(outputDir, `schedule-filters-${theme}-${viewport.name}.png`), fullPage: true});
+    record('type/status filters, hidden embedded visibility query and filter recovery', {theme, viewport: viewport.name, expectedRows});
+}
+
+async function scheduleFilters(page) {
+    const rows = await listRows(page);
+    const workflowType = rows.find(item => typeof item.workflow_type === 'string' && item.workflow_type !== '')?.workflow_type;
+    assert.ok(workflowType, 'seed includes a stored workflow type');
+    const expectedRows = rows.filter(item => item.workflow_type === workflowType).map(item => [item.namespace, item.schedule_id]).sort();
+    // One host and its current form are shared. Finish each real HTTP/UI
+    // interaction before changing theme, viewport or applied filters.
+    for (const theme of ['dark', 'light']) {
+        for (const viewport of VIEWPORTS) {
+            await scheduleFilterCase(page, theme, viewport, workflowType, expectedRows);
+        }
+    }
+    await openSchedules(page);
 }
 
 async function pauseAndResumeTheTenantRow(page) {
@@ -261,7 +317,7 @@ async function layoutHoldsAtEachWidth(page) {
         await page.keyboard.press('Escape');
         await dialog.waitFor({ state: 'hidden', timeout: 10_000 });
     }
-    record('list and details fit desktop and mobile widths');
+    record('list and details fit desktop, tablet and mobile widths');
 }
 
 const { chromium } = loadPlaywright();
@@ -279,6 +335,7 @@ page.on('response', (response) => {
 try {
     await openSchedules(page);
     await assertRowsShowStoredState(page);
+    await scheduleFilters(page);
     await pauseAndResumeTheTenantRow(page);
     await triggerTheDefaultRow(page);
     await backfillTheDefaultRow(page);
