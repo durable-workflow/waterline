@@ -1299,5 +1299,7 @@
     "The schedule trigger was skipped. Reason: {value1}": "Le déclenchement de la planification a été ignoré. Motif : {value1}",
     "Trigger buffered": "Déclenchement mis en attente",
     "The trigger was buffered and starts when the running workflow finishes.": "Le déclenchement a été mis en attente et démarre à la fin du workflow en cours.",
-    "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "Ce Waterline est en lecture seule. La mise en pause, la reprise, le déclenchement et le rattrapage sont indisponibles."
+    "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "Ce Waterline est en lecture seule. La mise en pause, la reprise, le déclenchement et le rattrapage sont indisponibles.",
+    "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.": "Waterline affiche au plus {limit} pages de cette liste. D'autres exécutions correspondent. Affinez les filtres pour les afficher.",
+    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline affiche au plus {limit} pages de cette liste. D'autres planifications correspondent. Affinez les filtres pour les afficher."
 }

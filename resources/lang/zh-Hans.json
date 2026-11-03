@@ -1299,5 +1299,7 @@
     "The schedule trigger was skipped. Reason: {value1}": "调度触发已跳过。原因：{value1}",
     "Trigger buffered": "触发已缓冲",
     "The trigger was buffered and starts when the running workflow finishes.": "该触发已缓冲，将在正在运行的工作流结束后启动。",
-    "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "此 Waterline 为只读。暂停、恢复、触发和补执行不可用。"
+    "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "此 Waterline 为只读。暂停、恢复、触发和补执行不可用。",
+    "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.": "Waterline 最多显示此列表的 {limit} 页。还有更多匹配的运行。请缩小筛选范围以查看它们。",
+    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline 最多显示此列表的 {limit} 页。还有更多匹配的调度。请缩小筛选范围以查看它们。"
 }

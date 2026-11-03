@@ -1299,5 +1299,7 @@
     "The schedule trigger was skipped. Reason: {value1}": "Se omitió la activación de la programación. Motivo: {value1}",
     "Trigger buffered": "Activación en búfer",
     "The trigger was buffered and starts when the running workflow finishes.": "La activación quedó en búfer y se inicia cuando termine el flujo de trabajo en curso.",
-    "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "Este Waterline es de solo lectura. Pausar, reanudar, activar y recuperar ejecuciones omitidas no están disponibles."
+    "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "Este Waterline es de solo lectura. Pausar, reanudar, activar y recuperar ejecuciones omitidas no están disponibles.",
+    "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.": "Waterline muestra como máximo {limit} páginas de esta lista. Hay más ejecuciones que coinciden. Restringe los filtros para verlas.",
+    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline muestra como máximo {limit} páginas de esta lista. Hay más programaciones que coinciden. Restringe los filtros para verlas."
 }

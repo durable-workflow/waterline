@@ -79,8 +79,13 @@ final class FakeRemoteClient
     /** @var int|null Pages each list reports before its next token runs out; null serves one page. */
     public ?int $listPageCount = null;
 
-    /** Seconds the test clock advances during each list call, to simulate slow server pages. */
+    /** Seconds $clock advances during each list call, to simulate slow server pages. */
     public int $listCallSeconds = 0;
+
+    /** Seconds the wall clock (Carbon test time) shifts during each list call; negative steps it backwards. */
+    public int $listWallClockSeconds = 0;
+
+    public ?FakeMonotonicClock $clock = null;
 
     public function listWorkflows(
         ?string $workflowType = null,
@@ -341,8 +346,10 @@ final class FakeRemoteClient
 
     private function listedNextPageToken(?string $token): ?string
     {
-        if ($this->listCallSeconds > 0) {
-            Carbon::setTestNow(Carbon::now()->addSeconds($this->listCallSeconds));
+        $this->clock?->advanceSeconds($this->listCallSeconds);
+
+        if ($this->listWallClockSeconds !== 0) {
+            Carbon::setTestNow(Carbon::now()->addSeconds($this->listWallClockSeconds));
         }
 
         $page = $token === null ? 1 : (int) substr($token, strlen('page-'));
