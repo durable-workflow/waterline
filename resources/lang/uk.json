@@ -946,6 +946,8 @@
     "no typed history": "немає типізованої історії",
     "Continued from": "Продовжено із",
     "Continued as": "Продовжено як",
+    "Redriven from": "Перезапущено із",
+    "Redriven as": "Перезапущено як",
     "Repair run?": "Відновити запуск?",
     "This recreates the durable next task for the current active run when liveness shows repair is needed. It does not restart an activity that is already marked running. For scripted recovery, the matching CLI sweep is workflow:v2:repair-pass --run-id=<current-run-id>.": "Ця дія відтворює наступне стійке завдання поточного активного запуску, коли перевірка роботи вказує на потребу відновлення. Activity, уже позначена як така, що виконується, не запускається знову. Відповідна команда CLI для автоматизованого відновлення: workflow:v2:repair-pass --run-id=<current-run-id>.",
     "Repair run": "Відновити запуск",

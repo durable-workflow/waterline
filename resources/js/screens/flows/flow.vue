@@ -4804,6 +4804,10 @@ export default {
                 return direction === 'parent' ? this.$t("Continued from") : this.$t("Continued as")
             }
 
+            if (link.link_type === 'redrive') {
+                return direction === 'parent' ? this.$t("Redriven from") : this.$t("Redriven as")
+            }
+
             return direction === 'parent' ? 'Parent' : 'Child'
         },
 

@@ -175,3 +175,16 @@ test('late initial selection responses cannot overwrite the newly selected run',
     assert.equal(context.flow.selected_run_id, 'new')
     assert.equal(context.ready, true)
 })
+
+test('redrive lineage reads as redriven from and redriven as, not parent and child', () => {
+    const context = detail({ flow: {
+        ...run, read_mode: 'complete',
+        parents: [{ id: 'redrive:source', link_type: 'redrive', workflow_instance_id: 'order', workflow_run_id: 'source', history_authority: 'typed_history' }],
+        continuedWorkflows: [{ id: 'redrive:successor', link_type: 'redrive', workflow_instance_id: 'order', workflow_run_id: 'successor', history_authority: 'typed_history' }],
+    } })
+    assert.equal(context.lineageEntries().map(({ label, run_id }) => label + ':' + run_id).join(','),
+        'Redriven from:source,Redriven as:successor')
+    const german = detail({ $t: createWaterlineI18n('de').global.t })
+    assert.equal(german.lineageLabel({ link_type: 'redrive' }, 'parent'), 'Erneut ausgeführt von')
+    assert.equal(context.lineageLabel({ link_type: 'child_workflow' }, 'child'), 'Child')
+})

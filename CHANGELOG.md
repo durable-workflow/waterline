@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Run detail labels a redrive lineage link as "Redriven from" on the successor
+  run and "Redriven as" on the failed source run, rather than "Parent" and
+  "Child". The labels need a workflow package that reports redrive links from
+  typed history (durable-workflow/workflow#1008).
 - The schedule list filters by workflow type in embedded and service mode. The
   filter combines with the status filter and stays applied while you page
   through results.
