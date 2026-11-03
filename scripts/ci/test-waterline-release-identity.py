@@ -304,5 +304,75 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
                      if "DOCKERHUB_TOKEN" in step.get("env", {}))
         self.assertLess(verification, login)
 
+class RegistryVersionCheckTest(unittest.TestCase):
+    """The fixed-tag check must work with only hosted-runner tools and fail closed."""
+
+    CHECK = ROOT / "scripts/ci/check-registry-version.sh"
+    EXPECTED_INDEX = b'{"schemaVersion":2}'
+
+    def run_check(self, *, exit_code: int, stdout: bytes = b"", stderr: str = "", expected: str | None = None):
+        import hashlib
+        import os
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            bin_dir = tmp_path / "bin"
+            bin_dir.mkdir()
+            (tmp_path / "index.out").write_bytes(stdout)
+            (tmp_path / "index.err").write_text(stderr)
+            skopeo = bin_dir / "skopeo"
+            skopeo.write_text(
+                "#!/bin/sh\n"
+                f'cat "{tmp_path}/index.out"\n'
+                f'cat "{tmp_path}/index.err" >&2\n'
+                f"exit {exit_code}\n"
+            )
+            skopeo.chmod(0o755)
+            digest = expected or "sha256:" + hashlib.sha256(self.EXPECTED_INDEX).hexdigest()
+            # Only the stub directory and the base system paths: no ripgrep available.
+            env = {"PATH": f"{bin_dir}:/usr/bin:/bin"}
+            return subprocess.run(
+                ["bash", str(self.CHECK), str(tmp_path), digest],
+                env=env, capture_output=True, text=True, check=False,
+            )
+
+    def test_absent_tag_with_manifest_unknown_is_allowed(self) -> None:
+        for message in (
+            "Error: reading manifest 2.13.2: manifest unknown",
+            'errors: [{"code":"MANIFEST_UNKNOWN"}]',
+        ):
+            with self.subTest(message=message):
+                self.assertEqual(self.run_check(exit_code=1, stderr=message).returncode, 0)
+
+    def test_present_tag_with_the_expected_index_is_allowed(self) -> None:
+        self.assertEqual(self.run_check(exit_code=0, stdout=self.EXPECTED_INDEX).returncode, 0)
+
+    def test_present_tag_with_a_different_index_is_refused(self) -> None:
+        result = self.run_check(exit_code=0, stdout=b'{"schemaVersion":2,"other":true}')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("publication refused", result.stderr)
+
+    def test_ambiguous_registry_errors_are_refused(self) -> None:
+        for message in ("unauthorized: authentication required", "net/http: TLS handshake timeout", ""):
+            with self.subTest(message=message):
+                result = self.run_check(exit_code=1, stderr=message)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Cannot establish fixed registry tag absence", result.stderr)
+
+    def test_malformed_expected_digest_is_refused(self) -> None:
+        result = self.run_check(exit_code=1, stderr="manifest unknown", expected="not-a-digest")
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_publication_scripts_do_not_require_ripgrep(self) -> None:
+        import re
+
+        for script in ("scripts/ci/prepare-oci-publication.sh", "scripts/ci/check-registry-version.sh"):
+            with self.subTest(script=script):
+                source = (ROOT / script).read_text()
+                self.assertIsNone(re.search(r"(^|[\s|;&(!])rg\s", source, re.MULTILINE))
+
+
 if __name__ == "__main__":
     unittest.main()
