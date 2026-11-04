@@ -40,7 +40,7 @@ RELEASE = contract.ReleaseTuple(
 def composer_command(*, graph: str = "embedded", upgrade: bool = False) -> str:
     flag = " --with-all-dependencies" if upgrade else ""
     pins = [
-        f'"{package}:{contract.ONBOARDING_CONSTRAINT}"'
+        f'"{package}:{contract.ONBOARDING_CONSTRAINTS[package]}"'
         for package in RELEASE.composer_graphs[graph]
     ]
     return f"composer require{flag} " + " ".join(pins)
@@ -166,7 +166,7 @@ The install command can move and use indented Markdown instead.
         for package in RELEASE.composer_graphs["embedded"]:
             with self.subTest(package=package):
                 stale = current.replace(
-                    f'"{package}:{contract.ONBOARDING_CONSTRAINT}"',
+                    f'"{package}:{contract.ONBOARDING_CONSTRAINTS[package]}"',
                     f'"{package}:2.0.0-rc.1@RC"',
                 )
                 with self.assertRaisesRegex(
@@ -183,7 +183,7 @@ The install command can move and use indented Markdown instead.
 
         service = composer_command(graph="service")
         stale_sdk = service.replace(
-            f'"{contract.SDK_PACKAGE}:{contract.ONBOARDING_CONSTRAINT}"',
+            f'"{contract.SDK_PACKAGE}:{contract.ONBOARDING_CONSTRAINTS[contract.SDK_PACKAGE]}"',
             f'"{contract.SDK_PACKAGE}:2.0.0-rc.1@RC"',
         )
         with self.assertRaisesRegex(
@@ -199,7 +199,7 @@ The install command can move and use indented Markdown instead.
 
     def test_rejects_a_combined_embedded_and_service_dependency_graph(self) -> None:
         combined = "composer require " + " ".join(
-            f'"{package}:{contract.ONBOARDING_CONSTRAINT}"'
+            f'"{package}:{contract.ONBOARDING_CONSTRAINTS[package]}"'
             for package in RELEASE.packages
         )
 
