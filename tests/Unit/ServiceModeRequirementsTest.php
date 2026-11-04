@@ -40,9 +40,10 @@ final class ServiceModeRequirementsTest extends TestCase
             $message = $exception->getMessage();
 
             $this->assertStringContainsString(
-                'composer require --with-all-dependencies "durable-workflow/sdk:^2.0 || ^3.0"',
+                'composer require --with-all-dependencies "durable-workflow/sdk:^3.9"',
                 $message,
             );
+            $this->assertStringNotContainsString('sdk:^2.0', $message);
             $this->assertDoesNotMatchRegularExpression(
                 '/durable-workflow\/sdk:2\.0\.0-(?:alpha|beta|rc)\.[0-9]+/i',
                 $message,

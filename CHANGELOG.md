@@ -11,6 +11,11 @@
   taken before cleanup. The primary export gets the same fields from
   Workflow 2.17.0 or later. Run detail's retention notice now says the export
   is incomplete, and both export links point to it.
+- When service mode starts without the PHP SDK, its message now asks for
+  `durable-workflow/sdk:^3.9` instead of `^2.0 || ^3.0`. `^2.0` resolves to an
+  SDK outside its supported boundary. Waterline still accepts installed
+  `^2.0 || ^3.0` SDKs. `SERVICE_MODE.md` notes the same next to its tested
+  `^2.0` example, which moves with the qualified product tuple.
 - The schedules view refreshes itself while the top bar's **Auto refresh** is
   on, like the workflow list (#222). A pause, resume or new fire outcome made
   outside the page shows up without a reload. Filters, page, open dialogs and

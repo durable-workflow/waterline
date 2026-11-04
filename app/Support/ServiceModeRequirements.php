@@ -13,6 +13,10 @@ final class ServiceModeRequirements
 
     public const SDK_ONBOARDING_CONSTRAINT = '^2.0 || ^3.0';
 
+    // What a new install should request. ^2.0 alone can resolve to an older,
+    // vulnerable 2.x SDK; the accepted range above stays wider for existing hosts.
+    public const SDK_INSTALL_CONSTRAINT = '^3.9';
+
     /**
      * @param  (callable(class-string): bool)|null  $classExists
      * @param  (callable(): ?string)|null  $installedVersion
@@ -26,7 +30,7 @@ final class ServiceModeRequirements
         if (! $classExists(\DurableWorkflow\Client::class)) {
             throw new LogicException(sprintf(
                 'Waterline service mode requires the optional durable-workflow/sdk package. Install it with `composer require --with-all-dependencies "durable-workflow/sdk:%s"`, then retry; or set WATERLINE_BACKEND=embedded.',
-                self::SDK_ONBOARDING_CONSTRAINT,
+                self::SDK_INSTALL_CONSTRAINT,
             ));
         }
 
