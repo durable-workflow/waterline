@@ -2,10 +2,11 @@
 
 ## Unreleased
 
-- Service-mode install guidance now asks for `durable-workflow/sdk:^3.9`. That
-  covers the missing-SDK boot message and the Laravel-hosted adapter steps in
-  `SERVICE_MODE.md`. `^2.0` could resolve to an older, vulnerable 2.x SDK.
-  Waterline still accepts installed `^2.0 || ^3.0` SDKs.
+- When service mode starts without the PHP SDK, its message now asks for
+  `durable-workflow/sdk:^3.9` instead of `^2.0 || ^3.0`. `^2.0` resolves to an
+  SDK outside its supported boundary. Waterline still accepts installed
+  `^2.0 || ^3.0` SDKs. `SERVICE_MODE.md` notes the same next to its tested
+  `^2.0` example, which moves with the qualified product tuple.
 
 - Run detail offers **Redrive** on a failed run that the backend reports as
   eligible (durable-workflow/workflow#864). Redrive starts a successor run

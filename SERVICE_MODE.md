@@ -252,11 +252,13 @@ the PHP SDK, but not the embedded Workflow runtime:
 ```bash
 composer require \
   "durable-workflow/waterline:^2.0" \
-  "durable-workflow/sdk:^3.9"
+  "durable-workflow/sdk:^2.0"
 ```
 
-A host that already runs a 2.x SDK keeps working. Waterline accepts
-`^2.0 || ^3.0`, but new installs should use 3.9 or later.
+On Packagist, `^2.0` resolves to SDK 2.5.4. SDK releases before the
+GHSA-f9x3-7vq9-cph6 fix are outside the SDK's supported boundary, so prefer
+SDK 3.9.1 or later for a new install. Waterline's service-mode tests pass
+with it. Waterline accepts installed SDKs matching `^2.0 || ^3.0`.
 
 Set `WATERLINE_BACKEND=service` together with the endpoint, token, namespace,
 and access-mode inputs above. If service mode is selected without the SDK,
