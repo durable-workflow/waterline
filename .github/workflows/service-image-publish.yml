@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       source_commit:
-        description: Independently reviewed immutable 2.14.0 tag commit
+        description: Independently reviewed immutable 2.15.0 tag commit
         required: true
         type: string
       source_tree:
@@ -43,7 +43,7 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: waterline-protected-publication-2.14.0
+  group: waterline-protected-publication-2.15.0
   cancel-in-progress: false
 
 jobs:
@@ -124,8 +124,8 @@ jobs:
           skopeo copy --all --preserve-digests \
             --authfile "$HOME/.docker/config.json" \
             --digestfile "$RUNNER_TEMP/waterline-published-digest.txt" \
-            "oci:$RUNNER_TEMP/waterline-publication/verified-oci:2.14.0" \
-            docker://docker.io/durableworkflow/waterline:2.14.0
+            "oci:$RUNNER_TEMP/waterline-publication/verified-oci:2.15.0" \
+            docker://docker.io/durableworkflow/waterline:2.15.0
           expected="$(jq -r .image_digest "$RUNNER_TEMP/waterline-publication/verified.json")"
           test "$(cat "$RUNNER_TEMP/waterline-published-digest.txt")" = "$expected" \
             || { echo "::error::The pushed index digest differs from the verified index $expected."; exit 1; }
@@ -186,6 +186,6 @@ jobs:
     uses: ./.github/workflows/published-image-qualification.yml # local
     with:
       image_digest: ${{ needs.publish.outputs.image_digest }}
-      release_version: '2.14.0'
+      release_version: '2.15.0'
       source_commit: ${{ inputs.source_commit }}
       publisher_commit: ${{ github.sha }}

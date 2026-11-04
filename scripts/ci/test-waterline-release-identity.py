@@ -304,6 +304,80 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
                      if "DOCKERHUB_TOKEN" in step.get("env", {}))
         self.assertLess(verification, login)
 
+class PublishedEmbeddedCohortTest(unittest.TestCase):
+    def run_binding(self, *, missing_pin: bool = False, wrong_source: bool = False):
+        import os
+        import subprocess
+        import tempfile
+
+        steps = workflow("published-image-qualification.yml")["jobs"]["embedded"]["steps"]
+        script = next(step["run"] for step in steps if "EXPECTED_WORKFLOW_VERSION" in step.get("run", ""))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            origin = root / "origin"
+            origin.mkdir()
+            (origin / "public").mkdir()
+            (origin / "public" / "asset.js").write_text("release fixture\n")
+            (origin / "release").mkdir()
+            (origin / "release" / "current-product-tuple.json").write_text(json.dumps(approved()))
+            candidate = manifest()
+            candidate["require-dev"][identity.WORKFLOW_PACKAGE] = "2.4.0"
+            if missing_pin:
+                del candidate["require-dev"][identity.WORKFLOW_PACKAGE]
+            (origin / "composer.json").write_text(json.dumps(candidate))
+            environment = {
+                "PATH": os.environ["PATH"],
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_GLOBAL": os.devnull,
+            }
+
+            def git(*arguments, cwd=origin):
+                return subprocess.run(
+                    ["git", *arguments], cwd=cwd, env=environment,
+                    capture_output=True, text=True, check=True,
+                ).stdout.strip()
+
+            git("-c", "init.templateDir=", "init", "--quiet")
+            git("add", ".")
+            git("-c", "user.name=Release fixture", "-c", "user.email=fixture@example.test",
+                "commit", "--quiet", "-m", "Published fixture")
+            source = git("rev-parse", "HEAD")
+            git("tag", CANDIDATE_WATERLINE)
+            checkout = root / "checkout"
+            git("clone", "--quiet", "--no-hardlinks", str(origin), str(checkout), cwd=root)
+            # The runner's current source and accepted public tuple must not
+            # replace the dependency selected by the immutable release tag.
+            candidate["require-dev"][identity.WORKFLOW_PACKAGE] = "2.5.0"
+            (checkout / "composer.json").write_text(json.dumps(candidate))
+            runner_temp = root / "runner"
+            runner_temp.mkdir()
+            output = root / "environment"
+            output.touch()
+            result = subprocess.run(
+                ["bash", "-c", script], cwd=checkout, capture_output=True, text=True,
+                env={**environment, "EXPECTED_WATERLINE_VERSION": CANDIDATE_WATERLINE,
+                     "EXPECTED_WATERLINE_SOURCE": "0" * 40 if wrong_source else source,
+                     "RUNNER_TEMP": str(runner_temp), "GITHUB_ENV": str(output)},
+            )
+            return result, output.read_text()
+
+    def test_selects_workflow_from_tag_instead_of_public_tuple_or_runner(self):
+        result, environment = self.run_binding()
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("EXPECTED_WORKFLOW_VERSION=2.4.0\n", environment)
+
+    def test_missing_tagged_workflow_pin_refuses_acceptance(self):
+        result, environment = self.run_binding(missing_pin=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertNotIn("EXPECTED_WORKFLOW_VERSION=", environment)
+
+    def test_wrong_tag_source_refuses_acceptance(self):
+        result, environment = self.run_binding(wrong_source=True)
+        self.assertNotEqual(0, result.returncode)
+        self.assertNotIn("EXPECTED_WORKFLOW_VERSION=", environment)
+
+
 class RegistryVersionCheckTest(unittest.TestCase):
     """The fixed-tag check must work with only hosted-runner tools and fail closed."""
 
@@ -340,7 +414,7 @@ class RegistryVersionCheckTest(unittest.TestCase):
 
     def test_absent_tag_with_manifest_unknown_is_allowed(self) -> None:
         for message in (
-            "Error: reading manifest 2.14.0: manifest unknown",
+            "Error: reading manifest 2.15.0: manifest unknown",
             'errors: [{"code":"MANIFEST_UNKNOWN"}]',
         ):
             with self.subTest(message=message):
