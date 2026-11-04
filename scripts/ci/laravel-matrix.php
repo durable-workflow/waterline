@@ -9,7 +9,7 @@ const MATRIX_PATH = __DIR__.'/../../.github/laravel-matrix.json';
 /**
  * @return array{include: list<array<string, string>>}
  */
-function loadMatrix(): array
+function loadMatrix(bool $checkRootWorkflow = true): array
 {
     $contents = file_get_contents(MATRIX_PATH);
 
@@ -27,7 +27,7 @@ function loadMatrix(): array
         throw new RuntimeException('The matrix must be a JSON object.');
     }
 
-    validateContract($matrix);
+    validateContract($matrix, $checkRootWorkflow);
 
     /** @var array{include: list<array<string, string>>} $matrix */
     return $matrix;
@@ -36,12 +36,12 @@ function loadMatrix(): array
 /**
  * @param array<mixed> $matrix
  */
-function validateContract(array $matrix): void
+function validateContract(array $matrix, bool $checkRootWorkflow = true): void
 {
     $requiredKeys = [
         'label', 'boundary', 'laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'scaffold', 'resolution',
     ];
-    $rootWorkflow = rootWorkflowVersion();
+    $rootWorkflow = $checkRootWorkflow ? rootWorkflowVersion() : null;
     $expected = [
         9 => [
             'php' => '8.1', 'testbench' => 7, 'workbench' => 7, 'phpunit' => 9,
@@ -148,7 +148,7 @@ function validateContract(array $matrix): void
             ));
         }
 
-        if ($laravelMajor !== 9 && $row['workflow'] !== $rootWorkflow) {
+        if ($rootWorkflow !== null && $laravelMajor !== 9 && $row['workflow'] !== $rootWorkflow) {
             throw new RuntimeException(sprintf(
                 'Laravel %d must use the root require-dev Workflow %s; received %s.',
                 $laravelMajor,
@@ -368,7 +368,10 @@ function selfTest(array $matrix): void
 
 try {
     $command = $argv[1] ?? '';
-    $matrix = loadMatrix();
+    // Composer rewrites require-dev for the selected compatibility cell.
+    // The original root pin is checked before resolution; afterward verify
+    // the installed graph against that cell, including its Workflow override.
+    $matrix = loadMatrix($command !== 'assert-installed');
 
     switch ($command) {
         case 'export':
