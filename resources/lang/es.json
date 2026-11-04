@@ -1320,5 +1320,6 @@
     "This run's history has a step that redrive can't reuse yet.": "El historial de esta ejecución tiene un paso que la reejecución aún no puede reutilizar.",
     "This run failed before redrive could record where it stopped.": "Esta ejecución falló antes de que se pudiera registrar dónde se detuvo.",
     "This redrive request was already used for another run.": "Esta solicitud de reejecución ya se usó para otra ejecución.",
-    "The redrive request id is invalid.": "El id de la solicitud de reejecución no es válido."
+    "The redrive request id is invalid.": "El id de la solicitud de reejecución no es válido.",
+    "The connected workflow backend does not support this action.": "El backend de flujos de trabajo conectado no admite esta acción."
 }

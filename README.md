@@ -104,7 +104,9 @@ Each gate receives the current host user and the HTTP request as an optional
 second argument. A `null` or omitted gate preserves the default action access.
 A `null` or absent `redrive` gate uses the `repair` gate, so a host that gates
 only repair, or published its config before redrive existed, keeps the same
-restriction. Name a redrive gate to authorize redrive separately.
+restriction. Name a redrive gate to authorize redrive separately. To keep
+redrive open while repair is gated, name a gate that always allows it, such as
+`Gate::define('waterline-redrive', fn ($user) => true)`.
 A configured gate must authorize the user. Missing gates and invalid gate
 settings refuse the action. Laravel's normal guest and `Gate::before` rules
 apply. These gates grant no viewing access and do not bypass namespace or

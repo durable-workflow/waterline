@@ -1,7 +1,7 @@
 <script type="text/ecmascript-6">
     import FlowRow from './flow-row.vue';
     import Swal from 'sweetalert2';
-    import { createWaterlineDialogOptions } from '../../dialogs.mjs';
+    import { createWaterlineDialogOptions, showDialogValidationText } from '../../dialogs.mjs';
 
     export default {
         /**
@@ -1332,7 +1332,7 @@
 
                             return filters
                         } catch (error) {
-                            Swal.showValidationMessage(error.message)
+                            showDialogValidationText(Swal, error.message)
                         }
                     },
                 }))
@@ -1375,7 +1375,7 @@
                         const name = document.getElementById('waterline-view-name').value.trim()
 
                         if (!name) {
-                            Swal.showValidationMessage(this.$t("Enter a view name."))
+                            showDialogValidationText(Swal, this.$t("Enter a view name."))
                             return
                         }
 
