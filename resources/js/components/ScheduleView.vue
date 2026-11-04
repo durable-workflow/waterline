@@ -588,6 +588,12 @@ import {
     scheduleRowKey,
 } from '../schedule-presenter.mjs';
 
+// Same cadence as the workflow list.
+const LIST_REFRESH_MILLISECONDS = 3000;
+// Service mode reads each row's last outcome with its own describe call until
+// the Server's schedule list carries it, so one refresh can be 1 + 50 reads.
+const SERVICE_REFRESH_MILLISECONDS = 30000;
+
 export default {
     name: 'ScheduleView',
 
@@ -639,7 +645,9 @@ export default {
             detailSchedule: null,
             detail: null,
             detailLoading: false,
-            detailError: null
+            detailError: null,
+            refreshTimer: null,
+            unmounted: false
         };
     },
 
@@ -766,7 +774,15 @@ export default {
     },
 
     mounted() {
-        this.loadOperatorPreferences().finally(() => this.loadData());
+        this.loadOperatorPreferences()
+            .finally(() => this.loadData())
+            .finally(() => this.startPeriodicRefresh());
+    },
+
+    unmounted() {
+        this.unmounted = true;
+        clearInterval(this.refreshTimer);
+        this.refreshTimer = null;
     },
 
     methods: {
@@ -828,6 +844,28 @@ export default {
 
         refresh() {
             this.loadData();
+        },
+
+        refreshMilliseconds() {
+            return this.serviceMode ? SERVICE_REFRESH_MILLISECONDS : LIST_REFRESH_MILLISECONDS;
+        },
+
+        // The cadence is chosen after the first load, once the backend mode is known.
+        startPeriodicRefresh() {
+            if (this.unmounted || this.refreshTimer !== null) return;
+            this.refreshTimer = setInterval(() => this.refreshPeriodically(), this.refreshMilliseconds());
+        },
+
+        // Follows the top bar's Auto refresh control, like the workflow list.
+        // A tick never overlaps a read in progress or a pending row action,
+        // and leaves filters, page, open dialogs and forms as they are.
+        refreshPeriodically() {
+            if (!this.$root?.autoLoadsNewEntries) return false;
+            if (this.loading || this.refreshing) return false;
+            if (Object.values(this.pendingRowKeys).some(Boolean)) return false;
+            if (typeof document !== 'undefined' && document.hidden) return false;
+            this.loadData();
+            return true;
         },
 
         resolvedApiEndpoint() {

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- The schedules view refreshes itself while the top bar's **Auto refresh** is
+  on, like the workflow list (#222). A pause, resume or new fire outcome made
+  outside the page shows up without a reload. Filters, page, open dialogs and
+  forms stay as they are. A refresh never overlaps a read in progress or a
+  pending row action, and it waits while the browser tab is hidden. Embedded
+  mode refreshes every 3 seconds. Service mode refreshes every 30 seconds,
+  because each row's last outcome still needs its own Server describe call
+  (durable-workflow/server#1014).
+
 - Run detail offers **Redrive** on a failed run that the backend reports as
   eligible (durable-workflow/workflow#864). Redrive starts a successor run
   that reuses the failed run's completed steps, then opens it.
