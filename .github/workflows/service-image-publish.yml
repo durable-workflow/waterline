@@ -103,16 +103,18 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
-          test -n "$DOCKERHUB_USERNAME"
-          test -n "$DOCKERHUB_TOKEN"
+          test -n "$DOCKERHUB_USERNAME" || { echo "::error::DOCKERHUB_USERNAME is empty; refusing to log in."; exit 1; }
+          test -n "$DOCKERHUB_TOKEN" || { echo "::error::DOCKERHUB_TOKEN is empty; refusing to log in."; exit 1; }
           # attest-build-provenance reads registry credentials only from
-          # ~/.docker/config.json. The file exists from here until the
-          # always-run removal step, covering only the copy and attest steps.
-          test ! -e "$HOME/.docker/config.json"
-          mkdir -p -m 700 "$HOME/.docker"
+          # ~/.docker/config.json. Hosted runners already ship that file, so
+          # it is moved aside here and restored by the always-run step. Our
+          # file exists only for the copy and attest steps.
+          scripts/ci/publication-docker-config.sh isolate
           printf '%s' "$DOCKERHUB_TOKEN" | skopeo login \
             --authfile "$HOME/.docker/config.json" \
             --username "$DOCKERHUB_USERNAME" --password-stdin docker.io
+          test "$(jq -r '.auths | keys | join(",")' "$HOME/.docker/config.json")" = docker.io \
+            || { echo "::error::The publication Docker config must hold only the docker.io entry."; exit 1; }
       - name: Copy verified inert content to the fixed version
         id: publish
         shell: bash
@@ -125,11 +127,13 @@ jobs:
             "oci:$RUNNER_TEMP/waterline-publication/verified-oci:2.14.0" \
             docker://docker.io/durableworkflow/waterline:2.14.0
           expected="$(jq -r .image_digest "$RUNNER_TEMP/waterline-publication/verified.json")"
-          test "$(cat "$RUNNER_TEMP/waterline-published-digest.txt")" = "$expected"
+          test "$(cat "$RUNNER_TEMP/waterline-published-digest.txt")" = "$expected" \
+            || { echo "::error::The pushed index digest differs from the verified index $expected."; exit 1; }
           printf 'image_digest=%s\n' "$expected" >> "$GITHUB_OUTPUT"
           for architecture in amd64 arm64; do
             digest="$(jq -r --arg architecture "$architecture" '.manifests[] | select(.platform.architecture == $architecture) | .digest' "$RUNNER_TEMP/waterline-publication/verified.json")"
-            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] \
+              || { echo "::error::No exact $architecture digest in the verified index."; exit 1; }
             printf '%s_digest=%s\n' "$architecture" "$digest" >> "$GITHUB_OUTPUT"
           done
       - name: Attest build provenance for the published index
@@ -157,8 +161,10 @@ jobs:
         if: always()
         shell: bash
         run: |
-          skopeo logout --authfile "$HOME/.docker/config.json" docker.io || true
-          rm -f -- "$HOME/.docker/config.json"
+          if [[ -e "$RUNNER_TEMP/waterline-docker-config-isolated" && -e "$HOME/.docker/config.json" ]]; then
+            skopeo logout --authfile "$HOME/.docker/config.json" docker.io || true
+          fi
+          scripts/ci/publication-docker-config.sh restore
       - name: Retain publication identities
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

@@ -74,6 +74,41 @@ jobs:
           export WATERLINE_IMAGE EXPECTED_WATERLINE_VERSION
           SERVICE_IMAGE_SKIP_BUILD=1 scripts/ci/service-mode-image-smoke.sh
 
+  runner-docker-config:
+    name: Publisher runner Docker config isolation
+    if: github.event_name != 'workflow_dispatch'
+    # Same image as the protected publisher job.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      with:
+        persist-credentials: false
+    - name: Isolate and restore the runner's own Docker config
+      shell: bash
+      run: |
+        set -euo pipefail
+        config="$HOME/.docker/config.json"
+        # Report shape only; contents are never printed.
+        if [[ -e "$config" ]]; then
+          echo "Runner ships $config with top-level keys: $(jq -c 'keys' "$config")"
+          before="$(sha256sum "$config" | cut -d ' ' -f 1)"
+        else
+          echo "Runner has no $config."
+          before=absent
+        fi
+        scripts/ci/publication-docker-config.sh isolate
+        test ! -e "$config" || { echo "::error::$config still exists after isolation."; exit 1; }
+        printf '%s\n' '{"auths":{"docker.io":{"auth":"cHJvYmU6cHJvYmU="}}}' > "$config"
+        scripts/ci/publication-docker-config.sh restore
+        if [[ "$before" = absent ]]; then
+          test ! -e "$config" || { echo "::error::Restore left a publication config behind."; exit 1; }
+        else
+          test "$(sha256sum "$config" | cut -d ' ' -f 1)" = "$before" \
+            || { echo "::error::Restore did not return the runner's original config."; exit 1; }
+        fi
+        echo "Isolation and restore returned the runner's Docker config unchanged."
+
   qualify-published:
     name: Qualify the selected published image
     if: github.event_name == 'workflow_dispatch'
