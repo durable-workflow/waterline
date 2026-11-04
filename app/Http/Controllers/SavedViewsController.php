@@ -170,7 +170,7 @@ class SavedViewsController extends Controller
 
         abort_if($name === '', 422, 'A Waterline saved view name is required.');
 
-        $filters = ActionabilityVisibilityFilters::normalize($validated['filters'] ?? []);
+        $filters = ActionabilityVisibilityFilters::validate($validated['filters'] ?? []);
         $bucket = $this->bucket($validated['bucket'], required: true);
 
         if (BackendConfiguration::serviceMode()) {

@@ -495,3 +495,23 @@ If you prefer to run commands manually:
    composer run serve
    ```
 6. Access dashboard at http://localhost:18280/waterline
+
+### Saved-view start-time windows
+
+In **Filters → Start Time**, choose **Rolling window** to save a look-back duration, or **Fixed range** to save two UTC bounds. A rolling view keeps its duration and resolves fresh bounds whenever the list reloads. **Any time** explicitly overrides a selected view’s window. The list displays the UTC range used by its latest successful response.
+
+The range filters each retained run’s `started_at` before pagination: `from <= started_at < before`. A missing start time does not match; Waterline does not substitute creation time, sort time, or the parent workflow’s start time. One list request uses one clock instant for all internal backend pages. Separate page requests can reflect newly arrived or removed runs; service cursors are not snapshots.
+
+The workflow list query parameters and saved-view `filters` use the same descriptor:
+
+```json
+{"started_time":"rolling","started_within_seconds":86400}
+```
+
+```json
+{"started_time":"fixed","started_from":"2026-01-10T00:00:00Z","started_before":"2026-01-11T00:00:00Z"}
+```
+
+Rolling durations are whole seconds from 1 through 315360000 (3650 days). Fixed bounds require explicit UTC offsets and increasing timestamps; Waterline canonicalizes them to UTC and preserves up to six fractional digits. Mixed rolling/fixed values, invalid dates and incomplete ranges return validation errors. Resolved bounds appear in `time_windows.started_time`; saving a rolling view does not persist those resolved bounds.
+
+Waterline filter version 7 adds these fields while retaining version 6 views with their existing semantics. Unknown versions remain unsupported. Time filters require the embedded v2 projection or the service visibility query; legacy lists and hybrid lists that include legacy rows refuse them. If a time-filtered embedded projection is unavailable, Waterline returns an explicit error rather than an unfiltered fallback. In service mode, clear any free-form visibility query before applying a time window; Waterline will not silently replace that query or reinterpret Boolean expressions. Namespace and saved-view ownership rules continue to apply.
