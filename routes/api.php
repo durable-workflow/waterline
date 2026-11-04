@@ -58,6 +58,7 @@ Route::prefix('api')->group(function () use ($capacityEvidenceController, $healt
     Route::post('/instances/{instanceId}/runs/{runId}/signals/{signal}', [$workflowsController, 'signalSelection'])->name('waterline.instances.runs.signal')->middleware(AuthorizeOperatorAction::SIGNAL);
     Route::post('/instances/{instanceId}/runs/{runId}/updates/{update}', [$workflowsController, 'updateSelection'])->name('waterline.instances.runs.update')->middleware(AuthorizeOperatorAction::UPDATE);
     Route::post('/instances/{instanceId}/runs/{runId}/repair', [$workflowsController, 'repairSelection'])->name('waterline.instances.runs.repair')->middleware(AuthorizeOperatorAction::REPAIR);
+    Route::post('/instances/{instanceId}/runs/{runId}/redrive', [$workflowsController, 'redriveSelection'])->name('waterline.instances.runs.redrive')->middleware(AuthorizeOperatorAction::REDRIVE);
     Route::post('/instances/{instanceId}/runs/{runId}/cancel', [$workflowsController, 'cancelSelection'])->name('waterline.instances.runs.cancel')->middleware(AuthorizeOperatorAction::CANCEL);
     Route::post('/instances/{instanceId}/runs/{runId}/terminate', [$workflowsController, 'terminateSelection'])->name('waterline.instances.runs.terminate')->middleware(AuthorizeOperatorAction::TERMINATE);
     Route::post('/instances/{instanceId}/runs/{runId}/archive', [$workflowsController, 'archiveSelection'])->name('waterline.instances.runs.archive')->middleware(AuthorizeOperatorAction::ARCHIVE);

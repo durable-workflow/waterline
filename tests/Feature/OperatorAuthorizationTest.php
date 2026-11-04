@@ -23,7 +23,7 @@ final class OperatorAuthorizationTest extends TestCase
 
         Waterline::auth(static fn ($request): bool => $request->user() !== null);
         $this->actingAs(new GenericUser(['id' => 7, 'role' => 'viewer']));
-        foreach (['messages', 'repair', 'cancel', 'terminate', 'archive', 'schedules'] as $group) {
+        foreach (['messages', 'repair', 'redrive', 'cancel', 'terminate', 'archive', 'schedules'] as $group) {
             config()->set('waterline.authorization.gates.'.$group, 'waterline-'.$group);
             Gate::define('waterline-'.$group, static fn ($user): bool => $user->role === 'operator');
         }
@@ -147,6 +147,8 @@ final class OperatorAuthorizationTest extends TestCase
                 $routes[] = ['POST', '/waterline/api/'.$target.'/'.$suffix, $action];
             }
         }
+        // Redrive targets one failed run only.
+        $routes[] = ['POST', '/waterline/api/instances/missing/runs/missing/redrive', 'redrive'];
         foreach (['pause', 'resume', 'trigger', 'backfill'] as $action) {
             $routes[] = ['POST', '/waterline/api/v2/schedules/missing/'.$action, 'schedules'];
         }

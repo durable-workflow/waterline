@@ -85,6 +85,12 @@
                         {{ $t("Archive") }}
                     </button>
 
+                    <button v-if="ready && canAction('redrive')"
+                        class="btn btn-outline-success btn-sm mr-3 wl-flow-detail__action-btn"
+                        @click="issueCommand('redrive')">
+                        {{ $t("Redrive") }}
+                    </button>
+
                     <a class="wl-flow-detail__collapse-link" data-toggle="collapse" href="#collapseDetails" role="button">
                         {{ $t("Collapse") }}
                     </a>
@@ -232,7 +238,7 @@
                     <div class="col">
                         <div v-for="action in actionStateRows()" :key="action.name">
                             {{ action.label }}: {{ action.allowed ? $t('available') : $t('blocked') }}
-                            <span v-if="hasDetailValue(action.reason)" class="text-muted">({{ actionReasonLabel(action.reason) }})</span>
+                            <span v-if="hasDetailValue(action.reason)" class="text-muted">({{ actionReasonLabel(action.reason, action.name) }})</span>
                         </div>
                     </div>
                 </div>
@@ -3924,11 +3930,19 @@ export default {
             return actions && actions[name] ? actions[name] : null
         },
 
-        actionReasonLabel(reason) {
-            return this.commandRejectionMessage(reason)
+        actionReasonLabel(reason, name = null) {
+            return this.commandRejectionMessage(reason, name)
         },
 
         commandRejectionMessage(reason, commandType = null) {
+            if (commandType === 'redrive') {
+                const message = this.redriveRejectionMessage(reason)
+
+                if (message) {
+                    return message
+                }
+            }
+
             switch (reason) {
                 case 'waterline_action_forbidden':
                     return this.$t("You are not authorized to perform this Waterline action.")
@@ -3961,8 +3975,23 @@ export default {
             }
         },
 
+        redriveRejectionMessage(reason) {
+            return {
+                run_not_failed: this.$t("Only a failed run can be redriven."),
+                already_redriven: this.$t("This run was already redriven."),
+                source_run_not_current: this.$t("Only the current run of this workflow can be redriven."),
+                execution_deadline_elapsed: this.$t("The workflow's execution deadline has passed."),
+                workflow_definition_unavailable_or_changed: this.$t("The workflow definition is unavailable or changed since this run started."),
+                definition_change_requires_replay_check: this.$t("The workflow definition changed, and this run's worker can't check that the new code replays its completed steps."),
+                service_redrive_history_not_qualified: this.$t("A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet."),
+                unsupported_history: this.$t("This run's history has a step that redrive can't reuse yet."),
+                unrecorded_failure_boundary: this.$t("This run failed before redrive could record where it stopped."),
+                request_id_already_used: this.$t("This redrive request was already used for another run."),
+            }[reason] || null
+        },
+
         actionStateRows() {
-            const hasExplicitContract = ['query', 'signal', 'update', 'repair', 'cancel', 'terminate', 'archive']
+            const hasExplicitContract = ['query', 'signal', 'update', 'repair', 'cancel', 'terminate', 'archive', 'redrive']
                 .some((name) => !this.operatorPermission(name).allowed || this.actionabilityAction(name)
                     || this.hasDetailValue(this.flow['can_' + name])
                     || this.hasDetailValue(this.flow[name + '_blocked_reason']))
@@ -3979,6 +4008,7 @@ export default {
                 { name: 'cancel', label: this.$t("Cancel") },
                 { name: 'terminate', label: this.$t("Terminate") },
                 { name: 'archive', label: this.$t("Archive") },
+                { name: 'redrive', label: this.$t("Redrive") },
             ].map((action) => ({
                 ...action,
                 allowed: this.canAction(action.name, action.name === 'cancel' || action.name === 'terminate'
@@ -4857,7 +4887,14 @@ export default {
                     text: this.$t("This marks the selected closed run as archived while preserving its durable history and command audit trail."),
                     confirmButtonText: this.$t("Archive run"),
                 },
+                redrive: {
+                    title: this.$t("Redrive run?"),
+                    text: this.$t("This starts a new run that reuses the failed run's completed steps and runs again from the step that failed. Completed activities are not run again."),
+                    confirmButtonText: this.$t("Redrive run"),
+                },
             }[commandType]
+            // One id per confirmation, so a retry of the same click can't start a second run.
+            const body = commandType === 'redrive' ? { request_id: this.newRequestId() } : null
 
             const confirmed = await this.$dialog({
                 title: copy.title,
@@ -4871,7 +4908,7 @@ export default {
                 preConfirm: async () => {
                     try {
                         return {
-                            response: await this.submitInteractiveCommand(commandType, null),
+                            response: await this.submitInteractiveCommand(commandType, null, body),
                         }
                     } catch (error) {
                         Swal.showValidationMessage(this.commandFailureMessage(error, commandType))
@@ -4908,10 +4945,16 @@ export default {
             }
         },
 
-        submitInteractiveCommand(commandType, interactiveCommand = null) {
+        newRequestId() {
+            return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : 'waterline-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)
+        },
+
+        submitInteractiveCommand(commandType, interactiveCommand = null, body = null) {
             return this.$http.post(
                 this.commandEndpoint(commandType, interactiveCommand ? interactiveCommand.targetName : null),
-                interactiveCommand ? this.commandRequestBody(interactiveCommand) : {},
+                interactiveCommand ? this.commandRequestBody(interactiveCommand) : (body || {}),
                 commandRequestOptions(interactiveCommand, browserTimeoutMilliseconds(Waterline)),
             )
         },
@@ -4927,7 +4970,15 @@ export default {
                 return
             }
 
-            await this.loadRouteFlow()
+            const successor = commandType === 'redrive' && response.data
+                ? this.canonicalRoute(this.flow.instance_id, response.data.run_id)
+                : null
+
+            if (successor && response.data.run_id) {
+                await this.$router.push(successor)
+            } else {
+                await this.loadRouteFlow()
+            }
 
             this.$dialog({
                 title: this.$t("Command accepted"),
@@ -4951,6 +5002,7 @@ export default {
                     : this.$t("Waterline recorded the repair command, and no new task was needed."),
                 cancel: this.$t("Waterline recorded the command durably."),
                 terminate: this.$t("Waterline recorded the command durably."),
+                redrive: this.$t("Waterline started a new run from the failed run's completed steps."),
                 archive: response.data.outcome === 'archive_not_needed'
                     ? this.$t("Waterline recorded the archive command; the run was already archived.")
                     : this.$t("Waterline archived the selected run durably."),

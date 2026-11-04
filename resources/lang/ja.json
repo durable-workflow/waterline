@@ -1304,5 +1304,20 @@
     "The trigger was buffered and starts when the running workflow finishes.": "発火はバッファされ、実行中のワークフローが終了すると開始されます。",
     "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "この Waterline は読み取り専用です。一時停止、再開、発火、未実行分の補完は使用できません。",
     "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.": "Waterline はこの一覧を最大 {limit} ページまで表示します。条件に一致する実行はさらにあります。表示するにはフィルターを絞り込んでください。",
-    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline はこの一覧を最大 {limit} ページまで表示します。条件に一致するスケジュールはさらにあります。表示するにはフィルターを絞り込んでください。"
+    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline はこの一覧を最大 {limit} ページまで表示します。条件に一致するスケジュールはさらにあります。表示するにはフィルターを絞り込んでください。",
+    "Redrive": "再実行",
+    "Redrive run?": "実行を再実行しますか?",
+    "This starts a new run that reuses the failed run's completed steps and runs again from the step that failed. Completed activities are not run again.": "失敗した実行の完了済みステップを再利用し、失敗したステップから新しい実行を開始します。完了済みのアクティビティは再実行されません。",
+    "Redrive run": "実行を再実行",
+    "Waterline started a new run from the failed run's completed steps.": "Waterline は失敗した実行の完了済みステップから新しい実行を開始しました。",
+    "Only a failed run can be redriven.": "再実行できるのは失敗した実行だけです。",
+    "This run was already redriven.": "この実行はすでに再実行されています。",
+    "Only the current run of this workflow can be redriven.": "再実行できるのはこのワークフローの現在の実行だけです。",
+    "The workflow's execution deadline has passed.": "ワークフローの実行期限が過ぎています。",
+    "The workflow definition is unavailable or changed since this run started.": "ワークフロー定義が利用できないか、この実行の開始後に変更されています。",
+    "The workflow definition changed, and this run's worker can't check that the new code replays its completed steps.": "ワークフロー定義が変更されており、この実行のワーカーは新しいコードが完了済みステップを再生できることを確認できません。",
+    "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.": "この実行はサービスワーカーが開始したもので、サービスワーカーは再実行後に一部の完了済みステップをまだ再生できません。",
+    "This run's history has a step that redrive can't reuse yet.": "この実行の履歴には、再実行でまだ再利用できないステップがあります。",
+    "This run failed before redrive could record where it stopped.": "この実行は、停止位置を記録できるようになる前に失敗しました。",
+    "This redrive request was already used for another run.": "この再実行リクエストはすでに別の実行に使用されています。"
 }

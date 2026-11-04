@@ -13,6 +13,7 @@ final class OperatorAuthorization
         'signal' => 'messages',
         'update' => 'messages',
         'repair' => 'repair',
+        'redrive' => 'redrive',
         'cancel' => 'cancel',
         'terminate' => 'terminate',
         'archive' => 'archive',
@@ -44,7 +45,7 @@ final class OperatorAuthorization
         if (! BackendConfiguration::serviceMode()) {
             $authorization = config('waterline.authorization', []);
             $gates = is_array($authorization) ? ($authorization['gates'] ?? []) : false;
-            $gate = is_array($gates) ? ($gates[$group] ?? null) : false;
+            $gate = is_array($gates) ? self::gateFor($gates, $group) : false;
         }
         $request ??= request();
         $allowed = $gate === null
@@ -52,6 +53,22 @@ final class OperatorAuthorization
                 && Gate::forUser($request->user())->allows($gate, [$request]));
 
         return ['allowed' => $allowed, 'reason' => $allowed ? null : 'waterline_action_forbidden'];
+    }
+
+    /**
+     * A host that published its config before the redrive gate existed has
+     * no `redrive` key. Redrive then follows the repair gate, so a host that
+     * restricted repair does not silently allow redrive.
+     *
+     * @param array<string, mixed> $gates
+     */
+    private static function gateFor(array $gates, string $group): mixed
+    {
+        if ($group === 'redrive' && ! array_key_exists('redrive', $gates)) {
+            return $gates['repair'] ?? null;
+        }
+
+        return $gates[$group] ?? null;
     }
 
     /** @return array<string, array{allowed: bool, reason: ?string}> */

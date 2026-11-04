@@ -579,6 +579,19 @@ final class FakeRemoteClient
     }
 
     /** @return array<string, mixed> */
+    public function redriveWorkflow(string $workflowId, string $failedRunId, ?string $requestId = null): array
+    {
+        $this->called(__FUNCTION__, get_defined_vars());
+
+        return [
+            'workflow_id' => $workflowId,
+            'run_id' => 'run-2',
+            'command_status' => 'accepted',
+            'outcome' => 'redriven',
+        ];
+    }
+
+    /** @return array<string, mixed> */
     public function archiveWorkflow(string $workflowId, ?string $reason = null, ?string $runId = null): array
     {
         $this->called(__FUNCTION__, get_defined_vars());

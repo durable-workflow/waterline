@@ -13,6 +13,7 @@ use LogicException;
 use Throwable;
 use Workflow\V2\CommandContext;
 use Workflow\V2\Contracts\HistoryExportRedactor;
+use Workflow\V2\Contracts\WorkflowControlPlane;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowCommand;
 use Workflow\V2\Models\WorkflowFailure;
@@ -474,6 +475,43 @@ class WorkflowsController extends Controller
             $this->withOperatorScope(CommandResponse::payload($result)),
             $result->accepted() ? 200 : 409,
         );
+    }
+
+    /**
+     * Redrive the selected failed run. The engine starts a successor that
+     * reuses the completed prefix, or answers with the successor an earlier
+     * redrive already started. Its answer is an array, not a CommandResult.
+     */
+    public function redriveSelection(
+        string $instanceId,
+        string $runId,
+        Request $request,
+        WorkflowRepositoryInterface $repository,
+    ) {
+        abort_unless($repository->engineSource() === 'v2', 404);
+
+        $requestId = is_string($request->input('request_id')) && $request->input('request_id') !== ''
+            ? $request->input('request_id')
+            : null;
+        $result = app(WorkflowControlPlane::class)->redrive($instanceId, $runId, array_filter([
+            'namespace' => $this->commandNamespace(),
+            'request_id' => $requestId,
+            'command_context' => $this->commandContext($request),
+        ], static fn (mixed $value): bool => $value !== null));
+        $accepted = ($result['accepted'] ?? false) === true;
+        $status = is_int($result['status'] ?? null) ? $result['status'] : ($accepted ? 202 : 409);
+
+        return response()->json($this->withOperatorScope([
+            'accepted' => $accepted,
+            'outcome' => $accepted ? 'redriven' : null,
+            'command_status' => $accepted ? 'accepted' : 'rejected',
+            'workflow_id' => $result['workflow_instance_id'] ?? $instanceId,
+            'run_id' => $accepted ? ($result['workflow_run_id'] ?? null) : null,
+            'continued_from_run_id' => $result['continued_from_run_id'] ?? $runId,
+            'resume_step_sequence' => $result['resume_step_sequence'] ?? null,
+            'reason' => $accepted ? null : ($result['reason'] ?? null),
+            'rejection_reason' => $accepted ? null : ($result['reason'] ?? null),
+        ]), $accepted ? $status : ($status >= 400 ? $status : 409));
     }
 
     public function terminate(string $id, Request $request, WorkflowRepositoryInterface $repository)

@@ -82,6 +82,7 @@ final class BackendConfiguration
             'cancel' => $permissions['cancel']['allowed'],
             'terminate' => $permissions['terminate']['allowed'],
             'repair' => $permissions['repair']['allowed'],
+            'redrive' => $permissions['redrive']['allowed'],
             'archive' => $permissions['archive']['allowed'],
         ];
     }

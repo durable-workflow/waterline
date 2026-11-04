@@ -1304,5 +1304,20 @@
     "The trigger was buffered and starts when the running workflow finishes.": "Die Auslösung wurde gepuffert und startet, sobald der laufende Workflow beendet ist.",
     "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "Dieses Waterline ist nur lesbar. Pausieren, Fortsetzen, Auslösen und Nachholen sind nicht verfügbar.",
     "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.": "Waterline zeigt höchstens {limit} Seiten dieser Liste. Es gibt weitere passende Ausführungen. Grenzen Sie die Filter ein, um sie zu erreichen.",
-    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline zeigt höchstens {limit} Seiten dieser Liste. Es gibt weitere passende Zeitpläne. Grenzen Sie die Filter ein, um sie zu erreichen."
+    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline zeigt höchstens {limit} Seiten dieser Liste. Es gibt weitere passende Zeitpläne. Grenzen Sie die Filter ein, um sie zu erreichen.",
+    "Redrive": "Erneut ausführen",
+    "Redrive run?": "Ausführung erneut ausführen?",
+    "This starts a new run that reuses the failed run's completed steps and runs again from the step that failed. Completed activities are not run again.": "Dies startet eine neue Ausführung, die die abgeschlossenen Schritte der fehlgeschlagenen Ausführung wiederverwendet und ab dem fehlgeschlagenen Schritt erneut läuft. Abgeschlossene Aktivitäten werden nicht erneut ausgeführt.",
+    "Redrive run": "Ausführung erneut ausführen",
+    "Waterline started a new run from the failed run's completed steps.": "Waterline hat eine neue Ausführung aus den abgeschlossenen Schritten der fehlgeschlagenen Ausführung gestartet.",
+    "Only a failed run can be redriven.": "Nur eine fehlgeschlagene Ausführung kann erneut ausgeführt werden.",
+    "This run was already redriven.": "Diese Ausführung wurde bereits erneut ausgeführt.",
+    "Only the current run of this workflow can be redriven.": "Nur die aktuelle Ausführung dieses Workflows kann erneut ausgeführt werden.",
+    "The workflow's execution deadline has passed.": "Die Ausführungsfrist des Workflows ist abgelaufen.",
+    "The workflow definition is unavailable or changed since this run started.": "Die Workflow-Definition ist nicht verfügbar oder hat sich seit dem Start dieser Ausführung geändert.",
+    "The workflow definition changed, and this run's worker can't check that the new code replays its completed steps.": "Die Workflow-Definition hat sich geändert, und der Worker dieser Ausführung kann nicht prüfen, ob der neue Code die abgeschlossenen Schritte wiedergibt.",
+    "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.": "Ein Service-Worker hat diese Ausführung gestartet, und Service-Worker können einige ihrer abgeschlossenen Schritte nach einer erneuten Ausführung noch nicht wiedergeben.",
+    "This run's history has a step that redrive can't reuse yet.": "Der Verlauf dieser Ausführung enthält einen Schritt, den die erneute Ausführung noch nicht wiederverwenden kann.",
+    "This run failed before redrive could record where it stopped.": "Diese Ausführung ist fehlgeschlagen, bevor festgehalten werden konnte, wo sie angehalten hat.",
+    "This redrive request was already used for another run.": "Diese Anfrage zur erneuten Ausführung wurde bereits für eine andere Ausführung verwendet."
 }

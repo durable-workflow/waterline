@@ -16,6 +16,8 @@ function loadComponent(backend = 'embedded') {
         TimelineEventRenderer: {}, SearchAttributeRenderer: {}, CancellationCascadeView: {}, ExceptionSourceContext: {},
         appendRunHistoryPage,
         operatorPermission,
+        commandRequestOptions: () => ({}),
+        browserTimeoutMilliseconds: () => 0,
     }
     vm.runInNewContext(script, sandbox)
     return sandbox.component
@@ -39,7 +41,7 @@ function detail(overrides = {}, backend = 'embedded') {
 const run = { instance_id: 'order', selected_run_id: 'run', run_id: 'run', read_mode: 'bounded', engine_source: 'v2' }
 
 test('host authorization vetoes runtime affordances and explains each denied action', () => {
-    for (const name of ['signal', 'update', 'repair', 'cancel', 'terminate', 'archive']) {
+    for (const name of ['signal', 'update', 'repair', 'cancel', 'terminate', 'archive', 'redrive']) {
         const context = detail({ flow: {
             ['can_' + name]: true,
             actionability: { actions: { [name]: { allowed: true, reason: null } } },
@@ -187,4 +189,59 @@ test('redrive lineage reads as redriven from and redriven as, not parent and chi
     const german = detail({ $t: createWaterlineI18n('de').global.t })
     assert.equal(german.lineageLabel({ link_type: 'redrive' }, 'parent'), 'Erneut ausgeführt von')
     assert.equal(context.lineageLabel({ link_type: 'child_workflow' }, 'child'), 'Child')
+})
+
+test('redrive is offered only when the backend reports the failed run as eligible', () => {
+    const offered = detail({ flow: { ...run, read_mode: 'complete', status: 'failed', can_redrive: true } })
+    assert.equal(offered.canAction('redrive'), true)
+
+    // An engine or server that reports no redrive eligibility never offers it.
+    const silent = detail({ flow: { ...run, read_mode: 'complete', status: 'failed' } })
+    assert.equal(silent.canAction('redrive'), false)
+
+    const refused = detail({ flow: {
+        ...run, read_mode: 'complete', status: 'failed', can_redrive: false, redrive_blocked_reason: 'unsupported_history',
+    } })
+    assert.equal(refused.canAction('redrive'), false)
+    const row = refused.actionStateRows().find((row) => row.name === 'redrive')
+    assert.equal(row.allowed, false)
+    // Redrive's reading of a shared reason code, not repair's.
+    assert.equal(refused.actionReasonLabel(row.reason, row.name), "This run's history has a step that redrive can't reuse yet.")
+    assert.equal(refused.actionReasonLabel('unsupported_history', 'repair'),
+        'The selected run only has older diagnostic history and no durable resume path for repair.')
+    assert.equal(refused.commandRejectionMessage('already_redriven', 'redrive'), 'This run was already redriven.')
+})
+
+test('an accepted redrive opens the successor run', async () => {
+    const pushed = []
+    let reloaded = false
+    const context = detail({
+        flow: { ...run, read_mode: 'complete', status: 'failed', can_redrive: true },
+        $router: { push: async (route) => pushed.push(route) },
+        $dialog: () => ({}),
+        loadRouteFlow: async () => { reloaded = true },
+    })
+
+    await context.handleCommandSuccess('redrive', null, { data: { outcome: 'redriven', run_id: 'successor' } })
+
+    assert.equal(pushed.length, 1)
+    assert.equal(JSON.stringify(pushed[0]), JSON.stringify(context.canonicalRoute('order', 'successor')))
+    assert.equal(reloaded, false)
+    assert.equal(context.commandSuccessMessage('redrive', { data: {} }),
+        "Waterline started a new run from the failed run's completed steps.")
+})
+
+test('each redrive confirmation sends one request id', async () => {
+    const posts = []
+    const context = detail({
+        flow: { ...run, read_mode: 'complete', status: 'failed', can_redrive: true },
+        $http: { post: async (url, body) => { posts.push([url, body]); return { data: {} } } },
+    })
+
+    await context.submitInteractiveCommand('redrive', null, { request_id: 'request-1' })
+
+    assert.equal(posts.length, 1)
+    assert.equal(posts[0][0], '/waterline/api/instances/order/runs/run/redrive')
+    assert.equal(JSON.stringify(posts[0][1]), JSON.stringify({ request_id: 'request-1' }))
+    assert.notEqual(context.newRequestId(), context.newRequestId())
 })
