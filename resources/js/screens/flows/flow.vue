@@ -56,6 +56,7 @@
                     <a v-if="ready && historyExportEndpoint()"
                         class="btn btn-outline-secondary btn-sm mr-2 wl-flow-detail__action-btn"
                         :href="historyExportEndpoint()"
+                        :aria-describedby="hasDetailValue(flow.details_pruned_at) ? 'wl-retention-notice' : null"
                         target="_blank"
                         rel="noopener">
                         {{ $t("Export History") }}
@@ -228,9 +229,10 @@
                     </div>
                 </div>
 
-                <div class="alert alert-info mt-3" role="status" v-if="hasDetailValue(flow.details_pruned_at)">
+                <div id="wl-retention-notice" class="alert alert-info mt-3" role="status" v-if="hasDetailValue(flow.details_pruned_at)">
                     <strong>{{ $t("Details removed by retention.") }}</strong>
                     {{ $t("History and error details were removed at") }} {{ timestamp(flow.details_pruned_at) }}{{ $t(". The run's") }} {{ stateLabel(flow.status) }} {{ $t("status is retained.") }}
+                    {{ $t("Its history export holds only the retained run record and is marked incomplete.") }}
                 </div>
 
                 <div class="row mb-2" v-if="actionStateRows().length">
@@ -775,6 +777,7 @@
                     <a v-if="historyExportEndpoint()"
                         class="btn btn-outline-secondary btn-sm mr-2"
                         :href="historyExportEndpoint()"
+                        :aria-describedby="hasDetailValue(flow.details_pruned_at) ? 'wl-retention-notice' : null"
                         target="_blank"
                         rel="noopener">
                         {{ $t("Export all") }}

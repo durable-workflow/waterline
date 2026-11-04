@@ -1320,5 +1320,6 @@
     "This run's history has a step that redrive can't reuse yet.": "Історія цього виконання містить крок, який перезапуск поки не може повторно використати.",
     "This run failed before redrive could record where it stopped.": "Це виконання завершилося помилкою до того, як вдалося записати, де воно зупинилося.",
     "This redrive request was already used for another run.": "Цей запит на перезапуск уже використано для іншого виконання.",
-    "The redrive request id is invalid.": "Ідентифікатор запиту на перезапуск недійсний."
+    "The redrive request id is invalid.": "Ідентифікатор запиту на перезапуск недійсний.",
+    "Its history export holds only the retained run record and is marked incomplete.": "Експорт історії містить лише збережений запис виконання й позначений як неповний."
 }

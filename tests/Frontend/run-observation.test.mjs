@@ -255,3 +255,18 @@ test('the redrive button renders only through canAction', () => {
     const context = detail({ flow: { ...run, read_mode: 'complete', status: 'failed', can_redrive: false, redrive_blocked_reason: 'invalid_request_id' } })
     assert.equal(context.commandRejectionMessage('invalid_request_id', 'redrive'), 'The redrive request id is invalid.')
 })
+
+test('both history export links point at the retention notice for a pruned run', () => {
+    const template = source.match(/<template>([\s\S]*)<\/template>/)[1]
+    const links = template.match(/<a v-if="[^"]*historyExportEndpoint\(\)"[^>]*>/g)
+    assert.equal(links.length, 2)
+    for (const link of links) {
+        assert.match(link, /:aria-describedby="hasDetailValue\(flow\.details_pruned_at\) \? 'wl-retention-notice' : null"/)
+    }
+    const notice = template.match(/<div id="wl-retention-notice"[^>]*>([\s\S]*?)<\/div>/)
+    assert.ok(notice, 'retention notice')
+    assert.match(notice[0], /v-if="hasDetailValue\(flow\.details_pruned_at\)"/)
+    assert.ok(notice[1].includes('Its history export holds only the retained run record and is marked incomplete.'))
+    assert.equal(createWaterlineI18n('de').global.t('Its history export holds only the retained run record and is marked incomplete.'),
+        'Sein Verlaufsexport enthält nur den aufbewahrten Ausführungsdatensatz und ist als unvollständig markiert.')
+})

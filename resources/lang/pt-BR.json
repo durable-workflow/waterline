@@ -1320,5 +1320,6 @@
     "This run's history has a step that redrive can't reuse yet.": "O histórico desta execução tem uma etapa que a reexecução ainda não consegue reutilizar.",
     "This run failed before redrive could record where it stopped.": "Esta execução falhou antes que fosse possível registrar onde ela parou.",
     "This redrive request was already used for another run.": "Esta solicitação de reexecução já foi usada para outra execução.",
-    "The redrive request id is invalid.": "O id da solicitação de reexecução é inválido."
+    "The redrive request id is invalid.": "O id da solicitação de reexecução é inválido.",
+    "Its history export holds only the retained run record and is marked incomplete.": "A exportação do histórico contém apenas o registro preservado da execução e é marcada como incompleta."
 }

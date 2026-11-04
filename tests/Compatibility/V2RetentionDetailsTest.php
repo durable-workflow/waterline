@@ -2,8 +2,12 @@
 
 namespace Waterline\Tests\Compatibility;
 
+use Carbon\CarbonInterface;
+use Composer\InstalledVersions;
 use Illuminate\Support\Str;
 use Waterline\Tests\TestCase;
+use Workflow\V2\Contracts\HistoryExportRedactor;
+use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Enums\HistoryEventType;
 use Workflow\V2\Models\WorkflowFailure;
 use Workflow\V2\Models\WorkflowHistoryEvent;
@@ -66,6 +70,110 @@ final class V2RetentionDetailsTest extends TestCase
             ->assertJsonPath('details_pruned_at', null)
             ->assertJsonPath('retained_history_event_count', null)
             ->assertJsonPath('retained_exception_count', null);
+    }
+
+    public function testFallbackHistoryExportMarksPrunedRunsIncompleteWithANewDedupeKey(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        $this->app->instance(OperatorObservabilityRepository::class, $this->unavailableObservability());
+
+        foreach (['completed', 'failed'] as $status) {
+            $run = $this->createArchivedRun($status);
+            $this->addRetainedDetails($run, $status === 'failed');
+            $url = '/waterline/api/instances/'.$run->workflow_instance_id.'/runs/'.$run->id.'/history-export';
+
+            $retained = $this->getJson($url)
+                ->assertOk()
+                ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable')
+                ->assertJsonPath('history_complete', true)
+                ->assertJsonPath('workflow.details_state', 'retained')
+                ->assertJsonPath('workflow.details_pruned_at', null)
+                ->assertJsonCount(1, 'history_events');
+
+            WorkflowRunRetentionCleanup::pruneRun($run->id);
+            $prunedAt = $run->fresh()->details_pruned_at;
+            $this->assertNotNull($prunedAt);
+
+            $pruned = $this->getJson($url)
+                ->assertOk()
+                ->assertJsonPath('operator_visibility_degraded.reason', 'selected_run_projection_unavailable')
+                ->assertJsonPath('history_complete', false)
+                ->assertJsonPath('workflow.status', $status)
+                ->assertJsonPath('workflow.details_state', 'pruned')
+                ->assertJsonPath('workflow.details_pruned_at', $prunedAt->toIso8601String())
+                ->assertJsonCount(0, 'history_events');
+
+            $this->assertNotSame($retained->json('dedupe_key'), $pruned->json('dedupe_key'));
+            $this->assertMatchesRegularExpression('/^[a-f0-9]{64}$/', (string) $pruned->json('integrity.checksum'));
+        }
+    }
+
+    public function testPrimaryHistoryExportMarksPrunedRunsIncompleteOnCoreWithThePruningContract(): void
+    {
+        $version = InstalledVersions::getVersion('durable-workflow/workflow');
+        if ($version === null || version_compare($version, '2.17.0.0', '<')) {
+            $this->markTestSkipped('Core '.$version.' predates the retained-run pruning export contract (2.17.0).');
+        }
+
+        config()->set('waterline.engine_source', 'v2');
+
+        foreach (['completed', 'failed'] as $status) {
+            $run = $this->createArchivedRun($status);
+            $this->addRetainedDetails($run, $status === 'failed');
+            $url = '/waterline/api/instances/'.$run->workflow_instance_id.'/runs/'.$run->id.'/history-export';
+
+            $retained = $this->getJson($url)
+                ->assertOk()
+                ->assertJsonMissingPath('operator_visibility_degraded')
+                ->assertJsonPath('history_complete', true)
+                ->assertJsonPath('workflow.details_state', 'retained');
+
+            WorkflowRunRetentionCleanup::pruneRun($run->id);
+
+            $pruned = $this->getJson($url)
+                ->assertOk()
+                ->assertJsonMissingPath('operator_visibility_degraded')
+                ->assertJsonPath('history_complete', false)
+                ->assertJsonPath('workflow.status', $status)
+                ->assertJsonPath('workflow.details_state', 'pruned')
+                ->assertJsonPath('workflow.details_pruned_at', fn ($value): bool => is_string($value) && $value !== '')
+                ->assertJsonCount(0, 'history_events');
+
+            $this->assertNotSame($retained->json('dedupe_key'), $pruned->json('dedupe_key'));
+        }
+    }
+
+    private function unavailableObservability(): OperatorObservabilityRepository
+    {
+        return new class() implements OperatorObservabilityRepository {
+            public function runDetail(WorkflowRun $run, ?int $timelineLimit = null): array
+            {
+                return [];
+            }
+
+            public function listItem(WorkflowRunSummary $summary): array
+            {
+                return [];
+            }
+
+            public function runHistoryExport(
+                WorkflowRun $run,
+                ?CarbonInterface $exportedAt = null,
+                HistoryExportRedactor|callable|null $redactor = null,
+            ): array {
+                throw new \RuntimeException('Selected-run projections are unavailable.');
+            }
+
+            public function dashboardSummary(?CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+
+            public function metrics(?CarbonInterface $now = null, ?string $namespace = null): array
+            {
+                return [];
+            }
+        };
     }
 
     private function createArchivedRun(string $status): WorkflowRun
