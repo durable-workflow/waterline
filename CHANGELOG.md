@@ -7,6 +7,10 @@
   code or a backend `message` into the dialog as HTML, for every command. The
   query result title and the workflow list's filter validation messages are
   also shown as text now.
+- A command refused with HTTP 501 `backend_capability_unavailable` now reads
+  as "Command rejected" with "The connected workflow backend does not support
+  this action." Before, run detail treated it like any other server error and
+  said the outcome was unknown, although the backend had done nothing.
 
 - Run detail offers **Redrive** on a failed run that the backend reports as
   eligible (durable-workflow/workflow#864). Redrive starts a successor run

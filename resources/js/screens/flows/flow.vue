@@ -3949,6 +3949,8 @@ export default {
                     return this.$t("You are not authorized to perform this Waterline action.")
                 case 'waterline_read_only':
                     return this.$t("Waterline is configured read-only; this action is unavailable.")
+                case 'backend_capability_unavailable':
+                    return this.$t("The connected workflow backend does not support this action.")
                 case 'earlier_signal_pending':
                     return commandType === 'update'
                         ? this.$t("An earlier accepted signal is still waiting to be applied. Retry the update after the worker drains it.")
