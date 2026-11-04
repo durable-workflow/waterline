@@ -4,6 +4,7 @@ import vm from 'node:vm'
 import test from 'node:test'
 import { appendRunHistoryPage } from '../../resources/js/run-history.mjs'
 import { operatorPermission } from '../../resources/js/operator-permissions.mjs'
+import { ambiguousCommandError } from '../../resources/js/request-budget.mjs'
 import { createWaterlineI18n } from '../../resources/js/localization.mjs'
 
 const source = fs.readFileSync(new URL('../../resources/js/screens/flows/flow.vue', import.meta.url), 'utf8')
@@ -16,6 +17,7 @@ function loadComponent(backend = 'embedded') {
         TimelineEventRenderer: {}, SearchAttributeRenderer: {}, CancellationCascadeView: {}, ExceptionSourceContext: {},
         appendRunHistoryPage,
         operatorPermission,
+        ambiguousCommandError,
         commandRequestOptions: () => ({}),
         crypto: globalThis.crypto,
         browserTimeoutMilliseconds: () => 0,
@@ -254,4 +256,17 @@ test('the redrive button renders only through canAction', () => {
     assert.match(button[0], /v-if="ready && canAction\('redrive'\)"/)
     const context = detail({ flow: { ...run, read_mode: 'complete', status: 'failed', can_redrive: false, redrive_blocked_reason: 'invalid_request_id' } })
     assert.equal(context.commandRejectionMessage('invalid_request_id', 'redrive'), 'The redrive request id is invalid.')
+})
+
+test('an engine without redrive gives a definite refusal, not an unknown outcome', () => {
+    const context = detail({ flow: { ...run, read_mode: 'complete', status: 'failed', can_redrive: true } })
+    const error = { response: { status: 501, data: {
+        accepted: false, reason: 'backend_capability_unavailable', rejection_reason: 'backend_capability_unavailable',
+        capability: 'redrive', message: 'The installed workflow package does not support redrive.',
+    } } }
+    assert.equal(context.commandFailureTitle(error, 'redrive'), 'Command rejected')
+    assert.equal(context.commandFailureMessage(error, 'redrive'), 'The connected workflow backend does not support this action.')
+    const german = detail({ $t: createWaterlineI18n('de').global.t })
+    assert.equal(german.commandRejectionMessage('backend_capability_unavailable', 'cancel'),
+        'Das verbundene Workflow-Backend unterstützt diese Aktion nicht.')
 })

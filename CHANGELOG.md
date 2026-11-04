@@ -7,7 +7,15 @@
   SDK outside its supported boundary. Waterline still accepts installed
   `^2.0 || ^3.0` SDKs. `SERVICE_MODE.md` notes the same next to its tested
   `^2.0` example, which moves with the qualified product tuple.
-
+- Command dialogs show refusal reasons and messages from the engine, Server or
+  a proxy as plain text (#261). Before, run detail inserted an unknown reason
+  code or a backend `message` into the dialog as HTML, for every command. The
+  query result title and the workflow list's filter validation messages are
+  also shown as text now.
+- A command refused with HTTP 501 `backend_capability_unavailable` now reads
+  as "Command rejected" with "The connected workflow backend does not support
+  this action." Before, run detail treated it like any other server error and
+  said the outcome was unknown, although the backend had done nothing.
 - Run detail offers **Redrive** on a failed run that the backend reports as
   eligible (durable-workflow/workflow#864). Redrive starts a successor run
   that reuses the failed run's completed steps, then opens it.
