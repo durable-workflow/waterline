@@ -56,15 +56,16 @@ final class OperatorAuthorization
     }
 
     /**
-     * A host that published its config before the redrive gate existed has
-     * no `redrive` key. Redrive then follows the repair gate, so a host that
-     * restricted repair does not silently allow redrive.
+     * Redrive follows the repair gate unless a host names its own redrive
+     * gate. A null or absent `redrive` key, including a config published
+     * before the key existed, uses the repair gate, so a host that gates only
+     * repair does not leave redrive open.
      *
      * @param array<string, mixed> $gates
      */
     private static function gateFor(array $gates, string $group): mixed
     {
-        if ($group === 'redrive' && ! array_key_exists('redrive', $gates)) {
+        if ($group === 'redrive' && ($gates['redrive'] ?? null) === null) {
             return $gates['repair'] ?? null;
         }
 

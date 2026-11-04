@@ -1319,5 +1319,6 @@
     "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.": "Un worker de servicio inició esta ejecución y los workers de servicio aún no pueden reproducir algunos de sus pasos completados tras una reejecución.",
     "This run's history has a step that redrive can't reuse yet.": "El historial de esta ejecución tiene un paso que la reejecución aún no puede reutilizar.",
     "This run failed before redrive could record where it stopped.": "Esta ejecución falló antes de que se pudiera registrar dónde se detuvo.",
-    "This redrive request was already used for another run.": "Esta solicitud de reejecución ya se usó para otra ejecución."
+    "This redrive request was already used for another run.": "Esta solicitud de reejecución ya se usó para otra ejecución.",
+    "The redrive request id is invalid.": "El id de la solicitud de reejecución no es válido."
 }

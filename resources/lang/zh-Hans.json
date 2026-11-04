@@ -1319,5 +1319,6 @@
     "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.": "此运行由服务 worker 启动，服务 worker 暂时无法在重新驱动后重放其部分已完成步骤。",
     "This run's history has a step that redrive can't reuse yet.": "此运行的历史中有重新驱动暂时无法复用的步骤。",
     "This run failed before redrive could record where it stopped.": "此运行在重新驱动能够记录其停止位置之前就失败了。",
-    "This redrive request was already used for another run.": "此重新驱动请求已用于另一个运行。"
+    "This redrive request was already used for another run.": "此重新驱动请求已用于另一个运行。",
+    "The redrive request id is invalid.": "重新驱动请求的 ID 无效。"
 }

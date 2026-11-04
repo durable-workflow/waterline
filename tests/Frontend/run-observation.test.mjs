@@ -246,3 +246,12 @@ test('each redrive confirmation sends one request id', async () => {
     assert.equal(JSON.stringify(posts[0][1]), JSON.stringify({ request_id: 'request-1' }))
     assert.notEqual(context.newRequestId(), context.newRequestId())
 })
+
+test('the redrive button renders only through canAction', () => {
+    const template = source.match(/<template>([\s\S]*)<\/template>/)[1]
+    const button = template.match(/<button[^>]*issueCommand\('redrive'\)[^>]*>/)
+    assert.ok(button, 'redrive button')
+    assert.match(button[0], /v-if="ready && canAction\('redrive'\)"/)
+    const context = detail({ flow: { ...run, read_mode: 'complete', status: 'failed', can_redrive: false, redrive_blocked_reason: 'invalid_request_id' } })
+    assert.equal(context.commandRejectionMessage('invalid_request_id', 'redrive'), 'The redrive request id is invalid.')
+})

@@ -102,8 +102,9 @@ Gate::define('waterline-operations', fn ($user) => $user->can('operate-workflows
 
 Each gate receives the current host user and the HTTP request as an optional
 second argument. A `null` or omitted gate preserves the default action access.
-A config with no `redrive` key uses the `repair` gate for redrive, so a host
-that published its config before redrive existed keeps the same restriction.
+A `null` or absent `redrive` gate uses the `repair` gate, so a host that gates
+only repair, or published its config before redrive existed, keeps the same
+restriction. Name a redrive gate to authorize redrive separately.
 A configured gate must authorize the user. Missing gates and invalid gate
 settings refuse the action. Laravel's normal guest and `Gate::before` rules
 apply. These gates grant no viewing access and do not bypass namespace or

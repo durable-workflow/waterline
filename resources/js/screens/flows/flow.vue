@@ -3987,6 +3987,7 @@ export default {
                 unsupported_history: this.$t("This run's history has a step that redrive can't reuse yet."),
                 unrecorded_failure_boundary: this.$t("This run failed before redrive could record where it stopped."),
                 request_id_already_used: this.$t("This redrive request was already used for another run."),
+                invalid_request_id: this.$t("The redrive request id is invalid."),
             }[reason] || null
         },
 

@@ -490,10 +490,25 @@ class WorkflowsController extends Controller
     ) {
         abort_unless($repository->engineSource() === 'v2', 404);
 
+        // An installed engine without redrive answers as a missing capability.
+        $controlPlane = interface_exists(WorkflowControlPlane::class) && app()->bound(WorkflowControlPlane::class)
+            ? app(WorkflowControlPlane::class)
+            : null;
+
+        if (! is_object($controlPlane) || ! method_exists($controlPlane, 'redrive')) {
+            return response()->json($this->withOperatorScope([
+                'accepted' => false,
+                'reason' => 'backend_capability_unavailable',
+                'rejection_reason' => 'backend_capability_unavailable',
+                'capability' => 'redrive',
+                'message' => 'The installed workflow package does not support redrive.',
+            ]), 501);
+        }
+
         $requestId = is_string($request->input('request_id')) && $request->input('request_id') !== ''
             ? $request->input('request_id')
             : null;
-        $result = app(WorkflowControlPlane::class)->redrive($instanceId, $runId, array_filter([
+        $result = $controlPlane->redrive($instanceId, $runId, array_filter([
             'namespace' => $this->commandNamespace(),
             'request_id' => $requestId,
             'command_context' => $this->commandContext($request),

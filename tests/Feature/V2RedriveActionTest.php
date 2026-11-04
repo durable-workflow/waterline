@@ -136,11 +136,28 @@ final class V2RedriveActionTest extends TestCase
         $this->postJson('/waterline/api/instances/order-1/runs/run-1/redrive')
             ->assertStatus(409);
 
-        // An explicit redrive gate is used as configured.
+        // The shipped null redrive gate follows the repair gate too.
         config()->set('waterline.authorization.gates.redrive', null);
         $this->actingAs(new GenericUser(['id' => 7, 'role' => 'viewer']));
         $this->postJson('/waterline/api/instances/order-1/runs/run-1/redrive')
+            ->assertForbidden()
+            ->assertJsonPath('capability', 'redrive');
+
+        // A named redrive gate authorizes redrive on its own.
+        config()->set('waterline.authorization.gates.redrive', 'waterline-redrive');
+        Gate::define('waterline-redrive', static fn ($user): bool => true);
+        $this->postJson('/waterline/api/instances/order-1/runs/run-1/redrive')
             ->assertStatus(409);
+    }
+
+    public function testAnEngineWithoutRedriveAnswersAsAMissingCapability(): void
+    {
+        $this->app->instance(WorkflowControlPlane::class, new class {});
+
+        $this->postJson('/waterline/api/instances/order-1/runs/run-1/redrive')
+            ->assertStatus(501)
+            ->assertJsonPath('reason', 'backend_capability_unavailable')
+            ->assertJsonPath('capability', 'redrive');
     }
 
     public function testActionabilityCarriesTheEnginesRedriveDecision(): void

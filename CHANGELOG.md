@@ -14,8 +14,11 @@
     engine's or Server's reason in the run's action details.
   - Each confirmation sends one `request_id`, so a retry can't start a second
     successor.
-  - The new `redrive` authorization gate falls back to the `repair` gate when
-    a host config has no `redrive` key.
+  - The new `redrive` authorization gate follows the `repair` gate when it is
+    `null` (the shipped default) or absent. Name a redrive gate to authorize
+    redrive separately.
+  - An embedded host whose workflow package lacks redrive gets HTTP 501
+    `backend_capability_unavailable` instead of an error.
 - Run detail labels a redrive lineage link as "Redriven from" on the successor
   run and "Redriven as" on the failed source run, rather than "Parent" and
   "Child". The labels need a workflow package that reports redrive links from
