@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -23,6 +24,7 @@ PREDICATE_TYPE = "in-toto.io/predicate-type"
 REQUIRED_PREDICATES = {"https://slsa.dev/provenance/v1", "https://spdx.dev/Document"}
 PLATFORMS = ("amd64", "arm64")
 MAX_MANIFEST = 1024 * 1024
+DIGEST = re.compile(r"sha256:[0-9a-f]{64}", re.ASCII)
 
 
 class ProvenanceError(ValueError):
@@ -50,11 +52,13 @@ def check_index(index: dict) -> dict:
     images, attestations = {}, {}
     for entry in entries:
         require(entry.get("mediaType") == MANIFEST, "Unexpected index entry type")
+        require(DIGEST.fullmatch(str(entry.get("digest"))) is not None, "Index entry digest is not an exact SHA-256 digest")
         annotations = entry.get("annotations") or {}
         platform = entry.get("platform") or {}
         if annotations.get(REFERENCE_TYPE) == "attestation-manifest":
             require(platform == {"architecture": "unknown", "os": "unknown"}, "Attestation entry claims a runtime platform")
             subject = annotations.get(REFERENCE_DIGEST)
+            require(DIGEST.fullmatch(str(subject)) is not None, "Attestation reference is not an exact SHA-256 digest")
             require(subject not in attestations, "More than one attestation manifest for an image")
             attestations[subject] = entry["digest"]
         else:

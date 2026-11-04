@@ -207,8 +207,10 @@ def inspect_attestation(root: Path, descriptor: dict, image: dict, source: str) 
                 for item in subjects), "In-toto subject is not this native image")
         require(isinstance(statement.get("predicate"), dict), "Missing attestation predicate")
         predicates[kind] = statement["predicate"]
-    request = predicates[SLSA_PROVENANCE].get("buildDefinition", {}).get("externalParameters", {}).get("request", {})
-    arguments = request.get("args", {}) if isinstance(request, dict) else {}
+    request = predicates[SLSA_PROVENANCE]
+    for key in ("buildDefinition", "externalParameters", "request", "args"):
+        request = request.get(key) if isinstance(request, dict) else None
+    arguments = request if isinstance(request, dict) else {}
     require(arguments.get("build-arg:SOURCE_COMMIT") == source and arguments.get("build-arg:WATERLINE_VERSION") == VERSION,
             "Build provenance does not bind the reviewed source and version")
     return {"mediaType": MANIFEST, "digest": descriptor["digest"], "size": descriptor["size"],

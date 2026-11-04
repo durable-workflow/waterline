@@ -138,18 +138,21 @@ jobs:
           subject-name: index.docker.io/durableworkflow/waterline
           subject-digest: ${{ steps.publish.outputs.image_digest }}
           push-to-registry: true
+          create-storage-record: false
       - name: Attest build provenance for the amd64 image
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
         with:
           subject-name: index.docker.io/durableworkflow/waterline
           subject-digest: ${{ steps.publish.outputs.amd64_digest }}
           push-to-registry: true
+          create-storage-record: false
       - name: Attest build provenance for the arm64 image
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
         with:
           subject-name: index.docker.io/durableworkflow/waterline
           subject-digest: ${{ steps.publish.outputs.arm64_digest }}
           push-to-registry: true
+          create-storage-record: false
       - name: Remove publication authentication before any follow-through
         if: always()
         shell: bash
@@ -179,3 +182,4 @@ jobs:
       image_digest: ${{ needs.publish.outputs.image_digest }}
       release_version: '2.13.2'
       source_commit: ${{ inputs.source_commit }}
+      publisher_commit: ${{ github.sha }}

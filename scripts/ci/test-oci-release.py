@@ -379,6 +379,8 @@ class OciReleaseTest(unittest.TestCase):
             ("statement type", lambda p: "attestation" not in p and p["provenance"].update(predicateType=oci.SPDX), "Invalid in-toto"),
             ("source argument", lambda p: "attestation" not in p and p["provenance"]["predicate"]["buildDefinition"]["externalParameters"]["request"]["args"].update({"build-arg:SOURCE_COMMIT": "f" * 40}), "does not bind"),
             ("version argument", lambda p: "attestation" not in p and p["provenance"]["predicate"]["buildDefinition"]["externalParameters"]["request"]["args"].pop("build-arg:WATERLINE_VERSION"), "does not bind"),
+            ("non-object build definition", lambda p: "attestation" not in p and p["provenance"]["predicate"].update(buildDefinition=["not", "an", "object"]), "does not bind"),
+            ("non-object request", lambda p: "attestation" not in p and p["provenance"]["predicate"]["buildDefinition"]["externalParameters"].update(request="text"), "does not bind"),
         ]
         for name, mutate, message in cases:
             with self.subTest(case=name):

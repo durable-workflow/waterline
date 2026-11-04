@@ -42,7 +42,10 @@ class PublishedProvenanceTest(unittest.TestCase):
         def same_platform(value): value["manifests"][1]["platform"] = {"architecture": "amd64", "os": "linux"}
         def images_only(value): value["manifests"] = value["manifests"][:2]
         def unknown_reference(value): value["manifests"][0].setdefault("annotations", {})[guard.REFERENCE_TYPE] = "signature"
-        for mutate in (drop_attestation, duplicate_attestation, extra_entry, wrong_reference, runtime_platform, same_platform, images_only, unknown_reference):
+        def short_digest(value): value["manifests"][0]["digest"] = "sha256:abc"
+        def malformed_reference(value): value["manifests"][2]["annotations"][guard.REFERENCE_DIGEST] = None
+        for mutate in (drop_attestation, duplicate_attestation, extra_entry, wrong_reference, runtime_platform, same_platform,
+                       images_only, unknown_reference, short_digest, malformed_reference):
             value = index()
             mutate(value)
             with self.subTest(case=mutate.__name__), self.assertRaises(guard.ProvenanceError):
