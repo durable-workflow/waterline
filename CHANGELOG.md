@@ -3,10 +3,10 @@
 ## Unreleased
 
 - The service image bundles PHP SDK 3.9.4 (was 3.4.1). Waterline develops
-  and tests against Workflow 2.20.1 and SDK 3.9.4 (was 2.5.12 and 3.4.1).
+  and tests against Workflow 2.20.2 and SDK 3.9.4 (was 2.5.12 and 3.4.1).
   The SDK upgrade brings Carbon 3.15 and Symfony translation 8 into the image.
 - Laravel support is unchanged (9 to 13), but Workflow sets what each host can
-  run. Laravel 10 to 13 hosts can use Workflow 2.20.x. Workflow 2.17.0 and
+  run. Laravel 10 to 13 hosts can use Workflow 2.20.x (CI tests 2.20.2). Workflow 2.17.0 and
   later require Laravel 10, so a Laravel 9 host stays on Workflow 2.16.x or
   earlier. CI now tests the Laravel 9 cell with Workflow 2.16.0. Waterline's
   own `composer.json` places no constraint on `durable-workflow/workflow`.
