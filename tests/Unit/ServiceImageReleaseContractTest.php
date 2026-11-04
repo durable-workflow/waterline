@@ -147,7 +147,7 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringContainsString('environment: release-publication', $workflow);
         $this->assertStringContainsString('ref: ${{ github.sha }}', $workflow);
         $this->assertStringContainsString('skopeo copy --all --preserve-digests', $workflow);
-        $this->assertStringContainsString('docker://docker.io/durableworkflow/waterline:2.13.2', $workflow);
+        $this->assertStringContainsString('docker://docker.io/durableworkflow/waterline:2.14.0', $workflow);
         $this->assertStringNotContainsString('docker/build-push-action', $workflow);
         $this->assertStringNotContainsString('docker run', $workflow);
         $this->assertStringNotContainsString('service-mode-image-smoke.sh', $workflow);

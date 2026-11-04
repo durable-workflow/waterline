@@ -1,6 +1,6 @@
 # Native image publication
 
-The bounded publisher currently admits Waterline **2.13.2**. Package/tag and
+The bounded publisher currently admits Waterline **2.14.0**. Package/tag and
 image delivery remain separate: do not announce an image or advance the current
 product tuple until the normal package and anonymous native acceptance succeed.
 

@@ -21,6 +21,13 @@ WORKFLOW_PACKAGE = "durable-workflow/workflow"
 SDK_PACKAGE = "durable-workflow/sdk"
 SERVICE_IMAGE = "durableworkflow/waterline"
 ONBOARDING_CONSTRAINT = "^2.0"
+# Each package's tested onboarding channel. The SDK channel moves on its own
+# once published acceptance qualifies a newer SDK with the product tuple.
+ONBOARDING_CONSTRAINTS = {
+    WATERLINE_PACKAGE: ONBOARDING_CONSTRAINT,
+    WORKFLOW_PACKAGE: ONBOARDING_CONSTRAINT,
+    SDK_PACKAGE: ONBOARDING_CONSTRAINT,
+}
 EXACT_VERSION = re.compile(
     r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z]+(?:\.[0-9A-Za-z]+)*)?$"
 )
@@ -247,10 +254,10 @@ def validate_composer_examples(
                     f"{source} Composer example copies an exact prerelease pin "
                     f"for {package}: {observed!r}"
                 )
-            if observed != ONBOARDING_CONSTRAINT:
+            if observed != ONBOARDING_CONSTRAINTS[package]:
                 raise ContractError(
                     f"{source} Composer example selects {package} with {observed!r}; "
-                    f"expected the tested {ONBOARDING_CONSTRAINT!r} channel"
+                    f"expected the tested {ONBOARDING_CONSTRAINTS[package]!r} channel"
                 )
 
         if "--with-all-dependencies" in tokens or "-W" in tokens:

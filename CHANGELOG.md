@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 2.14.0 - 2026-11-04
+
+This release restores public per-platform image provenance. Waterline 2.13.2's
+image was published without it.
 
 - The service image carries public per-platform provenance again (#241). Each
   platform image has a BuildKit SLSA v1 provenance and SPDX SBOM attestation
