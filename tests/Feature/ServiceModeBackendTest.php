@@ -352,6 +352,36 @@ final class ServiceModeBackendTest extends TestCase
         $this->assertSame($events, $this->client->historyPages['']['events']);
     }
 
+    public function testRollingListReplaysOneFrozenWindowAndMovesItOnTheNextRequest(): void
+    {
+        $this->client->listPageCount = 3;
+        $this->client->listCallWallClockSeconds = 1;
+        $query = 'page=3&started_time=rolling&started_within_seconds=86400';
+        $this->getJson('/waterline/api/flows/running?'.$query)->assertOk()
+            ->assertJsonPath('time_windows.started_time.from', '2026-08-11T12:00:15.000000Z');
+        $calls = collect($this->client->calls)->where('method', 'listWorkflows')->values();
+        $this->assertCount(3, $calls);
+        $expected = 'StartTime >= "2026-08-11T12:00:15.000000Z" AND StartTime < "2026-08-12T12:00:15.000000Z"';
+        foreach ($calls as $call) {
+            $this->assertSame($expected, $call['arguments']['query']);
+            $this->assertSame(50, $call['arguments']['pageSize']);
+        }
+        Carbon::setTestNow('2026-08-13T12:00:15Z');
+        $this->getJson('/waterline/api/flows/running?'.$query)->assertOk()
+            ->assertJsonPath('time_windows.started_time.from', '2026-08-12T12:00:15.000000Z');
+        $latest = collect($this->client->calls)->where('method', 'listWorkflows')->values()->slice(3);
+        foreach ($latest as $call) {
+            $this->assertSame('StartTime >= "2026-08-12T12:00:15.000000Z" AND StartTime < "2026-08-13T12:00:15.000000Z"', $call['arguments']['query']);
+        }
+    }
+
+    public function testTimeWindowDoesNotSilentlyReplaceAFreeFormServiceQuery(): void
+    {
+        $this->getJson('/waterline/api/flows/running?started_time=rolling&started_within_seconds=86400&query=WorkflowId%20%3D%20%22one%22')
+            ->assertUnprocessable()->assertJsonValidationErrors('query');
+        $this->assertCount(0, collect($this->client->calls)->where('method', 'listWorkflows'));
+    }
+
     public function testClassificationListsUseTheBackendVisibilityQueryWithoutPostFiltering(): void
     {
         config()->set('waterline.observability.workflow_types', [
@@ -1133,8 +1163,8 @@ final class ServiceModeBackendTest extends TestCase
     {
         $this->getJson('/waterline/api/saved-views?bucket=terminated')
             ->assertOk()
-            ->assertJsonPath('filter_version', 6)
-            ->assertJsonPath('supported_filter_versions', [6])
+            ->assertJsonPath('filter_version', 7)
+            ->assertJsonPath('supported_filter_versions', [6, 7])
             ->assertJsonPath('filter_definition.fields.instance_id.label', 'Instance ID')
             ->assertJsonPath('filter_definition.fields.instance_id.service_mode_available', true)
             ->assertJsonPath('filter_definition.fields.repair_state.label', 'Repair State')

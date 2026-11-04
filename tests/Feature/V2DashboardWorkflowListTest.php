@@ -16,7 +16,7 @@ use Workflow\V2\Models\WorkflowRunSummary;
 use Workflow\V2\Models\WorkflowSearchAttribute;
 use Workflow\V2\Support\RunListItemView;
 use Workflow\V2\Support\RunSummarySortKey;
-use Workflow\V2\Support\VisibilityFilters;
+use Waterline\Support\ActionabilityVisibilityFilters as VisibilityFilters;
 
 class V2DashboardWorkflowListTest extends TestCase
 {
@@ -797,12 +797,12 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('visibility_filters.saved_view.filter_version_status', 'unsupported')
             ->assertJsonPath(
                 'visibility_filters.saved_view.filter_version_message',
-                'This saved view uses visibility filter version 99, but this Waterline build supports version 6.',
+                'This saved view uses visibility filter version 99, but this Waterline build supports versions 6, 7.',
             )
             ->assertJsonPath('visibility_filters.saved_view_applied', false)
             ->assertJsonPath(
                 'visibility_filters.saved_view_warning',
-                'This saved view uses visibility filter version 99, but this Waterline build supports version 6.',
+                'This saved view uses visibility filter version 99, but this Waterline build supports versions 6, 7.',
             )
             ->assertJsonPath('visibility_filters.applied.instance_id', $timer->workflow_instance_id)
             ->assertJsonMissingPath('visibility_filters.applied.wait_kind');
@@ -1045,7 +1045,7 @@ class V2DashboardWorkflowListTest extends TestCase
             ->assertJsonPath('filter_version_status', 'unsupported')
             ->assertJsonPath(
                 'filter_version_message',
-                'This saved view uses visibility filter version 99, but this Waterline build supports version 6.',
+                'This saved view uses visibility filter version 99, but this Waterline build supports versions 6, 7.',
             )
             ->assertJsonPath('current_filter_version', VisibilityFilters::VERSION)
             ->assertJsonPath('supported_filter_versions', VisibilityFilters::supportedVersions());

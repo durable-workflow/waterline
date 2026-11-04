@@ -6,11 +6,13 @@ namespace Waterline\Support;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 use LogicException;
 
 final class ActionabilityVisibilityFilters
 {
-    public const VERSION = VisibilityFilterContract::VERSION;
+    public const VERSION = 7;
 
     private const REPAIR_STATE_FIELD = 'repair_state';
 
@@ -19,7 +21,7 @@ final class ActionabilityVisibilityFilters
      */
     public static function supportedVersions(): array
     {
-        return VisibilityFilterContract::supportedVersions();
+        return [VisibilityFilterContract::VERSION, self::VERSION];
     }
 
     /**
@@ -27,7 +29,17 @@ final class ActionabilityVisibilityFilters
      */
     public static function versionMetadata(mixed $version): array
     {
-        return VisibilityFilterContract::versionMetadata($version);
+        $metadata = VisibilityFilterContract::versionMetadata($version);
+        $supported = in_array($metadata['version'], self::supportedVersions(), true);
+
+        return [
+            ...$metadata,
+            'current_version' => self::VERSION,
+            'supported_versions' => self::supportedVersions(),
+            'supported' => $supported,
+            'status' => $supported ? 'supported' : 'unsupported',
+            'message' => $supported ? null : 'This saved view uses visibility filter version '.($metadata['version'] ?? 'unknown').', but this Waterline build supports versions 6, 7.',
+        ];
     }
 
     /**
@@ -43,7 +55,27 @@ final class ActionabilityVisibilityFilters
             $normalized[self::REPAIR_STATE_FIELD] = $repairState;
         }
 
-        return $normalized;
+        return [...$normalized, ...WorkflowTimeWindow::normalize($filters)];
+    }
+
+    /** @param array<string, mixed> $filters */
+    public static function normalizeStored(array $filters, mixed $version): array
+    {
+        if (self::versionMetadata($version)['version'] !== self::VERSION) {
+            $filters = array_diff_key($filters, array_flip(WorkflowTimeWindow::FIELDS));
+        }
+
+        return self::normalize($filters);
+    }
+
+    /** @param array<string, mixed> $filters */
+    public static function validate(array $filters): array
+    {
+        try {
+            return self::normalize($filters);
+        } catch (InvalidArgumentException $exception) {
+            throw ValidationException::withMessages(['filters.started_time' => $exception->getMessage()]);
+        }
     }
 
     /**
@@ -51,9 +83,10 @@ final class ActionabilityVisibilityFilters
      */
     public static function fromRequest(Request $request): array
     {
-        return self::normalize([
+        return self::validate([
             ...VisibilityFilterContract::fromRequest($request),
             self::REPAIR_STATE_FIELD => $request->query(self::REPAIR_STATE_FIELD),
+            ...array_intersect_key($request->query(), array_flip(WorkflowTimeWindow::FIELDS)),
         ]);
     }
 
@@ -70,7 +103,12 @@ final class ActionabilityVisibilityFilters
             $repairState = $normalized[self::REPAIR_STATE_FIELD]
                 ?? $merged[self::REPAIR_STATE_FIELD]
                 ?? null;
+            $time = array_intersect_key(
+                array_key_exists('started_time', $normalized) ? $normalized : $merged,
+                array_flip(WorkflowTimeWindow::FIELDS),
+            );
             $merged = VisibilityFilterContract::merge($merged, $normalized);
+            $merged = [...$merged, ...$time];
 
             if ($repairState !== null) {
                 $merged[self::REPAIR_STATE_FIELD] = $repairState;
@@ -85,7 +123,7 @@ final class ActionabilityVisibilityFilters
      * @param array<string, mixed> $filters
      * @return Builder<\Illuminate\Database\Eloquent\Model>
      */
-    public static function apply(Builder $query, array $filters): Builder
+    public static function apply(Builder $query, array $filters, ?array $timeWindow = null): Builder
     {
         $normalized = self::normalize($filters);
         $embeddedFilters = \Workflow\V2\Support\VisibilityFilters::class;
@@ -96,7 +134,27 @@ final class ActionabilityVisibilityFilters
 
         $embeddedFilters::apply($query, $normalized);
 
+        if ($timeWindow !== null) {
+            self::applyTimeWindow($query, $timeWindow);
+        }
+
         return self::applyRepairState($query, $normalized[self::REPAIR_STATE_FIELD] ?? null);
+    }
+
+    /** @param array<string, string> $window */
+    public static function applyTimeWindow(Builder $query, array $window): Builder
+    {
+        // Bind complete UTC microseconds rather than the rendered list timestamp.
+        return $query->where('started_at', '>=', self::databaseBound($window['from']))
+            ->where('started_at', '<', self::databaseBound($window['before']));
+    }
+
+    private static function databaseBound(string $utc): string
+    {
+        // SQLite stores ordinary Eloquent dates as text, sometimes without
+        // fractional seconds. Canonical trimmed fractions retain the same
+        // ordering as native microsecond timestamp columns on the SQL backends.
+        return rtrim(rtrim(str_replace(['T', 'Z'], [' ', ''], $utc), '0'), '.');
     }
 
     /**
@@ -142,7 +200,36 @@ final class ActionabilityVisibilityFilters
             }
         }
 
+        foreach (WorkflowTimeWindow::FIELDS as $offset => $name) {
+            $fields[$name] = [
+                'label' => match ($name) {
+                    'started_time' => 'Start Time',
+                    'started_within_seconds' => 'Rolling Duration',
+                    'started_from' => 'Started From',
+                    default => 'Started Before',
+                },
+                'type' => $name === 'started_within_seconds' ? 'integer' : 'string',
+                'input' => 'time_window',
+                'operator' => 'range',
+                'filterable' => true,
+                'saved_view_compatible' => true,
+                'order' => $maxOrder + 2 + $offset,
+                'query_parameter' => $name,
+                'group' => 'started_time',
+            ];
+        }
+        $definition['time_window'] = [
+            'timestamp' => 'started_at',
+            'timezone' => 'UTC',
+            'lower_inclusive' => true,
+            'upper_inclusive' => false,
+            'maximum_duration_seconds' => WorkflowTimeWindow::MAX_SECONDS,
+            'null_matches' => false,
+            'evaluation' => 'once_per_list_request',
+        ];
         $definition['fields'] = $fields;
+        $definition['version'] = self::VERSION;
+        $definition['supported_versions'] = self::supportedVersions();
         $definition['actionability'] = [
             'schema' => ActionabilityContract::SCHEMA,
             'version' => ActionabilityContract::VERSION,

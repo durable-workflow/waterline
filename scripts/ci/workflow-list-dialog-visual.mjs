@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -113,6 +114,102 @@ async function triggerValidation(page) {
         state: 'visible',
         timeout: 5_000,
     });
+}
+
+// Exercise the product form and saved view against the normal ephemeral CI app.
+// This uses no released image or operational observer.
+async function qualifyTimeWindow(page, {viewport, dialog, outputDirectory, name}) {
+    const read = async (action, predicate) => {
+        const response = page.waitForResponse(response => {
+            const url = new URL(response.url());
+            return response.request().method() === 'GET' && url.pathname.endsWith('/api/flows/completed')
+                && predicate(url.searchParams);
+        });
+        await action();
+        const result = await response;
+        assert.equal(result.status(), 200, 'The time-filtered list must load successfully.');
+        return result.json();
+    };
+    const mode = page.locator('#waterline-filter-started-time');
+    await mode.selectOption('rolling');
+    await page.locator('#waterline-filter-duration').fill('0');
+    await page.locator('.waterline-dialog .swal2-confirm').click();
+    await page.locator('.swal2-validation-message').waitFor({state: 'visible'});
+    assert.equal(await page.locator('#waterline-filter-duration').inputValue(), '0');
+    await mode.selectOption('fixed');
+    const from = '2026-01-10T00:00:00.123456Z';
+    const before = '2026-01-11T00:00:00.123457Z';
+    await page.locator('#waterline-filter-started-from').fill(from);
+    await page.locator('#waterline-filter-started-before').fill(before);
+    const themes = [];
+    for (const theme of ['dark', 'light']) {
+        if (theme === 'light') {
+            await page.locator('.waterline-dialog .swal2-cancel').click();
+            await page.locator('button[title="Switch to Light Mode"]').click();
+            await page.waitForFunction(() => document.getElementById('app-stylesheet')?.sheet?.href.endsWith('/app.css'));
+            await page.getByRole('button', {name: 'Filters', exact: true}).click();
+            await mode.selectOption('rolling');
+            await page.locator('#waterline-filter-duration').fill('0');
+            await page.locator('.waterline-dialog .swal2-confirm').click();
+            await page.locator('.swal2-validation-message').waitFor({state: 'visible'});
+            await mode.selectOption('fixed');
+            await page.locator('#waterline-filter-started-from').fill(from);
+            await page.locator('#waterline-filter-started-before').fill(before);
+        }
+        await page.waitForTimeout(150);
+        const geometry = await auditModalGeometry(page, dialog, viewport);
+        const contrast = await auditContrast(page, ['label', 'help', 'input', 'validation', 'action']);
+        const controls = await auditControlReachability(page);
+        themes.push({theme, geometry, contrast, controls});
+        await page.screenshot({path: path.join(outputDirectory, `${name}-fixed-${theme}.png`)});
+    }
+    const fixed = await read(() => page.locator('.waterline-dialog .swal2-confirm').click(), params => params.get('started_time') === 'fixed');
+    assert.equal(fixed.time_windows.started_time.from, from);
+    assert.equal(fixed.time_windows.started_time.before, before);
+    assert.equal(fixed.visibility_filters.applied.started_within_seconds, undefined);
+    await page.getByRole('button', {name: 'Filters', exact: true}).click();
+    assert.equal(await page.locator('#waterline-filter-started-from').inputValue(), from);
+    await mode.selectOption('rolling');
+    await page.locator('#waterline-filter-duration').fill('1');
+    await page.locator('#waterline-filter-duration-unit').selectOption('days');
+    const rolling = await read(() => page.locator('.waterline-dialog .swal2-confirm').click(), params => params.get('started_time') === 'rolling');
+    assert.equal(rolling.visibility_filters.applied.started_within_seconds, 86400);
+    await page.getByRole('button', {name: 'Save View', exact: true}).click();
+    await page.locator('.swal2-input').fill(`Time window ${name}`);
+    const savedResponse = page.waitForResponse(response => response.request().method() === 'POST'
+        && new URL(response.url()).pathname.endsWith('/api/saved-views'));
+    await page.locator('.swal2-confirm').click();
+    const saved = await savedResponse;
+    assert.equal(saved.status(), 201);
+    const view = await saved.json();
+    try {
+        assert.equal(view.filters.started_time, 'rolling');
+        assert.equal(view.filters.started_within_seconds, 86400);
+        assert.equal(view.filters.started_from, undefined);
+        assert.equal(view.filters.started_before, undefined);
+        await page.waitForURL(url => url.searchParams.get('view') === view.id);
+        const reloaded = await read(() => page.reload({waitUntil: 'networkidle'}), params => params.get('view') === view.id);
+        assert.equal(reloaded.visibility_filters.saved_view_applied, true);
+        assert.equal(reloaded.visibility_filters.applied.started_within_seconds, 86400);
+        await page.getByRole('button', {name: 'Filters', exact: true}).click();
+        assert.equal(await mode.inputValue(), 'rolling');
+        assert.equal(await page.locator('#waterline-filter-duration').inputValue(), '1');
+        await mode.selectOption('any');
+        const any = await read(() => page.locator('.waterline-dialog .swal2-confirm').click(), params => params.get('started_time') === 'any');
+        assert.equal(any.time_windows.started_time, null);
+        assert.equal(any.visibility_filters.saved_view.filters.started_within_seconds, 86400);
+    } finally {
+        // Clear the selected view before deletion so auto-refresh cannot read a
+        // just-deleted view between the UI navigation and test cleanup.
+        const url = new URL(page.url());
+        url.search = '';
+        await page.goto(url.href, {waitUntil: 'networkidle'});
+        const removed = await page.request.delete(new URL(`/waterline/api/saved-views/${view.id}`, page.url()).href);
+        assert.equal(removed.status(), 204);
+    }
+    await waitForWorkflowList(page);
+    await page.getByRole('button', {name: 'Filters', exact: true}).click();
+    return {fixed: {from, before}, rollingSeconds: 86400, savedReload: true, anyOverride: true, themes};
 }
 
 export async function auditContrast(page, requiredCategories, popupSelector = '.waterline-dialog') {
@@ -630,6 +727,7 @@ export async function runWorkflowListDialogVisual({
                 let focus = [];
                 let controls = [];
                 let checkboxes = [];
+                let timeWindow = null;
                 let failure = null;
 
                 page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message}`));
@@ -658,6 +756,7 @@ export async function runWorkflowListDialogVisual({
                     openedDialog = true;
 
                     if (dialog.validation) {
+                        timeWindow = await qualifyTimeWindow(page, {viewport, dialog, outputDirectory, name});
                         await triggerValidation(page);
                     }
 
@@ -724,6 +823,7 @@ export async function runWorkflowListDialogVisual({
                         geometry,
                         controls,
                         checkboxes,
+                        timeWindow,
                         focus,
                         failure,
                     };

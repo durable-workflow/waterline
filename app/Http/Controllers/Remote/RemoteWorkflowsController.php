@@ -14,6 +14,7 @@ use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\CursorPageReplay;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ServiceVisibilityFilters;
+use Waterline\Support\WorkflowTimeWindow;
 use Waterline\Support\RunWaitSummary;
 use Waterline\Support\RunApplicationContext;
 use Waterline\Support\RunObservationPresenter;
@@ -235,6 +236,7 @@ final class RemoteWorkflowsController extends RemoteController
             $bucket,
             $this->stringQuery($request, 'query'),
             $classification['workflow_types'],
+            WorkflowTimeWindow::requestTime($request),
         );
         $savedViewPlan = ServiceVisibilityFilters::plan($context['saved_filters'], $bucket);
         $savedViewApplied = $context['saved_view'] === null
@@ -269,7 +271,7 @@ final class RemoteWorkflowsController extends RemoteController
             'page_limit' => CursorPageReplay::MAX_PAGE,
             'page_limit_reached' => $replay['page_limit_reached'],
             'classification_scope' => [...$classification, 'available' => true],
-            'time_windows' => ['generated_at' => now()->toJSON(), 'status_bucket' => $bucket, 'retention_scope' => 'all_retained_runs'],
+            'time_windows' => ['generated_at' => now()->toJSON(), 'status_bucket' => $bucket, 'retention_scope' => 'all_retained_runs', 'started_time' => $context['time_window']],
             'visibility_filters' => [
                 'version' => ActionabilityVisibilityFilters::VERSION,
                 'supported_versions' => ActionabilityVisibilityFilters::supportedVersions(),
