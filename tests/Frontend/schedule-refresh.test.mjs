@@ -110,3 +110,22 @@ test('embedded mode refreshes on the list cadence, service mode more slowly, and
         globalThis.clearInterval = original.clear;
     }
 });
+
+test('a hidden tab skips the refresh and the next visible tick resumes it', async () => {
+    const {state, requests} = fixture();
+    const first = state.loadData();
+    requests[0].resolve(page('active', 'started'));
+    await first;
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'document');
+    globalThis.document = {hidden: true};
+    try {
+        assert.equal(state.refreshPeriodically(), false);
+        assert.equal(requests.length, 1);
+        globalThis.document.hidden = false;
+        assert.equal(state.refreshPeriodically(), true);
+        assert.equal(requests.length, 2);
+    } finally {
+        if (original) Object.defineProperty(globalThis, 'document', original);
+        else delete globalThis.document;
+    }
+});
