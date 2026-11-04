@@ -39,8 +39,9 @@ function loadMatrix(): array
 function validateContract(array $matrix): void
 {
     $requiredKeys = [
-        'label', 'boundary', 'laravel', 'testbench', 'workbench', 'php', 'phpunit', 'scaffold', 'resolution',
+        'label', 'boundary', 'laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'scaffold', 'resolution',
     ];
+    $rootWorkflow = rootWorkflowVersion();
     $expected = [
         9 => [
             'php' => '8.1', 'testbench' => 7, 'workbench' => 7, 'phpunit' => 9,
@@ -90,7 +91,7 @@ function validateContract(array $matrix): void
             }
         }
 
-        foreach (['laravel', 'testbench', 'workbench', 'phpunit'] as $package) {
+        foreach (['laravel', 'testbench', 'workbench', 'phpunit', 'workflow'] as $package) {
             if (preg_match('/^(\d+)\.\d+\.\d+$/D', $row[$package]) !== 1) {
                 throw new RuntimeException(sprintf(
                     'Matrix cell %d must pin %s to an exact semantic version; received %s.',
@@ -137,6 +138,25 @@ function validateContract(array $matrix): void
             ));
         }
 
+        // Workflow 2.17.0 and later require Laravel 10 or newer, so a Laravel 9
+        // host can run at most Workflow 2.16.x. Other cells test the version
+        // Waterline itself develops against.
+        if ($laravelMajor === 9 && version_compare($row['workflow'], '2.17.0', '>=')) {
+            throw new RuntimeException(sprintf(
+                'Laravel 9 must pin a Workflow release before 2.17.0, the newest line a Laravel 9 host can install; received %s.',
+                $row['workflow'],
+            ));
+        }
+
+        if ($laravelMajor !== 9 && $row['workflow'] !== $rootWorkflow) {
+            throw new RuntimeException(sprintf(
+                'Laravel %d must use the root require-dev Workflow %s; received %s.',
+                $laravelMajor,
+                $rootWorkflow,
+                $row['workflow'],
+            ));
+        }
+
         $fingerprint = implode('|', array_map(static fn (string $key): string => $row[$key], $requiredKeys));
         if (isset($seenRows[$fingerprint])) {
             throw new RuntimeException(sprintf('Matrix cell %d duplicates another dependency tuple.', $index));
@@ -153,6 +173,18 @@ function validateContract(array $matrix): void
     if ($testbenchConfig === false || preg_match('/^laravel:\s*[\'\"]?@testbench[\'\"]?\s*$/m', $testbenchConfig) !== 1) {
         throw new RuntimeException('testbench.yaml must select the dependency-provided @testbench scaffold.');
     }
+}
+
+function rootWorkflowVersion(): string
+{
+    $manifest = json_decode((string) file_get_contents(__DIR__.'/../../composer.json'), true, 512, JSON_THROW_ON_ERROR);
+    $version = $manifest['require-dev']['durable-workflow/workflow'] ?? null;
+
+    if (! is_string($version) || preg_match('/^\d+\.\d+\.\d+$/D', $version) !== 1) {
+        throw new RuntimeException('composer.json must pin durable-workflow/workflow to an exact require-dev version.');
+    }
+
+    return $version;
 }
 
 function major(string $version): int
@@ -186,7 +218,7 @@ function parseOptions(array $arguments): array
  */
 function requestedRow(array $matrix, array $requested): array
 {
-    $keys = ['laravel', 'testbench', 'workbench', 'php', 'phpunit', 'scaffold', 'resolution'];
+    $keys = ['laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'scaffold', 'resolution'];
 
     if (array_keys($requested) !== $keys) {
         throw new RuntimeException('Cell validation requires exactly: '.implode(', ', $keys).'.');
@@ -211,13 +243,14 @@ function requestedRow(array $matrix, array $requested): array
     foreach ($matrix['include'] as $row) {
         if (major($row['laravel']) === $laravelMajor) {
             throw new RuntimeException(sprintf(
-                'Unsupported Laravel %d dependency tuple. Expected Laravel %s, Testbench %s, Workbench %s, PHP %s, PHPUnit %s, scaffold %s, resolution %s.',
+                'Unsupported Laravel %d dependency tuple. Expected Laravel %s, Testbench %s, Workbench %s, PHP %s, PHPUnit %s, Workflow %s, scaffold %s, resolution %s.',
                 $laravelMajor,
                 $row['laravel'],
                 $row['testbench'],
                 $row['workbench'],
                 $row['php'],
                 $row['phpunit'],
+                $row['workflow'],
                 $row['scaffold'],
                 $row['resolution'],
             ));
@@ -252,6 +285,7 @@ function assertInstalled(array $row): void
         'testbench' => 'orchestra/testbench',
         'workbench' => 'orchestra/workbench',
         'phpunit' => 'phpunit/phpunit',
+        'workflow' => 'durable-workflow/workflow',
     ];
 
     foreach ($packages as $key => $package) {
@@ -293,8 +327,32 @@ function selfTest(array $matrix): void
         }
     }
 
+    $laravel9Workflow = $matrix;
+    $laravel9Workflow['include'][0]['workflow'] = '2.17.0';
+
+    try {
+        validateContract($laravel9Workflow);
+        throw new RuntimeException('Self-test accepted Workflow 2.17.0 on Laravel 9.');
+    } catch (RuntimeException $exception) {
+        if (! str_contains($exception->getMessage(), 'Laravel 9 must pin a Workflow release before 2.17.0')) {
+            throw $exception;
+        }
+    }
+
+    $driftedWorkflow = $matrix;
+    $driftedWorkflow['include'][3]['workflow'] = '2.16.0';
+
+    try {
+        validateContract($driftedWorkflow);
+        throw new RuntimeException('Self-test accepted a Laravel 12 Workflow that differs from require-dev.');
+    } catch (RuntimeException $exception) {
+        if (! str_contains($exception->getMessage(), 'Laravel 12 must use the root require-dev Workflow')) {
+            throw $exception;
+        }
+    }
+
     $unsupported = array_intersect_key($matrix['include'][0], array_flip([
-        'laravel', 'testbench', 'workbench', 'php', 'phpunit', 'scaffold', 'resolution',
+        'laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'scaffold', 'resolution',
     ]));
     $unsupported['workbench'] = $matrix['include'][1]['workbench'];
 

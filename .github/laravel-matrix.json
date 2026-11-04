@@ -8,28 +8,31 @@
             "workbench": "7.19.0",
             "php": "8.1",
             "phpunit": "9.6.35",
+            "workflow": "2.16.0",
             "scaffold": "testbench",
             "resolution": "legacy"
         },
         {
             "label": "Laravel 10",
             "boundary": "intermediate",
-            "laravel": "10.50.1",
+            "laravel": "10.50.4",
             "testbench": "8.37.0",
             "workbench": "8.19.0",
             "php": "8.1",
             "phpunit": "10.5.64",
+            "workflow": "2.20.1",
             "scaffold": "testbench",
             "resolution": "legacy"
         },
         {
             "label": "Laravel 11",
             "boundary": "intermediate",
-            "laravel": "11.55.0",
+            "laravel": "11.57.1",
             "testbench": "9.17.0",
             "workbench": "9.15.0",
             "php": "8.2",
             "phpunit": "10.5.64",
+            "workflow": "2.20.1",
             "scaffold": "testbench",
             "resolution": "legacy"
         },
@@ -41,6 +44,7 @@
             "workbench": "10.1.0",
             "php": "8.2",
             "phpunit": "11.5.56",
+            "workflow": "2.20.1",
             "scaffold": "testbench",
             "resolution": "strict"
         },
@@ -52,6 +56,7 @@
             "workbench": "11.1.0",
             "php": "8.3",
             "phpunit": "12.5.31",
+            "workflow": "2.20.1",
             "scaffold": "testbench",
             "resolution": "strict"
         }

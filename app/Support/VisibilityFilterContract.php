@@ -14,7 +14,7 @@ final class VisibilityFilterContract
 {
     public const VERSION = 6;
 
-    public const PROJECTION_SCHEMA_VERSION = 2;
+    public const PROJECTION_SCHEMA_VERSION = 3;
 
     private const FIELD_LABELS = [
         'instance_id' => 'Instance ID',
