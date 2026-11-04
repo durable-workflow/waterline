@@ -1,8 +1,11 @@
 # Native image publication
 
-The bounded publisher currently admits Waterline **2.14.0**. Package/tag and
-image delivery remain separate: do not announce an image or advance the current
+The bounded publisher source admits the fixed Waterline **2.15.1** candidate.
+Package/tag and image delivery remain separate: do not announce an image or advance the current
 product tuple until the normal package and anonymous native acceptance succeed.
+Source admission is not execution approval. Existing operator stops and each
+separate build, inspection, retrieval, publication and observation gate still
+apply; changing the fixed version does not resume a stopped task.
 
 1. Qualify the exact source, merge it, and independently record its commit/tree.
    Review both workflow commits and SHA-256 fingerprints. Never move a tag.
@@ -76,3 +79,39 @@ The OCI layout and index follow the [OCI image layout](https://github.com/openco
 and [image index](https://github.com/opencontainers/image-spec/blob/main/image-index.md)
 specifications. Archives and provenance are inert input to the publisher, not
 commands. Missing, failed, expired, stale or mismatched evidence never qualifies.
+
+## Security patch installed-graph and route-cache qualification
+
+The 2.15.1 source candidate retains the reviewed production lock. Before any
+artifact can be accepted, collect the actual Composer installed-package metadata
+inside a clean qualification filesystem and compare every production package's
+name, version and source reference with the lock archived from the independently
+reviewed source commit. Missing, extra, duplicate, development or Core packages
+are refusals. An SDK-only check does not establish the complete installed graph.
+Keep the standalone graph separate from an embedded host's own lock and cache.
+
+The optional `--installed-json` input to `waterline_release_identity.py` compares
+that metadata as inert JSON. It neither installs packages nor starts an image,
+and existing workflows do not enable this optional check automatically. Its
+receipt alone does not establish the origin of the metadata: the separately
+reviewed collector must bind the actual source commit, lock digest, platform,
+image config and OCI archive or published manifest to the package observation.
+
+On each admitted native candidate architecture and each anonymous published
+platform, qualification must begin with clean vendor/bootstrap-cache state,
+verify the actual PHP and canonical Waterline class paths, then clear, build,
+inspect and clear the route cache against the patched installed graph. Compare
+stable route identities and exercise `/up` plus existing service API, request
+budget and refusal/recovery controls before and after the rebuild. Retain the
+cache and graph observations with the exact source/config/artifact subjects.
+Neither the Dockerfile nor entrypoint currently prebuilds a route cache; this
+qualification requirement does not change production cache policy. No compiled
+cache or vendor tree from an older artifact can stand in for this proof.
+
+Keep any additional graph/cache report separate from the publisher's existing
+two-file native-artifact allowlist. The protected publisher must continue to
+verify inert content without executing Composer, candidate helpers or images.
+Fresh complete dependency audits, both full package inventories, current scan
+databases and zero HIGH/CRITICAL findings remain separate acceptance conditions.
+Frozen 2.15.0 source, tag, digests, aliases and observer/cohort records remain
+historical inputs and supply no clearance for the new candidate.
