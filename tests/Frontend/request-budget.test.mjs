@@ -24,6 +24,10 @@ test('uncertain writes remain unknown while read errors and definite refusals st
         assert.equal(ambiguousCommandError({response:{status:403,data:{reason:'waterline_action_forbidden'}}},action),false);
         assert.equal(ambiguousCommandError({response:{status:409,data:{reason:'run_not_active'}}},action),false);
         assert.equal(ambiguousCommandError({response:{status:501,data:{error:'waterline_request_configuration_invalid'}}},action),false);
+        assert.equal(ambiguousCommandError({response:{status:501,data:{reason:'backend_capability_unavailable'}}},action),false);
+        assert.equal(ambiguousCommandError({response:{status:501,data:{rejection_reason:'backend_capability_unavailable'}}},action),false);
+        assert.equal(ambiguousCommandError({response:{status:503,data:{reason:'backend_capability_unavailable'}}},action),true);
+        assert.equal(ambiguousCommandError({response:{status:501,data:{}}},action),true);
     }
     assert.equal(ambiguousCommandError({code:'ECONNABORTED'},'query'),false);
 });

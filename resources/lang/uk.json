@@ -1321,5 +1321,6 @@
     "This run failed before redrive could record where it stopped.": "Це виконання завершилося помилкою до того, як вдалося записати, де воно зупинилося.",
     "This redrive request was already used for another run.": "Цей запит на перезапуск уже використано для іншого виконання.",
     "The redrive request id is invalid.": "Ідентифікатор запиту на перезапуск недійсний.",
+    "The connected workflow backend does not support this action.": "Підключений бекенд робочих процесів не підтримує цю дію.",
     "Its history export holds only the retained run record and is marked incomplete.": "Експорт історії містить лише збережений запис виконання й позначений як неповний."
 }

@@ -1321,5 +1321,6 @@
     "This run failed before redrive could record where it stopped.": "この実行は、停止位置を記録できるようになる前に失敗しました。",
     "This redrive request was already used for another run.": "この再実行リクエストはすでに別の実行に使用されています。",
     "The redrive request id is invalid.": "再実行リクエストの ID が無効です。",
+    "The connected workflow backend does not support this action.": "接続先のワークフローバックエンドはこの操作に対応していません。",
     "Its history export holds only the retained run record and is marked incomplete.": "履歴のエクスポートには保持されている実行レコードのみが含まれ、不完全としてマークされます。"
 }
