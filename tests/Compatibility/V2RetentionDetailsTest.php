@@ -108,6 +108,34 @@ final class V2RetentionDetailsTest extends TestCase
         }
     }
 
+    public function testFallbackDedupeKeyChangesWhenARunWithNoHistoryIsPruned(): void
+    {
+        config()->set('waterline.engine_source', 'v2');
+        $this->app->instance(OperatorObservabilityRepository::class, $this->unavailableObservability());
+
+        // Sequence and event count are identical before and after pruning an
+        // empty run, so only the pruned marker can separate the two exports.
+        $run = $this->createArchivedRun('completed');
+        $url = '/waterline/api/instances/'.$run->workflow_instance_id.'/runs/'.$run->id.'/history-export';
+
+        $before = $this->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('history_complete', true)
+            ->assertJsonPath('workflow.details_state', 'retained')
+            ->assertJsonCount(0, 'history_events');
+
+        WorkflowRunRetentionCleanup::pruneRun($run->id);
+        $this->assertNotNull($run->fresh()->details_pruned_at);
+
+        $after = $this->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('history_complete', false)
+            ->assertJsonPath('workflow.details_state', 'pruned')
+            ->assertJsonCount(0, 'history_events');
+
+        $this->assertNotSame($before->json('dedupe_key'), $after->json('dedupe_key'));
+    }
+
     public function testPrimaryHistoryExportMarksPrunedRunsIncompleteOnCoreWithThePruningContract(): void
     {
         $version = InstalledVersions::getVersion('durable-workflow/workflow');
