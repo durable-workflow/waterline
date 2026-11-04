@@ -17,6 +17,7 @@ function loadComponent(backend = 'embedded') {
         appendRunHistoryPage,
         operatorPermission,
         commandRequestOptions: () => ({}),
+        crypto: globalThis.crypto,
         browserTimeoutMilliseconds: () => 0,
     }
     vm.runInNewContext(script, sandbox)

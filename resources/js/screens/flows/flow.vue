@@ -4894,7 +4894,8 @@ export default {
                 },
             }[commandType]
             // One id per confirmation, so a retry of the same click can't start a second run.
-            const body = commandType === 'redrive' ? { request_id: this.newRequestId() } : null
+            const redriveRequestId = commandType === 'redrive' ? this.newRequestId() : null
+            const body = redriveRequestId ? { request_id: redriveRequestId } : null
 
             const confirmed = await this.$dialog({
                 title: copy.title,
@@ -4946,9 +4947,18 @@ export default {
         },
 
         newRequestId() {
-            return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-                ? crypto.randomUUID()
-                : 'waterline-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)
+            if (typeof crypto === 'undefined') {
+                return null
+            }
+            if (typeof crypto.randomUUID === 'function') {
+                return crypto.randomUUID()
+            }
+            if (typeof crypto.getRandomValues === 'function') {
+                return 'waterline-' + Array.from(crypto.getRandomValues(new Uint8Array(16)),
+                    (byte) => byte.toString(16).padStart(2, '0')).join('')
+            }
+
+            return null
         },
 
         submitInteractiveCommand(commandType, interactiveCommand = null, body = null) {
