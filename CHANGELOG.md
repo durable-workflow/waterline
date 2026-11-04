@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The image publisher sets aside the hosted runner's own `~/.docker/config.json`
+  while it logs in, copies and attests, then restores it. Every fail-closed
+  check in those steps now names what failed. The first 2.14.0 publish run
+  stopped before login on an unnamed check, with nothing published.
+
 ## 2.14.0 - 2026-11-04
 
 This release restores public per-platform image provenance. Waterline 2.13.2's
