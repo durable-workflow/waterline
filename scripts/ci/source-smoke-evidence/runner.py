@@ -27,6 +27,8 @@ CONFIG = {'backend':'service', 'path':'waterline', 'namespace':'smoke',
           'access_mode':'operator', 'allow_unauthenticated':True, 'service_budget':'.2'}
 ROLES = {'app':('1','768m','256'), 'fixture':('.25','256m','128'),
          'proxy':('.25','256m','128'), 'browser':('1','1g','256')}
+ARTISAN = '/app/artisan'
+SMOKE_TYPE = 'smoke.order'
 PACKET = Path(__file__).resolve().parent
 ROOT = PACKET.parents[2]
 
@@ -188,8 +190,8 @@ class Session:
         self.write_mode('healthy')
         self.role('app','sleep',['1150'],aliases=('budget-app',))
         self.exec('app','sh','-c','mkdir -p /app/storage/framework/cache/data /app/storage/framework/sessions /app/storage/framework/views /app/storage/logs')
-        self.exec('app','php','/app/artisan','package:discover','--no-interaction')
-        self.exec('app','php','/app/artisan','migrate','--force','--no-interaction')
+        self.exec('app','php',ARTISAN,'package:discover','--no-interaction')
+        self.exec('app','php',ARTISAN,'migrate','--force','--no-interaction')
         self.role('proxy','php',['-S','0.0.0.0:8080','/packet/proxy.php'])
         self.role('browser','sleep',['1150'],browser=True)
         self.exec('browser','sh','-c','printf "%s" "{}" > /state/package.json; ln -s /tools/node_modules /state/node_modules')
@@ -222,13 +224,13 @@ class Session:
         call('/waterline/api/saved-views?bucket=running',200,{
             'filter_version':6,'filter_definition.fields.repair_state.label':'Repair State',
             'filter_definition.fields.repair_state.filterable':False})
-        view=call('/waterline/api/saved-views',201,{'filters.workflow_type':'smoke.order','service_mode_available':True},'POST',
-                  {'name':'Source smoke '+phase,'bucket':'running','filters':{'workflow_type':'smoke.order'},'shared':True})
+        view=call('/waterline/api/saved-views',201,{'filters.workflow_type':SMOKE_TYPE,'service_mode_available':True},'POST',
+                  {'name':'Source smoke '+phase,'bucket':'running','filters':{'workflow_type':SMOKE_TYPE},'shared':True})
         identifier=view.get('id')
         require(isinstance(identifier,str) and re.fullmatch(r'[A-Za-z0-9-]{1,128}',identifier),'Saved-view identity')
         filtered=call('/waterline/api/flows/running?view='+identifier,200,{
             'data.0.instance_id':'smoke-order','visibility_filters.saved_view.id':identifier,
-            'visibility_filters.saved_view_applied':True,'visibility_filters.applied.workflow_type':'smoke.order',
+            'visibility_filters.saved_view_applied':True,'visibility_filters.applied.workflow_type':SMOKE_TYPE,
             'visibility_filters.capability.fully_applied':True})
         require(len(filtered['data'])==1,'Smoke filtered cardinality')
         call('/waterline/api/instances/smoke-order/runs/smoke-run',200,{
@@ -247,7 +249,7 @@ class Session:
     def phase(self, name):
         self.write_mode('healthy')
         for action in (['route:cache'] if name=='cached' else ['route:clear']):
-            self.exec('app','php','/app/artisan',action,'--no-interaction')
+            self.exec('app','php',ARTISAN,action,'--no-interaction')
         observation={'phase':name,'identity':self.collector('identity'),'routes':self.collector('routes'),
                      'health':self.collector('health')}
         observation['api']=self.api(name)

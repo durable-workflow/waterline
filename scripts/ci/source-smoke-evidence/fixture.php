@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require '/packet/state.php';
+require_once '/packet/state.php';
 
 $path = (string) parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 if ($path === '/ready') { echo 'ready'; return; }

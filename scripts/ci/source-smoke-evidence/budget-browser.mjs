@@ -50,7 +50,7 @@ try {
     const page = await browser.newPage({viewport:{width:390,height:900}});
     page.on('pageerror',error=>report.errors.push(String(error)));
     const base = 'http://127.0.0.1:8080';
-    for (const scenario of ['backend-stall','browser-stall']) {
+    const readScenario = async scenario => {
         mode(scenario);
         let requestedAt;
         const onRequest = request => {if (request.url().includes('/api/flows/running')) requestedAt=Date.now();};
@@ -83,7 +83,8 @@ try {
         await page.screenshot({path:`${output}/${scenario}-recovered.png`,fullPage:true});
         report.checks.push({scenario,elapsed,serviceBudget:0.2,browserBudget:browserBudget(scenario),api,recoveredRows:2});
         page.off('request',onRequest); page.off('response',onResponse);
-    }
+    };
+    await ['backend-stall','browser-stall'].reduce((pending,scenario) => pending.then(() => readScenario(scenario)),Promise.resolve());
     mode('healthy');
     await page.goto(base+'/waterline/flows/instances/smoke-order/runs/smoke-run#collapseArguments');
     await page.locator('.wl-flow-detail__status').waitFor();
@@ -110,9 +111,7 @@ try {
     // One fixture server is shared. Drain its abandoned request before changing
     // mode, and keep the viewport/theme phases ordered to preserve attribution.
     await page.emulateMedia({reducedMotion:'reduce'});
-    for (const view of views) {
-        for (const theme of ['dark','light']) {
-            for (const width of [390,1440]) {
+    const viewScenario = async ({view,theme,width}) => {
                 await page.setViewportSize({width,height:900});
                 await page.evaluate(value => localStorage.setItem('waterline-theme',value),theme);
                 const fixture = {browser_path:'/waterline'+view.endpoint,browser_response:view.response};
@@ -141,9 +140,9 @@ try {
                 await page.screenshot({path:`${output}/${view.name}-${theme}-${width}-recovered.png`,fullPage:true});
                 report.checks.push({scenario:'affected-view-browser-stall',view:view.name,theme,width,elapsed,browserBudget:0.8,recovered:true,transport:'actual HTTP fixture'});
                 page.off('request',onRequest);
-            }
-        }
-    }
+    };
+    const scenarios = views.flatMap(view => ['dark','light'].flatMap(theme => [390,1440].map(width => ({view,theme,width}))));
+    await scenarios.reduce((pending,context) => pending.then(() => viewScenario(context)),Promise.resolve());
     const scheduleFixture = {browser_budget:0.8,browser_path:'/waterline/api/v2/schedules',
         browser_response:{...listResponse,total:1,data:[{schedule_id:'budget-schedule',id:'budget-schedule',namespace:'smoke',status:'active',workflow_type:'smoke.order'}]},
         schedule_write_stall:true};

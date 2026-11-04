@@ -11,9 +11,11 @@ const MAX_JSON = 2_097_152;
 const MAX_ROUTES = 2048;
 const MAX_OUTPUT = 4_194_304;
 
+final class SourceSmokeCollectorException extends RuntimeException {}
+
 function refuse(): never
 {
-    throw new RuntimeException('Source-smoke collector refused.');
+    throw new SourceSmokeCollectorException('Source-smoke collector refused.');
 }
 
 /** Read an object under an admitted immutable root, not a candidate-supplied path. */
@@ -99,7 +101,7 @@ try {
         $graph[$name] = ['version' => $version, 'reference' => $reference];
     }
     ksort($graph);
-    require '/app/vendor/autoload.php';
+    require_once '/app/vendor/autoload.php';
     if ($mode === 'identity') {
         $files = [];
         $total = 0;
@@ -138,7 +140,7 @@ try {
         exit(0);
     }
 
-    $app = require '/app/bootstrap/app.php';
+    $app = require_once '/app/bootstrap/app.php';
     $http = $app->make(Illuminate\Contracts\Http\Kernel::class);
     $http->bootstrap(); // routesAreCached is meaningful only after normal boot.
     if ($mode === 'config') {

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from decimal import Decimal
 import io
 import json
 import os
@@ -47,12 +48,16 @@ def unique_object(pairs):
     return result
 
 
+def refuse_nonfinite(_):
+    raise Refusal('Nonfinite JSON')
+
+
 def bounded_json(raw, limit=MAX_JSON):
     require(isinstance(raw, bytes) and len(raw) <= limit, 'Oversized JSON')
     try:
         value = json.loads(raw, object_pairs_hook=unique_object,
-                           parse_constant=lambda _: (_ for _ in ()).throw(Refusal('Nonfinite JSON')))
-    except (ValueError, UnicodeError, RecursionError) as error:
+                           parse_constant=refuse_nonfinite)
+    except (ValueError, RecursionError) as error:
         raise Refusal('Malformed bounded JSON') from error
     def check(item, depth=0):
         require(depth <= 32, 'JSON nesting bound')
@@ -170,6 +175,24 @@ def graph(packages):
     return dict(sorted(result.items()))
 
 
+def docker_copy_targets(name):
+    destinations = []
+    if name.startswith('standalone/'):
+        destinations.append(name[len('standalone/'):])
+    if name.split('/')[0] in ('app', 'config', 'database', 'public', 'resources', 'routes'):
+        destinations.append('waterline/'+name)
+    if name.startswith('public/'):
+        destinations.append('public/vendor/waterline/'+name[len('public/'):])
+    return destinations
+
+
+def archived_content(archive, member):
+    require(member.isfile() and 0 <= member.size <= MAX_FILE, 'Archived source object type/bound')
+    content = archive.extractfile(member).read(MAX_FILE+1)
+    require(len(content) == member.size, 'Archived object length mismatch')
+    return content
+
+
 def expected_from_git(repository: Path):
     """Independent exact Git archive, never the candidate's own lock/source."""
     raw_tree, _ = command(['git', '-C', str(repository), 'rev-parse', SOURCE+'^{tree}'], time.monotonic()+5)
@@ -182,18 +205,10 @@ def expected_from_git(repository: Path):
             name = member.name
             if member.isdir():
                 continue
-            destinations = []
-            if name.startswith('standalone/'):
-                destinations.append(name[len('standalone/'):])
-            if name.split('/')[0] in ('app', 'config', 'database', 'public', 'resources', 'routes'):
-                destinations.append('waterline/'+name)
-            if name.startswith('public/'):
-                destinations.append('public/vendor/waterline/'+name[len('public/'):])
+            destinations = docker_copy_targets(name)
             if not destinations:
                 continue
-            require(member.isfile() and 0 <= member.size <= MAX_FILE, 'Archived source object type/bound')
-            content = tar.extractfile(member).read(MAX_FILE+1)
-            require(len(content) == member.size, 'Archived object length mismatch')
+            content = archived_content(tar, member)
             total += len(content)
             require(total <= MAX_TOTAL and len(files)+len(destinations) <= MAX_FILES, 'Archive aggregate bound')
             if name == 'standalone/composer.lock':
@@ -269,6 +284,11 @@ def cleanup_receipt(receipt):
     require(all(value == [] for value in receipt.values()), 'Owned resource survived')
 
 
+def fixed_budget(value, milliseconds):
+    require(type(value) in (int,float), 'Budget must be a JSON number')
+    return Decimal(str(value))*1000 == milliseconds
+
+
 def browser_receipts(primary, automatic):
     require(isinstance(primary,dict) and primary.get('source')==SOURCE and primary.get('errors')==[], 'Primary browser provenance/error')
     checks=primary.get('checks')
@@ -277,11 +297,11 @@ def browser_receipts(primary, automatic):
             and checks[-1].get('scenario')=='schedule-write-stall', 'Browser scenario identity')
     for check in checks[:2]:
         require(.15 <= check.get('elapsed',0) < 1.8 and check.get('recoveredRows')==2
-                and check.get('serviceBudget')==.2 and check.get('browserBudget')==.8, 'Browser budget/recovery mismatch')
+                and fixed_budget(check.get('serviceBudget'),200) and fixed_budget(check.get('browserBudget'),800), 'Browser budget/recovery mismatch')
     backend=checks[0].get('api')
     require(isinstance(backend,list) and len(backend)>0 and backend[0].get('http')==502
             and at(backend[0],'body.reason')=='request_timeout'
-            and at(backend[0],'body.remote_details.timeout_seconds')==.2,'Service timeout mismatch')
+            and fixed_budget(at(backend[0],'body.remote_details.timeout_seconds'),200),'Service timeout mismatch')
     for check in (checks[2],checks[-1]):
         require(check.get('outcome')=='unknown' and len(check.get('writes',[]))==1,'Mutation outcome/retry mismatch')
     represented=set()
@@ -289,11 +309,11 @@ def browser_receipts(primary, automatic):
         key=(check.get('view'),check.get('theme'),check.get('width'))
         require(check.get('scenario')=='affected-view-browser-stall' and key not in represented
                 and check.get('recovered') is True and .6 <= check.get('elapsed',0) < 1.8
-                and check.get('browserBudget')==.8, 'Affected-view budget/recovery mismatch')
+                and fixed_budget(check.get('browserBudget'),800), 'Affected-view budget/recovery mismatch')
         represented.add(key)
     require(represented=={(v,t,w) for v in ('schedules','workers','services') for t in ('dark','light') for w in (390,1440)}, 'Affected-view cohort mismatch')
     require(isinstance(automatic,dict) and automatic.get('source')==SOURCE and automatic.get('errors')==[]
-            and automatic.get('browserBudget')==3.5 and 3 <= automatic.get('elapsed',0)<5
+            and fixed_budget(automatic.get('browserBudget'),3500) and 3 <= automatic.get('elapsed',0)<5
             and automatic.get('recoveredRows')==2 and len(automatic.get('requests',[]))==2,
             'Automatic outstanding-read/recovery mismatch')
 

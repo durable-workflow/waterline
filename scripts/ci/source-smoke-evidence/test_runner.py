@@ -20,22 +20,33 @@ def spec():
 
 
 class RunnerTests(unittest.TestCase):
+    def test_inherited_browser_assertions_remain_exact_and_ordered(self):
+        root=pathlib.Path(__file__).resolve().parents[3]
+        packet=pathlib.Path(__file__).resolve().parent
+        for name in ('browser','auto'):
+            original=(root/'scripts/ci'/('request-budget-'+name+'.mjs')).read_text()
+            proposed=(packet/('budget-'+name+'.mjs')).read_text()
+            assertions=[line.strip() for line in original.splitlines() if 'assert.' in line]
+            cursor=0
+            for assertion in assertions:
+                position=proposed.find(assertion,cursor)
+                self.assertGreaterEqual(position,0,name)
+                cursor=position+len(assertion)
+
     def test_execution_hold_precedes_every_side_effect(self):
         with mock.patch('runner.Session',side_effect=AssertionError('A role was created')):
-            with self.assertRaisesRegex(e.Refusal,'HELD'):
-                r.execute(spec(),'/unused-inputs','/unused-evidence')
+            self.assertRaisesRegex(e.Refusal, 'HELD', r.execute, spec(), '/unused-inputs', '/unused-evidence')
         with mock.patch.dict('os.environ',{'EXECUTION_ENABLED':'true','WATERLINE_SOURCE_SMOKE_EVIDENCE_PROPOSAL':'1'}):
             with mock.patch('runner.command',side_effect=AssertionError('A command ran')), mock.patch.object(sys,'argv',['runner']):
-                with self.assertRaisesRegex(e.Refusal,'HELD'):
-                    r.main()
+                self.assertRaisesRegex(e.Refusal, 'HELD', r.main)
 
     def test_wrong_source_platform_alias_and_missing_provenance_refuse(self):
         r.validate_spec(spec())
         for key,value in [('source','f'*40),('platform','linux/386'),('image_id','waterline:latest'),
                           ('image_config_sha256',''),('vendor_preparation_receipt_sha256','')]:
             bad=spec();bad[key]=value
-            with self.subTest(key=key),self.assertRaises(e.Refusal):
-                r.validate_spec(bad)
+            with self.subTest(key=key):
+                self.assertRaises(e.Refusal, r.validate_spec, bad)
 
     def test_role_plan_preserves_isolation_and_boundaries(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -70,19 +81,19 @@ class RunnerTests(unittest.TestCase):
             s.verify_image(spec()['image_id'],digest,True)
             for key,value in [('Architecture','arm64'),('Id','sha256:'+'f'*64)]:
                 old=observation[key];observation[key]=value
-                with self.assertRaises(e.Refusal):s.verify_image(spec()['image_id'],digest,True)
+                self.assertRaises(e.Refusal, s.verify_image, spec()['image_id'], digest, True)
                 observation[key]=old
-            with self.assertRaises(e.Refusal):s.verify_image(spec()['image_id'],'0'*64,True)
+            self.assertRaises(e.Refusal, s.verify_image, spec()['image_id'], '0' * 64, True)
             config['Labels']['org.opencontainers.image.revision']='f'*40
             changed=hashlib.sha256(json.dumps(config,sort_keys=True,separators=(',',':')).encode()).hexdigest()
-            with self.assertRaises(e.Refusal):s.verify_image(spec()['image_id'],changed,True)
+            self.assertRaises(e.Refusal, s.verify_image, spec()['image_id'], changed, True)
 
     def test_interrupted_cleanup_cannot_be_accepted(self):
         with tempfile.TemporaryDirectory() as directory:
             root=pathlib.Path(directory).resolve();(root/'i').mkdir();(root/'e').mkdir();s=r.Session(spec(),root/'i',root/'e')
             s.docker=mock.Mock(side_effect=e.Refusal('uncertain cleanup'))
-            with self.assertRaises(e.Refusal):s.cleanup()
-            with self.assertRaises(e.Refusal):e.cleanup_receipt({'containers':['remaining'],'networks':[],'volumes':[],'processes':[]})
+            self.assertRaises(e.Refusal, s.cleanup)
+            self.assertRaises(e.Refusal, e.cleanup_receipt, {'containers': ['remaining'], 'networks': [], 'volumes': [], 'processes': []})
 
     def test_clean_mock_requires_independent_empty_readbacks(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -101,10 +112,10 @@ class RunnerTests(unittest.TestCase):
             root=pathlib.Path(directory).resolve();(root/'i').mkdir();(root/'e').mkdir();s=r.Session(spec(),root/'i',root/'e')
             s.write_mode=lambda mode:None
             s.exec=mock.Mock(side_effect=e.Refusal('cache command failed'))
-            with self.assertRaises(e.Refusal):s.phase('cached')
+            self.assertRaises(e.Refusal, s.phase, 'cached')
             self.assertEqual(s.observed,[])
             s.collector=lambda mode,request=None:{'status':502,'body':{}}
-            with self.assertRaises(e.Refusal):s.api('clear-before')
+            self.assertRaises(e.Refusal, s.api, 'clear-before')
 
 
 if __name__=='__main__':unittest.main()

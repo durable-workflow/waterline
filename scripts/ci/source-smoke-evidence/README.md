@@ -86,13 +86,10 @@ admitted immutable roots; any unexpected FIFO/race is additionally terminated
 by command/container/owner deadlines. Host readers use no-follow/nonblocking
 opens and reject FIFO, symlink, multiple-link and replaced objects before decode.
 
-Source validation so far: 17 offline Python controls, independent Git mapping
+Source validation so far: 18 offline Python controls, independent Git mapping
 of 197 immutable image app files and all 79 production packages, Python/Node/sh
 syntax checks, and `php -l` for four PHP files. **No collector mode, Laravel cache
-command, candidate image, fixture topology or browser control ran.** The first
-mock entrypoint test accidentally inherited unittest's argv and failed before
-being corrected to supply the runner's own arguments; that failure is retained.
-The source packet still requires independent exact diff/security review and any
+command, candidate image, fixture topology or browser control ran.** The source packet still requires independent exact diff/security review and any
 requested corrections. These source checks are not installed acceptance.
 
 Every native OCI/import/retrieval, scan, protected publication, anonymous
