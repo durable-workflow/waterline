@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import vm from 'node:vm'
 import test from 'node:test'
+import { parse } from '@vue/compiler-sfc'
 import { escapeDialogHtml, showDialogValidationText } from '../../resources/js/dialogs.mjs'
 import { operatorPermission } from '../../resources/js/operator-permissions.mjs'
 import { ambiguousCommandError } from '../../resources/js/request-budget.mjs'
@@ -12,7 +13,7 @@ const payload = '<img src=x onerror="alert(1)">'
 const escaped = '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;'
 
 const source = fs.readFileSync(new URL('../../resources/js/screens/flows/flow.vue', import.meta.url), 'utf8')
-const script = source.match(/<script[^>]*>([\s\S]*?)<\/script>/)[1]
+const script = parse(source).descriptor.script.content
     .replace(/^import .*$/gm, '').replace('export default', 'globalThis.component =')
 
 function detail(overrides = {}) {
