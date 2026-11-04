@@ -255,6 +255,11 @@ composer require \
   "durable-workflow/sdk:^2.0"
 ```
 
+On Packagist, `^2.0` resolves to SDK 2.5.4. SDK releases before the
+GHSA-f9x3-7vq9-cph6 fix are outside the SDK's supported boundary, so prefer
+SDK 3.9.1 or later for a new install. Waterline's service-mode tests pass
+with it. Waterline accepts installed SDKs matching `^2.0 || ^3.0`.
+
 Set `WATERLINE_BACKEND=service` together with the endpoint, token, namespace,
 and access-mode inputs above. If service mode is selected without the SDK,
 Waterline stops during package boot and reports the stable-channel Composer
