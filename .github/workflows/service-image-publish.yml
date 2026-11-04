@@ -53,6 +53,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: release-publication
+    # id-token and attestations exist only for the attest steps below, which
+    # sign GitHub build provenance for the exact published digests.
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
+      attestations: write
     outputs:
       image_digest: ${{ steps.publish.outputs.image_digest }}
     env:
@@ -97,8 +105,13 @@ jobs:
           umask 077
           test -n "$DOCKERHUB_USERNAME"
           test -n "$DOCKERHUB_TOKEN"
+          # attest-build-provenance reads registry credentials only from
+          # ~/.docker/config.json. The file exists from here until the
+          # always-run removal step, covering only the copy and attest steps.
+          test ! -e "$HOME/.docker/config.json"
+          mkdir -p -m 700 "$HOME/.docker"
           printf '%s' "$DOCKERHUB_TOKEN" | skopeo login \
-            --authfile "$RUNNER_TEMP/waterline-registry-auth.json" \
+            --authfile "$HOME/.docker/config.json" \
             --username "$DOCKERHUB_USERNAME" --password-stdin docker.io
       - name: Copy verified inert content to the fixed version
         id: publish
@@ -107,19 +120,45 @@ jobs:
           set -euo pipefail
           scripts/ci/prepare-oci-publication.sh recheck
           skopeo copy --all --preserve-digests \
-            --authfile "$RUNNER_TEMP/waterline-registry-auth.json" \
+            --authfile "$HOME/.docker/config.json" \
             --digestfile "$RUNNER_TEMP/waterline-published-digest.txt" \
             "oci:$RUNNER_TEMP/waterline-publication/verified-oci:2.13.2" \
             docker://docker.io/durableworkflow/waterline:2.13.2
           expected="$(jq -r .image_digest "$RUNNER_TEMP/waterline-publication/verified.json")"
           test "$(cat "$RUNNER_TEMP/waterline-published-digest.txt")" = "$expected"
           printf 'image_digest=%s\n' "$expected" >> "$GITHUB_OUTPUT"
+          for architecture in amd64 arm64; do
+            digest="$(jq -r --arg architecture "$architecture" '.manifests[] | select(.platform.architecture == $architecture) | .digest' "$RUNNER_TEMP/waterline-publication/verified.json")"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            printf '%s_digest=%s\n' "$architecture" "$digest" >> "$GITHUB_OUTPUT"
+          done
+      - name: Attest build provenance for the published index
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        with:
+          subject-name: index.docker.io/durableworkflow/waterline
+          subject-digest: ${{ steps.publish.outputs.image_digest }}
+          push-to-registry: true
+          create-storage-record: false
+      - name: Attest build provenance for the amd64 image
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        with:
+          subject-name: index.docker.io/durableworkflow/waterline
+          subject-digest: ${{ steps.publish.outputs.amd64_digest }}
+          push-to-registry: true
+          create-storage-record: false
+      - name: Attest build provenance for the arm64 image
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4
+        with:
+          subject-name: index.docker.io/durableworkflow/waterline
+          subject-digest: ${{ steps.publish.outputs.arm64_digest }}
+          push-to-registry: true
+          create-storage-record: false
       - name: Remove publication authentication before any follow-through
         if: always()
         shell: bash
         run: |
-          skopeo logout --authfile "$RUNNER_TEMP/waterline-registry-auth.json" docker.io || true
-          rm -f -- "$RUNNER_TEMP/waterline-registry-auth.json"
+          skopeo logout --authfile "$HOME/.docker/config.json" docker.io || true
+          rm -f -- "$HOME/.docker/config.json"
       - name: Retain publication identities
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -137,8 +176,10 @@ jobs:
     needs: publish
     permissions:
       contents: read
+      attestations: read
     uses: ./.github/workflows/published-image-qualification.yml # local
     with:
       image_digest: ${{ needs.publish.outputs.image_digest }}
       release_version: '2.13.2'
       source_commit: ${{ inputs.source_commit }}
+      publisher_commit: ${{ github.sha }}

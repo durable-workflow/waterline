@@ -30,20 +30,56 @@ def blob(value):
     return "sha256:" + hashlib.sha256(raw).hexdigest(), raw
 
 
-def native_archive(directory, architecture, source=SOURCE):
+def native_archive(directory, architecture, source=SOURCE, mutate=None):
+    """Write BuildKit's single-platform export: a nested index with one image and its attestations."""
     layer_digest, layer = blob(b"opaque-compressed-layer")
     config_digest, config = blob({"os": "linux", "architecture": architecture, "config": {"Labels": {
         "org.opencontainers.image.revision": source, "dev.durable-workflow.release.tag": oci.VERSION}}})
     manifest_digest, manifest = blob({"schemaVersion": 2, "mediaType": oci.MANIFEST,
         "config": {"mediaType": oci.CONFIG, "digest": config_digest, "size": len(config)},
         "layers": [{"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip", "digest": layer_digest, "size": len(layer)}]})
+    parts = {
+        "provenance": {"_type": oci.STATEMENT, "predicateType": oci.SLSA_PROVENANCE, "subject": [], "predicate": {
+            "buildDefinition": {"externalParameters": {"request": {"args": {
+                "build-arg:SOURCE_COMMIT": source, "build-arg:WATERLINE_VERSION": oci.VERSION}}}}}},
+        "sbom": {"_type": oci.STATEMENT, "predicateType": oci.SPDX,
+                 "subject": [{"name": "image", "digest": {"sha256": manifest_digest.split(":")[1]}}], "predicate": {"spdxVersion": "SPDX-2.3"}},
+    }
+    image_descriptor = {"mediaType": oci.MANIFEST, "digest": manifest_digest, "size": len(manifest),
+                        "platform": {"architecture": architecture, "os": "linux"}}
+    parts["image_descriptor"] = image_descriptor
+    if mutate:
+        mutate(parts)
+    provenance_digest, provenance = blob(parts["provenance"])
+    sbom_digest, sbom = blob(parts["sbom"])
+    empty_digest, empty = blob(b"{}")
+    attestation = {"schemaVersion": 2, "mediaType": oci.MANIFEST, "artifactType": oci.ATTESTATION_ARTIFACT,
+        "config": {"mediaType": oci.EMPTY_CONFIG, "digest": empty_digest, "size": len(empty)},
+        "layers": [
+            {"mediaType": oci.IN_TOTO, "digest": sbom_digest, "size": len(sbom), "annotations": {oci.PREDICATE_TYPE: oci.SPDX}},
+            {"mediaType": oci.IN_TOTO, "digest": provenance_digest, "size": len(provenance), "annotations": {oci.PREDICATE_TYPE: oci.SLSA_PROVENANCE}},
+        ],
+        "subject": {"mediaType": oci.MANIFEST, "digest": manifest_digest, "size": len(manifest)}}
+    parts["attestation"] = attestation
+    if mutate:
+        mutate(parts)
+    attestation_digest, attestation_raw = blob(parts["attestation"])
+    attestation_descriptor = {"mediaType": oci.MANIFEST, "digest": attestation_digest, "size": len(attestation_raw),
+        "annotations": {oci.REFERENCE_DIGEST: manifest_digest, oci.REFERENCE_TYPE: "attestation-manifest"},
+        "platform": {"architecture": "unknown", "os": "unknown"}}
+    parts["attestation_descriptor"] = attestation_descriptor
+    parts["manifests"] = [parts["image_descriptor"], attestation_descriptor]
+    if mutate:
+        mutate(parts)
+    nested_digest, nested = blob({"schemaVersion": 2, "mediaType": oci.INDEX, "manifests": parts["manifests"]})
     entries = {"oci-layout": oci.encode({"imageLayoutVersion": "1.0.0"}),
-        "index.json": oci.encode({"schemaVersion": 2, "manifests": [{"mediaType": oci.MANIFEST, "digest": manifest_digest, "size": len(manifest)}]})}
-    for digest, raw in [(layer_digest, layer), (config_digest, config), (manifest_digest, manifest)]:
+        "index.json": oci.encode({"schemaVersion": 2, "mediaType": oci.INDEX, "manifests": [{"mediaType": oci.INDEX, "digest": nested_digest, "size": len(nested)}]})}
+    for digest, raw in [(layer_digest, layer), (config_digest, config), (manifest_digest, manifest), (provenance_digest, provenance),
+                        (sbom_digest, sbom), (empty_digest, empty), (attestation_digest, attestation_raw), (nested_digest, nested)]:
         entries["blobs/sha256/" + digest.split(":")[1]] = raw
     path = directory / f"{architecture}.oci.tar"
     write_tar(path, entries)
-    return path, entries, manifest_digest, config_digest
+    return path, entries, manifest_digest, config_digest, attestation_digest
 
 
 def write_tar(path, entries):
@@ -69,18 +105,20 @@ class OciReleaseTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
 
     def test_actual_archive_hashes_and_native_config_bind_source(self):
-        archive, _entries, manifest_digest, config_digest = native_archive(self.root, "arm64")
+        archive, _entries, manifest_digest, config_digest, attestation_digest = native_archive(self.root, "arm64")
         layout = self.root / "layout"
         oci.unpack_oci(archive, layout)
-        descriptor, actual_config = oci.inspect_oci(layout, "arm64", SOURCE)
+        descriptor, actual_config, attestation = oci.inspect_oci(layout, "arm64", SOURCE)
         self.assertEqual(descriptor["digest"], manifest_digest)
         self.assertEqual(actual_config, config_digest)
+        self.assertEqual(attestation["digest"], attestation_digest)
+        self.assertEqual(attestation["annotations"][oci.REFERENCE_DIGEST], manifest_digest)
         for architecture, source in [("amd64", SOURCE), ("arm64", "f" * 40)]:
             with self.assertRaises(oci.EvidenceError):
                 oci.inspect_oci(layout, architecture, source)
 
     def test_tar_paths_links_duplicates_and_changed_blobs_are_refused(self):
-        _archive, entries, _manifest, _config = native_archive(self.root, "amd64")
+        _archive, entries, _manifest, _config, _attestation = native_archive(self.root, "amd64")
         attacks = [{"../outside": b"bad"}, {"/absolute": b"bad"}, {"blobs/sha256/" + "0" * 64: b"changed"}]
         for index, attack in enumerate(attacks):
             path = self.root / f"attack-{index}.tar"
@@ -106,7 +144,7 @@ class OciReleaseTest(unittest.TestCase):
         self.assertFalse((self.root.parent / "outside").exists())
 
     def test_descriptor_size_external_url_missing_blob_and_oversize_refuse(self):
-        archive, _entries, _manifest, _config = native_archive(self.root, "amd64")
+        archive, _entries, _manifest, _config, _attestation = native_archive(self.root, "amd64")
         layout = self.root / "layout"
         oci.unpack_oci(archive, layout)
         descriptor = oci.read_json(layout / "index.json")["manifests"][0]
@@ -211,10 +249,11 @@ class OciReleaseTest(unittest.TestCase):
         selected = {"source": SOURCE, "tree": TREE, "runner_commit": RUNNER, "run_id": 12345,
                     "run_attempt": 1, "build_workflow_sha256": "f" * 64, "artifacts": {}}
         for architecture in ("amd64", "arm64"):
-            archive, _entries, manifest, config = native_archive(self.root, architecture)
-            provenance = {"schema": "waterline.native-oci/v1", "version": oci.VERSION, "source": SOURCE, "tree": TREE,
+            archive, _entries, manifest, config, attestation = native_archive(self.root, architecture)
+            provenance = {"schema": "waterline.native-oci/v2", "version": oci.VERSION, "source": SOURCE, "tree": TREE,
                 "architecture": architecture, "runner_commit": RUNNER, "run_id": 12345, "run_attempt": 1,
                 "build_workflow_sha256": "f" * 64, "manifest_digest": manifest, "config_digest": config,
+                "attestation_digest": attestation,
                 "archive_digest": oci.digest_file(archive),
                 "image_security": security_evidence(oci.digest_file(archive), architecture, config), **oci.SDK}
             target = self.root / f"{architecture}.zip"
@@ -231,9 +270,15 @@ class OciReleaseTest(unittest.TestCase):
         evidence = oci.read_json(self.root / "verified.json")
         self.assertEqual(evidence["destination"], "docker.io/durableworkflow/waterline:2.13.2")
         self.assertEqual([item["platform"]["architecture"] for item in evidence["manifests"]], ["amd64", "arm64"])
+        self.assertEqual([item["annotations"][oci.REFERENCE_DIGEST] for item in evidence["attestations"]],
+                         [item["digest"] for item in evidence["manifests"]])
         root = self.root / "verified-oci"
         descriptor = oci.read_json(root / "index.json")["manifests"][0]
         self.assertEqual(oci.digest_file(oci.blob(root, descriptor)), evidence["image_digest"])
+        published = oci.read_json(oci.blob(root, descriptor))["manifests"]
+        self.assertEqual(published, evidence["manifests"] + evidence["attestations"])
+        for item in published:
+            oci.blob(root, item)
 
     def test_changed_zip_or_candidate_commands_cannot_reach_verified_output(self):
         selected = self.artifact_fixture()
@@ -263,7 +308,7 @@ class OciReleaseTest(unittest.TestCase):
                 oci.validate_image_security({**original, **change}, original["subject"], "amd64", original["config_digest"])
 
     def test_scan_retains_compact_inventory_and_refuses_a_fixed_high(self):
-        archive, _entries, _manifest, config = native_archive(self.root, "amd64")
+        archive, _entries, _manifest, config, _attestation = native_archive(self.root, "amd64")
         report = {"SchemaVersion": 2, "ArtifactType": "container_image", "Metadata": {
             "OS": {"Family": "alpine", "Name": "3.24.3"}, "ImageID": config,
             "ImageConfig": {"architecture": "amd64"}}, "Results": [{"Type": "alpine", "Packages": [{"Name": "curl"}]}]}
@@ -303,6 +348,66 @@ class OciReleaseTest(unittest.TestCase):
         arguments = argparse.Namespace(directory=self.root)
         with self.assertRaises(oci.EvidenceError):
             oci.prepare(arguments)
+        self.assertFalse((self.root / "verified.json").exists())
+
+    def assert_layout_refused(self, mutate, message=None):
+        directory = Path(tempfile.mkdtemp(dir=self.root))
+        archive, *_ = native_archive(directory, "amd64", mutate=mutate)
+        layout = directory / "layout"
+        oci.unpack_oci(archive, layout)
+        with self.assertRaises(oci.EvidenceError) as raised:
+            oci.inspect_oci(layout, "amd64", SOURCE)
+        if message:
+            self.assertIn(message, str(raised.exception))
+
+    def test_attestations_must_be_exactly_one_bound_provenance_and_sbom_per_image(self):
+        other = "sha256:" + "0" * 64
+        image = lambda parts: parts.get("image_descriptor")
+        cases = [
+            ("missing attestation", lambda p: "manifests" in p and p.update(manifests=[p["image_descriptor"]]), "exactly one attestation"),
+            ("second attestation", lambda p: "manifests" in p and p.update(manifests=p["manifests"] + [p["attestation_descriptor"]]), "exactly one attestation"),
+            ("extra image entry", lambda p: "manifests" in p and p.update(manifests=p["manifests"] + [p["image_descriptor"]]), "exactly one attestation"),
+            ("reference to another image", lambda p: "manifests" in p and p["attestation_descriptor"]["annotations"].update({oci.REFERENCE_DIGEST: other}), "does not reference"),
+            ("attestation platform", lambda p: "manifests" in p and p["attestation_descriptor"].update(platform={"architecture": "amd64", "os": "linux"}), "does not reference"),
+            ("image platform", lambda p: "manifests" in p and image(p).update(platform={"architecture": "arm64", "os": "linux"}), "platform mismatch"),
+            ("manifest subject", lambda p: "attestation" in p and "manifests" not in p and p["attestation"]["subject"].update(digest=other), "subject is not"),
+            ("artifact type", lambda p: "attestation" in p and "manifests" not in p and p["attestation"].update(artifactType="application/example"), "Invalid attestation"),
+            ("missing sbom", lambda p: "attestation" in p and "manifests" not in p and p["attestation"].update(layers=p["attestation"]["layers"][1:]), "provenance and SBOM"),
+            ("duplicate provenance", lambda p: "attestation" in p and "manifests" not in p and p["attestation"].update(layers=[p["attestation"]["layers"][1]] * 2), "Unexpected attestation layer"),
+            ("unknown predicate", lambda p: "attestation" in p and "manifests" not in p and p["attestation"]["layers"][0]["annotations"].update({oci.PREDICATE_TYPE: "https://example.test/x"}), "Unexpected attestation layer"),
+            ("statement subject", lambda p: "attestation" not in p and p["sbom"]["subject"][0].update(digest={"sha256": "0" * 64}), "subject is not"),
+            ("statement type", lambda p: "attestation" not in p and p["provenance"].update(predicateType=oci.SPDX), "Invalid in-toto"),
+            ("source argument", lambda p: "attestation" not in p and p["provenance"]["predicate"]["buildDefinition"]["externalParameters"]["request"]["args"].update({"build-arg:SOURCE_COMMIT": "f" * 40}), "does not bind"),
+            ("version argument", lambda p: "attestation" not in p and p["provenance"]["predicate"]["buildDefinition"]["externalParameters"]["request"]["args"].pop("build-arg:WATERLINE_VERSION"), "does not bind"),
+            ("non-object build definition", lambda p: "attestation" not in p and p["provenance"]["predicate"].update(buildDefinition=["not", "an", "object"]), "does not bind"),
+            ("non-object request", lambda p: "attestation" not in p and p["provenance"]["predicate"]["buildDefinition"]["externalParameters"].update(request="text"), "does not bind"),
+        ]
+        for name, mutate, message in cases:
+            with self.subTest(case=name):
+                self.assert_layout_refused(mutate, message)
+
+    def test_attestation_layers_above_the_cap_are_refused(self):
+        archive, *_ = native_archive(self.root, "amd64")
+        layout = self.root / "layout"
+        oci.unpack_oci(archive, layout)
+        oci.inspect_oci(layout, "amd64", SOURCE)
+        with patch.object(oci, "MAX_ATTESTATION", 64), self.assertRaisesRegex(oci.EvidenceError, "Oversized attestation"):
+            oci.inspect_oci(layout, "amd64", SOURCE)
+
+    def test_changed_attestation_cannot_reach_verified_publication_output(self):
+        selected = self.artifact_fixture()
+        path = self.root / "arm64.zip"
+        with zipfile.ZipFile(path) as archive:
+            raw = archive.read("image.oci.tar")
+            provenance = oci.document(archive.read("provenance.json"))
+        provenance["attestation_digest"] = "sha256:" + "0" * 64
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("image.oci.tar", raw)
+            archive.writestr("provenance.json", oci.encode(provenance))
+        selected["artifacts"]["arm64"].update(digest=oci.digest_file(path), size_in_bytes=path.stat().st_size)
+        (self.root / "plan.json").write_bytes(oci.encode(selected))
+        with self.assertRaisesRegex(oci.EvidenceError, "attestation provenance mismatch"):
+            oci.prepare(argparse.Namespace(directory=self.root))
         self.assertFalse((self.root / "verified.json").exists())
 
 

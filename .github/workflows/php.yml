@@ -186,10 +186,13 @@ jobs:
           scripts/ci/test-release-example-contract.py \
           scripts/ci/test-standalone-lock-contract.py \
           scripts/ci/test-waterline-release-identity.py \
-          scripts/ci/waterline_release_identity.py
+          scripts/ci/waterline_release_identity.py \
+          scripts/ci/published_provenance.py \
+          scripts/ci/test-published-provenance.py
         python scripts/ci/test-release-example-contract.py
         python scripts/ci/test-onboarding-composer.py
         python -I scripts/ci/test-oci-release.py
+        python -I scripts/ci/test-published-provenance.py
         python scripts/ci/test-standalone-lock-contract.py
         python scripts/ci/test-waterline-release-identity.py
         python scripts/ci/release_example_contract.py

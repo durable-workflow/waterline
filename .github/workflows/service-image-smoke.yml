@@ -18,6 +18,11 @@ on:
         description: Exact commit of the published tag
         required: true
         type: string
+      publisher_commit:
+        description: Protected main publisher commit that signed the image's build provenance (required after 2.13.2)
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -72,8 +77,12 @@ jobs:
   qualify-published:
     name: Qualify the selected published image
     if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      attestations: read
     uses: ./.github/workflows/published-image-qualification.yml # local
     with:
       image_digest: ${{ inputs.image_digest }}
       release_version: ${{ inputs.release_version }}
       source_commit: ${{ inputs.source_commit }}
+      publisher_commit: ${{ inputs.publisher_commit }}

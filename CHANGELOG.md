@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The service image carries public per-platform provenance again (#241). Each
+  platform image has a BuildKit SLSA v1 provenance and SPDX SBOM attestation
+  manifest. The publisher also signs GitHub build provenance for the index and
+  both platform digests. Published acceptance now refuses a release without
+  both. Waterline 2.13.2's image (`sha256:f07ad0fb…fb986`) was published
+  without public provenance. 2.12.3 and 2.13.0 carried it.
 - A history export of a run whose details were removed by retention is no
   longer marked complete (#257). Waterline's fallback export, used when
   selected-run projections are unavailable, now follows the Core 2.17.0

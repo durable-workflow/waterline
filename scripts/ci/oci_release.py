@@ -25,8 +25,19 @@ PUBLISHER = ".github/workflows/service-image-publish.yml"
 INDEX = "application/vnd.oci.image.index.v1+json"
 MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 CONFIG = "application/vnd.oci.image.config.v1+json"
+EMPTY_CONFIG = "application/vnd.oci.empty.v1+json"
+IN_TOTO = "application/vnd.in-toto+json"
+ATTESTATION_ARTIFACT = "application/vnd.docker.attestation.manifest.v1+json"
+REFERENCE_TYPE = "vnd.docker.reference.type"
+REFERENCE_DIGEST = "vnd.docker.reference.digest"
+PREDICATE_TYPE = "in-toto.io/predicate-type"
+STATEMENT = "https://in-toto.io/Statement/v1"
+SLSA_PROVENANCE = "https://slsa.dev/provenance/v1"
+SPDX = "https://spdx.dev/Document"
 MAX_ARCHIVE = 1024 * 1024 * 1024
 MAX_JSON = 1024 * 1024
+# BuildKit's SPDX document lists every package in the image; the cap bounds it.
+MAX_ATTESTATION = 32 * 1024 * 1024
 SHA256_PREFIX = "sha256:"
 BLOBS_DIRECTORY = "blobs/sha256"
 INDEX_FILE = "index.json"
@@ -58,8 +69,8 @@ def invalid_constant(value: str) -> None:
     raise EvidenceError("Non-finite JSON value")
 
 
-def document(raw: bytes) -> dict:
-    require(len(raw) <= MAX_JSON, "Oversized JSON document")
+def document(raw: bytes, limit: int = MAX_JSON) -> dict:
+    require(len(raw) <= limit, "Oversized JSON document")
     value = json.loads(raw, object_pairs_hook=unique_object, parse_constant=invalid_constant)
     require(isinstance(value, dict), "Expected JSON object")
     return value
@@ -134,22 +145,24 @@ def blob(root: Path, descriptor: dict) -> Path:
     return path
 
 
-def inspect_oci(root: Path, architecture: str, source: str) -> tuple[dict, str]:
+def native_index(root: Path) -> list:
+    """Return the entries of the single-platform index BuildKit exported."""
     require(read_json(root / "oci-layout") == {"imageLayoutVersion": "1.0.0"}, "Unsupported OCI layout")
     index = read_json(root / INDEX_FILE)
-    descriptor = None
     for _depth in range(3):
-        require(index.get("schemaVersion") == 2 and isinstance(index.get("manifests"), list) and len(index["manifests"]) == 1, "Expected one native OCI image")
-        descriptor = index["manifests"][0]
-        payload = blob(root, descriptor)
-        if descriptor.get("mediaType") == MANIFEST:
-            break
-        require(descriptor.get("mediaType") == INDEX, "Unsupported native OCI media type")
-        index = read_json(payload)
-    else:
-        raise EvidenceError("OCI index nesting exceeds bounds")
-    require(descriptor is not None, "Missing native manifest")
-    manifest = read_json(payload)
+        manifests = index.get("manifests")
+        require(index.get("schemaVersion") == 2 and isinstance(manifests, list) and manifests, "Invalid native OCI index")
+        if len(manifests) == 1 and manifests[0].get("mediaType") == INDEX:
+            index = read_json(blob(root, manifests[0]))
+            continue
+        return manifests
+    raise EvidenceError("OCI index nesting exceeds bounds")
+
+
+def inspect_image(root: Path, descriptor: dict, architecture: str, source: str) -> tuple[dict, str]:
+    require(descriptor.get("mediaType") == MANIFEST and set(descriptor) <= {"mediaType", "digest", "size", "platform", "annotations"}, "Unsupported native OCI media type")
+    require(descriptor.get("platform") == {"architecture": architecture, "os": "linux"}, "OCI platform mismatch")
+    manifest = read_json(blob(root, descriptor))
     require(manifest.get("schemaVersion") == 2 and manifest.get("mediaType") == MANIFEST, "Invalid OCI image manifest")
     config_descriptor = manifest.get("config", {})
     require(config_descriptor.get("mediaType") == CONFIG, "Unsupported OCI image config")
@@ -163,6 +176,54 @@ def inspect_oci(root: Path, architecture: str, source: str) -> tuple[dict, str]:
         require(layer.get("mediaType") in {"application/vnd.oci.image.layer.v1.tar+gzip", "application/vnd.oci.image.layer.v1.tar+zstd", "application/vnd.oci.image.layer.v1.tar"}, "Unsupported OCI layer type")
         blob(root, layer)
     return {"mediaType": MANIFEST, "digest": descriptor["digest"], "size": descriptor["size"], "platform": {"os": "linux", "architecture": architecture}}, config_descriptor["digest"]
+
+
+def inspect_attestation(root: Path, descriptor: dict, image: dict, source: str) -> dict:
+    """Bind BuildKit's SLSA provenance and SPDX SBOM to exactly this native image."""
+    references = {REFERENCE_TYPE: "attestation-manifest", REFERENCE_DIGEST: image["digest"]}
+    require(descriptor.get("mediaType") == MANIFEST and descriptor.get("annotations") == references
+            and descriptor.get("platform") == {"architecture": "unknown", "os": "unknown"}
+            and set(descriptor) == {"mediaType", "digest", "size", "platform", "annotations"}, "Attestation manifest does not reference this native image")
+    manifest = read_json(blob(root, descriptor))
+    require(manifest.get("schemaVersion") == 2 and manifest.get("mediaType") == MANIFEST
+            and manifest.get("artifactType") == ATTESTATION_ARTIFACT, "Invalid attestation manifest")
+    subject = manifest.get("subject")
+    require(isinstance(subject, dict) and subject.get("mediaType") == MANIFEST and subject.get("digest") == image["digest"]
+            and subject.get("size") == image["size"], "Attestation subject is not this native image")
+    config = manifest.get("config")
+    require(isinstance(config, dict) and config.get("mediaType") == EMPTY_CONFIG, "Unsupported attestation config")
+    blob(root, config)
+    layers = manifest.get("layers")
+    require(isinstance(layers, list) and len(layers) == 2, "Expected exactly provenance and SBOM attestations")
+    predicates = {}
+    for layer in layers:
+        kind = (layer.get("annotations") or {}).get(PREDICATE_TYPE)
+        require(layer.get("mediaType") == IN_TOTO and kind in {SLSA_PROVENANCE, SPDX} and kind not in predicates, "Unexpected attestation layer")
+        require(type(layer.get("size")) is int and layer["size"] <= MAX_ATTESTATION, "Oversized attestation layer")
+        statement = document(blob(root, layer).read_bytes(), MAX_ATTESTATION)
+        require(statement.get("_type") == STATEMENT and statement.get("predicateType") == kind, "Invalid in-toto statement")
+        subjects = statement.get("subject")
+        require(isinstance(subjects, list) and all(isinstance(item, dict) and item.get("digest") == {"sha256": image["digest"].split(":")[1]}
+                for item in subjects), "In-toto subject is not this native image")
+        require(isinstance(statement.get("predicate"), dict), "Missing attestation predicate")
+        predicates[kind] = statement["predicate"]
+    request = predicates[SLSA_PROVENANCE]
+    for key in ("buildDefinition", "externalParameters", "request", "args"):
+        request = request.get(key) if isinstance(request, dict) else None
+    arguments = request if isinstance(request, dict) else {}
+    require(arguments.get("build-arg:SOURCE_COMMIT") == source and arguments.get("build-arg:WATERLINE_VERSION") == VERSION,
+            "Build provenance does not bind the reviewed source and version")
+    return {"mediaType": MANIFEST, "digest": descriptor["digest"], "size": descriptor["size"],
+            "annotations": references, "platform": {"architecture": "unknown", "os": "unknown"}}
+
+
+def inspect_oci(root: Path, architecture: str, source: str) -> tuple[dict, str, dict]:
+    manifests = native_index(root)
+    images = [item for item in manifests if (item.get("annotations") or {}).get(REFERENCE_TYPE) is None]
+    attestations = [item for item in manifests if (item.get("annotations") or {}).get(REFERENCE_TYPE) is not None]
+    require(len(manifests) == 2 and len(images) == 1 and len(attestations) == 1, "Expected one native image and exactly one attestation manifest")
+    image, config_digest = inspect_image(root, images[0], architecture, source)
+    return image, config_digest, inspect_attestation(root, attestations[0], image, source)
 
 
 def validate_image_security(value: dict, subject: str, architecture: str, config_digest: str) -> None:
@@ -229,12 +290,13 @@ def native(args: argparse.Namespace) -> None:
     with tempfile.TemporaryDirectory(prefix="waterline-oci-") as temporary:
         root = Path(temporary) / "layout"
         unpack_oci(args.archive, root)
-        descriptor, config_digest = inspect_oci(root, args.architecture, source)
+        descriptor, config_digest, attestation = inspect_oci(root, args.architecture, source)
     require(args.image_id == config_digest, "Tested Docker image differs from exported OCI config")
     security = read_json(args.security)
     validate_image_security(security, digest_file(args.archive), args.architecture, config_digest)
-    provenance = {"schema": "waterline.native-oci/v1", "version": VERSION, "source": source, "tree": tree,
+    provenance = {"schema": "waterline.native-oci/v2", "version": VERSION, "source": source, "tree": tree,
                   "architecture": args.architecture, "manifest_digest": descriptor["digest"], "config_digest": config_digest,
+                  "attestation_digest": attestation["digest"],
                   "archive_digest": digest_file(args.archive), "runner_commit": commit(os.environ["GITHUB_SHA"]),
                   "run_id": positive(os.environ["GITHUB_RUN_ID"]), "run_attempt": positive(os.environ["GITHUB_RUN_ATTEMPT"]),
                   "build_workflow_sha256": digest_file(args.workflow).split(":")[1], "image_security": security, **sdk}
@@ -317,24 +379,26 @@ def unpack_artifact(path: Path, target: Path, metadata: dict) -> None:
 
 def prepare(args: argparse.Namespace) -> None:
     selected = read_json(args.directory / "plan.json")
-    layouts, descriptors = [], []
+    layouts, descriptors, attestations = [], [], []
     for architecture in ("amd64", "arm64"):
         target = args.directory / architecture
         unpack_artifact(args.directory / f"{architecture}.zip", target, selected["artifacts"][architecture])
         provenance = read_json(target / PROVENANCE_FILE)
-        expected = {"schema": "waterline.native-oci/v1", "version": VERSION, "source": selected["source"], "tree": selected["tree"],
+        expected = {"schema": "waterline.native-oci/v2", "version": VERSION, "source": selected["source"], "tree": selected["tree"],
                     "architecture": architecture, **{key: selected[key] for key in ("runner_commit", "run_id", "run_attempt", "build_workflow_sha256")}, **SDK}
-        require(set(provenance) == set(expected) | {"manifest_digest", "config_digest", "archive_digest", "image_security"}, "Unexpected provenance fields")
+        require(set(provenance) == set(expected) | {"manifest_digest", "config_digest", "attestation_digest", "archive_digest", "image_security"}, "Unexpected provenance fields")
         require(all(provenance.get(key) == value for key, value in expected.items()), "Native provenance differs from reviewed run/cohort")
         archive = target / "image.oci.tar"
         require(digest_file(archive) == provenance["archive_digest"], "Native OCI archive hash mismatch")
         layout = target / "layout"
         unpack_oci(archive, layout)
-        descriptor, config_digest = inspect_oci(layout, architecture, selected["source"])
-        require(descriptor["digest"] == provenance["manifest_digest"] and config_digest == provenance["config_digest"], "Native manifest/config provenance mismatch")
+        descriptor, config_digest, attestation = inspect_oci(layout, architecture, selected["source"])
+        require(descriptor["digest"] == provenance["manifest_digest"] and config_digest == provenance["config_digest"]
+                and attestation["digest"] == provenance["attestation_digest"], "Native manifest/config/attestation provenance mismatch")
         validate_image_security(provenance["image_security"], provenance["archive_digest"], architecture, config_digest)
         layouts.append(layout)
         descriptors.append(descriptor)
+        attestations.append(attestation)
     merged = args.directory / "verified-oci"
     (merged / BLOBS_DIRECTORY).mkdir(parents=True)
     for layout in layouts:
@@ -342,14 +406,17 @@ def prepare(args: argparse.Namespace) -> None:
             target = merged / BLOBS_DIRECTORY / source.name
             if not target.exists():
                 shutil.copyfile(source, target)
-    index = encode({"schemaVersion": 2, "mediaType": INDEX, "manifests": descriptors})
+    # Both images first, then each image's attestation manifest, as BuildKit
+    # pushes a multi-platform index. The index digest covers all four.
+    index = encode({"schemaVersion": 2, "mediaType": INDEX, "manifests": descriptors + attestations})
     index_digest = SHA256_PREFIX + hashlib.sha256(index).hexdigest()
     (merged / BLOBS_DIRECTORY / index_digest.split(":")[1]).write_bytes(index)
     (merged / "oci-layout").write_bytes(encode({"imageLayoutVersion": "1.0.0"}))
     (merged / INDEX_FILE).write_bytes(encode({"schemaVersion": 2, "manifests": [{"mediaType": INDEX, "digest": index_digest,
         "size": len(index), "annotations": {"org.opencontainers.image.ref.name": VERSION}}]}))
     (args.directory / "verified.json").write_bytes(encode({"image_digest": index_digest, "source": selected["source"],
-        "tree": selected["tree"], "version": VERSION, "destination": DESTINATION, "manifests": descriptors}) + b"\n")
+        "tree": selected["tree"], "version": VERSION, "destination": DESTINATION, "manifests": descriptors,
+        "attestations": attestations}) + b"\n")
 
 
 def main() -> None:

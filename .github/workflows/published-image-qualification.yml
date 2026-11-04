@@ -12,6 +12,10 @@ on:
       source_commit:
         required: true
         type: string
+      publisher_commit:
+        required: false
+        default: ''
+        type: string
   workflow_dispatch:
     inputs:
       image_digest:
@@ -26,6 +30,11 @@ on:
         description: Exact commit of that immutable release tag
         required: true
         type: string
+      publisher_commit:
+        description: Protected main publisher commit that signed the image's build provenance (required after 2.13.2)
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -37,6 +46,7 @@ jobs:
     outputs:
       required: ${{ steps.scope.outputs.required }}
       onboarding_required: ${{ steps.scope.outputs.onboarding_required }}
+      provenance_required: ${{ steps.scope.outputs.provenance_required }}
     steps:
       - id: scope
         env:
@@ -49,10 +59,65 @@ jobs:
               raise SystemExit('Expected an exact stable Waterline 2.x version.')
           required = (2, int(match[1]), int(match[2])) >= (2, 13, 1)
           onboarding_required = (2, int(match[1]), int(match[2])) >= (2, 13, 2)
+          # 2.13.2 shipped without public provenance; every later release must carry it.
+          provenance_required = (2, int(match[1]), int(match[2])) > (2, 13, 2)
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f'required={str(required).lower()}\n')
               output.write(f'onboarding_required={str(onboarding_required).lower()}\n')
+              output.write(f'provenance_required={str(provenance_required).lower()}\n')
           PY
+
+  provenance:
+    name: Published per-platform provenance
+    needs: request-budget-scope
+    if: needs.request-budget-scope.outputs.provenance_required == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      attestations: read
+    env:
+      IMAGE_DIGEST: ${{ inputs.image_digest }}
+      PUBLISHER_COMMIT: ${{ inputs.publisher_commit }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Require one attestation manifest and signed provenance per platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$PUBLISHER_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          work="$RUNNER_TEMP/published-provenance"
+          mkdir -p "$work/docker"
+          printf '%s\n' '{"auths":{}}' > "$work/docker/config.json"
+          export DOCKER_CONFIG="$work/docker"
+          image=docker.io/durableworkflow/waterline
+          docker buildx imagetools inspect --raw "$image@$IMAGE_DIGEST" > "$work/index.json"
+          python3 -I scripts/ci/published_provenance.py index --raw "$work/index.json" --digest "$IMAGE_DIGEST" > "$work/platforms.json"
+          subjects=("$IMAGE_DIGEST")
+          for architecture in amd64 arm64; do
+            platform="$(jq -r --arg architecture "$architecture" '.[$architecture].image' "$work/platforms.json")"
+            attestation="$(jq -r --arg architecture "$architecture" '.[$architecture].attestation' "$work/platforms.json")"
+            docker buildx imagetools inspect --raw "$image@$attestation" > "$work/attestation-$architecture.json"
+            python3 -I scripts/ci/published_provenance.py attestation --raw "$work/attestation-$architecture.json" \
+              --digest "$attestation" --image "$platform"
+            subjects+=("$platform")
+          done
+          for digest in "${subjects[@]}"; do
+            for source in api registry; do
+              extra=()
+              [[ "$source" = registry ]] && extra=(--bundle-from-oci)
+              gh attestation verify "oci://index.docker.io/durableworkflow/waterline@$digest" "${extra[@]}" \
+                --repo durable-workflow/waterline \
+                --cert-identity https://github.com/durable-workflow/waterline/.github/workflows/service-image-publish.yml@refs/heads/main \
+                --source-digest "$PUBLISHER_COMMIT" --deny-self-hosted-runners > /dev/null
+              echo "Verified $source provenance for $digest."
+            done
+          done
+          printf 'Published index %s carries BuildKit and GitHub provenance for both platforms.\n' "$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
 
   service-request-budget:
     name: Published service request budget and browser recovery
