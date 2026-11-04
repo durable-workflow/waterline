@@ -104,8 +104,11 @@ jobs:
           pull: true
           no-cache: true
           push: false
-          provenance: false
-          sbom: false
+          # Public per-platform provenance travels inside the OCI archive as
+          # one attestation manifest per image; the publisher verifies and
+          # copies it with the image.
+          provenance: mode=max,version=v1
+          sbom: true
           outputs: type=oci,dest=${{ runner.temp }}/native-oci/image.oci.tar,oci-mediatypes=true
       - name: Scan the exact native OCI before acceptance
         shell: bash

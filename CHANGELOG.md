@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The service image carries public per-platform provenance again (#241). Each
+  platform image has a BuildKit SLSA v1 provenance and SPDX SBOM attestation
+  manifest. The publisher also signs GitHub build provenance for the index and
+  both platform digests. Published acceptance now refuses a release without
+  both. Waterline 2.13.2's image (`sha256:f07ad0fb…fb986`) was published
+  without public provenance. 2.12.3 and 2.13.0 carried it.
+
 - Run detail offers **Redrive** on a failed run that the backend reports as
   eligible (durable-workflow/workflow#864). Redrive starts a successor run
   that reuses the failed run's completed steps, then opens it.
