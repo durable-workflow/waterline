@@ -791,18 +791,28 @@ class WorkflowsController extends Controller
         $status = $this->statusValue($flow->status);
         $historyEvents = $this->durableHistoryEvents($flow);
         $updateFallback = $this->durableUpdateFallbackRows($flow);
+        // Retention cleanup deletes a run's history but keeps its terminal
+        // status, so a pruned run's export is never complete history.
+        $detailsPrunedAt = $this->timestamp($flow->getAttribute('details_pruned_at'));
+        $dedupeParts = [
+            $flow->workflow_instance_id,
+            $flow->id,
+            (string) ($flow->last_history_sequence ?? ''),
+            (string) count($historyEvents),
+        ];
+
+        // Pruning keeps the sequence, so mark the key or a post-prune export
+        // would match the full export taken before cleanup.
+        if ($detailsPrunedAt !== null) {
+            $dedupeParts[] = 'details-pruned:'.$detailsPrunedAt;
+        }
 
         $export = [
             'schema' => HistoryExport::SCHEMA,
             'schema_version' => HistoryExport::SCHEMA_VERSION,
             'exported_at' => $this->timestamp(now()),
-            'dedupe_key' => hash('sha256', implode('|', [
-                $flow->workflow_instance_id,
-                $flow->id,
-                (string) ($flow->last_history_sequence ?? ''),
-                (string) count($historyEvents),
-            ])),
-            'history_complete' => $this->isTerminalStatus($status),
+            'dedupe_key' => hash('sha256', implode('|', $dedupeParts)),
+            'history_complete' => $this->isTerminalStatus($status) && $detailsPrunedAt === null,
             'workflow' => [
                 'instance_id' => $flow->workflow_instance_id,
                 'run_id' => $flow->id,
@@ -816,6 +826,8 @@ class WorkflowsController extends Controller
                 'visibility_labels' => is_array($flow->visibility_labels) ? $flow->visibility_labels : [],
                 'status' => $status,
                 'status_bucket' => $this->statusBucket($status),
+                'details_state' => $detailsPrunedAt === null ? 'retained' : 'pruned',
+                'details_pruned_at' => $detailsPrunedAt,
                 'closed_reason' => $flow->closed_reason,
                 'archived_at' => $this->timestamp($flow->archived_at),
                 'archive_command_id' => $flow->archive_command_id,

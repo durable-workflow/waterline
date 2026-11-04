@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- A history export of a run whose details were removed by retention is no
+  longer marked complete (#257). Waterline's fallback export, used when
+  selected-run projections are unavailable, now follows the Core 2.17.0
+  contract. It reports `history_complete: false`, adds
+  `workflow.details_state` (`retained` or `pruned`) and
+  `workflow.details_pruned_at`, and its dedupe key differs from the export
+  taken before cleanup. The primary export gets the same fields from
+  Workflow 2.17.0 or later. Run detail's retention notice now says the export
+  is incomplete, and both export links point to it.
 - When service mode starts without the PHP SDK, its message now asks for
   `durable-workflow/sdk:^3.9` instead of `^2.0 || ^3.0`. `^2.0` resolves to an
   SDK outside its supported boundary. Waterline still accepts installed
