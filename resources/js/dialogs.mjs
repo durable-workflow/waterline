@@ -63,3 +63,18 @@ export function createWaterlineDialogOptions(theme, options = {}, ownerDocument 
         },
     }
 }
+
+export function escapeDialogHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;')
+}
+
+// SweetAlert2 inserts validation messages as HTML. They often carry reasons and
+// messages from the engine, Server or a proxy, so they are always shown as text.
+export function showDialogValidationText(swal, message) {
+    swal.showValidationMessage(escapeDialogHtml(message))
+}

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Command dialogs show refusal reasons and messages from the engine, Server or
+  a proxy as plain text (#261). Before, run detail inserted an unknown reason
+  code or a backend `message` into the dialog as HTML, for every command. The
+  query result title and the workflow list's filter validation messages are
+  also shown as text now.
+
 - Run detail offers **Redrive** on a failed run that the backend reports as
   eligible (durable-workflow/workflow#864). Redrive starts a successor run
   that reuses the failed run's completed steps, then opens it.
