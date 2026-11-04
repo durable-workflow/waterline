@@ -5,7 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "durable-workflow/sdk": "3.4.1",
+        "durable-workflow/sdk": "3.9.4",
         "laravel/framework": "^12.0"
     },
     "autoload": {
@@ -18,6 +18,9 @@
             "pestphp/pest-plugin": true
         },
         "optimize-autoloader": true,
+        "platform": {
+            "php": "8.3.36"
+        },
         "preferred-install": "dist",
         "sort-packages": true
     },

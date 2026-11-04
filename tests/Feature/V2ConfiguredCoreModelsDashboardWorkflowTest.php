@@ -106,6 +106,7 @@ final class V2ConfiguredCoreModelsDashboardWorkflowTest extends TestCase
             $table->string('connection')->nullable();
             $table->string('queue')->nullable();
             $table->unsignedInteger('message_cursor_position')->default(0);
+            $table->json('observability_context')->nullable();
             $table->unsignedInteger('run_timeout_seconds')->nullable();
             $table->timestamp('execution_deadline_at', 6)->nullable();
             $table->timestamp('run_deadline_at', 6)->nullable();

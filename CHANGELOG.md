@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- The service image bundles PHP SDK 3.9.4 (was 3.4.1). Waterline develops
+  and tests against Workflow 2.20.2 and SDK 3.9.4 (was 2.5.12 and 3.4.1).
+  The SDK upgrade brings Carbon 3.15 into the image. Its dependency lock targets
+  the packaged PHP runtime and keeps compatible Symfony 7.4 components.
+- Laravel support is unchanged (9 to 13), but Workflow sets what each host can
+  run. Laravel 10 to 13 hosts can use Workflow 2.20.x (CI tests 2.20.2). Workflow 2.17.0 and
+  later require Laravel 10, so a Laravel 9 host stays on Workflow 2.16.x or
+  earlier. CI now tests the Laravel 9 cell with Workflow 2.16.0. Waterline's
+  own `composer.json` places no constraint on `durable-workflow/workflow`.
+- The Laravel 10 and 11 qualification cells move to the patched 10.50.4 and
+  11.57.1, satisfying the minimums Workflow 2.17 and later require.
+- Service-mode visibility metadata reports projection schema version 3,
+  matching the embedded contract since Workflow 2.15.11.
 - The current product tuple is Waterline 2.14.0, Workflow 2.5.12 and PHP SDK
   3.4.1, the versions 2.14.0's published acceptance installed and tested.
   `SERVICE_MODE.md`'s image examples name `durableworkflow/waterline:2.14.0`.

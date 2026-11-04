@@ -4,10 +4,32 @@ declare(strict_types=1);
 
 namespace Waterline\Tests\Unit;
 
+use Composer\Semver\Semver;
 use PHPUnit\Framework\TestCase;
 
 final class InstallationContractTest extends TestCase
 {
+    public function testStandaloneLockSupportsThePackagedPhpRuntime(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $manifest = json_decode((string) file_get_contents($root.'/standalone/composer.json'), true, 512, JSON_THROW_ON_ERROR);
+        $lock = json_decode((string) file_get_contents($root.'/standalone/composer.lock'), true, 512, JSON_THROW_ON_ERROR);
+        $dockerfile = (string) file_get_contents($root.'/Dockerfile');
+
+        $this->assertSame(1, preg_match('/^FROM php:(\d+\.\d+\.\d+)-/m', $dockerfile, $runtime));
+        $php = $runtime[1];
+        $this->assertSame($php, $manifest['config']['platform']['php'] ?? null);
+        $this->assertSame($php, $lock['platform-overrides']['php'] ?? null);
+        $this->assertTrue(Semver::satisfies($php, $manifest['require']['php']));
+
+        foreach ($lock['packages'] as $package) {
+            $this->assertTrue(
+                Semver::satisfies($php, $package['require']['php'] ?? '*'),
+                $package['name'].' cannot run on the packaged PHP '.$php,
+            );
+        }
+    }
+
     public function testServiceImageSmokeEntryPointIsExecutable(): void
     {
         $root = dirname(__DIR__, 2);
