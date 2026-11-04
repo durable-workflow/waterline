@@ -1322,5 +1322,6 @@
     "This redrive request was already used for another run.": "Esta solicitação de reexecução já foi usada para outra execução.",
     "The redrive request id is invalid.": "O id da solicitação de reexecução é inválido.",
     "The connected workflow backend does not support this action.": "O backend de workflows conectado não oferece suporte a esta ação.",
-    "Its history export holds only the retained run record and is marked incomplete.": "A exportação do histórico contém apenas o registro preservado da execução e é marcada como incompleta."
+    "Its history export holds only the retained run record and is marked incomplete.": "A exportação do histórico contém apenas o registro preservado da execução e é marcada como incompleta.",
+    "Message shortened for display.": "Mensagem abreviada para exibição."
 }

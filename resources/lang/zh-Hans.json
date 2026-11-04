@@ -1322,5 +1322,6 @@
     "This redrive request was already used for another run.": "此重新驱动请求已用于另一个运行。",
     "The redrive request id is invalid.": "重新驱动请求的 ID 无效。",
     "The connected workflow backend does not support this action.": "已连接的工作流后端不支持此操作。",
-    "Its history export holds only the retained run record and is marked incomplete.": "其历史导出仅包含保留的运行记录，并标记为不完整。"
+    "Its history export holds only the retained run record and is marked incomplete.": "其历史导出仅包含保留的运行记录，并标记为不完整。",
+    "Message shortened for display.": "消息已缩短以便显示。"
 }

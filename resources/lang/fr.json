@@ -1322,5 +1322,6 @@
     "This redrive request was already used for another run.": "Cette demande de relance a déjà été utilisée pour une autre exécution.",
     "The redrive request id is invalid.": "L'identifiant de la demande de relance n'est pas valide.",
     "The connected workflow backend does not support this action.": "Le backend de workflows connecté ne prend pas en charge cette action.",
-    "Its history export holds only the retained run record and is marked incomplete.": "Son export d'historique ne contient que l'enregistrement conservé de l'exécution et est marqué comme incomplet."
+    "Its history export holds only the retained run record and is marked incomplete.": "Son export d'historique ne contient que l'enregistrement conservé de l'exécution et est marqué comme incomplet.",
+    "Message shortened for display.": "Message raccourci pour l’affichage."
 }
