@@ -99,7 +99,7 @@ return [
         'gates' => [
             'messages' => null,
             'repair' => null,
-            // Defaults to the repair gate when this key is absent.
+            // Null or absent follows the repair gate.
             'redrive' => null,
             'cancel' => null,
             'terminate' => null,

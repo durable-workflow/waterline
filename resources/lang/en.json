@@ -1319,5 +1319,6 @@
     "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.": "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.",
     "This run's history has a step that redrive can't reuse yet.": "This run's history has a step that redrive can't reuse yet.",
     "This run failed before redrive could record where it stopped.": "This run failed before redrive could record where it stopped.",
-    "This redrive request was already used for another run.": "This redrive request was already used for another run."
+    "This redrive request was already used for another run.": "This redrive request was already used for another run.",
+    "The redrive request id is invalid.": "The redrive request id is invalid."
 }

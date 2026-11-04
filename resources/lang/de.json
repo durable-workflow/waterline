@@ -1319,5 +1319,6 @@
     "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.": "Ein Service-Worker hat diese Ausführung gestartet, und Service-Worker können einige ihrer abgeschlossenen Schritte nach einer erneuten Ausführung noch nicht wiedergeben.",
     "This run's history has a step that redrive can't reuse yet.": "Der Verlauf dieser Ausführung enthält einen Schritt, den die erneute Ausführung noch nicht wiederverwenden kann.",
     "This run failed before redrive could record where it stopped.": "Diese Ausführung ist fehlgeschlagen, bevor festgehalten werden konnte, wo sie angehalten hat.",
-    "This redrive request was already used for another run.": "Diese Anfrage zur erneuten Ausführung wurde bereits für eine andere Ausführung verwendet."
+    "This redrive request was already used for another run.": "Diese Anfrage zur erneuten Ausführung wurde bereits für eine andere Ausführung verwendet.",
+    "The redrive request id is invalid.": "Die ID der Anfrage zur erneuten Ausführung ist ungültig."
 }

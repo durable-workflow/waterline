@@ -1319,5 +1319,6 @@
     "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.": "この実行はサービスワーカーが開始したもので、サービスワーカーは再実行後に一部の完了済みステップをまだ再生できません。",
     "This run's history has a step that redrive can't reuse yet.": "この実行の履歴には、再実行でまだ再利用できないステップがあります。",
     "This run failed before redrive could record where it stopped.": "この実行は、停止位置を記録できるようになる前に失敗しました。",
-    "This redrive request was already used for another run.": "この再実行リクエストはすでに別の実行に使用されています。"
+    "This redrive request was already used for another run.": "この再実行リクエストはすでに別の実行に使用されています。",
+    "The redrive request id is invalid.": "再実行リクエストの ID が無効です。"
 }

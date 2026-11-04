@@ -1319,5 +1319,6 @@
     "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.": "Це виконання запустив сервісний воркер, а сервісні воркери ще не можуть відтворити деякі його завершені кроки після перезапуску.",
     "This run's history has a step that redrive can't reuse yet.": "Історія цього виконання містить крок, який перезапуск поки не може повторно використати.",
     "This run failed before redrive could record where it stopped.": "Це виконання завершилося помилкою до того, як вдалося записати, де воно зупинилося.",
-    "This redrive request was already used for another run.": "Цей запит на перезапуск уже використано для іншого виконання."
+    "This redrive request was already used for another run.": "Цей запит на перезапуск уже використано для іншого виконання.",
+    "The redrive request id is invalid.": "Ідентифікатор запиту на перезапуск недійсний."
 }
