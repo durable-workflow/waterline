@@ -11,6 +11,14 @@
   taken before cleanup. The primary export gets the same fields from
   Workflow 2.17.0 or later. Run detail's retention notice now says the export
   is incomplete, and both export links point to it.
+- The schedules view refreshes itself while the top bar's **Auto refresh** is
+  on, like the workflow list (#222). A pause, resume or new fire outcome made
+  outside the page shows up without a reload. Filters, page, open dialogs and
+  forms stay as they are. A refresh never overlaps a read in progress or a
+  pending row action, and it waits while the browser tab is hidden. Embedded
+  mode refreshes every 3 seconds. Service mode refreshes every 30 seconds,
+  because each row's last outcome still needs its own Server describe call
+  (durable-workflow/server#1014).
 - Command dialogs show refusal reasons and messages from the engine, Server or
   a proxy as plain text (#261). Before, run detail inserted an unknown reason
   code or a backend `message` into the dialog as HTML, for every command. The
