@@ -1320,5 +1320,6 @@
     "This run's history has a step that redrive can't reuse yet.": "此运行的历史中有重新驱动暂时无法复用的步骤。",
     "This run failed before redrive could record where it stopped.": "此运行在重新驱动能够记录其停止位置之前就失败了。",
     "This redrive request was already used for another run.": "此重新驱动请求已用于另一个运行。",
-    "The redrive request id is invalid.": "重新驱动请求的 ID 无效。"
+    "The redrive request id is invalid.": "重新驱动请求的 ID 无效。",
+    "The connected workflow backend does not support this action.": "已连接的工作流后端不支持此操作。"
 }
