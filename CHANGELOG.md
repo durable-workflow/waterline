@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The current product tuple is Waterline 2.14.0, Workflow 2.5.12 and PHP SDK
+  3.4.1, the versions 2.14.0's published acceptance installed and tested.
+  `SERVICE_MODE.md`'s image examples name `durableworkflow/waterline:2.14.0`.
 - The image publisher sets aside the hosted runner's own `~/.docker/config.json`
   while it logs in, copies and attests, then restores it. Every fail-closed
   check in those steps now names what failed. The first 2.14.0 publish run
