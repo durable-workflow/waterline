@@ -82,11 +82,21 @@ class SavedWorkflowTimeWindowTest extends TestCase
             $this->createRun('inside-'.$i, '2026-01-10 12:00:00');
         }
         $this->createRun('outside', '2026-01-12 12:00:00');
-        $query = http_build_query(['started_time' => 'fixed', 'started_from' => '2026-01-10T13:00:00+02:00',
-            'started_before' => '2026-01-11T13:00:00+02:00']);
+        $id = $this->postJson('/waterline/api/saved-views', [
+            'name' => 'Fixed incident window',
+            'bucket' => 'running',
+            'filters' => ['started_time' => 'fixed', 'started_from' => '2026-01-10T13:00:00+02:00',
+                'started_before' => '2026-01-11T13:00:00+02:00'],
+        ])->assertCreated()->json('id');
+        $query = http_build_query(['view' => $id]);
         try {
             foreach (['2026-01-15T00:00:00Z', '2026-02-01T00:00:00Z'] as $clock) {
                 Carbon::setTestNow($clock);
+                $this->getJson('/waterline/api/saved-views/'.$id)->assertOk()
+                    ->assertJsonPath('filters.started_time', 'fixed')
+                    ->assertJsonPath('filters.started_from', '2026-01-10T11:00:00.000000Z')
+                    ->assertJsonPath('filters.started_before', '2026-01-11T11:00:00.000000Z')
+                    ->assertJsonMissingPath('filters.started_within_seconds');
                 $this->getJson('/waterline/api/flows/running?'.$query)->assertOk()
                     ->assertJsonPath('total', 51)->assertJsonCount(50, 'data')
                     ->assertJsonPath('time_windows.started_time.from', '2026-01-10T11:00:00.000000Z');
