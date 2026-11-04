@@ -19,6 +19,9 @@ export function commandRequestOptions(command, ordinaryTimeout = DEFAULT_BROWSER
 
 export function ambiguousCommandError(error, commandType) {
     if (error?.response?.data?.error === 'waterline_request_configuration_invalid') return false;
+    // A typed 501 means the backend lacks the action, so nothing ran.
+    if (error?.response?.status === 501 && [error.response.data?.reason, error.response.data?.rejection_reason]
+        .includes('backend_capability_unavailable')) return false;
     return commandType !== 'query' && (!error?.response
         || error.response.status >= 500
         || error.response.data?.error === 'remote_transport_failure');

@@ -1877,6 +1877,7 @@ import { activityResultSelection, activityResultPath, activityResultMatches, act
 import { failureSummary, failureEventIndex } from '../../failure-summary.mjs'
 import { operatorPermission } from '../../operator-permissions.mjs'
 import { ambiguousCommandError, browserTimeoutMilliseconds, commandRequestOptions } from '../../request-budget.mjs'
+import { showDialogValidationText } from '../../dialogs.mjs'
 
 export default {
     components: {
@@ -3012,7 +3013,7 @@ export default {
 
         showResult(result, title = this.$t("Activity Result")) {
             this.$dialog({
-                title: title,
+                titleText: title,
                 text: JSON.stringify(this.unserialize(result), null, 2),
                 icon: 'info',
                 confirmButtonText: this.$t("Okay"),
@@ -3661,7 +3662,7 @@ export default {
                     const rawArguments = document.getElementById('waterline-signal-arguments').value
 
                     if (!target) {
-                        Swal.showValidationMessage(this.$t("Select a signal."))
+                        showDialogValidationText(Swal, this.$t("Select a signal."))
 
                         return false
                     }
@@ -3680,7 +3681,7 @@ export default {
 
                         return {interactiveCommand, response}
                     } catch (error) {
-                        Swal.showValidationMessage((error && (error.response || error.request))
+                        showDialogValidationText(Swal, (error && (error.response || error.request))
                             ? this.commandFailureMessage(error, 'signal')
                             : this.$t("Arguments must be valid JSON."))
 
@@ -3737,7 +3738,7 @@ export default {
                     const rawArguments = document.getElementById('waterline-query-arguments').value
 
                     if (!target) {
-                        Swal.showValidationMessage(this.$t("Select a query."))
+                        showDialogValidationText(Swal, this.$t("Select a query."))
 
                         return false
                     }
@@ -3756,7 +3757,7 @@ export default {
 
                         return {interactiveCommand, response}
                     } catch (error) {
-                        Swal.showValidationMessage((error && (error.response || error.request))
+                        showDialogValidationText(Swal, (error && (error.response || error.request))
                             ? this.commandFailureMessage(error, 'query')
                             : this.$t("Arguments must be valid JSON."))
 
@@ -3822,7 +3823,7 @@ export default {
                     const waitTimeoutSeconds = document.getElementById('waterline-update-wait-timeout-seconds').value
 
                     if (!target) {
-                        Swal.showValidationMessage(this.$t("Select an update."))
+                        showDialogValidationText(Swal, this.$t("Select an update."))
 
                         return false
                     }
@@ -3843,7 +3844,7 @@ export default {
 
                         return {interactiveCommand, response}
                     } catch (error) {
-                        Swal.showValidationMessage((error && (error.response || error.request))
+                        showDialogValidationText(Swal, (error && (error.response || error.request))
                             ? this.commandFailureMessage(error, 'update')
                             : this.$t("Arguments must be valid JSON."))
 
@@ -3948,6 +3949,8 @@ export default {
                     return this.$t("You are not authorized to perform this Waterline action.")
                 case 'waterline_read_only':
                     return this.$t("Waterline is configured read-only; this action is unavailable.")
+                case 'backend_capability_unavailable':
+                    return this.$t("The connected workflow backend does not support this action.")
                 case 'earlier_signal_pending':
                     return commandType === 'update'
                         ? this.$t("An earlier accepted signal is still waiting to be applied. Retry the update after the worker drains it.")
@@ -4913,7 +4916,7 @@ export default {
                             response: await this.submitInteractiveCommand(commandType, null, body),
                         }
                     } catch (error) {
-                        Swal.showValidationMessage(this.commandFailureMessage(error, commandType))
+                        showDialogValidationText(Swal, this.commandFailureMessage(error, commandType))
 
                         return false
                     }
