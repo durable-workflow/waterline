@@ -1304,5 +1304,20 @@
     "The trigger was buffered and starts when the running workflow finishes.": "The trigger was buffered and starts when the running workflow finishes.",
     "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.",
     "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.": "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.",
-    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them."
+    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.",
+    "Redrive": "Redrive",
+    "Redrive run?": "Redrive run?",
+    "This starts a new run that reuses the failed run's completed steps and runs again from the step that failed. Completed activities are not run again.": "This starts a new run that reuses the failed run's completed steps and runs again from the step that failed. Completed activities are not run again.",
+    "Redrive run": "Redrive run",
+    "Waterline started a new run from the failed run's completed steps.": "Waterline started a new run from the failed run's completed steps.",
+    "Only a failed run can be redriven.": "Only a failed run can be redriven.",
+    "This run was already redriven.": "This run was already redriven.",
+    "Only the current run of this workflow can be redriven.": "Only the current run of this workflow can be redriven.",
+    "The workflow's execution deadline has passed.": "The workflow's execution deadline has passed.",
+    "The workflow definition is unavailable or changed since this run started.": "The workflow definition is unavailable or changed since this run started.",
+    "The workflow definition changed, and this run's worker can't check that the new code replays its completed steps.": "The workflow definition changed, and this run's worker can't check that the new code replays its completed steps.",
+    "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.": "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.",
+    "This run's history has a step that redrive can't reuse yet.": "This run's history has a step that redrive can't reuse yet.",
+    "This run failed before redrive could record where it stopped.": "This run failed before redrive could record where it stopped.",
+    "This redrive request was already used for another run.": "This redrive request was already used for another run."
 }

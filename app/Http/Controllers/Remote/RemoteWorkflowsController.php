@@ -177,6 +177,24 @@ final class RemoteWorkflowsController extends RemoteController
         return $this->repairFor($instanceId, $runId);
     }
 
+    public function redriveSelection(string $instanceId, string $runId, Request $request): JsonResponse
+    {
+        if ($response = $this->requireWriteAccess('redrive')) {
+            return $response;
+        }
+        if ($response = $this->requireCapability('redriveWorkflow', 'redrive')) {
+            return $response;
+        }
+
+        $requestId = is_string($request->input('request_id')) && $request->input('request_id') !== ''
+            ? $request->input('request_id')
+            : null;
+
+        return response()->json($this->scoped(
+            $this->backend->client()->redriveWorkflow($instanceId, $runId, $requestId),
+        ));
+    }
+
     public function archive(string $id, Request $request): JsonResponse
     {
         return $this->archiveFor($id, null, $request);
@@ -555,7 +573,7 @@ final class RemoteWorkflowsController extends RemoteController
     private function applyActions(array $payload): array
     {
         $actions = is_array($payload['actions'] ?? null) ? $payload['actions'] : [];
-        foreach (['query', 'signal', 'update', 'cancel', 'terminate', 'repair', 'archive'] as $action) {
+        foreach (['query', 'signal', 'update', 'cancel', 'terminate', 'repair', 'archive', 'redrive'] as $action) {
             $allowed = ($actions['can_'.$action] ?? false) === true;
             if ($this->backend->readOnly() && $action !== 'query') {
                 $allowed = false;
@@ -564,7 +582,10 @@ final class RemoteWorkflowsController extends RemoteController
                 $allowed = false;
                 $payload[$action.'_blocked_reason'] = 'backend_capability_unavailable';
             } elseif (! $allowed) {
-                $payload[$action.'_blocked_reason'] = $payload[$action.'_blocked_reason'] ?? 'server_action_unavailable';
+                $payload[$action.'_blocked_reason'] = $payload[$action.'_blocked_reason']
+                    ?? ($action === 'redrive' && is_string($actions['redrive_blocked_reason'] ?? null)
+                        ? $actions['redrive_blocked_reason']
+                        : 'server_action_unavailable');
             }
 
             $payload['can_'.$action] = $allowed;

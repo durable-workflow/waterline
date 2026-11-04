@@ -285,6 +285,7 @@ final class RemoteBackend
             ?? $this->supports('listWorkflowStreams');
         $capabilities['services'] = $this->serviceCatalogAvailable === true;
         $capabilities['repair'] = $capabilities['repair'] && $this->supports('repairWorkflow');
+        $capabilities['redrive'] = $capabilities['redrive'] && $this->supports('redriveWorkflow');
         $capabilities['archive'] = $capabilities['archive'] && $this->supports('archiveWorkflow');
 
         return $capabilities;

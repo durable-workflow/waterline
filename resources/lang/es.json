@@ -1304,5 +1304,20 @@
     "The trigger was buffered and starts when the running workflow finishes.": "La activación quedó en búfer y se inicia cuando termine el flujo de trabajo en curso.",
     "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "Este Waterline es de solo lectura. Pausar, reanudar, activar y recuperar ejecuciones omitidas no están disponibles.",
     "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.": "Waterline muestra como máximo {limit} páginas de esta lista. Hay más ejecuciones que coinciden. Acota los filtros para llegar a ellas.",
-    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline muestra como máximo {limit} páginas de esta lista. Hay más programaciones que coinciden. Acota los filtros para llegar a ellas."
+    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline muestra como máximo {limit} páginas de esta lista. Hay más programaciones que coinciden. Acota los filtros para llegar a ellas.",
+    "Redrive": "Reejecutar",
+    "Redrive run?": "¿Reejecutar la ejecución?",
+    "This starts a new run that reuses the failed run's completed steps and runs again from the step that failed. Completed activities are not run again.": "Esto inicia una nueva ejecución que reutiliza los pasos completados de la ejecución fallida y vuelve a ejecutarse desde el paso que falló. Las actividades completadas no se vuelven a ejecutar.",
+    "Redrive run": "Reejecutar la ejecución",
+    "Waterline started a new run from the failed run's completed steps.": "Waterline inició una nueva ejecución a partir de los pasos completados de la ejecución fallida.",
+    "Only a failed run can be redriven.": "Solo se puede reejecutar una ejecución fallida.",
+    "This run was already redriven.": "Esta ejecución ya se reejecutó.",
+    "Only the current run of this workflow can be redriven.": "Solo se puede reejecutar la ejecución actual de este flujo de trabajo.",
+    "The workflow's execution deadline has passed.": "El plazo de ejecución del flujo de trabajo ha vencido.",
+    "The workflow definition is unavailable or changed since this run started.": "La definición del flujo de trabajo no está disponible o cambió desde que comenzó esta ejecución.",
+    "The workflow definition changed, and this run's worker can't check that the new code replays its completed steps.": "La definición del flujo de trabajo cambió y el worker de esta ejecución no puede comprobar que el nuevo código reproduzca sus pasos completados.",
+    "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.": "Un worker de servicio inició esta ejecución y los workers de servicio aún no pueden reproducir algunos de sus pasos completados tras una reejecución.",
+    "This run's history has a step that redrive can't reuse yet.": "El historial de esta ejecución tiene un paso que la reejecución aún no puede reutilizar.",
+    "This run failed before redrive could record where it stopped.": "Esta ejecución falló antes de que se pudiera registrar dónde se detuvo.",
+    "This redrive request was already used for another run.": "Esta solicitud de reejecución ya se usó para otra ejecución."
 }

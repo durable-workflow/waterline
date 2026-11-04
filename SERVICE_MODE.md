@@ -66,6 +66,17 @@ Servers show an explicit upgrade diagnostic. Pending, failed, cancelled,
 pruned and undecodable results remain distinguishable. Local activity result
 inspection is currently unsupported.
 
+### Redrive a failed run
+
+Run detail offers **Redrive** on a failed run only when the Server's describe
+response reports `actions.can_redrive: true`. A Server that doesn't report it
+keeps the action hidden. Redrive calls
+`POST /api/workflows/{id}/runs/{run}/redrive` through the SDK's
+`redriveWorkflow()`, which the pinned PHP SDK has. Each confirmation sends one
+`request_id`, so a retried request returns the same successor instead of
+starting another. A refusal shows the Server's reason, and read-only mode
+refuses with `waterline_read_only` before calling the Server.
+
 ### Bounded startup and health
 
 With the image already pulled, a clean container using the default SQLite

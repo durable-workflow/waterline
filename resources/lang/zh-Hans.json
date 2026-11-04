@@ -1304,5 +1304,20 @@
     "The trigger was buffered and starts when the running workflow finishes.": "该触发已缓冲，将在正在运行的工作流结束后启动。",
     "This Waterline is read-only. Pause, resume, trigger, and backfill are unavailable.": "此 Waterline 为只读。暂停、恢复、触发和补执行不可用。",
     "Waterline shows at most {limit} pages of this list. More runs match. Narrow the filters to reach them.": "Waterline 最多显示此列表的 {limit} 页。还有更多匹配的运行。请缩小筛选条件以查看它们。",
-    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline 最多显示此列表的 {limit} 页。还有更多匹配的调度。请缩小筛选条件以查看它们。"
+    "Waterline shows at most {limit} pages of this list. More schedules match. Narrow the filters to reach them.": "Waterline 最多显示此列表的 {limit} 页。还有更多匹配的调度。请缩小筛选条件以查看它们。",
+    "Redrive": "重新驱动",
+    "Redrive run?": "重新驱动此运行？",
+    "This starts a new run that reuses the failed run's completed steps and runs again from the step that failed. Completed activities are not run again.": "这会启动一个新的运行，复用失败运行中已完成的步骤，并从失败的步骤重新开始。已完成的活动不会再次执行。",
+    "Redrive run": "重新驱动运行",
+    "Waterline started a new run from the failed run's completed steps.": "Waterline 已从失败运行的已完成步骤启动了一个新的运行。",
+    "Only a failed run can be redriven.": "只有失败的运行可以重新驱动。",
+    "This run was already redriven.": "此运行已被重新驱动。",
+    "Only the current run of this workflow can be redriven.": "只有此工作流的当前运行可以重新驱动。",
+    "The workflow's execution deadline has passed.": "工作流的执行期限已过。",
+    "The workflow definition is unavailable or changed since this run started.": "工作流定义不可用，或自此运行开始以来已更改。",
+    "The workflow definition changed, and this run's worker can't check that the new code replays its completed steps.": "工作流定义已更改，此运行的 worker 无法检查新代码能否重放其已完成的步骤。",
+    "A service worker started this run, and service workers can't replay some of its completed steps after a redrive yet.": "此运行由服务 worker 启动，服务 worker 暂时无法在重新驱动后重放其部分已完成步骤。",
+    "This run's history has a step that redrive can't reuse yet.": "此运行的历史中有重新驱动暂时无法复用的步骤。",
+    "This run failed before redrive could record where it stopped.": "此运行在重新驱动能够记录其停止位置之前就失败了。",
+    "This redrive request was already used for another run.": "此重新驱动请求已用于另一个运行。"
 }

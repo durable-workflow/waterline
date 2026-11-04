@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Run detail offers **Redrive** on a failed run that the backend reports as
+  eligible (durable-workflow/workflow#864). Redrive starts a successor run
+  that reuses the failed run's completed steps, then opens it.
+  - Embedded mode calls the workflow control plane. It needs a workflow
+    package that reports `can_redrive`, such as 2.18.0 or later.
+  - Service mode calls `POST /api/workflows/{id}/runs/{run}/redrive` through
+    the PHP SDK, and offers the action only when the Server's describe
+    response reports `actions.can_redrive: true`.
+  - A run without that report never shows the action. A refusal shows the
+    engine's or Server's reason in the run's action details.
+  - Each confirmation sends one `request_id`, so a retry can't start a second
+    successor.
+  - The new `redrive` authorization gate falls back to the `repair` gate when
+    a host config has no `redrive` key.
 - Run detail labels a redrive lineage link as "Redriven from" on the successor
   run and "Redriven as" on the failed source run, rather than "Parent" and
   "Child". The labels need a workflow package that reports redrive links from

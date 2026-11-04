@@ -165,7 +165,7 @@ class ActionabilityContract
     {
         $actions = [];
 
-        foreach (['query', 'signal', 'update', 'cancel', 'terminate', 'archive'] as $action) {
+        foreach (['query', 'signal', 'update', 'cancel', 'terminate', 'archive', 'redrive'] as $action) {
             $allowedKey = 'can_'.$action;
             $reasonKey = $action.'_blocked_reason';
 

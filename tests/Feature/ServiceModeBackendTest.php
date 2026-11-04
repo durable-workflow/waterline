@@ -1278,6 +1278,95 @@ final class ServiceModeBackendTest extends TestCase
         $this->assertContains('signalWorkflow', array_column($this->client->calls, 'method'));
     }
 
+    public function testRedriveForwardsTheSelectedFailedRunAndRequestId(): void
+    {
+        config()->set('waterline.service.access_mode', 'operator');
+
+        $this->postJson('/waterline/api/instances/order-1/runs/run-1/redrive', [
+            'request_id' => 'request-1',
+        ])
+            ->assertOk()
+            ->assertJsonPath('outcome', 'redriven')
+            ->assertJsonPath('run_id', 'run-2');
+
+        $call = collect($this->client->calls)->firstWhere('method', 'redriveWorkflow');
+        $this->assertSame([
+            'workflowId' => 'order-1',
+            'failedRunId' => 'run-1',
+            'requestId' => 'request-1',
+        ], $call['arguments'] ?? null);
+    }
+
+    public function testReadOnlyModeRefusesRedriveBeforeCallingTheServer(): void
+    {
+        $this->postJson('/waterline/api/instances/order-1/runs/run-1/redrive')
+            ->assertForbidden()
+            ->assertJsonPath('reason', 'waterline_read_only')
+            ->assertJsonPath('capability', 'redrive');
+
+        $this->assertNotContains('redriveWorkflow', array_column($this->client->calls, 'method'));
+    }
+
+    public function testAnSdkWithoutRedriveRefusesItAsAnUnavailableCapability(): void
+    {
+        config()->set('waterline.service.access_mode', 'operator');
+        $this->app->instance(RemoteBackend::class, new RemoteBackend(new class {}));
+
+        $this->postJson('/waterline/api/instances/order-1/runs/run-1/redrive')
+            ->assertStatus(501)
+            ->assertJsonPath('reason', 'backend_capability_unavailable')
+            ->assertJsonPath('capability', 'redrive')
+            ->assertJsonPath('required_sdk_method', 'redriveWorkflow');
+    }
+
+    public function testRunDetailOffersRedriveOnlyWhenTheServerSaysTheRunIsEligible(): void
+    {
+        config()->set('waterline.service.access_mode', 'operator');
+        $base = $this->client->workflowDescription ?? null;
+        $description = static function (array $actions): array {
+            return [
+                'workflow_id' => 'order-1',
+                'run_id' => 'run-1',
+                'workflow_type' => 'orders.process',
+                'namespace' => 'orders',
+                'task_queue' => 'orders',
+                'status' => 'failed',
+                'status_bucket' => 'failed',
+                'is_terminal' => true,
+                'started_at' => '2026-07-22T12:00:00Z',
+                'actions' => $actions,
+                'updates' => [],
+                'commands' => [],
+            ];
+        };
+
+        $this->client->workflowDescription = $description([
+            'can_redrive' => true,
+        ]);
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('can_redrive', true)
+            ->assertJsonPath('actionability.actions.redrive.allowed', true);
+
+        $this->client->workflowDescription = $description([
+            'can_redrive' => false,
+            'redrive_blocked_reason' => 'already_redriven',
+        ]);
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('can_redrive', false)
+            ->assertJsonPath('redrive_blocked_reason', 'already_redriven')
+            ->assertJsonPath('actionability.actions.redrive.reason', 'already_redriven');
+
+        // A server that does not report redrive eligibility never offers it.
+        $this->client->workflowDescription = $description([]);
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('can_redrive', false)
+            ->assertJsonPath('redrive_blocked_reason', 'server_action_unavailable');
+        $this->client->workflowDescription = $base;
+    }
+
     public function testRemoteAuthenticationAndAuthorizationFailuresStayExplicit(): void
     {
         $this->client->failure = new ServerException(
