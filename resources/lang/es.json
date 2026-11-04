@@ -1321,5 +1321,6 @@
     "This run failed before redrive could record where it stopped.": "Esta ejecución falló antes de que se pudiera registrar dónde se detuvo.",
     "This redrive request was already used for another run.": "Esta solicitud de reejecución ya se usó para otra ejecución.",
     "The redrive request id is invalid.": "El id de la solicitud de reejecución no es válido.",
-    "The connected workflow backend does not support this action.": "El backend de flujos de trabajo conectado no admite esta acción."
+    "The connected workflow backend does not support this action.": "El backend de flujos de trabajo conectado no admite esta acción.",
+    "Its history export holds only the retained run record and is marked incomplete.": "Su exportación del historial solo contiene el registro conservado de la ejecución y está marcada como incompleta."
 }

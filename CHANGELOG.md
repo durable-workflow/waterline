@@ -8,6 +8,28 @@
   both platform digests. Published acceptance now refuses a release without
   both. Waterline 2.13.2's image (`sha256:f07ad0fb…fb986`) was published
   without public provenance. 2.12.3 and 2.13.0 carried it.
+- A history export of a run whose details were removed by retention is no
+  longer marked complete (#257). Waterline's fallback export, used when
+  selected-run projections are unavailable, now follows the Core 2.17.0
+  contract. It reports `history_complete: false`, adds
+  `workflow.details_state` (`retained` or `pruned`) and
+  `workflow.details_pruned_at`, and its dedupe key differs from the export
+  taken before cleanup. The primary export gets the same fields from
+  Workflow 2.17.0 or later. Run detail's retention notice now says the export
+  is incomplete, and both export links point to it.
+- When service mode starts without the PHP SDK, its message now asks for
+  `durable-workflow/sdk:^3.9` instead of `^2.0 || ^3.0`. `^2.0` resolves to an
+  SDK outside its supported boundary. Waterline still accepts installed
+  `^2.0 || ^3.0` SDKs. `SERVICE_MODE.md` notes the same next to its tested
+  `^2.0` example, which moves with the qualified product tuple.
+- The schedules view refreshes itself while the top bar's **Auto refresh** is
+  on, like the workflow list (#222). A pause, resume or new fire outcome made
+  outside the page shows up without a reload. Filters, page, open dialogs and
+  forms stay as they are. A refresh never overlaps a read in progress or a
+  pending row action, and it waits while the browser tab is hidden. Embedded
+  mode refreshes every 3 seconds. Service mode refreshes every 30 seconds,
+  because each row's last outcome still needs its own Server describe call
+  (durable-workflow/server#1014).
 - Command dialogs show refusal reasons and messages from the engine, Server or
   a proxy as plain text (#261). Before, run detail inserted an unknown reason
   code or a backend `message` into the dialog as HTML, for every command. The
