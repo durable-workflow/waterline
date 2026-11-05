@@ -73,7 +73,7 @@ class PrivateAdapterTest(unittest.TestCase):
         ledger = self.p.proxy.ProxyLedger(context, self.p.authority, deadline=200, clock=lambda: 100)
         _policy, _pool, _reader, sealed = self.capture_fixture.captured_fixture(
             context, self.p.authority, self.expected, ledger)
-        self.assertEqual(value['transport_sha256'], _policy.identity)
+        self.assertEqual(_policy.identity, value['transport_sha256'])
         ledger.seal()
         contents = {self.p.capture.composer_cache_path(name, package): self.capture_fixture.BODY
                     for name, package in self.expected['graph'].items()}
@@ -104,18 +104,18 @@ class PrivateAdapterTest(unittest.TestCase):
     def test_private_origin_is_not_relabelled_public_context(self):
         prepared, _contents, _sealed, _ledger = self.inputs()
         report = prepared.context.report_context()
-        self.assertEqual('example-company/private-fixture', report['producer']['repository']['full_name'])
-        self.assertEqual(base.COMMIT, report['code_authority']['commit'])
+        self.assertEqual(report['producer']['repository']['full_name'], 'example-company/private-fixture')
+        self.assertEqual(report['code_authority']['commit'], base.COMMIT)
         self.assertNotEqual(report['producer']['head_sha'], report['code_authority']['commit'])
         public = self.p.contract.Context(base.COMMIT, base.TREE, 301, 1, 'fictional-daemon', '3' * 64, '4' * 32)
-        self.assertNotEqual(public.report_context(), report)
+        self.assertNotEqual(report, public.report_context())
         wrong = self.p.producer.HostedBuildInputs(prepared.context, self.p.authority, _sealed, _ledger,
                                                  _contents, b'', 'amd64', b'')
         self.assertRaises(self.p.contract.Refusal, self.p.producer.hosted_inputs, wrong, ROOT)
 
     def test_private_origin_and_each_actual_attempt_field_are_bound(self):
         selected, observed = selection()
-        self.assertEqual(base.canonical(selected), adapter.validate_task(selected, observed))
+        self.assertEqual(adapter.validate_task(selected, observed), base.canonical(selected))
         mutations = [lambda x: x['origin']['repository'].update(private=False, visibility='public'),
                      lambda x: x['origin']['repository'].update(id=99),
                      lambda x: x['origin']['repository'].update(node_id='R_OTHER'),
@@ -182,12 +182,12 @@ class PrivateAdapterTest(unittest.TestCase):
         prepared, contents, sealed, ledger = self.inputs()
         original = prepared.archive
         contents.clear()
-        self.assertEqual(original, prepared.archive)
-        self.assertEqual(json.loads(prepared.bindings)['context_sha256'], base.digest(original))
+        self.assertEqual(prepared.archive, original)
+        self.assertEqual(base.digest(original), json.loads(prepared.bindings)['context_sha256'])
         selected, observed = selection()
         self.assertRaises(self.p.contract.Refusal, adapter.prepare, self.p, selected, observed,
                           prepared.context, sealed, ledger, contents)
-        self.assertEqual('-', prepared.command[-1])
+        self.assertEqual(prepared.command[-1], '-')
         self.assertNotIn('--push', prepared.command)
         self.assertNotIn('--load', prepared.command)
 
@@ -199,16 +199,16 @@ class PrivateAdapterTest(unittest.TestCase):
             prepared, _contents, _sealed, _ledger = self.inputs(selected, observed)
             output = self.output(prepared)
             receipt, files = adapter.describe_output(self.p, prepared, output)
-            self.assertEqual('linux/' + architecture, receipt['archive']['platform'])
-            self.assertEqual(base.digest(output['stdout']), receipt['diagnostics']['stdout']['sha256'])
-            self.assertEqual(79, len(receipt['observed_source_manifest']['objects']))
-            self.assertEqual(receipt['context'], receipt['observed_source_manifest']['context'])
-            self.assertEqual(json.loads(prepared.source_manifest), receipt['observed_source_manifest'])
+            self.assertEqual(receipt['archive']['platform'], 'linux/' + architecture)
+            self.assertEqual(receipt['diagnostics']['stdout']['sha256'], base.digest(output['stdout']))
+            self.assertEqual(len(receipt['observed_source_manifest']['objects']), 79)
+            self.assertEqual(receipt['observed_source_manifest']['context'], receipt['context'])
+            self.assertEqual(receipt['observed_source_manifest'], json.loads(prepared.source_manifest))
             for flag in ('execution_enabled', 'qualified', 'execution_verified', 'provider_origin_verified',
                          'publication_admitted', 'cleanup_verified'):
                 self.assertIs(receipt[flag], False)
             proposal = adapter.upload_proposal(prepared, receipt, files)
-            self.assertEqual(1, proposal['with']['retention-days'])
+            self.assertEqual(proposal['with']['retention-days'], 1)
             self.assertFalse(proposal['cross_repository_transfer'])
             self.assertIsNone(proposal['upload_receipt'])
 
@@ -235,11 +235,11 @@ class PrivateAdapterTest(unittest.TestCase):
         output = self.output(prepared)
         output.update(archive=None, exit_code=124, timed_out=True, stderr=b'original fictional timeout')
         receipt, files = adapter.describe_output(self.p, prepared, output)
-        self.assertEqual(124, receipt['exit_code'])
+        self.assertEqual(receipt['exit_code'], 124)
         self.assertTrue(receipt['timed_out'])
         self.assertIsNone(receipt['archive'])
         self.assertNotIn('image.oci.tar', files)
-        self.assertEqual(3, len(adapter.upload_proposal(prepared, receipt, files)['members']))
+        self.assertEqual(len(adapter.upload_proposal(prepared, receipt, files)['members']), 3)
         output.update(exit_code=0, timed_out=False)
         self.assertRaises(ValueError, adapter.describe_output, self.p, prepared, output)
 
@@ -314,7 +314,7 @@ class PrivateAdapterTest(unittest.TestCase):
         self.assertRaisesRegex(ValueError, 'HELD', adapter.execute)
         result = subprocess.run([sys.executable, '-I', str(Path(adapter.__file__)), '--help'],
                                 capture_output=True, timeout=5)
-        self.assertNotEqual(0, result.returncode)
+        self.assertNotEqual(result.returncode, 0)
         self.assertIn(b'HELD', result.stderr)
 
 
