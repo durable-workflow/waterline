@@ -1,0 +1,52 @@
+{
+  "schema": "waterline.browser-tool-lock/v1",
+  "node": "24.22.1",
+  "python": "3.13",
+  "upstream_commit": "606ecd8b34bac100db32561b6278ffd76e5eb3cd",
+  "packages": {
+    "playwright": {
+      "version": "1.64.0",
+      "resolved": "https://registry.npmjs.org/playwright/-/playwright-1.64.0.tgz",
+      "integrity": "sha512-kVzTnYFYEyQ9RGzBjNCd2+yEqWmVbxl3AHPynv3qQ6JTjv4a+kwRcnqQwIpuP3NnrnIrE/Q6wWAIAvMfIE2/Yg==",
+      "dependencies": {
+        "playwright-core": "1.64.0"
+      }
+    },
+    "playwright-core": {
+      "version": "1.64.0",
+      "resolved": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.64.0.tgz",
+      "integrity": "sha512-T9r+MZkTECl2+oUcZ26YgZzTrYidTsIhYYkJix+6iDOymOb1FB2RLLSOxRGnZGv5DStt+aduIVbt+E8WygXYpg==",
+      "dependencies": {}
+    }
+  },
+  "browsers_source": "https://raw.githubusercontent.com/microsoft/playwright/v1.64.0/packages/playwright-core/browsers.json",
+  "browsers_source_sha256": "2cfd419f71ac6475d81e1301fa86c34cf2a2a6bae2a0da4b5a2b18310216b6bf",
+  "browsers": [
+    {
+      "name": "chromium",
+      "revision": "1248",
+      "installByDefault": true,
+      "browserVersion": "156.0.8078.4",
+      "title": "Chrome for Testing"
+    },
+    {
+      "name": "chromium-headless-shell",
+      "revision": "1248",
+      "installByDefault": true,
+      "browserVersion": "156.0.8078.4",
+      "title": "Chrome Headless Shell"
+    },
+    {
+      "name": "ffmpeg",
+      "revision": "1013",
+      "installByDefault": true
+    }
+  ],
+  "unbound_static_inputs": {
+    "base_image_id": null,
+    "base_config_sha256": null,
+    "platform": null,
+    "library_inventory": null,
+    "browser_binary_hashes": null
+  }
+}

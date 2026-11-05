@@ -1,6 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 
+# Source-only preparation handoff. This launcher refuses before imports or I/O.
+if [ "${WATERLINE_SOURCE_PREPARATION_PROPOSAL:-0}" != 0 ]; then
+    exec python3 -I scripts/ci/source-smoke-preparation/bootstrap.py "$@"
+fi
+
 # Held source-only proposal. The runner has a literal, non-overridable hold and
 # returns before Docker/collection; normal CI leaves this unset.
 if [ "${WATERLINE_SOURCE_SMOKE_EVIDENCE_PROPOSAL:-0}" != 0 ]; then
