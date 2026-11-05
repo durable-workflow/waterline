@@ -1,12 +1,16 @@
 """Compact host-observation producer. Candidate JSON supplies no authority."""
 from dataclasses import dataclass
+import json
 
-from contract import (CellBudget, Context, LOCK, SOURCE, canonical, digest, image_id,
+from contract import (CellBudget, Context, LOCK, SOURCE, SOURCE_TREE, GRAPH, NATIVE_WORKFLOW, canonical, digest, image_id,
                       require, sha, source_expectation, require_static_admission)
 from recipe import validate_tool
 from custody import SourceAuthority
 from proxy import ProxyLedger
 from capture import SealedArchives
+from accepted import native_archive_subject
+from recipe import validate_hosted_recipe
+from bootstrap import fixed_reader
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,55 @@ class HostObservation:
     network_removed_before_autoload: bool
     proxy: ProxyLedger
     archives: SealedArchives
+
+
+@dataclass(frozen=True)
+class HostedBuildInputs:
+    """Independent host inputs; never decoded from a candidate report."""
+    context: Context
+    authority: SourceAuthority
+    archives: SealedArchives
+    proxy: ProxyLedger
+    cache_contents: dict
+    archive: bytes
+    architecture: str
+    recipe: bytes
+
+
+def hosted_artifact(build, repository):
+    """Bind real supplied bytes, not an execution or publication acceptance.
+
+    No CLI, workflow or lifecycle controller calls this function. Tests supply
+    inert OCI fixtures; actual native artifacts remain separately held.
+    """
+    require(type(build) is HostedBuildInputs and type(build.authority) is SourceAuthority
+            and type(build.archives) is SealedArchives and type(build.context) is Context
+            and type(build.proxy) is ProxyLedger and type(build.recipe) is bytes,
+            'Independent hosted build inputs required')
+    context = build.context
+    require(context.workflow == NATIVE_WORKFLOW, 'Wrong hosted builder workflow')
+    preparation = build.authority.identity(context)
+    retained, cache_raw = build.archives.composer_cache(context, build.authority, build.proxy, build.cache_contents)
+    cache = json.loads(cache_raw)
+    network = build.proxy.observation(context, build.authority)
+    reader, _program = fixed_reader(repository)
+    def git_file(commit, path):
+        return reader.git_small(repository, 'show', commit + ':' + path, limit=262144)
+    original = git_file(SOURCE, 'Dockerfile')
+    recipe_sha256 = validate_hosted_recipe(original, build.recipe)
+    workflow = git_file(context.preparation_commit, NATIVE_WORKFLOW)
+    bindings = {'recipe_sha256': recipe_sha256,
+                'source_manifest_sha256': cache['observed_source_manifest_sha256'],
+                'cache_manifest_sha256': digest(cache_raw)}
+    subject = native_archive_subject(repository, build.archive, build.architecture, bindings)
+    return {'schema': 'waterline.build-only-native-artifact/v1', 'qualified': False,
+            'execution_verified': False, 'source': SOURCE, 'tree': SOURCE_TREE,
+            'lock_sha256': LOCK, 'graph_sha256': GRAPH,
+            'context': context.report_context(), 'preparation': preparation,
+            'workflow_sha256': digest(workflow), 'inputs': bindings, 'archive': subject,
+            'source_capture_transport': network,
+            'cache_objects': len(retained), 'vendor_php_preflight': 'required-before-candidate-execution',
+            'provider_origin_verified': False, 'publication_admitted': False}
 
 
 def image(value, platform, app, expected_config):

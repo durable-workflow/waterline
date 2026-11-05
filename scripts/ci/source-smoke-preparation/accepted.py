@@ -5,12 +5,17 @@ import io
 import re
 import tarfile
 import time
+import tempfile
+from pathlib import Path
 
 import contract
 from contract import PACKET_COMMIT, PACKET_TREE, bounded_json, digest, image_id, require, source_expectation
 from guardian import LABELS, binding, planned
 
 COLLECTOR_SHA256 = 'dcc263b37fb9e8bc2298ac323e9bb0dd9d2cf9686fd56b77c64921652a92f00d'
+OCI_COMMIT = '2cc1f3915435f909b1624c1ceda860c027ade4d5'
+OCI_TREE = '237645fb50b9e8b34ef21b1045798edb2b72497d'
+OCI_SHA256 = 'e75e819b1d1a6407f8732f81becc7d879453063225a7085f52ab24200e24c4d6'
 MAX_FILESYSTEM = 128 * 1024 * 1024
 TEMPORARY = '/waterline-preparation-tmp'
 TMPFS = {TEMPORARY: 'rw,size=16m,mode=0700,uid=82,gid=82', '/data': 'rw,size=64m,mode=0700,uid=82,gid=82'}
@@ -21,20 +26,127 @@ VERIFY_POLICY = {'ReadonlyRootfs': True, 'Privileged': False, 'NanoCpus': 2_000_
                  'RestartPolicy': {'Name': 'no', 'MaximumRetryCount': 0}, 'IpcMode': 'private', 'Tmpfs': TMPFS}
 
 
-def accepted_evidence(repository):
+def accepted_module(repository, commit, tree, path, module_name, expected_sha256):
     def git(*args):
         result = subprocess.run(['git', '-C', str(repository), *args], capture_output=True, timeout=5, check=True)
         require(len(result.stdout) <= 262144, 'Accepted Git object bound')
         return result.stdout
-    require(git('rev-parse', PACKET_COMMIT + '^{tree}').strip().decode() == PACKET_TREE,
-            'Accepted collector tree changed')
-    name = PACKET_COMMIT + ':scripts/ci/source-smoke-evidence/evidence.py'
+    require(git('rev-parse', commit + '^{tree}').strip().decode() == tree, 'Accepted helper tree changed')
+    name = commit + ':' + path
     require(int(git('cat-file', '-s', name)) <= 262144, 'Accepted evidence object bound')
     raw = git('show', name)
-    module = types.ModuleType('accepted_source_evidence')
-    module.__file__ = '/reviewed-packet/evidence.py'
+    require(digest(raw) == expected_sha256, 'Accepted helper bytes changed')
+    module = types.ModuleType(module_name)
+    module.__file__ = '/reviewed-packet/' + path
     exec(compile(raw, module.__file__, 'exec'), module.__dict__)
     return module
+
+
+def accepted_evidence(repository):
+    return accepted_module(repository, PACKET_COMMIT, PACKET_TREE,
+                           'scripts/ci/source-smoke-evidence/evidence.py', 'accepted_source_evidence',
+                           '00efcf2abe33db557c5a00e35f4f3944624768ff4d5c52665d1ded65c9b306b6')
+
+
+def accepted_oci(repository):
+    return accepted_module(repository, OCI_COMMIT, OCI_TREE, 'scripts/ci/oci_release.py',
+                           'accepted_native_oci', OCI_SHA256)
+
+
+def closed_oci_tar(raw):
+    offset = 0
+    with tarfile.open(fileobj=io.BytesIO(raw), mode='r:') as archive:
+        for count, member in enumerate(archive, 1):
+            require(count <= 2048 and not member.pax_headers and not member.sparse
+                    and member.offset == offset and member.offset_data == offset + 512,
+                    'Opaque or oversized OCI tar metadata')
+            offset = member.offset_data + ((member.size + 511) // 512) * 512
+    require(len(raw) % 512 == 0 and len(raw) - offset >= 1024 and not any(memoryview(raw)[offset:]),
+            'Opaque or missing OCI tar end markers')
+
+
+def oci_children(oci, root, descriptor):
+    allowed = {'mediaType', 'digest', 'size', 'annotations', 'platform'}
+    require(type(descriptor) is dict and set(descriptor) <= allowed, 'Unbound OCI descriptor fields')
+    media = descriptor.get('mediaType')
+    path = oci.blob(root, descriptor)
+    if media == oci.INDEX:
+        return oci.read_json(path)['manifests']
+    if media == oci.MANIFEST:
+        value = oci.read_json(path)
+        children = [value['config'], *value['layers']]
+        if 'subject' in value:
+            children.append(value['subject'])
+        return children
+    require(media in (oci.CONFIG, oci.EMPTY_CONFIG, oci.IN_TOTO,
+                      'application/vnd.oci.image.layer.v1.tar+gzip',
+                      'application/vnd.oci.image.layer.v1.tar+zstd',
+                      'application/vnd.oci.image.layer.v1.tar'), 'Unbound OCI blob type')
+    return []
+
+
+def closed_oci_blobs(oci, root):
+    pending = list(oci.read_json(root / 'index.json')['manifests'])
+    seen = set()
+    while pending:
+        require(len(pending) + len(seen) <= 2048, 'OCI descriptor count bound')
+        descriptor = pending.pop()
+        children = oci_children(oci, root, descriptor)
+        identifier = descriptor['digest'].removeprefix('sha256:')
+        if identifier in seen:
+            continue
+        seen.add(identifier)
+        pending.extend(children)
+    actual = {path.name for path in (root / 'blobs/sha256').iterdir()}
+    require(seen == actual, 'Unreferenced OCI payload')
+    return sorted(seen)
+
+
+def native_build_arguments(oci, root, attestation, expected):
+    contract.exact(expected, ('recipe_sha256', 'source_manifest_sha256', 'cache_manifest_sha256'),
+                   'Independent build input shape')
+    require(all(contract.sha(value) for value in expected.values()), 'Independent build digests missing')
+    manifest = oci.read_json(oci.blob(root, attestation))
+    layers = [layer for layer in manifest['layers']
+              if (layer.get('annotations') or {}).get(oci.PREDICATE_TYPE) == oci.SLSA_PROVENANCE]
+    require(len(layers) == 1, 'Build provenance missing')
+    statement = oci.document(oci.blob(root, layers[0]).read_bytes(), oci.MAX_ATTESTATION)
+    require(bool(statement.get('subject')), 'Build provenance has no image subject')
+    request = statement['predicate']
+    for key in ('buildDefinition', 'externalParameters', 'request', 'args'):
+        request = request.get(key) if type(request) is dict else None
+    require(type(request) is dict, 'Build provenance arguments missing')
+    for key, argument in (('recipe_sha256', 'WATERLINE_RECIPE_SHA256'),
+                          ('source_manifest_sha256', 'WATERLINE_SOURCE_MANIFEST_SHA256'),
+                          ('cache_manifest_sha256', 'WATERLINE_CACHE_MANIFEST_SHA256')):
+        require(request.get('build-arg:' + argument) == expected[key], 'Build input digest substitution')
+
+
+def native_archive_subject(repository, raw, architecture, bindings):
+    """Inert bytes only; never fetch, import or execute an image.
+
+    The strict tar profile is synthetic/unqualified until a separately admitted
+    native export supplies actual bytes. A config digest is not a daemon ID.
+    """
+    oci = accepted_oci(repository)
+    require(type(raw) is bytes and 0 < len(raw) <= oci.MAX_ARCHIVE, 'Native archive byte bound')
+    require(architecture in ('amd64', 'arm64'), 'Native platform missing')
+    try:
+        closed_oci_tar(raw)
+        with tempfile.TemporaryDirectory(prefix='waterline-native-source-') as temporary:
+            archive = Path(temporary) / 'subject.tar'
+            archive.write_bytes(raw)
+            root = Path(temporary) / 'layout'
+            oci.unpack_oci(archive, root)
+            image, config_digest, attestation = oci.inspect_oci(root, architecture, contract.SOURCE)
+            native_build_arguments(oci, root, attestation, bindings)
+            blobs = closed_oci_blobs(oci, root)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, tarfile.TarError) as error:
+        raise contract.Refusal('Unqualified native archive refused') from error
+    return {'size': len(raw), 'sha256': digest(raw), 'platform': 'linux/' + architecture,
+            'manifest_digest': image['digest'], 'config_digest': config_digest,
+            'attestation_digest': attestation['digest'], 'blobs': blobs,
+            'daemon_image_id': None}
 
 
 def archive_content(archive, member, limit):

@@ -70,6 +70,9 @@ def derive_hosted(original):
         ('    --no-scripts \\\n    --optimize-autoloader', '    --no-scripts'),
         ("RUN --network=none php -r 'require \"/app/vendor/autoload.php\";' \\\n    && chmod",
          'RUN --network=none chmod'),
+        ('ARG WATERLINE_VERSION=0.0.0-dev',
+         'ARG WATERLINE_RECIPE_SHA256\nARG WATERLINE_SOURCE_MANIFEST_SHA256\n'
+         'ARG WATERLINE_CACHE_MANIFEST_SHA256\n\nARG WATERLINE_VERSION=0.0.0-dev'),
     ]
     for before, after in changes:
         require(text.count(before) == 1, 'Ambiguous hosted recipe transformation')

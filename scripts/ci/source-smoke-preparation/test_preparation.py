@@ -4,6 +4,7 @@ import ast
 import base64
 import dataclasses
 import io
+import importlib.util
 import json
 import pathlib
 import re
@@ -274,6 +275,117 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(len(spec), 9)
         self.assertEqual(sum(value is None for value in spec.values()), 6)
         self.assertRaisesRegex(c.Refusal, 'UNBOUND', c.require_complete_spec, spec)
+
+    def hosted_fixture(self, architecture='amd64', mutate=None):
+        context = c.Context(self.preparation_commit, self.preparation_tree,
+                            301, 1, 'synthetic-daemon', '3' * 64, '4' * 32, workflow=c.NATIVE_WORKFLOW)
+        ledger = proxy.ProxyLedger(context, self.authority, deadline=200, clock=lambda: 100)
+        _policy, _pool, _reader, archives = archive_fixtures.captured_fixture(
+            context, self.authority, self.expected, ledger)
+        ledger.seal()
+        contents = {archive_fixtures.capture.composer_cache_path(name, package): archive_fixtures.BODY
+                    for name, package in self.expected['graph'].items()}
+        proposed = (self.repository / 'docker/held-native.Dockerfile').read_bytes()
+        _retained, cache_raw = archives.composer_cache(context, self.authority, ledger, contents)
+        source_manifest = json.loads(cache_raw)['observed_source_manifest_sha256']
+        bindings = {'recipe_sha256': c.digest(proposed), 'source_manifest_sha256': source_manifest,
+                    'cache_manifest_sha256': c.digest(cache_raw)}
+        spec = importlib.util.spec_from_file_location('hosted_oci_fixtures',
+                                                      self.repository / 'scripts/ci/test-oci-release.py')
+        fixtures = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fixtures)
+        def bind(parts):
+            provenance = parts['provenance']
+            provenance['subject'] = [{'name': 'image',
+                'digest': {'sha256': parts['image_descriptor']['digest'].split(':')[1]}}]
+            arguments = provenance['predicate']['buildDefinition']['externalParameters']['request']['args']
+            for field, argument in (('recipe_sha256', 'WATERLINE_RECIPE_SHA256'),
+                                     ('source_manifest_sha256', 'WATERLINE_SOURCE_MANIFEST_SHA256'),
+                                     ('cache_manifest_sha256', 'WATERLINE_CACHE_MANIFEST_SHA256')):
+                arguments['build-arg:' + argument] = bindings[field]
+            if mutate is not None:
+                mutate(parts)
+        with tempfile.TemporaryDirectory(prefix='waterline-native-fixture-') as temporary:
+            archive, entries, manifest, config, attestation = fixtures.native_archive(
+                pathlib.Path(temporary), architecture, source=c.SOURCE, mutate=bind)
+            build = producer.HostedBuildInputs(context, self.authority, archives, ledger, contents,
+                                              archive.read_bytes(), architecture, proposed)
+        return build, bindings, entries, config, fixtures
+
+    def test_hosted_artifact_binds_actual_oci_and_original_sealed_source_attempt(self):
+        for architecture in ('amd64', 'arm64'):
+            build, bindings, _entries, config, _fixtures = self.hosted_fixture(architecture)
+            receipt = producer.hosted_artifact(build, self.repository)
+            self.assertEqual(receipt['schema'], 'waterline.build-only-native-artifact/v1')
+            self.assertIs(receipt['qualified'], False)
+            self.assertIs(receipt['execution_verified'], False)
+            self.assertIs(receipt['provider_origin_verified'], False)
+            self.assertIs(receipt['publication_admitted'], False)
+            self.assertEqual(receipt['context'], build.context.report_context())
+            self.assertEqual(receipt['context']['workflow'], c.NATIVE_WORKFLOW)
+            self.assertEqual(receipt['inputs'], bindings)
+            self.assertEqual(receipt['archive']['sha256'], c.digest(build.archive))
+            self.assertEqual(receipt['archive']['platform'], 'linux/' + architecture)
+            self.assertEqual(receipt['archive']['config_digest'], config)
+            self.assertIs(receipt['archive']['daemon_image_id'], None)
+            self.assertEqual(len(receipt['archive']['blobs']), 8)
+            self.assertEqual(receipt['cache_objects'], 79)
+
+    def test_hosted_artifact_refuses_wrong_authority_before_archive_inspection(self):
+        build, _bindings, _entries, _config, _fixtures = self.hosted_fixture()
+        changed_cache = dict(build.cache_contents)
+        changed_cache[next(iter(changed_cache))] = b'changed'
+        changes = [dataclasses.replace(build, context=dataclasses.replace(build.context, attempt=2)),
+                   dataclasses.replace(build, context=dataclasses.replace(build.context, workflow=c.WORKFLOW)),
+                   dataclasses.replace(build, cache_contents=changed_cache),
+                   dataclasses.replace(build, recipe=build.recipe + b'\nRUN php /app/artisan\n'),
+                   dataclasses.replace(build, proxy=proxy.ProxyLedger(build.context, self.authority,
+                                       deadline=200, clock=lambda: 100)),
+                   {'candidate_report': 'not independent host inputs'}]
+        for changed in changes:
+            with mock.patch.object(producer, 'native_archive_subject') as inspect:
+                self.assertRaises(c.Refusal, producer.hosted_artifact, changed, self.repository)
+                inspect.assert_not_called()
+
+    def test_hosted_artifact_refuses_changed_platform_and_opaque_or_mutable_archive(self):
+        build, _bindings, _entries, _config, _fixtures = self.hosted_fixture()
+        changes = [dataclasses.replace(build, architecture='arm64'),
+                   dataclasses.replace(build, architecture='unknown'),
+                   dataclasses.replace(build, archive=build.archive + b'opaque trailing payload'),
+                   dataclasses.replace(build, archive=bytearray(build.archive))]
+        for changed in changes:
+            self.assertRaises(c.Refusal, producer.hosted_artifact, changed, self.repository)
+
+    def test_hosted_artifact_refuses_a_provenance_substitution_of_each_independent_input(self):
+        for argument in ('WATERLINE_RECIPE_SHA256', 'WATERLINE_SOURCE_MANIFEST_SHA256',
+                         'WATERLINE_CACHE_MANIFEST_SHA256'):
+            def mutate(parts):
+                args = parts['provenance']['predicate']['buildDefinition']['externalParameters']['request']['args']
+                args['build-arg:' + argument] = '0' * 64
+            build, _bindings, _entries, _config, _fixtures = self.hosted_fixture(mutate=mutate)
+            self.assertRaises(c.Refusal, producer.hosted_artifact, build, self.repository)
+        build, _bindings, _entries, _config, _fixtures = self.hosted_fixture(
+            mutate=lambda parts: parts['provenance'].update(subject=[]))
+        self.assertRaises(c.Refusal, producer.hosted_artifact, build, self.repository)
+
+    def test_hosted_artifact_rejects_unreferenced_blob_accepted_by_the_old_oci_reader(self):
+        build, _bindings, entries, _config, fixtures = self.hosted_fixture()
+        entries['blobs/sha256/' + c.digest(b'unreferenced')] = b'unreferenced'
+        with tempfile.TemporaryDirectory(prefix='waterline-native-fixture-') as temporary:
+            archive = pathlib.Path(temporary) / 'extra.tar'
+            fixtures.write_tar(archive, entries)
+            oci = accepted.accepted_oci(self.repository)
+            oci.unpack_oci(archive, pathlib.Path(temporary) / 'layout')
+            oci.inspect_oci(pathlib.Path(temporary) / 'layout', 'amd64', c.SOURCE)
+            changed = dataclasses.replace(build, archive=archive.read_bytes())
+        self.assertRaises(c.Refusal, producer.hosted_artifact, changed, self.repository)
+
+    def test_native_context_cannot_reuse_the_old_preparation_handoff(self):
+        host, _tool, _admission, _report, _raw, run, artifact = self.model()
+        native = dataclasses.replace(host.context, workflow=c.NATIVE_WORKFLOW)
+        self.assertRaisesRegex(c.Refusal, 'Unsupported preparation handoff', binder.provider, run, artifact, native)
+        lifecycle = cell.Lifecycle(native, c.CellBudget(0), self.authority)
+        self.assertRaisesRegex(c.Refusal, 'Unsupported preparation handoff', lifecycle.arm, 1, {})
 
     def test_source_package_closure_rejects_floating_extra_and_changed_integrities(self):
         for mutate in [lambda x: x['packages']['playwright'].update(version='latest'),
