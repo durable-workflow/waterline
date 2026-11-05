@@ -53,6 +53,33 @@ def accepted_oci(repository):
                            'accepted_native_oci', OCI_SHA256)
 
 
+def source_context_files(repository, reader):
+    evidence = accepted_evidence(repository)
+    expected = evidence.expected_from_git(repository)
+    source_expectation(expected)
+    verifiers = ('docker/verify-ca-trust.php', 'docker/verify-brotli.php', 'docker/verify-curl.php')
+    raw_archive = reader.git_small(repository, 'archive', '--format=tar', contract.SOURCE, limit=evidence.MAX_TOTAL)
+    files, projected = {}, {}
+    with tarfile.open(fileobj=io.BytesIO(raw_archive), mode='r:') as archive:
+        for member in archive:
+            name = member.name
+            targets = evidence.docker_copy_targets(name)
+            if member.isdir() or not (targets or name in (*verifiers, '.dockerignore')):
+                continue
+            raw = evidence.archived_content(archive, member)
+            # Match the admitted image-leaf modes, independent of Git tar's
+            # default group-write bits. Source bytes remain the exact M1 blobs.
+            mode = 0o755 if name in ('standalone/artisan', 'standalone/entrypoint.sh') else member.mode & 0o777
+            files[name] = (raw, mode)
+            for target in targets:
+                # The fixed M1 Dockerfile applies chmod +x to these two leaves.
+                final_mode = 0o755 if target in ('artisan', 'entrypoint.sh') else mode
+                projected[target] = {'mode': final_mode, 'size': len(raw), 'sha256': digest(raw)}
+    require(projected == expected['files'] and all(name in files for name in verifiers),
+            'M1 context source mapping changed')
+    return files
+
+
 def closed_oci_tar(raw):
     offset = 0
     with tarfile.open(fileobj=io.BytesIO(raw), mode='r:') as archive:
@@ -103,7 +130,7 @@ def closed_oci_blobs(oci, root):
 
 
 def native_build_arguments(oci, root, attestation, expected):
-    contract.exact(expected, ('recipe_sha256', 'source_manifest_sha256', 'cache_manifest_sha256'),
+    contract.exact(expected, (field for field, _argument in contract.HOSTED_BUILD_ARGUMENTS),
                    'Independent build input shape')
     require(all(contract.sha(value) for value in expected.values()), 'Independent build digests missing')
     manifest = oci.read_json(oci.blob(root, attestation))
@@ -116,9 +143,7 @@ def native_build_arguments(oci, root, attestation, expected):
     for key in ('buildDefinition', 'externalParameters', 'request', 'args'):
         request = request.get(key) if type(request) is dict else None
     require(type(request) is dict, 'Build provenance arguments missing')
-    for key, argument in (('recipe_sha256', 'WATERLINE_RECIPE_SHA256'),
-                          ('source_manifest_sha256', 'WATERLINE_SOURCE_MANIFEST_SHA256'),
-                          ('cache_manifest_sha256', 'WATERLINE_CACHE_MANIFEST_SHA256')):
+    for key, argument in contract.HOSTED_BUILD_ARGUMENTS:
         require(request.get('build-arg:' + argument) == expected[key], 'Build input digest substitution')
 
 

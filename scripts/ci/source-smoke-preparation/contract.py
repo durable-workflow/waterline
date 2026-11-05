@@ -15,6 +15,10 @@ PACKET_COMMIT = 'f5b6bc8e0353f3fabaa8445021b4e6e5cd848921'
 PACKET_TREE = 'c341552e506cf512938e52d497fc082396bb0ffd'
 WORKFLOW = '.github/workflows/service-image-smoke.yml'
 NATIVE_WORKFLOW = '.github/workflows/service-image.yml'
+HOSTED_BUILD_ARGUMENTS = (('recipe_sha256', 'WATERLINE_RECIPE_SHA256'),
+                          ('source_manifest_sha256', 'WATERLINE_SOURCE_MANIFEST_SHA256'),
+                          ('cache_manifest_sha256', 'WATERLINE_CACHE_MANIFEST_SHA256'),
+                          ('context_sha256', 'WATERLINE_CONTEXT_SHA256'))
 REPOSITORY = 'durable-workflow/waterline'
 MAX_REPORT = 2 * 1024 * 1024
 MAX_ARCHIVE = 4 * 1024 * 1024

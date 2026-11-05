@@ -1,0 +1,76 @@
+{
+  "schema": "waterline.held-native-recipe-packet/v1",
+  "status": "source-only",
+  "execution_enabled": false,
+  "application": {
+    "commit": "3d68d7d8954a0743104b318d03708515c7e3c530",
+    "tree": "aadb0484b0330ed5bfaabde42245450cafa990c4",
+    "lock_sha256": "bc2014dd77b48074d41b9aded14a82cbab5c3676b59e36e5b2203aeb644e3506",
+    "production_packages": 79,
+    "application_leaves": 197
+  },
+  "recipe": {
+    "path": "docker/held-native.Dockerfile",
+    "sha256": "478321f8773d607cc4ef513b654a0775dc888a73d734e221f96bc57031332e4c",
+    "input": "canonical tar on stdin",
+    "composer_scripts": false,
+    "composer_plugins": false,
+    "candidate_autoload_during_build": false,
+    "candidate_reflection_during_build": false,
+    "jobs": 2
+  },
+  "builder_template": {
+    "commit": "2cc1f3915435f909b1624c1ceda860c027ade4d5",
+    "tree": "237645fb50b9e8b34ef21b1045798edb2b72497d",
+    "path": ".github/workflows/service-image.yml",
+    "sha256": "1d3c602ee337bbbd310232feb2ed9cf72a62292bd4a2d9273ffb4fbd08ff2ee0",
+    "references_held_recipe": false,
+    "worker_config": "docker/held-native-buildkit.toml",
+    "worker_config_sha256": "5ddd031d9ce0a5d9646cd26725763f4247e98796bf796a274cc8c09b9e1bc061",
+    "worker_max_parallelism": 1
+  },
+  "immutable_oci_validator": {
+    "commit": "2cc1f3915435f909b1624c1ceda860c027ade4d5",
+    "path": "scripts/ci/oci_release.py",
+    "sha256": "e75e819b1d1a6407f8732f81becc7d879453063225a7085f52ab24200e24c4d6"
+  },
+  "corrected_collector": {
+    "commit": "51b1bcba7f2e02d9347316518ec369e18c9c9034",
+    "tree": "237645fb50b9e8b34ef21b1045798edb2b72497d",
+    "members": 20,
+    "bytes": 172875,
+    "manifest_sha256": "660fd69a11c3855a54c82a9d0ae9d06f89c198e936bb65df47d57e9b8f9008b9",
+    "invoked": false
+  },
+  "trusted_m1_verifiers": {
+    "docker/verify-ca-trust.php": "d76e7e062f9021533ccfdb2bf0e5ae76df4f6c0b3fa0fb4f617fb02a84ace87c",
+    "docker/verify-brotli.php": "c52b52a58798e58146b2ba1972da137ce8dc9cad39322477ef6c453c0d6c3ffc",
+    "docker/verify-curl.php": "9e903a16a6d0588a662d243e9b56f8b6807328485174d17bc95ea3f98b38a2e5"
+  },
+  "proposed_envelope": {
+    "runners": [
+      "ubuntu-24.04",
+      "ubuntu-24.04-arm"
+    ],
+    "matrix_max_parallel": 2,
+    "job_timeout_minutes": 30,
+    "attempts": 1,
+    "archive_max_bytes": 1073741824,
+    "context_max_bytes": 570425344,
+    "artifact_retention_days": 1,
+    "artifact_name_prefix": "waterline-build-only-",
+    "receipt_schema": "waterline.build-only-native-artifact/v1",
+    "qualified": false
+  },
+  "unbound": {
+    "existing_job_adapter": null,
+    "runtime_workflow_commit_tree_sha256": null,
+    "buildx_buildkit_binary_image_config_identities": null,
+    "parent_platform_child_config_trust_identities": null,
+    "ca_bytes_sha256_and_numeric_host_addresses": null,
+    "effective_host_driver_cpu_memory_pids_and_storage": null,
+    "operator_scope_reconciliation": null
+  },
+  "identity_authority": "independently supplied Git commit/tree and complete member manifest; not this document",
+  "stop_map": "https://github.com/durable-workflow/waterline/issues/279#issuecomment-6642403723"
+}
