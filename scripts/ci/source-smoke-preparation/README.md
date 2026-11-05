@@ -32,6 +32,17 @@ symlinks, executable files and oversized objects. A future independently
 admitted launcher must use those retained bytes, never mutable worktree imports.
 This change does not supply or activate that launcher.
 
+`custody.SourceAuthority` takes the independently admitted preparation commit,
+tree and SHA-256 packet manifest, proves `commit^{tree}` through the bounded host
+Git reader and retains the exact snapshot. Producer and binder require that
+authority separately from `HostObservation`; a shared fabricated tree in both
+observations refuses. The compact receipt carries that preparation identity,
+the full run/attempt/daemon/runner/nonce context and both image/config identities.
+The lifecycle verifies these fields and their exact spec before collection,
+then requires the unchanged collector's final bytes and digest to retain the
+same receipt and spec before cleanup can lead to success. An in-memory boolean
+is insufficient to assert collector completion.
+
 `preparation.Dockerfile` is mechanically derived from the exact M1 Dockerfile.
 `recipe.py` accepts only that derivation. The changes disable Composer plugins,
 scripts and install-time autoload; cap Composer HTTP/process concurrency at two;

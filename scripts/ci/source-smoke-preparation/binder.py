@@ -49,18 +49,21 @@ def report_bytes(archive, artifact):
         raise ValueError('Provider archive refused') from error
 
 
-def bind(run, artifact, archive, prepared_context, fresh_host, expected, tool_lock, evidence, admission):
+def bind(run, artifact, archive, prepared_context, fresh_host, expected, tool_lock, evidence, admission, authority):
     """The provider digest alone cannot endorse image/config or source facts."""
     provider(run, artifact, prepared_context)
     same_cell(prepared_context, fresh_host.context)
     downloaded = bounded_json(report_bytes(archive, artifact))
-    independently_recaptured = produce(fresh_host, expected, tool_lock, evidence, admission)
+    independently_recaptured = produce(fresh_host, expected, tool_lock, evidence, admission, authority)
     require(downloaded == independently_recaptured, 'Provider report differs from independent live host facts')
     receipt = {key: independently_recaptured[key] for key in (
         'source', 'lock', 'graph', 'installed_json_sha256', 'ca_sha256', 'tool_config_sha256',
         'scripts', 'plugins', 'request_concurrency', 'effective_trust_verified')}
     receipt.update({'provider_run_id': run['id'], 'provider_artifact_id': artifact['id'],
-                    'provider_api_digest': artifact['digest'][7:]})
+                    'provider_api_digest': artifact['digest'][7:], 'provider_run_attempt': prepared_context.attempt,
+                    'preparation': independently_recaptured['preparation'],
+                    'context': prepared_context.report_context(),
+                    'images': {key: independently_recaptured[key] for key in ('app', 'tool')}})
     raw_receipt = canonical(receipt)
     spec = unbound_spec()
     spec.update({'platform': independently_recaptured['app']['platform'],

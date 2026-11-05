@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 import warnings
 import zipfile
@@ -20,6 +21,7 @@ import accepted
 import binder
 import cell
 import contract as c
+import custody
 import producer
 import recipe
 
@@ -31,12 +33,21 @@ class PreparationTests(unittest.TestCase):
         cls.repository = cls.folder.parents[2]
         cls.evidence = accepted.accepted_evidence(cls.repository)
         cls.expected = cls.evidence.expected_from_git(cls.repository)
+        def git(*args):
+            return cls.evidence.command(['git', '-C', str(cls.repository), *args],
+                time.monotonic() + 5, stdout_limit=custody.MAX_MEMBER)[0]
+        cls.git = staticmethod(git)
+        cls.preparation_commit = git('rev-parse', 'HEAD').strip().decode()
+        cls.preparation_tree = git('rev-parse', 'HEAD^{tree}').strip().decode()
+        cls.manifest_sha256 = custody.snapshot(git, cls.preparation_commit, cls.preparation_tree)[2]
+        cls.authority = custody.SourceAuthority(git, cls.preparation_commit, cls.preparation_tree, cls.manifest_sha256)
         cls.lock = json.loads((cls.folder / 'browser-tool-lock.json').read_text())
         cls.packages = json.loads(subprocess.check_output(['git', '-C', str(cls.repository),
             'show', c.SOURCE + ':standalone/composer.lock']))['packages']
 
     def model(self):
-        context = c.Context('1' * 40, '2' * 40, 301, 1, 'synthetic-daemon', '3' * 64, '4' * 32)
+        context = c.Context(self.preparation_commit, self.preparation_tree,
+                            301, 1, 'synthetic-daemon', '3' * 64, '4' * 32)
         tool_lock = copy.deepcopy(self.lock)
         tool_lock['unbound_static_inputs'] = {
             'base_image_id': 'sha256:' + '5' * 64, 'base_config_sha256': '6' * 64, 'platform': 'linux/amd64',
@@ -60,7 +71,7 @@ class PreparationTests(unittest.TestCase):
         admission = {'platform': 'linux/amd64', 'app_config': copy.deepcopy(app['Config']),
                      'tool_config': copy.deepcopy(tool['Config']), 'ca_sha256': host.ca_sha256,
                      'preparation_tool_config_sha256': host.preparation_tool_config_sha256}
-        report = producer.produce(host, self.expected, tool_lock, self.evidence, admission)
+        report = producer.produce(host, self.expected, tool_lock, self.evidence, admission, self.authority)
         archive = self.archive(c.canonical(report))
         run = {'id': context.run_id, 'run_attempt': context.attempt, 'head_sha': context.preparation_commit,
                'path': c.WORKFLOW, 'repository': {'full_name': c.REPOSITORY},
@@ -85,7 +96,8 @@ class PreparationTests(unittest.TestCase):
 
     def bound(self, values):
         host, lock, admission, _report, archive, run, artifact = values
-        return binder.bind(run, artifact, archive, host.context, host, self.expected, lock, self.evidence, admission)
+        return binder.bind(run, artifact, archive, host.context, host, self.expected, lock,
+                           self.evidence, admission, self.authority)
 
     def test_real_old_recipe_refuses_new_separate_contract_and_derived_recipe_passes(self):
         original = subprocess.check_output(['git', '-C', str(self.repository), 'show', c.SOURCE + ':Dockerfile'])
@@ -138,6 +150,89 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(spec['image_id'], values[0].app['Id'])
         self.assertEqual(spec['vendor_preparation_receipt_sha256'], c.digest(receipt))
         self.assertEqual(spec['packet_commit'], c.PACKET_COMMIT)
+        self.assertEqual(parsed['preparation'], self.authority.identity(values[0].context))
+        self.assertEqual(parsed['context'], values[0].context.report_context())
+        self.assertEqual(parsed['provider_run_attempt'], values[0].context.attempt)
+
+    def test_shared_fabricated_tree_refuses_at_git_custody_producer_and_binder(self):
+        model = self.model()
+        context = dataclasses.replace(model[0].context, preparation_tree='f' * 40)
+        false_host = dataclasses.replace(model[0], context=context)
+        self.assertRaisesRegex(c.Refusal, 'tree mismatch', custody.SourceAuthority,
+            self.git, self.preparation_commit, context.preparation_tree, self.manifest_sha256)
+        self.assertRaisesRegex(c.Refusal, 'source custody mismatch', producer.produce,
+            false_host, self.expected, model[1], self.evidence, model[2], self.authority)
+        report = {**model[3], 'context': context.report_context(),
+                  'preparation': {**model[3]['preparation'], 'tree': context.preparation_tree}}
+        archive = self.archive(c.canonical(report))
+        artifact = {**model[6], 'digest': 'sha256:' + c.digest(archive), 'size_in_bytes': len(archive)}
+        self.assertRaisesRegex(c.Refusal, 'source custody mismatch', binder.bind,
+            model[5], artifact, archive, context, false_host, self.expected,
+            model[1], self.evidence, model[2], self.authority)
+
+    def test_previous_source_actually_accepts_the_shared_false_tree(self):
+        # Execute only the immutable prior pure contracts, never its held CLI.
+        program = '''import dataclasses,pathlib,subprocess,sys,types
+repository=sys.argv[1]
+for name in ('contract','accepted','recipe','producer','binder','cell','test_preparation'):
+ raw=subprocess.check_output(['git','-C',repository,'show',
+  '65d9a5b929f8eaf37a0495d5bb5afe7607a9cffd:scripts/ci/source-smoke-preparation/'+name+'.py'],timeout=5)
+ module=types.ModuleType(name)
+ module.__file__=str(pathlib.Path(repository)/'scripts/ci/source-smoke-preparation'/(name+'.py'))
+ sys.modules[name]=module
+ exec(compile(raw,module.__file__,'exec'),module.__dict__)
+t=sys.modules['test_preparation'];t.PreparationTests.setUpClass();fixture=t.PreparationTests()
+host,lock,admission,report,archive,run,artifact=fixture.model()
+context=dataclasses.replace(host.context,preparation_tree='f'*40)
+host=dataclasses.replace(host,context=context)
+c=sys.modules['contract'];p=sys.modules['producer'];b=sys.modules['binder']
+report=p.produce(host,fixture.expected,lock,fixture.evidence,admission)
+archive=fixture.archive(c.canonical(report))
+artifact={**artifact,'digest':'sha256:'+c.digest(archive),'size_in_bytes':len(archive)}
+receipt,spec=b.bind(run,artifact,archive,context,host,fixture.expected,lock,fixture.evidence,admission)
+c.require_complete_spec(spec)
+assert 'preparation' not in c.bounded_json(receipt)
+print('OLD-ACCEPT: fabricated shared tree produced complete unbound-identity spec')
+'''
+        result = subprocess.run([sys.executable, '-I', '-c', program, str(self.repository)],
+                                capture_output=True, check=True, timeout=15)
+        self.assertIn(b'OLD-ACCEPT', result.stdout)
+
+    def test_lifecycle_requires_source_and_cell_context_in_receipt_and_collector_final(self):
+        model = self.model()
+        context = model[0].context
+        guardian = {'context': context.report_context(), 'ready': True, 'alive': True, 'deadline': 2800}
+        receipt, spec = self.bound(model)
+        parsed = c.bounded_json(receipt)
+        for section, field, value in [('preparation', 'tree', 'f' * 40),
+                                      ('preparation', 'manifest_sha256', 'f' * 64),
+                                      ('context', 'nonce', 'f' * 32), ('context', 'attempt', 2),
+                                      ('context', 'daemon_id', 'other-daemon'),
+                                      ('context', 'runner_binding', 'f' * 64)]:
+            with self.subTest(section=section, field=field):
+                state = cell.Lifecycle(context, c.CellBudget(100), self.authority)
+                state.arm(101, guardian)
+                changed = copy.deepcopy(parsed)
+                changed[section][field] = value
+                raw = c.canonical(changed)
+                changed_spec = {**spec, 'vendor_preparation_receipt_sha256': c.digest(raw)}
+                self.assertRaisesRegex(c.Refusal, 'source/cell identity', state.bind, raw, changed_spec, context, 200)
+        state = cell.Lifecycle(context, c.CellBudget(100), self.authority)
+        state.arm(101, guardian)
+        state.bind(receipt, spec, context, 200)
+        final = {'schema': 'waterline.disabled-source-smoke-evidence/v1',
+                 'expected': {'source': c.SOURCE, 'admission': spec, 'vendor_preparation': parsed}}
+        for mutate in [lambda x: x['expected']['vendor_preparation']['context'].update(daemon_id='other-daemon'),
+                       lambda x: x['expected']['vendor_preparation'].pop('preparation'),
+                       lambda x: x['expected']['admission'].update(image_id='sha256:' + 'f' * 64)]:
+            changed = copy.deepcopy(final)
+            mutate(changed)
+            raw = c.canonical(changed)
+            self.assertRaisesRegex(c.Refusal, 'final source/cell identity', state.begin_cleanup, 300, raw, c.digest(raw))
+        raw = c.canonical(final)
+        self.assertRaisesRegex(c.Refusal, 'final bytes mismatch', state.begin_cleanup, 300, raw, '0' * 64)
+        state.begin_cleanup(300, raw, c.digest(raw))
+        self.assertEqual(state.collection_sha256, c.digest(raw))
 
     def test_authenticated_digest_cannot_authorize_candidate_report_lies(self):
         for field, bad in [('source', '0' * 40), ('lock', '0' * 64), ('files_sha256', '0' * 64),
@@ -172,7 +267,7 @@ class PreparationTests(unittest.TestCase):
                 host = dataclasses.replace(values[0], context=dataclasses.replace(values[0].context, **{field: value}))
                 self.assertRaisesRegex(c.Refusal, 'Cross-runner', binder.bind,
                     values[5], values[6], values[4], values[0].context, host,
-                    self.expected, values[1], self.evidence, values[2])
+                    self.expected, values[1], self.evidence, values[2], self.authority)
 
     def test_host_rechecks_source_config_tool_policy_and_offline_boundary(self):
         cases = [('network_removed_before_autoload', False), ('php', '8.4.0'), ('int_size', 4),
@@ -182,7 +277,8 @@ class PreparationTests(unittest.TestCase):
             with self.subTest(field=field):
                 model = self.model()
                 host = dataclasses.replace(model[0], **{field: value})
-                self.assertRaises(c.Refusal, producer.produce, host, self.expected, model[1], self.evidence, model[2])
+                self.assertRaises(c.Refusal, producer.produce, host, self.expected, model[1], self.evidence,
+                                  model[2], self.authority)
         for field, value in [('plugins', True), ('scripts', True), ('request_concurrency', 3),
                              ('cpus', 0), ('memory', 0), ('pids', 0), ('jobs', 3),
                              ('network_bytes', c.MAX_NETWORK + 1), ('storage_bytes', c.MAX_STORAGE + 1)]:
@@ -190,18 +286,18 @@ class PreparationTests(unittest.TestCase):
                 model = self.model()
                 policy = {**model[0].policy, field: value}
                 self.assertRaises(c.Refusal, producer.produce, dataclasses.replace(model[0], policy=policy),
-                                  self.expected, model[1], self.evidence, model[2])
+                                  self.expected, model[1], self.evidence, model[2], self.authority)
 
     def test_raw_metadata_duplicate_keys_and_authority_drift_refuse(self):
         model = self.model()
         for raw in [b'{"packages":[],"packages":[]}', b'{}' * (c.MAX_REPORT // 2 + 1)]:
             self.assertRaises(ValueError, producer.produce, dataclasses.replace(model[0], installed_raw=raw),
-                              self.expected, model[1], self.evidence, model[2])
+                              self.expected, model[1], self.evidence, model[2], self.authority)
         installed = json.loads(model[0].installed_raw)
         installed['packages'][0]['dist']['reference'] = 'different'
         self.assertRaises(c.Refusal, producer.produce,
             dataclasses.replace(model[0], installed_raw=c.canonical(installed)),
-            self.expected, model[1], self.evidence, model[2])
+            self.expected, model[1], self.evidence, model[2], self.authority)
 
     def test_provider_archive_extra_link_escape_and_size_are_refused(self):
         for raw in [self.archive(b'{}', name='../escape'), self.archive(b'{}', mode=stat.S_IFLNK | 0o777),
@@ -211,7 +307,7 @@ class PreparationTests(unittest.TestCase):
 
     def test_cell_budget_covers_both_phases_and_requires_guardian_before_allocation(self):
         context = self.model()[0].context
-        state = cell.Lifecycle(context, c.CellBudget(100))
+        state = cell.Lifecycle(context, c.CellBudget(100), self.authority)
         self.assertRaises(c.Refusal, state.allocation, 'waterline-test', {'id': 'x'}, 101, True)
         guardian = {'context': context.report_context(), 'ready': True, 'alive': True, 'deadline': 2800}
         state.arm(101, guardian)
@@ -222,7 +318,9 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(state.deadline, 2400)
         self.assertEqual(state.budget.final_deadline(), 2800)
         self.assertRaises(c.Refusal, state.allocation, 'waterline-late', {'id': 'x'}, 2400, True)
-        state.begin_cleanup(2400, True)
+        final = c.canonical({'schema': 'waterline.disabled-source-smoke-evidence/v1',
+            'expected': {'source': c.SOURCE, 'admission': spec, 'vendor_preparation': c.bounded_json(receipt)}})
+        state.begin_cleanup(2400, final, c.digest(final))
         absence = {'containers': [], 'networks': [], 'volumes': [], 'images': [], 'processes': []}
         self.assertRaises(c.Refusal, state.finish, 2801, absence, 0)
         self.assertRaises(c.Refusal, state.finish, 2700, absence, -15)

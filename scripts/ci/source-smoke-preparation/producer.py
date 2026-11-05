@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from contract import (CellBudget, Context, LOCK, SOURCE, canonical, digest, image_id,
                       require, sha, source_expectation, require_static_admission)
 from recipe import validate_tool
+from custody import SourceAuthority
 
 
 @dataclass(frozen=True)
@@ -55,10 +56,12 @@ def checked_tool(lock, observed):
     return digest(canonical(expected))
 
 
-def produce(host, expected, tool_lock, evidence, admission):
+def produce(host, expected, tool_lock, evidence, admission, authority):
     """Only host facts are serialized; runtime output can never amend expected."""
     require(isinstance(host, HostObservation), 'Independent host observation required')
     host.context.validate()
+    require(isinstance(authority, SourceAuthority), 'Independent preparation custody authority required')
+    preparation = authority.identity(host.context)
     source_expectation(expected)
     require_static_admission(admission)
     require(host.network_removed_before_autoload is True, 'Candidate autoload retains network authority')
@@ -82,6 +85,7 @@ def produce(host, expected, tool_lock, evidence, admission):
     require((host.tool['Config'].get('Labels') or {}).get('dev.durable-workflow.tool-closure')
             == digest(canonical(tool_lock)), 'Tool image not bound to static closure')
     return {'schema': 'waterline.preparation-report/v1', 'context': host.context.report_context(),
+            'preparation': preparation,
             'source': SOURCE, 'lock': LOCK, 'graph': graph, 'files_sha256': digest(canonical(host.files)),
             'installed_json_sha256': digest(host.installed_raw), 'app': app, 'tool': tool,
             'browser_closure_sha256': tool_closure, 'ca_sha256': host.ca_sha256,

@@ -22,7 +22,7 @@ class CustodyTests(unittest.TestCase):
                 return listing
             if args[1] == '-s':
                 return str(len(objects[args[2]])).encode()
-            return b'changed' if mutate else objects[args[2]]
+            return b'x' * len(objects[args[2]]) if mutate else objects[args[2]]
         return git
 
     def test_exact_source_bytes_remain_private_after_snapshot(self):

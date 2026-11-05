@@ -1,8 +1,9 @@
 """One finite same-runner handoff contract. No provider or Docker executor."""
 from dataclasses import dataclass, field
 
-from contract import (CellBudget, Context, EXECUTION_ENABLED, WORKFLOW, digest,
+from contract import (CellBudget, Context, EXECUTION_ENABLED, WORKFLOW, bounded_json, digest,
                       require, require_complete_spec, same_cell)
+from custody import SourceAuthority
 
 UPLOAD = 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
 STEPS = ('admit-static-contract-and-start-guardian', 'prepare-offline-images-and-produce-report',
@@ -36,14 +37,19 @@ class Lifecycle:
     """
     context: Context
     budget: CellBudget
+    authority: SourceAuthority
     stage: str = 'static'
     owned: dict = field(default_factory=dict)
     receipt_sha256: str | None = None
     deadline: float | None = None
     cleanup_deadline: float | None = None
+    bound_receipt: dict | None = None
+    bound_spec: dict | None = None
+    collection_sha256: str | None = None
 
     def arm(self, now, guardian):
         self.context.validate()
+        self.authority.identity(self.context)
         require(self.stage == 'static' and guardian == {
             'context': self.context.report_context(), 'ready': True, 'alive': True,
             'deadline': self.budget.final_deadline()}, 'Independent guardian readiness missing')
@@ -66,13 +72,33 @@ class Lifecycle:
         same_cell(self.context, current_context)
         require_complete_spec(spec)
         require(spec['vendor_preparation_receipt_sha256'] == digest(receipt), 'Receipt bytes differ from spec')
+        parsed = bounded_json(receipt)
+        require(parsed.get('context') == self.context.report_context()
+                and parsed.get('preparation') == self.authority.identity(self.context)
+                and parsed.get('provider_run_attempt') == self.context.attempt
+                and parsed.get('provider_run_id') == self.context.run_id, 'Receipt source/cell identity mismatch')
+        for key, prefix in (('app', ''), ('tool', 'browser_')):
+            image = parsed.get('images', {}).get(key, {})
+            require(image.get('id') == spec[prefix + 'image_id']
+                    and image.get('config_sha256') == spec[prefix + ('config_sha256' if prefix else 'image_config_sha256')]
+                    and image.get('platform') == spec['platform'], 'Receipt/spec image identity mismatch')
         self.receipt_sha256 = digest(receipt)
+        self.bound_receipt, self.bound_spec = parsed, dict(spec)
         self.deadline = self.budget.collection_deadline(now)
         self.stage = 'collection'
 
-    def begin_cleanup(self, now, verified_collection):
-        require(self.stage == 'collection' and self.receipt_sha256 and verified_collection is True
+    def begin_cleanup(self, now, collection_raw, collection_sha256):
+        require(self.stage == 'collection' and self.receipt_sha256
                 and now <= self.deadline, 'Collection incomplete or expired')
+        require(digest(collection_raw) == collection_sha256, 'Collector final bytes mismatch')
+        outcome = bounded_json(collection_raw, limit=16 * 1024 * 1024)
+        expected = outcome.get('expected', {})
+        require(outcome.get('schema') == 'waterline.disabled-source-smoke-evidence/v1'
+                and expected.get('admission') == self.bound_spec
+                and expected.get('vendor_preparation') == self.bound_receipt
+                and expected.get('source') == self.bound_spec['source'], 'Collector final source/cell identity mismatch')
+        self.authority.identity(self.context)
+        self.collection_sha256 = collection_sha256
         self.cleanup_deadline = min(now + 300, self.budget.final_deadline())
         self.stage = 'cleanup'
 
