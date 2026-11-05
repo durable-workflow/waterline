@@ -189,6 +189,24 @@ def closed_member(member, expected, archive):
     return content
 
 
+def canonical_archive(expected, contents):
+    """Emit explicit members by exact name, with parents before descendants.
+
+    Header fields come only from the approved manifest. Normalize both accepted
+    regular-file type encodings so input headers cannot steer the sealed bytes.
+    """
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode='w:', format=tarfile.PAX_FORMAT) as sealed:
+        for name in sorted(expected):
+            item = expected[name]
+            info = tarfile.TarInfo(name)
+            info.mode, info.uid, info.gid = item['mode'], item['uid'], item['gid']
+            info.type = tarfile.DIRTYPE if item['kind'] == DIRECTORY else tarfile.REGTYPE
+            info.size = item['size']
+            sealed.addfile(info, io.BytesIO(contents[name]))
+    return output.getvalue()
+
+
 def sealed_archive(raw, expected, budget):
     """Declassify only immutable bytes; descriptors/mutable streams are refused.
 
@@ -200,9 +218,9 @@ def sealed_archive(raw, expected, budget):
     require(type(raw) is bytes and 0 < len(raw) <= budget.archive_bytes, 'Assembly archive immutable byte bound')
     expected = closed_manifest(expected, budget)
     seen, folded, content_bytes = set(), set(), 0
-    output, source = io.BytesIO(), io.BytesIO(raw)
+    contents, source = {}, io.BytesIO(raw)
     try:
-        with tarfile.open(fileobj=source, mode='r:') as archive, tarfile.open(fileobj=output, mode='w:') as sealed:
+        with tarfile.open(fileobj=source, mode='r:') as archive:
             for member in archive:
                 key = closed_path(member.name)
                 require(member.name not in seen and key not in folded and member.name in expected,
@@ -212,16 +230,12 @@ def sealed_archive(raw, expected, budget):
                 folded.add(key)
                 content_bytes += expected[member.name]['size']
                 require(content_bytes <= budget.content_bytes, 'Assembly aggregate content byte bound')
-                content = closed_member(member, expected[member.name], archive)
-                info = tarfile.TarInfo(member.name)
-                info.mode, info.uid, info.gid = member.mode, member.uid, member.gid
-                info.type, info.size = member.type, len(content)
-                sealed.addfile(info, io.BytesIO(content))
+                contents[member.name] = closed_member(member, expected[member.name], archive)
         require(set(expected) == seen, 'Assembly archive member absent')
         require(not any(raw[source.tell():]), 'Assembly archive trailing payload')
     except (tarfile.TarError, OSError) as error:
         raise Refusal('Assembly archive refused') from error
-    result = output.getvalue()
+    result = canonical_archive(expected, contents)
     require(len(result) <= budget.archive_bytes, 'Sealed assembly archive byte bound')
     return {'archive': result, 'archive_sha256': digest(result), 'manifest_sha256': digest(canonical(expected)),
             'content_bytes': content_bytes, 'members': len(seen)}

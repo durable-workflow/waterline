@@ -43,8 +43,12 @@ offline-engine architecture. It accepts immutable bytes and an independent
 manifest with explicit archive/member/content/count budgets, rejecting mutable
 streams or later path reads. It rejects extra/missing/duplicate paths, parent
 and case collisions, whiteouts, links, special/sparse files, opaque metadata,
-changed modes/owners/content and trailing payload. It emits a canonical regular
-archive and bound archive/manifest digests. This data-only boundary performs no
+changed modes/owners/content and trailing payload. After validating every member
+and the complete stream, it emits retained contents in sorted exact-name order.
+Only explicitly manifested directories are emitted, before their descendants.
+Headers come from the approved manifest, with one regular-file type encoding.
+Input tar order and equivalent regular-file headers therefore produce identical
+sealed bytes and archive/manifest digests. This data-only boundary performs no
 engine operation and supplies no authority for its own expected manifest.
 
 `custody.SourceAuthority` takes the independently admitted preparation commit,

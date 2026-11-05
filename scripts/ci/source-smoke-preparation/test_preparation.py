@@ -506,16 +506,52 @@ print('OLD-ACCEPT: fabricated shared tree produced complete unbound-identity spe
         self.assertIn(b'sealed source bytes mismatch', result.stderr)
         self.assertNotIn(b'unreviewed source executed', result.stderr)
 
-    def staged_fixture(self, names=('app/a.php',), content=b'body'):
-        expected = {name: {'kind': 'file', 'uid': 0, 'gid': 0, 'mode': 0o644,
-            'size': len(content), 'sha256': c.digest(content)} for name in names}
+    def staged_fixture(self, names=('app/a.php',), content=b'body', directories=(), regular_type=tarfile.REGTYPE):
+        expected = {name: {'kind': recipe.DIRECTORY if name in directories else 'file',
+            'uid': 0, 'gid': 0, 'mode': 0o755 if name in directories else 0o644,
+            'size': 0 if name in directories else len(content),
+            'sha256': None if name in directories else c.digest(content)} for name in names}
         output = io.BytesIO()
         with tarfile.open(fileobj=output, mode='w:') as archive:
             for name in names:
                 info = tarfile.TarInfo(name)
-                info.mode, info.size = 0o644, len(content)
+                info.mode, info.size = expected[name]['mode'], expected[name]['size']
+                info.type = tarfile.DIRTYPE if name in directories else regular_type
                 archive.addfile(info, io.BytesIO(content))
         return output.getvalue(), expected
+
+    def test_staged_archive_opposite_file_order_has_identical_sealed_bytes(self):
+        names = ('app/a.php', 'app/b.php')
+        raw, expected = self.staged_fixture(names)
+        reversed_raw, reversed_expected = self.staged_fixture(tuple(reversed(names)))
+        self.assertEqual(expected, reversed_expected)
+        self.assertNotEqual(raw, reversed_raw)
+        budget = recipe.ArchiveBudget(65536, 32768, 32768, 32)
+        self.assertEqual(recipe.sealed_archive(raw, expected, budget),
+                         recipe.sealed_archive(reversed_raw, expected, budget))
+
+    def test_staged_archive_directory_child_and_manifest_order_are_canonical(self):
+        names = ('app', 'app/dir', 'app/dir/a.php', 'app/z.php')
+        directories = ('app', 'app/dir')
+        raw, expected = self.staged_fixture(names, directories=directories)
+        reversed_raw, reversed_expected = self.staged_fixture(tuple(reversed(names)), directories=directories)
+        self.assertEqual(expected, reversed_expected)
+        self.assertNotEqual(raw, reversed_raw)
+        budget = recipe.ArchiveBudget(65536, 32768, 32768, 32)
+        sealed = recipe.sealed_archive(raw, expected, budget)
+        self.assertEqual(sealed, recipe.sealed_archive(reversed_raw, reversed_expected, budget))
+        with tarfile.open(fileobj=io.BytesIO(sealed['archive'])) as archive:
+            self.assertEqual(archive.getnames(), list(names))
+            self.assertTrue(archive.getmember('app/dir').isdir())
+            self.assertEqual(archive.extractfile('app/dir/a.php').read(), b'body')
+
+    def test_staged_archive_regular_header_alias_is_canonical(self):
+        raw, expected = self.staged_fixture()
+        alternate, _ = self.staged_fixture(regular_type=tarfile.AREGTYPE)
+        self.assertNotEqual(raw, alternate)
+        budget = recipe.ArchiveBudget(65536, 32768, 32768, 32)
+        self.assertEqual(recipe.sealed_archive(raw, expected, budget),
+                         recipe.sealed_archive(alternate, expected, budget))
 
     def test_staged_archive_is_canonical_immutable_and_manifest_bound(self):
         raw, expected = self.staged_fixture()
