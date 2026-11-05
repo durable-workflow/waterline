@@ -118,7 +118,7 @@ class ProxyLedger:
             while offset < len(raw):
                 self._active()
                 allowance = min(CHUNK, len(raw) - offset, self._preparation_limit - self._admitted)
-                written = self._call(lambda bound: write(raw[offset:offset + bound]), allowance)
+                written = self._call(lambda bound, start=offset: write(raw[start:start + bound]), allowance)
                 self._ensure(positive(written) and written <= allowance, 'Proxy preparation write count invalid')
                 self._admitted += written
                 offset += written
