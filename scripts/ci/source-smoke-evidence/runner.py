@@ -287,10 +287,10 @@ class Session:
         observation['api']=self.api(name)
         self.web_server(.8)
         self.exec('browser','sh','-c','rm -f /state/writes.jsonl /state/schedule-writes.jsonl')
-        self.exec('browser','node','--experimental-vm-modules','/inputs/packet/browser-driver.mjs','browser',seconds=160)
+        self.exec('browser','node','--import','/inputs/packet/browser-loader.mjs','/inputs/source/scripts/ci/request-budget-browser.mjs',seconds=160)
         observation['browser']=self.read_state('request-budget-evidence/browser.json')
         self.web_server(3.5)
-        self.exec('browser','node','--experimental-vm-modules','/inputs/packet/browser-driver.mjs','auto',seconds=45)
+        self.exec('browser','node','--import','/inputs/packet/browser-loader.mjs','/inputs/source/scripts/ci/request-budget-auto.mjs',seconds=45)
         observation['automatic']=self.read_state('request-budget-evidence/browser-auto.json')
         self.observed.append(observation)
 

@@ -46,9 +46,11 @@ The packet contains:
   peers, bounded mode/state/response/header readers and path guards.
 - `browser-driver.mjs`: a thin bounded I/O adapter for the **unchanged**, separately
   Git-bound M1 browser and automatic-recovery controls. Their original hashes and
-  assertions remain intact. A closed module linker supplies the state/response
-  adapters; the VM is not a sandbox for untrusted JavaScript. No copied control
-  bodies or dependency installation are needed.
+  assertions remain intact. A hash-checking preload registers a closed import map
+  for state/response adapters. Node's normal module loader executes the unchanged
+  sealed entry file, without source-string evaluation or a VM. The tool must
+  support Node registerHooks (22.15 or later). No copied control bodies or
+  dependency installation are needed.
 - Python and Node tests: inert authority, immutable handoff, bounds, route,
   cleanup and disabled-entrypoint controls. Git fixtures, mock resource plans and
   fake clean readbacks are synthetic source checks, never runtime evidence.

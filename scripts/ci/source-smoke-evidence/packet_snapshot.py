@@ -15,7 +15,8 @@ from pathlib import Path
 
 PACKET_PATH='scripts/ci/source-smoke-evidence'
 PACKET_FILES=frozenset({
-    'README.md','bootstrap.py','browser-driver.mjs','cleanup.py','collector.php',
+    'README.md','bootstrap.py','browser-driver.mjs','browser-loader.mjs',
+    'browser-state-fs.mjs','browser-tool-module.mjs','cleanup.py','collector.php',
     'evidence.py','fixture.php','packet_snapshot.py','proxy.php',
     'read_state.py','runner.py','state.php','test_evidence.py','test_runner.py',
     'test_snapshot.py','test_browser_driver.mjs',

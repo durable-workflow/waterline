@@ -3,13 +3,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import vm from 'node:vm';
-import {createHash} from 'node:crypto';
-import {createRequire} from 'node:module';
-import {fileURLToPath} from 'node:url';
 
 const MAX_JSON = 2097152;
-const ORIGINAL_HASHES = Object.freeze({
+export const ORIGINAL_HASHES = Object.freeze({
     browser:'6e40c0211104700fe6da345f7194b7683211f991b7ee0ee200692a05e7da2b1c',
     auto:'2d0649d8d5d26a848425c38023fd67926a775de905e9c8c9484e531f1c556121',
 });
@@ -104,7 +100,7 @@ function responsePage(page) {
     }});
 }
 
-function boundedPlaywright(playwright) {
+export function boundedPlaywright(playwright) {
     return Object.freeze({chromium:{launch: async options => {
         const browser = await playwright.chromium.launch(options);
         return new Proxy(browser,{get(target,key) {
@@ -115,40 +111,25 @@ function boundedPlaywright(playwright) {
     }}});
 }
 
-export async function evaluateControls(source, stateRoot, playwright, environment) {
-    const context = vm.createContext({console,URL,Buffer,setTimeout,clearTimeout,
-        process:Object.freeze({cwd:()=>stateRoot,env:Object.freeze({...environment})})});
-    const modules = new Map([
-        ['node:assert/strict',assert],['node:fs',stateFiles(stateRoot)],['node:path',path],
-        ['node:module',{createRequire: filename => {
-            assert.equal(filename,path.join(stateRoot,'package.json'));
-            return name => { assert.equal(name,'playwright'); return boundedPlaywright(playwright); };
-        }}],
+export function controlHooks(entryURL) {
+    const redirects = new Map([
+        ['node:fs',new URL('./browser-state-fs.mjs',import.meta.url).href],
+        ['node:module',new URL('./browser-tool-module.mjs',import.meta.url).href],
     ]);
-    const module = new vm.SourceTextModule(source,{context});
-    await module.link(specifier => {
-        assert.ok(modules.has(specifier),'Unapproved module import');
-        const value = modules.get(specifier);
-        const exports = ['default',...Object.keys(value).filter(key=>key!=='default')];
-        return new vm.SyntheticModule(exports,function () {
-            this.setExport('default',value);
-            for (const key of exports.slice(1)) this.setExport(key,value[key]);
-        },{context});
-    });
-    await module.evaluate();
+    return {resolve(specifier,context,nextResolve) {
+        if (context.parentURL !== entryURL) return nextResolve(specifier,context);
+        if (redirects.has(specifier)) return {url:redirects.get(specifier),shortCircuit:true};
+        assert.ok(['node:assert/strict','node:path'].includes(specifier),'Unapproved module import');
+        return nextResolve(specifier,context);
+    }};
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-    const variant = process.argv[2];
-    assert.ok(Object.hasOwn(ORIGINAL_HASHES,variant),'Unapproved browser control');
-    const original = variant === 'browser'
-        ? '/inputs/source/scripts/ci/request-budget-browser.mjs'
-        : '/inputs/source/scripts/ci/request-budget-auto.mjs';
-    const raw = readObject(original,131072);
-    assert.equal(createHash('sha256').update(raw).digest('hex'),ORIGINAL_HASHES[variant]);
-    const playwright = createRequire('/tools/package.json')('playwright');
-    await evaluateControls(new TextDecoder('utf-8',{fatal:true}).decode(raw),'/state',playwright,{
-        EXPECTED_CANDIDATE_SOURCE:process.env.EXPECTED_CANDIDATE_SOURCE,
-        FIXED_BROWSER_BUDGET_SECONDS:process.env.FIXED_BROWSER_BUDGET_SECONDS,
-    });
+export function originalInput(filename) {
+    if (filename === '/inputs/source/scripts/ci/request-budget-browser.mjs') {
+        return {filename:'/inputs/source/scripts/ci/request-budget-browser.mjs',
+            url:'file:///inputs/source/scripts/ci/request-budget-browser.mjs',sha256:ORIGINAL_HASHES.browser};
+    }
+    assert.equal(filename,'/inputs/source/scripts/ci/request-budget-auto.mjs','Unapproved browser control');
+    return {filename:'/inputs/source/scripts/ci/request-budget-auto.mjs',
+        url:'file:///inputs/source/scripts/ci/request-budget-auto.mjs',sha256:ORIGINAL_HASHES.auto};
 }
