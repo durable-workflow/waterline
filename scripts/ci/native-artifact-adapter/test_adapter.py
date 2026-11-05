@@ -73,7 +73,7 @@ class PrivateAdapterTest(unittest.TestCase):
         ledger = self.p.proxy.ProxyLedger(context, self.p.authority, deadline=200, clock=lambda: 100)
         _policy, _pool, _reader, sealed = self.capture_fixture.captured_fixture(
             context, self.p.authority, self.expected, ledger)
-        self.assertEqual(_policy.identity, value['transport_sha256'])
+        self.assertEqual(value['transport_sha256'], _policy.identity)
         ledger.seal()
         contents = {self.p.capture.composer_cache_path(name, package): self.capture_fixture.BODY
                     for name, package in self.expected['graph'].items()}

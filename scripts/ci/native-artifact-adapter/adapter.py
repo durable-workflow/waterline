@@ -15,6 +15,8 @@ MAX_DIAGNOSTIC = 1024 ** 2
 MAX_RECEIPT = 3 * MAX_DIAGNOSTIC
 MAX_PROVIDER_ZIP = MAX_ARCHIVE + 6 * MAX_DIAGNOSTIC
 UPLOAD_ACTION = 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
+RECEIPT_NAME = 'receipt.json'
+ARCHIVE_NAME = 'image.oci.tar'
 STOPS = ('native_inspector', 'native_retrieval', 'observation_qualification', 'server_failover',
          'candidate_runtime', 'installed_acceptance', 'publication', 'release', 'downstream_adoption')
 EFFECTS = ('capture', 'preparation', 'build', 'upload', 'retention', 'cleanup', 'retrieval', 'publication')
@@ -325,10 +327,10 @@ def describe_output(primitives, prepared, observation):
                'retained_stops': selected['retained_stops'], 'effects': selected['effects']}
     receipt_raw = base.canonical(receipt)
     require(len(receipt_raw) <= MAX_RECEIPT, 'Original source receipt byte bound')
-    files = {'receipt.json': receipt_raw, 'stdout.log': observation['stdout'],
+    files = {RECEIPT_NAME: receipt_raw, 'stdout.log': observation['stdout'],
              'stderr.log': observation['stderr']}
     if archive is not None:
-        files['image.oci.tar'] = archive
+        files[ARCHIVE_NAME] = archive
     return receipt, files
 
 
@@ -339,11 +341,11 @@ def upload_proposal(prepared, receipt, files):
     cleanup observations. This function never sees a runtime token.
     """
     selected = checked_prepared(prepared)
-    required = {'receipt.json', 'stdout.log', 'stderr.log'}
-    require(set(files) in (required, required | {'image.oci.tar'})
+    required = {RECEIPT_NAME, 'stdout.log', 'stderr.log'}
+    require(set(files) in (required, required | {ARCHIVE_NAME})
             and all(type(raw) is bytes for raw in files.values()), 'Private upload member set')
-    require(files['receipt.json'] == base.canonical(receipt)
-            and len(files['receipt.json']) <= MAX_RECEIPT
+    require(files[RECEIPT_NAME] == base.canonical(receipt)
+            and len(files[RECEIPT_NAME]) <= MAX_RECEIPT
             and receipt['context'] == prepared.context.report_context()
             and receipt['inputs'] == json.loads(prepared.bindings)
             and receipt['selection_sha256'] == base.digest(prepared.selection)
@@ -361,9 +363,9 @@ def upload_proposal(prepared, receipt, files):
         require(len(raw) <= MAX_DIAGNOSTIC and receipt['diagnostics'][name]
                 == {'size': len(raw), 'sha256': base.digest(raw)}, 'Original upload diagnostics changed')
     subject = receipt['archive']
-    require(('image.oci.tar' in files) == (subject is not None), 'Original export member changed')
+    require((ARCHIVE_NAME in files) == (subject is not None), 'Original export member changed')
     if subject is not None:
-        raw = files['image.oci.tar']
+        raw = files[ARCHIVE_NAME]
         require(0 < len(raw) <= MAX_ARCHIVE and len(raw) == subject['size']
                 and base.digest(raw) == subject['sha256'], 'Original upload export changed')
     name = 'waterline-build-only-' + selected['architecture'] + '-' + str(selected['origin']['run_id'])
