@@ -82,8 +82,8 @@ def accept_event(event, plan, attempted, bindings, armed):
     raise ValueError('Unknown backstop event')
 
 
-def backstop_main():
-    token, deadline, raw_plan = sys.argv[1:]
+def backstop_admission(arguments):
+    token, deadline, raw_plan = arguments
     deadline = float(deadline)
     require(re.fullmatch(r'[a-f0-9]{16}', token) and time.monotonic() < deadline <= time.monotonic() + 1200,
             'Invalid backstop admission')
@@ -93,6 +93,11 @@ def backstop_main():
         require(entry.get('name') == name and name.startswith('waterline-source-' + token + '-')
                 and entry.get('kind') in LISTINGS and re.fullmatch(r'[a-f0-9]{32}', entry.get('nonce', '')),
                 'Backstop resource admission')
+    return token, deadline, plan
+
+
+def backstop_main():
+    token, deadline, plan = backstop_admission(sys.argv[1:])
     attempted, bindings, armed = set(), {}, False
     print('ready', flush=True)
     pending = bytearray()

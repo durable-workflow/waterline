@@ -207,14 +207,14 @@ class Session:
         def option(flag):
             return options[options.index(flag) + 1]
         base = self.image_configs[image]
-        environment = {key: item for key, item in (entry.split('=', 1) for entry in base.get('Env') or [])}
+        environment = {entry.split('=', 1)[0]: entry.split('=', 1)[1] for entry in base.get('Env') or []}
         for index, flag in enumerate(options):
             if flag == '-e':
                 key, item = options[index + 1].split('=', 1)
                 environment[key] = item
         actual_environment = config.get('Env') or []
         require(len(actual_environment) == len(environment)
-                and {key: item for key, item in (entry.split('=', 1) for entry in actual_environment)} == environment,
+                and {entry.split('=', 1)[0]: entry.split('=', 1)[1] for entry in actual_environment} == environment,
                 'Effective environment mismatch')
         labels = {**(base.get('Labels') or {}), LABEL: self.token,
                   RESOURCE_LABEL: self.plan[self.name(role)]['nonce']}
@@ -250,8 +250,8 @@ class Session:
         for index, flag in enumerate(options):
             if flag != '--mount':
                 continue
-            parts = {key: item for key, item in (part.split('=', 1) if '=' in part else (part, True)
-                                               for part in options[index + 1].split(','))}
+            parts = {part.split('=', 1)[0]: part.split('=', 1)[1] if '=' in part else True
+                     for part in options[index + 1].split(',')}
             source = parts['src']
             require(source in self.bindings, 'Unbound mounted volume')
             expected_mounts[parts['dst']] = (source, 'readonly' not in parts)
@@ -259,8 +259,8 @@ class Session:
 
     def verify_mounts(self, value, options):
         host = value.get('HostConfig', {})
-        tmpfs = {path: settings for path, settings in
-                 (options[index + 1].split(':', 1) for index, flag in enumerate(options) if flag == '--tmpfs')}
+        tmpfs = {options[index + 1].split(':', 1)[0]: options[index + 1].split(':', 1)[1]
+                 for index, flag in enumerate(options) if flag == '--tmpfs'}
         require(host.get('Tmpfs') == tmpfs, 'Effective tmpfs mismatch')
         expected_mounts = self.planned_mounts(options)
         mounts = value.get('Mounts', [])
