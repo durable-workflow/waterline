@@ -220,7 +220,8 @@ class AuthorityTests(unittest.TestCase):
                     self.assertRaises(e.Refusal, c.cleanup_owned, docker, s.token, s.plan, s.attempted, s.bindings)
                     self.assertTrue(all('rm' not in args for args in calls))
 
-    def cleanup_docker(self, kind, value, discover=False, duplicate=False, remove=True, names=True, discover_once=False):
+    def cleanup_docker(self, kind, value, discover=False, duplicate=False, remove=True,
+                       names=True, discover_once=False, stale_discovery=False):
         identifier = value.get('Id', value['Name'])
         resources, removed = {identifier: value}, []
         discoveries = 0
@@ -241,25 +242,28 @@ class AuthorityTests(unittest.TestCase):
             if '--filter' in args:
                 discoveries += 1
                 visible = discover and (not discover_once or discoveries == 1)
-                return ' '.join(list(resources) * (2 if duplicate else 1)).encode() if visible else b''
+                identifiers = [identifier] if stale_discovery and discoveries == 1 else list(resources)
+                return ' '.join(identifiers * (2 if duplicate else 1)).encode() if visible else b''
             self.assertTrue(kind == 'volume' or '--no-trunc' in args)
             return ' '.join(resources).encode()
         return docker, resources, removed
 
     def test_bound_cleanup_does_not_depend_on_label_discovery(self):
         for role in ('fixture', 'network', 'inputs'):
-            with self.subTest(role=role), tempfile.TemporaryDirectory() as directory:
-                s = self.session(directory)
-                name = s.name(role)
-                kind = s.plan[name]['kind']
-                value = self.owned(s, role)
-                s.attempted.add(name)
-                s.bindings[name] = c.resource_binding(kind, value, s.plan[name], s.token)
-                docker, resources, removed = self.cleanup_docker(kind, value)
-                receipt = c.cleanup_owned(docker, s.token, s.plan, s.attempted, s.bindings)
-                self.assertEqual(receipt, {'containers': [], 'networks': [], 'volumes': []})
-                self.assertEqual(removed, [value.get('Id', value['Name'])])
-                self.assertEqual(resources, {})
+            for stale in (False, True):
+                with self.subTest(role=role, stale=stale), tempfile.TemporaryDirectory() as directory:
+                    s = self.session(directory)
+                    name = s.name(role)
+                    kind = s.plan[name]['kind']
+                    value = self.owned(s, role)
+                    s.attempted.add(name)
+                    s.bindings[name] = c.resource_binding(kind, value, s.plan[name], s.token)
+                    docker, resources, removed = self.cleanup_docker(kind, value, discover=stale,
+                        duplicate=True, discover_once=True, stale_discovery=stale)
+                    receipt = c.cleanup_owned(docker, s.token, s.plan, s.attempted, s.bindings)
+                    self.assertEqual(receipt, {'containers': [], 'networks': [], 'volumes': []})
+                    self.assertEqual(removed, [value.get('Id', value['Name'])])
+                    self.assertEqual(resources, {})
 
     def test_lost_return_label_discovery_deduplicates_each_resource_kind(self):
         for role in ('fixture', 'network', 'inputs'):

@@ -44,12 +44,14 @@ def cleanup_owned(docker, token, plan, attempted, bindings):
     # name/nonce and, when returned, the independently retained creation ID.
     expected_absent = {kind: set() for kind in LISTINGS}
     for kind, listing in LISTINGS.items():
+        known = set()
         present = set(docker(*listing).decode().split())
         for name in sorted(attempted):
             if name not in bindings or plan[name]['kind'] != kind:
                 continue
             retained = bindings[name]
             identifier = retained.get('Id', retained.get('Name'))
+            known.add(identifier)
             expected_absent[kind].add(identifier)
             if identifier in present:
                 actual = resource_binding(kind, inspect_resource(docker, kind, identifier), plan[name], token)
@@ -57,6 +59,8 @@ def cleanup_owned(docker, token, plan, attempted, bindings):
                 docker(*REMOVALS[kind], identifier)
         identifiers = docker(*listing, '--filter', 'label=' + LABEL + '=' + token).decode().split()
         for identifier in dict.fromkeys(identifiers):
+            if identifier in known:
+                continue
             pattern = r'waterline-source-[a-f0-9]{16}-[a-z][a-z0-9-]*' if kind == 'volume' else r'[a-f0-9]{64}'
             require(re.fullmatch(pattern, identifier), 'Cleanup ID shape')
             value = inspect_resource(docker, kind, identifier)
