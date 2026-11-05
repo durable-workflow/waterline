@@ -33,7 +33,8 @@ class TransportPolicy:
         exact(addresses, HOSTS, 'Transport address closure UNBOUND')
         for address in addresses.values():
             require(isinstance(address, str) and '%' not in address, 'Transport numeric address required')
-            require(ipaddress.ip_address(address).is_global, 'Transport address is not public')
+            parsed = ipaddress.ip_address(address)
+            require(parsed.is_global and str(parsed) == address, 'Transport address is not canonical public IP')
         self.ca_pem, self.ca_sha256 = ca_pem, ca_sha256
         self.addresses = dict(addresses)
         self.identity = digest(canonical(self.description()))
@@ -127,13 +128,27 @@ class TLSChannel:
 
     def identity(self):
         self.policy.validate()
+        address, port = self.observed_peer()
         certificate = self.tls.getpeercert(binary_form=True)
         require(type(certificate) is bytes and certificate and self.tls.version() in ('TLSv1.2', 'TLSv1.3')
                 and self.tls.selected_alpn_protocol() in (None, 'http/1.1'), 'TLS peer/protocol incomplete')
-        return {'host': self.host, 'address': self.policy.addresses[self.host], 'port': 443,
+        return {'host': self.host, 'address': address, 'port': port,
                 'policy_sha256': self.policy.identity, 'ca_sha256': self.policy.ca_sha256,
                 'peer_certificate_sha256': digest(certificate), 'tls_version': self.tls.version(),
                 'cipher': list(self.tls.cipher()), 'resolver': 'none-static-numeric-ip'}
+
+    def observed_peer(self):
+        context = self.tls.context
+        require(context.verify_mode == ssl.CERT_REQUIRED and context.check_hostname is True
+                and context.minimum_version == ssl.TLSVersion.TLSv1_2
+                and context.maximum_version == ssl.TLSVersion.TLSv1_3
+                and self.tls.server_hostname == self.host, 'Effective TLS verifier policy changed')
+        peer = self.socket.getpeername()
+        require(isinstance(peer, tuple) and len(peer) >= 2 and type(peer[1]) is int and peer[1] == 443,
+                'Observed TLS peer port mismatch')
+        address = str(ipaddress.ip_address(peer[0]))
+        require(address == self.policy.addresses[self.host], 'Observed TLS peer address mismatch')
+        return address, peer[1]
 
     def close(self):
         try:

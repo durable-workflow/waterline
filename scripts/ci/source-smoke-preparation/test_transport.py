@@ -145,6 +145,31 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(channel.incoming.read(), received)
         self.assertEqual(channel.ledger.checkpoint()['network_bytes'], len(received) + sum(map(len, sent)))
 
+    def test_observed_identity_rejects_actual_peer_or_verifier_policy_drift(self):
+        for drift in ('peer', 'hostname', 'verification'):
+            with self.subTest(drift=drift):
+                channel = object.__new__(transport.TLSChannel)
+                channel.host, channel.policy = 'api.github.com', synthetic_policy()
+                channel.socket = mock.Mock()
+                channel.socket.getpeername.return_value = ('1.1.1.1', 443)
+                channel.tls = mock.Mock()
+                channel.tls.server_hostname = channel.host
+                channel.tls.getpeercert.return_value = b'synthetic certificate'
+                channel.tls.version.return_value = 'TLSv1.3'
+                channel.tls.selected_alpn_protocol.return_value = 'http/1.1'
+                channel.tls.cipher.return_value = ('TLS_AES_256_GCM_SHA384', 'TLSv1.3', 256)
+                context = channel.tls.context
+                context.verify_mode, context.check_hostname = ssl.CERT_REQUIRED, True
+                context.minimum_version, context.maximum_version = ssl.TLSVersion.TLSv1_2, ssl.TLSVersion.TLSv1_3
+                self.assertEqual(channel.identity()['address'], '1.1.1.1')
+                if drift == 'peer':
+                    channel.socket.getpeername.return_value = ('8.8.8.8', 443)
+                elif drift == 'hostname':
+                    context.check_hostname = False
+                else:
+                    context.verify_mode = ssl.CERT_NONE
+                self.assertRaises(c.Refusal, channel.identity)
+
     def test_literal_hold_precedes_socket_and_request_effects(self):
         with mock.patch.object(transport.socket, 'socket') as socket:
             self.assertRaisesRegex(c.Refusal, 'HELD', transport.TLSChannel, None, None, None)
