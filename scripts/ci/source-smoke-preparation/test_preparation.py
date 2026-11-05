@@ -474,8 +474,9 @@ class PreparationTests(unittest.TestCase):
             oci = fixtures.oci
             selected['artifacts']['amd64'].update(digest=oci.digest_file(target), size_in_bytes=target.stat().st_size)
             (publisher.root / 'plan.json').write_bytes(oci.encode(selected))
+            arguments = argparse.Namespace(directory=publisher.root)
             with self.assertRaisesRegex(oci.EvidenceError, 'Unexpected provenance fields'):
-                oci.prepare(argparse.Namespace(directory=publisher.root))
+                oci.prepare(arguments)
             self.assertFalse((publisher.root / 'verified.json').exists())
         finally:
             publisher.doCleanups()
