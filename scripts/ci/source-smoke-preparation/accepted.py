@@ -12,7 +12,8 @@ from guardian import LABELS, binding, planned
 
 COLLECTOR_SHA256 = 'dcc263b37fb9e8bc2298ac323e9bb0dd9d2cf9686fd56b77c64921652a92f00d'
 MAX_FILESYSTEM = 128 * 1024 * 1024
-TMPFS = {'/tmp': 'rw,size=16m,uid=82,gid=82', '/data': 'rw,size=64m,uid=82,gid=82'}
+TEMPORARY = '/waterline-preparation-tmp'
+TMPFS = {TEMPORARY: 'rw,size=16m,mode=0700,uid=82,gid=82', '/data': 'rw,size=64m,mode=0700,uid=82,gid=82'}
 CONTAINER = 'container'
 VERIFY_POLICY = {'ReadonlyRootfs': True, 'Privileged': False, 'NanoCpus': 2_000_000_000,
                  'Memory': 3 * 1024 ** 3, 'MemorySwap': 3 * 1024 ** 3, 'PidsLimit': 256,
@@ -150,7 +151,8 @@ class ApplicationReader:
                 'Independent installed metadata mismatch before autoload')
         offline_container(self.inspect(CONTAINER, identifier), plan, identifier, expected_image)
         observed = bounded_json(self.docker('exec', '-i', '--user', '82:82', identifier,
-                                           'php', '/dev/stdin', 'identity', input_bytes=collector))
+                                           'php', '-d', 'sys_temp_dir=' + TEMPORARY,
+                                           '/dev/stdin', 'identity', input_bytes=collector))
         self.evidence.identity({**expected, 'installed_json_sha256': digest(installed)}, observed)
         require(observed.get('files') == files, 'Candidate observation differs from daemon filesystem bytes')
         after = self.inspect(CONTAINER, identifier)

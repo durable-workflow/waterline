@@ -78,7 +78,9 @@ application side: it independently reads daemon filesystem bytes, checks the
 image/config and effective network-none/resource/mount/user/env settings before
 and after the unchanged Git-bound collector probe. It neither allocates nor
 starts a verification container. Its literal hold precedes even daemon
-inventory. Tests use synthetic transport only. The complete browser/build/
+inventory. PHP temporary storage uses a private UID/GID-82, mode-0700 bounded
+tmpfs; no writable public temporary directory is mounted. Tests use synthetic
+transport only. The complete browser/build/
 trust/meter reader and observation composition remain unimplemented; callers
 supplying synthetic facts are test fixtures, not execution evidence.
 
