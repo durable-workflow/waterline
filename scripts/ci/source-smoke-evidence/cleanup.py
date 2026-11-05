@@ -23,9 +23,9 @@ def cleanup(token):
 if __name__=='__main__':
     token,deadline=sys.argv[1:]
     deadline=float(deadline)
-    if not time.time() <= deadline <= time.time()+1200:
+    if not time.monotonic() <= deadline <= time.monotonic()+1200:
         raise SystemExit('Invalid expiry')
     # Short sleeps keep this independent of owner progress or model lifetime.
-    while time.time()<deadline-30:
-        time.sleep(min(1,max(0,deadline-30-time.time())))
+    while time.monotonic()<deadline-30:
+        time.sleep(min(1,max(0,deadline-30-time.monotonic())))
     cleanup(token)

@@ -18,8 +18,13 @@ import sys
 import time
 from pathlib import Path
 
+# The live script cannot import a later-replaced worktree helper before its hold.
+if __name__=='__main__':
+    raise SystemExit('HELD: use only an independently admitted Git-object launcher')
+
+from packet_snapshot import reviewed_packet, exact_manifest, snapshot_archive, verify_archive, SEAL_PROGRAM
 from evidence import (SOURCE, MAX_JSON, Refusal, api_response, bounded_json, command,
-                      expected_from_git, final_receipt, identity, object_bytes, require)
+                      expected_from_git, final_receipt, graph, identity, object_bytes, require)
 
 EXECUTION_ENABLED = False
 LABEL = 'dev.durable-workflow.waterline-source-evidence'
@@ -36,7 +41,8 @@ ROOT = PACKET.parents[2]
 def validate_spec(spec):
     require(isinstance(spec, dict) and set(spec) == {
         'source','platform','image_id','image_config_sha256','browser_image_id',
-        'browser_config_sha256','vendor_preparation_receipt_sha256'}, 'Admission input shape')
+        'browser_config_sha256','vendor_preparation_receipt_sha256','packet_commit','packet_tree'}, 'Admission input shape')
+    require(all(isinstance(spec[k],str) and re.fullmatch(r'[a-f0-9]{40}',spec[k]) for k in ('packet_commit','packet_tree')), 'Reviewed packet admission required')
     require(spec['source'] == SOURCE and spec['platform'] in ('linux/amd64','linux/arm64'), 'Admission source/platform')
     for key in ('image_id','browser_image_id'):
         require(isinstance(spec[key], str) and re.fullmatch(r'sha256:[a-f0-9]{64}',spec[key]), 'Local immutable image required')
@@ -45,7 +51,7 @@ def validate_spec(spec):
 
 
 class Session:
-    def __init__(self, spec, inputs, evidence_directory):
+    def __init__(self, spec, inputs, evidence_directory, packet=None, repository=None):
         validate_spec(spec)
         self.started_at = time.monotonic()
         self.deadline = self.started_at+1200
@@ -57,12 +63,17 @@ class Session:
         require(self.inputs.resolve() == self.inputs and self.directory.resolve() == self.directory
                 and self.inputs != self.directory, 'Separate canonical inputs/evidence roots required')
         require(not self.directory.is_relative_to(self.inputs), 'Evidence must be outside input mounts')
+        require(self.directory.is_dir() and not any(self.directory.iterdir()), 'Fresh evidence directory required')
         self.commands, self.observed = [], []
         self.backstop = None
+        self.packet=packet
+        self.repository=Path(repository) if repository is not None else ROOT
+        self.snapshot=None
+        self.snapshot_manifest=None
 
-    def docker(self, *args, seconds=45, limit=MAX_JSON, cleanup=False):
+    def docker(self, *args, seconds=45, limit=MAX_JSON, cleanup=False, input_bytes=None):
         stop = self.deadline if cleanup else self.active
-        raw, receipt = command(['docker',*args], min(stop,time.monotonic()+seconds), stdout_limit=limit)
+        raw, receipt = command(['docker',*args], min(stop,time.monotonic()+seconds), stdout_limit=limit,input_bytes=input_bytes)
         self.commands.append(receipt)
         return raw
 
@@ -73,7 +84,7 @@ class Session:
         return self.docker('exec', self.name(role), 'timeout', '-s','TERM','-k','2',str(seconds-3),*args,seconds=seconds)
 
     def collector(self, mode, request=None):
-        args = ['php','/packet/collector.php',mode]
+        args = ['php','/inputs/packet/collector.php',mode]
         if request is not None:
             args.append(json.dumps(request,separators=(',',':')))
         return bounded_json(self.exec('app',*args))
@@ -81,7 +92,7 @@ class Session:
     def read_state(self, relative):
         require(re.fullmatch(r'(?:request-budget-evidence/)?[a-z-]+\.(?:json|jsonl)',relative), 'State path refused')
         # The bounded object reader is installed read-only in the tool role.
-        raw = self.exec('browser','python3','/packet/read_state.py',relative)
+        raw = self.exec('browser','python3','/inputs/packet/read_state.py',relative)
         return bounded_json(raw)
 
     def write_mode(self, mode):
@@ -96,8 +107,7 @@ class Session:
                    '--init','--read-only','--user','82:82','--cpus',cpu,'--memory',memory,'--memory-swap',memory,
                    '--pids-limit',pids,'--cap-drop','ALL','--security-opt','no-new-privileges',
                    '--network',network,'--tmpfs','/tmp:rw,size=128m,uid=82,gid=82',
-                   '--mount',f'type=bind,src={self.inputs}/packet,dst=/packet,readonly',
-                   '--mount',f'type=bind,src={self.inputs}/source,dst=/source,readonly']
+                   '--mount',f'type=volume,src={self.name("inputs")},dst=/inputs,readonly']
         for alias in aliases:
             options += ['--network-alias',alias]
         if role == 'app':
@@ -138,21 +148,15 @@ class Session:
                     and labels.get('dev.durable-workflow.release.tag')=='2.15.1', 'Source image labels mismatch')
 
     def bind_inputs(self, expected):
-        bound = {}
-        for path in sorted(PACKET.iterdir()):
-            if path.is_file() and path.suffix in ('.py','.php','.md','.mjs'):
-                raw, meta = object_bytes(PACKET,path.name)
-                observed, other = object_bytes(self.inputs/'packet',path.name)
-                require(raw==observed and meta==other, 'Collector/runner input mismatch')
-                bound[path.name]=meta
-        original_inputs = ['scripts/ci/request-budget-browser.mjs','scripts/ci/request-budget-auto.mjs',
-                           'scripts/ci/request-budget-host.php','scripts/ci/request-budget-server.php',
-                           'tests/Fixtures/service-mode-server.php']
-        for name in original_inputs:
-            expected_raw,_=command(['git','-C',str(ROOT),'show',SOURCE+':'+name],time.monotonic()+5)
-            raw,meta=object_bytes(self.inputs/'source',name)
-            require(raw==expected_raw, 'Synthetic fixture/input source mismatch')
-            bound[name]=meta
+        reviewed=reviewed_packet(self.repository,self.spec['packet_commit'],self.spec['packet_tree'])
+        require(self.packet is not None and exact_manifest(reviewed)==exact_manifest(self.packet), 'Packet admission mismatch')
+        files={'packet/'+name:entry for name,entry in reviewed.items()}
+        originals=['scripts/ci/request-budget-browser.mjs','scripts/ci/request-budget-auto.mjs',
+                   'scripts/ci/request-budget-host.php','scripts/ci/request-budget-server.php',
+                   'tests/Fixtures/service-mode-server.php']
+        for name in originals:
+            raw,_=command(['git','-C',str(self.repository),'show',SOURCE+':'+name],time.monotonic()+5)
+            files['source/'+name]={'bytes':raw,'identity':{'mode':0o644,'size':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}}
         raw,_=object_bytes(self.inputs,'vendor-preparation.json',MAX_JSON)
         require(hashlib.sha256(raw).hexdigest()==self.spec['vendor_preparation_receipt_sha256'], 'Vendor receipt digest mismatch')
         receipt=bounded_json(raw)
@@ -160,12 +164,34 @@ class Session:
                 and receipt.get('graph')==expected['graph'] and receipt.get('scripts') is False
                 and receipt.get('plugins') is False and receipt.get('effective_trust_verified') is True
                 and receipt.get('request_concurrency')==2, 'Independent vendor preparation receipt mismatch')
-        for key in ('ca_sha256','tool_config_sha256','provider_api_digest'):
+        for key in ('ca_sha256','tool_config_sha256','provider_api_digest','installed_json_sha256'):
             require(isinstance(receipt.get(key),str) and re.fullmatch(r'[a-f0-9]{64}',receipt[key]), 'Preparation provenance missing')
         for key in ('provider_run_id','provider_artifact_id'):
             require(type(receipt.get(key)) is int and receipt[key]>0, 'Preparation provider identity missing')
-        expected['packet_and_fixture_inputs']=bound
+        self.snapshot,self.snapshot_manifest=snapshot_archive(files)
+        verify_archive(self.snapshot,self.snapshot_manifest)
+        self.packet=reviewed
+        expected['packet']={'commit':self.spec['packet_commit'],'tree':self.spec['packet_tree'],
+                            'files':exact_manifest(reviewed)}
+        expected['packet_and_fixture_inputs']=self.snapshot_manifest
         expected['vendor_preparation']=receipt
+        expected['installed_json_sha256']=receipt['installed_json_sha256']
+        self.expected=expected
+
+    def seal_inputs(self):
+        require(self.snapshot is not None and self.snapshot_manifest is not None,'Snapshot preparation missing')
+        self.docker('volume','create','--label',LABEL+'='+self.token,'--driver','local','--opt','type=tmpfs',
+                    '--opt','device=tmpfs','--opt','o=size=8m,uid=82,gid=82',self.name('inputs'))
+        result=self.docker('run','--rm','-i','--name',self.name('seal'),'--label',LABEL+'='+self.token,
+                           '--init','--read-only','--user','82:82','--network','none','--cpus','.5',
+                           '--memory','512m','--memory-swap','512m','--pids-limit','128','--cap-drop','ALL',
+                           '--security-opt','no-new-privileges','--tmpfs','/tmp:rw,size=16m,uid=82,gid=82',
+                           '--mount',f'type=volume,src={self.name("inputs")},dst=/sealed',
+                           '--entrypoint','timeout',self.spec['browser_image_id'],'-s','TERM','-k','2','40',
+                           'python3','-I','-c',SEAL_PROGRAM,json.dumps(self.snapshot_manifest,sort_keys=True,separators=(',',':')),
+                           input_bytes=self.snapshot)
+        require(bounded_json(result)==self.snapshot_manifest,'Sealed manifest mismatch')
+        require(self.docker('ps','-aq','--filter','name=^/'+self.name('seal')+'$')==b'', 'Snapshot creator survived')
 
     def start(self):
         launch = {'schema':'waterline.source-smoke-launch/v1','source':SOURCE,'owner_label':self.token,
@@ -178,23 +204,23 @@ class Session:
             os.fsync(stream.fileno())
         # Captured absolute deadline precedes the first Docker/network operation.
         # This independent process owns only this exact unpredictable label.
-        self.backstop = subprocess.Popen([sys.executable,str(PACKET/'cleanup.py'),self.token,str(self.utc_deadline)],
+        self.backstop = subprocess.Popen([sys.executable,'-I','-c',self.packet['cleanup.py']['bytes'].decode(),self.token,str(self.deadline)],
                                          stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
                                          start_new_session=True)
         self.verify_image(self.spec['image_id'],self.spec['image_config_sha256'],True)
         self.verify_image(self.spec['browser_image_id'],self.spec['browser_config_sha256'],False)
+        self.seal_inputs()
         self.docker('network','create','--internal','--label',LABEL+'='+self.token,self.name('network'))
         self.docker('volume','create','--label',LABEL+'='+self.token,'--driver','local',
                     '--opt','type=tmpfs','--opt','device=tmpfs','--opt','o=size=128m,uid=82,gid=82',self.name('state'))
-        self.role('fixture','php',['-S','0.0.0.0:18081','/packet/fixture.php'],aliases=('budget-backend',))
+        self.role('fixture','php',['-S','0.0.0.0:18081','/inputs/packet/fixture.php'],aliases=('budget-backend',))
         self.write_mode('healthy')
         self.role('app','sleep',['1150'],aliases=('budget-app',))
         self.exec('app','sh','-c','mkdir -p /app/storage/framework/cache/data /app/storage/framework/sessions /app/storage/framework/views /app/storage/logs')
         self.exec('app','php',ARTISAN,'package:discover','--no-interaction')
         self.exec('app','php',ARTISAN,'migrate','--force','--no-interaction')
-        self.role('proxy','php',['-S','0.0.0.0:8080','/packet/proxy.php'])
+        self.role('proxy','php',['-S','0.0.0.0:8080','/inputs/packet/proxy.php'])
         self.role('browser','sleep',['1150'],browser=True)
-        self.exec('browser','sh','-c','printf "%s" "{}" > /state/package.json; ln -s /tools/node_modules /state/node_modules')
         require(self.collector('config')==CONFIG, 'Actual loaded configuration mismatch')
 
     def web_server(self, budget):
@@ -250,15 +276,21 @@ class Session:
         self.write_mode('healthy')
         for action in (['route:cache'] if name=='cached' else ['route:clear']):
             self.exec('app','php',ARTISAN,action,'--no-interaction')
-        observation={'phase':name,'identity':self.collector('identity'),'routes':self.collector('routes'),
+        installed_raw=self.exec('app','php','/inputs/packet/collector.php','graph')
+        require(hashlib.sha256(installed_raw).hexdigest()==self.expected['installed_json_sha256'], 'Installed metadata byte identity mismatch')
+        installed=bounded_json(installed_raw)
+        require(installed.get('dev') is False and installed.get('dev-package-names',[])==[], 'Installed dev metadata refused')
+        installed_graph=graph(installed.get('packages'))
+        require(installed_graph==self.expected['graph'], 'Host parsed source/dist graph mismatch')
+        observation={'phase':name,'installed_graph':installed_graph,'identity':self.collector('identity'),'routes':self.collector('routes'),
                      'health':self.collector('health')}
         observation['api']=self.api(name)
         self.web_server(.8)
         self.exec('browser','sh','-c','rm -f /state/writes.jsonl /state/schedule-writes.jsonl')
-        self.exec('browser','node','/packet/budget-browser.mjs',seconds=160)
+        self.exec('browser','node','--experimental-vm-modules','/inputs/packet/browser-driver.mjs','browser',seconds=160)
         observation['browser']=self.read_state('request-budget-evidence/browser.json')
         self.web_server(3.5)
-        self.exec('browser','node','/packet/budget-auto.mjs',seconds=45)
+        self.exec('browser','node','--experimental-vm-modules','/inputs/packet/browser-driver.mjs','auto',seconds=45)
         observation['automatic']=self.read_state('request-budget-evidence/browser-auto.json')
         self.observed.append(observation)
 
@@ -282,11 +314,15 @@ class Session:
 
 
 def execute(spec, inputs, destination):
-    # Do not move this admission gate into an environment variable or retry path.
     require(EXECUTION_ENABLED, 'HELD: actual collection/cache execution requires separate General/Security admission')
-    expected=expected_from_git(ROOT)
+    raise Refusal('HELD: no mutable-worktree execution path is admitted')
+
+
+def execute_reviewed(spec, repository, receipt_directory, destination, packet):
+    require(EXECUTION_ENABLED, 'HELD: reviewed source is not execution-cleared')
+    expected=expected_from_git(Path(repository))
     expected['admission']=spec
-    session=Session(spec,inputs,Path(destination).parent)
+    session=Session(spec,receipt_directory,Path(destination).parent,packet,repository)
     try:
         session.bind_inputs(expected)
         session.start()

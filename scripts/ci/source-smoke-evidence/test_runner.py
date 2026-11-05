@@ -2,6 +2,7 @@
 import copy
 import json
 import pathlib
+import subprocess
 import sys
 import tempfile
 import time
@@ -16,29 +17,42 @@ import runner as r
 def spec():
     return {'source':e.SOURCE,'platform':'linux/amd64','image_id':'sha256:'+'a'*64,
             'image_config_sha256':'b'*64,'browser_image_id':'sha256:'+'c'*64,
-            'browser_config_sha256':'d'*64,'vendor_preparation_receipt_sha256':'e'*64}
+            'browser_config_sha256':'d'*64,'vendor_preparation_receipt_sha256':'e'*64,'packet_commit':'f'*40,'packet_tree':'0'*40}
 
 
 class RunnerTests(unittest.TestCase):
-    def test_inherited_browser_assertions_remain_exact_and_ordered(self):
+    def test_inherited_browser_controls_are_git_bound_without_copied_bodies(self):
         root=pathlib.Path(__file__).resolve().parents[3]
         packet=pathlib.Path(__file__).resolve().parent
+        import hashlib
+        driver=(packet/'browser-driver.mjs').read_text()
         for name in ('browser','auto'):
-            original=(root/'scripts/ci'/('request-budget-'+name+'.mjs')).read_text()
-            proposed=(packet/('budget-'+name+'.mjs')).read_text()
-            assertions=[line.strip() for line in original.splitlines() if 'assert.' in line]
-            cursor=0
-            for assertion in assertions:
-                position=proposed.find(assertion,cursor)
-                self.assertGreaterEqual(position,0,name)
-                cursor=position+len(assertion)
+            original=(root/'scripts/ci'/('request-budget-'+name+'.mjs')).read_bytes()
+            self.assertIn(hashlib.sha256(original).hexdigest(),driver)
+            self.assertFalse((packet/('budget-'+name+'.mjs')).exists())
+        self.assertIn('Unapproved module import',driver)
 
     def test_execution_hold_precedes_every_side_effect(self):
         with mock.patch('runner.Session',side_effect=AssertionError('A role was created')):
             self.assertRaisesRegex(e.Refusal, 'HELD', r.execute, spec(), '/unused-inputs', '/unused-evidence')
+            self.assertRaisesRegex(e.Refusal, 'HELD', r.execute_reviewed, spec(), '/unused-repo', '/unused-receipt', '/unused-output', {})
         with mock.patch.dict('os.environ',{'EXECUTION_ENABLED':'true','WATERLINE_SOURCE_SMOKE_EVIDENCE_PROPOSAL':'1'}):
             with mock.patch('runner.command',side_effect=AssertionError('A command ran')), mock.patch.object(sys,'argv',['runner']):
                 self.assertRaisesRegex(e.Refusal, 'HELD', r.main)
+
+    def test_cli_hold_precedes_mutable_helper_imports(self):
+        packet=pathlib.Path(__file__).resolve().parent
+        with tempfile.TemporaryDirectory() as directory:
+            root=pathlib.Path(directory)
+            marker=root/'unexpected-import'
+            for name in ('evidence.py','packet_snapshot.py'):
+                (root/name).write_text('from pathlib import Path;Path('+repr(str(marker))+').touch()')
+            for name in ('runner.py','bootstrap.py'):
+                (root/name).write_bytes((packet/name).read_bytes())
+                result=subprocess.run([sys.executable,'-I',str(root/name)],capture_output=True,timeout=3)
+                self.assertNotEqual(result.returncode,0)
+                self.assertIn(b'HELD',result.stderr)
+                self.assertFalse(marker.exists())
 
     def test_wrong_source_platform_alias_and_missing_provenance_refuse(self):
         r.validate_spec(spec())
@@ -62,9 +76,9 @@ class RunnerTests(unittest.TestCase):
                 self.assertIn('82:82',call);self.assertIn('ALL',call);self.assertIn('no-new-privileges',call)
                 self.assertNotIn('-p',call);self.assertNotIn('--privileged',call);self.assertNotIn('host',call)
                 for argument in call:
-                    if argument.startswith('type=bind,'):
-                        self.assertTrue(argument.endswith(',readonly'))
-                        self.assertNotIn('docker.sock',argument)
+                    self.assertFalse(argument.startswith('type=bind,'))
+                    self.assertNotIn('docker.sock',argument)
+                self.assertIn('type=volume,src='+s.name('inputs')+',dst=/inputs,readonly',call)
             app=calls[1]
             self.assertFalse(any('dst=/state' in a for a in app))
             self.assertLess(s.active,s.deadline)

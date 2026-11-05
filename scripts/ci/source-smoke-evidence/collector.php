@@ -67,6 +67,19 @@ function objectBytes(string $root, string $relative, int $limit): array
     }
 }
 
+function authorityObject(mixed $value, array $fields): array
+{
+    if (!is_array($value) || count($value) !== count($fields) || array_diff($fields, array_keys($value)) !== []) {
+        refuse();
+    }
+    foreach ($value as $item) {
+        if ($item !== null && (!is_string($item) || strlen($item) > 4096)) {
+            refuse();
+        }
+    }
+    return $value;
+}
+
 function emit(array $value): void
 {
     $json = json_encode($value, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
@@ -78,10 +91,14 @@ function emit(array $value): void
 
 try {
     $mode = $argv[1] ?? '';
-    if (!in_array($mode, ['identity', 'routes', 'health', 'api', 'config'], true)) {
+    if (!in_array($mode, ['identity', 'graph', 'routes', 'health', 'api', 'config'], true)) {
         refuse();
     }
     [$raw] = objectBytes('/app', 'vendor/composer/installed.json', MAX_JSON);
+    if ($mode === 'graph') {
+        echo $raw;
+        exit(0);
+    }
     $installed = json_decode($raw, true, 64, JSON_THROW_ON_ERROR);
     if (!is_array($installed) || ($installed['dev'] ?? null) !== false
         || !is_array($installed['packages'] ?? null) || !array_is_list($installed['packages'])
@@ -92,13 +109,14 @@ try {
     foreach ($installed['packages'] as $package) {
         $name = $package['name'] ?? null;
         $version = $package['version'] ?? null;
-        $reference = $package['source']['reference'] ?? $package['dist']['reference'] ?? null;
         if (!is_string($name) || strlen($name) > 255 || isset($graph[$name])
             || $name === 'durable-workflow/workflow' || !is_string($version) || strlen($version) > 128
-            || !is_string($reference) || strlen($reference) > 128) {
+            || array_intersect(['source-mirrors', 'dist-mirrors', 'mirrors'], array_keys($package)) !== []) {
             refuse();
         }
-        $graph[$name] = ['version' => $version, 'reference' => $reference];
+        $source = authorityObject($package['source'] ?? null, ['type', 'url', 'reference']);
+        $dist = authorityObject($package['dist'] ?? null, ['type', 'url', 'reference', 'shasum']);
+        $graph[$name] = ['version' => $version, 'source' => $source, 'dist' => $dist];
     }
     ksort($graph);
     require_once '/app/vendor/autoload.php';

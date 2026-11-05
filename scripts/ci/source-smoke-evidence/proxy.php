@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-require_once '/packet/state.php';
+require_once '/inputs/packet/state.php';
 
 final class NativeBudgetFixtureException extends RuntimeException {}
 

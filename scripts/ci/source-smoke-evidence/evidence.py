@@ -117,20 +117,34 @@ def object_bytes(root: Path, relative: str, limit=MAX_FILE):
         os.close(parent)
 
 
-def command(argv, deadline, stdout_limit=MAX_JSON, stderr_limit=65536):
+def command(argv, deadline, stdout_limit=MAX_JSON, stderr_limit=65536, input_bytes=None):
     """No shell, bounded pipes, process-group TERM/KILL and an outer deadline."""
     require(isinstance(argv, list) and all(isinstance(v, str) and '\0' not in v for v in argv), 'Invalid command')
     require(time.monotonic() < deadline, 'Expired command deadline')
-    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+    require(input_bytes is None or isinstance(input_bytes,bytes) and len(input_bytes)<=8*1024*1024, 'Command input bound')
+    process = subprocess.Popen(argv, stdin=subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
     result = [bytearray(), bytearray()]
     selector = selectors.DefaultSelector()
     for index, stream in enumerate((process.stdout, process.stderr)):
         os.set_blocking(stream.fileno(), False)
         selector.register(stream, selectors.EVENT_READ, index)
+    position=0
+    if input_bytes:
+        os.set_blocking(process.stdin.fileno(),False)
+        selector.register(process.stdin,selectors.EVENT_WRITE,2)
+    elif input_bytes is not None:
+        process.stdin.close()
     try:
         while selector.get_map():
             require(time.monotonic() < deadline, 'Command timeout')
             for key, _ in selector.select(min(.1, max(0, deadline-time.monotonic()))):
+                if key.data==2:
+                    position+=os.write(key.fileobj.fileno(),input_bytes[position:position+65536])
+                    if position==len(input_bytes):
+                        selector.unregister(key.fileobj)
+                        key.fileobj.close()
+                    continue
                 chunk = os.read(key.fileobj.fileno(), 65536)
                 if not chunk:
                     selector.unregister(key.fileobj)
@@ -158,6 +172,15 @@ def command(argv, deadline, stdout_limit=MAX_JSON, stderr_limit=65536):
         selector.close()
         process.stdout.close()
         process.stderr.close()
+        if process.stdin is not None and not process.stdin.closed:
+            process.stdin.close()
+
+
+def authority_object(value, fields):
+    require(isinstance(value,dict) and set(value)==set(fields),'Missing/extra Composer authority field')
+    for item in value.values():
+        require(item is None or isinstance(item,str) and len(item.encode())<=4096,'Composer authority value bound')
+    return dict(value)
 
 
 def graph(packages):
@@ -166,12 +189,13 @@ def graph(packages):
     for package in packages:
         require(isinstance(package, dict), 'Malformed package')
         name, version = package.get('name'), package.get('version')
-        reference = (package.get('source') or {}).get('reference') or (package.get('dist') or {}).get('reference')
         require(isinstance(name, str) and 0 < len(name) <= 255 and name not in result
                 and name != 'durable-workflow/workflow', 'Duplicate/dev/Core package')
-        require(isinstance(version, str) and 0 < len(version) <= 128
-                and isinstance(reference, str) and 0 < len(reference) <= 128, 'Package identity missing')
-        result[name] = {'version': version, 'reference': reference}
+        require(isinstance(version, str) and 0 < len(version) <= 128, 'Package version missing')
+        require(not ({'source-mirrors','dist-mirrors','mirrors'} & set(package)), 'Unexpected mirror authority')
+        source=authority_object(package.get('source'),('type','url','reference'))
+        dist=authority_object(package.get('dist'),('type','url','reference','shasum'))
+        result[name] = {'version': version, 'source':source, 'dist':dist}
     return dict(sorted(result.items()))
 
 
@@ -226,7 +250,7 @@ def expected_from_git(repository: Path):
 def identity(expected, observed):
     require(isinstance(observed, dict), 'Missing identity observation')
     require(observed.get('core_installed') is False, 'Core installed in standalone')
-    for key in ('php', 'int_size', 'graph', 'files', 'classes'):
+    for key in ('php', 'int_size', 'graph', 'files', 'classes', 'installed_json_sha256'):
         require(observed.get(key) == expected[key], 'Installed '+key+' mismatch')
     require(observed['files'].get('composer.lock', {}).get('sha256') == expected['lock'], 'Observed lock mismatch')
     require(isinstance(observed.get('installed_json_sha256'), str)
@@ -325,6 +349,7 @@ def final_receipt(expected, observed, commands, cleanup, destination: Path):
     require(len(observed) == 3 and [p.get('phase') for p in observed] == ['clear-before', 'cached', 'clear-after'], 'Missing cache phase')
     for phase in observed:
         identity(expected, phase['identity'])
+        require(phase.get('installed_graph')==expected['graph'], 'Host decoded installed graph mismatch')
         api_response(phase['health'], 200, {})
         require(phase.get('api')=={'checks':7,'result':'pass','fixture':'synthetic source protocol; not native compatibility'}, 'Missing strict API controls')
         browser_receipts(phase.get('browser'),phase.get('automatic'))

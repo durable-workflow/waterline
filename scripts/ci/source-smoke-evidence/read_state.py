@@ -3,6 +3,7 @@
 import re
 import sys
 from pathlib import Path
+sys.path.insert(0,'/inputs/packet')
 from evidence import MAX_JSON, object_bytes, require
 
 if __name__=='__main__':

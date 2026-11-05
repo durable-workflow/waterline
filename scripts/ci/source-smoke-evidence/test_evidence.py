@@ -61,7 +61,7 @@ class EvidenceTests(unittest.TestCase):
                 self.assertRaises(e.Refusal, e.object_bytes, root, 'file')
 
     def test_graph_requires_unique_complete_production_identities(self):
-        graph = [{'name': 'package/'+str(i), 'version': '1.0.0', 'source': {'reference': 'a'*40}} for i in range(79)]
+        graph = [{'name': 'package/'+str(i), 'version': '1.0.0', 'source': {'type':'git','url':'https://example.invalid/source','reference':'a'*40}, 'dist': {'type':'zip','url':'https://example.invalid/dist','reference':'b'*40,'shasum':''}} for i in range(79)]
         self.assertEqual(len(e.graph(graph)), 79)
         invalid = [[], graph[:-1], graph+[graph[0]], [graph[0]]*79]
         for key, value in [('name', 'durable-workflow/workflow'), ('version', None), ('source', {})]:
@@ -70,6 +70,29 @@ class EvidenceTests(unittest.TestCase):
             invalid.append(changed)
         for changed in invalid:
             self.assertRaises(e.Refusal, e.graph, changed)
+
+    def test_source_and_dist_authority_are_independent_and_exact(self):
+        packages=[{'name':'package/'+str(i),'version':'1.0.0',
+                   'source':{'type':'git','url':'https://example.invalid/source','reference':'a'*40},
+                   'dist':{'type':'zip','url':'https://example.invalid/dist','reference':'b'*40,'shasum':''}}
+                  for i in range(79)]
+        expected=e.graph(packages)
+        for authority,fields in [('source',('type','url','reference')),('dist',('type','url','reference','shasum'))]:
+            for field in fields:
+                changed=copy.deepcopy(packages)
+                changed[0][authority][field]='changed'
+                self.assertNotEqual(expected,e.graph(changed),(authority,field))
+                del changed[0][authority][field]
+                self.assertRaises(e.Refusal,e.graph,changed)
+            changed=copy.deepcopy(packages)
+            changed[0][authority]['mirrors']=[]
+            self.assertRaises(e.Refusal,e.graph,changed)
+        changed=copy.deepcopy(packages)
+        changed[0]['dist']['shasum']=None
+        self.assertNotEqual(expected,e.graph(changed))
+        for field in ('source-mirrors','dist-mirrors','mirrors'):
+            changed=copy.deepcopy(packages);changed[0][field]=[]
+            self.assertRaises(e.Refusal,e.graph,changed)
 
     def test_route_normalization_is_position_and_original_name_bound(self):
         before = self.route([self.row(path='source.php')])
@@ -90,12 +113,12 @@ class EvidenceTests(unittest.TestCase):
 
     def test_identity_cannot_source_its_own_expectations(self):
         expected = {'php':'8.3.36', 'int_size':8, 'graph':{'one':'identity'},
-                    'files':{'composer.lock':{'sha256': e.LOCK}}, 'classes':e.CLASSES, 'lock':e.LOCK}
+                    'files':{'composer.lock':{'sha256': e.LOCK}}, 'classes':e.CLASSES, 'lock':e.LOCK, 'installed_json_sha256':'b'*64}
         observed = {k:copy.deepcopy(v) for k,v in expected.items() if k!='lock'}
         observed.update(core_installed=False, installed_json_sha256='b'*64)
         e.identity(expected, observed)
         for key, value in [('php','8.5.12'), ('int_size',4), ('graph',{}), ('files',{}),
-                           ('classes',{'escaped':'/tmp/overlay.php'}), ('core_installed',True), ('installed_json_sha256','')]:
+                           ('classes',{'escaped':'/tmp/overlay.php'}), ('core_installed',True), ('installed_json_sha256',''), ('installed_json_sha256','c'*64)]:
             changed = copy.deepcopy(observed)
             changed[key] = value
             with self.subTest(key=key):
