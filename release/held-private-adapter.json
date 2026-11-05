@@ -1,0 +1,65 @@
+{
+  "schema": "waterline.held-private-adapter-packet/v1",
+  "status": "unwired-source-only",
+  "execution_enabled": false,
+  "accepted_recipe": {
+    "commit": "a04d0680d740722577ebe53c294d0c76d26bd6f8",
+    "tree": "aa24f3d900408925799261a369b5554381c6060c",
+    "members": 27,
+    "bytes": 268914,
+    "manifest_sha256": "2a81084227dd3629bde18373f1e29504858de6251eea2750ea30401debaa7332",
+    "unchanged": true
+  },
+  "adapter": "scripts/ci/native-artifact-adapter/adapter.py",
+  "source_controls": "scripts/ci/native-artifact-adapter/test_adapter.py",
+  "proposed_executor": {
+    "kind": "existing-private-repository-actions-job",
+    "new_task": "new-sealed-source-build-only",
+    "stopped_task_replacement": false,
+    "matrix_max_parallel": 2,
+    "job_timeout_seconds": 1800,
+    "attempts": 1,
+    "archive_max_bytes": 1073741824,
+    "diagnostic_stream_max_bytes": 1048576,
+    "receipt_max_bytes": 3145728,
+    "provider_zip_max_bytes": 1080033280,
+    "retention_days": 1,
+    "overwrite": false,
+    "cross_repository_runtime_token_transfer": false,
+    "new_credential_or_broker": false
+  },
+  "unbound": {
+    "adapter_commit_tree_and_complete_member_manifest": null,
+    "private_repository_identity_visibility_and_audience": null,
+    "actual_private_workflow_event_ref_head_run_attempt_job": null,
+    "authenticated_provider_host_runtime_and_audience_readers": null,
+    "buildx_buildkit_base_platform_config_and_trust": null,
+    "effective_resources_transport_and_storage": null,
+    "original_export_and_diagnostics": null,
+    "immutable_materialization_and_upload_paths": null,
+    "private_artifact_id_digest_members_creation_and_expiry": null,
+    "independent_upload_request_source_and_original_protected_deadline": null,
+    "provider_creation_upload_lifecycle_clock_relation": null,
+    "direct_owned_resource_ids_final_absence_and_backstop": null,
+    "fresh_operator_task_and_stop_map_reconciliation": null
+  },
+  "effects": {
+    "capture": null,
+    "preparation": null,
+    "build": null,
+    "upload": null,
+    "retention": null,
+    "cleanup": null,
+    "retrieval": null,
+    "publication": null
+  },
+  "verification": {
+    "qualified": false,
+    "execution_verified": false,
+    "provider_origin_verified": false,
+    "cleanup_verified": false,
+    "publication_admitted": false
+  },
+  "real_identity_location": "selected protected private task only; never public fixtures",
+  "stop_map": "https://github.com/durable-workflow/waterline/issues/279#issuecomment-6642403723"
+}
