@@ -1,6 +1,12 @@
 #!/usr/bin/env sh
 set -eu
 
+# Held source-only proposal. The runner has a literal, non-overridable hold and
+# returns before Docker/collection; normal CI leaves this unset.
+if [ "${WATERLINE_SOURCE_SMOKE_EVIDENCE_PROPOSAL:-0}" != 0 ]; then
+    exec python3 -I scripts/ci/source-smoke-evidence/bootstrap.py "$@"
+fi
+
 image="${WATERLINE_IMAGE:-waterline-service-smoke:local}"
 . scripts/ci/service-image-features.sh
 container="waterline-service-smoke-${GITHUB_RUN_ID:-local}-$$"
