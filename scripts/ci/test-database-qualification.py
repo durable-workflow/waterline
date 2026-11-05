@@ -146,16 +146,25 @@ class QualificationShardTest(unittest.TestCase):
         )
         rows = fixture["classes"]
         inventory = tuple(shards.TestClass(row[0], row[1]) for row in rows)
-        planned = shards.plan_shards(inventory, 4)
+        planned = shards.plan_shards(inventory, 5)
         assigned = [item.name for shard in planned for item in shard.classes]
 
+        self.assertEqual(79, len(assigned))
         self.assertEqual(794, sum(shard.test_cases for shard in planned))
         self.assertCountEqual([row[0] for row in rows], assigned)
         self.assertEqual(len(assigned), len(set(assigned)))
-        self.assertEqual(planned, shards.plan_shards(inventory[::-1], 4))
+        self.assertEqual(planned, shards.plan_shards(inventory[::-1], 5))
         reserve = fixture["command_reserve_seconds"]
         limit = fixture["command_limit_seconds"]
         margin = fixture["minimum_margin_seconds"]
+        # The fourth original run exhausted the unchanged command deadline.
+        # Its four-shard allocation cannot satisfy the measured safety budget.
+        latest_seconds = {row[0]: row[-1] for row in rows}
+        previous_maximum = max(
+            sum(latest_seconds[item.name] for item in shard.classes)
+            for shard in shards.plan_shards(inventory, 4)
+        )
+        self.assertGreater(previous_maximum + reserve + margin, limit)
         self.assertEqual(
             len(fixture["runs"]), len(fixture["command_observations"])
         )
