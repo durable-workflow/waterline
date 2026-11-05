@@ -59,11 +59,31 @@ def remove_bound(docker, kind, identifier, planned, token, retained):
     require(inspect_optional(docker, kind, identifier) is None, 'Exact cleanup inspect still present')
 
 
+def cleanup_discovered(docker, token, plan, attempted, bindings, kind, known):
+    expected_absent = set()
+    identifiers = docker(*LISTINGS[kind], '--filter', 'label=' + LABEL + '=' + token).decode().split()
+    for identifier in dict.fromkeys(identifiers):
+        if identifier in known:
+            continue
+        pattern = r'waterline-source-[a-f0-9]{16}-[a-z][a-z0-9-]*' if kind == 'volume' else r'[a-f0-9]{64}'
+        require(re.fullmatch(pattern, identifier), 'Cleanup ID shape')
+        value = inspect_optional(docker, kind, identifier)
+        if value is None:
+            continue
+        name = value.get('Name', '').removeprefix('/')
+        require(name in attempted and name in plan and plan[name]['kind'] == kind, 'Unowned cleanup resource')
+        actual = resource_binding(kind, value, plan[name], token)
+        require(name not in bindings, 'Bound resource survived direct cleanup')
+        expected_absent.add(actual.get('Id', actual['Name']))
+        remove_bound(docker, kind, actual.get('Id', actual['Name']), plan[name], token, actual)
+    return expected_absent
+
+
 def cleanup_owned(docker, token, plan, attempted, bindings):
     # Inventory grants no authority. Every deletion needs the exact planned
     # name/nonce and, when returned, the independently retained creation ID.
     expected_absent = {kind: set() for kind in LISTINGS}
-    for kind, listing in LISTINGS.items():
+    for kind in LISTINGS:
         known = set()
         for name in sorted(attempted):
             if name not in bindings or plan[name]['kind'] != kind:
@@ -73,21 +93,7 @@ def cleanup_owned(docker, token, plan, attempted, bindings):
             known.add(identifier)
             expected_absent[kind].add(identifier)
             remove_bound(docker, kind, identifier, plan[name], token, retained)
-        identifiers = docker(*listing, '--filter', 'label=' + LABEL + '=' + token).decode().split()
-        for identifier in dict.fromkeys(identifiers):
-            if identifier in known:
-                continue
-            pattern = r'waterline-source-[a-f0-9]{16}-[a-z][a-z0-9-]*' if kind == 'volume' else r'[a-f0-9]{64}'
-            require(re.fullmatch(pattern, identifier), 'Cleanup ID shape')
-            value = inspect_optional(docker, kind, identifier)
-            if value is None:
-                continue
-            name = value.get('Name', '').removeprefix('/')
-            require(name in attempted and name in plan and plan[name]['kind'] == kind, 'Unowned cleanup resource')
-            actual = resource_binding(kind, value, plan[name], token)
-            require(name not in bindings, 'Bound resource survived direct cleanup')
-            expected_absent[kind].add(actual.get('Id', actual['Name']))
-            remove_bound(docker, kind, actual.get('Id', actual['Name']), plan[name], token, actual)
+        expected_absent[kind].update(cleanup_discovered(docker, token, plan, attempted, bindings, kind, known))
     receipt = {}
     for kind, listing in LISTINGS.items():
         identifiers = set(docker(*listing).decode().split())

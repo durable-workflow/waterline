@@ -134,8 +134,9 @@ class EvidenceTests(unittest.TestCase):
 
     def test_failed_command_retains_bounded_status_and_hashes_without_logging_diagnostics(self):
         argv = [sys.executable, '-c', 'import sys;print("[]");sys.stderr.write("synthetic diagnostic\\n");sys.exit(1)']
+        deadline = time.monotonic() + 2
         with self.assertRaises(e.CommandFailure) as caught:
-            e.command(argv, time.monotonic() + 2)
+            e.command(argv, deadline)
         error = caught.exception
         self.assertEqual(error.stdout, b'[]\n')
         self.assertEqual(error.stderr, b'synthetic diagnostic\n')
