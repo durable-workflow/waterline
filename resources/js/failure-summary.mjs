@@ -6,6 +6,18 @@ const FAILURE_EVENTS = new Set([
 
 const scalar = value => typeof value === 'string' && value.trim() ? value.slice(0, 512) : null
 
+function messagePreview(value) {
+    if (typeof value !== 'string' || !value.trim()) return { text: null, truncated: false }
+    let text = ''
+    let length = 0
+    for (const character of value) {
+        if (length === 512) return { text, truncated: true }
+        text += character
+        length++
+    }
+    return { text, truncated: false }
+}
+
 function workflowTaskFailure(flow) {
     const failure = flow.latest_workflow_task_failure
     if (flow.engine_source !== 'service' || !scalar(failure?.task_id) || !scalar(failure?.message)) {
@@ -49,6 +61,7 @@ export function failureSummary(flow) {
             const event = events.get(id)
             const exception = failure.exception && typeof failure.exception === 'object'
                 ? failure.exception : {}
+            const message = messagePreview(failure.message || exception.message)
             const payload = event?.payload || {}
             const reference = recent && failure.supporting_event?.state === 'retained'
                 && Number.isInteger(failure.supporting_event.sequence)
@@ -61,7 +74,8 @@ export function failureSummary(flow) {
             return {
                 id,
                 type: scalar(failure.exception_class || exception.__constructor || exception.class),
-                message: scalar(failure.message || exception.message),
+                message: message.text,
+                message_truncated: message.truncated,
                 source_kind: scalar(failure.source_kind || payload.source_kind),
                 source_id: scalar(failure.source_id || payload.source_id || payload.activity_execution_id),
                 handled: typeof failure.handled === 'boolean' ? failure.handled : null,

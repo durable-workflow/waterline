@@ -1345,5 +1345,6 @@
     "Enter valid start-time bounds with explicit UTC offsets.": "Enter valid start-time bounds with explicit UTC offsets.",
     "Enter a whole rolling duration between 1 second and 3650 days.": "Enter a whole rolling duration between 1 second and 3650 days.",
     "Choose Any time, Rolling window, or Fixed range for the start time.": "Choose Any time, Rolling window, or Fixed range for the start time.",
-    "The start of the fixed range must be earlier than its end.": "The start of the fixed range must be earlier than its end."
+    "The start of the fixed range must be earlier than its end.": "The start of the fixed range must be earlier than its end.",
+    "Message shortened for display.": "Message shortened for display."
 }

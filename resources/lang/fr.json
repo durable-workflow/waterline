@@ -1345,5 +1345,6 @@
     "Enter valid start-time bounds with explicit UTC offsets.": "Saisissez des bornes de début valides avec des décalages UTC explicites.",
     "Enter a whole rolling duration between 1 second and 3650 days.": "Saisissez une durée entière entre 1 seconde et 3650 jours.",
     "Choose Any time, Rolling window, or Fixed range for the start time.": "Choisissez Toute période, Fenêtre glissante ou Période fixe pour le début.",
-    "The start of the fixed range must be earlier than its end.": "Le début de la période fixe doit précéder sa fin."
+    "The start of the fixed range must be earlier than its end.": "Le début de la période fixe doit précéder sa fin.",
+    "Message shortened for display.": "Message raccourci pour l’affichage."
 }
