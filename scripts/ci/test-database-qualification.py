@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -138,6 +139,30 @@ class QualificationShardTest(unittest.TestCase):
             sum(item.test_cases for item in inventory),
             sum(shard.test_cases for shard in planned),
         )
+
+    def test_measured_mysql_scopes_keep_margin_without_losing_tests(self) -> None:
+        fixture = json.loads(
+            (ROOT / "scripts/ci/fixtures/mysql-qualification-794.json").read_text()
+        )
+        rows = fixture["classes"]
+        inventory = tuple(shards.TestClass(row[0], row[1]) for row in rows)
+        planned = shards.plan_shards(inventory, 4)
+        assigned = [item.name for shard in planned for item in shard.classes]
+
+        self.assertEqual(794, sum(shard.test_cases for shard in planned))
+        self.assertCountEqual([row[0] for row in rows], assigned)
+        self.assertEqual(len(assigned), len(set(assigned)))
+        self.assertEqual(planned, shards.plan_shards(inventory[::-1], 4))
+        for column, run in enumerate(fixture["runs"], 2):
+            with self.subTest(run=run):
+                seconds = {row[0]: row[column] for row in rows}
+                maximum = max(
+                    sum(seconds[item.name] for item in shard.classes)
+                    for shard in planned
+                )
+                # Retain at least 45 seconds below the unchanged seven-minute
+                # command limit on both actual traces, including the failure.
+                self.assertLess(maximum, 375)
 
     def test_invalid_shard_count_fails_closed(self) -> None:
         inventory = (shards.TestClass("Waterline\\Tests\\Unit\\OnlyTest", 1),)
