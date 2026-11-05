@@ -11,9 +11,10 @@ from custody import SourceAuthority
 class HostObservation:
     """Independent host observations, never decoded from the candidate report.
 
-    The future supported wrapper must obtain these through its reviewed host
-    readers on this live daemon, before candidate autoload and before roles.
-    These data-only functions do not pretend to implement that live reader.
+    The future supported wrapper must compose these through reviewed readers
+    on this live daemon. ApplicationReader supplies the held application side;
+    browser, build, trust and budget readers remain separate required source.
+    This producer never promotes decoded candidate JSON into an observation.
     """
     context: Context
     app: dict

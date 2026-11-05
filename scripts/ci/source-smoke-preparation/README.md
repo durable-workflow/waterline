@@ -66,9 +66,15 @@ requires raw installed JSON before autoload, unique JSON keys, exact production
 source/dist authorities, immutable files/classes/PHP, offline autoload and
 resource/trust proofs. It serializes only those checked facts. `HostObservation`
 is an internal host-reader boundary: it must never be constructed from a
-candidate report. A live reader capable of proving these facts is not yet
-provided or admitted by this source change; callers supplying synthetic facts
-are test fixtures, not execution evidence.
+candidate report. `accepted.ApplicationReader` supplies held live source for the
+application side: it independently reads daemon filesystem bytes, checks the
+197-file mapping and raw installed graph before candidate PHP, and checks exact
+image/config and effective network-none/resource/mount/user/env settings before
+and after the unchanged Git-bound collector probe. It neither allocates nor
+starts a verification container. Its literal hold precedes even daemon
+inventory. Tests use synthetic transport only. The complete browser/build/
+trust/meter reader and observation composition remain unimplemented; callers
+supplying synthetic facts are test fixtures, not execution evidence.
 
 `provider.py` is a held, bounded reader of the existing GitHub host identity.
 It addresses only the exact repository/run/attempt/artifact API, validates
@@ -131,7 +137,7 @@ The following are **genuinely UNBOUND**, rather than placeholder identities:
 | Static browser image | base image ID, base config SHA-256, platform, full OS library inventory, all three browser binary SHA-256 hashes |
 | Static admission | platform, complete expected application/tool Config bodies, CA SHA-256, effective preparation-tool config SHA-256 |
 | Nine-key collector spec | platform, application image ID/config SHA-256, browser image ID/config SHA-256, authenticated preparation receipt SHA-256 |
-| Execution closure | immutable host-reader/launcher, effective bounded build/acquisition adapter and meter, same-job upload/read/bind composition and process/daemon cleanup proof |
+| Execution closure | complete host/tool/trust reader and immutable launcher, effective bounded build/acquisition adapter and meter, same-job upload/read/bind composition and process/daemon cleanup proof |
 
 Only `source`, `packet_commit` and `packet_tree` of the nine-key spec are bound.
 Static fields require exact independent input selection and source review.

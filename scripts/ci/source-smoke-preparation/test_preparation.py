@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tarfile
 import unittest
 import warnings
 import zipfile
@@ -24,6 +25,7 @@ import contract as c
 import custody
 import producer
 import recipe
+import test_guardian as synthetic
 
 
 class PreparationTests(unittest.TestCase):
@@ -44,6 +46,14 @@ class PreparationTests(unittest.TestCase):
         cls.lock = json.loads((cls.folder / 'browser-tool-lock.json').read_text())
         cls.packages = json.loads(subprocess.check_output(['git', '-C', str(cls.repository),
             'show', c.SOURCE + ':standalone/composer.lock']))['packages']
+        archive = cls.evidence.command(['git', '-C', str(cls.repository), 'archive', '--format=tar', c.SOURCE],
+            time.monotonic() + 5, stdout_limit=accepted.MAX_FILESYSTEM)[0]
+        cls.projected_bytes = {}
+        with tarfile.open(fileobj=io.BytesIO(archive)) as source:
+            for member in source:
+                if member.isfile():
+                    for target in cls.evidence.docker_copy_targets(member.name):
+                        cls.projected_bytes[target] = source.extractfile(member).read()
 
     def model(self):
         context = c.Context(self.preparation_commit, self.preparation_tree,
@@ -93,6 +103,108 @@ class PreparationTests(unittest.TestCase):
                     warnings.simplefilter('ignore', UserWarning)
                     archive.writestr(info, raw)
         return buffer.getvalue()
+
+    def application_tar(self, installed, mutate=None):
+        values = {name: (raw, self.expected['files'][name]['mode'], tarfile.REGTYPE)
+                  for name, raw in self.projected_bytes.items()}
+        values['vendor/composer/installed.json'] = (installed, 0o644, tarfile.REGTYPE)
+        if mutate:
+            mutate(values)
+        output = io.BytesIO()
+        with tarfile.open(fileobj=output, mode='w:') as archive:
+            for name, (raw, mode, kind) in values.items():
+                info = tarfile.TarInfo('./' + name)
+                info.mode, info.type, info.size = mode, kind, len(raw)
+                archive.addfile(info, io.BytesIO(raw))
+        return output.getvalue()
+
+    def verification_container(self, model):
+        plan = synthetic.plan('container')
+        plan['owner'] = model[0].context.nonce
+        value = synthetic.value(plan)
+        value.update(Image=model[0].app['Id'], State={'Running': True, 'OOMKilled': False},
+            NetworkSettings={'Networks': {'none': {'IPAddress': ''}}}, Mounts=[])
+        value['Config'].update(User='82:82', Env=None, Entrypoint=['sleep'], Cmd=['1200'], WorkingDir='/app')
+        value['HostConfig'] = {'NetworkMode': 'none', 'ReadonlyRootfs': True, 'Privileged': False,
+            'NanoCpus': 2_000_000_000, 'Memory': 3 * 1024 ** 3, 'MemorySwap': 3 * 1024 ** 3,
+            'PidsLimit': 256, 'CapDrop': ['ALL'], 'SecurityOpt': ['no-new-privileges'],
+            'RestartPolicy': {'Name': 'no', 'MaximumRetryCount': 0}, 'PidMode': '', 'IpcMode': 'private',
+            'Tmpfs': dict(accepted.TMPFS)}
+        return plan, value
+
+    def capture_application(self, model, container, plan, archive, collector, calls):
+        reader = accepted.ApplicationReader(self.evidence, model[0].context, self.authority, 10 ** 20)
+        identity = {**self.expected, 'core_installed': False, 'installed_json_sha256': c.digest(model[0].installed_raw)}
+        def transport(*args, **kwargs):
+            calls.append(args)
+            if args[0] == 'container':
+                return c.canonical([container])
+            if args[0] == 'image':
+                return c.canonical([model[0].app])
+            if args[0] == 'cp':
+                return archive
+            self.assertEqual(args[0], 'exec')
+            self.assertEqual(kwargs['input_bytes'], collector)
+            return c.canonical(identity)
+        with mock.patch.object(reader, 'docker', side_effect=transport), mock.patch.object(c, 'EXECUTION_ENABLED', True):
+            return reader.capture(container['Id'], plan, model[0].app['Id'], model[2]['app_config'],
+                                  self.expected, collector)
+
+    def test_application_reader_uses_daemon_files_before_offline_autoload(self):
+        model = self.model()
+        plan, container = self.verification_container(model)
+        collector = self.git('show', c.PACKET_COMMIT + ':scripts/ci/source-smoke-evidence/collector.php')
+        calls = []
+        result = self.capture_application(model, container, plan,
+            self.application_tar(model[0].installed_raw), collector, calls)
+        self.assertEqual(result['files'], self.expected['files'])
+        self.assertEqual(result['installed_raw'], model[0].installed_raw)
+        self.assertTrue(result['network_removed_before_autoload'])
+        positions = [entry[0] for entry in calls]
+        self.assertLess(positions.index('cp'), positions.index('exec'))
+        self.assertEqual(positions.count('container'), 3)
+        self.assertEqual(positions.count('image'), 2)
+
+    def test_application_reader_refuses_network_env_mount_files_and_metadata_before_autoload(self):
+        model = self.model()
+        collector = self.git('show', c.PACKET_COMMIT + ':scripts/ci/source-smoke-evidence/collector.php')
+        for mutate in [lambda x: x['HostConfig'].update(NetworkMode='host'),
+                       lambda x: x['NetworkSettings']['Networks'].update(bridge={'IPAddress': '192.0.2.1'}),
+                       lambda x: x['HostConfig'].update(ReadonlyRootfs=False),
+                       lambda x: x['Config'].update(Env=['SYNTHETIC_PROVIDER_AUTH=forbidden']),
+                       lambda x: x['Mounts'].append({'Type': 'bind', 'Source': '/synthetic', 'Destination': '/host'})]:
+            plan, container = self.verification_container(model)
+            mutate(container)
+            calls = []
+            self.assertRaises(c.Refusal, self.capture_application, model, container, plan,
+                self.application_tar(model[0].installed_raw), collector, calls)
+            self.assertFalse(any(entry[0] == 'exec' for entry in calls))
+        for mutate in [lambda x: x.update({'artisan': (b'changed', 0o755, tarfile.REGTYPE)}),
+                       lambda x: x.update({'extra.php': (b'extra', 0o644, tarfile.REGTYPE)}),
+                       lambda x: x.update({'artisan': (b'', 0o755, tarfile.SYMTYPE)}),
+                       lambda x: x.update({'vendor/composer/installed.json': (b'{}', 0o644, tarfile.REGTYPE)})]:
+            plan, container = self.verification_container(model)
+            calls = []
+            self.assertRaises(c.Refusal, self.capture_application, model, container, plan,
+                self.application_tar(model[0].installed_raw, mutate), collector, calls)
+            self.assertFalse(any(entry[0] == 'exec' for entry in calls))
+
+    def test_live_application_reader_hold_precedes_even_daemon_inventory(self):
+        model = self.model()
+        evidence = mock.Mock()
+        reader = accepted.ApplicationReader(evidence, model[0].context, self.authority, 10 ** 20)
+        self.assertRaisesRegex(c.Refusal, 'HELD', reader.docker, 'info')
+        evidence.command.assert_not_called()
+
+    def test_application_reader_rejects_foreign_ownership_before_inventory(self):
+        model = self.model()
+        plan, container = self.verification_container(model)
+        plan['owner'] = 'f' * 32
+        reader = accepted.ApplicationReader(self.evidence, model[0].context, self.authority, 10 ** 20)
+        with mock.patch.object(reader, 'docker') as docker, mock.patch.object(c, 'EXECUTION_ENABLED', True):
+            self.assertRaisesRegex(c.Refusal, 'ownership missing', reader.capture, container['Id'], plan,
+                model[0].app['Id'], model[2]['app_config'], self.expected, b'not a collector')
+            docker.assert_not_called()
 
     def bound(self, values):
         host, lock, admission, _report, archive, run, artifact = values
