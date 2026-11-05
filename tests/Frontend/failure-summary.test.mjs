@@ -96,6 +96,34 @@ test('many retained failures show the latest twenty with a bounded message and a
     assert.equal(service.truncated, true)
 })
 
+test('one shortened message is disclosed independently of the number of failures', () => {
+    for (const flow of [
+        { exceptions: [{ id: 'one', message: 'x'.repeat(513) }] },
+        { engine_source: 'service', recent_failures: [{ id: 'one', message: 'x'.repeat(513) }] },
+    ]) {
+        const summary = failureSummary(flow)
+        assert.equal(summary.truncated, false)
+        assert.equal(summary.rows[0].message.length, 512)
+        assert.equal(summary.rows[0].message_truncated, true)
+    }
+})
+
+test('message previews preserve Unicode and NUL without exposing a stack as canonical text', () => {
+    const canonical = '🙂'.repeat(513) + '\0end'
+    const flow = { exceptions: [{ id: 'one', exception: { message: canonical, trace: ['private-stack'] } }] }
+    const row = failureSummary(flow).rows[0]
+    assert.equal(row.message, '🙂'.repeat(512))
+    assert.equal(row.message_truncated, true)
+    assert.equal(flow.exceptions[0].exception.message, canonical)
+    assert.ok(!JSON.stringify(row).includes('private-stack'))
+    for (const message of ['short\0message', '<script>literal</script>', 'upstream [truncated]']) {
+        const preview = failureSummary({ exceptions: [{ id: 'one', message }] }).rows[0]
+        assert.equal(preview.message, message)
+        assert.equal(preview.message_truncated, false)
+    }
+    assert.equal(failureSummary({ exceptions: [{ id: 'one', message: null }] }).rows[0].message_truncated, false)
+})
+
 test('bounded embedded observations retain a direct failure reference and partial coverage', () => {
     const flow = {
         engine_source: 'v2', read_mode: 'bounded', recent_failures_state: 'partial', timeline: [],

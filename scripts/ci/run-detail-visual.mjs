@@ -342,9 +342,10 @@ export function runDetailFixture(streamState = 'embedded-populated') {
 // Presentation fixtures. Runtime timing and retention have separate API tests.
 export function operatorClarityFixture(presentation, result) {
     if (result === 'populated') {
+        const failureMessage = 'Import <failed> without exposing a trace. ' + '🙂'.repeat(600) + '\0retained-only';
         const failure = { id: 'visual-failure', exception_class: 'ImportError',
-            exception: { __constructor: 'ImportError', message: 'Import <failed> without exposing a trace.' },
-            message: 'Import <failed> without exposing a trace.', created_at: '2026-08-26T00:01:00Z' };
+            exception: { __constructor: 'ImportError', message: failureMessage },
+            message: failureMessage, created_at: '2026-08-26T00:01:00Z' };
         const failureEvent = { id: `${RUN_ID}:history:3`, sequence: 3, type: 'ActivityFailed',
             event_type: 'ActivityFailed', recorded_at: '2026-08-26T00:01:00Z',
             payload: { failure_id: 'visual-failure', activity_execution_id: 'import' } };
@@ -465,6 +466,12 @@ async function auditFailureHistoryLink(page, state) {
     const failures = page.locator('#failureSummary');
     if (!(await failures.innerText()).includes('Import <failed> without exposing a trace.')) {
         throw new Error('Recent failure summary is absent or its text was interpreted as HTML.');
+    }
+    const message = await failures.locator('.wl-failure-message').textContent();
+    if (Array.from(message).length !== 512 || message.includes('retained-only')
+        || await failures.locator('failed').count() !== 0
+        || await failures.getByText('Message shortened for display.', { exact: true }).count() !== 1) {
+        throw new Error('A single shortened failure must preserve literal Unicode and disclose its bounded preview.');
     }
     await failures.getByRole('link', { name: 'View history event #3', exact: true }).click();
     const event = page.locator('#history-event-3');

@@ -652,6 +652,7 @@
                     <strong>{{ failure.type || $t('Failure') }}</strong>
                     <span v-if="failure.handled === true" class="badge badge-secondary ml-2">{{ $t("Handled") }}</span>
                     <div v-if="failure.message" class="wl-failure-message">{{ failure.message }}</div>
+                    <div v-if="failure.message_truncated" class="small text-muted">{{ $t("Message shortened for display.") }}</div>
                     <div class="small text-muted" v-if="failure.source_id">
                         {{ failure.source_kind || $t('Source') }} / {{ failure.source_id }}
                     </div>
