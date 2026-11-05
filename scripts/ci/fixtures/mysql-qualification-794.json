@@ -1,119 +1,139 @@
 {
-  "description": "Sanitized MySQL class timings from the original four JUnit shard reports. Times are measurements, not guarantees.",
+  "description": "Sanitized class timings and provider command clocks from three original four-shard MySQL runs. Measurements and allocation projections are not completion guarantees.",
   "runs": [
     42026005724,
-    42038559892
+    42038559892,
+    42040910265
   ],
   "head_commits": [
     "f23b68d6d3918ccdbabb767f12fc082db7c0bfaf",
-    "1fbd0744f83d601ed8be1f63c19aa3ad49b0be72"
+    "1fbd0744f83d601ed8be1f63c19aa3ad49b0be72",
+    "102253e7eba740e392e31d76572bef6642b1faca"
   ],
   "columns": [
     "class",
     "cases",
     "first_run_seconds",
-    "second_run_seconds"
+    "second_run_seconds",
+    "third_run_seconds"
   ],
   "classes": [
     [
       "Waterline\\Tests\\Feature\\ApiExceptionRendererTest",
       4,
       0.107564,
-      0.087839
+      0.087839,
+      0.104334
     ],
     [
       "Waterline\\Tests\\Feature\\ControlPlaneVersionTest",
       2,
       4.831583,
-      3.267563
+      3.267563,
+      4.40305
     ],
     [
       "Waterline\\Tests\\Feature\\DashboardControllerTest",
       11,
       0.234132,
-      0.152833
+      0.152833,
+      0.203284
     ],
     [
       "Waterline\\Tests\\Feature\\DashboardStatsControllerTest",
       3,
       7.262366,
-      5.169758
+      5.169758,
+      8.549376
     ],
     [
       "Waterline\\Tests\\Feature\\DashboardWorkflowTest",
       5,
       14.361363,
-      14.819373
+      14.819373,
+      11.800753
     ],
     [
       "Waterline\\Tests\\Feature\\EmbeddedConfigCachePrecedenceTest",
       1,
       0.513023,
-      0.42513
+      0.42513,
+      0.489598
     ],
     [
       "Waterline\\Tests\\Feature\\EngineSourceContractTest",
       9,
       20.894049,
-      24.151743
+      24.151743,
+      28.075263
     ],
     [
       "Waterline\\Tests\\Feature\\FreshLaravelPackageHostWorkerVersioningTest",
       3,
       0.45273,
-      0.174247
+      0.174247,
+      0.298745
     ],
     [
       "Waterline\\Tests\\Feature\\NamespaceConformanceCommandTest",
       8,
       22.317512,
-      16.028379
+      16.028379,
+      21.376285
     ],
     [
       "Waterline\\Tests\\Feature\\OperatorAuthorizationTest",
       5,
       12.199169,
-      8.91017
+      8.91017,
+      15.600341
     ],
     [
       "Waterline\\Tests\\Feature\\PackageInstalledSharedStorageHostTest",
       3,
       1.852197,
-      1.763269
+      1.763269,
+      2.645939
     ],
     [
       "Waterline\\Tests\\Feature\\RealComposerLaravelPackageHostWorkerVersioningTest",
       1,
       13.434738,
-      13.053514
+      13.053514,
+      14.449221
     ],
     [
       "Waterline\\Tests\\Feature\\RemoteActivityResultsControllerTest",
       8,
       0.043155,
-      0.049376
+      0.049376,
+      0.070971
     ],
     [
       "Waterline\\Tests\\Feature\\RequestBasePathTest",
       5,
       11.438927,
-      13.201812
+      13.201812,
+      14.457658
     ],
     [
       "Waterline\\Tests\\Feature\\RunApplicationContextTest",
       1,
       2.912588,
-      2.997655
+      2.997655,
+      3.110382
     ],
     [
       "Waterline\\Tests\\Feature\\SavedWorkflowTimeWindowTest",
       8,
       23.303928,
-      19.717584
+      19.717584,
+      23.730427
     ],
     [
       "Waterline\\Tests\\Feature\\ServerIntegrationTest",
       6,
+      0.0,
       0.0,
       0.0
     ],
@@ -121,373 +141,563 @@
       "Waterline\\Tests\\Feature\\ServiceModeBackendTest",
       65,
       2.9052,
-      3.574329
+      3.574329,
+      4.373588
     ],
     [
       "Waterline\\Tests\\Feature\\ServiceModePageReplayTest",
       11,
       0.493215,
-      0.600043
+      0.600043,
+      0.744926
     ],
     [
       "Waterline\\Tests\\Feature\\ServiceModeSchedulesTest",
       20,
       0.836508,
-      1.036738
+      1.036738,
+      1.328912
     ],
     [
       "Waterline\\Tests\\Feature\\ServiceRunObservationTest",
       5,
       13.911926,
-      11.924366
+      11.924366,
+      11.358379
     ],
     [
       "Waterline\\Tests\\Feature\\ServiceUiLocaleTest",
       9,
       0.22241,
-      0.182342
+      0.182342,
+      0.303825
     ],
     [
       "Waterline\\Tests\\Feature\\SignalsQueriesConformanceCommandTest",
       9,
       21.866169,
-      15.051706
+      15.051706,
+      20.782699
     ],
     [
       "Waterline\\Tests\\Feature\\UiLocaleTest",
       11,
       0.237498,
-      0.192391
+      0.192391,
+      0.239947
     ],
     [
       "Waterline\\Tests\\Feature\\UserPreferencesControllerTest",
       6,
       16.978995,
-      13.927881
+      13.927881,
+      16.946329
     ],
     [
       "Waterline\\Tests\\Feature\\V2AsyncDashboardWorkflowTest",
       1,
       3.1462,
-      2.564215
+      2.564215,
+      2.62443
     ],
     [
       "Waterline\\Tests\\Feature\\V2CapacityEvidenceControllerTest",
       6,
       15.921259,
-      11.317349
+      11.317349,
+      15.182573
     ],
     [
       "Waterline\\Tests\\Feature\\V2CompatibilityDashboardWorkflowTest",
       6,
       13.371862,
-      15.926358
+      15.926358,
+      18.348377
     ],
     [
       "Waterline\\Tests\\Feature\\V2ConditionWaitDashboardWorkflowTest",
       11,
       28.105058,
-      20.160336
+      20.160336,
+      27.592926
     ],
     [
       "Waterline\\Tests\\Feature\\V2ConfiguredCoreModelsDashboardWorkflowTest",
       1,
       2.366282,
-      2.815708
+      2.815708,
+      3.107029
     ],
     [
       "Waterline\\Tests\\Feature\\V2DashboardObservationTest",
       5,
       14.371127,
-      15.263733
+      15.263733,
+      15.548696
     ],
     [
       "Waterline\\Tests\\Feature\\V2DashboardStatsControllerTest",
       39,
       113.887309,
-      91.44793
+      91.44793,
+      113.892222
     ],
     [
       "Waterline\\Tests\\Feature\\V2DashboardWorkflowListTest",
       24,
       55.60799,
-      64.166191
+      64.166191,
+      75.610757
     ],
     [
       "Waterline\\Tests\\Feature\\V2DashboardWorkflowTest",
       112,
       333.704323,
-      351.001782
+      351.001782,
+      336.733734
     ],
     [
       "Waterline\\Tests\\Feature\\V2ExceptionSourceContextTest",
       3,
       7.286421,
-      5.306343
+      5.306343,
+      9.845602
     ],
     [
       "Waterline\\Tests\\Feature\\V2HealthControllerTest",
       20,
       59.371564,
-      47.369384
+      47.369384,
+      58.972587
     ],
     [
       "Waterline\\Tests\\Feature\\V2HistoryExportControllerTest",
       12,
       29.27408,
-      20.879182
+      20.879182,
+      28.525834
     ],
     [
       "Waterline\\Tests\\Feature\\V2HybridMigrationViewTest",
       4,
       11.877503,
-      12.321764
+      12.321764,
+      9.774714
     ],
     [
       "Waterline\\Tests\\Feature\\V2MixedParallelDashboardWorkflowTest",
       1,
       3.103593,
-      3.159127
+      3.159127,
+      3.307763
     ],
     [
       "Waterline\\Tests\\Feature\\V2NamespaceScopedVisibilityTest",
       24,
       59.319158,
-      42.959748
+      42.959748,
+      59.623782
     ],
     [
       "Waterline\\Tests\\Feature\\V2ParallelActivityDashboardWorkflowTest",
       4,
       10.287987,
-      7.499662
+      7.499662,
+      12.513358
     ],
     [
       "Waterline\\Tests\\Feature\\V2PolyglotRunRenderingTest",
       6,
       17.297391,
-      14.07604
+      14.07604,
+      17.539889
     ],
     [
       "Waterline\\Tests\\Feature\\V2PrincipalVisibilityTest",
       1,
       2.430458,
-      1.767142
+      1.767142,
+      2.497246
     ],
     [
       "Waterline\\Tests\\Feature\\V2RedriveActionTest",
       6,
       14.458809,
-      10.295883
+      10.295883,
+      14.842449
     ],
     [
       "Waterline\\Tests\\Feature\\V2RunObservationTest",
       6,
       14.296016,
-      16.53636
+      16.53636,
+      18.203233
     ],
     [
       "Waterline\\Tests\\Feature\\V2SchedulesControllerTest",
       21,
       48.369118,
-      56.114418
+      56.114418,
+      62.238124
     ],
     [
       "Waterline\\Tests\\Feature\\V2SchedulesHistoryControllerTest",
       5,
       12.014287,
-      8.44679
+      8.44679,
+      15.164088
     ],
     [
       "Waterline\\Tests\\Feature\\V2SelectedRunQueryActionTest",
       3,
       8.717603,
-      8.950226
+      8.950226,
+      7.394224
     ],
     [
       "Waterline\\Tests\\Feature\\V2ServicesControllerTest",
       19,
       45.398858,
-      32.543429
+      32.543429,
+      46.501993
     ],
     [
       "Waterline\\Tests\\Feature\\V2WorkflowUpdateDiagnosticsTest",
       1,
       3.280197,
-      2.608164
+      2.608164,
+      3.245601
     ],
     [
       "Waterline\\Tests\\Feature\\WorkflowStreamVisibilityTest",
       5,
       11.591315,
-      13.501777
+      13.501777,
+      12.305301
     ],
     [
       "Waterline\\Tests\\Feature\\WorkflowUpdatesConformanceCommandTest",
       5,
       14.251871,
-      11.584037
+      11.584037,
+      15.145297
     ],
     [
       "Waterline\\Tests\\Unit\\ExampleTest",
       1,
       0.001141,
-      0.001231
+      0.001231,
+      0.001681
     ],
     [
       "Waterline\\Tests\\Unit\\ExceptionSourceContextTest",
       7,
       0.273253,
-      0.18643
+      0.18643,
+      0.279378
     ],
     [
       "Waterline\\Tests\\Unit\\InstallationContractTest",
       6,
       0.008894,
-      0.006462
+      0.006462,
+      0.008263
     ],
     [
       "Waterline\\Tests\\Unit\\LaravelMatrixContractTest",
       1,
       0.147068,
-      0.138319
+      0.138319,
+      0.143192
     ],
     [
       "Waterline\\Tests\\Unit\\RequestTimeoutsTest",
       5,
       0.003494,
-      0.003235
+      0.003235,
+      0.003164
     ],
     [
       "Waterline\\Tests\\Unit\\ServiceImageBrotliTest",
       19,
       0.057748,
-      0.046353
+      0.046353,
+      0.074499
     ],
     [
       "Waterline\\Tests\\Unit\\ServiceImageCurlTest",
       19,
       0.074857,
-      0.057652
+      0.057652,
+      0.059345
     ],
     [
       "Waterline\\Tests\\Unit\\ServiceImageReleaseContractTest",
       9,
       0.207923,
-      0.208061
+      0.208061,
+      0.298319
     ],
     [
       "Waterline\\Tests\\Unit\\ServiceModeRequirementsTest",
       5,
       0.001111,
-      0.000947
+      0.000947,
+      0.001093
     ],
     [
       "Waterline\\Tests\\Unit\\ServiceVisibilityFiltersTest",
       6,
       0.002398,
-      0.001837
+      0.001837,
+      0.002678
     ],
     [
       "Waterline\\Tests\\Unit\\SqlServerQualificationTlsTest",
       4,
       0.003,
-      0.00306
+      0.00306,
+      0.00116
     ],
     [
       "Waterline\\Tests\\Unit\\Support\\CapacityEvidenceTest",
       3,
       0.179133,
-      0.170654
+      0.170654,
+      0.197699
     ],
     [
       "Waterline\\Tests\\Unit\\Support\\ConditionWaitDiagnosticsTest",
       4,
       0.261619,
-      0.186018
+      0.186018,
+      0.133777
     ],
     [
       "Waterline\\Tests\\Unit\\Support\\ObserverStateEnvelopeTest",
       1,
       0.000443,
-      0.00033
+      0.00033,
+      0.000708
     ],
     [
       "Waterline\\Tests\\Unit\\Support\\ResolvesStorageConnectionTest",
       3,
       0.128332,
-      0.084945
+      0.084945,
+      0.207004
     ],
     [
       "Waterline\\Tests\\Unit\\Support\\RunApplicationContextTest",
       6,
       13.337022,
-      15.851085
+      15.851085,
+      17.336336
     ],
     [
       "Waterline\\Tests\\Unit\\Support\\RunWaitSummaryTest",
       6,
       0.001508,
-      0.000992
+      0.000992,
+      0.001269
     ],
     [
       "Waterline\\Tests\\Unit\\Support\\ScheduleRowTest",
       25,
       0.002803,
-      0.003921
+      0.003921,
+      0.00383
     ],
     [
       "Waterline\\Tests\\Unit\\Support\\V2DiagnosticsExecutionContractAlignmentTest",
       9,
       0.001166,
-      0.000823
+      0.000823,
+      0.001854
     ],
     [
       "Waterline\\Tests\\Unit\\Support\\WorkerRegistrationRosterTest",
       2,
       0.000503,
-      0.000469
+      0.000469,
+      0.000305
     ],
     [
       "Waterline\\Tests\\Unit\\Support\\WorkflowClassificationTest",
       4,
       11.033256,
-      11.804986
+      11.804986,
+      11.643418
     ],
     [
       "Waterline\\Tests\\Unit\\Support\\WorkflowEngineSourceResolverTest",
       2,
       4.477569,
-      5.255129
+      5.255129,
+      5.804343
     ],
     [
       "Waterline\\Tests\\Unit\\Support\\WorkflowPackageApiFloorTest",
       23,
       64.888085,
-      52.979849
+      52.979849,
+      65.263929
     ],
     [
       "Waterline\\Tests\\Unit\\VisibilityFilterContractTest",
       2,
       0.002969,
-      0.002134
+      0.002134,
+      0.0032
     ],
     [
       "Waterline\\Tests\\Unit\\WaterlineServiceProviderTest",
       26,
       59.127968,
-      69.461404
+      69.461404,
+      77.162864
     ],
     [
       "Waterline\\Tests\\Unit\\WorkerStatusConformanceRunnerTest",
       21,
       1.506439,
-      1.757886
+      1.757886,
+      2.297176
     ],
     [
       "Waterline\\Tests\\Unit\\WorkflowTimeWindowTest",
       5,
       0.001137,
-      0.001188
+      0.001188,
+      0.00144
     ]
-  ]
+  ],
+  "command_observations": [
+    {
+      "run": 42026005724,
+      "shards": [
+        {
+          "job": 127241395531,
+          "label": "Complete database qualification (mysql shard 1/4)",
+          "test_step_seconds": 400.0,
+          "exit_conclusion": "success",
+          "shard_index": 0,
+          "class_body_seconds": 400.232421,
+          "overhead_upper_seconds": 0.767579
+        },
+        {
+          "job": 127241395449,
+          "label": "Complete database qualification (mysql shard 2/4)",
+          "test_step_seconds": 334.0,
+          "exit_conclusion": "success",
+          "shard_index": 1,
+          "class_body_seconds": 333.726534,
+          "overhead_upper_seconds": 1.273466
+        },
+        {
+          "job": 127241395650,
+          "label": "Complete database qualification (mysql shard 3/4)",
+          "test_step_seconds": 309.0,
+          "exit_conclusion": "success",
+          "shard_index": 2,
+          "class_body_seconds": 308.428657,
+          "overhead_upper_seconds": 1.571343
+        },
+        {
+          "job": 127241395497,
+          "label": "Complete database qualification (mysql shard 4/4)",
+          "test_step_seconds": 291.0,
+          "exit_conclusion": "success",
+          "shard_index": 3,
+          "class_body_seconds": 260.061811,
+          "overhead_upper_seconds": 31.938189
+        }
+      ]
+    },
+    {
+      "run": 42038559892,
+      "shards": [
+        {
+          "job": 127283633105,
+          "label": "Complete database qualification (mysql shard 1/4)",
+          "test_step_seconds": 421.0,
+          "exit_conclusion": "failure",
+          "shard_index": 0,
+          "class_body_seconds": 420.460669,
+          "overhead_upper_seconds": 1.539331
+        },
+        {
+          "job": 127283633134,
+          "label": "Complete database qualification (mysql shard 2/4)",
+          "test_step_seconds": 272.0,
+          "exit_conclusion": "success",
+          "shard_index": 1,
+          "class_body_seconds": 271.187313,
+          "overhead_upper_seconds": 1.812687
+        },
+        {
+          "job": 127283633005,
+          "label": "Complete database qualification (mysql shard 3/4)",
+          "test_step_seconds": 225.0,
+          "exit_conclusion": "success",
+          "shard_index": 2,
+          "class_body_seconds": 224.759351,
+          "overhead_upper_seconds": 1.240649
+        },
+        {
+          "job": 127283633149,
+          "label": "Complete database qualification (mysql shard 4/4)",
+          "test_step_seconds": 334.0,
+          "exit_conclusion": "success",
+          "shard_index": 3,
+          "class_body_seconds": 302.851186,
+          "overhead_upper_seconds": 32.148814
+        }
+      ]
+    },
+    {
+      "run": 42040910265,
+      "shards": [
+        {
+          "job": 127292370384,
+          "label": "Complete database qualification (mysql shard 1/4)",
+          "test_step_seconds": 337.0,
+          "exit_conclusion": "success",
+          "shard_index": 0,
+          "class_body_seconds": 336.733734,
+          "overhead_upper_seconds": 1.266266
+        },
+        {
+          "job": 127292370348,
+          "label": "Complete database qualification (mysql shard 2/4)",
+          "test_step_seconds": 345.0,
+          "exit_conclusion": "success",
+          "shard_index": 1,
+          "class_body_seconds": 344.926545,
+          "overhead_upper_seconds": 1.073455
+        },
+        {
+          "job": 127292370414,
+          "label": "Complete database qualification (mysql shard 3/4)",
+          "test_step_seconds": 315.0,
+          "exit_conclusion": "success",
+          "shard_index": 2,
+          "class_body_seconds": 314.398382,
+          "overhead_upper_seconds": 1.601618
+        },
+        {
+          "job": 127292370506,
+          "label": "Complete database qualification (mysql shard 4/4)",
+          "test_step_seconds": 427.0,
+          "exit_conclusion": "failure",
+          "shard_index": 3,
+          "class_body_seconds": 396.599324,
+          "overhead_upper_seconds": 31.400676
+        }
+      ]
+    }
+  ],
+  "command_reserve_seconds": 45,
+  "command_limit_seconds": 420,
+  "minimum_margin_seconds": 15
 }
