@@ -215,8 +215,10 @@ dictionary proves those facts or replaces enforcement.
 
 `guardian.py` supplies independent EOF/deadline cleanup logic and a held Docker
 adapter. Before an allocation it rejects existing exact names or owner labels;
-attempts and returned IDs bind a distinct resource nonce. Cleanup refuses
-foreign/replaced objects, checks retained IDs independently of label filters,
+attempts and returned IDs bind a distinct resource nonce. Cleanup revalidates
+and removes each bound identity directly, with full untruncated ID inventories.
+Label discovery is reserved for lost-return resources, and duplicate discovery
+entries do not cause duplicate deletion. Cleanup refuses foreign/replaced objects
 and verifies empty exact inventories. It performs no global prune and removes
 only owned images without force. It has no live immutable launcher here. The
 unchanged collector retains its own reviewed guardian; this source's lifecycle

@@ -13,7 +13,7 @@ from contract import Refusal, bounded_json, require
 LABELS = ('dev.durable-workflow.waterline-source-preparation',
           'dev.durable-workflow.waterline-source-evidence')
 LABEL_FILTER = 'label='
-LIST = {'container': ('ps', '-aq'), 'network': ('network', 'ls', '-q'),
+LIST = {'container': ('ps', '-aq', '--no-trunc'), 'network': ('network', 'ls', '-q', '--no-trunc'),
         'volume': ('volume', 'ls', '-q'), 'image': ('image', 'ls', '-q', '--no-trunc')}
 REMOVE = {'container': ('rm', '-f'), 'network': ('network', 'rm'),
           'volume': ('volume', 'rm'), 'image': ('image', 'rm')}
@@ -76,7 +76,7 @@ class DockerCleanup:
 
     def present(self, plan, identity):
         # Label filters alone cannot establish absence of an already bound ID.
-        identifiers = self.call(*LIST[plan['kind']], *(['--no-trunc'] if plan['kind'] == 'container' else [])).decode().split()
+        identifiers = self.call(*LIST[plan['kind']]).decode().split()
         return identity.get('Id', identity.get('Name')) in identifiers
 
     def inspect(self, plan, identifier):
@@ -114,12 +114,16 @@ class Ledger:
 
     def cleanup_plan(self, name, plan):
         known = self.bindings.get(name)
-        if known and self.docker.present(plan, known):
-            actual = binding(self.docker.inspect(plan, known.get('Id', known.get('Name'))), plan)
-            require(known == actual, 'Replaced guardian resource')
-        for identifier in self.docker.find(plan):
+        if known is not None:
+            # Bound identity is authoritative even when filtered discovery omits
+            # it. Never adopt a differently identified label match as its replacement.
+            if self.docker.present(plan, known):
+                actual = binding(self.docker.inspect(plan, known.get('Id', known.get('Name'))), plan)
+                require(known == actual, 'Replaced guardian resource')
+                self.docker.remove(plan, actual)
+            return
+        for identifier in dict.fromkeys(self.docker.find(plan)):
             actual = binding(self.docker.inspect(plan, identifier), plan)
-            require(name not in self.bindings or self.bindings[name] == actual, 'Replaced guardian resource')
             self.docker.remove(plan, actual)
 
     def cleanup(self):

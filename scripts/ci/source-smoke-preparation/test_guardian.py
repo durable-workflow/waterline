@@ -82,6 +82,56 @@ class GuardianTests(unittest.TestCase):
         self.assertEqual(docker.removed, created[::-1])
         self.assertEqual(docker.values, {})
 
+    def test_bound_cleanup_is_independent_of_label_filter_discovery(self):
+        for kind in ('container', 'network', 'volume', 'image'):
+            with self.subTest(kind=kind):
+                docker = FakeDocker()
+                ledger = g.Ledger(docker, 1000)
+                expected = plan(kind)
+                ledger.attempt('resource', expected)
+                actual = value(expected)
+                identifier = actual.get('Id', actual['Name'])
+                docker.values[identifier] = actual
+                ledger.bind('resource', identifier)
+                with mock.patch.object(docker, 'find', return_value=[]):
+                    ledger.cleanup()
+                self.assertEqual(docker.removed, [identifier])
+                self.assertEqual(docker.values, {})
+
+    def test_bound_and_lost_return_discovery_never_remove_an_id_twice(self):
+        for kind in ('container', 'network', 'volume', 'image'):
+            for bound in (False, True):
+                with self.subTest(kind=kind, bound=bound):
+                    docker = FakeDocker()
+                    ledger = g.Ledger(docker, 1000)
+                    expected = plan(kind)
+                    ledger.attempt('resource', expected)
+                    actual = value(expected)
+                    identifier = actual.get('Id', actual['Name'])
+                    docker.values[identifier] = actual
+                    if bound:
+                        ledger.bind('resource', identifier)
+                    with mock.patch.object(docker, 'find', return_value=[identifier, identifier]) as find:
+                        ledger.cleanup_plan('resource', expected)
+                        if bound:
+                            find.assert_not_called()
+                    self.assertEqual(docker.removed, [identifier])
+                    self.assertEqual(docker.values, {})
+                    ledger.cleanup()
+
+    def test_unfiltered_presence_uses_full_ids_for_every_id_based_kind(self):
+        for kind in ('container', 'network', 'volume', 'image'):
+            with self.subTest(kind=kind):
+                expected = plan(kind)
+                actual = value(expected)
+                identifier = actual.get('Id', actual['Name'])
+                adapter = g.DockerCleanup(mock.Mock(), 10 ** 20, 'synthetic-daemon')
+                def listing(*arguments):
+                    full = kind == 'volume' or '--no-trunc' in arguments
+                    return (identifier if full else identifier[:12]).encode()
+                with mock.patch.object(adapter, 'call', side_effect=listing):
+                    self.assertTrue(adapter.present(expected, g.binding(actual, expected)))
+
     def test_exact_foreign_names_and_owner_label_collisions_refuse_before_allocation(self):
         for failure in ('name', 'owner'):
             with self.subTest(failure=failure):

@@ -83,6 +83,14 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(result[1]['location'], 'https://codeload.github.com/exact')
         self.assertEqual(len(channel.sent), 1)
 
+    def test_http10_fixed_chunked_and_redirect_responses_refuse(self):
+        responses = [b'HTTP/1.0 200 OK\r\nContent-Length: 3\r\n\r\nabc',
+                     b'HTTP/1.0 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n0\r\n\r\n',
+                     b'HTTP/1.0 302 Found\r\nLocation: https://codeload.github.com/exact\r\nContent-Length: 0\r\n\r\n']
+        for wire in responses:
+            with self.subTest(response=wire.split(b'\r\n')[0]):
+                self.assertRaises(c.Refusal, self.request, wire)
+
     def test_encoding_ambiguous_lengths_oversize_status_and_incomplete_body_refuse(self):
         bodies = [b'Content-Encoding: gzip\r\nContent-Length: 3\r\n\r\nabc',
                   b'Content-Length: 3\r\nContent-Length: 4\r\n\r\nabc',
