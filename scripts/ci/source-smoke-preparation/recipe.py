@@ -46,6 +46,42 @@ def validate_recipe(original, proposed):
     return digest(proposed)
 
 
+def derive_hosted(original):
+    """Artifact-only recipe, never a substitute for independent input custody.
+
+    A future existing-builder invocation must receive the independently sealed
+    cache before it starts. No candidate autoloader or reflection probe runs
+    during this build. Composer itself remains a separately trusted tool.
+    """
+    text = derive(original).decode()
+    start = text.index('RUN --network=none composer dump-autoload')
+    end = text.index('\n\nFROM php@', start)
+    dump = ('RUN --network=none composer dump-autoload --no-plugins \\\n'
+            '    --no-dev --no-interaction --no-scripts --optimize')
+    text = text[:start] + dump + text[end:]
+    changes = [
+        ('ENV COMPOSER_MAX_PARALLEL_HTTP=2 COMPOSER_MAX_PARALLEL_PROCESSES=2',
+         'ENV COMPOSER_MAX_PARALLEL_HTTP=2 COMPOSER_MAX_PARALLEL_PROCESSES=2 \\\n'
+         '    COMPOSER_DISABLE_NETWORK=1 COMPOSER_CACHE_READ_ONLY=1 \\\n'
+         '    COMPOSER_CACHE_FILES_DIR=/waterline-observed-source/cache'),
+        ('RUN composer install --no-plugins',
+         'COPY .waterline-observed-source/cache /waterline-observed-source/cache\n'
+         'RUN --network=none composer install --no-plugins'),
+        ('    --no-scripts \\\n    --optimize-autoloader', '    --no-scripts'),
+        ("RUN --network=none php -r 'require \"/app/vendor/autoload.php\";' \\\n    && chmod",
+         'RUN --network=none chmod'),
+    ]
+    for before, after in changes:
+        require(text.count(before) == 1, 'Ambiguous hosted recipe transformation')
+        text = text.replace(before, after, 1)
+    return text.encode()
+
+
+def validate_hosted_recipe(original, proposed):
+    require(proposed == derive_hosted(original), 'Hosted artifact-only recipe drift')
+    return digest(proposed)
+
+
 def validate_packages(packages):
     exact(packages, PACKAGES, 'Tool package closure is not closed')
     for name, item in packages.items():

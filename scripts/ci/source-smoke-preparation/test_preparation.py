@@ -240,6 +240,31 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(directories(original), directories(proposed))
         self.assertRaises(c.Refusal, recipe.derive, original + b'\n# changed source\n')
 
+    def test_hosted_derivation_defers_candidate_autoload_and_uses_only_offline_composer(self):
+        original = subprocess.check_output(['git', '-C', str(self.repository), 'show', c.SOURCE + ':Dockerfile'])
+        legacy = recipe.derive(original)
+        self.assertRaisesRegex(c.Refusal, 'artifact-only recipe drift', recipe.validate_hosted_recipe, original, legacy)
+        proposed = recipe.derive_hosted(original)
+        self.assertEqual(proposed, (self.repository / 'docker/held-native.Dockerfile').read_bytes())
+        self.assertEqual(recipe.validate_hosted_recipe(original, proposed), c.digest(proposed))
+        self.assertNotIn(b'vendor/autoload.php', proposed)
+        self.assertNotIn(b'ReflectionClass', proposed)
+        commands = re.findall(rb'^RUN (.*?)(?=\n[^ ]|\Z)', proposed, re.MULTILINE | re.DOTALL)
+        composer_commands = [command for command in commands
+                             if re.match(rb'(?:--[^ ]+\s+)*composer\s', command)]
+        self.assertEqual(len(composer_commands), 2)
+        for command in composer_commands:
+            self.assertTrue(command.startswith(b'--network=none composer '))
+            self.assertIn(b'--no-plugins', command)
+            self.assertIn(b'--no-scripts', command)
+        self.assertIn(b'COMPOSER_CACHE_READ_ONLY=1', proposed)
+        self.assertIn(b'COMPOSER_DISABLE_NETWORK=1', proposed)
+        self.assertIn(b'COMPOSER_MAX_PARALLEL_HTTP=2 COMPOSER_MAX_PARALLEL_PROCESSES=2', proposed)
+        self.assertIn(b'docker-php-ext-install -j2', proposed)
+        for changed in (original, legacy, proposed + b'\nRUN php /app/artisan\n'):
+            self.assertRaises(c.Refusal, recipe.validate_hosted_recipe, original, changed)
+        self.assertRaises(c.Refusal, recipe.derive_hosted, original + b'\n')
+
     def test_current_manifests_do_not_fabricate_any_operational_input(self):
         recipe.validate_tool(self.lock)
         self.assertTrue(all(value is None for value in self.lock['unbound_static_inputs'].values()))
