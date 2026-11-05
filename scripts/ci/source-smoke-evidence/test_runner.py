@@ -34,7 +34,7 @@ class RunnerTests(unittest.TestCase):
 
     def test_execution_hold_precedes_every_side_effect(self):
         with mock.patch('runner.Session',side_effect=AssertionError('A role was created')):
-            self.assertRaisesRegex(e.Refusal, 'HELD', r.execute, spec(), '/unused-inputs', '/unused-evidence')
+            self.assertRaisesRegex(e.Refusal, 'HELD', r.execute)
             self.assertRaisesRegex(e.Refusal, 'HELD', r.execute_reviewed, spec(), '/unused-repo', '/unused-receipt', '/unused-output', {})
         with mock.patch.dict('os.environ',{'EXECUTION_ENABLED':'true','WATERLINE_SOURCE_SMOKE_EVIDENCE_PROPOSAL':'1'}):
             with mock.patch('runner.command',side_effect=AssertionError('A command ran')), mock.patch.object(sys,'argv',['runner']):

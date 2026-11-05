@@ -3,6 +3,7 @@ import copy
 import json
 import os
 import pathlib
+import subprocess
 import sys
 import tempfile
 import time
@@ -130,6 +131,28 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(receipt['exit'], 0)
         for code in ['raise SystemExit(1)', 'import time;time.sleep(5)', 'print("x"*10000)']:
             self.assertRaises(e.Refusal, e.command, [sys.executable, '-c', code], time.monotonic() + 0.15, stdout_limit=128)
+
+    def test_command_input_is_bounded_and_drained_with_both_output_pipes(self):
+        body=b'public fixture'*65536
+        code='import sys;data=sys.stdin.buffer.read();sys.stderr.write("fixture diagnostic");print(len(data))'
+        out,receipt=e.command([sys.executable,'-c',code],time.monotonic()+3,input_bytes=body)
+        self.assertEqual(int(out),len(body))
+        self.assertEqual(receipt['exit'],0)
+        self.assertRaises(e.Refusal,e.command,[sys.executable,'-c','pass'],time.monotonic()+1,input_bytes=b'x'*(8388609))
+
+    def test_timeout_kills_ignoring_child_after_group_leader_exits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pidfile=pathlib.Path(directory)/'child.pid'
+            child='import signal,time;signal.signal(signal.SIGTERM,signal.SIG_IGN);print("ready",flush=True);time.sleep(10)'
+            parent='import pathlib,subprocess,sys;child=subprocess.Popen([sys.executable,"-c",'+repr(child)+']);pathlib.Path('+repr(str(pidfile))+').write_text(str(child.pid))'
+            self.assertRaises(e.Refusal,e.command,[sys.executable,'-c',parent],time.monotonic()+.5)
+            pid=int(pidfile.read_text())
+            stop=time.monotonic()+1
+            while True:
+                state=subprocess.run(['ps','-o','stat=','-p',str(pid)],capture_output=True,text=True,timeout=1).stdout.strip()
+                if not state or state.startswith('Z'):break
+                self.assertLess(time.monotonic(),stop,'Owned timeout child survived')
+                time.sleep(.02)
 
     def test_api_and_cleanup_are_acceptance_not_optional_notes(self):
         e.api_response({'status':200,'body':{'result':{'state':'ready'}}},200,{'result.state':'ready'})

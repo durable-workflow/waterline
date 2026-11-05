@@ -79,19 +79,25 @@ export async function boundedResponse(response) {
     return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(raw));
 }
 
+function boundedBrowserResponse(response) {
+    return new Proxy(response,{get(original,property) {
+        if (property === 'json') return () => boundedResponse(original);
+        const value = Reflect.get(original,property);
+        return typeof value === 'function' ? value.bind(original) : value;
+    }});
+}
+
+function responseHandler(target,listeners,event,handler) {
+    if (event !== 'response') return target.on(event,handler);
+    const wrapped = response => handler(boundedBrowserResponse(response));
+    listeners.set(handler,wrapped);
+    return target.on(event,wrapped);
+}
+
 function responsePage(page) {
     const listeners = new Map();
     return new Proxy(page, {get(target,key) {
-        if (key === 'on') return (event,handler) => {
-            if (event !== 'response') return target.on(event,handler);
-            const wrapped = response => handler(new Proxy(response,{get(original,property) {
-                if (property === 'json') return () => boundedResponse(original);
-                const value = Reflect.get(original,property);
-                return typeof value === 'function' ? value.bind(original) : value;
-            }}));
-            listeners.set(handler,wrapped);
-            return target.on(event,wrapped);
-        };
+        if (key === 'on') return (event,handler) => responseHandler(target,listeners,event,handler);
         if (key === 'off') return (event,handler) => target.off(event,listeners.get(handler)||handler);
         const value = Reflect.get(target,key);
         return typeof value === 'function' ? value.bind(target) : value;
@@ -135,7 +141,9 @@ export async function evaluateControls(source, stateRoot, playwright, environmen
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     const variant = process.argv[2];
     assert.ok(Object.hasOwn(ORIGINAL_HASHES,variant),'Unapproved browser control');
-    const original = `/inputs/source/scripts/ci/request-budget-${variant}.mjs`;
+    const original = variant === 'browser'
+        ? '/inputs/source/scripts/ci/request-budget-browser.mjs'
+        : '/inputs/source/scripts/ci/request-budget-auto.mjs';
     const raw = readObject(original,131072);
     assert.equal(createHash('sha256').update(raw).digest('hex'),ORIGINAL_HASHES[variant]);
     const playwright = createRequire('/tools/package.json')('playwright');

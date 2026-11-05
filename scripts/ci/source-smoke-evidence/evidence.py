@@ -117,6 +117,36 @@ def object_bytes(root: Path, relative: str, limit=MAX_FILE):
         os.close(parent)
 
 
+def command_event(selector,key,input_bytes,position,result,limits):
+    if key.data==2:
+        position+=os.write(key.fileobj.fileno(),input_bytes[position:position+65536])
+        if position==len(input_bytes):
+            selector.unregister(key.fileobj)
+            key.fileobj.close()
+        return position
+    chunk=os.read(key.fileobj.fileno(),65536)
+    if not chunk:
+        selector.unregister(key.fileobj)
+        return position
+    require(len(result[key.data])+len(chunk)<=limits[key.data],'Command output bound')
+    result[key.data].extend(chunk)
+    return position
+
+
+def stop_command(process):
+    try:
+        os.killpg(process.pid,signal.SIGTERM)
+        process.wait(timeout=1)
+    except (ProcessLookupError,subprocess.TimeoutExpired):
+        pass
+    # A dead group leader does not prove that its descendants have exited.
+    try:
+        os.killpg(process.pid,signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    process.wait(timeout=2)
+
+
 def command(argv, deadline, stdout_limit=MAX_JSON, stderr_limit=65536, input_bytes=None):
     """No shell, bounded pipes, process-group TERM/KILL and an outer deadline."""
     require(isinstance(argv, list) and all(isinstance(v, str) and '\0' not in v for v in argv), 'Invalid command')
@@ -139,34 +169,14 @@ def command(argv, deadline, stdout_limit=MAX_JSON, stderr_limit=65536, input_byt
         while selector.get_map():
             require(time.monotonic() < deadline, 'Command timeout')
             for key, _ in selector.select(min(.1, max(0, deadline-time.monotonic()))):
-                if key.data==2:
-                    position+=os.write(key.fileobj.fileno(),input_bytes[position:position+65536])
-                    if position==len(input_bytes):
-                        selector.unregister(key.fileobj)
-                        key.fileobj.close()
-                    continue
-                chunk = os.read(key.fileobj.fileno(), 65536)
-                if not chunk:
-                    selector.unregister(key.fileobj)
-                    continue
-                index = key.data
-                require(len(result[index])+len(chunk) <= (stdout_limit, stderr_limit)[index], 'Command output bound')
-                result[index].extend(chunk)
+                position=command_event(selector,key,input_bytes,position,result,(stdout_limit,stderr_limit))
         code = process.wait(timeout=max(.01, deadline-time.monotonic()))
         require(code == 0, 'Command failed')
         return bytes(result[0]), {'argv_sha256': hashlib.sha256(json.dumps(argv).encode()).hexdigest(),
                                   'exit': code, 'stdout_sha256': hashlib.sha256(result[0]).hexdigest(),
                                   'stderr_sha256': hashlib.sha256(result[1]).hexdigest()}
     except BaseException:
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-            process.wait(timeout=1)
-        except (ProcessLookupError, subprocess.TimeoutExpired):
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            process.wait(timeout=2)
+        stop_command(process)
         raise
     finally:
         selector.close()

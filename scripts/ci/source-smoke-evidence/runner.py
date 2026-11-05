@@ -313,7 +313,7 @@ class Session:
         return receipt
 
 
-def execute(spec, inputs, destination):
+def execute():
     require(EXECUTION_ENABLED, 'HELD: actual collection/cache execution requires separate General/Security admission')
     raise Refusal('HELD: no mutable-worktree execution path is admitted')
 
