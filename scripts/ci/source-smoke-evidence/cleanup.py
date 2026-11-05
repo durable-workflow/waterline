@@ -13,7 +13,7 @@ from evidence import bounded_json, command, require
 
 LABEL = 'dev.durable-workflow.waterline-source-evidence'
 RESOURCE_LABEL = LABEL + '.resource'
-LISTINGS = {'container': ('ps', '-aq'), 'network': ('network', 'ls', '-q'),
+LISTINGS = {'container': ('ps', '-aq', '--no-trunc'), 'network': ('network', 'ls', '-q', '--no-trunc'),
             'volume': ('volume', 'ls', '-q')}
 REMOVALS = {'container': ('rm', '-f'), 'network': ('network', 'rm'),
             'volume': ('volume', 'rm', '-f')}
@@ -42,18 +42,34 @@ def inspect_resource(docker, kind, identifier):
 def cleanup_owned(docker, token, plan, attempted, bindings):
     # Inventory grants no authority. Every deletion needs the exact planned
     # name/nonce and, when returned, the independently retained creation ID.
+    expected_absent = {kind: set() for kind in LISTINGS}
     for kind, listing in LISTINGS.items():
+        present = set(docker(*listing).decode().split())
+        for name in sorted(attempted):
+            if name not in bindings or plan[name]['kind'] != kind:
+                continue
+            retained = bindings[name]
+            identifier = retained.get('Id', retained.get('Name'))
+            expected_absent[kind].add(identifier)
+            if identifier in present:
+                actual = resource_binding(kind, inspect_resource(docker, kind, identifier), plan[name], token)
+                require(actual == retained, 'Replaced cleanup resource')
+                docker(*REMOVALS[kind], identifier)
         identifiers = docker(*listing, '--filter', 'label=' + LABEL + '=' + token).decode().split()
-        for identifier in identifiers:
-            require(re.fullmatch(r'[a-f0-9]{12,64}|waterline-source-[a-f0-9-]+', identifier), 'Cleanup ID shape')
+        for identifier in dict.fromkeys(identifiers):
+            pattern = r'waterline-source-[a-f0-9]{16}-[a-z][a-z0-9-]*' if kind == 'volume' else r'[a-f0-9]{64}'
+            require(re.fullmatch(pattern, identifier), 'Cleanup ID shape')
             value = inspect_resource(docker, kind, identifier)
             name = value.get('Name', '').removeprefix('/')
             require(name in attempted and name in plan and plan[name]['kind'] == kind, 'Unowned cleanup resource')
             actual = resource_binding(kind, value, plan[name], token)
-            require(name not in bindings or actual == bindings[name], 'Replaced cleanup resource')
+            require(name not in bindings, 'Bound resource survived direct cleanup')
+            expected_absent[kind].add(actual.get('Id', actual['Name']))
             docker(*REMOVALS[kind], actual.get('Id', actual['Name']))
     receipt = {}
     for kind, listing in LISTINGS.items():
+        identifiers = set(docker(*listing).decode().split())
+        require(not expected_absent[kind].intersection(identifiers), 'Expected resource ID survived cleanup')
         receipt[{'container': 'containers', 'network': 'networks', 'volume': 'volumes'}[kind]] = (
             docker(*listing, '--filter', 'label=' + LABEL + '=' + token).decode().split())
         listing = ('ps', '-a') if kind == 'container' else (kind, 'ls')

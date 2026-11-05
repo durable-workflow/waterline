@@ -220,6 +220,78 @@ class AuthorityTests(unittest.TestCase):
                     self.assertRaises(e.Refusal, c.cleanup_owned, docker, s.token, s.plan, s.attempted, s.bindings)
                     self.assertTrue(all('rm' not in args for args in calls))
 
+    def cleanup_docker(self, kind, value, discover=False, duplicate=False, remove=True, names=True, discover_once=False):
+        identifier = value.get('Id', value['Name'])
+        resources, removed = {identifier: value}, []
+        discoveries = 0
+        def docker(*args):
+            nonlocal discoveries
+            actual_kind = 'container' if args[0] in ('ps', 'rm', 'container') else args[0]
+            if actual_kind != kind:
+                return b''
+            if 'inspect' in args:
+                return json.dumps([resources[args[-1]]]).encode()
+            if 'rm' in args:
+                removed.append(args[-1])
+                if remove:
+                    del resources[args[-1]]
+                return b''
+            if '--format' in args:
+                return ' '.join(v['Name'].removeprefix('/') for v in resources.values()).encode() if names else b''
+            if '--filter' in args:
+                discoveries += 1
+                visible = discover and (not discover_once or discoveries == 1)
+                return ' '.join(list(resources) * (2 if duplicate else 1)).encode() if visible else b''
+            self.assertTrue(kind == 'volume' or '--no-trunc' in args)
+            return ' '.join(resources).encode()
+        return docker, resources, removed
+
+    def test_bound_cleanup_does_not_depend_on_label_discovery(self):
+        for role in ('fixture', 'network', 'inputs'):
+            with self.subTest(role=role), tempfile.TemporaryDirectory() as directory:
+                s = self.session(directory)
+                name = s.name(role)
+                kind = s.plan[name]['kind']
+                value = self.owned(s, role)
+                s.attempted.add(name)
+                s.bindings[name] = c.resource_binding(kind, value, s.plan[name], s.token)
+                docker, resources, removed = self.cleanup_docker(kind, value)
+                receipt = c.cleanup_owned(docker, s.token, s.plan, s.attempted, s.bindings)
+                self.assertEqual(receipt, {'containers': [], 'networks': [], 'volumes': []})
+                self.assertEqual(removed, [value.get('Id', value['Name'])])
+                self.assertEqual(resources, {})
+
+    def test_lost_return_label_discovery_deduplicates_each_resource_kind(self):
+        for role in ('fixture', 'network', 'inputs'):
+            with self.subTest(role=role), tempfile.TemporaryDirectory() as directory:
+                s = self.session(directory)
+                name = s.name(role)
+                kind = s.plan[name]['kind']
+                value = self.owned(s, role)
+                s.attempted.add(name)
+                docker, resources, removed = self.cleanup_docker(kind, value, discover=True, duplicate=True)
+                c.cleanup_owned(docker, s.token, s.plan, s.attempted, {})
+                self.assertEqual(removed, [value.get('Id', value['Name'])])
+                self.assertEqual(resources, {})
+
+    def test_independent_full_id_readback_refuses_survival_when_name_listing_omits_it(self):
+        for role in ('fixture', 'network', 'inputs'):
+            for bound in (False, True):
+                with self.subTest(role=role, bound=bound), tempfile.TemporaryDirectory() as directory:
+                    s = self.session(directory)
+                    name = s.name(role)
+                    kind = s.plan[name]['kind']
+                    value = self.owned(s, role)
+                    s.attempted.add(name)
+                    if bound:
+                        s.bindings[name] = c.resource_binding(kind, value, s.plan[name], s.token)
+                    docker, resources, removed = self.cleanup_docker(kind, value, discover=not bound,
+                        discover_once=True, remove=False, names=False)
+                    self.assertRaisesRegex(e.Refusal, 'resource ID survived', c.cleanup_owned,
+                                           docker, s.token, s.plan, s.attempted, s.bindings)
+                    self.assertEqual(removed, [value.get('Id', value['Name'])])
+                    self.assertEqual(len(resources), 1)
+
     def container_vector(self, s):
         # Synthetic effective Docker state, independently specified from argv.
         s.bindings[s.name('inputs')] = {'Mountpoint': '/synthetic-inputs'}

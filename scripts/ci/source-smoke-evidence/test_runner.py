@@ -124,9 +124,13 @@ class RunnerTests(unittest.TestCase):
                 calls.append((args,kw));return b''
             s.docker=docker
             result=s.cleanup();e.cleanup_receipt(result)
-            self.assertEqual(len(calls),9)
             self.assertTrue(all(kw.get('cleanup') is True for _,kw in calls))
-            self.assertEqual(sum('label='+r.LABEL+'='+s.token in args for args,_ in calls),6)
+            for kind, listing in r.LISTINGS.items():
+                self.assertGreaterEqual(sum(args == listing for args,_ in calls),2)
+                self.assertTrue(any('--format' in args and
+                    ('container' if args[0] == 'ps' else args[0]) == kind for args,_ in calls))
+                self.assertTrue(any(args[:len(listing)] == listing and
+                    'label='+r.LABEL+'='+s.token in args for args,_ in calls))
 
     def test_failed_cache_command_or_api_phase_cannot_become_a_receipt(self):
         with tempfile.TemporaryDirectory() as directory:
