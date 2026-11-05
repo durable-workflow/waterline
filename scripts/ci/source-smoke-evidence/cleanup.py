@@ -62,6 +62,26 @@ def cleanup_owned(docker, token, plan, attempted, bindings):
     return receipt
 
 
+def accept_event(event, plan, attempted, bindings, armed):
+    operation = event.get('operation')
+    if operation == 'ping':
+        return armed, False
+    if operation == 'arm':
+        require(not armed, 'Backstop already armed')
+        return True, False
+    if operation == 'attempt':
+        require(armed and event.get('name') in plan and event['name'] not in attempted, 'Unplanned creation')
+        attempted.add(event['name'])
+        return armed, False
+    if operation == 'bind':
+        require(armed and event.get('name') in attempted and event['name'] not in bindings, 'Unplanned binding')
+        bindings[event['name']] = event['binding']
+        return armed, False
+    if operation == 'stop':
+        return armed, True
+    raise ValueError('Unknown backstop event')
+
+
 def backstop_main():
     token, deadline, raw_plan = sys.argv[1:]
     deadline = float(deadline)
@@ -91,24 +111,10 @@ def backstop_main():
                 line, _, remaining = pending.partition(b'\n')
                 pending = bytearray(remaining)
                 event = bounded_json(bytes(line))
-                operation = event.get('operation')
-                if operation == 'ping':
-                    pass
-                elif operation == 'arm':
-                    require(not armed, 'Backstop already armed')
-                    armed = True
-                elif operation == 'attempt':
-                    require(armed and event.get('name') in plan and event['name'] not in attempted, 'Unplanned creation')
-                    attempted.add(event['name'])
-                elif operation == 'bind':
-                    require(armed and event.get('name') in attempted and event['name'] not in bindings, 'Unplanned binding')
-                    bindings[event['name']] = event['binding']
-                elif operation == 'stop':
-                    normal_stop = True
+                armed, normal_stop = accept_event(event, plan, attempted, bindings, armed)
+                if normal_stop:
                     print('stopped', flush=True)
                     return
-                else:
-                    raise ValueError('Unknown backstop event')
                 print('ack', flush=True)
     finally:
         if armed and attempted and not normal_stop:

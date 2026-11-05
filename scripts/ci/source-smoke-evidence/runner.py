@@ -30,6 +30,7 @@ from cleanup import RESOURCE_LABEL, LISTINGS, cleanup_owned, inspect_resource, r
 
 EXECUTION_ENABLED = False
 LABEL = 'dev.durable-workflow.waterline-source-evidence'
+PULL_NEVER = '--pull=never'
 CONFIG = {'backend':'service', 'path':'waterline', 'namespace':'smoke',
           'access_mode':'operator', 'allow_unauthenticated':True, 'service_budget':'.2'}
 ROLES = {'app':('1','768m','256'), 'fixture':('.25','256m','128'),
@@ -201,21 +202,20 @@ class Session:
                 and not value.get('Options'), 'Effective internal network mismatch')
         self.effective[self.name('network')] = value
 
-    def verify_container(self, role, value, options, image, arguments):
-        config, host = value.get('Config', {}), value.get('HostConfig', {})
+    def verify_config(self, role, value, options, image, arguments):
+        config = value.get('Config', {})
         def option(flag):
             return options[options.index(flag) + 1]
-        def amount(raw):
-            return int(raw[:-1]) * {'m': 1024 ** 2, 'g': 1024 ** 3}[raw[-1]]
         base = self.image_configs[image]
-        environment = dict(item.split('=', 1) for item in base.get('Env') or [])
+        environment = {key: item for key, item in (entry.split('=', 1) for entry in base.get('Env') or [])}
         for index, flag in enumerate(options):
             if flag == '-e':
                 key, item = options[index + 1].split('=', 1)
                 environment[key] = item
         actual_environment = config.get('Env') or []
         require(len(actual_environment) == len(environment)
-                and dict(item.split('=', 1) for item in actual_environment) == environment, 'Effective environment mismatch')
+                and {key: item for key, item in (entry.split('=', 1) for entry in actual_environment)} == environment,
+                'Effective environment mismatch')
         labels = {**(base.get('Labels') or {}), LABEL: self.token,
                   RESOURCE_LABEL: self.plan[self.name(role)]['nonce']}
         require(value.get('Image') == image and config.get('Image') == image and config.get('Labels') == labels
@@ -223,6 +223,13 @@ class Session:
                 and config.get('User') == '82:82' and config.get('Healthcheck', {}).get('Test') == ['NONE']
                 and config.get('WorkingDir', '') == (option('-w') if '-w' in options else base.get('WorkingDir', '')),
                 'Effective image/config identity mismatch')
+
+    def verify_limits(self, value, options):
+        host = value.get('HostConfig', {})
+        def option(flag):
+            return options[options.index(flag) + 1]
+        def amount(raw):
+            return int(raw[:-1]) * {'m': 1024 ** 2, 'g': 1024 ** 3}[raw[-1]]
         require(host.get('Init') is True and host.get('ReadonlyRootfs') is True
                 and host.get('NanoCpus') == int(float(option('--cpus')) * 1_000_000_000)
                 and host.get('Memory') == amount(option('--memory'))
@@ -237,16 +244,25 @@ class Session:
                 and not any(host.get(key) for key in ('PidMode', 'UTSMode', 'UsernsMode', 'Binds', 'VolumesFrom',
                     'Devices', 'DeviceRequests', 'DeviceCgroupRules', 'PortBindings', 'Links', 'ExtraHosts', 'CapAdd')),
                 'Effective resource/capability mismatch')
-        tmpfs = dict(options[index + 1].split(':', 1) for index, flag in enumerate(options) if flag == '--tmpfs')
-        require(host.get('Tmpfs') == tmpfs, 'Effective tmpfs mismatch')
+
+    def planned_mounts(self, options):
         expected_mounts = {}
         for index, flag in enumerate(options):
             if flag != '--mount':
                 continue
-            parts = dict(part.split('=', 1) if '=' in part else (part, True) for part in options[index + 1].split(','))
+            parts = {key: item for key, item in (part.split('=', 1) if '=' in part else (part, True)
+                                               for part in options[index + 1].split(','))}
             source = parts['src']
             require(source in self.bindings, 'Unbound mounted volume')
             expected_mounts[parts['dst']] = (source, 'readonly' not in parts)
+        return expected_mounts
+
+    def verify_mounts(self, value, options):
+        host = value.get('HostConfig', {})
+        tmpfs = {path: settings for path, settings in
+                 (options[index + 1].split(':', 1) for index, flag in enumerate(options) if flag == '--tmpfs')}
+        require(host.get('Tmpfs') == tmpfs, 'Effective tmpfs mismatch')
+        expected_mounts = self.planned_mounts(options)
         mounts = value.get('Mounts', [])
         actual_mounts, destinations = {}, set()
         for mount in mounts:
@@ -262,6 +278,10 @@ class Session:
                     and mount.get('Source') == self.bindings[name]['Mountpoint'], 'Effective volume binding mismatch')
             actual_mounts[destination] = (name, writable)
         require(actual_mounts == expected_mounts, 'Effective mount set mismatch')
+        for source, _ in expected_mounts.values():
+            self.check_bound('inputs' if source == self.name('inputs') else 'state')
+
+    def verify_network(self, role, value):
         network = value.get('NetworkSettings', {})
         require(not any(network.get('Ports', {}).values()), 'Published container port')
         if role != 'seal':
@@ -273,12 +293,16 @@ class Session:
             attached = list(network.get('Networks', {}).values())
             require(len(attached) == 1 and attached[0].get('NetworkID') == self.bindings[self.name('network')]['Id'],
                     'Effective network identity mismatch')
-        for source, _ in expected_mounts.values():
-            self.check_bound('inputs' if source == self.name('inputs') else 'state')
+
+    def verify_container(self, role, value, options, image, arguments):
+        self.verify_config(role, value, options, image, arguments)
+        self.verify_limits(value, options)
+        self.verify_mounts(value, options)
+        self.verify_network(role, value)
         self.effective[self.name(role)] = value
 
     def create_container(self, role, options, image, arguments):
-        require(options[0] == 'create' and '--pull=never' in options, 'Local-image-only creation required')
+        require(options[0] == 'create' and PULL_NEVER in options, 'Local-image-only creation required')
         self.attempt(role)
         value = self.bind_resource(role, self.docker(*options, '--entrypoint', 'timeout', image, *arguments))
         require(value.get('State', {}).get('Status') == 'created', 'Container ran before effective inspection')
@@ -312,7 +336,7 @@ class Session:
         cpu, memory, pids = ROLES[role]
         network = ('container:' + self.bindings[self.name('proxy')]['Id'] if browser
                    else self.bindings[self.name('network')]['Id'])
-        options = ['create','--pull=never','--name',self.name(role),*self.resource_labels(role),
+        options = ['create',PULL_NEVER,'--name',self.name(role),*self.resource_labels(role),
                    '--init','--read-only','--user','82:82','--cpus',cpu,'--memory',memory,'--memory-swap',memory,
                    '--pids-limit',pids,'--cap-drop','ALL','--security-opt','no-new-privileges',
                    '--no-healthcheck','--restart','no','--ipc','private','--shm-size','128m' if browser else '64m',
@@ -395,7 +419,7 @@ class Session:
     def seal_inputs(self):
         require(self.snapshot is not None and self.snapshot_manifest is not None,'Snapshot preparation missing')
         self.volume('inputs', '8m')
-        options = ['create','--pull=never','-i','--name',self.name('seal'),*self.resource_labels('seal'),
+        options = ['create',PULL_NEVER,'-i','--name',self.name('seal'),*self.resource_labels('seal'),
                            '--init','--read-only','--user','82:82','--network','none','--cpus','.5',
                            '--memory','512m','--memory-swap','512m','--pids-limit','128','--cap-drop','ALL',
                            '--no-healthcheck','--restart','no','--ipc','private','--shm-size','16m',
