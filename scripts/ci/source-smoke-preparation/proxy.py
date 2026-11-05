@@ -130,6 +130,22 @@ class ProxyLedger:
             self._active()
             self._sealed = True
 
+    @property
+    def deadline(self):
+        return self._deadline
+
+    @property
+    def network_limit(self):
+        return self._network_limit
+
+    def checkpoint(self):
+        """Live counter cursor, never a completed receipt or an enablement."""
+        with self._lock:
+            self._active()
+            return {'network_read_bytes': self._received, 'network_write_bytes': self._sent,
+                    'network_bytes': self._received + self._sent, 'operations': self._operations,
+                    'network_remaining': self._network_limit - self._received - self._sent}
+
     def observation(self, context, authority):
         """Host counters only; a dictionary cannot construct a completed ledger."""
         with self._lock:

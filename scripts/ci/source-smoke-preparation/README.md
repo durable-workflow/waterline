@@ -66,14 +66,55 @@ Candidate/provider counter dictionaries cannot create that completed ledger.
 
 The network claim is a hard ceiling on **proxy-observed external transport
 bytes**, including both directions, TLS, request/response/error and retry
-traffic. It is not an IP/TCP header or retransmission quota. A future adapter
-must use raw encrypted transports and meter resolver traffic or avoid it. Raw
-socket/TLS/HTTP parsing, closed endpoint/redirect rules, immutable bounded
-capture, exclusive egress, process identity and live resource/deadline
-enforcement remain unimplemented or UNBOUND. The callback interface alone
-cannot establish any of those facts. No existing wrapper invokes this ledger,
-and its CLI refuses before importing network or custody helpers. Inert tests
-use synthetic byte effects only; they open no socket or preparation container.
+traffic. It is not an IP/TCP header or retransmission quota. No existing wrapper
+invokes this ledger, and its CLI refuses before importing network or custody
+helpers. Inert tests open no socket or preparation container.
+
+`transport.py` supplies held HTTPS source using Python's
+[SSLObject and MemoryBIO](https://docs.python.org/3.13/library/ssl.html#memory-bio-support).
+Every ciphertext read/write, including handshake and local close notification,
+passes through the shared ledger. Requests use exact independently selected
+public numeric IPs for the two closed GitHub hosts, with no resolver, ambient
+proxy, credential or fallback. The exact immutable CA bytes are required; no
+default certificate store is loaded. TLS 1.2/1.3 requires certificate and hostname
+verification. The standard HTTP parser has bounded headers/trailers and body
+reads, identity encoding only, and refuses ambiguous lengths, unsupported
+statuses and incomplete bodies. Unknown-length bodies reaching the byte ceiling
+without confirmed EOF refuse before a further body read. Actual CA/IP inputs
+remain UNBOUND. These source constraints are not live egress or TLS qualification.
+
+`capture.py` binds requests to all 79 exact M1 source/dist records. It follows
+only the canonical GitHub zipball request's single exact codeload redirect for
+the same repository and full reference. A changed reference, candidate URL,
+extra/duplicate object or capture-order change refuses. Initial capture is
+quarantine, with at most 128 MiB per object and 512 MiB for the retained pool,
+and shared raw-I/O accounting throughout. It requires no invented upstream
+size/checksum and exposes no preparation writer before independent sealing.
+Only one capture is active at a time, below the two-request ceiling.
+
+The independent `ArchiveReader` rehashes retained immutable bytes, rederives the
+frozen authority and verifies exact TLS/redirect/counter continuity. It seals
+`waterline.authenticated-source-observation/v1`, binding source/tree/lock/graph,
+preparation custody, cell/attempt, transport policy and helper hashes, object
+size/hash, TLS/redirect facts and raw-counter ranges. The manifest says
+`provenance: authenticated-source-observation` and
+`upstream_published_checksum: false`. Its digest proves later custody continuity;
+it is not an upstream checksum, signature or registry provenance claim.
+
+Only a reader-issued sealed object can release bytes through the separate
+admission counter. Changed bytes, manifest splicing, another ledger/cell and
+duplicate or incomplete releases refuse. Producer/binder receipts require all
+79 sealed releases and carry the exact observed-source manifest and digest.
+Browser/tool archives retain their separate UNBOUND closure. No archive is
+extracted or installed by these modules. The operational methods and CLIs
+retain literal holds. Tests patch the hold only around synthetic transcripts
+and in-memory fixture writers; no actual request, capture or package sealing
+qualification has run.
+
+Exclusive container egress, actual process/image/trust configuration, live
+resource enforcement, complete staged preparation, monitored offline assembly
+and whole-cell cleanup composition still need independent implementation or
+input binding. No callback or synthetic policy dictionary proves those facts.
 
 `custody.SourceAuthority` takes the independently admitted preparation commit,
 tree and SHA-256 packet manifest, proves `commit^{tree}` through the bounded host
@@ -189,6 +230,7 @@ The following are **genuinely UNBOUND**, rather than placeholder identities:
 | --- | --- |
 | Static browser image | base image ID, base config SHA-256, platform, full OS library inventory, all three browser binary SHA-256 hashes |
 | Static admission | platform, complete expected application/tool Config bodies, CA SHA-256, effective preparation-tool config SHA-256 |
+| Transport inputs | immutable CA bytes, exact public numeric IP for each GitHub host, admitted transport-policy SHA-256 |
 | Nine-key collector spec | platform, application image ID/config SHA-256, browser image ID/config SHA-256, authenticated preparation receipt SHA-256 |
 | Execution closure | complete host/tool/trust reader and wrapper invocation, effective bounded build/acquisition adapter and meter, same-job upload/read/bind composition and process/daemon cleanup proof |
 

@@ -9,7 +9,8 @@ PREFIX = 'scripts/ci/source-smoke-preparation/'
 MEMBERS = {'README.md', 'accepted.py', 'binder.py', 'bootstrap.py', 'browser-tool-lock.json',
            'cell.py', 'contract.py', 'custody.py', 'guardian.py', 'preparation.Dockerfile',
            'producer.py', 'provider.py', 'recipe.py', 'test_guardian.py', 'test_preparation.py',
-           'test_custody.py', 'test_provider.py', 'proxy.py', 'test_proxy.py'}
+           'test_custody.py', 'test_provider.py', 'proxy.py', 'test_proxy.py',
+           'capture.py', 'transport.py', 'test_capture.py', 'test_transport.py'}
 MAX_MEMBER = 262144
 MAX_PACKET = 2 * 1024 * 1024
 

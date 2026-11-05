@@ -17,7 +17,8 @@ SNAPSHOT_SHA256 = 'd8693a6207c20d59458217d8a23be788f48e1f6cb59c7562cab24a32f8d5c
 CONTRACT = 'contract'
 CUSTODY = 'custody'
 BOOTSTRAP_MODULES = (CONTRACT, 'bootstrap', CUSTODY)
-MODULES = (*BOOTSTRAP_MODULES, 'guardian', 'accepted', 'recipe', 'proxy', 'producer', 'binder', 'provider', 'cell')
+MODULES = (*BOOTSTRAP_MODULES, 'guardian', 'accepted', 'recipe', 'proxy', 'transport', 'capture',
+           'producer', 'binder', 'provider', 'cell')
 SOURCE_PREFIX = 'scripts/ci/source-smoke-preparation/'
 
 

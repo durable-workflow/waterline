@@ -58,7 +58,7 @@ def bind(run, artifact, archive, prepared_context, fresh_host, expected, tool_lo
     require(downloaded == independently_recaptured, 'Provider report differs from independent live host facts')
     receipt = {key: independently_recaptured[key] for key in (
         'source', 'lock', 'graph', 'installed_json_sha256', 'ca_sha256', 'tool_config_sha256',
-        'scripts', 'plugins', 'request_concurrency', 'effective_trust_verified', 'network')}
+        'scripts', 'plugins', 'request_concurrency', 'effective_trust_verified', 'network', 'archives')}
     receipt.update({'provider_run_id': run['id'], 'provider_artifact_id': artifact['id'],
                     'provider_api_digest': artifact['digest'][7:], 'provider_run_attempt': prepared_context.attempt,
                     'preparation': independently_recaptured['preparation'],

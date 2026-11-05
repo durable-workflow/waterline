@@ -6,6 +6,7 @@ from contract import (CellBudget, Context, LOCK, SOURCE, canonical, digest, imag
 from recipe import validate_tool
 from custody import SourceAuthority
 from proxy import ProxyLedger
+from capture import SealedArchives
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class HostObservation:
     preparation_tool_config_sha256: str
     network_removed_before_autoload: bool
     proxy: ProxyLedger
+    archives: SealedArchives
 
 
 def image(value, platform, app, expected_config):
@@ -72,6 +74,11 @@ def produce(host, expected, tool_lock, evidence, admission, authority):
     require(isinstance(host.proxy, ProxyLedger), 'Independent completed proxy ledger required')
     network = host.proxy.observation(host.context, authority)
     require(host.policy['network_bytes'] == network['network_bytes'], 'Proxy counter and host policy differ')
+    require(type(host.archives) is SealedArchives, 'Independent sealed archive manifest required')
+    archives = host.archives.observation(host.context, authority, host.proxy)
+    require(archives['manifest']['transport_policy_sha256'] == admission['transport_policy_sha256']
+            and archives['manifest']['transport_policy']['ca_sha256'] == admission['ca_sha256'],
+            'Archive observation transport admission mismatch')
     require(sha(host.ca_sha256) and sha(host.preparation_tool_config_sha256), 'Preparation trust identity missing')
     require(host.ca_sha256 == admission['ca_sha256']
             and host.preparation_tool_config_sha256 == admission['preparation_tool_config_sha256'],
@@ -96,6 +103,7 @@ def produce(host, expected, tool_lock, evidence, admission, authority):
             'installed_json_sha256': digest(host.installed_raw), 'app': app, 'tool': tool,
             'browser_closure_sha256': tool_closure, 'ca_sha256': host.ca_sha256,
             'network': network,
+            'archives': archives,
             'tool_config_sha256': host.preparation_tool_config_sha256,
             'scripts': False, 'plugins': False, 'request_concurrency': 2,
             'effective_trust_verified': True, 'candidate_autoload_network': False}

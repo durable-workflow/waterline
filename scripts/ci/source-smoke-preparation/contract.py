@@ -182,7 +182,7 @@ class CellBudget:
 
 def unbound_admission():
     return {'platform': None, 'app_config': None, 'tool_config': None,
-            'ca_sha256': None, 'preparation_tool_config_sha256': None}
+            'ca_sha256': None, 'preparation_tool_config_sha256': None, 'transport_policy_sha256': None}
 
 
 def require_static_admission(admission):
@@ -190,7 +190,8 @@ def require_static_admission(admission):
     require(admission['platform'] in ('linux/amd64', 'linux/arm64'), 'Static platform UNBOUND')
     require(isinstance(admission['app_config'], dict) and admission['app_config']
             and isinstance(admission['tool_config'], dict) and admission['tool_config'], 'Static config UNBOUND')
-    require(sha(admission['ca_sha256']) and sha(admission['preparation_tool_config_sha256']), 'Static trust UNBOUND')
+    require(sha(admission['ca_sha256']) and sha(admission['preparation_tool_config_sha256'])
+            and sha(admission['transport_policy_sha256']), 'Static trust UNBOUND')
 
 
 def same_cell(expected, observed):

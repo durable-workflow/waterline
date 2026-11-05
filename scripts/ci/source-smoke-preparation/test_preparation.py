@@ -30,6 +30,7 @@ import producer
 import proxy
 import recipe
 import test_guardian as synthetic
+import test_capture as archive_fixtures
 
 
 class PreparationTests(unittest.TestCase):
@@ -76,17 +77,20 @@ class PreparationTests(unittest.TestCase):
         tool = {'Id': 'sha256:' + '9' * 64, 'Os': 'linux', 'Architecture': 'amd64',
                 'Config': {'Labels': {'dev.durable-workflow.tool-closure': c.digest(c.canonical(tool_lock))}}}
         ledger = proxy.ProxyLedger(context, self.authority, deadline=200, clock=lambda: 100)
+        transport_policy, _, _, archives = archive_fixtures.captured_fixture(context, self.authority, self.expected, ledger)
         ledger.seal()
         host = producer.HostObservation(context, app, tool,
             c.canonical({'packages': self.packages, 'dev': False, 'dev-package-names': []}),
             self.expected['files'], self.expected['classes'], '8.3.36', 8, actual_tool,
             {'cpus': 2, 'memory': 3 * 1024 ** 3, 'pids': 256, 'jobs': 2,
              'scripts': False, 'plugins': False, 'request_concurrency': 2,
-             'effective_trust_verified': True, 'network_bytes': 0, 'storage_bytes': 100},
-            'a' * 64, 'b' * 64, True, ledger)
+             'effective_trust_verified': True,
+             'network_bytes': ledger.observation(context, self.authority)['network_bytes'], 'storage_bytes': 100},
+            transport_policy.ca_sha256, 'b' * 64, True, ledger, archives)
         admission = {'platform': 'linux/amd64', 'app_config': copy.deepcopy(app['Config']),
                      'tool_config': copy.deepcopy(tool['Config']), 'ca_sha256': host.ca_sha256,
-                     'preparation_tool_config_sha256': host.preparation_tool_config_sha256}
+                     'preparation_tool_config_sha256': host.preparation_tool_config_sha256,
+                     'transport_policy_sha256': transport_policy.identity}
         report = producer.produce(host, self.expected, tool_lock, self.evidence, admission, self.authority)
         archive = self.archive(c.canonical(report))
         run = {'id': context.run_id, 'run_attempt': context.attempt, 'head_sha': context.preparation_commit,
@@ -631,6 +635,16 @@ print('OLD-ACCEPT: fabricated shared tree produced complete unbound-identity spe
         real = self.model()
         receipt, _ = self.bound(real)
         self.assertEqual(c.bounded_json(receipt)['network'], real[3]['network'])
+
+    def test_authenticated_provider_cannot_relabel_observed_archives_as_upstream_checksums(self):
+        values = list(self.model())
+        archives = values[3]['archives']
+        archives['manifest']['upstream_published_checksum'] = True
+        archives['manifest']['provenance'] = 'upstream-published-checksum'
+        archives['manifest_sha256'] = c.digest(c.canonical(archives['manifest']))
+        values[4] = self.archive(c.canonical(values[3]))
+        values[6] = {**values[6], 'digest': 'sha256:' + c.digest(values[4]), 'size_in_bytes': len(values[4])}
+        self.assertRaises(c.Refusal, self.bound, values)
 
 
 if __name__ == '__main__':
