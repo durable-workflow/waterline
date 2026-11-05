@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import sys
 import tempfile
 import unittest
@@ -138,6 +139,58 @@ class QualificationShardTest(unittest.TestCase):
             sum(item.test_cases for item in inventory),
             sum(shard.test_cases for shard in planned),
         )
+
+    def test_measured_mysql_scopes_keep_margin_without_losing_tests(self) -> None:
+        fixture = json.loads(
+            (ROOT / "scripts/ci/fixtures/mysql-qualification-794.json").read_text()
+        )
+        rows = fixture["classes"]
+        inventory = tuple(shards.TestClass(row[0], row[1]) for row in rows)
+        planned = shards.plan_shards(inventory, 4)
+        assigned = [item.name for shard in planned for item in shard.classes]
+
+        self.assertEqual(794, sum(shard.test_cases for shard in planned))
+        self.assertCountEqual([row[0] for row in rows], assigned)
+        self.assertEqual(len(assigned), len(set(assigned)))
+        self.assertEqual(planned, shards.plan_shards(inventory[::-1], 4))
+        reserve = fixture["command_reserve_seconds"]
+        limit = fixture["command_limit_seconds"]
+        margin = fixture["minimum_margin_seconds"]
+        self.assertEqual(
+            len(fixture["runs"]), len(fixture["command_observations"])
+        )
+        for column, observation in enumerate(fixture["command_observations"], 2):
+            self.assertEqual(fixture["runs"][column - 2], observation["run"])
+            self.assertEqual(
+                list(range(4)),
+                [s["shard_index"] for s in observation["shards"]],
+            )
+            self.assertAlmostEqual(
+                sum(s["class_body_seconds"] for s in observation["shards"]),
+                sum(row[column] for row in rows),
+                places=5,
+            )
+            for shard in observation["shards"]:
+                # Provider step timestamps have one-second precision. Reserve
+                # that uncertainty as well as all time outside case bodies.
+                upper = max(
+                    0,
+                    shard["test_step_seconds"] + 1 - shard["class_body_seconds"],
+                )
+                self.assertAlmostEqual(
+                    upper, shard["overhead_upper_seconds"], places=5
+                )
+                self.assertLessEqual(upper, reserve)
+        for column, run in enumerate(fixture["runs"], 2):
+            with self.subTest(run=run):
+                seconds = {row[0]: row[column] for row in rows}
+                maximum = max(
+                    sum(seconds[item.name] for item in shard.classes)
+                    for shard in planned
+                )
+                # Every proposed shard pays the entire conservative reserve,
+                # regardless of which shard incurred the observed overhead.
+                self.assertLessEqual(maximum + reserve + margin, limit)
 
     def test_invalid_shard_count_fails_closed(self) -> None:
         inventory = (shards.TestClass("Waterline\\Tests\\Unit\\OnlyTest", 1),)

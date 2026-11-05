@@ -25,18 +25,21 @@ PHPUNIT_CLASS = re.compile(
 # These are allocation weights, not performance or completion guarantees.
 # A 599-case matrix measured 308/131/426/206 seconds with the stats floor at80.
 # Reserving100 keeps the same classes/cases while moving work out of that shard.
-# A 760-case matrix measured 331s/112 detail and 107s/39 stats cases, while 295
-# near-free unit cases still count one each. At 220/100, adding four cases moved
-# 73s of conformance classes into one shard (332s to 405s, past its 7m limit).
-# Measured plans at 260/140 peak at 369s and stay under 375s across one-class
-# additions of 1-6 cases, against 418s and 432s at 220/100.
+# Three 794-case matrices show up to 351s for detail, 114s for stats and 77s
+# for the service-provider class. Reserving detail alone was insufficient:
+# the other classes hit 397s plus 31s outside the measured case bodies.
+# The measured floors below project body peaks of 337s/351s/357s across all
+# three traces. The regression adds a uniform 45s command reserve before
+# checking the unchanged 420s limit with at least 15s of remaining margin.
+# These relative allocation weights are not wall-clock completion claims.
 CLASS_WEIGHT_FLOORS: Mapping[str, int] = {
     (
         "Waterline\\Tests\\Feature\\"
         "RealComposerLaravelPackageHostWorkerVersioningTest"
     ): 120,
-    "Waterline\\Tests\\Feature\\V2DashboardWorkflowTest": 260,
-    "Waterline\\Tests\\Feature\\V2DashboardStatsControllerTest": 140,
+    "Waterline\\Tests\\Feature\\V2DashboardWorkflowTest": 360,
+    "Waterline\\Tests\\Feature\\V2DashboardStatsControllerTest": 180,
+    "Waterline\\Tests\\Unit\\WaterlineServiceProviderTest": 80,
 }
 
 
