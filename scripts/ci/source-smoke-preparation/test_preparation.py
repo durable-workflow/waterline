@@ -27,6 +27,7 @@ import cell
 import contract as c
 import custody
 import producer
+import proxy
 import recipe
 import test_guardian as synthetic
 
@@ -74,13 +75,15 @@ class PreparationTests(unittest.TestCase):
                                     'dev.durable-workflow.release.tag': '2.15.1'}}}
         tool = {'Id': 'sha256:' + '9' * 64, 'Os': 'linux', 'Architecture': 'amd64',
                 'Config': {'Labels': {'dev.durable-workflow.tool-closure': c.digest(c.canonical(tool_lock))}}}
+        ledger = proxy.ProxyLedger(context, self.authority, deadline=200, clock=lambda: 100)
+        ledger.seal()
         host = producer.HostObservation(context, app, tool,
             c.canonical({'packages': self.packages, 'dev': False, 'dev-package-names': []}),
             self.expected['files'], self.expected['classes'], '8.3.36', 8, actual_tool,
             {'cpus': 2, 'memory': 3 * 1024 ** 3, 'pids': 256, 'jobs': 2,
              'scripts': False, 'plugins': False, 'request_concurrency': 2,
-             'effective_trust_verified': True, 'network_bytes': 100, 'storage_bytes': 100},
-            'a' * 64, 'b' * 64, True)
+             'effective_trust_verified': True, 'network_bytes': 0, 'storage_bytes': 100},
+            'a' * 64, 'b' * 64, True, ledger)
         admission = {'platform': 'linux/amd64', 'app_config': copy.deepcopy(app['Config']),
                      'tool_config': copy.deepcopy(tool['Config']), 'ca_sha256': host.ca_sha256,
                      'preparation_tool_config_sha256': host.preparation_tool_config_sha256}
@@ -609,6 +612,25 @@ print('OLD-ACCEPT: fabricated shared tree produced complete unbound-identity spe
         short, _ = self.staged_fixture(('app/a.php',))
         self.assertRaises(c.Refusal, recipe.sealed_archive, short, expected,
                           recipe.ArchiveBudget(65536, 32, 32, 32))
+
+    def test_producer_requires_sealed_same_cell_proxy_counters(self):
+        host, lock, admission, *_ = self.model()
+        active = proxy.ProxyLedger(host.context, self.authority, deadline=200, clock=lambda: 100)
+        for changed in [dataclasses.replace(host, proxy={}), dataclasses.replace(host, proxy=active),
+                        dataclasses.replace(host, policy={**host.policy, 'network_bytes': 1})]:
+            self.assertRaises(c.Refusal, producer.produce, changed, self.expected, lock,
+                              self.evidence, admission, self.authority)
+
+    def test_authenticated_counter_lies_refuse_and_receipt_keeps_real_counters(self):
+        values = list(self.model())
+        values[3]['network']['network_read_bytes'] = 1
+        values[3]['network']['network_bytes'] = 1
+        values[4] = self.archive(c.canonical(values[3]))
+        values[6] = {**values[6], 'digest': 'sha256:' + c.digest(values[4]), 'size_in_bytes': len(values[4])}
+        self.assertRaises(c.Refusal, self.bound, values)
+        real = self.model()
+        receipt, _ = self.bound(real)
+        self.assertEqual(c.bounded_json(receipt)['network'], real[3]['network'])
 
 
 if __name__ == '__main__':

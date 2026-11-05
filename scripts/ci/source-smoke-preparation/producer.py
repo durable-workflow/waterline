@@ -5,6 +5,7 @@ from contract import (CellBudget, Context, LOCK, SOURCE, canonical, digest, imag
                       require, sha, source_expectation, require_static_admission)
 from recipe import validate_tool
 from custody import SourceAuthority
+from proxy import ProxyLedger
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,7 @@ class HostObservation:
     ca_sha256: str
     preparation_tool_config_sha256: str
     network_removed_before_autoload: bool
+    proxy: ProxyLedger
 
 
 def image(value, platform, app, expected_config):
@@ -67,6 +69,9 @@ def produce(host, expected, tool_lock, evidence, admission, authority):
     require_static_admission(admission)
     require(host.network_removed_before_autoload is True, 'Candidate autoload retains network authority')
     CellBudget(0).resource_proof(host.policy)
+    require(isinstance(host.proxy, ProxyLedger), 'Independent completed proxy ledger required')
+    network = host.proxy.observation(host.context, authority)
+    require(host.policy['network_bytes'] == network['network_bytes'], 'Proxy counter and host policy differ')
     require(sha(host.ca_sha256) and sha(host.preparation_tool_config_sha256), 'Preparation trust identity missing')
     require(host.ca_sha256 == admission['ca_sha256']
             and host.preparation_tool_config_sha256 == admission['preparation_tool_config_sha256'],
@@ -90,6 +95,7 @@ def produce(host, expected, tool_lock, evidence, admission, authority):
             'source': SOURCE, 'lock': LOCK, 'graph': graph, 'files_sha256': digest(canonical(host.files)),
             'installed_json_sha256': digest(host.installed_raw), 'app': app, 'tool': tool,
             'browser_closure_sha256': tool_closure, 'ca_sha256': host.ca_sha256,
+            'network': network,
             'tool_config_sha256': host.preparation_tool_config_sha256,
             'scripts': False, 'plugins': False, 'request_concurrency': 2,
             'effective_trust_verified': True, 'candidate_autoload_network': False}

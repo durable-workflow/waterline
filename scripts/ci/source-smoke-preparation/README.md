@@ -51,6 +51,30 @@ Input tar order and equivalent regular-file headers therefore produce identical
 sealed bytes and archive/manifest digests. This data-only boundary performs no
 engine operation and supplies no authority for its own expected manifest.
 
+`proxy.py` adds a causal accounting component, not an executable proxy. One
+host-owned ledger spans every connection, both transport directions and any
+retry. It holds one shared lock across each effect and bounds the next raw
+read/write by the remaining allowance before calling it. Partial writes charge
+their actual counts. Ambiguous failures, invalid counts, clock regression,
+expiry and operation exhaustion permanently refuse a successful observation.
+Separate preparation accounting checks a complete immutable object's exact
+size/digest and identity encoding before any write, then enforces the aggregate
+allowance before each bounded write. Sealing prevents further effects. The
+producer and independent binder carry only sealed same-cell counters, the
+preparation identity and Git-bound proxy source SHA-256 into the final receipt.
+Candidate/provider counter dictionaries cannot create that completed ledger.
+
+The network claim is a hard ceiling on **proxy-observed external transport
+bytes**, including both directions, TLS, request/response/error and retry
+traffic. It is not an IP/TCP header or retransmission quota. A future adapter
+must use raw encrypted transports and meter resolver traffic or avoid it. Raw
+socket/TLS/HTTP parsing, closed endpoint/redirect rules, immutable bounded
+capture, exclusive egress, process identity and live resource/deadline
+enforcement remain unimplemented or UNBOUND. The callback interface alone
+cannot establish any of those facts. No existing wrapper invokes this ledger,
+and its CLI refuses before importing network or custody helpers. Inert tests
+use synthetic byte effects only; they open no socket or preparation container.
+
 `custody.SourceAuthority` takes the independently admitted preparation commit,
 tree and SHA-256 packet manifest, proves `commit^{tree}` through the bounded host
 Git reader and retains the exact snapshot. Producer and binder require that
@@ -140,10 +164,13 @@ admitted activation must perform these steps in that job:
 The whole cell is at most **45 minutes**: 20 preparation, 20 collection and
 5 final cleanup. Preparation's active allocation limit stays 15 minutes;
 collection's active limit stays 19 minutes. Preparation is at most 2 CPUs,
-3 GiB, 256 PIDs, two jobs/requests, 2 GiB network and 8 GiB storage. The static
-policy is not a measured budget: a live bounded resource meter/enforcer remains
-part of the unadmitted execution adapter. No pure observation dictionary can
-prove effective limits or replace that enforcement.
+3 GiB, 256 PIDs, two jobs/requests and 2 GiB proxy-observed external transport
+bytes. The selected 8 GiB daemon-store growth cutoff is independently monitored,
+weaker than a quota, and applies only to offline assembly. Hard execution limits
+remain distinct. The static policy is not a measured budget: live enforcement,
+attributable store measurement, bounded in-flight write envelope and cleanup
+headroom remain part of the unadmitted execution adapter. No pure observation
+dictionary proves those facts or replaces enforcement.
 
 `guardian.py` supplies independent EOF/deadline cleanup logic and a held Docker
 adapter. Before an allocation it rejects existing exact names or owner labels;
