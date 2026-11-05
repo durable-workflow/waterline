@@ -50,9 +50,16 @@ The packet contains:
   ping and survival handshake precedes Docker work; creation attempts and
   returned identities require acknowledgements. Cleanup requires the planned
   name/resource label and retained creation identity, including volume creation
-  metadata. Known bound identities are re-inspected and removed directly,
-  independently of label discovery. Only lost-return resources use deduplicated
-  discovery. It refuses foreign or replaced objects and verifies unfiltered
+  metadata. Known bound identities are inspected unconditionally before any
+  inventory decision, removed only after exact binding validation, and inspected
+  again afterward. Absence requires a closed command/subject/exit/body/diagnostic
+  result; generic errors and empty successful responses refuse. Valid negative
+  inspect observations retain native exit 1 and their exact command/output
+  hashes plus an explicit absence descriptor in command history. Other nonzero
+  commands still refuse. These unexecuted canonical error profiles require the
+  later admitted Docker tool identity; they are not live compatibility proof.
+  Only lost-return resources use deduplicated discovery. It refuses foreign or
+  replaced objects and verifies unfiltered
   full-ID absence, empty owner inventories and absent attempted names.
   Expected stop is acknowledged and
   exits zero; startup failure, owner loss, expiry and premature death cannot

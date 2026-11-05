@@ -15,6 +15,17 @@ import runner as r
 from test_runner import spec
 
 
+def missing_inspect(kind, identifier):
+    message = {'container': 'No such container: ' + identifier,
+               'network': 'network ' + identifier + ' not found',
+               'volume': 'get ' + identifier + ': no such volume'}[kind]
+    stdout, stderr = b'[]\n', ('Error response from daemon: ' + message + '\n').encode()
+    receipt = {'argv_sha256': hashlib.sha256(json.dumps(['docker', kind, 'inspect', identifier]).encode()).hexdigest(),
+               'exit': 1, 'stdout_sha256': hashlib.sha256(stdout).hexdigest(),
+               'stderr_sha256': hashlib.sha256(stderr).hexdigest()}
+    return e.CommandFailure(receipt, stdout, stderr)
+
+
 class AuthorityTests(unittest.TestCase):
     def session(self, root):
         root = pathlib.Path(root).resolve()
@@ -221,7 +232,7 @@ class AuthorityTests(unittest.TestCase):
                     self.assertTrue(all('rm' not in args for args in calls))
 
     def cleanup_docker(self, kind, value, discover=False, duplicate=False, remove=True,
-                       names=True, discover_once=False, stale_discovery=False):
+                       names=True, discover_once=False, stale_discovery=False, inventories=True):
         identifier = value.get('Id', value['Name'])
         resources, removed = {identifier: value}, []
         discoveries = 0
@@ -231,6 +242,8 @@ class AuthorityTests(unittest.TestCase):
             if actual_kind != kind:
                 return b''
             if 'inspect' in args:
+                if args[-1] not in resources:
+                    raise missing_inspect(kind, args[-1])
                 return json.dumps([resources[args[-1]]]).encode()
             if 'rm' in args:
                 removed.append(args[-1])
@@ -238,14 +251,14 @@ class AuthorityTests(unittest.TestCase):
                     del resources[args[-1]]
                 return b''
             if '--format' in args:
-                return ' '.join(v['Name'].removeprefix('/') for v in resources.values()).encode() if names else b''
+                return ' '.join(v['Name'].removeprefix('/') for v in resources.values()).encode() if names and inventories else b''
             if '--filter' in args:
                 discoveries += 1
                 visible = discover and (not discover_once or discoveries == 1)
                 identifiers = [identifier] if stale_discovery and discoveries == 1 else list(resources)
                 return ' '.join(identifiers * (2 if duplicate else 1)).encode() if visible else b''
             self.assertTrue(kind == 'volume' or '--no-trunc' in args)
-            return ' '.join(resources).encode()
+            return ' '.join(resources).encode() if inventories else b''
         return docker, resources, removed
 
     def test_bound_cleanup_does_not_depend_on_label_discovery(self):
@@ -259,7 +272,7 @@ class AuthorityTests(unittest.TestCase):
                     s.attempted.add(name)
                     s.bindings[name] = c.resource_binding(kind, value, s.plan[name], s.token)
                     docker, resources, removed = self.cleanup_docker(kind, value, discover=stale,
-                        duplicate=True, discover_once=True, stale_discovery=stale)
+                        duplicate=True, discover_once=True, stale_discovery=stale, inventories=stale)
                     receipt = c.cleanup_owned(docker, s.token, s.plan, s.attempted, s.bindings)
                     self.assertEqual(receipt, {'containers': [], 'networks': [], 'volumes': []})
                     self.assertEqual(removed, [value.get('Id', value['Name'])])
@@ -290,11 +303,109 @@ class AuthorityTests(unittest.TestCase):
                     if bound:
                         s.bindings[name] = c.resource_binding(kind, value, s.plan[name], s.token)
                     docker, resources, removed = self.cleanup_docker(kind, value, discover=not bound,
-                        discover_once=True, remove=False, names=False)
-                    self.assertRaisesRegex(e.Refusal, 'resource ID survived', c.cleanup_owned,
+                        discover_once=True, remove=False, names=False, inventories=False)
+                    self.assertRaisesRegex(e.Refusal, 'Exact cleanup inspect still present', c.cleanup_owned,
                                            docker, s.token, s.plan, s.attempted, s.bindings)
                     self.assertEqual(removed, [value.get('Id', value['Name'])])
                     self.assertEqual(len(resources), 1)
+
+    def test_bound_absence_requires_exact_subject_failure_and_never_deletes(self):
+        for role in ('fixture', 'network', 'inputs'):
+            with self.subTest(role=role), tempfile.TemporaryDirectory() as directory:
+                s = self.session(directory)
+                name, kind = s.name(role), s.plan[s.name(role)]['kind']
+                value = self.owned(s, role)
+                s.attempted.add(name)
+                s.bindings[name] = c.resource_binding(kind, value, s.plan[name], s.token)
+                docker, resources, removed = self.cleanup_docker(kind, value, inventories=False)
+                resources.clear()
+                c.cleanup_owned(docker, s.token, s.plan, s.attempted, s.bindings)
+                self.assertEqual(removed, [])
+                identifier = value.get('Id', value['Name'])
+                for mutation in ('status', 'subject', 'command', 'body', 'diagnostic', 'digest', 'connection', 'success_empty'):
+                    with self.subTest(role=role, mutation=mutation):
+                        error = missing_inspect(kind, identifier)
+                        if mutation == 'status': error.receipt['exit'] = 2
+                        if mutation == 'subject': error = missing_inspect(kind, identifier + '-other')
+                        if mutation == 'command': error.receipt['argv_sha256'] = 'f' * 64
+                        if mutation == 'body': error.stdout = b''
+                        if mutation == 'diagnostic': error.stderr += b'additional diagnostic\n'
+                        if mutation == 'digest': error.receipt['stderr_sha256'] = 'f' * 64
+                        if mutation == 'connection': error = e.Refusal('synthetic daemon connection failure')
+                        def uncertain(*args):
+                            if 'inspect' not in args:
+                                self.assertNotIn('rm', args)
+                                return b''
+                            if mutation == 'success_empty': return b'[]\n'
+                            raise error
+                        self.assertRaises(e.Refusal, c.cleanup_owned, uncertain, s.token, s.plan, s.attempted, s.bindings)
+                        self.assertEqual(removed, [])
+
+    def test_independent_backstop_uses_exact_inspect_when_every_inventory_omits_the_object(self):
+        fake = '''
+import json
+from pathlib import Path as ProbePath
+from evidence import Refusal as ProbeRefusal
+probe_calls = []
+probe_alive = True
+def command(argv, deadline, **kwargs):
+    global probe_alive
+    kind = 'container' if argv[1] in ('ps', 'rm', 'container') else argv[1]
+    if kind != probe['kind']:
+        return b'', {}
+    operation = 'inspect' if 'inspect' in argv else 'remove' if 'rm' in argv else 'listing'
+    probe_calls.append(operation)
+    if operation == 'remove' and probe['mode'] != 'survives':
+        probe_alive = False
+    ProbePath(probe['marker']).write_text(json.dumps({'alive': probe_alive, 'calls': probe_calls}))
+    if operation == 'inspect':
+        if probe['mode'] == 'uncertain':
+            raise ProbeRefusal('synthetic daemon failure')
+        if probe_alive:
+            return json.dumps([probe['value']]).encode(), {}
+        raise CommandFailure(dict(probe['missing_receipt']), probe['missing_stdout'], probe['missing_stderr'])
+    return b'', {}
+'''
+        for role in ('fixture', 'network', 'inputs'):
+            for mode in ('removed', 'survives', 'uncertain'):
+                with self.subTest(role=role, mode=mode), tempfile.TemporaryDirectory() as directory:
+                    s = self.session(directory)
+                    name, kind = s.name(role), s.plan[s.name(role)]['kind']
+                    value = self.owned(s, role)
+                    absent = missing_inspect(kind, value.get('Id', value['Name']))
+                    marker = pathlib.Path(directory) / 'probe.json'
+                    probe = {'kind': kind, 'mode': mode, 'value': value, 'marker': str(marker),
+                             'missing_receipt': absent.receipt, 'missing_stdout': absent.stdout,
+                             'missing_stderr': absent.stderr}
+                    s.packet['cleanup.py']['bytes'] += ('\nprobe = ' + repr(probe) + fake).encode()
+                    try:
+                        s.launch_backstop()
+                        s.backstop_event('arm')
+                        s.backstop_event('attempt', name=name)
+                        s.backstop_event('bind', name=name, binding=c.resource_binding(kind, value, s.plan[name], s.token))
+                        s.backstop.stdin.close()
+                        status = s.backstop.wait(timeout=3)
+                        observed = json.loads(marker.read_text())
+                        self.assertEqual(observed['calls'][0], 'inspect')
+                        self.assertEqual(observed['calls'].count('remove'), 0 if mode == 'uncertain' else 1)
+                        self.assertEqual(observed['alive'], mode != 'removed')
+                        self.assertEqual(status, 2 if mode == 'removed' else 1)
+                    finally:
+                        self.stop_test_process(s)
+
+    def test_exact_absence_preserves_native_exit_and_validated_receipt_in_session_history(self):
+        for role in ('fixture', 'network', 'inputs'):
+            with self.subTest(role=role), tempfile.TemporaryDirectory() as directory:
+                s = self.session(directory)
+                value = self.owned(s, role)
+                kind = s.plan[s.name(role)]['kind']
+                identifier = value.get('Id', value['Name'])
+                with mock.patch.object(r, 'command', side_effect=missing_inspect(kind, identifier)):
+                    self.assertIsNone(c.inspect_optional(lambda *args: s.docker(*args, cleanup=True), kind, identifier))
+                self.assertEqual(len(s.commands), 1)
+                self.assertEqual(s.commands[0]['exit'], 1)
+                self.assertEqual(s.commands[0]['inspect_absent'], {'kind': kind, 'identifier': identifier})
+                self.assertTrue(e.command_accepted(s.commands[0]))
 
     def container_vector(self, s):
         # Synthetic effective Docker state, independently specified from argv.
