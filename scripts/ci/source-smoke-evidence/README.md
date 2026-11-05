@@ -50,11 +50,25 @@ The packet contains:
   ping and survival handshake precedes Docker work; creation attempts and
   returned identities require acknowledgements. Cleanup requires the planned
   name/resource label and retained creation identity, including volume creation
-  metadata. It refuses foreign or replaced objects and verifies empty owner
-  inventories plus absent attempted names. Expected stop is acknowledged and
+  metadata. Known bound identities are inspected unconditionally before any
+  inventory decision, removed only after exact binding validation, and inspected
+  again afterward. Absence requires a closed command/subject/exit/body/diagnostic
+  result; generic errors and empty successful responses refuse. Valid negative
+  inspect observations retain native exit 1 and their exact command/output
+  hashes plus an explicit absence descriptor in command history. Other nonzero
+  commands still refuse. These unexecuted canonical error profiles require the
+  later admitted Docker tool identity; they are not live compatibility proof.
+  Only lost-return resources use deduplicated discovery. It refuses foreign or
+  replaced objects and verifies unfiltered
+  full-ID absence, empty owner inventories and absent attempted names.
+  Expected stop is acknowledged and
   exits zero; startup failure, owner loss, expiry and premature death cannot
   resemble successful final shutdown. It never reopens mutable helper files or
   performs global cleanup.
+  This correction is a new collector origin. Its reviewed commit, tree and
+  complete member manifest must be bound independently before use. Existing
+  preparation contracts still name their frozen origin and do not select these
+  successor bytes. All entrypoint and operational holds remain in place.
 - `fixture.php`, `proxy.php`, `state.php`, `read_state.py`: synthetic internal
   peers, bounded mode/state/response/header readers and path guards.
 - `browser-driver.mjs`: a thin bounded I/O adapter for the **unchanged**, separately

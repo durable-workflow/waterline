@@ -35,6 +35,41 @@ class Refusal(ValueError):
     pass
 
 
+class CommandFailure(Refusal):
+    """Bounded nonzero result; raw diagnostics never enter the exception text."""
+    def __init__(self, receipt, stdout, stderr):
+        super().__init__('Command failed')
+        self.receipt, self.stdout, self.stderr = receipt, stdout, stderr
+
+
+def absent_inspect_result(kind, identifier):
+    require(kind in ('container', 'network', 'volume') and isinstance(identifier, str), 'Inspect subject shape')
+    pattern = r'waterline-source-[a-f0-9]{16}-[a-z][a-z0-9-]*' if kind == 'volume' else r'[a-f0-9]{64}'
+    require(re.fullmatch(pattern, identifier), 'Inspect subject identity')
+    messages = {'container': f'No such container: {identifier}',
+                'network': f'network {identifier} not found',
+                'volume': f'get {identifier}: no such volume'}
+    stdout = b'[]\n'
+    stderr = ('Error response from daemon: ' + messages[kind] + '\n').encode()
+    receipt = {'argv_sha256': hashlib.sha256(json.dumps(['docker', kind, 'inspect', identifier]).encode()).hexdigest(),
+               'exit': 1, 'stdout_sha256': hashlib.sha256(stdout).hexdigest(),
+               'stderr_sha256': hashlib.sha256(stderr).hexdigest()}
+    return stdout, stderr, receipt
+
+
+def command_accepted(receipt):
+    if receipt.get('exit') == 0:
+        return True
+    proof = receipt.get('inspect_absent')
+    if type(proof) is not dict or set(proof) != {'kind', 'identifier'}:
+        return False
+    try:
+        _, _, expected = absent_inspect_result(proof['kind'], proof['identifier'])
+    except (Refusal, TypeError):
+        return False
+    return type(receipt.get('exit')) is int and receipt == {**expected, 'inspect_absent': proof}
+
+
 def require(condition, message='Source-smoke evidence refused'):
     if not condition:
         raise Refusal(message)
@@ -171,10 +206,12 @@ def command(argv, deadline, stdout_limit=MAX_JSON, stderr_limit=65536, input_byt
             for key, _ in selector.select(min(.1, max(0, deadline-time.monotonic()))):
                 position=command_event(selector,key,input_bytes,position,result,(stdout_limit,stderr_limit))
         code = process.wait(timeout=max(.01, deadline-time.monotonic()))
-        require(code == 0, 'Command failed')
-        return bytes(result[0]), {'argv_sha256': hashlib.sha256(json.dumps(argv).encode()).hexdigest(),
-                                  'exit': code, 'stdout_sha256': hashlib.sha256(result[0]).hexdigest(),
-                                  'stderr_sha256': hashlib.sha256(result[1]).hexdigest()}
+        receipt = {'argv_sha256': hashlib.sha256(json.dumps(argv).encode()).hexdigest(),
+                   'exit': code, 'stdout_sha256': hashlib.sha256(result[0]).hexdigest(),
+                   'stderr_sha256': hashlib.sha256(result[1]).hexdigest()}
+        if code != 0:
+            raise CommandFailure(receipt, bytes(result[0]), bytes(result[1]))
+        return bytes(result[0]), receipt
     except BaseException:
         stop_command(process)
         raise
@@ -355,7 +392,7 @@ def browser_receipts(primary, automatic):
 def final_receipt(expected, observed, commands, cleanup, destination: Path):
     require(destination.parent.resolve() == destination.parent and not destination.exists(), 'Retained evidence contamination')
     cleanup_receipt(cleanup)
-    require(len(commands) > 0 and all(c.get('exit') == 0 for c in commands), 'Incomplete command history')
+    require(len(commands) > 0 and all(command_accepted(c) for c in commands), 'Incomplete command history')
     require(len(observed) == 3 and [p.get('phase') for p in observed] == ['clear-before', 'cached', 'clear-after'], 'Missing cache phase')
     for phase in observed:
         identity(expected, phase['identity'])

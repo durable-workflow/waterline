@@ -132,6 +132,33 @@ class EvidenceTests(unittest.TestCase):
         for code in ['raise SystemExit(1)', 'import time;time.sleep(5)', 'print("x"*10000)']:
             self.assertRaises(e.Refusal, e.command, [sys.executable, '-c', code], time.monotonic() + 0.15, stdout_limit=128)
 
+    def test_failed_command_retains_bounded_status_and_hashes_without_logging_diagnostics(self):
+        argv = [sys.executable, '-c', 'import sys;print("[]");sys.stderr.write("synthetic diagnostic\\n");sys.exit(1)']
+        deadline = time.monotonic() + 2
+        with self.assertRaises(e.CommandFailure) as caught:
+            e.command(argv, deadline)
+        error = caught.exception
+        self.assertEqual(error.stdout, b'[]\n')
+        self.assertEqual(error.stderr, b'synthetic diagnostic\n')
+        self.assertEqual(error.receipt['exit'], 1)
+        self.assertEqual(error.receipt['argv_sha256'], e.hashlib.sha256(json.dumps(argv).encode()).hexdigest())
+        self.assertEqual(error.receipt['stderr_sha256'], e.hashlib.sha256(error.stderr).hexdigest())
+        self.assertEqual(str(error), 'Command failed')
+        self.assertFalse(e.command_accepted(error.receipt))
+
+    def test_only_closed_inspect_absence_receipts_are_accepted_as_negative_observations(self):
+        for kind, identifier in [('container', 'a' * 64), ('network', 'b' * 64),
+                                 ('volume', 'waterline-source-' + 'c' * 16 + '-inputs')]:
+            with self.subTest(kind=kind):
+                _, _, native = e.absent_inspect_result(kind, identifier)
+                receipt = {**native, 'inspect_absent': {'kind': kind, 'identifier': identifier}}
+                self.assertEqual(receipt['exit'], 1)
+                self.assertTrue(e.command_accepted(receipt))
+                self.assertFalse(e.command_accepted(native))
+                for key, value in [('exit', 2), ('argv_sha256', 'f' * 64), ('stderr_sha256', 'f' * 64),
+                                   ('inspect_absent', {'kind': kind, 'identifier': identifier + '-other'})]:
+                    self.assertFalse(e.command_accepted({**receipt, key: value}))
+
     def test_command_input_is_bounded_and_drained_with_both_output_pipes(self):
         body=b'public fixture'*65536
         code='import sys;data=sys.stdin.buffer.read();sys.stderr.write("fixture diagnostic");print(len(data))'

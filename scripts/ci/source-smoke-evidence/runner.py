@@ -24,7 +24,7 @@ if __name__=='__main__':
     raise SystemExit('HELD: use only an independently admitted Git-object launcher')
 
 from packet_snapshot import reviewed_packet, exact_manifest, snapshot_archive, verify_archive, SEAL_PROGRAM
-from evidence import (SOURCE, MAX_JSON, Refusal, api_response, bounded_json, command,
+from evidence import (SOURCE, MAX_JSON, CommandFailure, Refusal, api_response, bounded_json, command,
                       expected_from_git, final_receipt, graph, identity, object_bytes, require)
 from cleanup import RESOURCE_LABEL, LISTINGS, cleanup_owned, inspect_resource, resource_binding
 
@@ -84,7 +84,11 @@ class Session:
         if not cleanup:
             self.backstop_alive()
         stop = self.deadline if cleanup else self.active
-        raw, receipt = command(['docker',*args], min(stop,time.monotonic()+seconds), stdout_limit=limit,input_bytes=input_bytes)
+        try:
+            raw, receipt = command(['docker',*args], min(stop,time.monotonic()+seconds), stdout_limit=limit,input_bytes=input_bytes)
+        except CommandFailure as error:
+            self.commands.append(error.receipt)
+            raise
         self.commands.append(receipt)
         if not cleanup:
             self.backstop_alive()
