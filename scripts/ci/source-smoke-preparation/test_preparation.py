@@ -506,6 +506,74 @@ print('OLD-ACCEPT: fabricated shared tree produced complete unbound-identity spe
         self.assertIn(b'sealed source bytes mismatch', result.stderr)
         self.assertNotIn(b'unreviewed source executed', result.stderr)
 
+    def staged_fixture(self, names=('app/a.php',), content=b'body'):
+        expected = {name: {'kind': 'file', 'uid': 0, 'gid': 0, 'mode': 0o644,
+            'size': len(content), 'sha256': c.digest(content)} for name in names}
+        output = io.BytesIO()
+        with tarfile.open(fileobj=output, mode='w:') as archive:
+            for name in names:
+                info = tarfile.TarInfo(name)
+                info.mode, info.size = 0o644, len(content)
+                archive.addfile(info, io.BytesIO(content))
+        return output.getvalue(), expected
+
+    def test_staged_archive_is_canonical_immutable_and_manifest_bound(self):
+        raw, expected = self.staged_fixture()
+        budget = recipe.ArchiveBudget(65536, 32768, 32768, 32)
+        sealed = recipe.sealed_archive(raw, expected, budget)
+        self.assertIs(type(sealed['archive']), bytes)
+        self.assertEqual(sealed['archive_sha256'], c.digest(sealed['archive']))
+        self.assertEqual(sealed['manifest_sha256'], c.digest(c.canonical(expected)))
+        self.assertEqual(sealed['content_bytes'], 4)
+        with tarfile.open(fileobj=io.BytesIO(sealed['archive'])) as archive:
+            self.assertEqual(archive.extractfile('app/a.php').read(), b'body')
+        self.assertRaises(c.Refusal, recipe.sealed_archive, bytearray(raw), expected, budget)
+        self.assertRaises(c.Refusal, recipe.sealed_archive, io.BytesIO(raw), expected, budget)
+
+    def test_staged_archive_path_duplicate_case_and_trailing_payload_refuse(self):
+        budget = recipe.ArchiveBudget(65536, 32768, 32768, 32)
+        for name in ('../escape', '/app/a.php', 'app/../escape', 'app/.wh.secret', 'app\\a.php', 'proc/status'):
+            with self.subTest(name=name):
+                raw, expected = self.staged_fixture((name,))
+                self.assertRaises(c.Refusal, recipe.sealed_archive, raw, expected, budget)
+        for names in (('app/a.php', 'app/a.php'), ('app/A.php', 'app/a.php'), ('app/a.php', 'app/a.php/child'),
+                      ('app/Dir', 'app/dir/a.php')):
+            raw, expected = self.staged_fixture(names)
+            self.assertRaises(c.Refusal, recipe.sealed_archive, raw, expected, budget)
+        raw, expected = self.staged_fixture()
+        self.assertRaises(c.Refusal, recipe.sealed_archive, raw + b'opaque trailing data', expected, budget)
+        changed = copy.deepcopy(expected)
+        changed['app/a.php']['sha256'] = 'f' * 64
+        self.assertRaises(c.Refusal, recipe.sealed_archive, raw, changed, budget)
+
+    def test_staged_archive_special_files_metadata_and_sparse_records_refuse(self):
+        raw, expected = self.staged_fixture()
+        budget = recipe.ArchiveBudget(65536, 32768, 32768, 32)
+        for kind in (tarfile.SYMTYPE, tarfile.LNKTYPE, tarfile.CHRTYPE, tarfile.BLKTYPE, tarfile.FIFOTYPE):
+            output = io.BytesIO()
+            with tarfile.open(fileobj=output, mode='w:') as archive:
+                info = tarfile.TarInfo('app/a.php')
+                info.type, info.mode = kind, 0o644
+                archive.addfile(info)
+            self.assertRaises(c.Refusal, recipe.sealed_archive, output.getvalue(), expected, budget)
+        for mutate in [lambda x: setattr(x, 'sparse', []), lambda x: setattr(x, 'uid', 1000),
+                       lambda x: setattr(x, 'mode', 0o4644), lambda x: setattr(x, 'mtime', 1),
+                       lambda x: x.pax_headers.update(comment='opaque'),
+                       lambda x: x.pax_headers.update({'GNU.sparse.map': '0,4'})]:
+            info = tarfile.TarInfo('app/a.php')
+            info.mode, info.size = 0o644, 4
+            mutate(info)
+            self.assertRaises(c.Refusal, recipe.closed_member, info, expected['app/a.php'], mock.Mock())
+
+    def test_staged_archive_limits_and_missing_members_refuse(self):
+        raw, expected = self.staged_fixture(('app/a.php', 'app/b.php'))
+        for budget in [recipe.ArchiveBudget(None, None, None, None), recipe.ArchiveBudget(1024, 32, 32, 32),
+                       recipe.ArchiveBudget(65536, 4, 6, 32), recipe.ArchiveBudget(65536, 32, 32, 1)]:
+            self.assertRaises(c.Refusal, recipe.sealed_archive, raw, expected, budget)
+        short, _ = self.staged_fixture(('app/a.php',))
+        self.assertRaises(c.Refusal, recipe.sealed_archive, short, expected,
+                          recipe.ArchiveBudget(65536, 32, 32, 32))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -38,6 +38,15 @@ ordinary CLI refuses before imports. The future wrapper must itself obtain
 this bootstrap from its independently admitted Git blob. No invocation is
 activated, and the operational cell executor remains unimplemented.
 
+`recipe.sealed_archive` implements the closed output boundary for the selected
+offline-engine architecture. It accepts immutable bytes and an independent
+manifest with explicit archive/member/content/count budgets, rejecting mutable
+streams or later path reads. It rejects extra/missing/duplicate paths, parent
+and case collisions, whiteouts, links, special/sparse files, opaque metadata,
+changed modes/owners/content and trailing payload. It emits a canonical regular
+archive and bound archive/manifest digests. This data-only boundary performs no
+engine operation and supplies no authority for its own expected manifest.
+
 `custody.SourceAuthority` takes the independently admitted preparation commit,
 tree and SHA-256 packet manifest, proves `commit^{tree}` through the bounded host
 Git reader and retains the exact snapshot. Producer and binder require that
@@ -58,6 +67,11 @@ redundant tags, wraps the directory command and defaults the final image to
 UID/GID 82, which the accepted collector already requires. COPY statements,
 application dependencies, base digests and source/version labels stay M1. The recipe is held and
 does not select a platform, build tool, trust configuration or image identity.
+
+The later selected capped-preparation/offline-engine design does not execute
+this Dockerfile. Translating its APK and PHP-extension system-root writes into
+a non-root staged recipe remains UNBOUND. Its derivation PASS is not executable
+recipe acceptance, and no builder fallback is available.
 
 `browser-tool-lock.json` closes the npm source graph to Playwright and
 playwright-core 1.64.0 with exact registry URLs, SHA-512 integrity, and their only
