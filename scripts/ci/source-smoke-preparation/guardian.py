@@ -12,6 +12,7 @@ from contract import Refusal, bounded_json, require
 
 LABELS = ('dev.durable-workflow.waterline-source-preparation',
           'dev.durable-workflow.waterline-source-evidence')
+LABEL_FILTER = 'label='
 LIST = {'container': ('ps', '-aq'), 'network': ('network', 'ls', '-q'),
         'volume': ('volume', 'ls', '-q'), 'image': ('image', 'ls', '-q', '--no-trunc')}
 REMOVE = {'container': ('rm', '-f'), 'network': ('network', 'rm'),
@@ -58,8 +59,8 @@ class DockerCleanup:
         return self.evidence.command(['docker', *args], min(self.deadline, time.monotonic() + 3))[0]
 
     def find(self, plan):
-        args = [*LIST[plan['kind']], '--filter', 'label=' + plan['label'] + '=' + plan['owner'],
-                '--filter', 'label=' + plan['label'] + '.resource=' + plan['nonce']]
+        args = [*LIST[plan['kind']], '--filter', LABEL_FILTER + plan['label'] + '=' + plan['owner'],
+                '--filter', LABEL_FILTER + plan['label'] + '.resource=' + plan['nonce']]
         return self.call(*args).decode().split()
 
     def named(self, plan):
@@ -71,7 +72,7 @@ class DockerCleanup:
 
     def owner(self, plan):
         return self.call(*LIST[plan['kind']], '--filter',
-                         'label=' + plan['label'] + '=' + plan['owner']).decode().split()
+                         LABEL_FILTER + plan['label'] + '=' + plan['owner']).decode().split()
 
     def present(self, plan, identity):
         # Label filters alone cannot establish absence of an already bound ID.
@@ -128,7 +129,7 @@ class Ledger:
         for name, plan in reversed(list(self.plans.items())):
             try:
                 self.cleanup_plan(name, plan)
-            except (ValueError, OSError, TimeoutError) as error:
+            except (ValueError, OSError) as error:
                 failures.append(error)
         if failures:
             raise Refusal('Guardian cleanup incomplete') from failures[0]

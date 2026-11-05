@@ -36,8 +36,10 @@ This change does not supply or activate that launcher.
 `recipe.py` accepts only that derivation. The changes disable Composer plugins,
 scripts and install-time autoload; cap Composer HTTP/process concurrency at two;
 generate autoload and check it with BuildKit network disabled; and cap PHP
-extension compilation at two jobs. COPY statements, application dependencies,
-base pins and source/version labels stay exactly M1. The recipe is held and
+extension compilation at two jobs. It spells the same M1 base digests without
+redundant tags, wraps the directory command and defaults the final image to
+UID/GID 82, which the accepted collector already requires. COPY statements,
+application dependencies, base digests and source/version labels stay M1. The recipe is held and
 does not select a platform, build tool, trust configuration or image identity.
 
 `browser-tool-lock.json` closes the npm source graph to Playwright and

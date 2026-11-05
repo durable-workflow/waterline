@@ -1,4 +1,4 @@
-FROM composer:2.10.3@sha256:da624c2c705d54e2f5a9bb77a5dc6c7d091711433ebefd7035672e84c2010fee AS vendor
+FROM composer@sha256:da624c2c705d54e2f5a9bb77a5dc6c7d091711433ebefd7035672e84c2010fee AS vendor
 
 COPY docker/verify-ca-trust.php docker/verify-brotli.php docker/verify-curl.php /usr/local/share/waterline/
 RUN php /usr/local/share/waterline/verify-ca-trust.php /usr/bin/composer \
@@ -44,7 +44,7 @@ RUN --network=none composer dump-autoload --no-plugins \
             exit(1); \
         }'
 
-FROM php:8.3.36-cli-alpine@sha256:2424931b23ed08b65764a0efe258f9b62fe4e5bc363f685c9d39e7607433381e
+FROM php@sha256:2424931b23ed08b65764a0efe258f9b62fe4e5bc363f685c9d39e7607433381e
 
 COPY docker/verify-ca-trust.php docker/verify-brotli.php docker/verify-curl.php /usr/local/share/waterline/
 
@@ -75,7 +75,9 @@ COPY public /app/public/vendor/waterline
 
 RUN --network=none php -r 'require "/app/vendor/autoload.php";' \
     && chmod +x /app/artisan /app/entrypoint.sh \
-    && mkdir -p /data /app/bootstrap/cache /app/storage/framework/cache/data /app/storage/framework/sessions /app/storage/framework/views /app/storage/logs \
+    && mkdir -p /data /app/bootstrap/cache \
++        /app/storage/framework/cache/data /app/storage/framework/sessions \
++        /app/storage/framework/views /app/storage/logs \
     && chown -R www-data:www-data /app/bootstrap/cache /app/storage /data
 
 ENV APP_ENV=production \
@@ -85,6 +87,8 @@ ENV APP_ENV=production \
     PORT=8080 \
     WATERLINE_BACKEND=service \
     WATERLINE_PATH=waterline
+
+USER 82:82
 
 VOLUME ["/data"]
 EXPOSE 8080

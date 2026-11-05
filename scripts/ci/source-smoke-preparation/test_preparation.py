@@ -95,6 +95,8 @@ class PreparationTests(unittest.TestCase):
         self.assertIn(b'--no-plugins --no-autoloader', proposed)
         self.assertIn(b'RUN --network=none composer dump-autoload', proposed)
         self.assertIn(b'RUN --network=none php -r', proposed)
+        self.assertIn(b'USER 82:82', proposed)
+        self.assertIn(b'FROM php@sha256:2424931b', proposed)
         self.assertRaises(c.Refusal, recipe.derive, original + b'\n# changed source\n')
 
     def test_current_manifests_do_not_fabricate_any_operational_input(self):

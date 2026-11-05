@@ -16,6 +16,8 @@ def derive(original):
     require(isinstance(original, bytes) and digest(original) == DOCKERFILE, 'Application recipe is not M1')
     text = original.decode()
     replacements = [
+        ('FROM composer:2.10.3@', 'FROM composer@'),
+        ('FROM php:8.3.36-cli-alpine@', 'FROM php@'),
         ('WORKDIR /build/standalone',
          'ENV COMPOSER_MAX_PARALLEL_HTTP=2 COMPOSER_MAX_PARALLEL_PROCESSES=2\n\nWORKDIR /build/standalone'),
         ('RUN composer install \\\n', 'RUN composer install --no-plugins --no-autoloader --prefer-dist \\\n'),
@@ -23,6 +25,9 @@ def derive(original):
         ('RUN php -r \'require "/app/vendor/autoload.php";\'',
          'RUN --network=none php -r \'require "/app/vendor/autoload.php";\''),
         ('docker-php-ext-install mbstring', 'docker-php-ext-install -j2 mbstring'),
+        ('    && mkdir -p /data /app/bootstrap/cache /app/storage/framework/cache/data /app/storage/framework/sessions /app/storage/framework/views /app/storage/logs',
+         '    && mkdir -p /data /app/bootstrap/cache \\\n+        /app/storage/framework/cache/data /app/storage/framework/sessions \\\n+        /app/storage/framework/views /app/storage/logs'),
+        ('\nVOLUME ["/data"]', '\nUSER 82:82\n\nVOLUME ["/data"]'),
     ]
     for before, after in replacements:
         require(text.count(before) == 1, 'Ambiguous recipe transformation')
