@@ -40,6 +40,7 @@ use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\ActionabilityVisibilityFilters;
+use Waterline\Support\WorkflowTimeWindow;
 use Waterline\Support\CompatibilitySemantics;
 use Waterline\Support\CompensationVisibility;
 use Waterline\Support\HybridMigrationView;
@@ -704,6 +705,23 @@ class WorkflowsController extends Controller
                 'classification_scope' => [...$classification, 'available' => false],
             ], 501);
         }
+        // Resolve and validate before a repository can enter its durable fallback.
+        $context = $repository->engineSource() === 'v2'
+            ? V2VisibilityFilterContext::resolve(request(), $bucket)
+            : null;
+        $requestedTime = $context['time_window'] ?? WorkflowTimeWindow::evaluate(
+            ActionabilityVisibilityFilters::fromRequest(request()),
+            WorkflowTimeWindow::requestTime(request()),
+        );
+        $timeAvailable = $repository instanceof V2WorkflowRepository
+            || ($repository instanceof HybridWorkflowRepository && ! HybridMigrationView::requestIncludesLegacyRows());
+        if ($requestedTime !== null && ! $timeAvailable) {
+            return response()->json([
+                'message' => 'Start-time filters require a v2 execution list without legacy rows.',
+                'reason' => 'backend_capability_unavailable',
+                'capability' => 'started_time_workflow_list',
+            ], 501);
+        }
         $method = $bucket.'Flows';
         $result = $repository->{$method}();
 
@@ -738,7 +756,7 @@ class WorkflowsController extends Controller
         ];
         $payload['operator_scope'] = OperatorScope::payload();
         $payload['classification_scope'] = [...$classification, 'available' => $classificationAvailable];
-        $payload['time_windows'] = ['generated_at' => now()->toJSON(), 'status_bucket' => $bucket, 'retention_scope' => 'all_retained_runs'];
+        $payload['time_windows'] = ['generated_at' => now()->toJSON(), 'status_bucket' => $bucket, 'retention_scope' => 'all_retained_runs', 'started_time' => $context['time_window']];
 
         if ($repository instanceof HybridWorkflowRepository) {
             $payload['hybrid_migration_view'] = [

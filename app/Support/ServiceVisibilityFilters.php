@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Waterline\Support;
 
+use DateTimeInterface;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -42,6 +43,7 @@ final class ServiceVisibilityFilters
         return [
             ...self::DIRECT_FIELDS,
             ...self::SCOPE_FIELDS,
+            ...WorkflowTimeWindow::FIELDS,
             ...array_keys(self::FIELD_QUERY_NAMES),
         ];
     }
@@ -134,14 +136,24 @@ final class ServiceVisibilityFilters
      *     capability: array<string, mixed>
      * }
      */
-    public static function plan(array $filters, string $bucket, ?string $genericQuery = null, ?array $workflowTypes = null): array
+    public static function plan(array $filters, string $bucket, ?string $genericQuery = null, ?array $workflowTypes = null, ?DateTimeInterface $at = null): array
     {
         $normalized = ActionabilityVisibilityFilters::normalize($filters);
         $applied = [];
         $unavailable = [];
         $predicates = [];
+        $window = ($normalized['started_time'] ?? 'any') === 'any'
+            ? null : WorkflowTimeWindow::evaluate($normalized, $at ?? now());
+        if ($window !== null) {
+            $predicates[] = 'StartTime >= '.self::literal($window['from']);
+            $predicates[] = 'StartTime < '.self::literal($window['before']);
+        }
 
         foreach ($normalized as $field => $value) {
+            if (in_array($field, WorkflowTimeWindow::FIELDS, true)) {
+                $applied[$field] = $value;
+                continue;
+            }
             if (in_array($field, self::DIRECT_FIELDS, true)) {
                 $applied[$field] = $value;
 
@@ -178,6 +190,9 @@ final class ServiceVisibilityFilters
         $genericQuery = is_string($genericQuery) && trim($genericQuery) !== ''
             ? trim($genericQuery)
             : null;
+        if ($window !== null && $genericQuery !== null) {
+            throw ValidationException::withMessages(['query' => 'Clear the free-form query before applying a start-time window.']);
+        }
         $query = $predicates === [] ? $genericQuery : implode(' AND ', $predicates);
 
         if ($genericQuery !== null && $predicates !== []) {
@@ -190,12 +205,15 @@ final class ServiceVisibilityFilters
             $typeQuery = $workflowTypes === []
                 ? 'WorkflowType = ""'
                 : 'WorkflowType IN ('.implode(', ', array_map(static fn (string $type): string => self::literal($type), $workflowTypes)).')';
-            $query = $query === null ? $typeQuery : '('.$query.') AND ('.$typeQuery.')';
+            $query = $query === null ? $typeQuery : ($window !== null
+                ? $query.' AND '.$typeQuery
+                : '('.$query.') AND ('.$typeQuery.')');
         }
 
         $warning = self::warning($unavailable);
 
         return [
+            'time_window' => $window,
             'applied_filters' => $applied,
             'unavailable_filters' => $unavailable,
             'workflow_type' => is_string($applied['workflow_type'] ?? null)

@@ -163,8 +163,8 @@ class OciReleaseTest(unittest.TestCase):
         workflow_bytes = b"reviewed unprivileged build workflow\n"
         run_id, attempt = 12345, 1
         data = {
-            "tag-ref.json": {"ref": "refs/tags/2.15.0", "object": {"type": "tag", "sha": "e" * 40}},
-            "tag-object.json": {"sha": "e" * 40, "tag": "2.15.0", "object": {"type": "commit", "sha": SOURCE}},
+            "tag-ref.json": {"ref": "refs/tags/2.15.1", "object": {"type": "tag", "sha": "e" * 40}},
+            "tag-object.json": {"sha": "e" * 40, "tag": "2.15.1", "object": {"type": "commit", "sha": SOURCE}},
             "commit.json": {"sha": SOURCE, "commit": {"tree": {"sha": TREE}}},
             "compare.json": {"status": "ahead", "merge_base_commit": {"sha": SOURCE}},
             "pulls.json": {"pulls": [{"number": 246, "merge_commit_sha": SOURCE, "merged_at": "2026-10-23T00:00:00Z", "state": "closed",
@@ -201,6 +201,19 @@ class OciReleaseTest(unittest.TestCase):
         data["run.json"].update(event="push", head_branch=oci.VERSION, head_sha=SOURCE)
         args.runner = SOURCE
         self.admit(data, publisher, args)
+
+    def test_previous_patch_tag_and_build_cannot_qualify_the_new_patch(self):
+        original, publisher, args = self.plan_fixture()
+        for field in ("tag-ref.json", "tag-object.json", "run.json"):
+            data = copy.deepcopy(original)
+            if field == "tag-ref.json":
+                data[field]["ref"] = "refs/tags/2.15.0"
+            elif field == "tag-object.json":
+                data[field]["tag"] = "2.15.0"
+            else:
+                data[field].update(event="push", head_branch="2.15.0", head_sha=SOURCE)
+            with self.subTest(field=field), self.assertRaises(oci.EvidenceError):
+                self.admit(data, publisher, args)
 
     def test_wrong_ref_issuer_repository_run_attempt_head_and_hash_refuse(self):
         original, publisher, args = self.plan_fixture()
@@ -268,7 +281,7 @@ class OciReleaseTest(unittest.TestCase):
         self.artifact_fixture()
         oci.prepare(argparse.Namespace(directory=self.root))
         evidence = oci.read_json(self.root / "verified.json")
-        self.assertEqual(evidence["destination"], "docker.io/durableworkflow/waterline:2.15.0")
+        self.assertEqual(evidence["destination"], "docker.io/durableworkflow/waterline:2.15.1")
         self.assertEqual([item["platform"]["architecture"] for item in evidence["manifests"]], ["amd64", "arm64"])
         self.assertEqual([item["annotations"][oci.REFERENCE_DIGEST] for item in evidence["attestations"]],
                          [item["digest"] for item in evidence["manifests"]])

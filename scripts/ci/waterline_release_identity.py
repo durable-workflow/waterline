@@ -152,6 +152,38 @@ def declared_waterline_version(manifest: Mapping[str, Any]) -> str:
     return exact_version(version, "release source Waterline version")
 
 
+def production_graph(packages: object) -> dict[str, dict[str, str]]:
+    if not isinstance(packages, list) or not packages:
+        raise IdentityError("production package inventory must be a nonempty list")
+    graph = {}
+    for package in packages:
+        if not isinstance(package, dict):
+            raise IdentityError("production package identity must be an object")
+        name = package.get("name")
+        version = package.get("version")
+        source = package.get("source")
+        reference = source.get("reference") if isinstance(source, dict) else None
+        if (not isinstance(name, str) or not name or name in graph
+                or not isinstance(version, str) or not version
+                or not isinstance(reference, str) or PUBLIC_COMMIT.fullmatch(reference) is None):
+            raise IdentityError("missing, duplicate or nonimmutable production package identity")
+        if name == WORKFLOW_PACKAGE or package.get("dev_requirement", False) is not False:
+            raise IdentityError("standalone production graph cannot contain Core or development packages")
+        graph[name] = {"version": version.removeprefix("v"), "source_reference": reference}
+    return dict(sorted(graph.items()))
+
+
+def validate_installed_graph(lock: Mapping[str, Any], installed: Mapping[str, Any]) -> dict[str, Any]:
+    """Compare inert Composer metadata; collection and image binding are separate."""
+    if installed.get("dev") is not False or installed.get("dev-package-names") != []:
+        raise IdentityError("installed graph must explicitly exclude development packages")
+    expected = production_graph(lock.get("packages"))
+    actual = production_graph(installed.get("packages"))
+    if actual != expected:
+        raise IdentityError("installed production graph differs from the reviewed source lock")
+    return {"outcome": "verified", "package_count": len(actual), "packages": actual}
+
+
 def validate(
     approved: Mapping[str, Any],
     manifest: Mapping[str, Any],
@@ -226,6 +258,8 @@ def main(arguments: Sequence[str] | None = None) -> int:
     parser.add_argument("--waterline-composer", required=True, type=Path)
     parser.add_argument("--standalone-composer", required=True, type=Path)
     parser.add_argument("--standalone-lock", required=True, type=Path)
+    parser.add_argument("--installed-json", type=Path,
+                        help="optional inert Composer installed.json from separately admitted qualification")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--candidate-source", action="store_true")
     mode.add_argument("--release-version")
@@ -248,6 +282,10 @@ def main(arguments: Sequence[str] | None = None) -> int:
         lock_raw,
         release_version=args.release_version,
     )
+    if args.installed_json is not None:
+        installed, installed_raw = load_json(args.installed_json, "installed production graph")
+        evidence["installed_graph"] = validate_installed_graph(lock, installed)
+        evidence["source_sha256"]["installed_json"] = hashlib.sha256(installed_raw).hexdigest()
     args.evidence.write_text(
         json.dumps(evidence, indent=2, sort_keys=True, ensure_ascii=True) + "\n",
         encoding="utf-8",

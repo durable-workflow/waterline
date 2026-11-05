@@ -6,6 +6,7 @@ use BackedEnum;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
@@ -76,6 +77,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         // Validate before fallback handling, so an invalid selection cannot
         // silently become an unfiltered durable-run list.
         WorkflowClassification::selection(request());
+        V2VisibilityFilterContext::resolve(request(), $bucket);
         $perPage = max(1, $perPage);
         $page ??= LengthAwarePaginator::resolveCurrentPage();
 
@@ -98,6 +100,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
             return $this->runningFlowsWithDurableRows($query, $perPage, $page);
         } catch (Throwable) {
+            $this->refuseUnfilteredTimeFallback('running');
             return $this->runningFlowsFromDurableRuns($perPage, $page);
         }
     }
@@ -412,7 +415,20 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
             return $this->statusFlowsWithDurableRows($query, $status, $perPage, $page);
         } catch (Throwable) {
+            $this->refuseUnfilteredTimeFallback($status);
             return $this->statusFlowsFromDurableRuns($status, $perPage, $page);
+        }
+    }
+
+    private function refuseUnfilteredTimeFallback(string $bucket): void
+    {
+        $context = V2VisibilityFilterContext::resolve(request(), $bucket);
+        if ($context['time_window'] !== null) {
+            throw new HttpResponseException(response()->json([
+                'message' => 'The start-time filtered projection is unavailable. Waterline cannot return an unfiltered fallback list.',
+                'reason' => 'backend_capability_unavailable',
+                'capability' => 'started_time_workflow_list',
+            ], 503));
         }
     }
 
@@ -426,6 +442,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         ActionabilityVisibilityFilters::apply(
             $query,
             $this->visibilityFiltersForQuery($context['applied_filters']),
+            $context['time_window'],
         );
 
         $this->applyClassificationScope($query);

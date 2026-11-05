@@ -1,6 +1,7 @@
 <script type="text/ecmascript-6">
     import FlowRow from './flow-row.vue';
     import Swal from 'sweetalert2';
+    import {TIME_WINDOW_FIELDS, TIME_WINDOW_UNITS, timeWindowEditorState, timeWindowPayload, replaceTimeWindow} from '../../workflow-time-window.mjs';
     import { createWaterlineDialogOptions, showDialogValidationText } from '../../dialogs.mjs';
 
     export default {
@@ -56,7 +57,8 @@
                     : this.currentFilterPayload()
                 const entries = []
 
-                this.visibilityFieldEntries().forEach(([field]) => {
+                this.visibilityFieldEntries().forEach(([field, definition]) => {
+                    if (definition.group === 'started_time') return
                     if (applied[field] === undefined || applied[field] === null || applied[field] === '') {
                         return
                     }
@@ -67,6 +69,13 @@
                         value: this.formatAppliedFilterValue(field, applied[field]),
                     })
                 })
+
+                if (applied.started_time && applied.started_time !== 'any') {
+                    const state = timeWindowEditorState(applied)
+                    entries.push({key: 'started_time', label: this.$t('Start Time'), value: state.mode === 'rolling'
+                        ? this.$t('Last {value1} {value2}', {value1: state.duration, value2: this.$t(state.unit)})
+                        : `${state.from} ≤ ${this.$t('Start Time')} < ${state.before}`})
+                }
 
                 Object.entries(applied.labels || {}).forEach(([key, value]) => {
                     entries.push({
@@ -684,13 +693,14 @@
             },
 
             mergeFilterPayloads(...payloads) {
-                const merged = {}
+                let merged = {}
 
                 payloads.forEach((payload) => {
                     if (!payload || typeof payload !== 'object') {
                         return
                     }
 
+                    merged = replaceTimeWindow(merged, Object.fromEntries(Object.entries(payload).filter(([field]) => TIME_WINDOW_FIELDS.includes(field))))
                     Object.entries(payload).forEach(([field, value]) => {
                         if (field === 'labels') {
                             merged.labels = {
@@ -1080,7 +1090,7 @@
 
             visibleFilterEditorEntries() {
                 return this.visibilityFieldEntries()
-                    .filter(([, definition]) => !this.isContainsOperatorField(definition))
+                    .filter(([, definition]) => !this.isContainsOperatorField(definition) && definition.group !== 'started_time')
             },
 
             operatorFieldLabel(definition, fallback) {
@@ -1089,6 +1099,58 @@
                     : fallback
 
                 return this.escapeHtml(label)
+            },
+
+            timeWindowEditorHtml(filters) {
+                if (!this.visibilityFieldDefinition('started_time')?.filterable) return ''
+                const state = timeWindowEditorState(filters)
+                const text = value => this.escapeHtml(this.$t(value))
+                const value = value => this.escapeHtml(value)
+                return `<fieldset class="text-left mt-3 mb-3" aria-describedby="waterline-time-window-help">
+                    <legend class="h6">${text('Start Time')}</legend>
+                    <p id="waterline-time-window-help" class="small text-muted">${text('Filter each run by its start time. The lower bound is included; the upper bound is excluded. All bounds use UTC.')}</p>
+                    <label class="d-block" for="waterline-filter-started-time">${text('Time window')}</label>
+                    <select id="waterline-filter-started-time" class="swal2-input mt-1">
+                        ${[['any', 'Any time'], ['rolling', 'Rolling window'], ['fixed', 'Fixed range']].map(([mode, label]) => `<option value="${mode}" ${state.mode === mode ? 'selected' : ''}>${text(label)}</option>`).join('')}
+                    </select>
+                    <div data-waterline-time-mode="rolling" ${state.mode !== 'rolling' ? 'hidden' : ''}>
+                        <label class="d-block mt-2" for="waterline-filter-duration">${text('Look back')}</label>
+                        <input id="waterline-filter-duration" class="swal2-input mt-1" type="number" min="1" step="1" value="${value(state.duration)}">
+                        <label class="d-block" for="waterline-filter-duration-unit">${text('Duration unit')}</label>
+                        <select id="waterline-filter-duration-unit" class="swal2-input mt-1">
+                            ${Object.keys(TIME_WINDOW_UNITS).map(unit => `<option value="${unit}" ${state.unit === unit ? 'selected' : ''}>${text(unit)}</option>`).join('')}
+                        </select>
+                        <small class="d-block text-muted mt-2">${text('The duration stays saved. Its UTC bounds move when the list reloads.')}</small>
+                    </div>
+                    <div data-waterline-time-mode="fixed" ${state.mode !== 'fixed' ? 'hidden' : ''}>
+                        <label class="d-block mt-2" for="waterline-filter-started-from">${text('From (inclusive, UTC)')}</label>
+                        <input id="waterline-filter-started-from" class="swal2-input mt-1" type="text" autocomplete="off" spellcheck="false" placeholder="2026-01-10T00:00:00Z" value="${value(state.from)}" aria-describedby="waterline-fixed-time-help">
+                        <label class="d-block mt-2" for="waterline-filter-started-before">${text('Before (exclusive, UTC)')}</label>
+                        <input id="waterline-filter-started-before" class="swal2-input mt-1" type="text" autocomplete="off" spellcheck="false" placeholder="2026-01-11T00:00:00Z" value="${value(state.before)}" aria-describedby="waterline-fixed-time-help">
+                        <small id="waterline-fixed-time-help" class="d-block text-muted mt-2">${text('Use an ISO date with Z or an explicit UTC offset. Fractional seconds are preserved.')}</small>
+                    </div>
+                </fieldset>`
+            },
+
+            bindTimeWindowEditor(popup) {
+                const mode = popup.querySelector('#waterline-filter-started-time')
+                if (!mode) return
+                const update = () => popup.querySelectorAll('[data-waterline-time-mode]').forEach(group => {
+                    group.hidden = group.dataset.waterlineTimeMode !== mode.value
+                    group.querySelectorAll('input, select').forEach(input => { input.disabled = group.hidden })
+                })
+                mode.addEventListener('change', update)
+                update()
+            },
+
+            readTimeWindowEditor() {
+                const mode = document.getElementById('waterline-filter-started-time')
+                if (!mode) return {}
+                return timeWindowPayload({mode: mode.value,
+                    duration: document.getElementById('waterline-filter-duration').value,
+                    unit: document.getElementById('waterline-filter-duration-unit').value,
+                    from: document.getElementById('waterline-filter-started-from').value,
+                    before: document.getElementById('waterline-filter-started-before').value})
             },
 
             filterEditorHtml(filters) {
@@ -1176,6 +1238,7 @@
                 return `
                     <div class="text-left">
                         ${this.filterMetadataNoticeHtml()}
+                        ${this.timeWindowEditorHtml(filters)}
                         ${fieldsHtml}
                         ${labelsHtml}
                         ${searchAttrHtml}
@@ -1290,16 +1353,18 @@
             async editFilters() {
                 const current = this.selectedCustomView && !this.savedViewVersionSupported(this.selectedCustomView)
                     ? this.mergeFilterPayloads(this.selectedCustomView.filters || {}, this.currentFilterPayload())
-                    : this.currentFilterPayload()
+                    : this.effectiveFilterPayload()
                 const result = await this.$dialog(this.workflowListDialogOptions({
                     title: this.$t("Edit Filters"),
                     html: this.filterEditorHtml(current),
+                    didOpen: popup => this.bindTimeWindowEditor(popup),
                     showCancelButton: true,
                     confirmButtonText: this.$t("Apply Filters"),
                     preConfirm: () => {
                         try {
                             const filters = {}
-                            this.visibilityFieldEntries().forEach(([field]) => {
+                            this.visibilityFieldEntries().forEach(([field, definition]) => {
+                                if (definition.group === 'started_time') return
                                 const element = document.getElementById(this.fieldInputId(field))
 
                                 if (!element) {
@@ -1313,6 +1378,7 @@
                                 }
                             })
 
+                            Object.assign(filters, this.readTimeWindowEditor())
                             const labelsEl = document.getElementById('waterline-filter-labels')
                             const labels = labelsEl ? this.parseLabelText(labelsEl.value) : {}
 
@@ -1332,7 +1398,7 @@
 
                             return filters
                         } catch (error) {
-                            showDialogValidationText(Swal, error.message)
+                            showDialogValidationText(Swal, this.$t(error.message))
                         }
                     },
                 }))
@@ -1778,6 +1844,9 @@
                 <span v-if="listTimeWindows"> {{ $t("/ retained") }} {{ stateLabel(listTimeWindows.status_bucket) }} {{ $t("runs matching the current filters") }}</span>
                 <span v-if="listTimeWindows && listTimeWindows.generated_at"> {{ $t("/ as of") }} {{ listTimeWindows.generated_at }}</span>
             </div>
+            <p v-if="ready && !listLoadError && listTimeWindows?.started_time" class="small text-muted px-4 pt-3 mb-0">
+                {{ $t('Resolved UTC start-time range') }}: {{ listTimeWindows.started_time.from }} ≤ {{ $t('Start Time') }} &lt; {{ listTimeWindows.started_time.before }}
+            </p>
             <div class="card-body flow-index__registry-head">
                 <div>
                     <p class="flow-index__section-kicker">{{ $t("Registry") }}</p>

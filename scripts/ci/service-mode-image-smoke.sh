@@ -324,6 +324,20 @@ if ($argv[1] === "1"
 echo $actual;
 ' "$workflow_streams_required")"
 
+# The candidate extends Waterline's filter contract independently of Core.
+# Published images retain their own supported contract; bind the HTTP response
+# to the code actually packaged in the already identified image.
+packaged_filter_contract="$(docker exec "$container" php -r '
+require "/app/vendor/autoload.php";
+$version = Waterline\Support\ActionabilityVisibilityFilters::VERSION;
+$supported = Waterline\Support\ActionabilityVisibilityFilters::supportedVersions();
+if (!in_array($version, [6, 7], true) || !in_array($version, $supported, true)) {
+    fwrite(STDERR, "Unsupported packaged visibility filter contract.\n");
+    exit(1);
+}
+echo json_encode(["version" => $version, "supported_versions" => $supported], JSON_THROW_ON_ERROR);
+')"
+
 request 200 \
     "GET ${waterline_url}/waterline/api/flows/running" \
     "${waterline_url}/waterline/api/flows/running"
@@ -373,7 +387,8 @@ request 200 \
 signal="$response_content"
 
 php -r '
-[$list, $savedViews, $selectedSavedView, $filteredList, $detail, $query, $signal, $workflowStreamsRequired, $imageRelease] = array_slice($argv, 1);
+[$list, $savedViews, $selectedSavedView, $filteredList, $detail, $query, $signal, $workflowStreamsRequired, $imageRelease, $filterContract] = array_slice($argv, 1);
+$filterContract = json_decode($filterContract, true, flags: JSON_THROW_ON_ERROR);
 $list = json_decode($list, true, flags: JSON_THROW_ON_ERROR);
 $savedViews = json_decode($savedViews, true, flags: JSON_THROW_ON_ERROR);
 $selectedSavedView = json_decode($selectedSavedView, true, flags: JSON_THROW_ON_ERROR);
@@ -425,7 +440,10 @@ foreach ($detailExpectations as $path => $expected) {
 
 if (($list["data"][0]["instance_id"] ?? null) !== "smoke-order"
     || count($list["data"] ?? []) !== 2
-    || ($savedViews["filter_version"] ?? null) !== 6
+    || ($savedViews["filter_version"] ?? null) !== $filterContract["version"]
+    || ($savedViews["supported_filter_versions"] ?? null) !== $filterContract["supported_versions"]
+    || ($savedViews["filter_definition"]["version"] ?? null) !== $filterContract["version"]
+    || ($selectedSavedView["filter_version"] ?? null) !== $filterContract["version"]
     || ($savedViews["filter_definition"]["fields"]["repair_state"]["label"] ?? null) !== "Repair State"
     || ($savedViews["filter_definition"]["fields"]["repair_state"]["filterable"] ?? null) !== false
     || ($selectedSavedView["filters"]["workflow_type"] ?? null) !== "smoke.order"
@@ -446,7 +464,7 @@ if (($list["data"][0]["instance_id"] ?? null) !== "smoke-order"
     fwrite(STDERR, "Service image list, saved-view, query, or signal contract mismatch.\n");
     exit(1);
 }
-' "$list" "$saved_views" "$selected_saved_view" "$filtered_list" "$detail" "$query" "$signal" "$workflow_streams_required" "$image_release"
+' "$list" "$saved_views" "$selected_saved_view" "$filtered_list" "$detail" "$query" "$signal" "$workflow_streams_required" "$image_release" "$packaged_filter_contract"
 
 server_requests="$(docker logs "$server_container" 2>&1)"
 case "$packaged_sdk_version" in

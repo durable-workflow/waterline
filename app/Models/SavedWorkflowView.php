@@ -47,11 +47,12 @@ class SavedWorkflowView extends Model
             $view->owner_type ??= $owner['type'];
             $view->owner_id ??= $owner['id'];
             $view->filter_version ??= ActionabilityVisibilityFilters::VERSION;
-            $view->filters = ActionabilityVisibilityFilters::normalize($view->filters ?? []);
+            $view->filters = ActionabilityVisibilityFilters::normalizeStored($view->filters ?? [], $view->filter_version);
         });
 
         static::saving(static function (self $view): void {
-            $view->filters = ActionabilityVisibilityFilters::normalize($view->filters ?? []);
+            $view->filter_version ??= ActionabilityVisibilityFilters::VERSION;
+            $view->filters = ActionabilityVisibilityFilters::normalizeStored($view->filters ?? [], $view->filter_version);
         });
     }
 
@@ -176,7 +177,7 @@ class SavedWorkflowView extends Model
             'owned_by_current_operator' => $ownedByCurrentOperator,
             'mutable_by_current_operator' => $ownedByCurrentOperator,
             'system' => false,
-            'filters' => ActionabilityVisibilityFilters::normalize($this->filters ?? []),
+            'filters' => ActionabilityVisibilityFilters::normalizeStored($this->filters ?? [], $versionMetadata['version']),
             'filter_version' => $versionMetadata['version'],
             'filter_version_supported' => $versionMetadata['supported'],
             'filter_version_status' => $versionMetadata['status'],
