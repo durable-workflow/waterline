@@ -176,8 +176,10 @@ jobs:
         --require-hashes --only-binary=:all: --no-deps
         --requirement scripts/ci/workflow-requirements.txt
 
-    - name: Check held preparation and same-runner handoff contracts
-      run: python -m unittest discover -s scripts/ci/source-smoke-preparation -p 'test_*.py'
+    - name: Check held collector, preparation and same-runner handoff contracts
+      run: |
+        python -m unittest discover -s scripts/ci/source-smoke-evidence -p 'test_*.py'
+        python -m unittest discover -s scripts/ci/source-smoke-preparation -p 'test_*.py'
 
     - name: Validate stable release tooling
       run: |
