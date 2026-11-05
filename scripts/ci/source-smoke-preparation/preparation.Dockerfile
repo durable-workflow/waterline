@@ -76,8 +76,8 @@ COPY public /app/public/vendor/waterline
 RUN --network=none php -r 'require "/app/vendor/autoload.php";' \
     && chmod +x /app/artisan /app/entrypoint.sh \
     && mkdir -p /data /app/bootstrap/cache \
-+        /app/storage/framework/cache/data /app/storage/framework/sessions \
-+        /app/storage/framework/views /app/storage/logs \
+        /app/storage/framework/cache/data /app/storage/framework/sessions \
+        /app/storage/framework/views /app/storage/logs \
     && chown -R www-data:www-data /app/bootstrap/cache /app/storage /data
 
 ENV APP_ENV=production \

@@ -4,6 +4,8 @@ import dataclasses
 import io
 import json
 import pathlib
+import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -97,6 +99,11 @@ class PreparationTests(unittest.TestCase):
         self.assertIn(b'RUN --network=none php -r', proposed)
         self.assertIn(b'USER 82:82', proposed)
         self.assertIn(b'FROM php@sha256:2424931b', proposed)
+        def directories(raw):
+            continued = raw.decode().replace('\\\n', ' ')
+            command = re.search(r'mkdir -p (.*?)\s+&& chown', continued, re.DOTALL).group(1)
+            return shlex.split(command)
+        self.assertEqual(directories(original), directories(proposed))
         self.assertRaises(c.Refusal, recipe.derive, original + b'\n# changed source\n')
 
     def test_current_manifests_do_not_fabricate_any_operational_input(self):

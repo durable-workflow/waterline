@@ -26,7 +26,7 @@ def derive(original):
          'RUN --network=none php -r \'require "/app/vendor/autoload.php";\''),
         ('docker-php-ext-install mbstring', 'docker-php-ext-install -j2 mbstring'),
         ('    && mkdir -p /data /app/bootstrap/cache /app/storage/framework/cache/data /app/storage/framework/sessions /app/storage/framework/views /app/storage/logs',
-         '    && mkdir -p /data /app/bootstrap/cache \\\n+        /app/storage/framework/cache/data /app/storage/framework/sessions \\\n+        /app/storage/framework/views /app/storage/logs'),
+         '    && mkdir -p /data /app/bootstrap/cache \\\n        /app/storage/framework/cache/data /app/storage/framework/sessions \\\n        /app/storage/framework/views /app/storage/logs'),
         ('\nVOLUME ["/data"]', '\nUSER 82:82\n\nVOLUME ["/data"]'),
     ]
     for before, after in replacements:
