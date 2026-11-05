@@ -1,8 +1,9 @@
 """Exact Git-object custody for the held preparation packet. No launcher."""
 import re
-import stat
 
-from contract import canonical, digest, require, sha
+import bootstrap
+
+from contract import Refusal, canonical, digest, require, sha
 
 PREFIX = 'scripts/ci/source-smoke-preparation/'
 MEMBERS = {'README.md', 'accepted.py', 'binder.py', 'bootstrap.py', 'browser-tool-lock.json',
@@ -23,26 +24,12 @@ def snapshot(git, commit, tree):
     require(all(isinstance(value, str) and re.fullmatch(r'[a-f0-9]{40}', value)
                 for value in (commit, tree)), 'Preparation custody Git identity')
     require(git('rev-parse', commit + '^{tree}').strip().decode() == tree, 'Preparation tree mismatch')
-    listing = git('ls-tree', '-rz', commit, '--', PREFIX)
-    require(len(listing) <= 65536, 'Preparation listing byte bound')
-    records, raw, total = {}, {}, 0
-    for entry in listing.split(b'\0'):
-        if not entry:
-            continue
-        metadata, name = entry.decode().split('\t', 1)
-        mode, kind, oid = metadata.split()
-        relative = name.removeprefix(PREFIX)
-        require(name.startswith(PREFIX) and relative in MEMBERS and relative not in raw
-                and mode == '100644' and kind == 'blob', 'Preparation non-regular/extra object')
-        size = int(git('cat-file', '-s', oid))
-        require(0 <= size <= MAX_MEMBER, 'Preparation object byte bound')
-        content = git('cat-file', 'blob', oid)
-        total += len(content)
-        require(len(content) == size and total <= MAX_PACKET, 'Preparation packet byte bound')
-        raw[relative] = content
-        records[relative] = {'mode': stat.S_IFREG | 0o644, 'oid': oid, 'sha256': digest(content), 'size': len(content)}
+    try:
+        raw, records, manifest = bootstrap.source_packet(git, commit)
+    except ValueError as error:
+        raise Refusal('Preparation custody refused') from error
     require(set(raw) == MEMBERS, 'Preparation object absent')
-    return raw, records, digest(canonical(records))
+    return raw, records, manifest
 
 
 class SourceAuthority:

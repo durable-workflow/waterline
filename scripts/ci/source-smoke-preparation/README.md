@@ -28,9 +28,15 @@ All twenty accepted collector members remain byte-identical to accepted
 `c341552e506cf512938e52d497fc082396bb0ffd`. That packet's own hold stays false.
 This directory is a separate exact Git-object allowlist; its `custody.py`
 retains regular-file bytes and a SHA-256 manifest, rejecting extras, omissions,
-symlinks, executable files and oversized objects. A future independently
-admitted launcher must use those retained bytes, never mutable worktree imports.
-This change does not supply or activate that launcher.
+symlinks, executable files and oversized objects. `bootstrap.reviewed_program`
+assembles a private immutable launcher using the accepted fixed bounded Git
+reader. It proves the independently admitted commit/tree/manifest, retains the
+snapshot and loads a closed module set from those bytes in an isolated Python
+process. It validates the sealed byte manifest and actual Git identity again
+before calling the still-held cell entry. It imports no worktree helper; its
+ordinary CLI refuses before imports. The future wrapper must itself obtain
+this bootstrap from its independently admitted Git blob. No invocation is
+activated, and the operational cell executor remains unimplemented.
 
 `custody.SourceAuthority` takes the independently admitted preparation commit,
 tree and SHA-256 packet manifest, proves `commit^{tree}` through the bounded host
@@ -137,7 +143,7 @@ The following are **genuinely UNBOUND**, rather than placeholder identities:
 | Static browser image | base image ID, base config SHA-256, platform, full OS library inventory, all three browser binary SHA-256 hashes |
 | Static admission | platform, complete expected application/tool Config bodies, CA SHA-256, effective preparation-tool config SHA-256 |
 | Nine-key collector spec | platform, application image ID/config SHA-256, browser image ID/config SHA-256, authenticated preparation receipt SHA-256 |
-| Execution closure | complete host/tool/trust reader and immutable launcher, effective bounded build/acquisition adapter and meter, same-job upload/read/bind composition and process/daemon cleanup proof |
+| Execution closure | complete host/tool/trust reader and wrapper invocation, effective bounded build/acquisition adapter and meter, same-job upload/read/bind composition and process/daemon cleanup proof |
 
 Only `source`, `packet_commit` and `packet_tree` of the nine-key spec are bound.
 Static fields require exact independent input selection and source review.

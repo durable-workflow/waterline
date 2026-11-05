@@ -1,5 +1,7 @@
 """Pure countercontrols. Real application source, synthetic provider/daemon facts."""
 import copy
+import ast
+import base64
 import dataclasses
 import io
 import json
@@ -20,6 +22,7 @@ from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import accepted
 import binder
+import bootstrap
 import cell
 import contract as c
 import custody
@@ -461,6 +464,47 @@ print('OLD-ACCEPT: fabricated shared tree produced complete unbound-identity spe
         with mock.patch.dict('os.environ', {'EXECUTION_ENABLED': 'true', 'WATERLINE_SOURCE_PREPARATION_PROPOSAL': '1'}):
             self.assertRaisesRegex(c.Refusal, 'HELD', cell.execute_cell)
             self.assertRaisesRegex(c.Refusal, 'HELD', c.main)
+
+    def test_immutable_launcher_ignores_worktree_helpers_and_keeps_operational_hold(self):
+        context = self.model()[0].context
+        before = {name: sys.modules.get(name) for name in bootstrap.BOOTSTRAP_MODULES}
+        program = bootstrap.reviewed_program(self.repository, self.preparation_commit,
+            self.preparation_tree, self.manifest_sha256, context)
+        self.assertEqual(before, {name: sys.modules.get(name) for name in before})
+        with tempfile.TemporaryDirectory() as directory:
+            folder = pathlib.Path(directory)
+            marker = folder / 'unreviewed-import'
+            for name in bootstrap.MODULES:
+                (folder / (name + '.py')).write_text('raise AssertionError("mutable worktree helper imported")')
+            result = subprocess.run([sys.executable, '-I', '-'], input=program, cwd=folder,
+                                    capture_output=True, timeout=10)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(b'HELD', result.stderr)
+            self.assertNotIn(b'mutable worktree helper', result.stderr)
+            self.assertFalse(marker.exists())
+        bad_context = dataclasses.replace(context, preparation_tree='f' * 40)
+        self.assertRaises(ValueError, bootstrap.reviewed_program, self.repository, self.preparation_commit,
+                          self.preparation_tree, self.manifest_sha256, bad_context)
+        self.assertRaises(ValueError, bootstrap.reviewed_program, self.repository, self.preparation_commit,
+                          'f' * 40, self.manifest_sha256, context)
+        with mock.patch.object(bootstrap, 'load') as load:
+            self.assertRaisesRegex(ValueError, 'launcher manifest mismatch', bootstrap.reviewed_program,
+                self.repository, self.preparation_commit, self.preparation_tree, '0' * 64, context)
+            load.assert_not_called()
+
+    def test_immutable_launcher_rejects_changed_source_bytes_before_module_import(self):
+        context = self.model()[0].context
+        program = bootstrap.reviewed_program(self.repository, self.preparation_commit,
+            self.preparation_tree, self.manifest_sha256, context).decode()
+        value = ast.literal_eval(ast.parse(program).body[1].value.args[0])
+        payload = json.loads(value)
+        payload['sources']['cell.py'] = base64.b64encode(b'raise AssertionError("unreviewed source executed")').decode()
+        changed = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+        program = program.replace(repr(value), repr(changed), 1)
+        result = subprocess.run([sys.executable, '-I', '-'], input=program.encode(), capture_output=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'sealed source bytes mismatch', result.stderr)
+        self.assertNotIn(b'unreviewed source executed', result.stderr)
 
 
 if __name__ == '__main__':
