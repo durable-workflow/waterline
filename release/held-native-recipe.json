@@ -27,7 +27,8 @@
     "references_held_recipe": false,
     "worker_config": "docker/held-native-buildkit.toml",
     "worker_config_sha256": "5ddd031d9ce0a5d9646cd26725763f4247e98796bf796a274cc8c09b9e1bc061",
-    "worker_max_parallelism": 1
+    "worker_max_parallelism": 1,
+    "sbom_generator_index_digest": "sha256:873a7458c3c8ac8e32c7b796c10e1600b07b963d2aa000a72a2d97aaaa2d6315"
   },
   "immutable_oci_validator": {
     "commit": "2cc1f3915435f909b1624c1ceda860c027ade4d5",

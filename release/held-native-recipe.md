@@ -65,9 +65,9 @@ before any later candidate execution or promotion.
 | --- | --- |
 | A: local source authoring | This draft and inert Git/byte/OCI fixtures only. No candidate image, acquisition, artifact inspection/retrieval or publication. |
 | B: ordinary source CI | Existing automatic PR/main jobs, including disposable unpublished source-image smoke and its current-stable regression control. No native release archive or installed acceptance follows. General's blanket source-CI hold is superseded; current required checks still apply. |
-| C: new artifact production | Propose an explicitly selected, default-false manual mode in the existing `service-image.yml` native job on its standard Ubuntu amd64/arm64 runners, maximum two matrix jobs, 30 minutes per job, one original attempt. This mode is not implemented or selected by this packet. No tag trigger may activate it. |
+| C: new artifact production | Propose an explicitly selected, default-false manual mode in the existing `service-image.yml` native job on its standard Ubuntu amd64/arm64 runners, maximum two matrix jobs, 30 minutes per job, one original attempt. BuildKit provenance and its digest-pinned SPDX generator are explicit build effects. This mode is not implemented or selected by this packet. No tag trigger may activate it. |
 | C: source capture/preparation | Same original job/runner, existing independent capture/seal primitives and exact retained context. CA/IP/tool/base/config identities must be independently bound before use. No stock-acquisition fallback, candidate token, scripts/plugin execution or candidate autoload/reflection. No new credential or larger/paid runner. |
-| C: fresh archive validation/retention | Only the just-produced unqualified archive in its original job, at most 1 GiB per platform, bounded sanitized logs and a distinct build-only artifact with one-day retention. Proposed upload remains held. No scanner, daemon import, service/SDK/browser execution or later retrieval. |
+| C: fresh archive validation/retention | Only the just-produced unqualified archive in its original job, at most 1 GiB per platform, bounded sanitized logs and a distinct build-only artifact with one-day retention. Proposed upload remains held. No post-export vulnerability scanner, daemon import, service/SDK/browser execution or later retrieval. |
 | C: stopped native tasks | Frozen 2.15.0/#275 inspection, remote native evidence retrieval, rejected observation qualification, Server full failover and renamed equivalents stay stopped. A hosted VM grants no replacement authority for any of them. |
 | C: later collector | Corrected collector origin is recorded separately. Neither it nor the legacy preparation handoff is invoked here. New native contexts are explicitly rejected by the old handoff/binder. Actual collector/image/daemon identity and cleanup qualification require their own existing gates. |
 | D: publication and adoption | Protected publisher, anonymous installed acceptance, Release/latest, aliases, scan pointer, service-catalog observer, tuple/examples and downstream/Cloud adoption all remain held. Source CI and a build-only receipt do not release them. |
@@ -93,7 +93,7 @@ executor decision, not proof that all package-manager contexts are fixed.
 General must request an explicit new-task decision for the named immutable
 packet and proposed hosted envelope: whether to allow connecting the existing
 native builder to one new sealed-source artifact-only attempt, including its
-source/base/tool acquisition and preparation, Buildx execution, inert validation
+source/base/tool acquisition and preparation, Buildx execution including its bound SPDX generator, inert validation
 of that new output and bounded private one-day upload. The decision must
 explicitly reconcile the resource/egress/storage differences above. It must
 exclude every stopped inspector/retrieval/observation/failover task and all D
