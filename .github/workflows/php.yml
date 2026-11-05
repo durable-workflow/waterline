@@ -1354,42 +1354,52 @@ jobs:
             command_timeout: 15m
             step_timeout: 17
           - database: mysql
-            label: mysql shard 1/4
+            label: mysql shard 1/5
             extension: pdo_mysql
             composer-script: test-mysql
             configuration: phpunit-mysql.xml
             shard-index: 0
-            shard-count: 4
+            shard-count: 5
             target-seconds: 480
             command_timeout: 7m
             step_timeout: 9
           - database: mysql
-            label: mysql shard 2/4
+            label: mysql shard 2/5
             extension: pdo_mysql
             composer-script: test-mysql
             configuration: phpunit-mysql.xml
             shard-index: 1
-            shard-count: 4
+            shard-count: 5
             target-seconds: 480
             command_timeout: 7m
             step_timeout: 9
           - database: mysql
-            label: mysql shard 3/4
+            label: mysql shard 3/5
             extension: pdo_mysql
             composer-script: test-mysql
             configuration: phpunit-mysql.xml
             shard-index: 2
-            shard-count: 4
+            shard-count: 5
             target-seconds: 480
             command_timeout: 7m
             step_timeout: 9
           - database: mysql
-            label: mysql shard 4/4
+            label: mysql shard 4/5
             extension: pdo_mysql
             composer-script: test-mysql
             configuration: phpunit-mysql.xml
             shard-index: 3
-            shard-count: 4
+            shard-count: 5
+            target-seconds: 480
+            command_timeout: 7m
+            step_timeout: 9
+          - database: mysql
+            label: mysql shard 5/5
+            extension: pdo_mysql
+            composer-script: test-mysql
+            configuration: phpunit-mysql.xml
+            shard-index: 4
+            shard-count: 5
             target-seconds: 480
             command_timeout: 7m
             step_timeout: 9

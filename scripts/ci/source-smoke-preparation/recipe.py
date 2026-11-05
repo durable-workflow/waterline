@@ -6,7 +6,8 @@ import tarfile
 import unicodedata
 from dataclasses import dataclass
 
-from contract import Refusal, canonical, digest, exact, image_id, positive, require, sha
+from contract import (HOSTED_BUILD_ARGUMENTS, SOURCE, Refusal, canonical, digest, exact,
+                      image_id, positive, require, sha)
 
 DOCKERFILE = '4588c87344f6dd2133d3ab60d6cf278eb780db5827e1a2e3de9d90df720cfb4e'
 VERSION = '1.64.0'
@@ -15,6 +16,8 @@ BROWSERS = {'chromium', 'chromium-headless-shell', 'ffmpeg'}
 PACKAGE_CLOSURE = 'c55f078e4ce950c03b979b76af199675a98dba5a0a4854cfa3100b80a48e86cc'
 BROWSER_SOURCE = '2cfd419f71ac6475d81e1301fa86c34cf2a2a6bae2a0da4b5a2b18310216b6bf'
 DIRECTORY = 'directory'
+FILESYSTEM_PROFILE = 'filesystem'
+CONTEXT_PROFILE = 'native-build-context'
 
 
 def derive(original):
@@ -44,6 +47,68 @@ def validate_recipe(original, proposed):
     require(proposed == derive(original), 'Qualification recipe drift')
     # COPY/source/labels are inherited unchanged from the exact M1 recipe.
     return digest(proposed)
+
+
+def derive_hosted(original):
+    """Artifact-only recipe, never a substitute for independent input custody.
+
+    A future existing-builder invocation must receive the independently sealed
+    cache before it starts. No candidate autoloader or reflection probe runs
+    during this build. Composer itself remains a separately trusted tool.
+    """
+    text = derive(original).decode()
+    start = text.index('RUN --network=none composer dump-autoload')
+    end = text.index('\n\nFROM php@', start)
+    dump = ('RUN --network=none composer dump-autoload --no-plugins \\\n'
+            '    --no-dev --no-interaction --no-scripts --optimize')
+    text = text[:start] + dump + text[end:]
+    changes = [
+        ('ENV COMPOSER_MAX_PARALLEL_HTTP=2 COMPOSER_MAX_PARALLEL_PROCESSES=2',
+         'ENV COMPOSER_MAX_PARALLEL_HTTP=2 COMPOSER_MAX_PARALLEL_PROCESSES=2 \\\n'
+         '    COMPOSER_DISABLE_NETWORK=1 COMPOSER_CACHE_READ_ONLY=1 \\\n'
+         '    COMPOSER_CACHE_FILES_DIR=/waterline-observed-source/cache'),
+        ('RUN composer install --no-plugins',
+         'COPY .waterline-observed-source/cache /waterline-observed-source/cache\n'
+         'RUN --network=none composer install --no-plugins'),
+        ('    --no-scripts \\\n    --optimize-autoloader', '    --no-scripts'),
+        ("RUN --network=none php -r 'require \"/app/vendor/autoload.php\";' \\\n    && chmod",
+         'RUN --network=none chmod'),
+        ('ARG WATERLINE_VERSION=0.0.0-dev',
+         'ARG WATERLINE_RECIPE_SHA256\nARG WATERLINE_SOURCE_MANIFEST_SHA256\n'
+         'ARG WATERLINE_CACHE_MANIFEST_SHA256\nARG WATERLINE_CONTEXT_SHA256\n\nARG WATERLINE_VERSION=0.0.0-dev'),
+    ]
+    for before, after in changes:
+        require(text.count(before) == 1, 'Ambiguous hosted recipe transformation')
+        text = text.replace(before, after, 1)
+    return text.encode()
+
+
+def validate_hosted_recipe(original, proposed):
+    require(proposed == derive_hosted(original), 'Hosted artifact-only recipe drift')
+    return digest(proposed)
+
+
+def hosted_build_command(architecture, bindings, output):
+    """One proposed existing Buildx invocation. This function executes nothing.
+
+    The only context is the retained canonical tar on stdin. No directory,
+    remote context, registry push, daemon load or cache export is selected.
+    """
+    require(architecture in ('amd64', 'arm64'), 'Native build platform missing')
+    exact(bindings, (field for field, _argument in HOSTED_BUILD_ARGUMENTS), 'Native build bindings missing')
+    require(all(sha(value) for value in bindings.values()), 'Native build digest missing')
+    require(type(output) is str and re.fullmatch(r'/[a-zA-Z0-9_./-]{1,4095}', output)
+            and '..' not in output.split('/') and '//' not in output
+            and output.endswith('/image.oci.tar'), 'Native output path refused')
+    command = ['docker', 'buildx', 'build', '--file', 'Dockerfile', '--platform', 'linux/' + architecture,
+               '--no-cache', '--pull', '--provenance=mode=max,version=v1',
+               '--sbom=generator=docker.io/docker/buildkit-syft-scanner@sha256:'
+               '873a7458c3c8ac8e32c7b796c10e1600b07b963d2aa000a72a2d97aaaa2d6315',
+               '--output', 'type=oci,dest=' + output + ',oci-mediatypes=true',
+               '--build-arg', 'SOURCE_COMMIT=' + SOURCE, '--build-arg', 'WATERLINE_VERSION=2.15.1']
+    for field, argument in HOSTED_BUILD_ARGUMENTS:
+        command.extend(('--build-arg', argument + '=' + bindings[field]))
+    return [*command, '-']
 
 
 def validate_packages(packages):
@@ -107,15 +172,17 @@ class ArchiveBudget:
     member_bytes: int
     content_bytes: int
     members: int
+    profile: str = FILESYSTEM_PROFILE
 
     def validate(self):
         require(all(positive(value) for value in (self.archive_bytes, self.member_bytes,
                     self.content_bytes, self.members)), 'Assembly archive budget UNBOUND')
         require(self.member_bytes <= self.content_bytes <= self.archive_bytes <= 1024 ** 3
                 and self.members <= 32768, 'Assembly archive budget exceeds source ceiling')
+        require(self.profile in (FILESYSTEM_PROFILE, CONTEXT_PROFILE), 'Assembly archive profile refused')
 
 
-def closed_path(name):
+def closed_path(name, profile=FILESYSTEM_PROFILE):
     require(isinstance(name, str) and 0 < len(name.encode()) <= 4096
             and name == unicodedata.normalize('NFC', name)
             and not any(character in name for character in ('\\', '\0', '\r', '\n', ':')),
@@ -123,7 +190,11 @@ def closed_path(name):
     parts = name.split('/')
     require(not any(part in ('', '.', '..') or part.startswith('.wh.') for part in parts),
             'Assembly archive absolute/parent/whiteout path')
-    require(parts[0] in ('app', 'usr', 'etc', 'opt', 'lib', 'lib64', 'bin', 'sbin', 'var', 'data'),
+    require(profile in (FILESYSTEM_PROFILE, CONTEXT_PROFILE), 'Assembly archive profile refused')
+    roots = (('Dockerfile', '.dockerignore', '.waterline-observed-source', 'standalone',
+              'app', 'config', 'database', 'public', 'resources', 'routes', 'docker')
+             if profile == CONTEXT_PROFILE else ('app', 'usr', 'etc', 'opt', 'lib', 'lib64', 'bin', 'sbin', 'var', 'data'))
+    require(parts[0] in roots,
             'Assembly archive root outside closed output scope')
     return name.casefold()
 
@@ -132,7 +203,7 @@ def closed_manifest(value, budget):
     require(isinstance(value, dict) and 0 < len(value) <= budget.members, 'Assembly manifest shape/count')
     result, folded, prefixes = {}, set(), {}
     for name, supplied in value.items():
-        key = closed_path(name)
+        key = closed_path(name, budget.profile)
         require(key not in folded, 'Assembly manifest case collision')
         folded.add(key)
         register_prefixes(name, prefixes)
@@ -151,7 +222,8 @@ def member_manifest(supplied, budget):
     require(all(type(item[field]) is int for field in ('mode', 'uid', 'gid', 'size'))
             and (item['uid'], item['gid']) in ((0, 0), (82, 82)), 'Assembly manifest owner/type')
     directory = item['kind'] == DIRECTORY
-    require(item['kind'] in ('file', DIRECTORY) and item['mode'] in (0o600, 0o644, 0o700, 0o755)
+    modes = (0o644, 0o664, 0o755) if budget.profile == CONTEXT_PROFILE else (0o600, 0o644, 0o700, 0o755)
+    require(item['kind'] in ('file', DIRECTORY) and item['mode'] in modes
             and 0 <= item['size'] <= budget.member_bytes, 'Assembly manifest kind/mode/size')
     require((item['size'] == 0 and item['sha256'] is None) if directory else sha(item['sha256']),
             'Assembly manifest content identity')
@@ -222,7 +294,7 @@ def sealed_archive(raw, expected, budget):
     try:
         with tarfile.open(fileobj=source, mode='r:') as archive:
             for member in archive:
-                key = closed_path(member.name)
+                key = closed_path(member.name, budget.profile)
                 require(member.name not in seen and key not in folded and member.name in expected,
                         'Assembly archive duplicate/case collision/extra member')
                 require(len(seen) < budget.members, 'Assembly archive count bound')

@@ -1,9 +1,11 @@
 """Pure countercontrols. Real application source, synthetic provider/daemon facts."""
 import copy
 import ast
+import argparse
 import base64
 import dataclasses
 import io
+import importlib.util
 import json
 import pathlib
 import re
@@ -240,6 +242,31 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(directories(original), directories(proposed))
         self.assertRaises(c.Refusal, recipe.derive, original + b'\n# changed source\n')
 
+    def test_hosted_derivation_defers_candidate_autoload_and_uses_only_offline_composer(self):
+        original = subprocess.check_output(['git', '-C', str(self.repository), 'show', c.SOURCE + ':Dockerfile'])
+        legacy = recipe.derive(original)
+        self.assertRaisesRegex(c.Refusal, 'artifact-only recipe drift', recipe.validate_hosted_recipe, original, legacy)
+        proposed = recipe.derive_hosted(original)
+        self.assertEqual(proposed, (self.repository / 'docker/held-native.Dockerfile').read_bytes())
+        self.assertEqual(recipe.validate_hosted_recipe(original, proposed), c.digest(proposed))
+        self.assertNotIn(b'vendor/autoload.php', proposed)
+        self.assertNotIn(b'ReflectionClass', proposed)
+        commands = re.findall(rb'^RUN (.*?)(?=\n[^ ]|\Z)', proposed, re.MULTILINE | re.DOTALL)
+        composer_commands = [command for command in commands
+                             if re.match(rb'(?:--[^ ]+\s+)*composer\s', command)]
+        self.assertEqual(len(composer_commands), 2)
+        for command in composer_commands:
+            self.assertTrue(command.startswith(b'--network=none composer '))
+            self.assertIn(b'--no-plugins', command)
+            self.assertIn(b'--no-scripts', command)
+        self.assertIn(b'COMPOSER_CACHE_READ_ONLY=1', proposed)
+        self.assertIn(b'COMPOSER_DISABLE_NETWORK=1', proposed)
+        self.assertIn(b'COMPOSER_MAX_PARALLEL_HTTP=2 COMPOSER_MAX_PARALLEL_PROCESSES=2', proposed)
+        self.assertIn(b'docker-php-ext-install -j2', proposed)
+        for changed in (original, legacy, proposed + b'\nRUN php /app/artisan\n'):
+            self.assertRaises(c.Refusal, recipe.validate_hosted_recipe, original, changed)
+        self.assertRaises(c.Refusal, recipe.derive_hosted, original + b'\n')
+
     def test_current_manifests_do_not_fabricate_any_operational_input(self):
         recipe.validate_tool(self.lock)
         self.assertTrue(all(value is None for value in self.lock['unbound_static_inputs'].values()))
@@ -249,6 +276,210 @@ class PreparationTests(unittest.TestCase):
         self.assertEqual(len(spec), 9)
         self.assertEqual(sum(value is None for value in spec.values()), 6)
         self.assertRaisesRegex(c.Refusal, 'UNBOUND', c.require_complete_spec, spec)
+
+    def hosted_fixture(self, architecture='amd64', mutate=None):
+        context = c.Context(self.preparation_commit, self.preparation_tree,
+                            301, 1, 'synthetic-daemon', '3' * 64, '4' * 32, workflow=c.NATIVE_WORKFLOW)
+        ledger = proxy.ProxyLedger(context, self.authority, deadline=200, clock=lambda: 100)
+        _policy, _pool, _reader, archives = archive_fixtures.captured_fixture(
+            context, self.authority, self.expected, ledger)
+        ledger.seal()
+        contents = {archive_fixtures.capture.composer_cache_path(name, package): archive_fixtures.BODY
+                    for name, package in self.expected['graph'].items()}
+        proposed = (self.repository / 'docker/held-native.Dockerfile').read_bytes()
+        build = producer.HostedBuildInputs(context, self.authority, archives, ledger, contents,
+                                          b'', architecture, proposed)
+        bindings = producer.hosted_inputs(build, self.repository)['bindings']
+        spec = importlib.util.spec_from_file_location('hosted_oci_fixtures',
+                                                      self.repository / 'scripts/ci/test-oci-release.py')
+        fixtures = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fixtures)
+        def bind(parts):
+            provenance = parts['provenance']
+            provenance['subject'] = [{'name': 'image',
+                'digest': {'sha256': parts['image_descriptor']['digest'].split(':')[1]}}]
+            arguments = provenance['predicate']['buildDefinition']['externalParameters']['request']['args']
+            for field, argument in (('recipe_sha256', 'WATERLINE_RECIPE_SHA256'),
+                                     ('source_manifest_sha256', 'WATERLINE_SOURCE_MANIFEST_SHA256'),
+                                     ('cache_manifest_sha256', 'WATERLINE_CACHE_MANIFEST_SHA256'),
+                                     ('context_sha256', 'WATERLINE_CONTEXT_SHA256')):
+                arguments['build-arg:' + argument] = bindings[field]
+            if mutate is not None:
+                mutate(parts)
+        with tempfile.TemporaryDirectory(prefix='waterline-native-fixture-') as temporary:
+            archive, entries, manifest, config, attestation = fixtures.native_archive(
+                pathlib.Path(temporary), architecture, source=c.SOURCE, mutate=bind)
+            build = dataclasses.replace(build, archive=archive.read_bytes())
+        return build, bindings, entries, config, fixtures
+
+    def test_hosted_artifact_binds_actual_oci_and_original_sealed_source_attempt(self):
+        for architecture in ('amd64', 'arm64'):
+            build, bindings, _entries, config, _fixtures = self.hosted_fixture(architecture)
+            receipt = producer.hosted_artifact(build, self.repository)
+            self.assertEqual(receipt['schema'], 'waterline.build-only-native-artifact/v1')
+            self.assertIs(receipt['qualified'], False)
+            self.assertIs(receipt['execution_verified'], False)
+            self.assertIs(receipt['provider_origin_verified'], False)
+            self.assertIs(receipt['publication_admitted'], False)
+            self.assertEqual(receipt['context'], build.context.report_context())
+            self.assertEqual(receipt['context']['workflow'], c.NATIVE_WORKFLOW)
+            self.assertEqual(receipt['inputs'], bindings)
+            self.assertEqual(receipt['archive']['sha256'], c.digest(build.archive))
+            self.assertEqual(receipt['archive']['platform'], 'linux/' + architecture)
+            self.assertEqual(receipt['archive']['config_digest'], config)
+            self.assertIs(receipt['archive']['daemon_image_id'], None)
+            self.assertEqual(len(receipt['archive']['blobs']), 8)
+            self.assertEqual(receipt['cache_objects'], 79)
+
+    def test_hosted_artifact_refuses_wrong_authority_before_archive_inspection(self):
+        build, _bindings, _entries, _config, _fixtures = self.hosted_fixture()
+        changed_cache = dict(build.cache_contents)
+        changed_cache[next(iter(changed_cache))] = b'changed'
+        changes = [dataclasses.replace(build, context=dataclasses.replace(build.context, attempt=2)),
+                   dataclasses.replace(build, context=dataclasses.replace(build.context, workflow=c.WORKFLOW)),
+                   dataclasses.replace(build, cache_contents=changed_cache),
+                   dataclasses.replace(build, recipe=build.recipe + b'\nRUN php /app/artisan\n'),
+                   dataclasses.replace(build, proxy=proxy.ProxyLedger(build.context, self.authority,
+                                       deadline=200, clock=lambda: 100)),
+                   {'candidate_report': 'not independent host inputs'}]
+        for changed in changes:
+            with mock.patch.object(producer, 'native_archive_subject') as inspect:
+                self.assertRaises(c.Refusal, producer.hosted_artifact, changed, self.repository)
+                inspect.assert_not_called()
+
+    def test_hosted_artifact_refuses_changed_platform_and_opaque_or_mutable_archive(self):
+        build, _bindings, _entries, _config, _fixtures = self.hosted_fixture()
+        changes = [dataclasses.replace(build, architecture='arm64'),
+                   dataclasses.replace(build, architecture='unknown'),
+                   dataclasses.replace(build, archive=build.archive + b'opaque trailing payload'),
+                   dataclasses.replace(build, archive=bytearray(build.archive))]
+        for changed in changes:
+            self.assertRaises(c.Refusal, producer.hosted_artifact, changed, self.repository)
+
+    def test_hosted_artifact_refuses_a_provenance_substitution_of_each_independent_input(self):
+        for argument in ('WATERLINE_RECIPE_SHA256', 'WATERLINE_SOURCE_MANIFEST_SHA256',
+                         'WATERLINE_CACHE_MANIFEST_SHA256', 'WATERLINE_CONTEXT_SHA256'):
+            def mutate(parts):
+                args = parts['provenance']['predicate']['buildDefinition']['externalParameters']['request']['args']
+                args['build-arg:' + argument] = '0' * 64
+            build, _bindings, _entries, _config, _fixtures = self.hosted_fixture(mutate=mutate)
+            self.assertRaises(c.Refusal, producer.hosted_artifact, build, self.repository)
+        build, _bindings, _entries, _config, _fixtures = self.hosted_fixture(
+            mutate=lambda parts: parts['provenance'].update(subject=[]))
+        self.assertRaises(c.Refusal, producer.hosted_artifact, build, self.repository)
+
+    def test_hosted_artifact_rejects_unreferenced_blob_accepted_by_the_old_oci_reader(self):
+        build, _bindings, entries, _config, fixtures = self.hosted_fixture()
+        entries['blobs/sha256/' + c.digest(b'unreferenced')] = b'unreferenced'
+        with tempfile.TemporaryDirectory(prefix='waterline-native-fixture-') as temporary:
+            archive = pathlib.Path(temporary) / 'extra.tar'
+            fixtures.write_tar(archive, entries)
+            oci = accepted.accepted_oci(self.repository)
+            oci.unpack_oci(archive, pathlib.Path(temporary) / 'layout')
+            oci.inspect_oci(pathlib.Path(temporary) / 'layout', 'amd64', c.SOURCE)
+            changed = dataclasses.replace(build, archive=archive.read_bytes())
+        self.assertRaises(c.Refusal, producer.hosted_artifact, changed, self.repository)
+
+    def test_native_context_cannot_reuse_the_old_preparation_handoff(self):
+        host, _tool, _admission, _report, _raw, run, artifact = self.model()
+        native = dataclasses.replace(host.context, workflow=c.NATIVE_WORKFLOW)
+        self.assertRaisesRegex(c.Refusal, 'Unsupported preparation handoff', binder.provider, run, artifact, native)
+        lifecycle = cell.Lifecycle(native, c.CellBudget(0), self.authority)
+        self.assertRaisesRegex(c.Refusal, 'Unsupported preparation handoff', lifecycle.arm, 1, {})
+
+    def test_hosted_context_contains_exact_m1_leaves_and_sealed_cache_without_a_mutable_path(self):
+        build, _bindings, _entries, _config, _fixtures = self.hosted_fixture()
+        inputs = producer.hosted_inputs(build, self.repository)
+        snapshot = inputs['snapshot']
+        self.assertIs(type(snapshot['archive']), bytes)
+        self.assertEqual(inputs['bindings']['context_sha256'], c.digest(snapshot['archive']))
+        projected, cached = {}, set()
+        with tarfile.open(fileobj=io.BytesIO(snapshot['archive']), mode='r:') as archive:
+            members = {member.name: member for member in archive}
+            self.assertEqual(archive.extractfile(members['Dockerfile']).read(), build.recipe)
+            self.assertEqual(members['standalone/artisan'].mode, 0o755)
+            self.assertEqual(members['standalone/entrypoint.sh'].mode, 0o755)
+            self.assertEqual(c.digest(archive.extractfile(members['standalone/composer.lock']).read()), c.LOCK)
+            for name, member in members.items():
+                self.assertTrue(member.isfile())
+                self.assertEqual((member.uid, member.gid, member.mtime), (0, 0, 0))
+                raw = archive.extractfile(member).read()
+                for target in self.evidence.docker_copy_targets(name):
+                    final_mode = 0o755 if target in ('artisan', 'entrypoint.sh') else member.mode
+                    projected[target] = {'mode': final_mode, 'size': len(raw), 'sha256': c.digest(raw)}
+                if name.startswith('.waterline-observed-source/cache/'):
+                    cached.add(name.removeprefix('.waterline-observed-source/'))
+            self.assertNotIn('.git/config', members)
+        self.assertEqual(projected, self.expected['files'])
+        self.assertEqual(cached, set(build.cache_contents))
+
+    def test_hosted_build_command_uses_only_bound_stdin_context_and_unpublished_oci_output(self):
+        bindings = {field: '1' * 64 for field, _argument in c.HOSTED_BUILD_ARGUMENTS}
+        command = recipe.hosted_build_command('amd64', bindings, '/private/image.oci.tar')
+        self.assertEqual(command[-1], '-')
+        self.assertEqual(command[command.index('--file') + 1], 'Dockerfile')
+        self.assertEqual(command[command.index('--platform') + 1], 'linux/amd64')
+        for option in ('--push', '--load', '--tag', '--cache-to', '--cache-from'):
+            self.assertNotIn(option, command)
+        for _field, argument in c.HOSTED_BUILD_ARGUMENTS:
+            self.assertIn(argument + '=' + '1' * 64, command)
+        for path in ('/private/../image.oci.tar', '/private/image.oci.tar,push=true',
+                     'https://foreign/image.oci.tar', '/private/other.tar'):
+            self.assertRaises(c.Refusal, recipe.hosted_build_command, 'amd64', bindings, path)
+        self.assertRaises(c.Refusal, recipe.hosted_build_command, 'unknown', bindings, '/private/image.oci.tar')
+        changed = dict(bindings)
+        del changed['context_sha256']
+        self.assertRaises(c.Refusal, recipe.hosted_build_command, 'amd64', changed, '/private/image.oci.tar')
+
+    def test_context_archive_policy_does_not_relax_the_existing_filesystem_profile(self):
+        original = recipe.ArchiveBudget(65536, 32768, 32768, 32)
+        context = dataclasses.replace(original, profile=recipe.CONTEXT_PROFILE)
+        record = {'kind': 'file', 'mode': 0o664, 'uid': 0, 'gid': 0, 'size': 1, 'sha256': c.digest(b'x')}
+        self.assertRaises(c.Refusal, recipe.member_manifest, record, original)
+        self.assertEqual(recipe.member_manifest(record, context), record)
+        self.assertRaises(c.Refusal, recipe.closed_path, 'Dockerfile')
+        self.assertEqual(recipe.closed_path('Dockerfile', recipe.CONTEXT_PROFILE), 'dockerfile')
+        self.assertRaises(c.Refusal, recipe.closed_path, 'etc/passwd', recipe.CONTEXT_PROFILE)
+        self.assertRaises(c.Refusal, dataclasses.replace(original, profile='unknown').validate)
+
+    def test_hosted_artifact_refuses_pax_metadata_the_baseline_reader_accepts(self):
+        build, _bindings, entries, _config, _fixtures = self.hosted_fixture()
+        with tempfile.TemporaryDirectory(prefix='waterline-native-fixture-') as temporary:
+            archive = pathlib.Path(temporary) / 'pax.tar'
+            with tarfile.open(archive, mode='w', format=tarfile.PAX_FORMAT,
+                              pax_headers={'comment': 'opaque metadata'}) as output:
+                for name, raw in entries.items():
+                    member = tarfile.TarInfo(name)
+                    member.size = len(raw)
+                    output.addfile(member, io.BytesIO(raw))
+            oci = accepted.accepted_oci(self.repository)
+            oci.unpack_oci(archive, pathlib.Path(temporary) / 'layout')
+            oci.inspect_oci(pathlib.Path(temporary) / 'layout', 'amd64', c.SOURCE)
+            changed = dataclasses.replace(build, archive=archive.read_bytes())
+        self.assertRaises(c.Refusal, producer.hosted_artifact, changed, self.repository)
+
+    def test_build_only_receipt_cannot_reach_the_existing_verified_publisher_output(self):
+        build, _bindings, _entries, _config, fixtures = self.hosted_fixture()
+        receipt = producer.hosted_artifact(build, self.repository)
+        publisher = fixtures.OciReleaseTest()
+        publisher.setUp()
+        try:
+            selected = publisher.artifact_fixture()
+            target = publisher.root / 'amd64.zip'
+            with zipfile.ZipFile(target) as archive:
+                raw = archive.read('image.oci.tar')
+            with zipfile.ZipFile(target, 'w') as archive:
+                archive.writestr('image.oci.tar', raw)
+                archive.writestr('provenance.json', c.canonical(receipt))
+            oci = fixtures.oci
+            selected['artifacts']['amd64'].update(digest=oci.digest_file(target), size_in_bytes=target.stat().st_size)
+            (publisher.root / 'plan.json').write_bytes(oci.encode(selected))
+            arguments = argparse.Namespace(directory=publisher.root)
+            with self.assertRaisesRegex(oci.EvidenceError, 'Unexpected provenance fields'):
+                oci.prepare(arguments)
+            self.assertFalse((publisher.root / 'verified.json').exists())
+        finally:
+            publisher.doCleanups()
 
     def test_source_package_closure_rejects_floating_extra_and_changed_integrities(self):
         for mutate in [lambda x: x['packages']['playwright'].update(version='latest'),

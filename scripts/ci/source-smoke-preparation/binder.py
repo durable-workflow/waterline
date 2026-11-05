@@ -11,6 +11,7 @@ from producer import produce
 
 def provider(run, artifact, context):
     context.validate()
+    require(context.workflow == WORKFLOW, 'Unsupported preparation handoff workflow')
     require(positive(run.get('id')) and positive(run.get('run_attempt'))
             and run['id'] == context.run_id and run['run_attempt'] == context.attempt
             and run.get('head_sha') == context.preparation_commit and run.get('path') == WORKFLOW

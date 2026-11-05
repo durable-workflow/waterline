@@ -4,6 +4,7 @@ if __name__ == '__main__':
     raise SystemExit('HELD: quarantine/sealing source only; no archive or preparation admission')
 
 import json
+import hashlib
 import re
 import threading
 from dataclasses import dataclass
@@ -36,6 +37,16 @@ def object_request(package):
     repository = match.group(1)
     require(source['url'] == 'https://github.com/' + repository + '.git', 'Composer source/dist repository mismatch')
     return dist['url'], 'https://codeload.github.com/' + repository + '/legacy.zip/' + reference
+
+
+def composer_cache_path(name, package):
+    require(isinstance(name, str) and re.fullmatch(r'[a-z0-9][a-z0-9_.-]*/[a-z0-9][a-z0-9_.-]*', name),
+            'Composer cache package name refused')
+    url, _ = object_request(package)
+    # Composer 2.10.3 FileDownloader uses SHA-1 solely for its cache filename.
+    # Archive authority below remains the independent observation's SHA-256.
+    key = hashlib.sha1(url.encode(), usedforsecurity=False).hexdigest()
+    return f'cache/{name}/{key}.zip'
 
 
 def validate_hop(hop, url, status, location, policy):
@@ -234,3 +245,31 @@ class SealedArchives:
             return {'manifest_sha256': digest(self._raw), 'manifest': json.loads(self._raw),
                     'released_objects': len(self._released),
                     'released_bytes': sum(item.size for item in self._objects.values())}
+
+    def composer_cache(self, context, authority, ledger, contents):
+        """Retain exact cache bytes after all observed releases, without I/O.
+
+        A directory or candidate-provided manifest is not an independent seal.
+        The future trusted wrapper must consume these retained bytes, not read
+        mutable paths again. This result grants no build or execution authority.
+        """
+        observation = self.observation(context, authority, ledger)
+        require(type(contents) is dict, 'Composer cache must contain immutable bytes')
+        objects = observation['manifest']['objects']
+        expected = {composer_cache_path(name, item['subject']): item for name, item in objects.items()}
+        require(set(contents) == set(expected), 'Missing or extra sealed Composer cache object')
+        retained = []
+        for path, item in sorted(expected.items()):
+            raw = contents[path]
+            require(type(raw) is bytes and len(raw) == item['size'] and digest(raw) == item['sha256'],
+                    'Composer cache differs from independent observed bytes')
+            retained.append((path, raw))
+        return tuple(retained), canonical({
+            'schema': 'waterline.sealed-composer-cache/v1',
+            'provenance': 'authenticated-source-observation', 'upstream_published_checksum': False,
+            'source': SOURCE, 'tree': SOURCE_TREE, 'lock_sha256': LOCK, 'graph_sha256': GRAPH,
+            'context': context.report_context(), 'preparation': authority.identity(context),
+            'observed_source_manifest_sha256': observation['manifest_sha256'],
+            'objects': {path: {'size': item['size'], 'sha256': item['sha256']}
+                        for path, item in sorted(expected.items())},
+        })

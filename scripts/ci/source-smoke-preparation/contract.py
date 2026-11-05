@@ -14,6 +14,11 @@ FILES = 'b1a4a4edd0d83377371563e71c0fc7fa3dcbb5961b62e8c57601b3c5e5a3ddec'
 PACKET_COMMIT = 'f5b6bc8e0353f3fabaa8445021b4e6e5cd848921'
 PACKET_TREE = 'c341552e506cf512938e52d497fc082396bb0ffd'
 WORKFLOW = '.github/workflows/service-image-smoke.yml'
+NATIVE_WORKFLOW = '.github/workflows/service-image.yml'
+HOSTED_BUILD_ARGUMENTS = (('recipe_sha256', 'WATERLINE_RECIPE_SHA256'),
+                          ('source_manifest_sha256', 'WATERLINE_SOURCE_MANIFEST_SHA256'),
+                          ('cache_manifest_sha256', 'WATERLINE_CACHE_MANIFEST_SHA256'),
+                          ('context_sha256', 'WATERLINE_CONTEXT_SHA256'))
 REPOSITORY = 'durable-workflow/waterline'
 MAX_REPORT = 2 * 1024 * 1024
 MAX_ARCHIVE = 4 * 1024 * 1024
@@ -129,8 +134,10 @@ class Context:
     daemon_id: str
     runner_binding: str
     nonce: str
+    workflow: str = WORKFLOW
 
     def validate(self):
+        require(self.workflow in (WORKFLOW, NATIVE_WORKFLOW), 'Unsupported source workflow')
         require(all(isinstance(item, str) and re.fullmatch(r'[a-f0-9]{40}', item) for item in
                     (self.preparation_commit, self.preparation_tree)), 'Preparation Git identity')
         require(positive(self.run_id) and positive(self.attempt), 'Provider context missing')
@@ -142,7 +149,7 @@ class Context:
     def report_context(self):
         self.validate()
         return {'preparation_commit': self.preparation_commit, 'preparation_tree': self.preparation_tree,
-                'repository': REPOSITORY, 'workflow': WORKFLOW, 'run_id': self.run_id, 'attempt': self.attempt,
+                'repository': REPOSITORY, 'workflow': self.workflow, 'run_id': self.run_id, 'attempt': self.attempt,
                 'daemon_id': self.daemon_id, 'runner_binding': self.runner_binding, 'nonce': self.nonce}
 
     def artifact_name(self):

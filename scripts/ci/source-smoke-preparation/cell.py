@@ -49,6 +49,7 @@ class Lifecycle:
 
     def arm(self, now, guardian):
         self.context.validate()
+        require(self.context.workflow == WORKFLOW, 'Unsupported preparation handoff workflow')
         self.authority.identity(self.context)
         require(self.stage == 'static' and guardian == {
             'context': self.context.report_context(), 'ready': True, 'alive': True,

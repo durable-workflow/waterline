@@ -1,0 +1,5 @@
+[worker.oci]
+  max-parallelism = 1
+
+[worker.containerd]
+  max-parallelism = 1

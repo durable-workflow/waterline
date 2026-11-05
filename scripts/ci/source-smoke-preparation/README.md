@@ -23,9 +23,12 @@ The immutable application target is **M1**:
   `b1a4a4edd0d83377371563e71c0fc7fa3dcbb5961b62e8c57601b3c5e5a3ddec`.
 - PHP 8.3.36, 64-bit integers. No current main application source is substituted.
 
-All twenty accepted collector members remain byte-identical to accepted
+The legacy handoff still names collector
 `f5b6bc8e0353f3fabaa8445021b4e6e5cd848921`, tree
-`c341552e506cf512938e52d497fc082396bb0ffd`. That packet's own hold stays false.
+`c341552e506cf512938e52d497fc082396bb0ffd`. This is a frozen dependency,
+not a claim that the current repository's collector is unchanged. The corrected
+collector source is separately recorded at `51b1bcba7f2e02d9347316518ec369e18c9c9034`,
+tree `237645fb50b9e8b34ef21b1045798edb2b72497d`. Neither origin is activated here.
 This directory is a separate exact Git-object allowlist; its `custody.py`
 retains regular-file bytes and a SHA-256 manifest, rejecting extras, omissions,
 symlinks, executable files and oversized objects. `bootstrap.reviewed_program`
@@ -247,6 +250,17 @@ Run inert controls with:
 ```sh
 python3 -m unittest discover -s scripts/ci/source-smoke-preparation -p 'test_*.py'
 ```
+
+The separate [held native recipe packet](../../../release/held-native-recipe.md)
+reuses these source/custody primitives for an artifact-only proposal through the
+existing native builder. It retains the independently sealed observed-source
+manifest, canonicalizes frozen Git/cache inputs into an immutable stdin context,
+and defers candidate autoload/reflection. Its OCI receipt remains unqualified.
+It adds no executing wrapper, workflow input or second controller. The original
+filesystem archive profile is unchanged; its explicitly selected context profile
+preserves M1's admitted modes and cannot pass the legacy handoff as a native job.
+The exact source packet is reviewable independently; runtime adapter, tool/input
+binding and the fresh operator scope decision remain required before execution.
 
 Controls include the real old-recipe refusal/new-derivation pass, forged reports
 whose provider digests truthfully match their lies, cross-daemon handoffs,

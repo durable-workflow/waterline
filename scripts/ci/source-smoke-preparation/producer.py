@@ -1,12 +1,16 @@
 """Compact host-observation producer. Candidate JSON supplies no authority."""
 from dataclasses import dataclass
+import json
 
-from contract import (CellBudget, Context, LOCK, SOURCE, canonical, digest, image_id,
+from contract import (CellBudget, Context, LOCK, SOURCE, SOURCE_TREE, GRAPH, NATIVE_WORKFLOW, canonical, digest, image_id,
                       require, sha, source_expectation, require_static_admission)
 from recipe import validate_tool
 from custody import SourceAuthority
 from proxy import ProxyLedger
 from capture import SealedArchives
+from accepted import native_archive_subject, source_context_files
+from recipe import CONTEXT_PROFILE, ArchiveBudget, canonical_archive, sealed_archive, validate_hosted_recipe
+from bootstrap import fixed_reader
 
 
 @dataclass(frozen=True)
@@ -33,6 +37,75 @@ class HostObservation:
     network_removed_before_autoload: bool
     proxy: ProxyLedger
     archives: SealedArchives
+
+
+@dataclass(frozen=True)
+class HostedBuildInputs:
+    """Independent host inputs; never decoded from a candidate report."""
+    context: Context
+    authority: SourceAuthority
+    archives: SealedArchives
+    proxy: ProxyLedger
+    cache_contents: dict
+    archive: bytes
+    architecture: str
+    recipe: bytes
+
+
+def hosted_inputs(build, repository):
+    """Form one immutable context from independent Git and archive authority."""
+    require(type(build) is HostedBuildInputs and type(build.authority) is SourceAuthority
+            and type(build.archives) is SealedArchives and type(build.context) is Context
+            and type(build.proxy) is ProxyLedger and type(build.recipe) is bytes,
+            'Independent hosted build inputs required')
+    context = build.context
+    require(context.workflow == NATIVE_WORKFLOW, 'Wrong hosted builder workflow')
+    preparation = build.authority.identity(context)
+    retained, cache_raw = build.archives.composer_cache(context, build.authority, build.proxy, build.cache_contents)
+    cache = json.loads(cache_raw)
+    network = build.proxy.observation(context, build.authority)
+    reader, _program = fixed_reader(repository)
+    def git_file(commit, path):
+        return reader.git_small(repository, 'show', commit + ':' + path, limit=262144)
+    original = git_file(SOURCE, 'Dockerfile')
+    recipe_sha256 = validate_hosted_recipe(original, build.recipe)
+    workflow = git_file(context.preparation_commit, NATIVE_WORKFLOW)
+    files = source_context_files(repository, reader)
+    require('Dockerfile' not in files and not any(name.startswith('.waterline-observed-source/') for name in files),
+            'M1 source collides with trusted context inputs')
+    files['Dockerfile'] = (build.recipe, 0o644)
+    files['.waterline-observed-source/manifest.json'] = (cache_raw, 0o644)
+    files.update({'.waterline-observed-source/' + path: (raw, 0o644) for path, raw in retained})
+    manifest = {name: {'kind': 'file', 'mode': mode, 'uid': 0, 'gid': 0,
+                       'size': len(raw), 'sha256': digest(raw)} for name, (raw, mode) in files.items()}
+    contents = {name: raw for name, (raw, _mode) in files.items()}
+    budget = ArchiveBudget(544 * 1024 ** 2, 128 * 1024 ** 2, 528 * 1024 ** 2, 2048,
+                           profile=CONTEXT_PROFILE)
+    snapshot = sealed_archive(canonical_archive(manifest, contents), manifest, budget)
+    bindings = {'recipe_sha256': recipe_sha256,
+                'source_manifest_sha256': cache['observed_source_manifest_sha256'],
+                'cache_manifest_sha256': digest(cache_raw), 'context_sha256': snapshot['archive_sha256']}
+    return {'snapshot': snapshot, 'bindings': bindings, 'preparation': preparation,
+            'workflow_sha256': digest(workflow), 'source_capture_transport': network,
+            'cache_objects': len(retained)}
+
+
+def hosted_artifact(build, repository):
+    """Bind supplied bytes; no CLI, workflow or lifecycle invokes this source.
+
+    Tests supply inert OCI fixtures. Native execution and publication acceptance
+    remain separate; a config digest is never renamed as a daemon observation.
+    """
+    inputs = hosted_inputs(build, repository)
+    subject = native_archive_subject(repository, build.archive, build.architecture, inputs['bindings'])
+    return {'schema': 'waterline.build-only-native-artifact/v1', 'qualified': False,
+            'execution_verified': False, 'source': SOURCE, 'tree': SOURCE_TREE,
+            'lock_sha256': LOCK, 'graph_sha256': GRAPH,
+            'context': build.context.report_context(), 'preparation': inputs['preparation'],
+            'workflow_sha256': inputs['workflow_sha256'], 'inputs': inputs['bindings'], 'archive': subject,
+            'source_capture_transport': inputs['source_capture_transport'],
+            'cache_objects': inputs['cache_objects'], 'vendor_php_preflight': 'required-before-candidate-execution',
+            'provider_origin_verified': False, 'publication_admitted': False}
 
 
 def image(value, platform, app, expected_config):

@@ -113,6 +113,57 @@ class CaptureTests(unittest.TestCase):
             with mock.patch.object(c, 'EXECUTION_ENABLED', True), mock.patch.object(transport, 'request') as request:
                 self.assertRaises(c.Refusal, pool.capture, name)
                 request.assert_not_called()
+
+    def test_composer_cache_retains_all_independently_observed_bytes_and_original_context(self):
+        ledger = self.ledger()
+        _policy, _pool, _reader, sealed = captured_fixture(self.context, self.authority, self.expected, ledger)
+        contents = {capture.composer_cache_path(name, package): BODY
+                    for name, package in self.expected['graph'].items()}
+        retained, raw = sealed.composer_cache(self.context, self.authority, ledger, contents)
+        self.assertEqual(len(retained), 79)
+        self.assertEqual(dict(retained), contents)
+        manifest = json.loads(raw)
+        self.assertEqual(manifest['provenance'], 'authenticated-source-observation')
+        self.assertIs(manifest['upstream_published_checksum'], False)
+        self.assertEqual(manifest['context'], self.context.report_context())
+        self.assertEqual(manifest['preparation'], self.authority.identity(self.context))
+        self.assertEqual(manifest['observed_source_manifest_sha256'],
+                         sealed.observation(self.context, self.authority, ledger)['manifest_sha256'])
+        contents.clear()
+        self.assertEqual(len(retained), 79)
+        self.assertTrue(all(type(body) is bytes and body == BODY for _path, body in retained))
+
+    def test_composer_cache_refuses_missing_extra_mutable_and_changed_objects(self):
+        ledger = self.ledger()
+        _policy, _pool, _reader, sealed = captured_fixture(self.context, self.authority, self.expected, ledger)
+        contents = {capture.composer_cache_path(name, package): BODY
+                    for name, package in self.expected['graph'].items()}
+        first = next(iter(contents))
+        missing = dict(contents)
+        del missing[first]
+        for changed in (missing, {**contents, 'cache/foreign/object.zip': BODY},
+                        {**contents, first: BODY[:-1] + b'!'},
+                        {**contents, first: bytearray(BODY)},
+                        {**contents, first: pathlib.Path('candidate.zip')}, None):
+            self.assertRaises(c.Refusal, sealed.composer_cache, self.context, self.authority, ledger, changed)
+
+    def test_composer_cache_refuses_another_attempt_ledger_or_incomplete_release(self):
+        ledger = self.ledger()
+        _policy, _pool, _reader, sealed = captured_fixture(self.context, self.authority, self.expected, ledger, False)
+        contents = {capture.composer_cache_path(name, package): BODY
+                    for name, package in self.expected['graph'].items()}
+        self.assertRaises(c.Refusal, sealed.composer_cache, self.context, self.authority, ledger, contents)
+        with mock.patch.object(c, 'EXECUTION_ENABLED', True):
+            for name in sorted(self.expected['graph']):
+                sealed.release(name, len)
+        other = dataclasses.replace(self.context, attempt=self.context.attempt + 1)
+        self.assertRaises(c.Refusal, sealed.composer_cache, other, self.authority, ledger, contents)
+        self.assertRaises(c.Refusal, sealed.composer_cache, self.context, self.authority, self.ledger(), contents)
+
+    def test_composer_cache_name_cannot_escape_the_closed_cache(self):
+        package = next(iter(self.expected['graph'].values()))
+        for name in ('../package', 'vendor/..', '/vendor/package', 'vendor/package/extra', 'Vendor/package'):
+            self.assertRaises(c.Refusal, capture.composer_cache_path, name, package)
         ledger = self.ledger()
         pool = capture.Quarantine(self.context, self.authority, self.expected, synthetic_policy(), ledger)
         first = sorted(self.expected['graph'])[0]
