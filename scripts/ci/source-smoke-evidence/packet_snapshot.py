@@ -19,7 +19,7 @@ PACKET_FILES=frozenset({
     'browser-state-fs.mjs','browser-tool-module.mjs','cleanup.py','collector.php',
     'evidence.py','fixture.php','packet_snapshot.py','proxy.php',
     'read_state.py','runner.py','state.php','test_evidence.py','test_runner.py',
-    'test_snapshot.py','test_browser_driver.mjs',
+    'test_snapshot.py','test_browser_driver.mjs','test_authority.py',
 })
 MAX_OBJECT=262144
 MAX_SNAPSHOT=8*1024*1024
@@ -139,7 +139,7 @@ def host_program(packet,spec,repository,receipt,evidence):
     # -I removes cwd/PYTHONPATH imports. Only these exact modules enter sys.modules.
     return ('''import base64,json,sys,types
 payload=json.loads('''+repr(admitted)+''')
-for name in ('evidence','packet_snapshot','runner'):
+for name in ('evidence','packet_snapshot','cleanup','runner'):
     module=types.ModuleType(name)
     module.__file__='/reviewed-packet/scripts/ci/source-smoke-evidence/'+name+'.py'
     sys.modules[name]=module

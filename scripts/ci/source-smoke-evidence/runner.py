@@ -12,6 +12,7 @@ import json
 import os
 import re
 import secrets
+import select
 import signal
 import subprocess
 import sys
@@ -25,6 +26,7 @@ if __name__=='__main__':
 from packet_snapshot import reviewed_packet, exact_manifest, snapshot_archive, verify_archive, SEAL_PROGRAM
 from evidence import (SOURCE, MAX_JSON, Refusal, api_response, bounded_json, command,
                       expected_from_git, final_receipt, graph, identity, object_bytes, require)
+from cleanup import RESOURCE_LABEL, LISTINGS, cleanup_owned, inspect_resource, resource_binding
 
 EXECUTION_ENABLED = False
 LABEL = 'dev.durable-workflow.waterline-source-evidence'
@@ -70,12 +72,218 @@ class Session:
         self.repository=Path(repository) if repository is not None else ROOT
         self.snapshot=None
         self.snapshot_manifest=None
+        self.ownership_admitted = False
+        self.attempted, self.bindings, self.effective = set(), {}, {}
+        self.image_configs = {}
+        self.plan = {self.name(role): {'name': self.name(role), 'kind': kind, 'nonce': secrets.token_hex(16)}
+                     for kind, roles in [('container', (*ROLES, 'seal')), ('network', ('network',)),
+                                         ('volume', ('inputs', 'state'))] for role in roles}
 
     def docker(self, *args, seconds=45, limit=MAX_JSON, cleanup=False, input_bytes=None):
+        if not cleanup:
+            self.backstop_alive()
         stop = self.deadline if cleanup else self.active
         raw, receipt = command(['docker',*args], min(stop,time.monotonic()+seconds), stdout_limit=limit,input_bytes=input_bytes)
         self.commands.append(receipt)
+        if not cleanup:
+            self.backstop_alive()
         return raw
+
+    def backstop_alive(self):
+        require(self.backstop is not None and self.backstop.poll() is None, 'Cleanup backstop died prematurely')
+
+    def backstop_line(self, expected):
+        stop = min(self.deadline if expected == 'stopped' else self.active, time.monotonic() + 2)
+        line = bytearray()
+        while time.monotonic() < stop and len(line) <= 32:
+            if expected == 'stopped':
+                require(self.backstop.poll() in (None, 0), 'Cleanup backstop stop failure')
+            else:
+                self.backstop_alive()
+            ready, _, _ = select.select([self.backstop.stdout], [], [], max(0, stop - time.monotonic()))
+            require(ready, 'Cleanup backstop handshake timeout')
+            chunk = os.read(self.backstop.stdout.fileno(), 1)
+            require(chunk, 'Cleanup backstop handshake EOF')
+            line.extend(chunk)
+            if chunk == b'\n':
+                require(bytes(line) == expected.encode() + b'\n', 'Cleanup backstop handshake mismatch')
+                return
+        raise Refusal('Cleanup backstop handshake bound')
+
+    def backstop_event(self, operation, **fields):
+        self.backstop_alive()
+        raw = json.dumps({'operation': operation, **fields}, separators=(',', ':')).encode() + b'\n'
+        require(len(raw) <= 8192, 'Cleanup backstop event bound')
+        stop, position = min(self.deadline if operation == 'stop' else self.active, time.monotonic() + 2), 0
+        while position < len(raw):
+            self.backstop_alive()
+            require(time.monotonic() < stop, 'Cleanup backstop input timeout')
+            _, ready, _ = select.select([], [self.backstop.stdin], [], max(0, stop - time.monotonic()))
+            require(ready, 'Cleanup backstop input timeout')
+            try:
+                position += os.write(self.backstop.stdin.fileno(), raw[position:])
+            except BlockingIOError:
+                continue
+        self.backstop_line('stopped' if operation == 'stop' else 'ack')
+
+    def launch_backstop(self):
+        sources = {name: self.packet[name + '.py']['bytes'].decode() for name in ('evidence', 'cleanup')}
+        program = ('import sys,types\n'
+                   'for name,raw in ' + repr(sources) + '.items():\n'
+                   ' module=types.ModuleType(name);module.__file__="/reviewed-packet/"+name+".py"\n'
+                   ' sys.modules[name]=module;exec(compile(raw,module.__file__,"exec"),module.__dict__)\n'
+                   'sys.modules["cleanup"].backstop_main()\n')
+        self.backstop = subprocess.Popen([sys.executable, '-I', '-c', program, self.token, str(self.deadline),
+                                         json.dumps(self.plan, separators=(',', ':'))],
+                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                        start_new_session=True, bufsize=0)
+        os.set_blocking(self.backstop.stdin.fileno(), False)
+        self.backstop_line('ready')
+        self.backstop_event('ping')
+        ready, _, _ = select.select([self.backstop.stdout], [], [], .05)
+        require(not ready, 'Cleanup backstop did not survive readiness')
+        self.backstop_alive()
+
+    def preflight(self):
+        for kind in LISTINGS:
+            listing = ('ps', '-a') if kind == 'container' else (kind, 'ls')
+            names = self.docker(*listing, '--format', '{{.Names}}' if kind == 'container' else '{{.Name}}').decode().split()
+            require(not set(names).intersection(self.plan), 'Pre-existing exact resource name')
+            require(not self.docker(*LISTINGS[kind], '--filter', 'label=' + LABEL + '=' + self.token).strip(),
+                    'Pre-existing owner label')
+
+    def resource_labels(self, role):
+        return ['--label', LABEL + '=' + self.token, '--label', RESOURCE_LABEL + '=' + self.plan[self.name(role)]['nonce']]
+
+    def attempt(self, role):
+        require(self.ownership_admitted, 'Resource ownership not admitted')
+        name = self.name(role)
+        self.backstop_event('attempt', name=name)
+        self.attempted.add(name)
+
+    def bind_resource(self, role, returned):
+        name = self.name(role)
+        require(self.ownership_admitted and name in self.attempted, 'Unattempted creation binding')
+        planned = self.plan[name]
+        value = inspect_resource(self.docker, planned['kind'], name)
+        binding = resource_binding(planned['kind'], value, planned, self.token)
+        require(returned.strip().decode() == binding.get('Id', binding['Name']), 'Creation return identity mismatch')
+        self.bindings[name] = binding
+        self.backstop_event('bind', name=name, binding=binding)
+        return value
+
+    def check_bound(self, role):
+        name = self.name(role)
+        require(name in self.bindings, 'Resource has no creation binding')
+        value = inspect_resource(self.docker, self.plan[name]['kind'], name)
+        require(resource_binding(self.plan[name]['kind'], value, self.plan[name], self.token) == self.bindings[name],
+                'Resource replaced after creation')
+        return value
+
+    def volume(self, role, size):
+        self.attempt(role)
+        options = {'type': 'tmpfs', 'device': 'tmpfs', 'o': 'size=' + size + ',uid=82,gid=82'}
+        arguments = ['volume', 'create', *self.resource_labels(role), '--driver', 'local']
+        for key, value in options.items():
+            arguments += ['--opt', key + '=' + value]
+        value = self.bind_resource(role, self.docker(*arguments, self.name(role)))
+        require(value.get('Driver') == 'local' and value.get('Scope') == 'local'
+                and value.get('Options') == options, 'Effective volume options mismatch')
+        self.effective[self.name(role)] = value
+
+    def network(self):
+        self.attempt('network')
+        value = self.bind_resource('network', self.docker('network', 'create', '--driver', 'bridge', '--internal',
+                                                        *self.resource_labels('network'), self.name('network')))
+        require(value.get('Driver') == 'bridge' and value.get('Scope') == 'local'
+                and value.get('Internal') is True and value.get('EnableIPv6') is False
+                and value.get('Attachable') is False and value.get('Ingress') is False
+                and not value.get('Options'), 'Effective internal network mismatch')
+        self.effective[self.name('network')] = value
+
+    def verify_container(self, role, value, options, image, arguments):
+        config, host = value.get('Config', {}), value.get('HostConfig', {})
+        def option(flag):
+            return options[options.index(flag) + 1]
+        def amount(raw):
+            return int(raw[:-1]) * {'m': 1024 ** 2, 'g': 1024 ** 3}[raw[-1]]
+        base = self.image_configs[image]
+        environment = dict(item.split('=', 1) for item in base.get('Env') or [])
+        for index, flag in enumerate(options):
+            if flag == '-e':
+                key, item = options[index + 1].split('=', 1)
+                environment[key] = item
+        actual_environment = config.get('Env') or []
+        require(len(actual_environment) == len(environment)
+                and dict(item.split('=', 1) for item in actual_environment) == environment, 'Effective environment mismatch')
+        labels = {**(base.get('Labels') or {}), LABEL: self.token,
+                  RESOURCE_LABEL: self.plan[self.name(role)]['nonce']}
+        require(value.get('Image') == image and config.get('Image') == image and config.get('Labels') == labels
+                and config.get('Entrypoint') == ['timeout'] and config.get('Cmd') == arguments
+                and config.get('User') == '82:82' and config.get('Healthcheck', {}).get('Test') == ['NONE']
+                and config.get('WorkingDir', '') == (option('-w') if '-w' in options else base.get('WorkingDir', '')),
+                'Effective image/config identity mismatch')
+        require(host.get('Init') is True and host.get('ReadonlyRootfs') is True
+                and host.get('NanoCpus') == int(float(option('--cpus')) * 1_000_000_000)
+                and host.get('Memory') == amount(option('--memory'))
+                and host.get('MemorySwap') == amount(option('--memory-swap'))
+                and host.get('PidsLimit') == int(option('--pids-limit'))
+                and host.get('ShmSize') == amount(option('--shm-size'))
+                and host.get('CapDrop') == ['ALL'] and not host.get('CapAdd')
+                and host.get('SecurityOpt') == ['no-new-privileges'] and host.get('Privileged') is False
+                and host.get('RestartPolicy') == {'Name': 'no', 'MaximumRetryCount': 0}
+                and host.get('AutoRemove') is False and host.get('IpcMode') == 'private'
+                and host.get('NetworkMode') == option('--network')
+                and not any(host.get(key) for key in ('PidMode', 'UTSMode', 'UsernsMode', 'Binds', 'VolumesFrom',
+                    'Devices', 'DeviceRequests', 'DeviceCgroupRules', 'PortBindings', 'Links', 'ExtraHosts', 'CapAdd')),
+                'Effective resource/capability mismatch')
+        tmpfs = dict(options[index + 1].split(':', 1) for index, flag in enumerate(options) if flag == '--tmpfs')
+        require(host.get('Tmpfs') == tmpfs, 'Effective tmpfs mismatch')
+        expected_mounts = {}
+        for index, flag in enumerate(options):
+            if flag != '--mount':
+                continue
+            parts = dict(part.split('=', 1) if '=' in part else (part, True) for part in options[index + 1].split(','))
+            source = parts['src']
+            require(source in self.bindings, 'Unbound mounted volume')
+            expected_mounts[parts['dst']] = (source, 'readonly' not in parts)
+        mounts = value.get('Mounts', [])
+        actual_mounts, destinations = {}, set()
+        for mount in mounts:
+            destination = mount.get('Destination')
+            require(destination not in destinations, 'Duplicate effective mount')
+            destinations.add(destination)
+            if mount.get('Type') == 'tmpfs':
+                require(destination in tmpfs and not mount.get('Source') and mount.get('RW') is True, 'Foreign tmpfs mount')
+                continue
+            require(destination in expected_mounts and mount.get('Type') == 'volume', 'Foreign effective mount')
+            name, writable = expected_mounts[destination]
+            require(mount.get('Name') == name and mount.get('RW') is writable and mount.get('Driver') == 'local'
+                    and mount.get('Source') == self.bindings[name]['Mountpoint'], 'Effective volume binding mismatch')
+            actual_mounts[destination] = (name, writable)
+        require(actual_mounts == expected_mounts, 'Effective mount set mismatch')
+        network = value.get('NetworkSettings', {})
+        require(not any(network.get('Ports', {}).values()), 'Published container port')
+        if role != 'seal':
+            self.check_bound('network')
+        if role == 'browser':
+            require(not network.get('Networks'), 'Browser created another network')
+            self.check_bound('proxy')
+        elif role != 'seal':
+            attached = list(network.get('Networks', {}).values())
+            require(len(attached) == 1 and attached[0].get('NetworkID') == self.bindings[self.name('network')]['Id'],
+                    'Effective network identity mismatch')
+        for source, _ in expected_mounts.values():
+            self.check_bound('inputs' if source == self.name('inputs') else 'state')
+        self.effective[self.name(role)] = value
+
+    def create_container(self, role, options, image, arguments):
+        require(options[0] == 'create' and '--pull=never' in options, 'Local-image-only creation required')
+        self.attempt(role)
+        value = self.bind_resource(role, self.docker(*options, '--entrypoint', 'timeout', image, *arguments))
+        require(value.get('State', {}).get('Status') == 'created', 'Container ran before effective inspection')
+        self.verify_container(role, value, options, image, arguments)
+        return self.bindings[self.name(role)]['Id']
 
     def name(self, role):
         return self.prefix+'-'+role
@@ -102,10 +310,12 @@ class Session:
 
     def role(self, role, entrypoint, args, *, aliases=(), browser=False):
         cpu, memory, pids = ROLES[role]
-        network = 'container:'+self.name('proxy') if browser else self.name('network')
-        options = ['run','-d','--name',self.name(role),'--label',LABEL+'='+self.token,
+        network = ('container:' + self.bindings[self.name('proxy')]['Id'] if browser
+                   else self.bindings[self.name('network')]['Id'])
+        options = ['create','--pull=never','--name',self.name(role),*self.resource_labels(role),
                    '--init','--read-only','--user','82:82','--cpus',cpu,'--memory',memory,'--memory-swap',memory,
                    '--pids-limit',pids,'--cap-drop','ALL','--security-opt','no-new-privileges',
+                   '--no-healthcheck','--restart','no','--ipc','private','--shm-size','128m' if browser else '64m',
                    '--network',network,'--tmpfs','/tmp:rw,size=128m,uid=82,gid=82',
                    '--mount',f'type=volume,src={self.name("inputs")},dst=/inputs,readonly']
         for alias in aliases:
@@ -127,11 +337,14 @@ class Session:
             options += ['--mount',f'type=volume,src={self.name("state")},dst=/state',
                         '-e','HOME=/tmp','-w','/state']
         if browser:
-            options += ['-e','EXPECTED_CANDIDATE_SOURCE='+SOURCE, '-e','FIXED_BROWSER_BUDGET_SECONDS=.8',
-                        '--shm-size','128m']
+            options += ['-e','EXPECTED_CANDIDATE_SOURCE='+SOURCE, '-e','FIXED_BROWSER_BUDGET_SECONDS=.8']
         image = self.spec['browser_image_id'] if browser else self.spec['image_id']
-        self.docker(*options,'--entrypoint','timeout',image,'-s','TERM','-k','2',
-                    str(max(1,int(self.active-time.monotonic()))),entrypoint,*args)
+        arguments = ['-s','TERM','-k','2',str(max(1,int(self.active-time.monotonic()))),entrypoint,*args]
+        identifier = self.create_container(role, options, image, arguments)
+        self.docker('start', identifier)
+        value = self.check_bound(role)
+        require(value.get('State', {}).get('Running') is True, 'Role did not remain running')
+        self.verify_container(role, value, options, image, arguments)
 
     def verify_image(self, image, expected_config, app):
         value = bounded_json(self.docker('image','inspect',image))
@@ -146,6 +359,7 @@ class Session:
             labels=config.get('Labels') or {}
             require(labels.get('org.opencontainers.image.revision')==SOURCE
                     and labels.get('dev.durable-workflow.release.tag')=='2.15.1', 'Source image labels mismatch')
+        self.image_configs[image] = config
 
     def bind_inputs(self, expected):
         reviewed=reviewed_packet(self.repository,self.spec['packet_commit'],self.spec['packet_tree'])
@@ -180,39 +394,42 @@ class Session:
 
     def seal_inputs(self):
         require(self.snapshot is not None and self.snapshot_manifest is not None,'Snapshot preparation missing')
-        self.docker('volume','create','--label',LABEL+'='+self.token,'--driver','local','--opt','type=tmpfs',
-                    '--opt','device=tmpfs','--opt','o=size=8m,uid=82,gid=82',self.name('inputs'))
-        result=self.docker('run','--rm','-i','--name',self.name('seal'),'--label',LABEL+'='+self.token,
+        self.volume('inputs', '8m')
+        options = ['create','--pull=never','-i','--name',self.name('seal'),*self.resource_labels('seal'),
                            '--init','--read-only','--user','82:82','--network','none','--cpus','.5',
                            '--memory','512m','--memory-swap','512m','--pids-limit','128','--cap-drop','ALL',
+                           '--no-healthcheck','--restart','no','--ipc','private','--shm-size','16m',
                            '--security-opt','no-new-privileges','--tmpfs','/tmp:rw,size=16m,uid=82,gid=82',
-                           '--mount',f'type=volume,src={self.name("inputs")},dst=/sealed',
-                           '--entrypoint','timeout',self.spec['browser_image_id'],'-s','TERM','-k','2','40',
-                           'python3','-I','-c',SEAL_PROGRAM,json.dumps(self.snapshot_manifest,sort_keys=True,separators=(',',':')),
-                           input_bytes=self.snapshot)
+                           '--mount',f'type=volume,src={self.name("inputs")},dst=/sealed']
+        arguments = ['-s','TERM','-k','2','40','python3','-I','-c',SEAL_PROGRAM,
+                     json.dumps(self.snapshot_manifest,sort_keys=True,separators=(',',':'))]
+        identifier = self.create_container('seal', options, self.spec['browser_image_id'], arguments)
+        result = self.docker('start','-ai',identifier,input_bytes=self.snapshot)
+        value = self.check_bound('seal')
+        require(value.get('State', {}).get('Status') == 'exited' and value['State'].get('ExitCode') == 0,
+                'Snapshot creator failed')
         require(bounded_json(result)==self.snapshot_manifest,'Sealed manifest mismatch')
+        self.docker('rm',identifier)
         require(self.docker('ps','-aq','--filter','name=^/'+self.name('seal')+'$')==b'', 'Snapshot creator survived')
 
     def start(self):
         launch = {'schema':'waterline.source-smoke-launch/v1','source':SOURCE,'owner_label':self.token,
                   'started_monotonic':self.started_at,'utc_cleanup_deadline':self.utc_deadline,
-                  'active_seconds':1140,'total_seconds':1200,'roles':ROLES,'admission':self.spec}
+                  'active_seconds':1140,'total_seconds':1200,'roles':ROLES,'admission':self.spec,'resources':self.plan}
         descriptor=os.open(self.directory/'launch.json',os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
         with os.fdopen(descriptor,'w') as stream:
             json.dump(launch,stream,sort_keys=True)
             stream.flush()
             os.fsync(stream.fileno())
-        # Captured absolute deadline precedes the first Docker/network operation.
-        # This independent process owns only this exact unpredictable label.
-        self.backstop = subprocess.Popen([sys.executable,'-I','-c',self.packet['cleanup.py']['bytes'].decode(),self.token,str(self.deadline)],
-                                         stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
-                                         start_new_session=True)
+        self.launch_backstop()
+        self.preflight()
         self.verify_image(self.spec['image_id'],self.spec['image_config_sha256'],True)
         self.verify_image(self.spec['browser_image_id'],self.spec['browser_config_sha256'],False)
+        self.backstop_event('arm')
+        self.ownership_admitted = True
         self.seal_inputs()
-        self.docker('network','create','--internal','--label',LABEL+'='+self.token,self.name('network'))
-        self.docker('volume','create','--label',LABEL+'='+self.token,'--driver','local',
-                    '--opt','type=tmpfs','--opt','device=tmpfs','--opt','o=size=128m,uid=82,gid=82',self.name('state'))
+        self.network()
+        self.volume('state', '128m')
         self.role('fixture','php',['-S','0.0.0.0:18081','/inputs/packet/fixture.php'],aliases=('budget-backend',))
         self.write_mode('healthy')
         self.role('app','sleep',['1150'],aliases=('budget-app',))
@@ -295,21 +512,16 @@ class Session:
         self.observed.append(observation)
 
     def cleanup(self):
-        # Include resources created before a failed command returned a handle.
-        for kind, listing, remove in [('container',('ps','-aq'),('rm','-f')),
-                                       ('network',('network','ls','-q'),('network','rm')),
-                                       ('volume',('volume','ls','-q'),('volume','rm','-f'))]:
-            ids=self.docker(*listing,'--filter','label='+LABEL+'='+self.token,cleanup=True).decode().split()
-            for identifier in ids:
-                require(re.fullmatch(r'[a-f0-9]{12,64}|waterline-source-[a-f0-9-]+',identifier),'Cleanup identity refused')
-                self.docker(*remove,identifier,cleanup=True)
-        receipt={}
-        for kind, args in [('containers',('ps','-aq')),('networks',('network','ls','-q')),('volumes',('volume','ls','-q'))]:
-            receipt[kind]=self.docker(*args,'--filter','label='+LABEL+'='+self.token,cleanup=True).decode().split()
+        receipt = {'containers': [], 'networks': [], 'volumes': []}
+        if self.ownership_admitted and self.attempted:
+            receipt = cleanup_owned(lambda *args: self.docker(*args, cleanup=True), self.token,
+                                    self.plan, self.attempted, self.bindings)
         if self.backstop is not None:
-            self.backstop.terminate()
-            self.backstop.wait(timeout=2)
-        receipt['processes']=[] if self.backstop is None or self.backstop.poll() is not None else ['cleanup-backstop']
+            self.backstop_event('stop')
+            require(self.backstop.wait(timeout=2) == 0, 'Cleanup backstop premature exit')
+            self.backstop.stdin.close()
+            self.backstop.stdout.close()
+        receipt['processes'] = []
         return receipt
 
 
@@ -323,13 +535,18 @@ def execute_reviewed(spec, repository, receipt_directory, destination, packet):
     expected=expected_from_git(Path(repository))
     expected['admission']=spec
     session=Session(spec,receipt_directory,Path(destination).parent,packet,repository)
+    # Packet/graph/receipt/snapshot refusal cannot enter any Docker cleanup.
+    session.bind_inputs(expected)
     try:
-        session.bind_inputs(expected)
         session.start()
         for name in ('clear-before','cached','clear-after'):
             session.phase(name)
     finally:
         cleanup=session.cleanup()
+    expected['effective_resources'] = {
+        name: {'inspection_sha256': hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest(),
+               'kind': session.plan[name]['kind'], 'nonce': session.plan[name]['nonce']}
+        for name, value in session.effective.items()}
     return final_receipt(expected,session.observed,session.commands,cleanup,Path(destination))
 
 

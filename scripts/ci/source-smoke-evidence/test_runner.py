@@ -47,7 +47,7 @@ class RunnerTests(unittest.TestCase):
             marker=root/'unexpected-import'
             for name in ('evidence.py','packet_snapshot.py'):
                 (root/name).write_text('from pathlib import Path;Path('+repr(str(marker))+').touch()')
-            for name in ('runner.py','bootstrap.py'):
+            for name in ('runner.py','bootstrap.py','cleanup.py'):
                 (root/name).write_bytes((packet/name).read_bytes())
                 result=subprocess.run([sys.executable,'-I',str(root/name)],capture_output=True,timeout=3)
                 self.assertNotEqual(result.returncode,0)
@@ -66,13 +66,18 @@ class RunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=pathlib.Path(directory).resolve();inputs=root/'input';inputs.mkdir();out=root/'output';out.mkdir()
             s=r.Session(spec(),inputs,out);calls=[]
-            s.docker=lambda *args,**kwargs:calls.append(args) or b''
+            s.bindings={s.name(role):{'Id':str(index)*64} for index,role in enumerate(('network','proxy'),1)}
+            s.create_container=lambda role,options,image,arguments:calls.append(tuple(options)) or 'a'*64
+            s.docker=mock.Mock(return_value=b'')
+            s.check_bound=mock.Mock(return_value={'State':{'Running':True}})
+            s.verify_container=mock.Mock()
             for role,_,args in [('fixture','php',[]),('app','sleep',[]),('proxy','php',[]),('browser','sleep',[])]:
                 s.role(role,'sleep',['100'],browser=role=='browser')
             self.assertEqual(len(calls),4)
             for call in calls:
                 for option in ('--init','--read-only','--user','--cpus','--memory','--memory-swap','--pids-limit','--cap-drop','--security-opt'):
                     self.assertIn(option,call)
+                self.assertIn('--pull=never',call)
                 self.assertIn('82:82',call);self.assertIn('ALL',call);self.assertIn('no-new-privileges',call)
                 self.assertNotIn('-p',call);self.assertNotIn('--privileged',call);self.assertNotIn('host',call)
                 for argument in call:
@@ -105,6 +110,7 @@ class RunnerTests(unittest.TestCase):
     def test_interrupted_cleanup_cannot_be_accepted(self):
         with tempfile.TemporaryDirectory() as directory:
             root=pathlib.Path(directory).resolve();(root/'i').mkdir();(root/'e').mkdir();s=r.Session(spec(),root/'i',root/'e')
+            s.ownership_admitted=True;s.attempted.add(s.name('fixture'))
             s.docker=mock.Mock(side_effect=e.Refusal('uncertain cleanup'))
             self.assertRaises(e.Refusal, s.cleanup)
             self.assertRaises(e.Refusal, e.cleanup_receipt, {'containers': ['remaining'], 'networks': [], 'volumes': [], 'processes': []})
@@ -112,14 +118,15 @@ class RunnerTests(unittest.TestCase):
     def test_clean_mock_requires_independent_empty_readbacks(self):
         with tempfile.TemporaryDirectory() as directory:
             root=pathlib.Path(directory).resolve();(root/'i').mkdir();(root/'e').mkdir();s=r.Session(spec(),root/'i',root/'e')
+            s.ownership_admitted=True;s.attempted.add(s.name('fixture'))
             calls=[]
             def docker(*args,**kw):
                 calls.append((args,kw));return b''
             s.docker=docker
             result=s.cleanup();e.cleanup_receipt(result)
-            self.assertEqual(len(calls),6)
+            self.assertEqual(len(calls),9)
             self.assertTrue(all(kw.get('cleanup') is True for _,kw in calls))
-            self.assertTrue(all('label='+r.LABEL+'='+s.token in args for args,_ in calls))
+            self.assertEqual(sum('label='+r.LABEL+'='+s.token in args for args,_ in calls),6)
 
     def test_failed_cache_command_or_api_phase_cannot_become_a_receipt(self):
         with tempfile.TemporaryDirectory() as directory:

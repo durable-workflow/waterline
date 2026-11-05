@@ -34,14 +34,27 @@ The packet contains:
   keys itself. Normal HTTP kernel bootstrap precedes route-cache inspection.
 - `runner.py`: held outer runner, pre-Docker launch receipt, one owner label,
   monotonic deadline, bounded commands and independent empty cleanup readbacks.
+  Packet/receipt/graph/snapshot admission completes outside Docker cleanup.
+  Exact resource names and owner-label collisions refuse before creation. Each
+  attempted creation has a separate random resource label and acknowledged
+  identity binding. Containers use local images only, are created and inspected
+  before start, and are inspected again after start. Effective image/config,
+  limits, capabilities, user, mounts and network must match the reviewed plan.
   It requires already-prepared immutable local application/tool image IDs and a
   separate authentic preparation receipt. That receipt binds the exact M1 lock,
   full source/dist graph, installed-metadata byte digest, scripts/plugins disabled,
   concurrency two, effective trust, CA/tool identities and provider artifact/run/
   digest. This packet neither creates that receipt nor fetches dependencies.
-- `cleanup.py`: independently launched from reviewed in-memory bytes, with the
-  same captured monotonic deadline and exact-label cleanup. It never reopens a
-  mutable cleanup script or performs global cleanup.
+- `cleanup.py`: independently launched with its reviewed evidence helper from
+  in-memory bytes and the same captured monotonic deadline. A bounded ready,
+  ping and survival handshake precedes Docker work; creation attempts and
+  returned identities require acknowledgements. Cleanup requires the planned
+  name/resource label and retained creation identity, including volume creation
+  metadata. It refuses foreign or replaced objects and verifies empty owner
+  inventories plus absent attempted names. Expected stop is acknowledged and
+  exits zero; startup failure, owner loss, expiry and premature death cannot
+  resemble successful final shutdown. It never reopens mutable helper files or
+  performs global cleanup.
 - `fixture.php`, `proxy.php`, `state.php`, `read_state.py`: synthetic internal
   peers, bounded mode/state/response/header readers and path guards.
 - `browser-driver.mjs`: a thin bounded I/O adapter for the **unchanged**, separately
