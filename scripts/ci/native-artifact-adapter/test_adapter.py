@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 import zipfile
 
@@ -253,22 +254,120 @@ class PrivateAdapterTest(unittest.TestCase):
         changed = dict(files, **{'stdout.log': bytearray(files['stdout.log'])})
         self.assertRaises(ValueError, adapter.upload_proposal, prepared, receipt, changed)
 
-    def test_private_provider_retention_is_exactly_original_one_day_and_still_not_authentication(self):
+    def retention_fixture(self):
         prepared, _contents, _sealed, _ledger = self.inputs()
         receipt, files = adapter.describe_output(self.p, prepared, self.output(prepared))
         proposal = adapter.upload_proposal(prepared, receipt, files)
-        observed = {'origin': copy.deepcopy(proposal['origin']), 'audience': copy.deepcopy(proposal['audience']),
-                    'artifact_id': 501, 'name': proposal['with']['name'], 'size': 12345, 'zip_sha256': '8' * 64,
-                    'created_at': '2026-01-01T00:01:00Z', 'expires_at': '2026-01-02T00:01:00Z',
-                    'retention_days': 1, 'expired': False, 'overwrite': False}
-        self.assertIs(adapter.validate_retention(proposal, observed), False)
-        for key, value in (('name', 'public-archive'), ('expires_at', '2026-01-03T00:01:00Z'),
-                           ('expired', True), ('overwrite', True), ('retention_days', True), ('artifact_id', False)):
-            changed = dict(observed, **{key: value})
-            self.assertRaises(ValueError, adapter.validate_retention, proposal, changed)
+        # A separate fictional protected source receipt, not fields invented
+        # on an artifact API response. The real source/clock reader is held.
+        nonce = '4' * 32
+        root = '/fixture/quarantine/' + nonce
+        expected_inputs = {'name': 'waterline-build-only-amd64-301-1-' + nonce,
+            'path': '\n'.join(root + '/' + leaf for leaf in
+                            ('image.oci.tar', 'receipt.json', 'stderr.log', 'stdout.log')),
+            'retention-days': 1, 'compression-level': 0, 'if-no-files-found': 'error',
+            'overwrite': False, 'include-hidden-files': False}
+        selected, _observed = selection()
+        request = adapter.ProtectedUploadRequest(base.canonical(selected['origin']), 'c' * 64, '7' * 64,
+            'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9',
+            base.digest(base.canonical(expected_inputs)), '2026-01-01T00:01:01Z', '2026-01-02T00:01:01Z')
+        run = {'id': 301, 'run_attempt': 1, 'path': '.github/workflows/fictional-build.yml',
+            'event': 'workflow_dispatch', 'head_branch': 'main', 'head_sha': 'a' * 40,
+            'repository': {'id': 42, 'full_name': 'example-company/private-fixture', 'private': True}}
+        artifact = {'id': 501, 'node_id': 'MDg6FICTIONAL', 'name': expected_inputs['name'],
+            'size_in_bytes': 12345, 'digest': 'sha256:' + '8' * 64, 'expired': False,
+            'created_at': '2026-01-01T00:01:00Z', 'updated_at': '2026-01-01T00:01:00Z',
+            'expires_at': '2026-01-02T00:00:59Z',
+            'url': 'https://api.github.com/repos/example-company/private-fixture/actions/artifacts/501',
+            'archive_download_url': 'https://api.github.com/repos/example-company/private-fixture/actions/artifacts/501/zip',
+            'workflow_run': {'id': 301, 'repository_id': 42, 'head_repository_id': 42,
+                             'head_branch': 'main', 'head_sha': 'a' * 40}}
+        return proposal, request, run, artifact, selected['audience']
+
+    def test_metadata_shaped_one_day_expiries_remain_original_not_normalized(self):
+        proposal, request, run, artifact, audience = self.retention_fixture()
+        for created, expires, seconds in (
+                ('2026-01-01T00:01:00Z', '2026-01-02T00:00:59Z', 86399),
+                ('2026-01-01T00:01:01Z', '2026-01-02T00:01:01Z', 86400)):
+            supplied = dict(artifact, created_at=created, expires_at=expires)
+            protected = request  # Same independently fixed policy/clock receipt for both API shapes.
+            original = adapter.freeze_retention(proposal, protected, run, supplied, audience)
+            self.assertEqual(json.loads(original.facts)['artifact']['expires_at'], expires)
+            self.assertEqual((adapter.utc(expires)-adapter.utc(created)).total_seconds(), seconds)
+            self.assertIs(adapter.validate_retention(proposal, protected, original, run, supplied, audience), False)
+        self.assertFalse({'retention_days', 'overwrite'} & set(artifact))
+        self.assertNotIn('run_attempt', artifact['workflow_run'])
+        self.assertEqual(proposal['uses'], 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9')
+
+    def test_retention_snapshot_refuses_replacement_renewal_and_fabricated_api_policy(self):
+        proposal, request, run, artifact, audience = self.retention_fixture()
+        original = adapter.freeze_retention(proposal, request, run, artifact, audience)
+        for key, value in (('id', 502), ('name', 'public-archive'),
+                ('expires_at', '2026-01-02T00:01:00Z'),  # Even a one-second extension is a change.
+                ('expires_at', '2026-01-02T00:00:58Z'),
+                ('created_at', '2026-01-01T00:01:01Z'), ('expired', True),
+                ('digest', 'sha256:'+'9'*64), ('size_in_bytes', 54321),
+                ('overwrite', False), ('retention_days', 1)):
+            changed = dict(artifact, **{key: value})
+            self.assertRaises(ValueError, adapter.validate_retention, proposal, request, original,
+                              run, changed, audience)
+        changed_run = dict(run, run_attempt=2)
+        self.assertRaises(ValueError, adapter.validate_retention, proposal, request, original,
+                          changed_run, artifact, audience)
+        changed_artifact = copy.deepcopy(artifact)
+        changed_artifact['workflow_run']['repository_id'] = 99
+        self.assertRaises(ValueError, adapter.validate_retention, proposal, request, original,
+                          run, changed_artifact, audience)
+        changed_request = dataclasses.replace(request, retention_anchor='2026-01-01T00:01:02Z',
+                                               maximum_expiry='2026-01-02T00:01:02Z')
+        self.assertRaises(ValueError, adapter.validate_retention, proposal, changed_request, original,
+                          run, artifact, audience)
+
+    def test_independent_request_and_deadline_missing_or_excess_retention_refuses(self):
+        proposal, request, run, artifact, audience = self.retention_fixture()
+        for changed in (dataclasses.replace(request, maximum_expiry=None),
+                        dataclasses.replace(request, source_receipt_sha256=None),
+                        dataclasses.replace(request, inputs_sha256='9' * 64),
+                        dataclasses.replace(request, action='actions/upload-artifact@'+'9'*40)):
+            self.assertRaises(ValueError, adapter.freeze_retention, proposal, changed, run, artifact, audience)
+        changed = dict(artifact, expires_at='2026-01-02T00:01:01Z')
+        self.assertRaises(ValueError, adapter.freeze_retention, proposal, request, run, changed, audience)
+        # Creation can occur later in an upload lifecycle; keep the shorter
+        # observed lifetime and the protected original maximum unchanged.
+        later = dict(artifact, created_at='2026-01-01T00:03:00Z')
+        original = adapter.freeze_retention(proposal, request, run, later, audience)
+        self.assertIs(adapter.validate_retention(proposal, request, original, run, later, audience), False)
+        for field, value in (('retention-days', 2), ('overwrite', True)):
+            changed = copy.deepcopy(proposal)
+            changed['with'][field] = value
+            self.assertRaises(ValueError, adapter.freeze_retention, changed, request, run, artifact, audience)
         changed = copy.deepcopy(proposal)
         changed.update(token_source='public-job-runtime-token', cross_repository_transfer=True)
-        self.assertRaises(ValueError, adapter.validate_retention, changed, observed)
+        self.assertRaises(ValueError, adapter.freeze_retention, changed, request, run, artifact, audience)
+
+    def test_prior_exact_day_contract_fails_the_shorter_metadata_shape(self):
+        raw = subprocess.check_output(['git', '-C', str(ROOT), 'show',
+            '1d235fb60f0f3ae87329abad604d7a973225146d:scripts/ci/native-artifact-adapter/adapter.py'])
+        module = types.ModuleType('legacy_private_retention')
+        sys.modules[module.__name__] = module
+        try:
+            exec(compile(raw, '/legacy-private-retention.py', 'exec'), module.__dict__)
+            proposal, request, run, artifact, audience = self.retention_fixture()
+            # Only a legacy countercontrol: these copied policy fields were
+            # never actual API observations and are absent from the new path.
+            legacy = {'origin': proposal['origin'], 'audience': audience,
+                'artifact_id': artifact['id'], 'name': artifact['name'], 'size': artifact['size_in_bytes'],
+                'zip_sha256': artifact['digest'][7:], 'created_at': artifact['created_at'],
+                'expires_at': artifact['expires_at'], 'retention_days': 1, 'overwrite': False, 'expired': False}
+            legacy_proposal = dict(proposal, uses=module.UPLOAD_ACTION)
+            self.assertRaisesRegex(ValueError, 'Original one-day expiry changed',
+                                   module.validate_retention, legacy_proposal, legacy)
+            exact = dict(legacy, expires_at='2026-01-02T00:01:00Z')
+            self.assertIs(module.validate_retention(legacy_proposal, exact), False)
+            original = adapter.freeze_retention(proposal, request, run, artifact, audience)
+            self.assertIs(adapter.validate_retention(proposal, request, original, run, artifact, audience), False)
+        finally:
+            sys.modules.pop(module.__name__, None)
 
     def test_base_drift_refuses_before_evaluating_source(self):
         git = base.git_reader(ROOT)

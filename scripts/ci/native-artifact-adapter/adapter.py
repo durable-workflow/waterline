@@ -14,7 +14,7 @@ MAX_ARCHIVE = 1024 ** 3
 MAX_DIAGNOSTIC = 1024 ** 2
 MAX_RECEIPT = 3 * MAX_DIAGNOSTIC
 MAX_PROVIDER_ZIP = MAX_ARCHIVE + 6 * MAX_DIAGNOSTIC
-UPLOAD_ACTION = 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
+UPLOAD_ACTION = 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9'
 RECEIPT_NAME = 'receipt.json'
 ARCHIVE_NAME = 'image.oci.tar'
 STOPS = ('native_inspector', 'native_retrieval', 'observation_qualification', 'server_failover',
@@ -376,31 +376,118 @@ def upload_proposal(prepared, receipt, files):
                      'retention-days': 1, 'compression-level': 0, 'if-no-files-found': 'error',
                      'overwrite': False, 'include-hidden-files': False},
             'members': {name: {'size': len(raw), 'sha256': base.digest(raw)} for name, raw in sorted(files.items())},
+            'request_source_receipt': None, 'original_deadline': None, 'original_provider_snapshot': None,
             'upload_receipt': None, 'provider_zip_digest': None, 'created_at': None, 'expires_at': None,
             'audience': selected['audience'], 'cleanup': selected['cleanup']}
 
 
-def validate_retention(proposal, observed):
-    """Pure original-provider contract; it performs no retrieval or mutation."""
-    selected_origin, selected_audience = proposal['origin'], proposal['audience']
-    origin(selected_origin)
-    audience(selected_audience)
-    require(proposal['uses'] == UPLOAD_ACTION and proposal['execution_enabled'] is False
-            and proposal['token_source'] == 'same-repository-job-runtime-only'
-            and proposal['cross_repository_transfer'] is False, 'Public/private token route refused')
-    exact(observed, ('origin', 'audience', 'artifact_id', 'name', 'size', 'zip_sha256',
-                     'created_at', 'expires_at', 'retention_days', 'expired', 'overwrite'),
-          'Private retention observation shape')
-    require(observed['origin'] == selected_origin and observed['audience'] == selected_audience,
-            'Retention origin/audience substitution')
-    require(observed['name'] == proposal['with']['name'], 'Original artifact namespace changed')
-    require(positive(observed['artifact_id']) and positive(observed['size'])
-            and observed['size'] <= MAX_PROVIDER_ZIP and sha(observed['zip_sha256'])
-            and observed['retention_days'] == 1 and type(observed['retention_days']) is int
-            and observed['expired'] is False and observed['overwrite'] is False,
-            'Private retention bound refused')
-    require(utc(observed['expires_at']) - utc(observed['created_at']) == timedelta(days=1),
-            'Original one-day expiry changed')
+@dataclass(frozen=True)
+class ProtectedUploadRequest:
+    """Independent protected source/clock receipt, never artifact API facts.
+
+    The real source reader and clock authority remain unbound. A digest match
+    here is consistency validation, not proof that the proposed action ran.
+    """
+    origin: bytes
+    workflow_sha256: str
+    source_receipt_sha256: str
+    action: str
+    inputs_sha256: str
+    retention_anchor: str
+    maximum_expiry: str
+
+    def binding(self, proposal):
+        origin(proposal['origin'])
+        audience(proposal['audience'])
+        require(self.origin == base.canonical(proposal['origin'])
+                and self.workflow_sha256 == proposal['origin']['workflow']['sha256']
+                and sha(self.source_receipt_sha256) and self.action == UPLOAD_ACTION
+                and self.action == proposal['uses']
+                and self.inputs_sha256 == base.digest(base.canonical(proposal['with'])),
+                'Independent upload request source missing or changed')
+        policy = proposal['with']
+        require(type(policy['retention-days']) is int and policy['retention-days'] == 1
+                and policy['overwrite'] is False
+                and proposal['execution_enabled'] is False
+                and proposal['token_source'] == 'same-repository-job-runtime-only'
+                and proposal['cross_repository_transfer'] is False, 'Protected upload request policy refused')
+        require(utc(self.maximum_expiry) - utc(self.retention_anchor) == timedelta(days=1),
+                'Original protected request deadline UNBOUND or changed')
+        return base.canonical({'origin': json.loads(self.origin), 'workflow_sha256': self.workflow_sha256,
+            'source_receipt_sha256': self.source_receipt_sha256, 'action': self.action,
+            'inputs_sha256': self.inputs_sha256, 'retention_anchor': self.retention_anchor,
+            'maximum_expiry': self.maximum_expiry})
+
+
+@dataclass(frozen=True)
+class RetentionSnapshot:
+    request: bytes
+    facts: bytes
+
+
+def provider_facts(proposal, run, artifact, observed_audience):
+    """Select real API fields; request policy is not copied into API evidence.
+
+    The artifact API has no attempt, retention-days or overwrite field. Its
+    repository/run/head facts are paired with a separate original run response;
+    audience comes from the independently required repository audience reader.
+    Extra URL fields are not download authority and are never followed here.
+    """
+    expected = proposal['origin']
+    origin(expected)
+    audience(observed_audience)
+    require(observed_audience == proposal['audience'], 'Retention audience changed')
+    require(type(run) is dict and type(artifact) is dict
+            and not {'retention_days', 'retention-days', 'overwrite'} & set(artifact),
+            'Provider facts contain fabricated request-policy fields')
+    repo = run.get('repository') or {}
+    require(type(repo) is dict, 'Provider repository shape')
+    require(positive(repo.get('id')) and repo['id'] == expected['repository']['id'] and repo.get('private') is True
+            and repo.get('full_name') == expected['repository']['full_name']
+            and type(run.get('id')) is int and run['id'] == expected['run_id']
+            and type(run.get('run_attempt')) is int and run['run_attempt'] == expected['attempt']
+            and run.get('head_sha') == expected['head_sha'] and run.get('path') == expected['workflow']['path']
+            and run.get('event') == expected['event'] and run.get('head_branch') == expected['ref'][11:],
+            'Original private provider run changed')
+    workflow = artifact.get('workflow_run') or {}
+    require(type(workflow) is dict, 'Artifact workflow-run shape')
+    require(positive(workflow.get('repository_id')) and positive(workflow.get('head_repository_id'))
+            and positive(workflow.get('id')) and workflow['repository_id'] == expected['repository']['id']
+            and workflow.get('head_repository_id') == expected['repository']['id']
+            and workflow.get('id') == expected['run_id'] and workflow.get('head_sha') == expected['head_sha']
+            and workflow.get('head_branch') == expected['ref'][11:], 'Artifact provider run/head changed')
+    digest = artifact.get('digest')
+    require(positive(artifact.get('id')) and artifact.get('name') == proposal['with']['name']
+            and positive(artifact.get('size_in_bytes')) and artifact['size_in_bytes'] <= MAX_PROVIDER_ZIP
+            and type(digest) is str and digest.startswith('sha256:') and sha(digest[7:])
+            and artifact.get('expired') is False, 'Original provider artifact refused')
+    fields = ('id', 'name', 'size_in_bytes', 'digest', 'created_at', 'expires_at', 'expired')
+    require(set(fields) <= set(artifact), 'Original provider metadata incomplete')
+    selected = {name: artifact[name] for name in fields}
+    # Preserve the exact observed strings. This is an upper bound, not a claim
+    # about which upload lifecycle event starts the provider's retention clock.
+    duration = utc(selected['expires_at']) - utc(selected['created_at'])
+    require(timedelta(0) < duration <= timedelta(days=1), 'Provider lifetime exceeds the one-day bound')
+    return base.canonical({'artifact': selected, 'workflow_run': {name: workflow[name]
+        for name in ('id', 'repository_id', 'head_repository_id', 'head_branch', 'head_sha')},
+        'run_attempt': run['run_attempt'], 'audience': observed_audience})
+
+
+def freeze_retention(proposal, request, run, artifact, observed_audience):
+    """Retain the original supplied deadline in memory; no provider request."""
+    require(type(request) is ProtectedUploadRequest, 'Independent protected request receipt required')
+    binding = request.binding(proposal)
+    facts = provider_facts(proposal, run, artifact, observed_audience)
+    require(utc(artifact['expires_at']) <= utc(request.maximum_expiry),
+            'Provider deadline exceeds original protected request')
+    return RetentionSnapshot(binding, facts)
+
+
+def validate_retention(proposal, request, original, run, artifact, observed_audience):
+    """Compare against the immutable first readback; no renewal or tolerance."""
+    require(type(original) is RetentionSnapshot, 'Original provider deadline snapshot required')
+    current = freeze_retention(proposal, request, run, artifact, observed_audience)
+    require(current == original, 'Original artifact identity or expiry changed')
     return False  # Consistency is not authenticated provider or cleanup proof.
 
 

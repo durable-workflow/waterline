@@ -38,6 +38,8 @@
     "original_export_and_diagnostics": null,
     "immutable_materialization_and_upload_paths": null,
     "private_artifact_id_digest_members_creation_and_expiry": null,
+    "independent_upload_request_source_and_original_protected_deadline": null,
+    "provider_creation_upload_lifecycle_clock_relation": null,
     "direct_owned_resource_ids_final_absence_and_backstop": null,
     "fresh_operator_task_and_stop_map_reconciliation": null
   },

@@ -87,9 +87,30 @@ fallback is selected. The original OCI limit is 1 GiB per platform; each of the
 two original diagnostic streams is bounded to 1 MiB. The receipt is at most
 3 MiB. The provider ZIP has a separate 1 GiB + 6 MiB bound allowing only these
 members and wrapper overhead; this does not increase the OCI export cap. Retention is
-fixed at one day. Original creation/expiry must remain exactly one day apart;
-replacement/extension/changed audience or origin refuses. These timestamp and
-tar/Buildx assumptions are synthetic and unqualified for the real provider.
+a one-day request, separately bound to the selected pinned action, resolved
+inputs and an independent protected source/clock receipt. Artifact API facts do
+not contain `retention_days` or `overwrite`; neither field is manufactured from
+request inputs. The artifact response's repository/run/head is paired with a
+separate original run response for its attempt, and an independent audience
+reader supplies audience facts.
+
+`freeze_retention()` retains the first supplied provider ID/name/digest/size and
+literal creation/expiry strings in an immutable memory snapshot. One-day
+metadata can have an 86,399-second or 86,400-second creation-to-expiry interval.
+The original shorter expiry stays shorter. Positive lifetimes must remain at
+most one day and within the original protected maximum; no broad tolerance is
+added. `validate_retention()` requires every later factual readback and the
+protected request to match that first snapshot exactly. A replacement, renewed
+or even shortened expiry refuses rather than silently replacing the original.
+
+The protected retention anchor/maximum is an independent task input, not
+inferred from the artifact's creation timestamp. No ordering or exact retention
+clock relationship between API creation, upload start/completion and that
+anchor is established here, including for larger uploads. The actual protected
+source reader, clock authority and provider lifecycle relation remain UNBOUND
+and unqualified. Missing authority/deadline refuses; source consistency never
+becomes an authentication or execution claim. The tar/Buildx assumptions also
+remain synthetic and unqualified for a real export.
 
 The actual private workflow owner still owns immutable materialization, the
 upload source path and authenticated artifact ID/digest/member/expiry readbacks.
