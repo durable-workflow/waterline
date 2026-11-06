@@ -230,6 +230,88 @@ final class ServiceModeSchedulesTest extends TestCase
             ->assertJsonPath('data.1.last_outcome.outcome', 'skipped');
     }
 
+    public function testListSkipFactsDoNotSupplyAnOutcomeWhenDetailCannotBeRead(): void
+    {
+        $this->client->describeScheduleFailures['nightly-orders'] = new ServerException('Unavailable.', 503);
+
+        foreach (['2026-08-11T12:00:00.000001Z', '2026-08-12T12:00:00.000001Z'] as $skippedAt) {
+            $this->client->scheduleListItems = [[
+                ...FakeRemoteClient::defaultScheduleListItems()[0],
+                'last_skip_reason' => 'overlap_policy_skip',
+                'last_skipped_at' => $skippedAt,
+            ]];
+
+            $this->getJson('/waterline/api/v2/schedules')
+                ->assertOk()
+                ->assertJsonPath('data.0.last_skip_reason', 'overlap_policy_skip')
+                ->assertJsonPath('data.0.last_skipped_at', $skippedAt)
+                ->assertJsonPath('data.0.last_outcome', null);
+        }
+    }
+
+    public function testDetailSkipPairSupersedesTheEarlierListSnapshot(): void
+    {
+        $this->client->scheduleListItems = [[
+            ...FakeRemoteClient::defaultScheduleListItems()[1],
+            'last_skip_reason' => 'status_not_triggerable',
+            'last_skipped_at' => '2026-08-12T10:00:00.000001Z',
+            'skipped_trigger_count' => 1,
+        ]];
+        $detail = FakeRemoteClient::defaultScheduleDetail('hourly-reconcile');
+        $detail['info']['last_skipped_at'] = '2026-08-12T11:30:00.000001Z';
+        $this->client->scheduleDetails['hourly-reconcile'] = $detail;
+
+        $this->getJson('/waterline/api/v2/schedules')
+            ->assertOk()
+            ->assertJsonPath('data.0.last_skip_reason', 'overlap_policy_buffer_one')
+            ->assertJsonPath('data.0.last_skipped_at', '2026-08-12T11:30:00.000001Z')
+            ->assertJsonPath('data.0.skipped_trigger_count', 2)
+            ->assertJsonPath('data.0.last_outcome.outcome', 'skipped')
+            ->assertJsonPath('data.0.last_outcome.reason', 'overlap_policy_buffer_one')
+            ->assertJsonPath('data.0.last_outcome.at', '2026-08-12T11:30:00.000001Z');
+    }
+
+    public function testFailedDetailPreservesLiteralReasonWithoutOtherSkipEvidence(): void
+    {
+        $this->client->describeScheduleFailures['nightly-orders'] = new ServerException('Unavailable.', 503);
+
+        foreach (['', '  ', "\0", "\0 paused \0", ' reason '] as $reason) {
+            $this->client->scheduleListItems = [[
+                ...FakeRemoteClient::defaultScheduleListItems()[0],
+                'last_fire' => null,
+                'last_fired_at' => null,
+                'fires_count' => 0,
+                'skipped_trigger_count' => null,
+                'last_skip_reason' => $reason,
+                'last_skipped_at' => null,
+            ]];
+
+            $this->getJson('/waterline/api/v2/schedules')
+                ->assertOk()
+                ->assertJsonPath('data.0.last_skip_reason', $reason)
+                ->assertJsonPath('data.0.last_skipped_at', null)
+                ->assertJsonPath('data.0.skipped_trigger_count', null)
+                ->assertJsonPath('data.0.last_outcome', null);
+        }
+    }
+
+    public function testNullDetailSkipPairDoesNotReuseTheEarlierListPair(): void
+    {
+        $this->client->scheduleListItems = [[
+            ...FakeRemoteClient::defaultScheduleListItems()[0],
+            'last_skip_reason' => 'overlap_policy_skip',
+            'last_skipped_at' => '2026-08-12T01:00:00.000001Z',
+            'skipped_trigger_count' => 1,
+        ]];
+
+        $this->getJson('/waterline/api/v2/schedules')
+            ->assertOk()
+            ->assertJsonPath('data.0.last_skip_reason', null)
+            ->assertJsonPath('data.0.last_skipped_at', null)
+            ->assertJsonPath('data.0.skipped_trigger_count', 0)
+            ->assertJsonPath('data.0.last_outcome.outcome', 'scheduled');
+    }
+
     public function testListFillsAMissingNamespaceWithTheServiceNamespace(): void
     {
         $item = FakeRemoteClient::defaultScheduleListItems()[0];

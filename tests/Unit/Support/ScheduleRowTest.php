@@ -13,6 +13,19 @@ final class ScheduleRowTest extends TestCase
 {
     private const INTERNAL_KEY = '01JD8Z6Q3K9V7X2M4N5P6R7S8T';
 
+    public function testStoredSkipReasonRemainsAnExactNullableString(): void
+    {
+        foreach ([null, '', '  ', "\0", "\0 paused \0", ' reason '] as $reason) {
+            $source = ['info' => ['last_skip_reason' => $reason, 'last_skipped_at' => null]];
+            $detail = ScheduleRow::detail($source);
+            self::assertSame($reason, $detail['last_skip_reason']);
+            self::assertNull($detail['last_outcome']);
+
+            $source['info']['last_skipped_at'] = '2026-08-12T11:30:00.000001Z';
+            self::assertSame($reason, ScheduleRow::detail($source)['last_outcome']['reason']);
+        }
+    }
+
     public function testEmbeddedSourceMapsToARowKeyedByScheduleId(): void
     {
         $row = ScheduleRow::row($this->embeddedSource());

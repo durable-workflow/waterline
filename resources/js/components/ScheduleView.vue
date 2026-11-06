@@ -183,7 +183,7 @@
                                     <td v-if="columnEnabled('last_result')" :data-label="$t('Last Result')">
                                         <div class="schedule-view__cell-main">
                                             <span v-if="row.lastResult.at">{{ formatTimestamp(row.lastResult.at) }}</span>
-                                            <span v-else class="text-muted">{{ $t("Never") }}</span>
+                                            <span v-else class="text-muted">{{ row.lastResult.state === 'never' ? $t("Never") : '—' }}</span>
                                             <div class="schedule-view__cell-meta" v-if="row.lastResult.state === 'recorded'">
                                                 <span :class="toneTextClass(row.lastResult.tone)">{{ outcomeText(row.lastResult) }}</span>
                                                 <span v-if="row.lastResult.reason" class="schedule-view__reason" :title="row.lastResult.reason"> · {{ row.lastResult.reason }}</span>
@@ -493,7 +493,8 @@
                                     <div v-if="detailLastResult.reason" class="schedule-view__cell-meta schedule-view__reason">{{ detailLastResult.reason }}</div>
                                 </template>
                                 <template v-else-if="detailLastResult.state === 'unreported'">
-                                    {{ formatTimestamp(detailLastResult.at) }} · <span class="text-muted">{{ $t("Outcome not reported") }}</span>
+                                    <span v-if="detailLastResult.at">{{ formatTimestamp(detailLastResult.at) }} · </span>
+                                    <span class="text-muted">{{ $t("Outcome not reported") }}</span>
                                 </template>
                                 <span v-else class="text-muted">{{ $t("Never") }}</span>
                             </dd>

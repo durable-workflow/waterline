@@ -169,9 +169,9 @@ final class RemoteSchedulesController extends RemoteController
     /**
      * Build a list row from the server's list item and the schedule's detail.
      *
-     * The server's list item has no fire outcomes, so each listed schedule's
-     * detail supplies its last outcome. When that read fails, the row keeps the
-     * list facts and reports no outcome rather than failing the whole page.
+     * The list's retained last skip does not establish the latest dispatch, so
+     * detail supplies the outcome. A failed detail read preserves list facts
+     * with an unknown outcome. A successful read supplies its own skip snapshot.
      *
      * @param array<string, mixed> $listItem
      * @return array<string, mixed>
@@ -181,14 +181,18 @@ final class RemoteSchedulesController extends RemoteController
         $scheduleId = is_string($listItem['schedule_id'] ?? null) ? $listItem['schedule_id'] : '';
 
         if ($scheduleId === '') {
-            return ScheduleRow::detail($this->withNamespace($listItem));
+            return [...ScheduleRow::detail($this->withNamespace($listItem)), 'last_outcome' => null];
         }
 
         try {
             $detail = $this->backend->client()->describeSchedule($scheduleId)->raw;
         } catch (DurableWorkflowException) {
-            return ScheduleRow::detail($this->withNamespace($listItem));
+            return [...ScheduleRow::detail($this->withNamespace($listItem)), 'last_outcome' => null];
         }
+
+        // Do not let earlier flat skip facts mask the later nested detail,
+        // including nulls or fields unavailable in that detail's contract.
+        unset($listItem['last_skip_reason'], $listItem['last_skipped_at'], $listItem['skipped_trigger_count']);
 
         return ScheduleRow::detail($this->withNamespace([...$listItem, ...$detail]));
     }
