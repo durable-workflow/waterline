@@ -151,7 +151,11 @@ export function scheduleLastResult(schedule) {
         };
     }
 
-    if (lastFiredAt !== null) {
+    const hasSkip = text(schedule?.last_skipped_at) !== null
+        || text(schedule?.last_skip_reason) !== null
+        || (Number.isInteger(schedule?.skipped_trigger_count) && schedule.skipped_trigger_count > 0);
+
+    if (lastFiredAt !== null || hasSkip) {
         return { state: 'unreported', at: lastFiredAt, outcome: null, label: null, tone: 'muted', reason: null, workflowId: null };
     }
 

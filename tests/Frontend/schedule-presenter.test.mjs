@@ -93,6 +93,19 @@ test('the last result distinguishes a recorded outcome, an unreported fire and n
     assert.equal(scheduleLastResult({ last_fired_at: null, last_outcome: null }).state, 'never')
 })
 
+test('retained skip facts without a complete outcome remain unreported', () => {
+    for (const facts of [
+        { last_skipped_at: '2026-08-12T10:00:00.000001Z' },
+        { skipped_trigger_count: 1 },
+        { last_skip_reason: 'status_not_triggerable' },
+    ]) {
+        const result = scheduleLastResult({ ...facts, last_fired_at: null, last_outcome: null })
+        assert.equal(result.state, 'unreported')
+        assert.equal(result.at, null)
+        assert.equal(result.outcome, null)
+    }
+})
+
 test('backfill counts come from the normalized response and fall back to its rows', () => {
     assert.deepEqual(backfillCounts({ fires_attempted: 3, started_count: 2, skipped_count: 1, failed_count: 0, results: [] }), {
         attempted: 3, started: 2, skipped: 1, failed: 0,
