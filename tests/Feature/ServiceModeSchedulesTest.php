@@ -271,6 +271,30 @@ final class ServiceModeSchedulesTest extends TestCase
             ->assertJsonPath('data.0.last_outcome.at', '2026-08-12T11:30:00.000001Z');
     }
 
+    public function testFailedDetailPreservesLiteralReasonWithoutOtherSkipEvidence(): void
+    {
+        $this->client->describeScheduleFailures['nightly-orders'] = new ServerException('Unavailable.', 503);
+
+        foreach (['', '  ', "\0", "\0 paused \0", ' reason '] as $reason) {
+            $this->client->scheduleListItems = [[
+                ...FakeRemoteClient::defaultScheduleListItems()[0],
+                'last_fire' => null,
+                'last_fired_at' => null,
+                'fires_count' => 0,
+                'skipped_trigger_count' => null,
+                'last_skip_reason' => $reason,
+                'last_skipped_at' => null,
+            ]];
+
+            $this->getJson('/waterline/api/v2/schedules')
+                ->assertOk()
+                ->assertJsonPath('data.0.last_skip_reason', $reason)
+                ->assertJsonPath('data.0.last_skipped_at', null)
+                ->assertJsonPath('data.0.skipped_trigger_count', null)
+                ->assertJsonPath('data.0.last_outcome', null);
+        }
+    }
+
     public function testNullDetailSkipPairDoesNotReuseTheEarlierListPair(): void
     {
         $this->client->scheduleListItems = [[

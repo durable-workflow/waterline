@@ -146,13 +146,13 @@ export function scheduleLastResult(schedule) {
             outcome: outcome.outcome,
             label: known ? known.label : null,
             tone: known ? known.tone : 'muted',
-            reason: text(outcome.reason),
+            reason: typeof outcome.reason === 'string' ? outcome.reason : null,
             workflowId: text(outcome.workflow_id),
         };
     }
 
     const hasSkip = text(schedule?.last_skipped_at) !== null
-        || text(schedule?.last_skip_reason) !== null
+        || typeof schedule?.last_skip_reason === 'string'
         || (Number.isInteger(schedule?.skipped_trigger_count) && schedule.skipped_trigger_count > 0);
 
     if (lastFiredAt !== null || hasSkip) {

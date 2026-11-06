@@ -79,7 +79,7 @@ final class ScheduleRow
             'max_runs' => self::integer($flat['max_runs'] ?? null),
             'jitter_seconds' => self::integer($flat['jitter_seconds'] ?? null),
             'paused_at' => self::timestamp($flat['paused_at'] ?? null),
-            'last_skip_reason' => self::string($flat['last_skip_reason'] ?? null),
+            'last_skip_reason' => self::skipReason($flat['last_skip_reason'] ?? null),
             'last_skipped_at' => self::timestamp($flat['last_skipped_at'] ?? null),
             'latest_workflow_instance_id' => $latestInstanceId,
             // Earlier embedded detail responses used this name.
@@ -123,7 +123,7 @@ final class ScheduleRow
         $skip = $skippedAt === null ? null : [
             'outcome' => 'skipped',
             'at' => $skippedAt,
-            'reason' => self::string($source['last_skip_reason'] ?? null),
+            'reason' => self::skipReason($source['last_skip_reason'] ?? null),
             'workflow_id' => null,
             'run_id' => null,
         ];
@@ -260,6 +260,16 @@ final class ScheduleRow
         }
 
         return self::string($value);
+    }
+
+    private static function skipReason(mixed $value): ?string
+    {
+        if ($value instanceof \BackedEnum) {
+            $value = $value->value;
+        }
+
+        // Stored skip text includes empty, whitespace and edge NUL values.
+        return is_string($value) ? $value : null;
     }
 
     private static function identity(mixed $value): ?string

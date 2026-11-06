@@ -106,6 +106,20 @@ test('retained skip facts without a complete outcome remain unreported', () => {
     }
 })
 
+test('literal reasons remain evidence and keep their exact recorded text', () => {
+    for (const reason of ['', '  ', '\0', '\0 paused \0', ' reason ']) {
+        const unreported = scheduleLastResult({
+            last_outcome: null, last_fired_at: null, last_skip_reason: reason,
+            last_skipped_at: null, skipped_trigger_count: null,
+        })
+        assert.equal(unreported.state, 'unreported')
+        assert.equal(unreported.at, null)
+
+        const recorded = scheduleLastResult({ last_outcome: { outcome: 'skipped', reason } })
+        assert.equal(recorded.reason, reason)
+    }
+})
+
 test('backfill counts come from the normalized response and fall back to its rows', () => {
     assert.deepEqual(backfillCounts({ fires_attempted: 3, started_count: 2, skipped_count: 1, failed_count: 0, results: [] }), {
         attempted: 3, started: 2, skipped: 1, failed: 0,
