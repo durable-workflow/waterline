@@ -12,6 +12,8 @@ use Workflow\V2\Enums\ScheduleStatus;
 use Workflow\V2\Models\WorkflowSchedule;
 use Workflow\V2\Models\WorkflowScheduleHistoryEvent;
 use Workflow\V2\Support\ScheduleManager;
+use Workflow\V2\Support\ScheduleVisibilityQuery;
+use Workflow\V2\Support\ScheduleVisibilityQueryException;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\ScheduleActionResult;
@@ -27,12 +29,28 @@ class V2SchedulesController extends Controller
             'query' => ['sometimes', 'required', 'string', 'min:1', 'max:2048'],
         ])->validate();
 
+        $predicates = [];
+
         if (isset($filters['query'])) {
-            return response()->json([
-                'message' => 'This embedded backend does not support schedule visibility queries. Workflow type and status filters remain available.',
-                'reason' => 'backend_capability_unavailable',
-                'capability' => 'schedule_visibility_query',
-            ], 501);
+            if (! class_exists(ScheduleVisibilityQuery::class)) {
+                return response()->json([
+                    'message' => 'This embedded backend does not support schedule visibility queries. Workflow type and status filters remain available.',
+                    'reason' => 'backend_capability_unavailable',
+                    'capability' => 'schedule_visibility_query',
+                ], 501);
+            }
+
+            // Only the parser is used: the Workflow builder requires one
+            // namespace, while a cluster-wide Waterline lists them all.
+            try {
+                $predicates = (new ScheduleVisibilityQuery())->parse($filters['query']);
+            } catch (ScheduleVisibilityQueryException $e) {
+                return response()->json([
+                    'message' => $e->getMessage(),
+                    'reason' => $e->reason,
+                    'errors' => ['query' => [$e->getMessage()]],
+                ], 422);
+            }
         }
 
         $query = WorkflowSchedule::query()
@@ -47,6 +65,10 @@ class V2SchedulesController extends Controller
 
         if (isset($filters['workflow_type'])) {
             $query->where('action->workflow_type', $filters['workflow_type']);
+        }
+
+        foreach ($predicates as $predicate) {
+            $query->where($predicate['column'], '=', $predicate['literal']);
         }
 
         $status = $request->query('status');
