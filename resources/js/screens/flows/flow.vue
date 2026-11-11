@@ -92,7 +92,7 @@
                         {{ $t("Redrive") }}
                     </button>
 
-                    <a class="wl-flow-detail__collapse-link" data-toggle="collapse" href="#collapseDetails" role="button">
+                    <a class="wl-flow-detail__collapse-link" data-toggle="collapse" href="#collapseDetails" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                         {{ $t("Collapse") }}
                     </a>
                 </div>
@@ -610,7 +610,7 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>{{ $t("Arguments") }}</h5>
 
-                <a data-toggle="collapse" href="#collapseArguments" role="button">
+                <a data-toggle="collapse" href="#collapseArguments" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -624,7 +624,7 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>{{ $t("Output") }}</h5>
 
-                <a data-toggle="collapse" href="#collapseOutput" role="button">
+                <a data-toggle="collapse" href="#collapseOutput" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -676,7 +676,7 @@
                     <span class="small ml-2">{{ diagnosticsSummary() }}</span>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseRunDiagnostics" role="button">
+                <a data-toggle="collapse" href="#collapseRunDiagnostics" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -725,7 +725,7 @@
                     </div>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseTimeline" role="button">
+                <a data-toggle="collapse" href="#collapseTimeline" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -784,7 +784,7 @@
                         {{ $t("Export all") }}
                     </a>
 
-                    <a data-toggle="collapse" href="#collapseHistory" role="button">
+                    <a data-toggle="collapse" href="#collapseHistory" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                         {{ $t("Collapse") }}
                     </a>
                 </div>
@@ -863,7 +863,7 @@
                     </div>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseWaits" role="button">
+                <a data-toggle="collapse" href="#collapseWaits" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -972,7 +972,7 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>{{ $t("Tasks") }}</h5>
 
-                <a data-toggle="collapse" href="#collapseTasks" role="button">
+                <a data-toggle="collapse" href="#collapseTasks" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -1219,7 +1219,7 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>{{ $t("Linked Intakes") }}</h5>
 
-                <a data-toggle="collapse" href="#collapseLinkedIntakes" role="button">
+                <a data-toggle="collapse" href="#collapseLinkedIntakes" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -1290,7 +1290,7 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>{{ $t("Commands") }}</h5>
 
-                <a data-toggle="collapse" href="#collapseCommands" role="button">
+                <a data-toggle="collapse" href="#collapseCommands" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -1379,7 +1379,7 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>{{ $t("Signals") }}</h5>
 
-                <a data-toggle="collapse" href="#collapseSignals" role="button">
+                <a data-toggle="collapse" href="#collapseSignals" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -1468,7 +1468,7 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>{{ $t("Updates") }}</h5>
 
-                <a data-toggle="collapse" href="#collapseUpdates" role="button">
+                <a data-toggle="collapse" href="#collapseUpdates" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -1599,7 +1599,7 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>{{ $t("Activities") }}</h5>
 
-                <a data-toggle="collapse" href="#collapseActivities" role="button">
+                <a data-toggle="collapse" href="#collapseActivities" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -1708,7 +1708,7 @@
                     </div>
                 </div>
 
-                <a data-toggle="collapse" href="#collapseTimers" role="button">
+                <a data-toggle="collapse" href="#collapseTimers" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -1773,7 +1773,7 @@
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>{{ $t("Exceptions") }}</h5>
 
-                <a data-toggle="collapse" href="#collapseExceptions" role="button">
+                <a data-toggle="collapse" href="#collapseExceptions" role="button" @keydown.space.prevent="$event.currentTarget.click()">
                     {{ $t("Collapse") }}
                 </a>
             </div>
@@ -1811,7 +1811,7 @@
                             <tr :id="'collapse' + exception.id" class="collapse">
                                 <td colspan="5">
                                     <div class="code-bg text-white">
-                                        <div v-for="decodedException in [unserialize(exception.exception)]">
+                                        <div v-for="(decodedException, decodedIndex) in [unserialize(exception.exception)]" :key="decodedIndex">
                                             <b>{{ decodedException.__constructor }}("{{ decodedException.message }}")</b>
                                             <span v-if="decodedException.type">
                                                 {{ $t("[type") }} {{ decodedException.type }}]
@@ -1847,7 +1847,7 @@
                                         <prism-editor v-else :id="'prism' + exception.id" class="wl-exception-editor" v-model="exception.code"
                                             :highlight="highlighter" line-numbers readonly></prism-editor>
                                         <br />
-                                        <div v-for="trace in unserialize(exception.exception).trace">
+                                        <div v-for="(trace, traceIndex) in unserialize(exception.exception).trace" :key="traceIndex">
                                             <b>{{ trace.class }}{{ trace.type }}{{ trace.function }}()</b> <br />
                                             <span class="wl-exception-location">{{ $t("in") }} {{ trace.file }} {{ $t("(line") }} {{ trace.line
                                             }})</span><br /><br />
@@ -2130,7 +2130,7 @@ export default {
                     });
 
                     this.ready = true;
-                    this.scrollToRouteHash();
+                    void this.scrollToRouteHash();
 
                     return true;
                 })

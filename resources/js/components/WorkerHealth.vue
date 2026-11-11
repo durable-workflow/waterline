@@ -729,7 +729,7 @@ export default {
         },
 
         refresh() {
-            this.loadData();
+            void this.loadData();
         },
 
         resolvedApiEndpoint() {
@@ -977,7 +977,7 @@ export default {
 
         startAutoRefresh() {
             this.refreshTimer = setInterval(() => {
-                this.loadData();
+                void this.loadData();
             }, this.refreshInterval);
         },
 
