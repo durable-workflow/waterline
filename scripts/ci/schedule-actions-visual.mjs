@@ -161,16 +161,17 @@ async function scheduleFilterCase(page, theme, viewport, workflowType, expectedR
     assert.deepEqual(matched.data.map(item => [item.namespace, item.schedule_id]).sort(), expectedRows);
     await page.waitForFunction(count => document.querySelectorAll('tr[data-schedule-id]').length === count, expectedRows.length);
 
-    // Embedded backends cannot answer visibility queries, so the field is
-    // service-only. The 501 refusal itself is covered by the feature tests.
-    assert.equal(await query.count(), 0, 'embedded mode hides the visibility query field');
+    // Embedded mode answers schedule visibility queries when the host's
+    // Workflow provides ScheduleVisibilityQuery (2.21+, #226), so the field is
+    // shown here. Older hosts keep the field hidden; feature tests cover that.
+    assert.equal(await query.count(), 1, 'embedded mode shows the visibility query field');
     await type.fill('');
     assert.equal((await applyScheduleFilters(page, 200)).data.length, 3, 'clearing filters recovers the list');
     await row(page, 'default', 'nightly-invoice-sync').waitFor();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert.ok(overflow <= 1, `${theme}/${viewport.name}: filter form does not overflow (${overflow}px)`);
     await page.screenshot({path: path.join(outputDir, `schedule-filters-${theme}-${viewport.name}.png`), fullPage: true});
-    record('type/status filters, hidden embedded visibility query and filter recovery', {theme, viewport: viewport.name, expectedRows});
+    record('type/status filters, embedded visibility query field and filter recovery', {theme, viewport: viewport.name, expectedRows});
 }
 
 async function scheduleFilters(page) {
