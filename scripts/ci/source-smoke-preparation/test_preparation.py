@@ -294,6 +294,9 @@ class PreparationTests(unittest.TestCase):
                                                       self.repository / 'scripts/ci/test-oci-release.py')
         fixtures = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(fixtures)
+        # This held lane reads archives with its sealed publisher helper, so
+        # the fixture labels use that helper's version, not the current one.
+        fixtures.oci.VERSION = accepted.accepted_oci(self.repository).VERSION
         def bind(parts):
             provenance = parts['provenance']
             provenance['subject'] = [{'name': 'image',
