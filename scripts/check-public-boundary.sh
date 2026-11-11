@@ -6,6 +6,12 @@ cd "$root"
 
 status=0
 
+# Claude Code's personal local settings must never be tracked (.github#355).
+if git ls-files -z | tr '\0' '\n' | grep -E '(^|/)\.claude/settings\.local\.json$'; then
+  echo 'refused: tracked .claude/settings.local.json' >&2
+  exit 1
+fi
+
 pattern_from_hex() {
   local hex="$1"
   local output=""

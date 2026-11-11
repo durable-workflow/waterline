@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Waterline\Support;
 
+use Workflow\V2\Support\ScheduleVisibilityQuery;
+
 final class BackendConfiguration
 {
     public const EMBEDDED = 'embedded';
@@ -75,6 +77,8 @@ final class BackendConfiguration
             'workers' => true,
             'task_queues' => true,
             'schedules' => true,
+            // Embedded schedule queries need Workflow 2.21.0 or later.
+            'schedule_visibility_query' => $service || class_exists(ScheduleVisibilityQuery::class),
             'services' => ! $service,
             'query' => true,
             'signal' => $permissions['signal']['allowed'],

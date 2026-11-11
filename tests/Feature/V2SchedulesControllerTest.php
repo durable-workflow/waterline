@@ -14,6 +14,7 @@ use Workflow\V2\Enums\ScheduleStatus;
 use Workflow\V2\Models\WorkflowSchedule;
 use Workflow\V2\Models\WorkflowScheduleHistoryEvent;
 use Workflow\V2\Support\ScheduleManager;
+use Workflow\V2\Support\ScheduleVisibilityQuery;
 
 final class V2SchedulesControllerTest extends TestCase
 {
@@ -130,6 +131,14 @@ final class V2SchedulesControllerTest extends TestCase
 
     public function testVisibilityQueryCannotSilentlyReturnAnUnfilteredSuccess(): void
     {
+        if (class_exists(ScheduleVisibilityQuery::class)) {
+            $this->markTestSkipped('The installed Workflow supports schedule visibility queries.');
+        }
+
+        $this->getJson('/waterline/api/v2/schedules')
+            ->assertOk()
+            ->assertJsonPath('backend.capabilities.schedule_visibility_query', false);
+
         $this->createSchedule('matching');
         $this->createSchedule('other');
 
@@ -139,6 +148,81 @@ final class V2SchedulesControllerTest extends TestCase
                 ->assertJsonPath('reason', 'backend_capability_unavailable')
                 ->assertJsonPath('capability', 'schedule_visibility_query')
                 ->assertJsonMissingPath('data');
+        }
+    }
+
+    public function testVisibilityQueryFiltersEmbeddedSchedulesWithStatusTypeAndNamespace(): void
+    {
+        $this->requireScheduleVisibilityQuery();
+
+        $this->getJson('/waterline/api/v2/schedules')
+            ->assertOk()
+            ->assertJsonPath('backend.capabilities.schedule_visibility_query', true);
+
+        $nightly = $this->createSchedule('nightly');
+        $nightly->update(['note' => 'nightly AND urgent']);
+        $this->createSchedule('hourly');
+        $this->createSchedule('nightly', 'tenant-b');
+        $paused = $this->createSchedule('paused-nightly');
+        $paused->update(['status' => ScheduleStatus::Paused, 'note' => 'nightly AND urgent']);
+        $otherType = $this->createSchedule('other-type');
+        $otherType->update([
+            'note' => 'nightly AND urgent',
+            'action' => [...$otherType->action, 'workflow_type' => 'workflow.other'],
+        ]);
+
+        $search = fn (array $params) => $this->getJson('/waterline/api/v2/schedules?'.http_build_query($params))
+            ->assertOk()
+            ->json('data');
+        $ids = static fn (array $rows): array => array_map(
+            static fn (array $row): string => $row['namespace'].'/'.$row['schedule_id'],
+            $rows,
+        );
+
+        // Cluster-wide scope: every namespace is searched.
+        $this->assertEqualsCanonicalizing(
+            ['default/nightly', 'tenant-b/nightly'],
+            $ids($search(['query' => 'ScheduleId = "nightly"'])),
+        );
+        // Quoted AND stays inside the literal; status and type filters still apply.
+        $this->assertEqualsCanonicalizing(
+            ['default/nightly', 'default/paused-nightly'],
+            $ids($search([
+                'query' => 'Note = "nightly AND urgent" AND WorkflowType = "workflow.operator-command"',
+            ])),
+        );
+        $this->assertSame(
+            ['default/paused-nightly'],
+            $ids($search(['query' => 'Note = "nightly AND urgent"', 'status' => 'paused'])),
+        );
+        $this->assertSame(
+            ['default/other-type'],
+            $ids($search(['query' => 'Note = "nightly AND urgent"', 'workflow_type' => 'workflow.other'])),
+        );
+
+        config()->set('waterline.namespace', 'tenant-b');
+        $this->assertSame(['tenant-b/nightly'], $ids($search(['query' => 'ScheduleId = "nightly"'])));
+    }
+
+    public function testUnsupportedEmbeddedVisibilityQueriesAreRefusedWithTheWorkflowReason(): void
+    {
+        $this->requireScheduleVisibilityQuery();
+        $this->createSchedule('matching');
+
+        foreach ([
+            'Status > "active"' => 'unsupported_schedule_visibility_predicate',
+            'ScheduleId = "matching" OR Status = "paused"' => 'unsupported_schedule_visibility_predicate',
+            'Count = 4' => null,
+        ] as $query => $reason) {
+            $response = $this->getJson('/waterline/api/v2/schedules?'.http_build_query(['query' => $query]))
+                ->assertStatus(422)
+                ->assertJsonValidationErrors('query')
+                ->assertJsonMissingPath('data');
+
+            $this->assertIsString($response->json('reason'));
+            if ($reason !== null) {
+                $this->assertSame($reason, $response->json('reason'));
+            }
         }
     }
 
@@ -547,6 +631,13 @@ final class V2SchedulesControllerTest extends TestCase
             ->assertJsonPath('results.0.fire_time', '2026-10-20T10:00:00+00:00')
             ->assertJsonPath('results.0.schedule_id', 'named-results')
             ->assertJsonPath('results.0.error', null);
+    }
+
+    private function requireScheduleVisibilityQuery(): void
+    {
+        if (! class_exists(ScheduleVisibilityQuery::class)) {
+            $this->markTestSkipped('Schedule visibility queries need Workflow 2.21.0 or later.');
+        }
     }
 
     private function createSchedule(string $scheduleId, string $namespace = 'default'): WorkflowSchedule

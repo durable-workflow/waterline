@@ -1133,7 +1133,7 @@ jobs:
       run: composer build
 
   workflow-current-retention:
-    name: Published Workflow ${{ matrix.workflow }} retention integration
+    name: Published Workflow ${{ matrix.workflow }} ${{ matrix.purpose }} integration
     needs: classify
     if: ${{ needs.classify.outputs.qualification-class == 'complete' }}
     runs-on: ubuntu-latest
@@ -1141,9 +1141,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 2.2.12 is the oldest Core with retained-run pruning; 2.20.1 carries
-        # the pruned-run history export contract from Core 2.17.0.
-        workflow: ['2.2.12', '2.20.1']
+        include:
+          # 2.2.12 is the oldest Core with retained-run pruning; 2.20.1 carries
+          # the pruned-run history export contract from Core 2.17.0.
+          - workflow: '2.2.12'
+            purpose: retention
+            tests: tests/Compatibility/V2RetentionDetailsTest.php
+          - workflow: '2.20.1'
+            purpose: retention
+            tests: tests/Compatibility/V2RetentionDetailsTest.php
+          # Embedded schedule visibility queries need Core 2.21.0 or later;
+          # the development pin skips them.
+          - workflow: '2.22.0'
+            purpose: schedule query
+            tests: tests/Feature/V2SchedulesControllerTest.php
 
     steps:
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
@@ -1175,12 +1186,14 @@ jobs:
         composer require --dev --with-all-dependencies --prefer-dist --no-progress --no-interaction --no-scripts "durable-workflow/workflow:${WORKFLOW_VERSION}"
         php -r 'require "vendor/autoload.php"; $v = getenv("WORKFLOW_VERSION"); if (Composer\InstalledVersions::getPrettyVersion("durable-workflow/workflow") !== $v || Workflow\V2\Support\PlatformConformanceSuite::workflowSourceRelease() !== $v) { exit(1); }'
 
-    - name: Verify Composer before the retention scaffold
+    - name: Verify Composer before the Workbench scaffold
       uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
-    - name: Verify retained-run pruning in embedded mode
+    - name: Verify ${{ matrix.purpose }} in embedded mode
+      env:
+        TESTS: ${{ matrix.tests }}
       run: |
         composer build
-        vendor/bin/phpunit --configuration=phpunit-sqlite.xml tests/Compatibility/V2RetentionDetailsTest.php
+        vendor/bin/phpunit --configuration=phpunit-sqlite.xml "$TESTS"
 
   laravel-matrix:
     name: Resolve Laravel dependency matrix

@@ -23,7 +23,7 @@
             </div>
         </section>
 
-        <form class="schedule-view__filters card card-bg-secondary" :class="{'schedule-view__filters--embedded': !serviceMode}" @submit.prevent="applyFilters">
+        <form class="schedule-view__filters card card-bg-secondary" :class="{'schedule-view__filters--no-query': !visibilityQuerySupported}" @submit.prevent="applyFilters">
             <div>
                 <label for="waterline-schedule-status">{{ $t("Status") }}</label>
                 <select id="waterline-schedule-status" v-model="statusFilter" class="form-control form-control-sm">
@@ -37,7 +37,7 @@
                 <label for="waterline-schedule-type">{{ $t("Workflow Type") }}</label>
                 <input id="waterline-schedule-type" v-model="workflowTypeFilter" class="form-control form-control-sm" type="text">
             </div>
-            <div v-if="serviceMode">
+            <div v-if="visibilityQuerySupported">
                 <label for="waterline-schedule-query">{{ $t("Schedule visibility query") }}</label>
                 <input id="waterline-schedule-query" v-model="visibilityQueryFilter" class="form-control form-control-sm" type="text">
             </div>
@@ -665,6 +665,10 @@ export default {
             return this.backend.mode === 'service';
         },
 
+        visibilityQuerySupported() {
+            return this.serviceMode || this.backend.capabilities?.schedule_visibility_query === true;
+        },
+
         mutationsUnavailable() {
             return !operatorPermission('schedules', this.backend).allowed;
         },
@@ -799,9 +803,10 @@ export default {
             const params = {page: this.currentPage};
             if (this.appliedStatus) params.status = this.appliedStatus;
             if (this.appliedWorkflowType) params.workflow_type = this.appliedWorkflowType;
-            // Embedded backends answer a visibility query with 501, so the
-            // field is service-only and a value applied earlier is not sent.
-            if (this.serviceMode && this.appliedVisibilityQuery) params.query = this.appliedVisibilityQuery;
+            // An embedded backend without Workflow's schedule query support
+            // answers a query with 501, so the field is hidden there and a
+            // value applied earlier is not sent.
+            if (this.visibilityQuerySupported && this.appliedVisibilityQuery) params.query = this.appliedVisibilityQuery;
             return params;
         },
 
@@ -1655,7 +1660,7 @@ export default {
     padding: 1rem;
 }
 
-.schedule-view__filters--embedded {
+.schedule-view__filters--no-query {
     grid-template-columns: minmax(8rem, 0.7fr) minmax(12rem, 1.5fr) auto;
 }
 

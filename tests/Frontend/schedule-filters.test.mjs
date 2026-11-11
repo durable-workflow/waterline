@@ -14,6 +14,7 @@ function fixture(mode = 'service') {
     const component = Function('axios', script.replace(/^import[\s\S]*?from ['"][^'"]+['"];$/gm, '').replace('export default', 'return'))(axios);
     const state = {
         ...component.data(), ...component.methods, serviceMode: mode === 'service',
+        visibilityQuerySupported: mode !== 'embedded',
         $t: value => value, resolvedApiEndpoint: () => '/waterline/api/v2/schedules',
     };
     return {state, requests};
@@ -84,25 +85,30 @@ async function renderFilters(mode) {
     const app = createSSRApp({
         template: filterForm,
         data: () => ({statusFilter: '', workflowTypeFilter: '', visibilityQueryFilter: ''}),
-        computed: {serviceMode: () => mode === 'service'},
+        computed: {serviceMode: () => mode === 'service', visibilityQuerySupported: () => mode !== 'embedded'},
         methods: {applyFilters() {}},
     });
     app.config.globalProperties.$t = value => value;
     return renderToString(app);
 }
 
-test('the visibility query field and its parameter are service-only', async () => {
+test('the visibility query field and its parameter need a backend that supports queries', async () => {
     const service = await renderFilters('service');
     assert.match(service, /id="waterline-schedule-query"/);
     assert.match(service, /id="waterline-schedule-type"/);
     assert.doesNotMatch(service, /value="deleted"/);
-    assert.doesNotMatch(service, /schedule-view__filters--embedded/);
+    assert.doesNotMatch(service, /schedule-view__filters--no-query/);
 
     const embedded = await renderFilters('embedded');
     assert.doesNotMatch(embedded, /waterline-schedule-query|Schedule visibility query/);
     assert.match(embedded, /id="waterline-schedule-type"/);
     assert.match(embedded, /value="deleted"/);
-    assert.match(embedded, /schedule-view__filters--embedded/);
+    assert.match(embedded, /schedule-view__filters--no-query/);
+
+    const embeddedQuery = await renderFilters('embedded-query');
+    assert.match(embeddedQuery, /id="waterline-schedule-query"/);
+    assert.match(embeddedQuery, /value="deleted"/);
+    assert.doesNotMatch(embeddedQuery, /schedule-view__filters--no-query/);
 
     const {state, requests} = fixture('embedded');
     Object.assign(state, {workflowTypeFilter: 'orders.process', visibilityQueryFilter: 'ScheduleId = "nightly"'});
@@ -110,4 +116,23 @@ test('the visibility query field and its parameter are service-only', async () =
     assert.deepEqual(requests[0].options.params, {page: 1, workflow_type: 'orders.process'});
     requests[0].resolve(response('embedded'));
     await load;
+
+    const supported = fixture('embedded-query');
+    Object.assign(supported.state, {workflowTypeFilter: 'orders.process', visibilityQueryFilter: ' ScheduleId = "nightly" '});
+    const queried = supported.state.applyFilters();
+    assert.deepEqual(supported.requests[0].options.params, {page: 1, workflow_type: 'orders.process', query: 'ScheduleId = "nightly"'});
+    supported.requests[0].resolve(response('nightly'));
+    await queried;
+});
+
+test('embedded query support follows the backend capability', () => {
+    const computed = Function('axios', script.replace(/^import[\s\S]*?from ['"][^'"]+['"];$/gm, '').replace('export default', 'return'))({}).computed;
+    const supported = backend => computed.visibilityQuerySupported.call({
+        serviceMode: computed.serviceMode.call({backend}),
+        backend,
+    });
+    assert.equal(supported({mode: 'service', capabilities: {}}), true);
+    assert.equal(supported({mode: 'embedded', capabilities: {schedule_visibility_query: true}}), true);
+    assert.equal(supported({mode: 'embedded', capabilities: {schedule_visibility_query: false}}), false);
+    assert.equal(supported({mode: 'embedded'}), false);
 });

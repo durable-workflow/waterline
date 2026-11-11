@@ -22,3 +22,5 @@ __pycache__/
 .DS_Store
 /composer.lock
 yarn.lock
+.claude/settings.local.json
+**/.claude/settings.local.json
