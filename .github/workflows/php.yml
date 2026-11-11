@@ -43,10 +43,7 @@ jobs:
     - name: Bootstrap patched pip trust
       uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
     - name: Install policy dependencies
-      run: >-
-        python -I -m pip --isolated install
-        --require-hashes --only-binary=:all: --no-deps
-        --requirement scripts/ci/workflow-requirements.txt
+      run: python -m pip install --only-binary :all: PyYAML==6.0.2
     - name: Require centrally approved immutable action commits
       run: >-
         python .central-action-policy/scripts/qualification_policy.py validate
