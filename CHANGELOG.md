@@ -4,9 +4,9 @@
 
 ## 2.16.0 - 2026-11-11
 
-This release carries a security fix for the standalone service image.
-Waterline 2.14.0 and 2.15.0 images ship the affected Symfony versions; upgrade
-the service image to 2.16.0.
+This release carries a security fix for the standalone service image. The
+2.15.0 image on Docker Hub was never announced and ships the vulnerable
+Symfony 7.4.21, as does 2.14.0. If you run either, upgrade to 2.16.0.
 
 - Security: the service image's standalone lock moves symfony/http-foundation
   (7.4.21), symfony/http-kernel (7.4.14) and symfony/routing (7.4.13) to the
