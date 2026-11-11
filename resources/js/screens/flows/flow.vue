@@ -1811,7 +1811,7 @@
                             <tr :id="'collapse' + exception.id" class="collapse">
                                 <td colspan="5">
                                     <div class="code-bg text-white">
-                                        <div v-for="decodedException in [unserialize(exception.exception)]" :key="exception.id">
+                                        <div v-for="(decodedException, decodedIndex) in [unserialize(exception.exception)]" :key="decodedIndex">
                                             <b>{{ decodedException.__constructor }}("{{ decodedException.message }}")</b>
                                             <span v-if="decodedException.type">
                                                 {{ $t("[type") }} {{ decodedException.type }}]
