@@ -61,6 +61,9 @@ class PrivateAdapterTest(unittest.TestCase):
         spec = importlib.util.spec_from_file_location('private_oci_fixture', ROOT / 'scripts/ci/test-oci-release.py')
         cls.oci = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(cls.oci)
+        # The held adapter reads archives with its sealed publisher helper, so
+        # the fixture labels use that helper's version, not the current one.
+        cls.oci.oci.VERSION = cls.p.accepted.accepted_oci(ROOT).VERSION
 
     @classmethod
     def tearDownClass(cls):
