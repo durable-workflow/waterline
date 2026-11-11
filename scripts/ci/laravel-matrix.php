@@ -304,7 +304,7 @@ function assertInstalled(array $row): void
         throw new MatrixContractException('Dependencies are not installed; vendor/autoload.php is missing.');
     }
 
-    require $autoload;
+    require_once $autoload;
 
     $actualPhp = PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;
     if ($actualPhp !== $row['php']) {

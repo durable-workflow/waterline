@@ -472,9 +472,10 @@
                     query,
                 });
 
+                // The route already applies the view; saving it as the default is best effort.
                 this.persistWorkflowListPreferences({
                     saved_view_id: selectedView,
-                });
+                }).catch(() => null);
             },
 
             workflowListSortDirection() {

@@ -719,7 +719,7 @@ export default {
                 this.closeDetail();
             }
 
-            this.loadData(state.page);
+            void this.loadData(state.page);
         },
 
         setTab(tab) {
@@ -734,7 +734,7 @@ export default {
         },
 
         refresh() {
-            this.loadData(this.currentPage);
+            void this.loadData(this.currentPage);
         },
 
         reloadFromFirstPage() {
@@ -943,7 +943,7 @@ export default {
             const navigate = mode === 'push' ? this.$router.push : this.$router.replace;
             navigate.call(this.$router, route)
                 .catch(() => {
-                    this.loadData(page);
+                    void this.loadData(page);
                 });
         },
 

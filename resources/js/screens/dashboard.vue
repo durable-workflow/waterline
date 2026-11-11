@@ -144,6 +144,12 @@
                             <div class="wl-panel-subtitle">{{ $t("Current status") }}</div>
                             <div class="table-responsive" tabindex="0" role="region" :aria-label="$t('Current status')">
                                 <table class="table table-sm mb-0">
+                                    <thead class="sr-only">
+                                        <tr>
+                                            <th scope="col">{{ $t("Status") }}</th>
+                                            <th scope="col">{{ $t("Runs") }}</th>
+                                        </tr>
+                                    </thead>
                                     <tbody>
                                         <tr>
                                             <td>{{ $t("Running") }}</td>

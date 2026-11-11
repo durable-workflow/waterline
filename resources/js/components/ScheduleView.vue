@@ -849,7 +849,7 @@ export default {
         },
 
         refresh() {
-            this.loadData();
+            void this.loadData();
         },
 
         refreshMilliseconds() {
@@ -870,7 +870,7 @@ export default {
             if (this.loading || this.refreshing) return false;
             if (Object.values(this.pendingRowKeys).some(Boolean)) return false;
             if (typeof document !== 'undefined' && document.hidden) return false;
-            this.loadData();
+            void this.loadData();
             return true;
         },
 
@@ -1048,7 +1048,7 @@ export default {
         goToPage(page) {
             if (page < 1 || page === '...' || (this.pagination && page > this.pagination.last_page)) return;
             this.currentPage = page;
-            this.loadData();
+            void this.loadData();
         },
 
         isPending(key) {
@@ -1299,7 +1299,7 @@ export default {
             this.historyNextCursor = null;
             this.showHistory = true;
             this.focusDialog('historyDialog');
-            this.loadHistoryEvents(true);
+            void this.loadHistoryEvents(true);
         },
 
         closeHistoryDialog() {
@@ -1362,7 +1362,7 @@ export default {
             this.detailError = null;
             this.showDetail = true;
             this.focusDialog('detailDialog');
-            this.loadDetail();
+            void this.loadDetail();
         },
 
         closeDetailDialog() {
