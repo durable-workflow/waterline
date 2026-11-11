@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+## 2.16.0 - 2026-11-11
+
+This release carries a security fix for the standalone service image.
+Waterline 2.14.0 and 2.15.0 images ship the affected Symfony versions; upgrade
+the service image to 2.16.0.
+
+- Security: the service image's standalone lock moves symfony/http-foundation
+  (7.4.21), symfony/http-kernel (7.4.14) and symfony/routing (7.4.13) to the
+  fixed 7.4.23 release (#279, #280). This resolves CVE-2026-118514,
+  CVE-2026-118516 and the related PKSA advisories in the November 4 Symfony
+  batch. No other package in the lock changes. Embedded installs use the host
+  application's own lock: update Symfony there.
+- Saved workflow views can filter by start time (#213, #278). A view keeps
+  either a rolling look-back window, which moves each time it is loaded, or a
+  fixed UTC range. The filter applies before pagination in embedded v2 and
+  service-mode lists and excludes runs without a start time. Saved views from
+  earlier versions still load.
+- Run details note each failure message that was shortened for display (#281).
+  The preview keeps up to 512 characters without splitting a character; the
+  stored failure is unchanged.
+- Schedules no longer show an older retained skip as the latest outcome when
+  the detail read fails (#222, #288). Waterline shows "Outcome not reported"
+  instead, and successful detail reads take precedence over list fields.
+- Development and CI qualify against Workflow 2.20.3 (was 2.20.2).
+
 ## 2.15.0 - 2026-11-04
 
 - The service image bundles PHP SDK 3.9.4 (was 3.4.1). Waterline develops

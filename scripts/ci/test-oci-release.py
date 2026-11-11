@@ -163,8 +163,8 @@ class OciReleaseTest(unittest.TestCase):
         workflow_bytes = b"reviewed unprivileged build workflow\n"
         run_id, attempt = 12345, 1
         data = {
-            "tag-ref.json": {"ref": "refs/tags/2.15.1", "object": {"type": "tag", "sha": "e" * 40}},
-            "tag-object.json": {"sha": "e" * 40, "tag": "2.15.1", "object": {"type": "commit", "sha": SOURCE}},
+            "tag-ref.json": {"ref": "refs/tags/2.16.0", "object": {"type": "tag", "sha": "e" * 40}},
+            "tag-object.json": {"sha": "e" * 40, "tag": "2.16.0", "object": {"type": "commit", "sha": SOURCE}},
             "commit.json": {"sha": SOURCE, "commit": {"tree": {"sha": TREE}}},
             "compare.json": {"status": "ahead", "merge_base_commit": {"sha": SOURCE}},
             "pulls.json": {"pulls": [{"number": 246, "merge_commit_sha": SOURCE, "merged_at": "2026-10-23T00:00:00Z", "state": "closed",
@@ -281,7 +281,7 @@ class OciReleaseTest(unittest.TestCase):
         self.artifact_fixture()
         oci.prepare(argparse.Namespace(directory=self.root))
         evidence = oci.read_json(self.root / "verified.json")
-        self.assertEqual(evidence["destination"], "docker.io/durableworkflow/waterline:2.15.1")
+        self.assertEqual(evidence["destination"], "docker.io/durableworkflow/waterline:2.16.0")
         self.assertEqual([item["platform"]["architecture"] for item in evidence["manifests"]], ["amd64", "arm64"])
         self.assertEqual([item["annotations"][oci.REFERENCE_DIGEST] for item in evidence["attestations"]],
                          [item["digest"] for item in evidence["manifests"]])

@@ -33,7 +33,7 @@ jobs:
             runner: ubuntu-24.04-arm
             machine: aarch64
     env:
-      RELEASE_VERSION: '2.15.1'
+      RELEASE_VERSION: '2.16.0'
       SOURCE_INPUT: ${{ inputs.source_commit }}
       EXPECTED_PLATFORM: linux/${{ matrix.architecture }}
     steps:
