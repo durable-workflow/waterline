@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Embedded Waterline accepts schedule visibility queries, such as
+  `WorkflowType = "orders.process" AND Status = "paused"`, when the host has
+  Workflow 2.21.0 or later (#226). The schedules screen shows the query field
+  whenever the backend supports it. Older Workflow versions still refuse
+  queries with 501, and the field stays hidden.
+
 ## 2.16.0 - 2026-11-11
 
 This release carries a security fix for the standalone service image. The
