@@ -1,6 +1,5 @@
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -36,13 +35,8 @@ function argumentValue(name, fallback = null) {
 }
 
 function loadPlaywright() {
+    // Resolve only the project-installed Playwright, never an ambient global root (waterline#291).
     const roots = [process.cwd()];
-
-    try {
-        roots.push(execFileSync('npm', ['root', '--global'], { encoding: 'utf8' }).trim());
-    } catch {
-        // The local project resolution below reports the actionable module error.
-    }
 
     let lastError = null;
 
