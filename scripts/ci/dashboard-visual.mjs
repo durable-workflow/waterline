@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 export function dashboardFixture() {
@@ -120,10 +119,9 @@ export async function inspectDashboardTables(page, name) {
 }
 
 function loadPlaywright() {
-    for (const root of [process.cwd(), execFileSync('npm', ['root', '--global'], { encoding: 'utf8' }).trim()]) {
-        try { return createRequire(path.join(root, 'package.json'))('playwright'); } catch { /* Try the next installed location. */ }
-    }
-    throw new Error('Install Playwright and Chromium before dashboard qualification.');
+    // Resolve only the project-installed Playwright, never an ambient global root (waterline#291).
+    try { return createRequire(path.join(process.cwd(), 'package.json'))('playwright'); } catch { /* Reported below. */ }
+    throw new Error('Install Playwright and Chromium in the project before dashboard qualification.');
 }
 
 export async function runDashboardVisual({ baseUrl, serviceBaseUrl, outputDirectory, email = 'demo@example.com', password = 'password', widths = [1280, 1366, 1440, 1920], zooms = [1, 1.25, 1.5, 2], locales = ['en', 'es', 'uk'] }) {
