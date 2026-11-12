@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 2.17.0 - 2026-11-12
+
 - The dashboard shows replay-blocked runs next to repair-needed runs: the count,
   the oldest age and a link to the running list filtered to the
   `workflow_replay_blocked` liveness state (#292). It needs Workflow 2.24.0 or
@@ -12,6 +14,13 @@
   Workflow 2.21.0 or later (#226). The schedules screen shows the query field
   whenever the backend supports it. Older Workflow versions still refuse
   queries with 501, and the field stays hidden.
+- Run detail's "Collapse" links toggle with Space as well as Enter, and the
+  dashboard's status table has screen-reader column headers (#293).
+- A failed save of the selected workflow view as the default no longer
+  surfaces as an unhandled promise rejection (#293).
+- The development container and CI fetch their signing keys and Microsoft
+  repository packages over HTTPS only and check reviewed SHA-256 values
+  (#291, #294, #295). The published service image is unchanged by this.
 
 ## 2.16.0 - 2026-11-11
 
