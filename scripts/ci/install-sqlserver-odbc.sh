@@ -24,6 +24,7 @@ trap 'rm -f "$repository_package"' EXIT
 case "$VERSION_ID" in
   22.04) repository_package_sha256=0d335c06ceb3227e330a36a7135997207843c726e42ec341e34a3825f151213b ;;
   24.04) repository_package_sha256=c13f01ac7c3001b51a9281d40dde666db5e037e05512840c319832f7852bfec4 ;;
+  26.04) repository_package_sha256=b2e7c6b9328e0c6a68bfe5d0045be90ceb192b32e0ca906c6c529b9012726f39 ;;
   *)
     echo "::error::No reviewed Microsoft repository package hash for Ubuntu ${VERSION_ID}."
     exit 1

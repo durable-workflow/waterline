@@ -22,39 +22,100 @@ COPY --from=node /usr/local/ /usr/local/
 COPY --from=node /opt/yarn-v1.22.22/ /opt/yarn-v1.22.22/
 COPY verify-node-runtime.mjs /usr/local/share/waterline/verify-node-runtime.mjs
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends gnupg gosu curl ca-certificates zip unzip git sqlite3 libcap2-bin libpng-dev python2 dnsutils sudo supervisor \
-    && apt-get install -y --no-install-recommends libnspr4 libnss3 libatk1.0-0 libatk-bridge2.0-0 libxkbcommon0 libatspi2.0-0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libcairo2 libpango-1.0-0 libasound2 chromium-browser \
-    && curl --proto '=https' --proto-redir '=https' -fsS 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x14aa40ec0831756756d7f66c4f4ea0aae5267a6c' | gpg --dearmor | tee /etc/apt/keyrings/ppa_ondrej_php.gpg > /dev/null \
-    && echo "deb [signed-by=/etc/apt/keyrings/ppa_ondrej_php.gpg] https://ppa.launchpadcontent.net/ondrej/php/ubuntu jammy main" > /etc/apt/sources.list.d/ppa_ondrej_php.list \
+# Every curl in this build is HTTPS-only, including redirects (waterline#291).
+RUN printf 'proto = "=https"\nproto-redir = "=https"\nfail\n' > /root/.curlrc \
     && apt-get update \
-    && apt-get install -y --no-install-recommends php8.4-cli php8.4-dev \
-       php8.4-pgsql php8.4-sqlite3 php8.4-gd php8.4-imagick \
-       php8.4-curl \
-       php8.4-imap php8.4-mysql php8.4-mbstring \
-       php8.4-xml php8.4-zip php8.4-bcmath php8.4-soap \
-       php8.4-intl php8.4-readline \
-       php8.4-ldap \
-       php8.4-msgpack php8.4-igbinary php8.4-redis php8.4-swoole \
-       php8.4-memcached php8.4-pcov php8.4-xdebug \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        dnsutils \
+        git \
+        gnupg \
+        gosu \
+        libcap2-bin \
+        libpng-dev \
+        python2 \
+        sqlite3 \
+        sudo \
+        supervisor \
+        unzip \
+        zip \
+    && apt-get install -y --no-install-recommends \
+        chromium-browser \
+        libasound2 \
+        libatk-bridge2.0-0 \
+        libatk1.0-0 \
+        libatspi2.0-0 \
+        libcairo2 \
+        libgbm1 \
+        libnspr4 \
+        libnss3 \
+        libpango-1.0-0 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxkbcommon0 \
+        libxrandr2 \
+    && curl -sS 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x14aa40ec0831756756d7f66c4f4ea0aae5267a6c' \
+        | gpg --dearmor | tee /etc/apt/keyrings/ppa_ondrej_php.gpg > /dev/null \
+    && echo "deb [signed-by=/etc/apt/keyrings/ppa_ondrej_php.gpg] https://ppa.launchpadcontent.net/ondrej/php/ubuntu jammy main" \
+        > /etc/apt/sources.list.d/ppa_ondrej_php.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        php8.4-bcmath \
+        php8.4-cli \
+        php8.4-curl \
+        php8.4-dev \
+        php8.4-gd \
+        php8.4-igbinary \
+        php8.4-imagick \
+        php8.4-imap \
+        php8.4-intl \
+        php8.4-ldap \
+        php8.4-mbstring \
+        php8.4-memcached \
+        php8.4-msgpack \
+        php8.4-mysql \
+        php8.4-pcov \
+        php8.4-pgsql \
+        php8.4-readline \
+        php8.4-redis \
+        php8.4-soap \
+        php8.4-sqlite3 \
+        php8.4-swoole \
+        php8.4-xdebug \
+        php8.4-xml \
+        php8.4-zip \
     && node /usr/local/share/waterline/verify-node-runtime.mjs \
-    && curl --proto '=https' --proto-redir '=https' -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc \
+    && curl -sSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc \
     && echo "${PGDG_KEY_SHA256}  /tmp/pgdg.asc" | sha256sum -c - \
     && gpg --dearmor < /tmp/pgdg.asc > /etc/apt/keyrings/pgdg.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt jammy-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+    && echo "deb [signed-by=/etc/apt/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt jammy-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends mysql-client \
-    && apt-get install -y --no-install-recommends postgresql-client-$POSTGRES_VERSION \
-    && apt-get install -y --no-install-recommends unixodbc-dev unixodbc odbcinst \
-    && curl --proto '=https' --proto-redir '=https' -fsSL https://packages.microsoft.com/keys/microsoft.asc -o /tmp/microsoft.asc \
+    && apt-get install -y --no-install-recommends "postgresql-client-${POSTGRES_VERSION}" \
+    && apt-get install -y --no-install-recommends \
+        odbcinst \
+        unixodbc \
+        unixodbc-dev \
+    && curl -sSL https://packages.microsoft.com/keys/microsoft.asc -o /tmp/microsoft.asc \
     && echo "${MICROSOFT_KEY_SHA256}  /tmp/microsoft.asc" | sha256sum -c - \
     && gpg --dearmor < /tmp/microsoft.asc > /etc/apt/keyrings/microsoft.gpg \
-    && echo "deb [signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" | tee /etc/apt/sources.list.d/mssql-release.list \
+    && echo "deb [signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" \
+        > /etc/apt/sources.list.d/mssql-release.list \
     && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17 mssql-tools \
+    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends \
+        msodbcsql17 \
+        mssql-tools \
     && echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> ~/.bashrc \
     && echo 'export PATH="$PATH:/opt/mssql-tools/bin"' >> /etc/profile.d/mssql.sh \
-    && apt-get install -y --no-install-recommends php-pear php8.4-xml php8.4-dev g++ make \
+    && apt-get install -y --no-install-recommends \
+        g++ \
+        make \
+        php-pear \
+        php8.4-dev \
+        php8.4-xml \
     && pecl channel-update pecl.php.net \
     && pecl install sqlsrv \
     && pecl install pdo_sqlsrv \
@@ -63,7 +124,7 @@ RUN apt-get update \
     && phpenmod sqlsrv pdo_sqlsrv \
     && apt-get -y autoremove \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    && rm -rf /root/.curlrc /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 COPY --from=composer /usr/bin/composer /usr/bin/composer
 
