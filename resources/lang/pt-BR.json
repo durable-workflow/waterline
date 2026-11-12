@@ -1346,5 +1346,7 @@
     "Enter a whole rolling duration between 1 second and 3650 days.": "Insira uma duração inteira entre 1 segundo e 3650 dias.",
     "Choose Any time, Rolling window, or Fixed range for the start time.": "Escolha Qualquer momento, Janela móvel ou Intervalo fixo para o início.",
     "The start of the fixed range must be earlier than its end.": "O início do intervalo fixo deve ser anterior ao fim.",
-    "Message shortened for display.": "Mensagem abreviada para exibição."
+    "Message shortened for display.": "Mensagem abreviada para exibição.",
+    "Replay blocked runs": "Execuções com replay bloqueado",
+    "View blocked runs": "Ver execuções bloqueadas"
 }

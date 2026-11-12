@@ -1346,5 +1346,7 @@
     "Enter a whole rolling duration between 1 second and 3650 days.": "Введіть цілу тривалість від 1 секунди до 3650 днів.",
     "Choose Any time, Rolling window, or Fixed range for the start time.": "Виберіть Будь-який час, Рухоме вікно або Фіксований діапазон для початку.",
     "The start of the fixed range must be earlier than its end.": "Початок фіксованого діапазону має передувати його кінцю.",
-    "Message shortened for display.": "Повідомлення скорочено для відображення."
+    "Message shortened for display.": "Повідомлення скорочено для відображення.",
+    "Replay blocked runs": "Виконання із заблокованим replay",
+    "View blocked runs": "Переглянути заблоковані виконання"
 }
