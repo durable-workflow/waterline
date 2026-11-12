@@ -1346,5 +1346,7 @@
     "Enter a whole rolling duration between 1 second and 3650 days.": "请输入 1 秒至 3650 天之间的整数时长。",
     "Choose Any time, Rolling window, or Fixed range for the start time.": "请选择任意时间、滚动窗口或固定范围作为开始时间条件。",
     "The start of the fixed range must be earlier than its end.": "固定范围的起始时间必须早于截止时间。",
-    "Message shortened for display.": "消息已缩短以便显示。"
+    "Message shortened for display.": "消息已缩短以便显示。",
+    "Replay blocked runs": "重放受阻的运行",
+    "View blocked runs": "查看受阻的运行"
 }

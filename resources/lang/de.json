@@ -1346,5 +1346,7 @@
     "Enter a whole rolling duration between 1 second and 3650 days.": "Geben Sie eine ganzzahlige Dauer zwischen 1 Sekunde und 3650 Tagen ein.",
     "Choose Any time, Rolling window, or Fixed range for the start time.": "Wählen Sie Beliebiger Zeitpunkt, Gleitendes Zeitfenster oder Fester Zeitraum für den Start.",
     "The start of the fixed range must be earlier than its end.": "Der Beginn des festen Zeitraums muss vor seinem Ende liegen.",
-    "Message shortened for display.": "Meldung für die Anzeige gekürzt."
+    "Message shortened for display.": "Meldung für die Anzeige gekürzt.",
+    "Replay blocked runs": "Ausführungen mit blockiertem Replay",
+    "View blocked runs": "Blockierte Ausführungen anzeigen"
 }

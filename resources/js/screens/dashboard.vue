@@ -396,6 +396,19 @@
                                     </template>
                                 </div>
                             </div>
+                            <div class="wl-operator-metric" v-if="operatorReplayBlockedReported()">
+                                <div class="wl-operator-metric__label">{{ $t("Replay blocked runs") }}</div>
+                                <div class="wl-operator-metric__value">{{ operatorMetricLabel('runs', 'replay_blocked') }}</div>
+                                <div v-if="operatorReplayBlockedAgeAvailable()" class="wl-operator-metric__meta">
+                                    {{ $t("oldest") }} {{ operatorDurationMetricLabel('runs', 'max_replay_blocked_age_ms') }} {{ $t("blocked") }}
+                                    <template v-if="operatorReplayBlockedOldestAt()">
+                                        {{ $t("(since") }} {{ operatorReplayBlockedOldestAt() }})
+                                    </template>
+                                </div>
+                                <div v-if="operatorReplayBlockedCount() > 0" class="wl-operator-metric__meta">
+                                    <router-link :to="replayBlockedRunsRoute">{{ $t("View blocked runs") }}</router-link>
+                                </div>
+                            </div>
                             <div class="wl-operator-metric">
                                 <div class="wl-operator-metric__label">{{ $t("Claim failed runs") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('backlog', 'claim_failed_runs') }}</div>
@@ -634,6 +647,7 @@
 <script>
 import moment from 'moment-timezone';
 import { projectionMetric, projectionMetricLabel, projectionRebuildTotal } from '../projection-metrics.mjs';
+import { replayBlockedAgeAvailable, replayBlockedCount, replayBlockedOldestAt, replayBlockedReported, replayBlockedRunsRoute } from '../replay-blocked-metrics.mjs';
 
 export default {
     data() {
@@ -649,6 +663,10 @@ export default {
     },
 
     computed: {
+        replayBlockedRunsRoute() {
+            return replayBlockedRunsRoute();
+        },
+
         classificationOptions() {
             return this.stats.classification_scope?.options || [];
         },
@@ -1393,6 +1411,22 @@ export default {
 
             return Number(runs.repair_needed || 0) > 0
                 || Number(runs.max_repair_needed_age_ms || 0) > 0;
+        },
+
+        operatorReplayBlockedReported() {
+            return replayBlockedReported(this.operatorMetrics);
+        },
+
+        operatorReplayBlockedAgeAvailable() {
+            return replayBlockedAgeAvailable(this.operatorMetrics);
+        },
+
+        operatorReplayBlockedOldestAt() {
+            return replayBlockedOldestAt(this.operatorMetrics);
+        },
+
+        operatorReplayBlockedCount() {
+            return replayBlockedCount(this.operatorMetrics);
         },
 
         operatorRunRepairNeededOldestAt() {

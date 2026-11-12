@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- The dashboard shows replay-blocked runs next to repair-needed runs: the count,
+  the oldest age and a link to the running list filtered to the
+  `workflow_replay_blocked` liveness state (#292). It needs Workflow 2.24.0 or
+  later. When the backend doesn't report the metric, which includes native
+  Server today (server#1154), the card stays hidden instead of showing 0.
 - Embedded Waterline accepts schedule visibility queries, such as
   `WorkflowType = "orders.process" AND Status = "paused"`, when the host has
   Workflow 2.21.0 or later (#226). The schedules screen shows the query field

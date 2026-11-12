@@ -1346,5 +1346,7 @@
     "Enter a whole rolling duration between 1 second and 3650 days.": "1 秒から 3650 日までの整数の期間を入力してください。",
     "Choose Any time, Rolling window, or Fixed range for the start time.": "開始時刻に、すべての時刻、移動する時間枠、固定期間のいずれかを選択してください。",
     "The start of the fixed range must be earlier than its end.": "固定期間の開始は終了より前である必要があります。",
-    "Message shortened for display.": "表示用にメッセージを短縮しています。"
+    "Message shortened for display.": "表示用にメッセージを短縮しています。",
+    "Replay blocked runs": "リプレイがブロックされた実行",
+    "View blocked runs": "ブロックされた実行を表示"
 }
