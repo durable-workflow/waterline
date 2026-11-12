@@ -87,7 +87,7 @@ RUN printf 'proto = "=https"\nproto-redir = "=https"\nfail\n' > /root/.curlrc \
         php8.4-xml \
         php8.4-zip \
     && node /usr/local/share/waterline/verify-node-runtime.mjs \
-    && curl -sSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc \
+    && curl -sS https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc \
     && echo "${PGDG_KEY_SHA256}  /tmp/pgdg.asc" | sha256sum -c - \
     && gpg --dearmor < /tmp/pgdg.asc > /etc/apt/keyrings/pgdg.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt jammy-pgdg main" \
@@ -99,7 +99,7 @@ RUN printf 'proto = "=https"\nproto-redir = "=https"\nfail\n' > /root/.curlrc \
         odbcinst \
         unixodbc \
         unixodbc-dev \
-    && curl -sSL https://packages.microsoft.com/keys/microsoft.asc -o /tmp/microsoft.asc \
+    && curl -sS https://packages.microsoft.com/keys/microsoft.asc -o /tmp/microsoft.asc \
     && echo "${MICROSOFT_KEY_SHA256}  /tmp/microsoft.asc" | sha256sum -c - \
     && gpg --dearmor < /tmp/microsoft.asc > /etc/apt/keyrings/microsoft.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" \
