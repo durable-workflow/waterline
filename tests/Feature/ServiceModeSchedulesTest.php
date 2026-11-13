@@ -283,6 +283,71 @@ final class ServiceModeSchedulesTest extends TestCase
             ->assertJsonPath('data.0.current_run', null);
     }
 
+    public function testListRunCannotBorrowTopLevelDetailAlias(): void
+    {
+        $this->assertCurrentRunAliasIsolation('list', 'top');
+    }
+
+    public function testListRunCannotBorrowDetailStateAlias(): void
+    {
+        $this->assertCurrentRunAliasIsolation('list', 'state');
+    }
+
+    public function testListRunCannotBorrowDetailInfoAlias(): void
+    {
+        $this->assertCurrentRunAliasIsolation('list', 'info');
+    }
+
+    public function testDetailRunCannotBorrowTopLevelListAlias(): void
+    {
+        $this->assertCurrentRunAliasIsolation('detail', 'top');
+    }
+
+    public function testDetailRunCannotBorrowListStateAlias(): void
+    {
+        $this->assertCurrentRunAliasIsolation('detail', 'state');
+    }
+
+    public function testDetailRunCannotBorrowListInfoAlias(): void
+    {
+        $this->assertCurrentRunAliasIsolation('detail', 'info');
+    }
+
+    public function testSelectedListRunKeepsItsOwnNestedAlias(): void
+    {
+        $this->assertCurrentRunAliasIsolation('list', 'top', true);
+    }
+
+    public function testSelectedDetailRunKeepsItsOwnNestedAlias(): void
+    {
+        $this->assertCurrentRunAliasIsolation('detail', 'top', true);
+    }
+
+    private function assertCurrentRunAliasIsolation(string $selected, string $location, bool $ownAlias = false): void
+    {
+        $frames = [
+            'list' => ['schedule_id' => 'nightly-orders', 'namespace' => 'orders'],
+            'detail' => ['schedule_id' => 'nightly-orders'],
+        ];
+        $frames[$selected]['current_run'] = ['run_id' => 'selected-run', 'status' => 'running', 'status_bucket' => 'running', 'is_terminal' => false];
+        $other = $selected === 'list' ? 'detail' : 'list';
+        if ($location === 'top') {
+            $frames[$other]['latest_instance_id'] = 'unselected-pointer';
+        } else {
+            $frames[$other][$location] = ['latest_instance_id' => 'unselected-pointer'];
+        }
+        if ($ownAlias) {
+            $frames[$selected]['info'] = ['latest_instance_id' => 'selected-pointer'];
+        }
+        $this->client->scheduleListItems = [$frames['list']];
+        $this->client->scheduleDetails['nightly-orders'] = $frames['detail'];
+        $this->getJson('/waterline/api/v2/schedules')->assertOk()
+            ->assertJsonPath('data.0.current_run_state', 'unavailable')
+            ->assertJsonPath('data.0.current_run', null)
+            ->assertJsonPath('data.0.latest_workflow_instance_id', $ownAlias ? 'selected-pointer' : null)
+            ->assertJsonPath('data.0.latest_instance_id', $ownAlias ? 'selected-pointer' : null);
+    }
+
     public function testMixedListReadsDetailsOnlyForRowsWithoutTheObservation(): void
     {
         $this->client->scheduleListItems = [

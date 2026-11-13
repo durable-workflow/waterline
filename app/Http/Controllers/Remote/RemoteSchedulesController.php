@@ -241,20 +241,15 @@ final class RemoteSchedulesController extends RemoteController
         // including nulls or fields unavailable in that detail's contract.
         unset($listItem['last_skip_reason'], $listItem['last_skipped_at'], $listItem['skipped_trigger_count']);
 
-        $merged = [...$listItem, ...$detail];
         // Current run and its instance pointer belong to one observation.
         // A later detail read may see another dispatch; neither direction may
         // fill a missing pointer from the other read or replace explicit null.
         $observation = array_key_exists('current_run', $listItem) ? $listItem : $detail;
-        if (array_key_exists('current_run', $observation)) {
-            $merged['current_run'] = $observation['current_run'];
-            unset($merged['latest_workflow_instance_id']);
-            if (array_key_exists('latest_workflow_instance_id', $observation)) {
-                $merged['latest_workflow_instance_id'] = $observation['latest_workflow_instance_id'];
-            }
-        }
 
-        return ScheduleRow::detail($this->withNamespace($merged));
+        return [
+            ...ScheduleRow::detail($this->withNamespace([...$listItem, ...$detail])),
+            ...ScheduleRow::currentRunObservation($observation),
+        ];
     }
 
     private function detailResponse(string $scheduleId): JsonResponse

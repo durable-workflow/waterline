@@ -80,9 +80,7 @@ final class ScheduleRow
     public static function detail(array $source): array
     {
         $flat = self::flatten($source);
-        $latestPointer = array_key_exists('latest_workflow_instance_id', $flat)
-            ? $flat['latest_workflow_instance_id'] : ($flat['latest_instance_id'] ?? null);
-        $latestInstanceId = self::identity($latestPointer);
+        $latestInstanceId = self::latestInstanceId($flat);
 
         return [
             ...self::row($source),
@@ -98,8 +96,31 @@ final class ScheduleRow
             'recent_actions' => self::recentActions($flat['recent_actions'] ?? null),
             'buffered_actions' => self::list($flat['buffered_actions'] ?? null),
             'memo' => is_array($flat['memo'] ?? null) ? $flat['memo'] : null,
-            ...(array_key_exists('current_run', $source) ? ScheduleCurrentRun::read($source) : []),
+            ...self::currentRunObservation($source),
         ];
+    }
+
+    /** The current-run fields and both pointer forms from this frame only. */
+    public static function currentRunObservation(array $source): array
+    {
+        if (! array_key_exists('current_run', $source)) {
+            return [];
+        }
+        $latest = self::latestInstanceId(self::flatten($source));
+
+        return [
+            ...ScheduleCurrentRun::read($source),
+            'latest_workflow_instance_id' => $latest,
+            'latest_instance_id' => $latest,
+        ];
+    }
+
+    private static function latestInstanceId(array $flat): ?string
+    {
+        $pointer = array_key_exists('latest_workflow_instance_id', $flat)
+            ? $flat['latest_workflow_instance_id'] : ($flat['latest_instance_id'] ?? null);
+
+        return self::identity($pointer);
     }
 
     /**
