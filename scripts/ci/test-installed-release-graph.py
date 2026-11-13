@@ -129,10 +129,10 @@ class CapturedJsonTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "input.json"
             path.write_bytes(b'{"dev":false}')
-            self.assertEqual(({"dev": False}, b'{"dev":false}'), identity.load_json(path, "input"))
+            self.assertEqual(({"dev": False}, b'{"dev":false}'), identity.load_json(path, "input", root=Path(directory)))
             path.write_bytes(b' ' * (identity.MAX_JSON_BYTES + 1))
             with self.assertRaises(identity.IdentityError):
-                identity.load_json(path, "input")
+                identity.load_json(path, "input", root=Path(directory))
 
     def test_symlink_directory_and_fifo_refuse_before_read(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -142,7 +142,7 @@ class CapturedJsonTest(unittest.TestCase):
             os.mkfifo(root / "fifo")
             for path in (root / "link", root, root / "fifo"):
                 with self.subTest(path=path.name), self.assertRaises(identity.IdentityError):
-                    identity.load_json(path, "input")
+                    identity.load_json(path, "input", root=root)
 
     def test_changed_open_file_refuses_instead_of_emitting_success(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -160,7 +160,7 @@ class CapturedJsonTest(unittest.TestCase):
 
             with mock.patch.object(identity.os, "fstat", side_effect=mutate_after_read):
                 with self.assertRaisesRegex(identity.IdentityError, "changed"):
-                    identity.load_json(path, "input")
+                    identity.load_json(path, "input", root=Path(directory))
 
     def test_path_replacement_cannot_retarget_the_open_descriptor(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -179,9 +179,96 @@ class CapturedJsonTest(unittest.TestCase):
                 return original(descriptor)
 
             with mock.patch.object(identity.os, "fstat", side_effect=replace_after_open):
-                value, raw = identity.load_json(path, "input")
-            self.assertEqual((value, raw), ({"dev": False}, b'{"dev":false}'))
-            self.assertEqual(path.read_bytes(), b'{"dev":true}')
+                value, raw = identity.load_json(path, "input", root=Path(directory))
+            self.assertEqual(({"dev": False}, b'{"dev":false}'), (value, raw))
+            self.assertEqual(b'{"dev":true}', path.read_bytes())
+
+    def test_traversal_adjacent_prefix_and_parent_symlink_cannot_escape_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            allowed = base / "allowed"
+            foreign = base / "allowed-foreign"
+            allowed.mkdir()
+            foreign.mkdir()
+            target = foreign / "input.json"
+            target.write_bytes(b'{}')
+            (allowed / "link").symlink_to(foreign, target_is_directory=True)
+            for path in (target, allowed / ".." / foreign.name / target.name, allowed / "link" / target.name):
+                self.assertEqual({}, json.loads(path.read_bytes()))
+                with self.subTest(path=str(path)), self.assertRaises(identity.IdentityError):
+                    identity.load_json(path, "input", root=allowed)
+
+
+class RouteCacheDataTest(unittest.TestCase):
+    def setUp(self):
+        self.before = [{"methods": ["GET", "HEAD"], "uri": "up", "domain": None,
+                        "name": None, "action": "Closure", "middleware": [],
+                        "wheres": {}, "defaults": {}, "binding_fields": {},
+                        "scoped_bindings": False},
+                       {"methods": ["POST"], "uri": "waterline/api/saved-views", "domain": None,
+                        "name": "waterline.saved-views.store", "action": "ViewsController@store",
+                        "middleware": ["web", "waterline.auth"], "wheres": {},
+                        "defaults": {}, "binding_fields": {}, "scoped_bindings": False}]
+        self.cached = copy.deepcopy(self.before)
+        self.cached[0]["name"] = "generated::aB3dE5gH7jK9mN2p"
+
+    def test_accepts_only_cached_generated_name_for_originally_unnamed_route(self):
+        result = identity.validate_route_cache_routes(self.before, self.cached, self.before)
+        self.assertEqual(2, result["route_count"])
+        for name in ("", None):
+            before = copy.deepcopy(self.before)
+            before[0]["name"] = name
+            identity.validate_route_cache_routes(before, self.cached, before)
+
+    def test_changes_hidden_by_name_only_comparison_refuse(self):
+        for field, value in (("methods", ["DELETE"]), ("uri", "other"), ("domain", "other.test"),
+                             ("action", "OtherController@store"), ("middleware", []),
+                             ("wheres", {"id": "[a-z]+"}), ("defaults", {"access": "operator"}),
+                             ("binding_fields", {"id": "slug"}), ("scoped_bindings", True)):
+            cached = copy.deepcopy(self.cached)
+            cached[1][field] = value
+            with self.subTest(field=field):
+                self.assertEqual([r["name"] for r in self.cached], [r["name"] for r in cached])
+                with self.assertRaises(identity.IdentityError):
+                    identity.validate_route_cache_routes(self.before, cached, self.before)
+
+    def test_count_order_stale_clear_and_explicit_name_changes_refuse(self):
+        cases = [(self.cached[:-1], self.before), (list(reversed(self.cached)), self.before),
+                 (self.cached, self.cached)]
+        renamed = copy.deepcopy(self.cached)
+        renamed[1]["name"] = "generated::aB3dE5gH7jK9mN3p"
+        cases.append((renamed, self.before))
+        for cached, cleared in cases:
+            with self.subTest(cached=cached), self.assertRaises(identity.IdentityError):
+                identity.validate_route_cache_routes(self.before, cached, cleared)
+
+    def test_default_json_types_remain_distinct(self):
+        before = copy.deepcopy(self.before)
+        before[1]["defaults"] = {"value": 1}
+        for value in (True, 1.0):
+            cached = copy.deepcopy(self.cached)
+            cached[1]["defaults"] = {"value": value}
+            self.assertEqual(before[1]["defaults"], cached[1]["defaults"])
+            with self.subTest(value=value), self.assertRaises(identity.IdentityError):
+                identity.validate_route_cache_routes(before, cached, before)
+
+    def test_collisions_malformed_records_and_arbitrary_cached_names_refuse(self):
+        variants = [[], [*self.before, self.before[0]], [*self.before] * 1025]
+        for field, value in (("name", self.before[1]["name"]), ("methods", ["GET", "GET"]),
+                             ("defaults", {"number": float("inf")}), ("scoped_bindings", 1)):
+            value_list = copy.deepcopy(self.before)
+            value_list[0][field] = value
+            variants.append(value_list)
+        missing = copy.deepcopy(self.before)
+        del missing[0]["middleware"]
+        variants.append(missing)
+        for routes in variants:
+            with self.subTest(count=len(routes)), self.assertRaises(identity.IdentityError):
+                identity.validate_route_cache_routes(routes, routes, routes)
+        cached = copy.deepcopy(self.cached)
+        cached[0]["name"] = "some-new-name"
+        with self.assertRaises(identity.IdentityError):
+            identity.validate_route_cache_routes(self.before, cached, self.before)
 
 
 if __name__ == "__main__":
