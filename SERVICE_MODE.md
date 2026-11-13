@@ -77,6 +77,42 @@ keeps the action hidden. Redrive calls
 starting another. A refusal shows the Server's reason, and read-only mode
 refuses with `waterline_read_only` before calling the Server.
 
+### Pause activity dispatch on a task queue
+
+With native Server 3.8.0 or later, each queue card on **Workers** shows the
+queue's activity dispatch state: **Activities paused** while a pause holds,
+with its reason, when it started and who paused it, or the last pause and
+resume once it ended. A Server that doesn't report `activity_dispatch`
+(published PHP Server 2.x, older native) shows the card as before.
+
+**Pause activities** and **Resume activities** appear only when all of these
+hold:
+
+- `WATERLINE_ACCESS_MODE=operator`; read-only mode refuses with
+  `waterline_read_only` before calling the Server;
+- cluster info advertises `capabilities.task_queue_activity_dispatch_pause`;
+- the PHP SDK exposes `pauseTaskQueueActivityDispatch()` and
+  `resumeTaskQueueActivityDispatch()`. The pinned SDK doesn't yet, so the card
+  shows the state and says why the actions are unavailable.
+
+The Server records the token's principal as the one who paused, and refuses a
+worker token with 403, which Waterline shows as such. A reason is optional and
+at most 1000 characters; Waterline checks the length before sending it and
+shows the Server's 422 if it refuses one. Pausing a paused queue reports
+`already_paused` and keeps the original pause and reason; resuming an active
+queue reports `not_paused`. Neither changes anything.
+
+While a queue is paused, no new activity task on it is leased. Ready tasks
+stay ready and keep their attempt count, activities already running continue,
+and activity deadlines keep running, so a schedule-to-start or
+schedule-to-close deadline can still time an activity out. Workflow tasks,
+signals, queries and updates are delivered as before. A pause is not a build
+drain and not a concurrency cap of 0. See the Server's
+`docs/contracts/task-queue-activity-dispatch-pause.md`.
+
+Embedded Laravel has no activity dispatch pause, so embedded Waterline shows
+nothing new and offers no action.
+
 ### Bounded startup and health
 
 With the image already pulled, a clean container using the default SQLite
