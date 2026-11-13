@@ -1,4 +1,5 @@
-# PyPI wheels for CPython 3.13 on glibc Linux amd64 and arm64.
+# CPython 3.13 glibc Linux amd64/arm64, plus 3.12 amd64 for bound PHP jobs.
 PyYAML==6.0.2 \
     --hash=sha256:70b189594dbe54f75ab3a1acec5f1e3faa7e8cf2f1e08d9b561cb41b845f69d5 \
-    --hash=sha256:0ffe8360bab4910ef1b9e87fb812d8bc0a308b0d0eef8c8f44e0254ab3b07133
+    --hash=sha256:0ffe8360bab4910ef1b9e87fb812d8bc0a308b0d0eef8c8f44e0254ab3b07133 \
+    --hash=sha256:80bab7bfc629882493af4aa31a4cfa43a4c57c83813253626916b8c7ada83476
