@@ -10,7 +10,8 @@ use Workflow\V2\Support\NamespaceScopeRefusals;
 
 /**
  * Workflow 2.27.0's namespace_scope_refusals check names the namespaces an
- * app refused. Waterline shows them on its authenticated health page and
+ * app refused. Namespace names here are unique so that rows other tests
+ * leave in a shared database cannot satisfy or break the assertions. Waterline shows them on its authenticated health page and
  * hides the names from an observer stack opened without sign-in.
  */
 final class V2NamespaceScopeRefusalsTest extends TestCase
@@ -19,14 +20,18 @@ final class V2NamespaceScopeRefusalsTest extends TestCase
     {
         parent::setUp();
 
+        if (! class_exists(NamespaceScopeRefusals::class)) {
+            $this->markTestSkipped('Namespace-scope refusals need Workflow 2.27.0 or later.');
+        }
+
         config()->set('waterline.engine_source', 'v2');
         config()->set('queue.default', 'redis');
         config()->set('queue.connections.redis.driver', 'redis');
         config()->set('cache.default', 'array');
         config()->set('workflows.v2.namespaces', ['orders']);
 
-        NamespaceScopeRefusals::record(NamespaceScopeRefusals::PATH_JOB, 'billing', 3);
-        NamespaceScopeRefusals::record(NamespaceScopeRefusals::PATH_REPAIR, 'reports', 2);
+        NamespaceScopeRefusals::record(NamespaceScopeRefusals::PATH_JOB, 'nsr-billing', 3);
+        NamespaceScopeRefusals::record(NamespaceScopeRefusals::PATH_REPAIR, 'nsr-reports', 2);
     }
 
     public function testAnAuthenticatedOperatorSeesRefusalsByNamespaceAndPath(): void
@@ -41,7 +46,7 @@ final class V2NamespaceScopeRefusalsTest extends TestCase
         $this->assertSame(3, $check['data']['by_path']['job']);
         $this->assertSame(2, $check['data']['by_path']['repair']);
         $this->assertSame(
-            [['billing', 'job', 3], ['reports', 'repair', 2]],
+            [['nsr-billing', 'job', 3], ['nsr-reports', 'repair', 2]],
             array_map(
                 static fn (array $row): array => [$row['namespace'], $row['path'], $row['count']],
                 $check['data']['namespaces'],
@@ -49,7 +54,7 @@ final class V2NamespaceScopeRefusalsTest extends TestCase
         );
         $this->assertSame(['all' => false, 'namespaces' => ['orders']], $check['data']['scope']);
         $this->assertArrayNotHasKey('namespaces_redacted', $check['data']);
-        $this->assertSame('billing', $payload['operator_metrics']['namespace_scope_refusals']['namespaces'][0]['namespace']);
+        $this->assertSame('nsr-billing', $payload['operator_metrics']['namespace_scope_refusals']['namespaces'][0]['namespace']);
     }
 
     public function testAnUnauthenticatedObserverStackSeesCountsWithoutNamespaceNames(): void
@@ -68,12 +73,12 @@ final class V2NamespaceScopeRefusalsTest extends TestCase
         $this->assertTrue($check['data']['namespaces_redacted']);
         $this->assertSame([], $response->json('operator_metrics.namespace_scope_refusals.namespaces'));
         $this->assertTrue($response->json('operator_metrics.namespace_scope_refusals.namespaces_redacted'));
-        $this->assertStringNotContainsString('billing', $response->getContent());
-        $this->assertStringNotContainsString('reports', $response->getContent());
+        $this->assertStringNotContainsString('nsr-billing', $response->getContent());
+        $this->assertStringNotContainsString('nsr-reports', $response->getContent());
 
         $stats = $this->getJson('/waterline/api/stats')->assertOk();
         $this->assertTrue($stats->json('operator_metrics.namespace_scope_refusals.namespaces_redacted'));
-        $this->assertStringNotContainsString('billing', $stats->getContent());
+        $this->assertStringNotContainsString('nsr-billing', $stats->getContent());
     }
 
     public function testOpeningWaterlineWithoutSignInHidesTheNamesEvenForAnAdmittedViewer(): void
@@ -83,7 +88,7 @@ final class V2NamespaceScopeRefusalsTest extends TestCase
 
         $response = $this->getJson('/waterline/api/v2/health')->assertOk();
 
-        $this->assertStringNotContainsString('billing', $response->getContent());
+        $this->assertStringNotContainsString('nsr-billing', $response->getContent());
         $this->assertTrue(collect($response->json('checks'))->firstWhere('name', 'namespace_scope_refusals')['data']['namespaces_redacted']);
     }
 
@@ -91,7 +96,7 @@ final class V2NamespaceScopeRefusalsTest extends TestCase
     {
         $stats = $this->getJson('/waterline/api/stats')->assertOk();
 
-        $this->assertSame('billing', $stats->json('operator_metrics.namespace_scope_refusals.namespaces.0.namespace'));
+        $this->assertSame('nsr-billing', $stats->json('operator_metrics.namespace_scope_refusals.namespaces.0.namespace'));
     }
 
     public function testAnUnauthorizedViewerGetsNothing(): void
@@ -100,7 +105,7 @@ final class V2NamespaceScopeRefusalsTest extends TestCase
         config()->set('waterline.allow_unauthenticated', false);
 
         $response = $this->get('/waterline/api/v2/health')->assertForbidden();
-        $this->assertStringNotContainsString('billing', (string) $response->getContent());
+        $this->assertStringNotContainsString('nsr-billing', (string) $response->getContent());
     }
 
     public function testANamespaceScopedWaterlineDoesNotListOtherNamespacesRefusals(): void
@@ -112,6 +117,6 @@ final class V2NamespaceScopeRefusalsTest extends TestCase
 
         $this->assertSame('ok', $check['status']);
         $this->assertSame([], $check['data']['namespaces']);
-        $this->assertStringNotContainsString('billing', $response->getContent());
+        $this->assertStringNotContainsString('nsr-billing', $response->getContent());
     }
 }
