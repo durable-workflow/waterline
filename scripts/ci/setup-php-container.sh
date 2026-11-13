@@ -4,7 +4,7 @@ umask 077
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 minor="${1:?Usage: setup-php-container.sh 8.2}"
-image="$(python3 - "$root/scripts/ci/php-container-images.json" "$minor" <<'PY'
+image="$(python3 -I -S - "$root/scripts/ci/php-container-images.json" "$minor" <<'PY'
 import json,re,sys
 images=json.load(open(sys.argv[1]))
 image=images[sys.argv[2]]
@@ -40,7 +40,7 @@ mkdir -p "$state/bin" "$state/tmp" "$state/composer-home/cache"
 ln -sf "$root/scripts/ci/run-php-container.sh" "$state/bin/php"
 ln -sf "$root/scripts/ci/run-php-container.sh" "$state/bin/composer"
 WATERLINE_PHP_CI_TEST_IMAGE="$runtime_id" WATERLINE_PHP_CI_ROOT="$root" WATERLINE_PHP_CI_STATE="$state" \
-    python3 -m unittest discover -s "$root/tests/ci" -p test_php_container_tls.py -v
+    python3 -I -S -B "$root/tests/ci/test_php_container_tls.py" -v
 {
     echo "WATERLINE_PHP_CI_IMAGE=$runtime_id"
     echo "WATERLINE_PHP_CI_ROOT=$root"

@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -75,6 +76,26 @@ class PhpContainerLauncherTests(unittest.TestCase):
             mount = f"type=bind,source={selected},target={selected},readonly"
             self.assertEqual(arguments.count(mount), 1)
         self.assertEqual(arguments[-3:], ["php", "/reviewed/verify.php", "/usr/local/bin/composer"])
+
+    def test_setup_excludes_workspace_python_imports_before_prerequisite_checks(self):
+        project = self.state / "project"
+        scripts = project / "scripts/ci"
+        scripts.mkdir(parents=True)
+        for name in ("setup-php-container.sh", "php-container-images.json"):
+            shutil.copy2(ROOT / "scripts/ci" / name, scripts / name)
+        marker = self.state / "workspace-module-executed"
+        (project / "json.py").write_text(
+            "from pathlib import Path\n"
+            f"Path({str(marker)!r}).write_text('unexpected workspace import')\n"
+            "raise SystemExit(42)\n"
+        )
+        environment = dict(self.environment, PYTHONPATH=str(project))
+        result = subprocess.run(["bash", str(scripts / "setup-php-container.sh"), "8.2"],
+                                cwd=project, env=environment, capture_output=True,
+                                text=True, timeout=10)
+        self.assertNotEqual(result.returncode, 0)  # The fixed APT source is absent.
+        self.assertFalse(marker.exists(), "Setup executed a workspace Python module")
+        self.assertFalse(self.log.exists(), "Setup reached Docker without its APT prerequisite")
 
 
 if __name__ == "__main__":

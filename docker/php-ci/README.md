@@ -19,6 +19,8 @@ runs the real Composer TLS control before exporting the PHP/Composer launchers.
 Selected CA files and empty root directories are mounted read-only. The
 launcher excludes host GitHub and Composer authentication. Normal dependency
 requests still require the reviewed live Composer guard.
+Host-side selector and TLS-control Python run in isolated mode without site
+initialization, so workspace modules and ambient import paths cannot run there.
 
 Run the launcher boundary controls without Docker:
 
