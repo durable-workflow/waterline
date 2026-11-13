@@ -14,6 +14,177 @@ fi
 
 image="${WATERLINE_IMAGE:-waterline-service-smoke:local}"
 . scripts/ci/service-image-features.sh
+
+# Source for the current-target acceptance packet. No ordinary path calls this
+# function; execution wiring needs the complete independent source/effect review.
+current_runtime_probe_source() {
+    cat <<'WATERLINE_CURRENT_RUNTIME_PHP'
+<?php
+declare(strict_types=1);
+
+const CURRENT_LOCK_SHA256 = 'c2181f466bcbb799e3ce183d58531574d32de0cf9eba2f78dd9c18b211c60466';
+const CURRENT_CACHE_PATH = '/app/bootstrap/cache/routes-v7.php';
+const CURRENT_RUNTIME_CLASSES = [
+    'Waterline\\Http\\Controllers\\Remote\\RemoteWorkflowsController' => '/app/waterline/app/Http/Controllers/Remote/RemoteWorkflowsController.php',
+    'Waterline\\Support\\WorkflowStreamPresenter' => '/app/waterline/app/Support/WorkflowStreamPresenter.php',
+    'Illuminate\\Foundation\\Application' => '/app/vendor/laravel/framework/src/Illuminate/Foundation/Application.php',
+];
+
+function currentFileIdentity(array $state): array
+{
+    return array_intersect_key($state, array_flip(['dev', 'ino', 'mode', 'uid', 'gid', 'nlink', 'size', 'mtime', 'ctime']));
+}
+
+function currentRegularBytes(string $path, int $limit): string
+{
+    $allowed = ['/app/composer.lock', '/app/vendor/composer/installed.json', CURRENT_CACHE_PATH, ...array_values(CURRENT_RUNTIME_CLASSES)];
+    if (!in_array($path, $allowed, true)) {
+        throw new RuntimeException('Unselected observation path.');
+    }
+    $parent = '';
+    foreach (explode('/', trim(dirname($path), '/')) as $part) {
+        $parent .= '/'.$part;
+        $state = lstat($parent);
+        if (($state['mode'] & 0170000) !== 0040000) {
+            throw new RuntimeException('Observation parent is not a real directory.');
+        }
+    }
+    $before = lstat($path);
+    if (($before['mode'] & 0170000) !== 0100000 || $before['size'] > $limit) {
+        throw new RuntimeException('Observation input is not a bounded regular file.');
+    }
+    $stream = fopen($path, 'rb');
+    try {
+        if (currentFileIdentity($before) !== currentFileIdentity(fstat($stream))) {
+            throw new RuntimeException('Observation input changed before opening.');
+        }
+        $bytes = stream_get_contents($stream, $limit + 1);
+        if (strlen($bytes) > $limit || currentFileIdentity($before) !== currentFileIdentity(fstat($stream))) {
+            throw new RuntimeException('Observation input changed while reading.');
+        }
+        return $bytes;
+    } finally {
+        fclose($stream);
+    }
+}
+
+function currentCacheState(): array
+{
+    $count = 0;
+    foreach (new DirectoryIterator(dirname(CURRENT_CACHE_PATH)) as $entry) {
+        if (++$count > 128) {
+            throw new RuntimeException('Cache directory entry bound exceeded.');
+        }
+        if ($entry->getFilename() === basename(CURRENT_CACHE_PATH)) {
+            $bytes = currentRegularBytes(CURRENT_CACHE_PATH, 2 * 1024 * 1024);
+            return ['path' => CURRENT_CACHE_PATH, 'present' => true, 'bytes' => strlen($bytes), 'sha256' => hash('sha256', $bytes)];
+        }
+    }
+    return ['path' => CURRENT_CACHE_PATH, 'present' => false, 'bytes' => 0, 'sha256' => null];
+}
+
+function currentClasses(): array
+{
+    $classes = [];
+    foreach (CURRENT_RUNTIME_CLASSES as $name => $expectedPath) {
+        $actual = (new ReflectionClass($name))->getFileName();
+        if ($actual !== $expectedPath || realpath($actual) !== $expectedPath) {
+            throw new RuntimeException('Loaded class escaped its canonical path.');
+        }
+        $classes[$name] = ['path' => $actual, 'sha256' => hash('sha256', currentRegularBytes($actual, 1024 * 1024))];
+    }
+    return $classes;
+}
+
+function currentRoutes(object $app): array
+{
+    $routes = [];
+    foreach ($app['router']->getRoutes() as $route) {
+        if (count($routes) >= 2048) {
+            throw new RuntimeException('Route count bound exceeded.');
+        }
+        $routes[] = [
+            'methods' => $route->methods(), 'uri' => $route->uri(), 'domain' => $route->getDomain(),
+            'name' => $route->getName(), 'action' => $route->getActionName(),
+            'middleware' => $route->gatherMiddleware(), 'wheres' => (object) $route->wheres,
+            'defaults' => (object) $route->defaults, 'binding_fields' => (object) $route->bindingFields(),
+            'scoped_bindings' => $route->enforcesScopedBindings(),
+        ];
+    }
+    return $routes;
+}
+
+$mode = $argv[1] ?? '';
+set_error_handler(static function (int $severity, string $message, string $file, int $line): never {
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+try {
+    if (!in_array($mode, ['metadata', 'inventory', 'clear-before', 'cache-build', 'clear-after'], true)) {
+        throw new RuntimeException('Unselected observation mode.');
+    }
+    if (PHP_VERSION_ID !== 80336 || PHP_INT_SIZE !== 8 || realpath(PHP_BINARY) !== '/usr/local/bin/php') {
+        throw new RuntimeException('Unexpected PHP runtime.');
+    }
+    $lock = currentRegularBytes('/app/composer.lock', 1024 * 1024);
+    $installed = currentRegularBytes('/app/vendor/composer/installed.json', 1024 * 1024);
+    if (!hash_equals(CURRENT_LOCK_SHA256, hash('sha256', $lock))) {
+        throw new RuntimeException('Lock differs from the current-target source.');
+    }
+    $report = [
+        'schema' => 'waterline.current-standalone-runtime-observation/v1', 'mode' => $mode,
+        'php_version' => PHP_VERSION, 'php_int_size' => PHP_INT_SIZE, 'php_binary' => realpath(PHP_BINARY),
+        'ini_loaded_file' => php_ini_loaded_file() ?: null, 'ini_scanned_files' => php_ini_scanned_files() ?: null,
+        'lock_sha256' => hash('sha256', $lock), 'installed_sha256' => hash('sha256', $installed),
+    ];
+    if ($mode === 'metadata') {
+        if (count($argv) !== 2 || currentCacheState()['present']) {
+            throw new RuntimeException('Initial image has a route cache or extra arguments.');
+        }
+        $report += ['lock_base64' => base64_encode($lock), 'installed_base64' => base64_encode($installed),
+                    'cache' => currentCacheState()];
+    } else {
+        $expectedInstalled = $argv[2] ?? '';
+        if (count($argv) !== 3 || preg_match('/\A[a-f\d]{64}\z/D', $expectedInstalled) !== 1
+            || !hash_equals($expectedInstalled, $report['installed_sha256']) || posix_geteuid() !== 82) {
+            throw new RuntimeException('Missing metadata seal or wrong application UID.');
+        }
+        ob_start();
+        require '/app/vendor/autoload.php';
+        $app = require '/app/bootstrap/app.php';
+        $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+        $kernel->bootstrap();
+        if ($app->getCachedRoutesPath() !== CURRENT_CACHE_PATH) {
+            throw new RuntimeException('Application selected a different cache path.');
+        }
+        if ($mode !== 'inventory') {
+            $command = $mode === 'cache-build' ? 'route:cache' : 'route:clear';
+            if ($kernel->call($command) !== 0 || strlen($kernel->output()) > 65536) {
+                throw new RuntimeException('Route-cache command failed or exceeded output bounds.');
+            }
+            $report += ['command' => $command, 'exit_status' => 0];
+        } else {
+            $report['routes'] = currentRoutes($app);
+        }
+        $report += ['classes' => currentClasses(), 'cache' => currentCacheState()];
+        if (ob_get_clean() !== '') {
+            throw new RuntimeException('Unexpected application output.');
+        }
+    }
+    $encoded = json_encode($report, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION);
+    if (strlen($encoded) > 1024 * 1024) {
+        throw new RuntimeException('Observation output bound exceeded.');
+    }
+    echo $encoded, "\n";
+} catch (Throwable $error) {
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    fwrite(STDERR, json_encode(['mode' => $mode, 'error_class' => get_class($error)], JSON_THROW_ON_ERROR)."\n");
+    exit(1);
+}
+WATERLINE_CURRENT_RUNTIME_PHP
+}
+
 container="waterline-service-smoke-${GITHUB_RUN_ID:-local}-$$"
 memory_database_container="${container}-memory-database"
 server_container="${container}-server"
