@@ -86,7 +86,10 @@ jobs:
         with:
           clients: python,curl,git
       - name: Install the distribution OCI copy tool
+        # CVE-2026-109518 needs APT to retry a redirected download; hosted
+        # runner images still ship affected apt (durable-workflow/.github#295).
         run: |
+          echo 'Acquire::Retries "0";' | sudo tee /etc/apt/apt.conf.d/99-no-retries >/dev/null
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y skopeo
           skopeo --version
