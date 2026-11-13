@@ -80,7 +80,7 @@ final class ScheduleRow
     public static function detail(array $source): array
     {
         $flat = self::flatten($source);
-        $latestInstanceId = self::string($flat['latest_workflow_instance_id'] ?? $flat['latest_instance_id'] ?? null);
+        $latestInstanceId = self::identity($flat['latest_workflow_instance_id'] ?? $flat['latest_instance_id'] ?? null);
 
         return [
             ...self::row($source),
@@ -96,6 +96,7 @@ final class ScheduleRow
             'recent_actions' => self::recentActions($flat['recent_actions'] ?? null),
             'buffered_actions' => self::list($flat['buffered_actions'] ?? null),
             'memo' => is_array($flat['memo'] ?? null) ? $flat['memo'] : null,
+            ...(array_key_exists('current_run', $source) ? ScheduleCurrentRun::read($source) : []),
         ];
     }
 
@@ -187,7 +188,7 @@ final class ScheduleRow
 
             foreach ($source[$group] as $key => $value) {
                 // The versioned summary has authority only at the top level.
-                if (is_string($key) && $key !== 'dispatch_summary' && ! array_key_exists($key, $source)) {
+                if (is_string($key) && ! in_array($key, ['dispatch_summary', 'current_run'], true) && ! array_key_exists($key, $source)) {
                     $source[$key] = $value;
                 }
             }

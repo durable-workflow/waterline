@@ -167,6 +167,11 @@
                                         <span class="schedule-view__pill" :class="statusToneClass(row.schedule.status)">
                                             {{ stateLabel(row.schedule.status || 'unknown') }}
                                         </span>
+                                        <div class="schedule-view__cell-meta" data-latest-run>
+                                            {{ $t("Latest run") }}
+                                            <span v-if="row.currentRun.state === 'known'" :class="toneTextClass(runTone(row.currentRun.bucket))">{{ stateLabel(row.currentRun.status) }}</span>
+                                            <span v-else class="text-muted">{{ row.currentRun.state === 'none' ? '—' : $t("Unavailable") }}</span>
+                                        </div>
                                     </td>
 
                                     <td v-if="columnEnabled('next_fire')" :data-label="$t('Next Fire')">
@@ -583,6 +588,7 @@ import {
     outcomeLabel,
     outcomeTone,
     scheduleCadence,
+    scheduleCurrentRun,
     scheduleId,
     scheduleLastResult,
     scheduleRequest,
@@ -694,6 +700,7 @@ export default {
                 id: scheduleId(schedule),
                 cadence: scheduleCadence(schedule.spec),
                 lastResult: scheduleLastResult(schedule),
+                currentRun: scheduleCurrentRun(schedule),
             }));
         },
 
@@ -1491,6 +1498,10 @@ export default {
                 paused: 'is-warning',
                 deleted: 'is-muted',
             }[status] || 'is-muted';
+        },
+
+        runTone(bucket) {
+            return {completed: 'success', failed: 'danger', running: 'muted'}[bucket] || 'muted';
         },
 
         toneTextClass(tone) {

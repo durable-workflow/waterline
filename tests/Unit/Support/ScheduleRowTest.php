@@ -13,6 +13,48 @@ final class ScheduleRowTest extends TestCase
 {
     private const INTERNAL_KEY = '01JD8Z6Q3K9V7X2M4N5P6R7S8T';
 
+    public function testCurrentRunIsIndependentFromDispatchAndPreservesCompleteIdentities(): void
+    {
+        $source = [
+            ...$this->serverDetail(),
+            'latest_workflow_instance_id' => " instance\0🙂 ",
+            'current_run' => ['run_id' => " run\0🙂 ", 'status' => 'failed', 'status_bucket' => 'failed', 'is_terminal' => true],
+        ];
+        $row = ScheduleRow::detail($source);
+        self::assertSame('known', $row['current_run_state'] ?? null);
+        self::assertSame($source['current_run'], $row['current_run']);
+        self::assertSame($source['latest_workflow_instance_id'], $row['latest_workflow_instance_id']);
+        self::assertSame('scheduled', $row['last_outcome']['outcome']);
+    }
+
+    public function testCurrentRunAbsenceIsDistinctFromUnsupportedOrIncompleteObservation(): void
+    {
+        $none = ScheduleRow::detail(['latest_workflow_instance_id' => null, 'current_run' => null]);
+        self::assertSame('none', $none['current_run_state'] ?? null);
+        self::assertNull($none['current_run']);
+        self::assertArrayNotHasKey('current_run_state', ScheduleRow::detail([]));
+        self::assertArrayNotHasKey('current_run_state', ScheduleRow::detail(['info' => ['current_run' => null]]));
+        $valid = ['run_id' => 'run', 'status' => 'running', 'status_bucket' => 'running', 'is_terminal' => false];
+        foreach ([
+            ['current_run' => null],
+            ['latest_workflow_instance_id' => 'instance', 'current_run' => null],
+            ['latest_workflow_instance_id' => null, 'current_run' => $valid],
+            ['latest_workflow_instance_id' => '', 'current_run' => $valid],
+            ['latest_workflow_instance_id' => str_repeat('🙂', 192), 'current_run' => $valid],
+            ['latest_workflow_instance_id' => 'instance', 'current_run' => []],
+            ...array_map(static fn (array $change): array => [
+                'latest_workflow_instance_id' => 'instance', 'current_run' => [...$valid, ...$change],
+            ], [
+                ['run_id' => ''], ['run_id' => str_repeat('🙂', 27)], ['status' => 'future'],
+                ['status_bucket' => 'completed'], ['is_terminal' => true], ['is_terminal' => 0],
+            ]),
+        ] as $source) {
+            $row = ScheduleRow::detail($source);
+            self::assertSame('unavailable', $row['current_run_state'] ?? null);
+            self::assertNull($row['current_run']);
+        }
+    }
+
     public function testListSummaryControlsOutcomeWithoutConsultingLegacyArrays(): void
     {
         $summary = [

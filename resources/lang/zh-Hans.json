@@ -718,6 +718,7 @@
     "Configured": "已配置",
     "Missing": "缺失",
     "Available": "可用",
+    "Latest run": "最近运行",
     "Unavailable": "不可用",
     "Partial": "部分",
     "Pruned": "已清理",

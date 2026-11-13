@@ -718,6 +718,7 @@
     "Configured": "設定済み",
     "Missing": "欠落",
     "Available": "利用可能",
+    "Latest run": "最新の実行",
     "Unavailable": "利用不可",
     "Partial": "一部のみ",
     "Pruned": "削除済み",

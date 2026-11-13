@@ -170,6 +170,8 @@ final class ServiceModeSchedulesTest extends TestCase
         $this->client->scheduleListItems = array_map(static fn (int $id): array => [
             'schedule_id' => 'summary-'.$id, 'namespace' => 'orders', 'status' => 'active',
             'dispatch_summary' => $summary,
+            'latest_workflow_instance_id' => 'instance-'.$id,
+            'current_run' => ['run_id' => 'run-'.$id, 'status' => 'running', 'status_bucket' => 'running', 'is_terminal' => false],
         ], range(1, 50));
 
         $response = $this->getJson('/waterline/api/v2/schedules')->assertOk();
@@ -178,6 +180,8 @@ final class ServiceModeSchedulesTest extends TestCase
             ->assertJsonPath('data.0.last_outcome', null)
             ->assertJsonPath('data.0.last_outcome_state', 'never')
             ->assertJsonPath('data.0.buffered_actions_count', 0)
+            ->assertJsonPath('data.0.current_run_state', 'known')
+            ->assertJsonPath('data.0.current_run.status', 'running')
             ->assertJsonPath('refresh_interval_ms', 3000);
 
     }

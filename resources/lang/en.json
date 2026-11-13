@@ -718,6 +718,7 @@
     "Configured": "Configured",
     "Missing": "Missing",
     "Available": "Available",
+    "Latest run": "Latest run",
     "Unavailable": "Unavailable",
     "Partial": "Partial",
     "Pruned": "Pruned",

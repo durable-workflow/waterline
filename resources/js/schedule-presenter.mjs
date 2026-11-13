@@ -180,6 +180,23 @@ export function scheduleLastResult(schedule) {
     return emptyLastResult('never');
 }
 
+export function scheduleCurrentRun(schedule) {
+    const unavailable = {state: 'unavailable', status: null, bucket: null};
+    if (schedule?.current_run_state === 'none' && schedule.current_run === null && schedule.latest_workflow_instance_id === null) {
+        return {state: 'none', status: null, bucket: null};
+    }
+    const run = schedule?.current_run;
+    if (schedule?.current_run_state !== 'known' || identity(schedule.latest_workflow_instance_id) === null
+        || identity(run?.run_id) === null) return unavailable;
+    const bucket = {
+        pending: 'running', running: 'running', waiting: 'running',
+        completed: 'completed', failed: 'failed', cancelled: 'failed', terminated: 'failed',
+    }[run.status];
+    if (typeof bucket !== 'string' || run.status_bucket !== bucket || run.is_terminal !== (bucket !== 'running')) return unavailable;
+
+    return {state: 'known', status: run.status, bucket};
+}
+
 export function outcomeLabel(outcome) {
     return OUTCOMES[outcome]?.label ?? null;
 }
