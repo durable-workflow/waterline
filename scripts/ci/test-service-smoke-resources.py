@@ -44,7 +44,7 @@ class DockerFixture:
         self.inspect_override = None
         self.missing = subprocess.CompletedProcess([], 1, b"[]\n", b"Error: No such object: " + OWN_ID.encode())
 
-    def __call__(self, arguments):
+    def __call__(self, arguments, **_inputs):
         self.calls.append(arguments)
         verb = arguments[0]
         identifier = arguments[-1] if verb in {"inspect", "rm"} else arguments[1]
@@ -115,7 +115,7 @@ class CapturedContainerTest(unittest.TestCase):
     def test_operation_uses_captured_id_after_ownership_check(self):
         seal = "e" * 64
         self.record.command(self.docker, "exec", ["/usr/local/bin/php", "/dev/stdin", "inventory", seal],
-                            options=("--interactive", "--user", "82:82"))
+                            options=("--interactive", "--user", "82:82"), data=b"fixed source")
         self.assertEqual(["inspect", OWN_ID], self.docker.calls[0])
         self.assertEqual(["exec", "--interactive", "--user", "82:82", OWN_ID,
                           "/usr/local/bin/php", "/dev/stdin", "inventory", seal], self.docker.calls[1])

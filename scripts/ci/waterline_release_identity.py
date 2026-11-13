@@ -341,13 +341,12 @@ def validate_route_inventory(routes: object) -> list[dict[str, Any]]:
     return routes
 
 
-def validate_route_cache_routes(before: object, cached: object, cleared: object) -> dict[str, Any]:
-    """Compare inert phase data; collection, cache effects and origin stay separate."""
+def validate_cached_routes(before: object, cached: object) -> dict[str, Any]:
+    """Check the cached inventory before any next-phase API effect is selected."""
     original = validate_route_inventory(before)
     compiled = validate_route_inventory(cached)
-    restored = validate_route_inventory(cleared)
-    if canonical_json(restored) != canonical_json(original) or len(compiled) != len(original):
-        raise IdentityError("route count, order or clear-after identity changed")
+    if len(compiled) != len(original):
+        raise IdentityError("cached route count changed")
     for route, cached_route in zip(original, compiled, strict=True):
         comparison = dict(cached_route)
         cached_name = comparison["name"]
@@ -357,6 +356,15 @@ def validate_route_cache_routes(before: object, cached: object, cleared: object)
         if canonical_json(comparison) != canonical_json(route):
             raise IdentityError("cache changed a stable route identity")
     return {"outcome": "matched", "route_count": len(original)}
+
+
+def validate_route_cache_routes(before: object, cached: object, cleared: object) -> dict[str, Any]:
+    """Compare inert phase data; collection, cache effects and origin stay separate."""
+    result = validate_cached_routes(before, cached)
+    restored = validate_route_inventory(cleared)
+    if canonical_json(restored) != canonical_json(before):
+        raise IdentityError("clear-after route order or identity changed")
+    return result
 
 
 def validate(

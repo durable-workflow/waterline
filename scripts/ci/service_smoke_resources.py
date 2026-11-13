@@ -153,6 +153,39 @@ def observation(raw: bytes) -> list:
     return value
 
 
+def valid_probe_arguments(role: str, arguments: list[str]) -> bool:
+    return (role == "application" and len(arguments) == 4
+            and arguments[:2] == ["/usr/local/bin/php", "/dev/stdin"]
+            and arguments[2] in {"inventory", "clear-before", "cache-build", "clear-after"}
+            and re.fullmatch(r"[a-f\d]{64}", arguments[3], re.ASCII) is not None)
+
+
+def validate_command(role: str, verb: str, arguments: list[str], options: tuple[str, ...]) -> None:
+    selected = {
+        "start": ((), ("--attach", "--interactive")),
+        "exec": (("--interactive", "--user", "82:82"),),
+        "logs": (("--tail", "200"),), "port": ((),), "stop": (("--time", "5"),),
+    }
+    if verb not in selected or options not in selected[verb]:
+        raise OwnershipError("Unselected container operation")
+    if not isinstance(arguments, list) or any(not isinstance(argument, str) for argument in arguments):
+        raise OwnershipError("Invalid container operation arguments")
+    if verb in {"start", "stop", "logs"} and arguments:
+        raise OwnershipError("Additional container selectors are forbidden")
+    if verb == "port" and arguments != [APPLICATION_PORT]:
+        raise OwnershipError("Unselected application port")
+    if verb == "exec" and not valid_probe_arguments(role, arguments):
+        raise OwnershipError("Unselected probe command")
+
+
+def validate_input(role: str, verb: str, options: tuple[str, ...], data: bytes) -> None:
+    accepts_program = verb == "exec" or (
+        role == "metadata" and verb == "start" and options == ("--attach", "--interactive")
+    )
+    if not isinstance(data, bytes) or (accepts_program and not 0 < len(data) <= 1024 * 1024) or (not accepts_program and data):
+        raise OwnershipError("Unselected command input")
+
+
 @dataclass(frozen=True)
 class Container:
     identifier: str
@@ -189,30 +222,11 @@ class Container:
         return record
 
     def command(self, docker: Callable, verb: str, arguments: list[str], *,
-                options: tuple[str, ...] = ()) -> object:
-        selected = {
-            "start": ((), ("--attach", "--interactive")),
-            "exec": (("--interactive", "--user", "82:82"),),
-            "logs": (("--tail", "200"),),
-            "port": ((),),
-            "stop": (("--time", "5"),),
-        }
-        if verb not in selected or options not in selected[verb]:
-            raise OwnershipError("Unselected container operation")
-        if not isinstance(arguments, list) or any(not isinstance(argument, str) for argument in arguments):
-            raise OwnershipError("Invalid container operation arguments")
-        if verb in {"start", "stop", "logs"} and arguments:
-            raise OwnershipError("Additional container selectors are forbidden")
-        if verb == "port" and arguments != [APPLICATION_PORT]:
-            raise OwnershipError("Unselected application port")
-        if verb == "exec" and not (
-            len(arguments) == 4 and arguments[:2] == ["/usr/local/bin/php", "/dev/stdin"]
-            and arguments[2] in {"inventory", "clear-before", "cache-build", "clear-after"}
-            and re.fullmatch(r"[a-f\d]{64}", arguments[3], re.ASCII) is not None
-        ):
-            raise OwnershipError("Unselected probe command")
+                options: tuple[str, ...] = (), data: bytes = b"") -> object:
+        validate_command(self.role, verb, arguments, options)
+        validate_input(self.role, verb, options, data)
         validate_profile(self.inspect(docker), self.role, self.network)
-        return docker([verb, *options, self.identifier, *arguments])
+        return docker([verb, *options, self.identifier, *arguments], data=data)
 
     def remove(self, docker: Callable) -> None:
         self.inspect(docker)
