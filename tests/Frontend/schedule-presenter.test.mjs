@@ -106,6 +106,38 @@ test('retained skip facts without a complete outcome remain unreported', () => {
     }
 })
 
+test('explicit summary authority prevents unavailable observations from becoming never', () => {
+    for (const state of ['unavailable', 'future', null]) {
+        const result = scheduleLastResult({
+            last_outcome_state: state, buffered_actions_count: null, last_fired_at: null,
+            last_outcome: {outcome: 'scheduled', at: '2026-10-20T02:00:00Z'},
+        })
+        assert.equal(result.state, 'unavailable')
+        assert.equal(result.at, null)
+        assert.equal(result.outcome, null)
+    }
+
+    const never = scheduleLastResult({
+        last_outcome_state: 'never', buffered_actions_count: 0, last_outcome: null,
+        last_fired_at: '2026-10-20T02:00:00Z', last_skip_reason: 'retained legacy text',
+    })
+    assert.equal(never.state, 'never')
+    assert.equal(never.at, null)
+    assert.equal(scheduleLastResult({last_outcome_state: 'never'}).state, 'unavailable')
+
+    const started = scheduleLastResult({
+        last_outcome_state: 'known', buffered_actions_count: 0,
+        last_outcome: {outcome: 'started', at: '2026-10-20T02:00:00.000001Z', reason: null},
+        current_run: {status: 'failed'},
+    })
+    assert.equal(started.state, 'recorded')
+    assert.equal(started.label, 'Started', 'current run failure must not rewrite a recorded dispatch')
+    assert.equal(scheduleLastResult({
+        last_outcome_state: 'known', buffered_actions_count: -1,
+        last_outcome: {outcome: 'started', at: '2026-10-20T02:00:00.000001Z'},
+    }).state, 'unavailable')
+})
+
 test('literal reasons remain evidence and keep their exact recorded text', () => {
     for (const reason of ['', '  ', '\0', '\0 paused \0', ' reason ']) {
         const unreported = scheduleLastResult({

@@ -188,7 +188,7 @@
                                                 <span :class="toneTextClass(row.lastResult.tone)">{{ outcomeText(row.lastResult) }}</span>
                                                 <span v-if="row.lastResult.reason" class="schedule-view__reason" :title="row.lastResult.reason"> · {{ row.lastResult.reason }}</span>
                                             </div>
-                                            <div class="schedule-view__cell-meta" v-else-if="row.lastResult.state === 'unreported'">
+                                            <div class="schedule-view__cell-meta" v-else-if="['unreported', 'unavailable'].includes(row.lastResult.state)">
                                                 {{ $t("Outcome not reported") }}
                                             </div>
                                         </div>
@@ -492,7 +492,7 @@
                                     <span v-if="detailLastResult.at"> · {{ formatTimestamp(detailLastResult.at) }}</span>
                                     <div v-if="detailLastResult.reason" class="schedule-view__cell-meta schedule-view__reason">{{ detailLastResult.reason }}</div>
                                 </template>
-                                <template v-else-if="detailLastResult.state === 'unreported'">
+                                <template v-else-if="['unreported', 'unavailable'].includes(detailLastResult.state)">
                                     <span v-if="detailLastResult.at">{{ formatTimestamp(detailLastResult.at) }} · </span>
                                     <span class="text-muted">{{ $t("Outcome not reported") }}</span>
                                 </template>
@@ -591,8 +591,8 @@ import {
 
 // Same cadence as the workflow list.
 const LIST_REFRESH_MILLISECONDS = 3000;
-// Service mode reads each row's last outcome with its own describe call until
-// the Server's schedule list carries it, so one refresh can be 1 + 50 reads.
+// Older service lists still require per-row describes. A complete bounded
+// list observation can explicitly opt into the normal list cadence.
 const SERVICE_REFRESH_MILLISECONDS = 30000;
 
 export default {
@@ -648,6 +648,8 @@ export default {
             detailLoading: false,
             detailError: null,
             refreshTimer: null,
+            refreshTimerMilliseconds: null,
+            serviceRefreshMilliseconds: null,
             unmounted: false
         };
     },
@@ -788,6 +790,7 @@ export default {
         this.unmounted = true;
         clearInterval(this.refreshTimer);
         this.refreshTimer = null;
+        this.refreshTimerMilliseconds = null;
     },
 
     methods: {
@@ -824,6 +827,9 @@ export default {
                 this.schedules = response.data.data || [];
                 this.operatorScope = response.data.operator_scope || null;
                 this.observedBackend = response.data.backend || null;
+                this.serviceRefreshMilliseconds = [LIST_REFRESH_MILLISECONDS, SERVICE_REFRESH_MILLISECONDS].includes(response.data.refresh_interval_ms)
+                    ? response.data.refresh_interval_ms : null;
+                if (this.refreshTimer !== null) this.startPeriodicRefresh();
                 // Service mode answers a page past the end with the last page
                 // it read; adopt it so Previous, Next and Refresh follow it.
                 if (Number.isInteger(response.data.current_page) && response.data.current_page >= 1) {
@@ -853,13 +859,17 @@ export default {
         },
 
         refreshMilliseconds() {
-            return this.serviceMode ? SERVICE_REFRESH_MILLISECONDS : LIST_REFRESH_MILLISECONDS;
+            return this.serviceMode ? (this.serviceRefreshMilliseconds ?? SERVICE_REFRESH_MILLISECONDS) : LIST_REFRESH_MILLISECONDS;
         },
 
         // The cadence is chosen after the first load, once the backend mode is known.
         startPeriodicRefresh() {
-            if (this.unmounted || this.refreshTimer !== null) return;
-            this.refreshTimer = setInterval(() => this.refreshPeriodically(), this.refreshMilliseconds());
+            if (this.unmounted) return;
+            const milliseconds = this.refreshMilliseconds();
+            if (this.refreshTimer !== null && this.refreshTimerMilliseconds === milliseconds) return;
+            if (this.refreshTimer !== null) clearInterval(this.refreshTimer);
+            this.refreshTimerMilliseconds = milliseconds;
+            this.refreshTimer = setInterval(() => this.refreshPeriodically(), milliseconds);
         },
 
         // Follows the top bar's Auto refresh control, like the workflow list.

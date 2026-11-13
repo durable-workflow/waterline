@@ -111,6 +111,40 @@ test('embedded mode refreshes on the list cadence, service mode more slowly, and
     }
 });
 
+test('service cadence follows the bounded page observation and retires the previous timer', async () => {
+    const timers = [];
+    const cleared = [];
+    const original = {set: globalThis.setInterval, clear: globalThis.clearInterval};
+    globalThis.setInterval = (callback, milliseconds) => (timers.push({callback, milliseconds}), timers.length);
+    globalThis.clearInterval = id => cleared.push(id);
+    try {
+        const {state, requests} = fixture({mode: 'service'});
+        state.startPeriodicRefresh();
+        assert.equal(timers[0].milliseconds, 30000);
+
+        const first = state.loadData();
+        const fast = page('active', 'started');
+        fast.data.refresh_interval_ms = 3000;
+        requests[0].resolve(fast);
+        await first;
+        assert.equal(timers[1].milliseconds, 3000);
+        assert.deepEqual(cleared, [1]);
+
+        const second = state.loadData();
+        const legacy = page('active', 'started');
+        legacy.data.refresh_interval_ms = 30000;
+        requests[1].resolve(legacy);
+        await second;
+        assert.equal(timers[2].milliseconds, 30000);
+        assert.deepEqual(cleared, [1, 2]);
+        state.unmount();
+        assert.deepEqual(cleared, [1, 2, 3]);
+    } finally {
+        globalThis.setInterval = original.set;
+        globalThis.clearInterval = original.clear;
+    }
+});
+
 test('a hidden tab skips the refresh and the next visible tick resumes it', async () => {
     const {state, requests} = fixture();
     const first = state.loadData();

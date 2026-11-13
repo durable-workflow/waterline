@@ -131,11 +131,29 @@ export function scheduleCadence(spec) {
     };
 }
 
-// state is "recorded" (an outcome exists), "unreported" (the backend has a
-// last fire time but no outcome for it) or "never" (no fire recorded).
+function emptyLastResult(state, at = null) {
+    return { state, at, outcome: null, label: null, tone: 'muted', reason: null, workflowId: null };
+}
+
+// An explicit summary state is authoritative. Legacy fire/skip fields cannot
+// fill in an unavailable summary or turn it into an observed "never".
 export function scheduleLastResult(schedule) {
     const outcome = schedule?.last_outcome;
     const lastFiredAt = text(schedule?.last_fired_at);
+    const hasSummary = Object.hasOwn(schedule ?? {}, 'last_outcome_state');
+
+    if (hasSummary) {
+        if (schedule.last_outcome_state === 'never' && outcome === null && schedule.buffered_actions_count === 0) {
+            return emptyLastResult('never');
+        }
+
+        if (schedule.last_outcome_state !== 'known'
+            || !Number.isSafeInteger(schedule.buffered_actions_count) || schedule.buffered_actions_count < 0
+            || !['started', 'buffered', 'skipped', 'failed'].includes(outcome?.outcome)
+            || text(outcome?.at) === null) {
+            return emptyLastResult('unavailable');
+        }
+    }
 
     if (outcome && typeof outcome === 'object' && text(outcome.outcome) !== null) {
         const known = OUTCOMES[outcome.outcome];
@@ -156,10 +174,10 @@ export function scheduleLastResult(schedule) {
         || (Number.isInteger(schedule?.skipped_trigger_count) && schedule.skipped_trigger_count > 0);
 
     if (lastFiredAt !== null || hasSkip) {
-        return { state: 'unreported', at: lastFiredAt, outcome: null, label: null, tone: 'muted', reason: null, workflowId: null };
+        return emptyLastResult('unreported', lastFiredAt);
     }
 
-    return { state: 'never', at: null, outcome: null, label: null, tone: 'muted', reason: null, workflowId: null };
+    return emptyLastResult('never');
 }
 
 export function outcomeLabel(outcome) {
