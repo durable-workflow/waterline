@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 2.18.1 - 2026-11-13
+
+- The standalone service image requires and locks Laravel 12.72.0 to include
+  the task-output and temporary signed-URL security corrections (#311, #312).
+  The library's independent Illuminate support range is unchanged. The service
+  image keeps PHP SDK 3.16.0; the other production dependency pins stay fixed.
+- Active Laravel 12 and 13 qualification hosts use 12.72.0 and 13.41.0, with
+  checks against older current-framework pins. Historical Laravel 9–11
+  compatibility cells keep their existing scope and audit policy.
+
 ## 2.18.0 - 2026-11-13
 
 - Service mode shows each task queue's activity dispatch state on the Workers
