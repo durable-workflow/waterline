@@ -339,6 +339,58 @@
                                     </div>
 
                                     <p class="worker-health__check-copy">{{ check.message }}</p>
+
+                                    <div
+                                        v-if="namespaceRefusals(check)"
+                                        class="worker-health__refusals"
+                                        data-check-detail="namespace_scope_refusals"
+                                    >
+                                        <p v-if="!namespaceRefusals(check).available" class="worker-health__refusals-note">
+                                            {{ $t("The refusal counts could not be read from the cache, so this list may be incomplete.") }}
+                                        </p>
+
+                                        <ul v-if="namespaceRefusals(check).byPath.length > 0" class="worker-health__refusal-paths">
+                                            <li v-for="entry in namespaceRefusals(check).byPath" :key="entry.path" class="worker-health__pill worker-health__pill--muted">
+                                                {{ entry.label ? $t(entry.label) : entry.path }}: {{ integerLabel(entry.count) }}
+                                            </li>
+                                        </ul>
+
+                                        <div v-if="namespaceRefusals(check).rows.length > 0" class="table-responsive">
+                                            <table class="table table-sm mb-0 worker-health__refusal-table">
+                                                <caption class="worker-health__refusals-note">
+                                                    {{ namespaceRefusals(check).windowMinutes
+                                                        ? $t("Refused work by namespace and path in the last {minutes} minutes.", { minutes: namespaceRefusals(check).windowMinutes })
+                                                        : $t("Refused work by namespace and path.") }}
+                                                </caption>
+                                                <thead>
+                                                    <tr>
+                                                        <th scope="col">{{ $t("Namespace") }}</th>
+                                                        <th scope="col">{{ $t("Path") }}</th>
+                                                        <th scope="col">{{ $t("Refusals") }}</th>
+                                                        <th scope="col">{{ $t("Last seen") }}</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr v-for="row in namespaceRefusals(check).rows" :key="row.path + ':' + row.namespace">
+                                                        <td class="worker-health__refusal-namespace">{{ row.namespace }}</td>
+                                                        <td>{{ row.pathLabel ? $t(row.pathLabel) : row.path }}</td>
+                                                        <td>{{ integerLabel(row.count) }}</td>
+                                                        <td>{{ row.lastSeenAt ? refusalTimestamp(row.lastSeenAt) : '—' }}</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        <p v-if="namespaceRefusals(check).redacted" class="worker-health__refusals-note">
+                                            {{ $t("Namespace names are hidden because this Waterline is open without sign-in.") }}
+                                        </p>
+                                        <p v-if="namespaceRefusals(check).truncated" class="worker-health__refusals-note">
+                                            {{ $t("More namespace and path pairs were refused than are listed.") }}
+                                        </p>
+                                        <p v-if="namespaceRefusals(check).servedNamespaces" class="worker-health__refusals-note">
+                                            {{ $t("This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.", { namespaces: namespaceRefusals(check).servedNamespaces.join(', ') || '—' }) }}
+                                        </p>
+                                    </div>
                                 </article>
                             </div>
 
@@ -489,6 +541,7 @@
 <script>
 import axios from '../http.mjs';
 import Swal from 'sweetalert2';
+import { namespaceScopeRefusals } from '../namespace-scope-refusals.mjs';
 
 export default {
     name: 'WorkerHealth',
@@ -1054,6 +1107,16 @@ export default {
             }
 
             return 'is-ok';
+        },
+
+        namespaceRefusals(check) {
+            return namespaceScopeRefusals(check);
+        },
+
+        refusalTimestamp(value) {
+            const date = new Date(value);
+
+            return Number.isNaN(date.getTime()) ? value : date.toLocaleString(this.$i18n.locale);
         },
 
         queueBacklogAge(taskQueue) {
@@ -1929,6 +1992,36 @@ export default {
     margin: 0.65rem 0 0;
     color: var(--wl-text-muted);
     line-height: 1.5;
+}
+
+.worker-health__refusals {
+    margin-top: 0.75rem;
+}
+
+.worker-health__refusal-paths {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0 0 0.6rem;
+    padding: 0;
+    list-style: none;
+}
+
+.worker-health__refusal-table caption {
+    caption-side: top;
+    padding-top: 0;
+}
+
+.worker-health__refusal-namespace {
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+    overflow-wrap: anywhere;
+}
+
+.worker-health__refusals-note {
+    margin: 0.5rem 0 0;
+    color: var(--wl-text-muted);
+    font-size: 0.8rem;
+    line-height: 1.4;
 }
 
 .worker-health__empty-state {

@@ -1348,5 +1348,18 @@
     "The start of the fixed range must be earlier than its end.": "The start of the fixed range must be earlier than its end.",
     "Message shortened for display.": "Message shortened for display.",
     "Replay blocked runs": "Replay blocked runs",
-    "View blocked runs": "View blocked runs"
+    "View blocked runs": "View blocked runs",
+    "Queued job": "Queued job",
+    "Repair pass": "Repair pass",
+    "Timeout pass": "Timeout pass",
+    "Schedule tick": "Schedule tick",
+    "The refusal counts could not be read from the cache, so this list may be incomplete.": "The refusal counts could not be read from the cache, so this list may be incomplete.",
+    "Refused work by namespace and path in the last {minutes} minutes.": "Refused work by namespace and path in the last {minutes} minutes.",
+    "Refused work by namespace and path.": "Refused work by namespace and path.",
+    "Path": "Path",
+    "Refusals": "Refusals",
+    "Last seen": "Last seen",
+    "More namespace and path pairs were refused than are listed.": "More namespace and path pairs were refused than are listed.",
+    "This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.": "This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.",
+    "Namespace names are hidden because this Waterline is open without sign-in.": "Namespace names are hidden because this Waterline is open without sign-in."
 }

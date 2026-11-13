@@ -195,7 +195,18 @@ function validateWorkflowPins(array $matrix, ?string $rootWorkflow): void
             ));
         }
 
-        if ($rootWorkflow !== null && $laravelMajor !== 9 && $row['workflow'] !== $rootWorkflow) {
+        // Workflow 2.21.0 and later require Laravel 12 or newer, so Laravel 10
+        // and 11 hosts can run at most Workflow 2.20.x.
+        if (in_array($laravelMajor, [10, 11], true) && version_compare($row['workflow'], '2.21.0', '>=')) {
+            throw new MatrixContractException(sprintf(
+                'Laravel %d must pin a Workflow release before 2.21.0, the newest line a Laravel %d host can install; received %s.',
+                $laravelMajor,
+                $laravelMajor,
+                $row['workflow'],
+            ));
+        }
+
+        if ($rootWorkflow !== null && $laravelMajor >= 12 && $row['workflow'] !== $rootWorkflow) {
             throw new MatrixContractException(sprintf(
                 'Laravel %d must use the root require-dev Workflow %s; received %s.',
                 $laravelMajor,
@@ -366,6 +377,18 @@ function selfTest(array $matrix): void
         throw new MatrixContractException('Self-test accepted Workflow 2.17.0 on Laravel 9.');
     } catch (RuntimeException $exception) {
         if (! str_contains($exception->getMessage(), 'Laravel 9 must pin a Workflow release before 2.17.0')) {
+            throw $exception;
+        }
+    }
+
+    $laravel10Workflow = $matrix;
+    $laravel10Workflow['include'][1]['workflow'] = '2.21.0';
+
+    try {
+        validateWorkflowPins($laravel10Workflow, rootWorkflowVersion());
+        throw new MatrixContractException('Self-test accepted Workflow 2.21.0 on Laravel 10.');
+    } catch (RuntimeException $exception) {
+        if (! str_contains($exception->getMessage(), 'Laravel 10 must pin a Workflow release before 2.21.0')) {
             throw $exception;
         }
     }

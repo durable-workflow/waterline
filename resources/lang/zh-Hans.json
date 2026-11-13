@@ -1348,5 +1348,18 @@
     "The start of the fixed range must be earlier than its end.": "固定范围的起始时间必须早于截止时间。",
     "Message shortened for display.": "消息已缩短以便显示。",
     "Replay blocked runs": "重放受阻的运行",
-    "View blocked runs": "查看受阻的运行"
+    "View blocked runs": "查看受阻的运行",
+    "Queued job": "排队作业",
+    "Repair pass": "修复轮次",
+    "Timeout pass": "超时轮次",
+    "Schedule tick": "调度节拍",
+    "The refusal counts could not be read from the cache, so this list may be incomplete.": "无法从缓存读取拒绝计数，因此此列表可能不完整。",
+    "Refused work by namespace and path in the last {minutes} minutes.": "最近 {minutes} 分钟内按命名空间和路径统计的被拒绝工作。",
+    "Refused work by namespace and path.": "按命名空间和路径统计的被拒绝工作。",
+    "Path": "路径",
+    "Refusals": "拒绝次数",
+    "Last seen": "最后出现",
+    "More namespace and path pairs were refused than are listed.": "被拒绝的命名空间与路径组合多于此处列出的数量。",
+    "This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.": "此应用服务的命名空间：{namespaces}。请将其应服务的每个命名空间添加到 DW_V2_NAMESPACES，或检查服务该命名空间的应用是否正在运行。",
+    "Namespace names are hidden because this Waterline is open without sign-in.": "由于此 Waterline 无需登录即可访问，命名空间名称已隐藏。"
 }

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- The worker health page shows which namespaces this app refused and by which
+  path (#298). With Workflow 2.27.0 or later, when the
+  `namespace_scope_refusals` check warns, it lists the refused work by
+  namespace and path (queued job, repair, timeout or schedule tick) with
+  counts and the last time each was seen, the namespaces this app serves, and
+  whether the list was truncated. Add a namespace the app should serve to
+  `DW_V2_NAMESPACES`. The names appear only to a viewer the host's
+  `Waterline::auth` gate admits. As with embedded exception source, they are
+  always hidden when `WATERLINE_ALLOW_UNAUTHENTICATED=true`: such an observer
+  stack sees the counts by path without any namespace names, in the health and
+  dashboard payloads alike. A Waterline scoped to one namespace only sees
+  refusals of that namespace.
+- Development and CI qualify against Workflow 2.27.0 (was 2.20.3). The
+  Laravel 10 and 11 cells stay on Workflow 2.20.3, the newest release those
+  hosts can install.
+
 ## 2.17.0 - 2026-11-12
 
 - The dashboard shows replay-blocked runs next to repair-needed runs: the count,

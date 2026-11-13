@@ -25,7 +25,7 @@ final class LaravelMatrixContractTest extends TestCase
             // The enclosing job may already have replaced its root manifest
             // with the Laravel 9 override. Start this fixture before that step.
             $manifest = json_decode((string) file_get_contents($root.'/composer.json'), true, 512, JSON_THROW_ON_ERROR);
-            $manifest['require-dev']['durable-workflow/workflow'] = $matrix['include'][1]['workflow'];
+            $manifest['require-dev']['durable-workflow/workflow'] = $matrix['include'][3]['workflow'];
             file_put_contents($root.'/composer.json', json_encode($manifest, JSON_THROW_ON_ERROR));
             $options = [];
             foreach (['laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'scaffold', 'resolution'] as $key) {

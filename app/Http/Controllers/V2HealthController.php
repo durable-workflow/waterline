@@ -9,6 +9,7 @@ use Throwable;
 use Waterline\Models\WorkerBuildIdRollout;
 use Waterline\Models\WorkerRegistration;
 use Waterline\Support\HybridMigrationView;
+use Waterline\Support\NamespaceScopeRefusalVisibility;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\WorkerRegistrationRoster;
 use Waterline\Support\WorkflowEngineSourceResolver;
@@ -70,6 +71,8 @@ class V2HealthController extends Controller
         } catch (Throwable) {
             $snapshot = $this->degradedSnapshotForConfiguredNamespace();
         }
+        // Before anything derives alerts or facts from the checks.
+        $snapshot = NamespaceScopeRefusalVisibility::forRequest($snapshot);
         array_unshift($snapshot['checks'], [
             'name' => 'engine_source',
             'status' => 'ok',

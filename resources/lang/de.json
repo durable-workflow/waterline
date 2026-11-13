@@ -1348,5 +1348,18 @@
     "The start of the fixed range must be earlier than its end.": "Der Beginn des festen Zeitraums muss vor seinem Ende liegen.",
     "Message shortened for display.": "Meldung für die Anzeige gekürzt.",
     "Replay blocked runs": "Ausführungen mit blockiertem Replay",
-    "View blocked runs": "Blockierte Ausführungen anzeigen"
+    "View blocked runs": "Blockierte Ausführungen anzeigen",
+    "Queued job": "Job in der Warteschlange",
+    "Repair pass": "Reparaturdurchlauf",
+    "Timeout pass": "Timeout-Durchlauf",
+    "Schedule tick": "Zeitplan-Takt",
+    "The refusal counts could not be read from the cache, so this list may be incomplete.": "Die Zählungen der Ablehnungen konnten nicht aus dem Cache gelesen werden; diese Liste ist daher möglicherweise unvollständig.",
+    "Refused work by namespace and path in the last {minutes} minutes.": "Abgelehnte Arbeit nach Namensraum und Pfad in den letzten {minutes} Minuten.",
+    "Refused work by namespace and path.": "Abgelehnte Arbeit nach Namensraum und Pfad.",
+    "Path": "Pfad",
+    "Refusals": "Ablehnungen",
+    "Last seen": "Zuletzt gesehen",
+    "More namespace and path pairs were refused than are listed.": "Es wurden mehr Kombinationen aus Namensraum und Pfad abgelehnt, als hier aufgeführt sind.",
+    "This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.": "Diese App bedient: {namespaces}. Tragen Sie jeden Namensraum, den sie bedienen soll, in DW_V2_NAMESPACES ein, oder prüfen Sie, ob die App läuft, die ihn bedient.",
+    "Namespace names are hidden because this Waterline is open without sign-in.": "Die Namen der Namensräume sind ausgeblendet, weil dieses Waterline ohne Anmeldung zugänglich ist."
 }

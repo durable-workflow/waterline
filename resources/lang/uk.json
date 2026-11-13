@@ -1348,5 +1348,18 @@
     "The start of the fixed range must be earlier than its end.": "Початок фіксованого діапазону має передувати його кінцю.",
     "Message shortened for display.": "Повідомлення скорочено для відображення.",
     "Replay blocked runs": "Виконання із заблокованим replay",
-    "View blocked runs": "Переглянути заблоковані виконання"
+    "View blocked runs": "Переглянути заблоковані виконання",
+    "Queued job": "Завдання в черзі",
+    "Repair pass": "Прохід відновлення",
+    "Timeout pass": "Прохід тайм-аутів",
+    "Schedule tick": "Такт розкладу",
+    "The refusal counts could not be read from the cache, so this list may be incomplete.": "Не вдалося прочитати лічильники відмов із кешу, тому цей список може бути неповним.",
+    "Refused work by namespace and path in the last {minutes} minutes.": "Відхилена робота за простором імен і шляхом за останні {minutes} хв.",
+    "Refused work by namespace and path.": "Відхилена робота за простором імен і шляхом.",
+    "Path": "Шлях",
+    "Refusals": "Відмови",
+    "Last seen": "Востаннє",
+    "More namespace and path pairs were refused than are listed.": "Відхилено більше пар простору імен і шляху, ніж показано.",
+    "This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.": "Цей застосунок обслуговує: {namespaces}. Додайте до DW_V2_NAMESPACES кожен простір імен, який він має обслуговувати, або перевірте, чи працює застосунок, що його обслуговує.",
+    "Namespace names are hidden because this Waterline is open without sign-in.": "Назви просторів імен приховано, бо цей Waterline відкритий без входу."
 }
