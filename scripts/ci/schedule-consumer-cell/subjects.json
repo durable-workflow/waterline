@@ -1,0 +1,38 @@
+{
+  "candidate": {
+    "sha256": "668b0299980683b2e53f0db56537960654ee21f9b5ec13dca815c649b7ecd41a",
+    "bytes": 9704876
+  },
+  "loader": {
+    "sha256": "cecbf80deab40f0229e3fcb4e823e9083df65875fd5fd93ac107e489907cf0c6",
+    "bytes": 4109
+  },
+  "proxy": {
+    "sha256": "1f9e3963df72e4515e551ffb7e67d1c2764eabd33d5af615f99b62ca626d3203",
+    "bytes": 3422
+  },
+  "browser": {
+    "sha256": "e7dadf67338dc454911016f4d489531ed9ade55b109aa33522d748833ab016bf",
+    "bytes": 6368
+  },
+  "tools": {
+    "sha256": "f51ce58aef92d863dc04ea0b690c79a150a007d372f436ca211b4cd24560eed8",
+    "bytes": 25408909
+  },
+  "worker": {
+    "sha256": "04802ce2d7fff2d978d6b8f368300b9ae8ba76249555a1307342778920edf0b4",
+    "bytes": 8537
+  },
+  "requirements": {
+    "sha256": "7102fdc18f3ba8c29e5b05bcfd7a2a29f36c7ab48d2cc03fd9ad5b9a52398e47",
+    "bytes": 866
+  },
+  "ownership": {
+    "sha256": "85a6b7c8b5db5a4ea6f5553faea1b3aab86e9453c87b68b64ceff7a0c54607a5",
+    "bytes": 1255
+  },
+  "ca": {
+    "sha256": "50f79f98dac192b20dbf73f35c56f0b0c557ab267ff5199d1117cc1180b70785",
+    "bytes": 238856
+  }
+}
