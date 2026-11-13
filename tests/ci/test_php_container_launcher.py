@@ -48,6 +48,12 @@ class PhpContainerLauncherTests(unittest.TestCase):
         arguments = self.arguments()
         self.assertIn("sha256:" + "a" * 64, arguments)
         self.assertIn("--init", arguments)
+        for selected in (ROOT, self.state):
+            self.assertIn(f"type=bind,source={selected},target={selected},readonly", arguments)
+        for selected in (self.state / "data", ROOT / "vendor", ROOT / "composer.lock"):
+            self.assertIn(f"type=bind,source={selected},target={selected}", arguments)
+        self.assertNotIn(f"type=bind,source={ROOT},target={ROOT}", arguments)
+        self.assertNotIn(f"type=bind,source={self.state},target={self.state}", arguments)
         for option, value in (("--cpus", "2"), ("--memory", "2g"),
                               ("--pids-limit", "512"), ("--cap-drop", "ALL"),
                               ("--security-opt", "no-new-privileges")):

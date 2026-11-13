@@ -31,7 +31,7 @@ class PhpContainerTlsTests(unittest.TestCase):
             def log_message(self, *_arguments):
                 pass
 
-        with tempfile.TemporaryDirectory(dir=state) as directory:
+        with tempfile.TemporaryDirectory(dir=state / "data/tmp") as directory:
             project = pathlib.Path(directory)
 
             def openssl(*arguments):

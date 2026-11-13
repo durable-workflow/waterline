@@ -36,17 +36,26 @@ docker run --rm --init --name "waterline-php-ci-probe-${minor}-${GITHUB_RUN_ID:-
 printf 'php_ci_image=%s\n' "$runtime_id"
 
 state="$(mktemp -d "${RUNNER_TEMP:?RUNNER_TEMP is required}/waterline-php-ci.XXXXXX")"
-mkdir -p "$state/bin" "$state/tmp" "$state/composer-home/cache"
+# Keep host-executed wrappers and source outside all writable container mounts.
+# The build caller writes dependencies/skeleton output and its generated lock only.
+[[ ! -L "$root/vendor" && ! -L "$root/composer.lock" ]]
+mkdir -p "$root/vendor" "$state/bin" "$state/data/tmp" "$state/data/composer-home/cache"
+if [[ ! -e "$root/composer.lock" ]]; then
+    printf '{}\n' > "$root/composer.lock"
+fi
+[[ -d "$root/vendor" && -f "$root/composer.lock" ]]
 ln -sf "$root/scripts/ci/run-php-container.sh" "$state/bin/php"
 ln -sf "$root/scripts/ci/run-php-container.sh" "$state/bin/composer"
+WATERLINE_PHP_CI_TEST_IMAGE="$runtime_id" \
+    python3 -I -S -B "$root/tests/ci/test_php_container_isolation.py" -v
 WATERLINE_PHP_CI_TEST_IMAGE="$runtime_id" WATERLINE_PHP_CI_ROOT="$root" WATERLINE_PHP_CI_STATE="$state" \
     python3 -I -S -B "$root/tests/ci/test_php_container_tls.py" -v
 {
     echo "WATERLINE_PHP_CI_IMAGE=$runtime_id"
     echo "WATERLINE_PHP_CI_ROOT=$root"
     echo "WATERLINE_PHP_CI_STATE=$state"
-    echo "COMPOSER_HOME=$state/composer-home"
-    echo "COMPOSER_CACHE_DIR=$state/composer-home/cache"
-    echo "TMPDIR=$state/tmp"
+    echo "COMPOSER_HOME=$state/data/composer-home"
+    echo "COMPOSER_CACHE_DIR=$state/data/composer-home/cache"
+    echo "TMPDIR=$state/data/tmp"
 } >> "${GITHUB_ENV:?GITHUB_ENV is required}"
 echo "$state/bin" >> "${GITHUB_PATH:?GITHUB_PATH is required}"

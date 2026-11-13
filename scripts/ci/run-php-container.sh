@@ -15,8 +15,11 @@ options=(--rm --init --interactive --name "waterline-php-ci-${command}-${BASHPID
     --cpus 2 --memory 2g --pids-limit 512 --network host
     --cap-drop ALL --security-opt no-new-privileges
     --user "$(id -u):$(id -g)" --workdir "$PWD"
-    --mount "type=bind,source=$root,target=$root"
-    --mount "type=bind,source=$state,target=$state")
+    --mount "type=bind,source=$root,target=$root,readonly"
+    --mount "type=bind,source=$state,target=$state,readonly"
+    --mount "type=bind,source=$state/data,target=$state/data"
+    --mount "type=bind,source=$root/vendor,target=$root/vendor"
+    --mount "type=bind,source=$root/composer.lock,target=$root/composer.lock")
 
 # Composer's guard is a composite action outside the repository checkout.
 if [[ -n "${GITHUB_ACTION_PATH:-}" ]]; then
