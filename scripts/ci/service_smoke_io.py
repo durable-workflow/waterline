@@ -11,14 +11,14 @@ import subprocess
 import time
 import uuid
 
+DEADLINE_EXCEEDED = "Command deadline exceeded"
+
 
 class TransportError(RuntimeError):
     """A command, byte bound or anonymous configuration invariant failed."""
 
 
-def bounded_process(command: list[str], *, data: bytes = b"", timeout: float = 30,
-                    stdout_limit: int = 1024 * 1024, stderr_limit: int = 65536,
-                    pass_fds: tuple[int, ...] = ()) -> subprocess.CompletedProcess:
+def validate_command_bounds(command, data, timeout, stdout_limit, stderr_limit) -> None:
     if (not isinstance(command, list) or not 1 <= len(command) <= 256
             or any(not isinstance(arg, str) or "\0" in arg for arg in command)
             or sum(len(arg.encode()) for arg in command) > 128 * 1024
@@ -27,70 +27,89 @@ def bounded_process(command: list[str], *, data: bytes = b"", timeout: float = 3
             or not 0 < timeout <= 30 or not 0 < stdout_limit <= 1024 * 1024
             or not 0 < stderr_limit <= 65536):
         raise TransportError("Unselected command bounds")
+
+
+def remaining_seconds(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TransportError(DEADLINE_EXCEEDED)
+    return remaining
+
+
+def write_chunk(stream, pending: memoryview, selector) -> memoryview:
+    try:
+        written = os.write(stream.fileno(), pending[:65536])
+    except BrokenPipeError as error:
+        raise TransportError("Command closed before accepting its complete input") from error
+    pending = pending[written:]
+    if not pending:
+        selector.unregister(stream)
+        stream.close()
+    return pending
+
+
+def read_chunk(stream, selector, buffers: dict, limits: dict) -> None:
+    chunk = os.read(stream.fileno(), 65536)
+    if not chunk:
+        selector.unregister(stream)
+        return
+    if len(buffers[stream]) + len(chunk) > limits[stream]:
+        raise TransportError("Command output bound exceeded")
+    buffers[stream].extend(chunk)
+
+
+def drain_process(process, data: bytes, deadline: float, buffers: dict, limits: dict) -> None:
+    pending = memoryview(data)
+    with selectors.DefaultSelector() as selector:
+        for stream in buffers:
+            os.set_blocking(stream.fileno(), False)
+            selector.register(stream, selectors.EVENT_READ)
+        if pending:
+            os.set_blocking(process.stdin.fileno(), False)
+            selector.register(process.stdin, selectors.EVENT_WRITE)
+        else:
+            process.stdin.close()
+        while selector.get_map():
+            for key, _event in selector.select(min(remaining_seconds(deadline), 0.1)):
+                if key.fileobj is process.stdin:
+                    pending = write_chunk(key.fileobj, pending, selector)
+                else:
+                    read_chunk(key.fileobj, selector, buffers, limits)
+
+
+def kill_group(process) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def bounded_process(command: list[str], *, data: bytes = b"", timeout: float = 30,
+                    stdout_limit: int = 1024 * 1024, stderr_limit: int = 65536,
+                    pass_fds: tuple[int, ...] = ()) -> subprocess.CompletedProcess:
+    validate_command_bounds(command, data, timeout, stdout_limit, stderr_limit)
     process = subprocess.Popen(
         command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         start_new_session=True, pass_fds=pass_fds,
         env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"},
     )
-    streams = {process.stdout: bytearray(), process.stderr: bytearray()}
+    buffers = {process.stdout: bytearray(), process.stderr: bytearray()}
     limits = {process.stdout: stdout_limit, process.stderr: stderr_limit}
     end = time.monotonic() + timeout
-    pending = memoryview(data)
     try:
-        with selectors.DefaultSelector() as selector:
-            for stream in streams:
-                os.set_blocking(stream.fileno(), False)
-                selector.register(stream, selectors.EVENT_READ)
-            if pending:
-                os.set_blocking(process.stdin.fileno(), False)
-                selector.register(process.stdin, selectors.EVENT_WRITE)
-            else:
-                process.stdin.close()
-            while selector.get_map():
-                remaining = end - time.monotonic()
-                if remaining <= 0:
-                    raise TransportError("Command deadline exceeded")
-                for key, _event in selector.select(min(remaining, 0.1)):
-                    stream = key.fileobj
-                    if stream is process.stdin:
-                        try:
-                            written = os.write(stream.fileno(), pending[:65536])
-                            pending = pending[written:]
-                        except BrokenPipeError as error:
-                            raise TransportError("Command closed before accepting its complete input") from error
-                        if not pending:
-                            selector.unregister(stream)
-                            stream.close()
-                    else:
-                        chunk = os.read(stream.fileno(), 65536)
-                        if not chunk:
-                            selector.unregister(stream)
-                        else:
-                            if len(streams[stream]) + len(chunk) > limits[stream]:
-                                raise TransportError("Command output bound exceeded")
-                            streams[stream].extend(chunk)
-            # Keep the leader unreaped until its process group is terminated.
-            # This prevents PID reuse between leader exit and group cleanup.
-            while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
-                remaining = end - time.monotonic()
-                if remaining <= 0:
-                    raise TransportError("Command deadline exceeded")
-                time.sleep(min(remaining, 0.005))
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            code = process.wait(timeout=5)
-        return subprocess.CompletedProcess(command, code, bytes(streams[process.stdout]),
-                                           bytes(streams[process.stderr]))
+        drain_process(process, data, end, buffers, limits)
+        # Keep the leader unreaped until group termination, preventing PID reuse.
+        while os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is None:
+            time.sleep(min(remaining_seconds(end), 0.005))
+        kill_group(process)
+        code = process.wait(timeout=5)
+        return subprocess.CompletedProcess(command, code, bytes(buffers[process.stdout]),
+                                           bytes(buffers[process.stderr]))
     except subprocess.TimeoutExpired as error:
-        raise TransportError("Command deadline exceeded") from error
+        raise TransportError(DEADLINE_EXCEEDED) from error
     finally:
         if process.returncode is None:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            kill_group(process)
             process.wait(timeout=5)
         for stream in (process.stdin, process.stdout, process.stderr):
             stream.close()

@@ -20,7 +20,7 @@ NETWORK = "f" * 64
 class DockerFixture:
     def __init__(self):
         labels = resources.ownership_labels(RUN, "application")
-        self.owned = {"Id": OWN_ID, "Image": IMAGE, "Config": {"Labels": labels, "User": "0:0"},
+        self.owned = {"Id": OWN_ID, "Image": IMAGE, "Config": {"Labels": labels, "User": "0:0", "Env": ["TMPDIR=/run/waterline"]},
                       "Mounts": [], "HostConfig": {
                           "ReadonlyRootfs": True, "Init": True, "NanoCpus": 2_000_000_000,
                           "Memory": 805306368, "MemorySwap": 805306368, "PidsLimit": 256,
@@ -29,7 +29,7 @@ class DockerFixture:
                           "CapDrop": ["ALL"], "CapAdd": ["CHOWN", "DAC_OVERRIDE", "SETGID", "SETUID"],
                           "SecurityOpt": ["no-new-privileges"],
                           "Tmpfs": {"/data": "rw,nosuid,nodev,noexec,size=64m,uid=82,gid=82,mode=0755",
-                                    "/tmp": "rw,nosuid,nodev,noexec,size=16m,mode=1777",
+                                    "/run/waterline": "rw,nosuid,nodev,noexec,size=16m,uid=82,gid=82,mode=0700",
                                     "/app/bootstrap/cache": "rw,nosuid,nodev,noexec,size=16m,uid=82,gid=82,mode=0755",
                                     "/app/storage": "rw,nosuid,nodev,noexec,size=64m,uid=82,gid=82,mode=0755"},
                           "RestartPolicy": {"Name": "no", "MaximumRetryCount": 0},
@@ -182,6 +182,21 @@ class CapturedContainerTest(unittest.TestCase):
             with self.assertRaises(resources.OwnershipError):
                 self.record.command(docker, "start", [])
             self.assertEqual([["inspect", OWN_ID]], docker.calls)
+
+    def test_private_temporary_directory_is_required_and_cannot_be_widened(self):
+        environments = [None, [], ["TMPDIR=/tmp"], ["TMPDIR=/run/waterline", "TMPDIR=/tmp"]]
+        for environment in environments:
+            with self.subTest(environment=environment):
+                docker = DockerFixture()
+                docker.owned["Config"]["Env"] = environment
+                with self.assertRaises(resources.OwnershipError):
+                    self.record.command(docker, "start", [])
+                self.assertEqual([["inspect", OWN_ID]], docker.calls)
+        docker = DockerFixture()
+        docker.owned["HostConfig"]["Tmpfs"]["/run/waterline"] = "rw,size=16m,mode=1777"
+        with self.assertRaises(resources.OwnershipError):
+            self.record.command(docker, "start", [])
+        self.assertEqual([["inspect", OWN_ID]], docker.calls)
 
 
 if __name__ == "__main__":

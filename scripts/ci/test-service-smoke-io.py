@@ -2,6 +2,7 @@
 
 import json
 import os
+import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -49,6 +50,7 @@ class FiniteProcessTest(unittest.TestCase):
         self.assertEqual(1, len(created))
         with self.assertRaises(ProcessLookupError):
             os.kill(created[0], 0)
+        return created[0]
 
     def test_stdout_overrun_refuses_and_reaps_the_process(self):
         self.assert_refused_and_reaped([sys.executable, "-I", "-c", "print('x'*65536)"], stdout_limit=32)
@@ -58,6 +60,16 @@ class FiniteProcessTest(unittest.TestCase):
 
     def test_deadline_refuses_and_reaps_the_process(self):
         self.assert_refused_and_reaped([sys.executable, "-I", "-c", "import time; time.sleep(10)"], timeout=0.1)
+
+    def test_exited_leader_does_not_leave_a_live_process_group(self):
+        program = "import os,time; child=os.fork(); os._exit(0) if child else time.sleep(10)"
+        with patch.object(smoke.os, "killpg", wraps=os.killpg) as group_signal:
+            leader = self.assert_refused_and_reaped([sys.executable, "-I", "-c", program], timeout=0.1)
+        group_signal.assert_called_once_with(leader, signal.SIGKILL)
+
+    def test_closed_output_does_not_remove_the_process_deadline(self):
+        program = "import os,time; os.close(1); os.close(2); time.sleep(10)"
+        self.assert_refused_and_reaped([sys.executable, "-I", "-c", program], timeout=0.1)
 
     def test_invalid_bounds_refuse_before_process_creation(self):
         variants = [{"data": b"x" * (1024 * 1024 + 1)}, {"timeout": 31}, {"timeout": 0},

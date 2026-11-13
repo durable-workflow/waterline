@@ -19,7 +19,8 @@ RUN_KEY = "dev.durable-workflow.run"
 ROLE_KEY = "dev.durable-workflow.role"
 ROLES = {"metadata", "trust", "memory-refusal", "fixture", "application"}
 MIB = 1024 * 1024
-TMP = "rw,nosuid,nodev,noexec,size=16m,mode=1777"
+TEMP_PATH = "/run/waterline"
+APPLICATION_PORT = "8080/tcp"
 DATA = "rw,nosuid,nodev,noexec,size=64m,uid=82,gid=82,mode=0755"
 CACHE = "rw,nosuid,nodev,noexec,size=16m,uid=82,gid=82,mode=0755"
 
@@ -31,7 +32,9 @@ def profile(role: str, network: str | None) -> dict:
         exact_id(network)
     elif network is not None:
         raise OwnershipError("This role cannot join an application network")
-    writable = {"/data": DATA, "/tmp": TMP}
+    uid = 82 if role in {"application", "memory-refusal"} else 1000
+    temporary = f"rw,nosuid,nodev,noexec,size=16m,uid={uid},gid={uid},mode=0700"
+    writable = {"/data": DATA, TEMP_PATH: temporary}
     if role in {"application", "memory-refusal"}:
         writable |= {"/app/bootstrap/cache": CACHE, "/app/storage": DATA}
     return {
@@ -66,21 +69,30 @@ def validate_profile(record: dict, role: str, network: str | None) -> None:
         raise OwnershipError("Effective container profile differs from selected bounds")
     if host.get("Mounts") or host.get("Devices") or host.get("DeviceRequests"):
         raise OwnershipError("Host mounts or devices are unselected")
-    mounts = record.get("Mounts")
+    environment = config.get("Env")
+    if not isinstance(environment, list) or [v for v in environment if isinstance(v, str) and v.startswith("TMPDIR=")] != ["TMPDIR=" + TEMP_PATH]:
+        raise OwnershipError("Missing selected private temporary directory")
+    validate_mounts(record.get("Mounts"), expected["tmpfs"])
+    validate_ports(host.get("PortBindings") or {}, role)
+
+
+def validate_mounts(mounts: object, selected: dict) -> None:
     if not isinstance(mounts, list) or any(
-        mount.get("Type") != "tmpfs" or mount.get("Destination") not in expected["tmpfs"]
+        mount.get("Type") != "tmpfs" or mount.get("Destination") not in selected
         or mount.get("RW") is not True or mount.get("Source") not in (None, "")
         for mount in mounts if isinstance(mount, dict)
     ) or any(not isinstance(mount, dict) for mount in mounts):
         raise OwnershipError("Effective mount escaped disposable tmpfs paths")
     if len({mount["Destination"] for mount in mounts}) != len(mounts):
         raise OwnershipError("Duplicate effective mount destination")
-    ports = host.get("PortBindings") or {}
+
+
+def validate_ports(ports: dict, role: str) -> None:
     if role == "application":
-        if (set(ports) != {"8080/tcp"} or not isinstance(ports["8080/tcp"], list)
-                or len(ports["8080/tcp"]) != 1):
+        if (set(ports) != {APPLICATION_PORT} or not isinstance(ports[APPLICATION_PORT], list)
+                or len(ports[APPLICATION_PORT]) != 1):
             raise OwnershipError("Application must publish only its one loopback port")
-        binding = ports["8080/tcp"][0]
+        binding = ports[APPLICATION_PORT][0]
         if (not isinstance(binding, dict) or set(binding) != {"HostIp", "HostPort"}
                 or binding["HostIp"] != "127.0.0.1" or not isinstance(binding["HostPort"], str)
                 or (binding["HostPort"] and (re.fullmatch(r"[1-9]\d{0,4}", binding["HostPort"], re.ASCII) is None
@@ -191,7 +203,7 @@ class Container:
             raise OwnershipError("Invalid container operation arguments")
         if verb in {"start", "stop", "logs"} and arguments:
             raise OwnershipError("Additional container selectors are forbidden")
-        if verb == "port" and arguments != ["8080/tcp"]:
+        if verb == "port" and arguments != [APPLICATION_PORT]:
             raise OwnershipError("Unselected application port")
         if verb == "exec" and not (
             len(arguments) == 4 and arguments[:2] == ["/usr/local/bin/php", "/dev/stdin"]
