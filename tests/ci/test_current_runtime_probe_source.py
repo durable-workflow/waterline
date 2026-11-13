@@ -65,7 +65,7 @@ class CurrentRuntimeProbeSourceTest(unittest.TestCase):
         run = "waterline-probe-source-" + uuid.uuid4().hex
         created = self.docker([
             "create", "--name", run, "--label", "dev.durable-workflow.owner=waterline",
-            "--label", "dev.durable-workflow.run=" + run, "--platform", "linux/amd64",
+            "--label", "dev.durable-workflow.run=" + run, "--platform", "linux/amd64", "--pull", "never",
             "--init", "--read-only", "--network", "none", "--cpus", "0.25", "--memory", "128m",
             "--pids-limit", "64", "--cap-drop=ALL", "--security-opt=no-new-privileges",
             "--log-driver", "none", "--user", f"{os.getuid()}:{os.getgid()}", "--interactive",
