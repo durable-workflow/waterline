@@ -84,6 +84,7 @@ final class RemoteHealthController extends RemoteController
                 'available' => true,
                 'namespace' => BackendConfiguration::namespace(),
                 'task_queues' => $taskQueues,
+                'activity_dispatch_control' => $this->activityDispatchControl(),
             ],
         ]);
 
@@ -92,6 +93,21 @@ final class RemoteHealthController extends RemoteController
             : 200;
 
         return response()->json(NamespaceScopeRefusalVisibility::forRequest($payload), $status);
+    }
+
+    /**
+     * Whether the queue cards may offer Pause and Resume. Read-only mode
+     * refuses before the Server is asked for its capabilities.
+     *
+     * @return array{available: bool, reason: string|null}
+     */
+    private function activityDispatchControl(): array
+    {
+        if ($this->backend->readOnly()) {
+            return ['available' => false, 'reason' => 'waterline_read_only'];
+        }
+
+        return $this->backend->activityDispatchControl();
     }
 
     /**

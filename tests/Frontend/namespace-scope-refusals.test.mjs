@@ -6,6 +6,8 @@ import { renderToString } from '@vue/server-renderer';
 import { createWaterlineI18n } from '../../resources/js/localization.mjs';
 import Base from '../../resources/js/base.js';
 import { namespaceScopeRefusals } from '../../resources/js/namespace-scope-refusals.mjs';
+import { operatorPermission } from '../../resources/js/operator-permissions.mjs';
+import * as dispatch from '../../resources/js/activity-dispatch.mjs';
 
 const source = fs.readFileSync(new URL('../../resources/js/components/WorkerHealth.vue', import.meta.url), 'utf8');
 
@@ -17,8 +19,8 @@ function section(open, close) {
 
 const script = section('<script>\n', '\n</script>');
 const template = section('<template>\n', '\n</template>\n\n<script>');
-const component = Function('axios', 'Swal', 'namespaceScopeRefusals',
-    script.replace(/^import .*;$/gm, '').replace('export default', 'return'))({}, {}, namespaceScopeRefusals);
+const component = Function('axios', 'Swal', 'namespaceScopeRefusals', 'escapeDialogHtml', 'showDialogValidationText', 'operatorPermission', 'dispatch',
+    script.replace(/^import .*;$/gm, '').replace('export default', 'return'))({}, {}, namespaceScopeRefusals, String, () => {}, operatorPermission, dispatch);
 
 const XSS = '<img src=x onerror=alert(1)>';
 

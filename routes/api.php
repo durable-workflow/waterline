@@ -16,6 +16,7 @@ use Waterline\Http\Controllers\Remote\RemoteServicesController;
 use Waterline\Http\Controllers\Remote\RemoteStatsController;
 use Waterline\Http\Controllers\Remote\RemoteWorkflowsController;
 use Waterline\Http\Controllers\Remote\RemoteActivityResultsController;
+use Waterline\Http\Controllers\Remote\RemoteTaskQueuesController;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Http\Middleware\AuthorizeOperatorAction;
 
@@ -89,6 +90,16 @@ Route::prefix('api')->group(function () use ($capacityEvidenceController, $healt
     Route::post('/v2/schedules/{scheduleId}/trigger', [$schedulesController, 'trigger'])->where('scheduleId', '.+')->name('waterline.v2.schedules.trigger')->middleware(AuthorizeOperatorAction::SCHEDULES);
     Route::post('/v2/schedules/{scheduleId}/backfill', [$schedulesController, 'backfill'])->where('scheduleId', '.+')->name('waterline.v2.schedules.backfill')->middleware(AuthorizeOperatorAction::SCHEDULES);
     Route::delete('/v2/schedules/{scheduleId}', [$schedulesController, 'destroy'])->where('scheduleId', '.+')->name('waterline.v2.schedules.destroy')->middleware(AuthorizeOperatorAction::SCHEDULES);
+
+    // Only native Server has the activity dispatch pause; embedded Workflow
+    // has no such feature, so these routes exist in service mode only.
+    // Task queue names may contain slashes.
+    if (BackendConfiguration::serviceMode()) {
+        Route::post('/v2/task-queues/{taskQueue}/activity-dispatch/pause', [RemoteTaskQueuesController::class, 'pauseActivityDispatch'])
+            ->where('taskQueue', '.+')->name('waterline.v2.task-queues.activity-dispatch.pause');
+        Route::post('/v2/task-queues/{taskQueue}/activity-dispatch/resume', [RemoteTaskQueuesController::class, 'resumeActivityDispatch'])
+            ->where('taskQueue', '.+')->name('waterline.v2.task-queues.activity-dispatch.resume');
+    }
 
     Route::get('/flows/{id}', [$workflowsController, 'show'])->name('waterline.show');
     Route::get('/flows/{id}/history-export', [$workflowsController, 'historyExport'])->name('waterline.history-export');

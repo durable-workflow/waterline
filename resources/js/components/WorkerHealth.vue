@@ -375,7 +375,7 @@
                                                         <td class="worker-health__refusal-namespace">{{ row.namespace }}</td>
                                                         <td>{{ row.pathLabel ? $t(row.pathLabel) : row.path }}</td>
                                                         <td>{{ integerLabel(row.count) }}</td>
-                                                        <td>{{ row.lastSeenAt ? refusalTimestamp(row.lastSeenAt) : '—' }}</td>
+                                                        <td>{{ row.lastSeenAt ? isoTimestamp(row.lastSeenAt) : '—' }}</td>
                                                     </tr>
                                                 </tbody>
                                             </table>
@@ -436,9 +436,18 @@
                                     </div>
                                 </div>
 
-                                <span class="worker-health__pill" :class="queueVisibilityToneClass(taskQueue)">
-                                    {{ queueVisibilityStatusLabel(taskQueue) }}
-                                </span>
+                                <div class="worker-health__queue-pills">
+                                    <span
+                                        v-if="queueActivityDispatchState(taskQueue) === 'paused'"
+                                        class="worker-health__pill is-warning"
+                                        data-activity-dispatch-badge="paused"
+                                    >
+                                        {{ $t("Activities paused") }}
+                                    </span>
+                                    <span class="worker-health__pill" :class="queueVisibilityToneClass(taskQueue)">
+                                        {{ queueVisibilityStatusLabel(taskQueue) }}
+                                    </span>
+                                </div>
                             </div>
 
                             <div class="worker-health__queue-metrics">
@@ -500,6 +509,56 @@
                                 </div>
                             </div>
 
+                            <section
+                                v-if="queueActivityDispatchState(taskQueue) !== null"
+                                class="worker-health__dispatch"
+                                :data-activity-dispatch="queueActivityDispatchState(taskQueue)"
+                            >
+                                <div class="worker-health__dispatch-head">
+                                    <span class="worker-health__queue-metric-label">{{ $t("Activity dispatch") }}</span>
+                                    <span
+                                        class="worker-health__pill"
+                                        :class="queueActivityDispatchState(taskQueue) === 'paused' ? 'is-warning' : 'is-ok'"
+                                    >
+                                        {{ queueActivityDispatchState(taskQueue) === 'paused' ? $t("Paused") : $t("Active") }}
+                                    </span>
+                                </div>
+
+                                <dl v-if="queueActivityDispatchDetails(taskQueue).length > 0" class="worker-health__dispatch-facts">
+                                    <div v-for="detail in queueActivityDispatchDetails(taskQueue)" :key="detail.label" class="worker-health__dispatch-fact">
+                                        <dt>{{ $t(detail.label) }}</dt>
+                                        <dd>{{ detail.kind === 'timestamp' ? isoTimestamp(detail.value) : detail.value }}</dd>
+                                    </div>
+                                </dl>
+
+                                <template v-if="queueActivityDispatchActions(taskQueue).pause || queueActivityDispatchActions(taskQueue).resume">
+                                    <div class="worker-health__dispatch-actions">
+                                        <button
+                                            v-if="queueActivityDispatchActions(taskQueue).pause"
+                                            class="btn btn-sm btn-outline-warning"
+                                            data-queue-action="pause-activities"
+                                            :disabled="isQueuePending(taskQueue)"
+                                            @click="pauseActivityDispatch(taskQueue)"
+                                        >
+                                            {{ $t("Pause activities") }}
+                                        </button>
+                                        <button
+                                            v-if="queueActivityDispatchActions(taskQueue).resume"
+                                            class="btn btn-sm btn-outline-success"
+                                            data-queue-action="resume-activities"
+                                            :disabled="isQueuePending(taskQueue)"
+                                            @click="resumeActivityDispatch(taskQueue)"
+                                        >
+                                            {{ $t("Resume activities") }}
+                                        </button>
+                                    </div>
+                                    <p class="worker-health__dispatch-note">{{ $t(activityDispatchExplanation) }}</p>
+                                </template>
+                                <p v-else-if="activityDispatchUnavailableText" class="worker-health__dispatch-note">
+                                    {{ $t(activityDispatchUnavailableText) }}
+                                </p>
+                            </section>
+
                             <div v-if="queueBuildIds(taskQueue).length > 0" class="worker-health__build-grid">
                                 <article
                                     v-for="build in queueBuildIds(taskQueue)"
@@ -542,6 +601,12 @@
 import axios from '../http.mjs';
 import Swal from 'sweetalert2';
 import { namespaceScopeRefusals } from '../namespace-scope-refusals.mjs';
+import { escapeDialogHtml, showDialogValidationText } from '../dialogs.mjs';
+import { operatorPermission } from '../operator-permissions.mjs';
+import * as dispatch from '../activity-dispatch.mjs';
+
+// What a pause holds, shown next to the actions and in the confirmation.
+const ACTIVITY_DISPATCH_EXPLANATION = 'A pause stops new activity leases on this queue only. Ready activity tasks stay ready and keep their attempt count, activities already running continue, and activity deadlines keep running, so a deadline can still time an activity out. Workflow tasks, signals, queries and updates are delivered as before. This is not a build drain.';
 
 export default {
     name: 'WorkerHealth',
@@ -570,7 +635,8 @@ export default {
             operatorPreferences: {},
             effectiveOperatorPreferences: {},
             savingOperatorPreferences: false,
-            refreshTimer: null
+            refreshTimer: null,
+            pendingQueueActions: {}
         };
     },
 
@@ -659,6 +725,22 @@ export default {
             return Array.isArray(this.queueVisibility.task_queues)
                 ? this.queueVisibility.task_queues
                 : [];
+        },
+
+        activityDispatchControl() {
+            return this.queueVisibility.activity_dispatch_control || null;
+        },
+
+        activityDispatchPermission() {
+            return operatorPermission('task_queue_activity_dispatch', this.healthData?.backend || {});
+        },
+
+        activityDispatchUnavailableText() {
+            return dispatch.activityDispatchUnavailableMessage(this.activityDispatchControl, this.activityDispatchPermission);
+        },
+
+        activityDispatchExplanation() {
+            return ACTIVITY_DISPATCH_EXPLANATION;
         },
 
         coordinationAlerts() {
@@ -1113,10 +1195,153 @@ export default {
             return namespaceScopeRefusals(check);
         },
 
-        refusalTimestamp(value) {
+        queueActivityDispatchState(taskQueue) {
+            return dispatch.activityDispatchState(dispatch.reportedActivityDispatch(taskQueue));
+        },
+
+        queueActivityDispatchDetails(taskQueue) {
+            return dispatch.activityDispatchDetails(dispatch.reportedActivityDispatch(taskQueue));
+        },
+
+        queueActivityDispatchActions(taskQueue) {
+            return dispatch.activityDispatchActions(taskQueue, this.activityDispatchControl, this.activityDispatchPermission);
+        },
+
+        isoTimestamp(value) {
             const date = new Date(value);
 
             return Number.isNaN(date.getTime()) ? value : date.toLocaleString(this.$i18n.locale);
+        },
+
+        isQueuePending(taskQueue) {
+            return this.pendingQueueActions[taskQueue?.name] === true;
+        },
+
+        async pauseActivityDispatch(taskQueue) {
+            const reasonId = 'waterline-activity-dispatch-reason';
+            const counterId = 'waterline-activity-dispatch-reason-count';
+            const result = await this.$dialog({
+                // Swal inserts `title` as HTML; the queue name is server text.
+                titleText: this.$t("Pause activity dispatch on {queue}?", { queue: taskQueue.name }),
+                html: `
+                    <p class="text-left">${escapeDialogHtml(this.$t(ACTIVITY_DISPATCH_EXPLANATION))}</p>
+                    <label class="d-block text-left mb-2" for="${reasonId}">${escapeDialogHtml(this.$t("Reason (optional)"))}</label>
+                    <textarea id="${reasonId}" class="swal2-textarea" maxlength="${dispatch.MAX_PAUSE_REASON_LENGTH}"></textarea>
+                    <div id="${counterId}" class="small text-muted text-right">0 / ${dispatch.MAX_PAUSE_REASON_LENGTH}</div>
+                `,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: this.$t("Pause activities"),
+                focusConfirm: false,
+                background: this.swalBackground(),
+                didOpen: () => {
+                    const textarea = document.getElementById(reasonId);
+                    const counter = document.getElementById(counterId);
+
+                    textarea?.addEventListener('input', () => {
+                        if (counter) {
+                            counter.textContent = `${dispatch.normalizePauseReason(textarea.value).length} / ${dispatch.MAX_PAUSE_REASON_LENGTH}`;
+                        }
+                    });
+                },
+                preConfirm: () => {
+                    const reason = dispatch.normalizePauseReason(document.getElementById(reasonId)?.value);
+
+                    if (!reason.valid) {
+                        showDialogValidationText(Swal, this.$t("The reason can be at most {max} characters.", { max: dispatch.MAX_PAUSE_REASON_LENGTH }));
+
+                        return false;
+                    }
+
+                    return { reason: reason.reason };
+                },
+            });
+
+            if (!result.isConfirmed) {
+                return;
+            }
+
+            await this.runActivityDispatchAction(taskQueue, 'pause', result.value?.reason ? { reason: result.value.reason } : {});
+        },
+
+        async resumeActivityDispatch(taskQueue) {
+            const confirmation = await this.$dialog({
+                titleText: this.$t("Resume activity dispatch on {queue}?", { queue: taskQueue.name }),
+                text: this.$t("Ready activity tasks on this queue can be leased again. An activity whose deadline passed during the pause stays timed out."),
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: this.$t("Resume activities"),
+                background: this.swalBackground(),
+            });
+
+            if (!confirmation.isConfirmed) {
+                return;
+            }
+
+            await this.runActivityDispatchAction(taskQueue, 'resume', {});
+        },
+
+        async runActivityDispatchAction(taskQueue, action, payload) {
+            const name = taskQueue.name;
+
+            if (this.pendingQueueActions[name]) {
+                return;
+            }
+
+            this.pendingQueueActions = { ...this.pendingQueueActions, [name]: true };
+
+            try {
+                const response = await axios.post(dispatch.activityDispatchRequest(this.waterlineBasePath(), name, action), payload);
+                const outcome = dispatch.activityDispatchOutcome(response.data);
+
+                if (response.data?.activity_dispatch && typeof response.data.activity_dispatch === 'object') {
+                    taskQueue.activity_dispatch = response.data.activity_dispatch;
+                }
+
+                await this.$dialog({
+                    titleText: this.$t(outcome.title),
+                    text: this.$t(outcome.text),
+                    icon: outcome.icon,
+                    confirmButtonText: this.$t("Okay"),
+                    background: this.swalBackground(),
+                });
+            } catch (error) {
+                await this.showActivityDispatchError(action, error);
+                // The answer carried no state, so read the queues again.
+                await this.loadData();
+            } finally {
+                const pending = { ...this.pendingQueueActions };
+                delete pending[name];
+                this.pendingQueueActions = pending;
+            }
+        },
+
+        showActivityDispatchError(action, error) {
+            const failure = dispatch.activityDispatchError(error);
+            const titles = {
+                forbidden: "Not authorized",
+                validation: "The request was not accepted",
+                unsupported: "Activity dispatch pause unavailable",
+                unknown: "Command outcome unknown",
+            };
+            const fallbackTitle = action === 'pause' ? "Failed to pause activity dispatch" : "Failed to resume activity dispatch";
+            let text = failure.message || this.$t("Request failed");
+
+            if (failure.kind === 'forbidden') {
+                text = failure.reason === 'waterline_read_only'
+                    ? this.$t("Waterline is configured read-only; this action is unavailable.")
+                    : this.$t("The Server refused this action. Pausing and resuming activity dispatch need a token with the operator or admin role.");
+            } else if (failure.kind === 'unknown') {
+                text = this.$t("The command outcome is unknown. Inspect the task queue before sending it again.");
+            }
+
+            return this.$dialog({
+                titleText: this.$t(titles[failure.kind] || fallbackTitle),
+                text,
+                icon: 'error',
+                confirmButtonText: this.$t("Okay"),
+                background: this.swalBackground(),
+            });
         },
 
         queueBacklogAge(taskQueue) {
@@ -1861,6 +2086,62 @@ export default {
 .worker-health__queue-metric-meta {
     color: var(--wl-text-muted);
     font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.worker-health__queue-pills {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.4rem;
+}
+
+.worker-health__dispatch {
+    margin-top: 0.9rem;
+    border: 1px solid color-mix(in srgb, var(--wl-text) 8%, transparent);
+    border-radius: 8px;
+    padding: 0.85rem;
+    background: color-mix(in srgb, var(--wl-panel) 88%, var(--wl-bg) 12%);
+}
+
+.worker-health__dispatch-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.worker-health__dispatch-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: 0.5rem 0.85rem;
+    margin: 0.65rem 0 0;
+}
+
+.worker-health__dispatch-fact dt {
+    color: var(--wl-text-soft);
+    font-size: 0.75rem;
+    font-weight: 400;
+}
+
+.worker-health__dispatch-fact dd {
+    margin: 0;
+    color: var(--wl-text);
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+}
+
+.worker-health__dispatch-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.worker-health__dispatch-note {
+    margin: 0.6rem 0 0;
+    color: var(--wl-text-muted);
+    font-size: 0.8rem;
     line-height: 1.4;
 }
 

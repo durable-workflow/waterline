@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Service mode shows each task queue's activity dispatch state when the Server
+  reports `activity_dispatch` (native Server 3.8.0): a paused badge on the
+  queue card, the reason, who paused it and when, and the last resume (#299).
+  Queues from a Server that doesn't report it (published PHP Server 2.x, older
+  native) and embedded mode look as before. **Pause activities** (with an
+  optional reason of at most 1000 characters) and **Resume activities** are
+  offered only in operator access mode, when the Server advertises
+  `task_queue_activity_dispatch_pause` and the PHP SDK can make the calls. The
+  pinned PHP SDK can't yet, so until an SDK release adds
+  `pauseTaskQueueActivityDispatch()` and `resumeTaskQueueActivityDispatch()`
+  the card shows the state and says why the actions are unavailable.
+  `already_paused` and `not_paused` are shown as information; a 403 from the
+  Server, a 422 and a missing capability each get their own message.
 - The worker health page shows which namespaces this app refused and by which
   path (#298). With Workflow 2.27.0 or later, when the
   `namespace_scope_refusals` check warns, it lists the refused work by

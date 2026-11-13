@@ -7,6 +7,7 @@ namespace Waterline\Tests\Feature;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Route;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Tests\Fixtures\V2\TestOperatorCommandWorkflow;
 use Waterline\Tests\TestCase;
@@ -40,6 +41,15 @@ final class OperatorAuthorizationTest extends TestCase
                 ->assertJsonPath('reason', 'waterline_action_forbidden')
                 ->assertJsonPath('capability', $action);
         }
+    }
+
+    public function testEmbeddedModeHasNoTaskQueueActivityDispatchPause(): void
+    {
+        // Workflow has no activity dispatch pause, so embedded Waterline
+        // neither registers the action nor reports a pause control.
+        $this->assertFalse(Route::has('waterline.v2.task-queues.activity-dispatch.pause'));
+        $this->assertFalse(Route::has('waterline.v2.task-queues.activity-dispatch.resume'));
+        $this->assertArrayNotHasKey('task_queue_activity_dispatch_pause', BackendConfiguration::payload()['capabilities']);
     }
 
     public function testGlobalReadOnlyOverridesEvenAnAllowedOperator(): void
