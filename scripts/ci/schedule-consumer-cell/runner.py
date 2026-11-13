@@ -543,7 +543,6 @@ def main():
     exec(compile(subjects['workspace'], 'captured-workspace.py', 'exec'), namespace)
     output = parent / ('waterline-schedule-cell-' + secrets.token_hex(12))
     with namespace['Workspace'](output) as workspace:
-        os.environ['TMPDIR'] = workspace.proc(workspace.root)
         cell=Cell(workspace,subjects)
         workspace.write('subjects.json', json.dumps({'packet_sha256':digest(raw),'subjects':EXPECTED,'runtime':runtime,'bootstrap':globals().get('__waterline_bootstrap_identity__')},indent=2))
         result={'outcome':'NONPASS'}
