@@ -1116,7 +1116,7 @@ jobs:
   build:
     needs: [action-policy, classify, frontend]
     if: ${{ needs.classify.outputs.qualification-class == 'complete' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
 
     steps:
@@ -1134,15 +1134,15 @@ jobs:
         clients: pip,python,composer,curl,git
     - name: Disable APT download retries (CVE-2026-109518)
       run: echo 'Acquire::Retries "0";' | sudo tee /etc/apt/apt.conf.d/99-no-retries >/dev/null
-    - name: Install PHP
-      uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # v2
+    - name: Check out the fixed APT prerequisite
+      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       with:
-        php-version: '8.2'
-        extensions: pdo_sqlite
-        coverage: none
-        tools: composer:2.10.3
-      env:
-        fail-fast: true
+        repository: durable-workflow/.github
+        ref: 18783be6bef737cc778e4c7282a8797e39daa61a
+        path: .central-apt-source
+        persist-credentials: false
+    - name: Install the bound PHP 8.2 build runtime
+      run: bash "$GITHUB_WORKSPACE/scripts/ci/setup-php-container.sh" "8.2"
 
     - name: Verify Composer configuration before requests
       uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
