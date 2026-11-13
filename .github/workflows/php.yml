@@ -1277,6 +1277,7 @@ jobs:
         --php=${{ matrix.php }}
         --phpunit=${{ matrix.phpunit }}
         --workflow=${{ matrix.workflow }}
+        --sdk=${{ matrix.sdk }}
         --scaffold=${{ matrix.scaffold }}
         --resolution=${{ matrix.resolution }}
 
@@ -1286,7 +1287,7 @@ jobs:
       with:
         path: vendor
         key: >-
-          ${{ github.event_name }}-${{ runner.os }}-laravel-${{ matrix.laravel }}-php-${{ matrix.php }}-testbench-${{ matrix.testbench }}-workbench-${{ matrix.workbench }}-phpunit-${{ matrix.phpunit }}-workflow-${{ matrix.workflow }}-${{ hashFiles('composer.json') }}
+          ${{ github.event_name }}-${{ runner.os }}-laravel-${{ matrix.laravel }}-php-${{ matrix.php }}-testbench-${{ matrix.testbench }}-workbench-${{ matrix.workbench }}-phpunit-${{ matrix.phpunit }}-workflow-${{ matrix.workflow }}-sdk-${{ matrix.sdk }}-${{ hashFiles('composer.json') }}
 
     - name: Verify Composer after compatibility cache restoration
       uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
@@ -1297,7 +1298,8 @@ jobs:
           "orchestra/testbench:${{ matrix.testbench }}" \
           "orchestra/workbench:${{ matrix.workbench }}" \
           "phpunit/phpunit:${{ matrix.phpunit }}" \
-          "durable-workflow/workflow:${{ matrix.workflow }}"
+          "durable-workflow/workflow:${{ matrix.workflow }}" \
+          "durable-workflow/sdk:${{ matrix.sdk }}"
 
     - name: Verify Composer before legacy resolution
       uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
@@ -1335,6 +1337,7 @@ jobs:
         --php=${{ matrix.php }}
         --phpunit=${{ matrix.phpunit }}
         --workflow=${{ matrix.workflow }}
+        --sdk=${{ matrix.sdk }}
         --scaffold=${{ matrix.scaffold }}
         --resolution=${{ matrix.resolution }}
 

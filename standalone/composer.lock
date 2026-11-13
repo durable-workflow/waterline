@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "09a6905dcfad15f291640221e315f7f2",
+    "content-hash": "2b8f1ae5cc55eeb2342e943c9844f702",
     "packages": [
         {
             "name": "apache/avro",
@@ -512,16 +512,16 @@
         },
         {
             "name": "durable-workflow/sdk",
-            "version": "3.9.4",
+            "version": "3.16.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/durable-workflow/sdk-php.git",
-                "reference": "11085f0c624674a4b70d3a6fb3e83eaff3869fcb"
+                "reference": "00a531e688ccbcaf4ce59a662cdbcd03dd49ee4c"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/11085f0c624674a4b70d3a6fb3e83eaff3869fcb",
-                "reference": "11085f0c624674a4b70d3a6fb3e83eaff3869fcb",
+                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/00a531e688ccbcaf4ce59a662cdbcd03dd49ee4c",
+                "reference": "00a531e688ccbcaf4ce59a662cdbcd03dd49ee4c",
                 "shasum": ""
             },
             "require": {
@@ -553,7 +553,7 @@
             },
             "suggest": {
                 "ext-pcntl": "Required by framework console workers for graceful SIGINT and SIGTERM handling.",
-                "laravel/framework": "Enables the auto-discovered service-mode bridge on Laravel 10.50.4, 11.56.1, 12.69.0 or 13.30.0 and later releases of each major (the patched minimums for GHSA-f9x3-7vq9-cph6).",
+                "laravel/framework": "Enables the auto-discovered service-mode bridge on Laravel 12.69.0 or 13.30.0 and later releases of each major (the patched minimums for GHSA-f9x3-7vq9-cph6).",
                 "open-telemetry/api": "Optional worker tracing with the application's provider; supports API 1.10.1 and later in the 1.x line.",
                 "symfony/console": "Required with symfony/framework-bundle to run the Symfony 6.4, 7, and 8 worker command.",
                 "symfony/framework-bundle": "Enables the Symfony 6.4, 7, and 8 service-mode bundle."
@@ -570,10 +570,10 @@
                 },
                 "durable-workflow": {
                     "frameworks": {
-                        "laravel": "^10.50.4|^11.56.1|^12.69.0|^13.30.0",
+                        "laravel": "^12.69.0|^13.30.0",
                         "symfony": "^6.4|^7.0|^8.0"
                     },
-                    "product-train": "3.9.4",
+                    "product-train": "3.16.0",
                     "payload-codecs": [
                         "avro"
                     ],
@@ -643,8 +643,8 @@
                 "issues": "https://github.com/durable-workflow/sdk-php/issues",
                 "source": "https://github.com/durable-workflow/sdk-php"
             },
-            "time": "2026-11-04T05:28:03+00:00",
-            "published-time": "2026-11-04T05:28:17+00:00"
+            "time": "2026-11-13T01:53:08+00:00",
+            "published-time": "2026-11-13T01:53:14+00:00"
         },
         {
             "name": "egulias/email-validator",

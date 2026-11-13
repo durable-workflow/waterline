@@ -33,6 +33,7 @@ function loadMatrix(bool $checkRootWorkflow = true): array
 
     validateContract($matrix);
     validateWorkflowPins($matrix, $checkRootWorkflow ? rootWorkflowVersion() : null);
+    validateSdkPins($matrix, $checkRootWorkflow ? rootSdkVersion() : null);
 
     /** @var array{include: list<array<string, string>>} $matrix */
     return $matrix;
@@ -44,7 +45,7 @@ function loadMatrix(bool $checkRootWorkflow = true): array
 function validateContract(array $matrix): void
 {
     $requiredKeys = [
-        'label', 'boundary', 'laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'scaffold', 'resolution',
+        'label', 'boundary', 'laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'sdk', 'scaffold', 'resolution',
     ];
     $expected = [
         9 => [
@@ -133,7 +134,7 @@ function validateCellValues(mixed $row, array $requiredKeys, int $index): array
         }
     }
 
-    foreach (['laravel', 'testbench', 'workbench', 'phpunit', 'workflow'] as $package) {
+    foreach (['laravel', 'testbench', 'workbench', 'phpunit', 'workflow', 'sdk'] as $package) {
         if (preg_match('/^(\d+)\.\d+\.\d+$/D', $row[$package]) !== 1) {
             throw new MatrixContractException(sprintf(
                 'Matrix cell %d must pin %s to an exact semantic version; received %s.',
@@ -217,6 +218,47 @@ function validateWorkflowPins(array $matrix, ?string $rootWorkflow): void
     }
 }
 
+/**
+ * @param array{include: list<array<string, string>>} $matrix
+ */
+function validateSdkPins(array $matrix, ?string $rootSdk): void
+{
+    foreach ($matrix['include'] as $row) {
+        $laravelMajor = major($row['laravel']);
+        // The PHP SDK's auto-discovered Laravel bridge refuses Laravel before
+        // 12.69 from SDK 3.10.0 on, so Laravel 9-11 cells keep an older SDK.
+        // Other cells test the SDK Waterline itself develops against.
+        if ($laravelMajor <= 11 && version_compare($row['sdk'], '3.10.0', '>=')) {
+            throw new MatrixContractException(sprintf(
+                'Laravel %d must pin a PHP SDK release before 3.10.0, the newest line whose Laravel bridge boots there; received %s.',
+                $laravelMajor,
+                $row['sdk'],
+            ));
+        }
+
+        if ($rootSdk !== null && $laravelMajor >= 12 && $row['sdk'] !== $rootSdk) {
+            throw new MatrixContractException(sprintf(
+                'Laravel %d must use the root require-dev PHP SDK %s; received %s.',
+                $laravelMajor,
+                $rootSdk,
+                $row['sdk'],
+            ));
+        }
+    }
+}
+
+function rootSdkVersion(): string
+{
+    $manifest = json_decode((string) file_get_contents(__DIR__.'/../../composer.json'), true, 512, JSON_THROW_ON_ERROR);
+    $version = $manifest['require-dev']['durable-workflow/sdk'] ?? null;
+
+    if (! is_string($version) || preg_match('/^\d+\.\d+\.\d+$/D', $version) !== 1) {
+        throw new MatrixContractException('composer.json must pin durable-workflow/sdk to an exact require-dev version.');
+    }
+
+    return $version;
+}
+
 function rootWorkflowVersion(): string
 {
     $manifest = json_decode((string) file_get_contents(__DIR__.'/../../composer.json'), true, 512, JSON_THROW_ON_ERROR);
@@ -260,7 +302,7 @@ function parseOptions(array $arguments): array
  */
 function requestedRow(array $matrix, array $requested): array
 {
-    $keys = ['laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'scaffold', 'resolution'];
+    $keys = ['laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'sdk', 'scaffold', 'resolution'];
 
     if (array_keys($requested) !== $keys) {
         throw new MatrixContractException('Cell validation requires exactly: '.implode(', ', $keys).'.');
@@ -285,7 +327,7 @@ function requestedRow(array $matrix, array $requested): array
     foreach ($matrix['include'] as $row) {
         if (major($row['laravel']) === $laravelMajor) {
             throw new MatrixContractException(sprintf(
-                'Unsupported Laravel %d dependency tuple. Expected Laravel %s, Testbench %s, Workbench %s, PHP %s, PHPUnit %s, Workflow %s, scaffold %s, resolution %s.',
+                'Unsupported Laravel %d dependency tuple. Expected Laravel %s, Testbench %s, Workbench %s, PHP %s, PHPUnit %s, Workflow %s, PHP SDK %s, scaffold %s, resolution %s.',
                 $laravelMajor,
                 $row['laravel'],
                 $row['testbench'],
@@ -293,6 +335,7 @@ function requestedRow(array $matrix, array $requested): array
                 $row['php'],
                 $row['phpunit'],
                 $row['workflow'],
+                $row['sdk'],
                 $row['scaffold'],
                 $row['resolution'],
             ));
@@ -328,6 +371,7 @@ function assertInstalled(array $row): void
         'workbench' => 'orchestra/workbench',
         'phpunit' => 'phpunit/phpunit',
         'workflow' => 'durable-workflow/workflow',
+        'sdk' => 'durable-workflow/sdk',
     ];
 
     foreach ($packages as $key => $package) {
@@ -393,6 +437,30 @@ function selfTest(array $matrix): void
         }
     }
 
+    $laravel11Sdk = $matrix;
+    $laravel11Sdk['include'][2]['sdk'] = '3.10.0';
+
+    try {
+        validateSdkPins($laravel11Sdk, rootSdkVersion());
+        throw new MatrixContractException('Self-test accepted PHP SDK 3.10.0 on Laravel 11.');
+    } catch (RuntimeException $exception) {
+        if (! str_contains($exception->getMessage(), 'Laravel 11 must pin a PHP SDK release before 3.10.0')) {
+            throw $exception;
+        }
+    }
+
+    $driftedSdk = $matrix;
+    $driftedSdk['include'][4]['sdk'] = '3.9.4';
+
+    try {
+        validateSdkPins($driftedSdk, rootSdkVersion());
+        throw new MatrixContractException('Self-test accepted a Laravel 13 PHP SDK that differs from require-dev.');
+    } catch (RuntimeException $exception) {
+        if (! str_contains($exception->getMessage(), 'Laravel 13 must use the root require-dev PHP SDK')) {
+            throw $exception;
+        }
+    }
+
     $driftedWorkflow = $matrix;
     $driftedWorkflow['include'][3]['workflow'] = '2.16.0';
 
@@ -406,7 +474,7 @@ function selfTest(array $matrix): void
     }
 
     $unsupported = array_intersect_key($matrix['include'][0], array_flip([
-        'laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'scaffold', 'resolution',
+        'laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'sdk', 'scaffold', 'resolution',
     ]));
     $unsupported['workbench'] = $matrix['include'][1]['workbench'];
 

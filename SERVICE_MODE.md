@@ -92,8 +92,9 @@ hold:
   `waterline_read_only` before calling the Server;
 - cluster info advertises `capabilities.task_queue_activity_dispatch_pause`;
 - the PHP SDK exposes `pauseTaskQueueActivityDispatch()` and
-  `resumeTaskQueueActivityDispatch()`. The pinned SDK doesn't yet, so the card
-  shows the state and says why the actions are unavailable.
+  `resumeTaskQueueActivityDispatch()`, which PHP SDK 3.16.0 and later do. The
+  service image bundles 3.16.0. A custom Laravel host on an older SDK sees the
+  state, and the card says the actions need a newer SDK.
 
 The Server records the token's principal as the one who paused, and refuses a
 worker token with 403, which Waterline shows as such. A reason is optional and
@@ -293,8 +294,9 @@ composer require \
 
 On Packagist, `^2.0` resolves to SDK 2.5.4. SDK releases before the
 GHSA-f9x3-7vq9-cph6 fix are outside the SDK's supported boundary, so prefer
-SDK 3.9.1 or later for a new install. Waterline's service-mode tests pass
-with it. Waterline accepts installed SDKs matching `^2.0 || ^3.0`.
+SDK 3.16.0 or later for a new install; it is also the first SDK with the
+activity dispatch pause calls. Waterline's service-mode tests pass with it.
+Waterline accepts installed SDKs matching `^2.0 || ^3.0`.
 
 Set `WATERLINE_BACKEND=service` together with the endpoint, token, namespace,
 and access-mode inputs above. If service mode is selected without the SDK,
