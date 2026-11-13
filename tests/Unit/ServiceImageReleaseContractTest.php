@@ -36,6 +36,21 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertGreaterThan($runtimeDownload, $runtimeRecheck);
     }
 
+    public function testHostedRunnerAptDisablesRetriesBeforeTheFirstNetworkedCall(): void
+    {
+        // CVE-2026-109518 needs APT to retry a redirected download
+        // (durable-workflow/.github#295).
+        foreach (['service-image.yml', 'service-image-publish.yml'] as $name) {
+            $workflow = (string) file_get_contents(dirname(__DIR__, 2).'/.github/workflows/'.$name);
+            $noRetries = strpos($workflow, "echo 'Acquire::Retries \"0\";' | sudo tee /etc/apt/apt.conf.d/99-no-retries");
+            $firstApt = strpos($workflow, 'sudo apt-get');
+
+            $this->assertIsInt($noRetries, $name);
+            $this->assertIsInt($firstApt, $name);
+            $this->assertLessThan($firstApt, $noRetries, $name);
+        }
+    }
+
     public function testEntrypointUsesBoundedOfflineInitializationAndDropsPrivileges(): void
     {
         $entrypoint = (string) file_get_contents(dirname(__DIR__, 2).'/standalone/entrypoint.sh');
