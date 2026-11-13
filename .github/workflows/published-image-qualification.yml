@@ -167,6 +167,8 @@ jobs:
         uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
         with:
           clients: composer,curl,git
+      - name: Disable APT download retries (CVE-2026-109518)
+        run: echo 'Acquire::Retries "0";' | sudo tee /etc/apt/apt.conf.d/99-no-retries >/dev/null
       - name: Install PHP and Composer
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
@@ -337,6 +339,9 @@ jobs:
           node-version: '24.22.1'
       - name: Verify raw Node version and trust roots
         run: node .devcontainer/docker/verify-node-runtime.mjs
+      - name: Disable APT download retries (CVE-2026-109518)
+        if: runner.os == 'Linux'
+        run: echo 'Acquire::Retries "0";' | sudo tee /etc/apt/apt.conf.d/99-no-retries >/dev/null
       - name: Install pinned browser tooling
         working-directory: ${{ env.NATIVE_BUDGET_ROOT }}
         run: |
