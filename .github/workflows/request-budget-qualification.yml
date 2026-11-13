@@ -99,7 +99,7 @@ jobs:
         <?php
         $published = getenv('EXPECTED_WATERLINE_VERSION');
         $manifest = ['name' => 'durable-workflow/waterline-request-budget-qualification',
-          'require' => ['php' => '^8.3', 'durable-workflow/waterline' => $published ?: 'dev-candidate@dev', 'durable-workflow/sdk' => getenv('EXPECTED_BUDGET_SDK_VERSION'), 'laravel/framework' => '12.70.1'],
+          'require' => ['php' => '^8.3', 'durable-workflow/waterline' => $published ?: 'dev-candidate@dev', 'durable-workflow/sdk' => getenv('EXPECTED_BUDGET_SDK_VERSION'), 'laravel/framework' => '12.72.0'],
           'config' => ['allow-plugins' => new stdClass(), 'preferred-install' => 'dist'], 'minimum-stability' => 'stable', 'prefer-stable' => true];
         if (!$published) $manifest['repositories'] = [['type' => 'path', 'url' => getenv('GITHUB_WORKSPACE'), 'options' => ['symlink' => true, 'versions' => ['durable-workflow/waterline' => 'dev-candidate']]]];
         file_put_contents(getenv('RUNNER_TEMP').'/request-budget/composer.json', json_encode($manifest, JSON_PRETTY_PRINT|JSON_THROW_ON_ERROR));
