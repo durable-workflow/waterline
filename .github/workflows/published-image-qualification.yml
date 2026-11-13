@@ -212,7 +212,7 @@ jobs:
                 "php" => "^8.3",
                 "durable-workflow/waterline" => getenv("EXPECTED_WATERLINE_VERSION"),
                 "durable-workflow/workflow" => getenv("EXPECTED_WORKFLOW_VERSION"),
-                "laravel/framework" => "12.70.1",
+                "laravel/framework" => "12.72.0",
               ],
               "config" => ["allow-plugins" => new stdClass(), "preferred-install" => "dist"],
               "minimum-stability" => "stable",

@@ -77,6 +77,37 @@ def published(reference: str = REFERENCE) -> dict[str, object]:
 
 
 class StandaloneLockContractTest(unittest.TestCase):
+    def test_requires_patched_framework_floor_even_with_patched_lock(self) -> None:
+        for constraint in (None, "^12.0", "^12.71.0", "^12.72.0 || ^11.0", "^13.41.0"):
+            with self.subTest(constraint=constraint), self.assertRaises(contract.ContractError):
+                contract.validate_framework_host(
+                    {"require": {"laravel/framework": constraint}},
+                    {"packages": [{"name": "laravel/framework", "version": "v12.72.0"}]},
+                )
+
+    def test_rejects_affected_or_unstable_framework_lock(self) -> None:
+        for version in (None, "v12.69.3", "v12.71.0", "v12.72.0-beta.1", "v13.41.0"):
+            with self.subTest(version=version), self.assertRaises(contract.ContractError):
+                contract.validate_framework_host(
+                    {"require": {"laravel/framework": "^12.72.0"}},
+                    {"packages": [{"name": "laravel/framework", "version": version}]},
+                )
+
+    def test_accepts_patched_framework_and_later_stable_patch(self) -> None:
+        for constraint, version in (("^12.72.0", "v12.72.0"), ("^12.72.0", "12.73.0")):
+            with self.subTest(version=version):
+                self.assertEqual(version, contract.validate_framework_host(
+                    {"require": {"laravel/framework": constraint}},
+                    {"packages": [{"name": "laravel/framework", "version": version}]},
+                ))
+
+    def test_framework_lock_must_meet_declared_floor(self) -> None:
+        with self.assertRaises(contract.ContractError):
+            contract.validate_framework_host(
+                {"require": {"laravel/framework": "^12.73.0"}},
+                {"packages": [{"name": "laravel/framework", "version": "v12.72.0"}]},
+            )
+
     def test_accepts_lock_matching_public_package_identity(self) -> None:
         self.assertEqual(
             VERSION,

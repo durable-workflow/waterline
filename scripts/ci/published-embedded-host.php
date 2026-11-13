@@ -126,7 +126,7 @@ function seedAcceptanceRuns(): void
 function acceptancePackageIdentity(): array
 {
     $identity = [];
-    foreach (['durable-workflow/waterline' => (string) getenv('EXPECTED_WATERLINE_VERSION'), 'durable-workflow/workflow' => (string) getenv('EXPECTED_WORKFLOW_VERSION'), 'laravel/framework' => 'v12.70.1'] as $package => $expected) {
+    foreach (['durable-workflow/waterline' => (string) getenv('EXPECTED_WATERLINE_VERSION'), 'durable-workflow/workflow' => (string) getenv('EXPECTED_WORKFLOW_VERSION'), 'laravel/framework' => 'v12.72.0'] as $package => $expected) {
         $version = InstalledVersions::getPrettyVersion($package);
         if (ltrim((string) $version, 'v') !== ltrim($expected, 'v')) {
             throw new InstalledAcceptanceFailure("Unexpected $package $version");

@@ -14,6 +14,8 @@ from typing import Any, Mapping, Sequence
 ROOT = Path(__file__).parents[2]
 STANDALONE = ROOT / "standalone"
 PACKAGE_NAME = "durable-workflow/sdk"
+FRAMEWORK = "laravel/framework"
+FRAMEWORK_FLOOR = (12, 72, 0)
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -52,6 +54,32 @@ def locked_package(
         )
 
     return matches[0]
+
+
+def validate_framework_host(
+    manifest: Mapping[str, Any], lock: Mapping[str, Any]
+) -> str:
+    """Keep the standalone host on patched stable Laravel 12 releases."""
+    requirements = require_mapping(manifest.get("require"), "standalone require")
+    constraint = requirements.get(FRAMEWORK)
+    floor = (
+        re.fullmatch(r"\^12\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", constraint)
+        if isinstance(constraint, str) else None
+    )
+    if floor is None:
+        raise ContractError("standalone Laravel must declare one stable ^12.x.y floor")
+    selected_floor = (12, int(floor[1]), int(floor[2]))
+    if selected_floor < FRAMEWORK_FLOOR:
+        raise ContractError("standalone Laravel floor must be at least ^12.72.0")
+    package = locked_package(lock, FRAMEWORK)
+    version = package.get("version")
+    matched = (
+        re.fullmatch(r"v?12\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version)
+        if isinstance(version, str) else None
+    )
+    if matched is None or (12, int(matched[1]), int(matched[2])) < selected_floor:
+        raise ContractError("standalone Laravel lock must satisfy its patched stable 12.x floor")
+    return version
 
 
 def public_package_metadata(
@@ -185,6 +213,7 @@ def main(arguments: Sequence[str] | None = None) -> int:
 
     manifest = read_json(STANDALONE / "composer.json")
     lock = read_json(STANDALONE / "composer.lock")
+    validate_framework_host(manifest, lock)
     requirements = require_mapping(
         manifest.get("require"),
         "standalone/composer.json require",

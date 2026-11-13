@@ -158,6 +158,11 @@ function validateCellValues(mixed $row, array $requiredKeys, int $index): array
  */
 function validateFrameworkCell(array $row, array $expectedRow, int $laravelMajor): void
 {
+    $patchedFloor = [12 => '12.72.0', 13 => '13.41.0'][$laravelMajor] ?? null;
+    if ($patchedFloor !== null && version_compare($row['laravel'], $patchedFloor, '<')) {
+        throw new MatrixContractException(sprintf('Laravel %d must pin a patched release at least %s.', $laravelMajor, $patchedFloor));
+    }
+
     if ($row['label'] !== 'Laravel '.$laravelMajor
         || $row['php'] !== $expectedRow['php']
         || major($row['testbench']) !== $expectedRow['testbench']
@@ -401,6 +406,20 @@ function assertInstalled(array $row): void
  */
 function selfTest(array $matrix): void
 {
+    foreach ([3 => '12.71.0', 4 => '13.40.0'] as $index => $affectedVersion) {
+        $affected = $matrix;
+        $affected['include'][$index]['laravel'] = $affectedVersion;
+
+        try {
+            validateContract($affected);
+            throw new MatrixContractException('Self-test accepted affected Laravel '.$affectedVersion.'.');
+        } catch (RuntimeException $exception) {
+            if (! str_contains($exception->getMessage(), 'must pin a patched release')) {
+                throw $exception;
+            }
+        }
+    }
+
     $invalid = $matrix;
     $invalid['include'][0]['testbench'] = $matrix['include'][1]['testbench'];
 
