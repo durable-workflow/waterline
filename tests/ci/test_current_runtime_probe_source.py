@@ -71,7 +71,7 @@ class CurrentRuntimeProbeSourceTest(unittest.TestCase):
             "--log-driver", "none", "--user", f"{os.getuid()}:{os.getgid()}", "--interactive",
             "--mount", f"type=bind,src={self.fixture},dst=/app,readonly",
             "--mount", f"type=bind,src={self.markers},dst=/markers",
-            "--entrypoint", "/usr/local/bin/php", IMAGE, "/dev/stdin", mode,
+            "--entrypoint", "/usr/local/bin/php", IMAGE, "-n", "/dev/stdin", mode,
         ])
         self.assertEqual(0, created.returncode, created.stderr.decode())
         cid = created.stdout.decode().strip()
@@ -143,6 +143,14 @@ class CurrentRuntimeProbeSourceTest(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertEqual(b"", result.stdout)
         self.assertFalse((self.markers / "cache").exists())
+        self.assertFalse((self.markers / "autoload").exists())
+
+    def test_other_bootstrap_cache_output_also_refuses_before_autoload(self):
+        (self.fixture / "bootstrap/cache/config.php").write_text("<?php file_put_contents('/markers/config', 'unexpected');")
+        result = self.run_source()
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(b"", result.stdout)
+        self.assertFalse((self.markers / "config").exists())
         self.assertFalse((self.markers / "autoload").exists())
 
     def test_parent_symlink_refuses_even_when_target_contains_valid_metadata(self):

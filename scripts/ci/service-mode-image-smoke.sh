@@ -104,6 +104,16 @@ function currentClasses(): array
     return $classes;
 }
 
+function currentIniValues(): array
+{
+    $values = [];
+    foreach (['memory_limit', 'date.timezone', 'auto_prepend_file', 'auto_append_file', 'include_path',
+              'opcache.enable_cli', 'opcache.file_cache', 'allow_url_include'] as $key) {
+        $values[$key] = ini_get($key);
+    }
+    return $values;
+}
+
 function currentRoutes(object $app): array
 {
     $routes = [];
@@ -146,9 +156,13 @@ try {
         'php_version' => PHP_VERSION, 'php_int_size' => PHP_INT_SIZE, 'php_binary' => realpath(PHP_BINARY),
         'effective_uid' => posix_geteuid(),
         'ini_loaded_file' => php_ini_loaded_file() ?: null, 'ini_scanned_files' => php_ini_scanned_files() ?: null,
+        'ini_before' => currentIniValues(),
         'lock_sha256' => hash('sha256', $lock), 'installed_sha256' => hash('sha256', $installed),
     ];
     if ($mode === 'metadata') {
+        if (php_ini_loaded_file() !== false || php_ini_scanned_files() !== false) {
+            throw new RuntimeException('Metadata observation requires the no-INI PHP launch.');
+        }
         if (count($argv) !== 2 || currentCacheState()['present']) {
             throw new RuntimeException('Initial image has a route cache or extra arguments.');
         }
@@ -199,6 +213,7 @@ try {
             throw new RuntimeException('Application changed the observed package metadata.');
         }
     }
+    $report['ini_after'] = currentIniValues();
     $encoded = json_encode($report, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION);
     if (strlen($encoded) > 1024 * 1024) {
         throw new RuntimeException('Observation output bound exceeded.');
