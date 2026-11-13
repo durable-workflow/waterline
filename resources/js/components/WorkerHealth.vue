@@ -1164,7 +1164,8 @@ export default {
             const reasonId = 'waterline-activity-dispatch-reason';
             const counterId = 'waterline-activity-dispatch-reason-count';
             const result = await this.$dialog({
-                title: this.$t("Pause activity dispatch on {queue}?", { queue: taskQueue.name }),
+                // Swal inserts `title` as HTML; the queue name is server text.
+                titleText: this.$t("Pause activity dispatch on {queue}?", { queue: taskQueue.name }),
                 html: `
                     <p class="text-left">${escapeDialogHtml(this.$t(ACTIVITY_DISPATCH_EXPLANATION))}</p>
                     <label class="d-block text-left mb-2" for="${reasonId}">${escapeDialogHtml(this.$t("Reason (optional)"))}</label>
@@ -1208,7 +1209,7 @@ export default {
 
         async resumeActivityDispatch(taskQueue) {
             const confirmation = await this.$dialog({
-                title: this.$t("Resume activity dispatch on {queue}?", { queue: taskQueue.name }),
+                titleText: this.$t("Resume activity dispatch on {queue}?", { queue: taskQueue.name }),
                 text: this.$t("Ready activity tasks on this queue can be leased again. An activity whose deadline passed during the pause stays timed out."),
                 icon: 'question',
                 showCancelButton: true,
@@ -1241,7 +1242,7 @@ export default {
                 }
 
                 await this.$dialog({
-                    title: this.$t(outcome.title),
+                    titleText: this.$t(outcome.title),
                     text: this.$t(outcome.text),
                     icon: outcome.icon,
                     confirmButtonText: this.$t("Okay"),
@@ -1278,7 +1279,7 @@ export default {
             }
 
             return this.$dialog({
-                title: this.$t(titles[failure.kind] || fallbackTitle),
+                titleText: this.$t(titles[failure.kind] || fallbackTitle),
                 text,
                 icon: 'error',
                 confirmButtonText: this.$t("Okay"),

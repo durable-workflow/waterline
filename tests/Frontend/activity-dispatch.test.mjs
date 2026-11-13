@@ -271,7 +271,7 @@ test('pause posts the reason once and updates the card from the answer', async (
     assert.equal(taskQueue.activity_dispatch, PAUSED);
     assert.match(dialogs[0].html, /maxlength="1000"/);
     assert.match(dialogs[0].html, /stops new activity leases/);
-    assert.equal(dialogs[1].title, 'Activity dispatch paused');
+    assert.equal(dialogs[1].titleText, 'Activity dispatch paused');
     assert.equal(dialogs[1].icon, 'success');
     assert.deepEqual(context.pendingQueueActions, {});
     assert.equal(context.loads, 0);
@@ -291,7 +291,7 @@ test('a cancelled confirmation sends nothing and an empty reason sends no reason
     ({ context, dialogs } = actionContext(options, health([taskQueue], AVAILABLE), [{ isConfirmed: true, value: { reason: null } }]));
     await context.pauseActivityDispatch(taskQueue);
     assert.deepEqual(posts, [{}]);
-    assert.equal(dialogs[1].title, 'Already paused');
+    assert.equal(dialogs[1].titleText, 'Already paused');
     assert.equal(dialogs[1].icon, 'info');
 });
 
@@ -303,7 +303,7 @@ test('resume reports not_paused as information', async () => {
     await context.resumeActivityDispatch(taskQueue);
 
     assert.match(dialogs[0].text, /leased again/);
-    assert.equal(dialogs[1].title, 'Not paused');
+    assert.equal(dialogs[1].titleText, 'Not paused');
     assert.equal(dialogs[1].icon, 'info');
 });
 
@@ -321,7 +321,7 @@ test('a refused pause shows why and reads the queues again', async () => {
 
         await context.pauseActivityDispatch(taskQueue);
 
-        assert.equal(dialogs[1].title, title, `${status}`);
+        assert.equal(dialogs[1].titleText, title, `${status}`);
         assert.equal(dialogs[1].icon, 'error');
         assert.match(dialogs[1].text, text);
         assert.equal(taskQueue.activity_dispatch, RESUMED);
@@ -334,4 +334,95 @@ test('every new message is translated', async () => {
     const html = await render(health([queue(PAUSED)], AVAILABLE), 'uk');
     assert.match(html, /Activity призупинено/);
     assert.match(html, /Поновити activity/);
+});
+
+// SweetAlert2 inserts these options as HTML; titleText and text are set as
+// text content. Server-supplied text may reach only the text options.
+const SWAL_HTML_OPTIONS = ['title', 'html', 'footer', 'confirmButtonText', 'cancelButtonText', 'denyButtonText',
+    'closeButtonHtml', 'iconHtml', 'loaderHtml'];
+const XSS = '<img src=x onerror=alert(1)>';
+const XSS_ESCAPED = '&lt;img src=x onerror=alert(1)&gt;';
+
+function assertNoMarkupFrom(dialog, payload) {
+    for (const option of SWAL_HTML_OPTIONS) {
+        if (typeof dialog[option] !== 'string') continue;
+        assert.ok(!dialog[option].includes('<img'), `${option} would create an element: ${dialog[option]}`);
+        assert.ok(!dialog[option].includes(payload), `${option} carries server text as HTML`);
+    }
+}
+
+test('a hostile queue name, reason, principal and error message stay literal text', async () => {
+    const name = `orders${XSS}`;
+    const hostile = {
+        ...PAUSED,
+        reason: XSS,
+        paused_by: { type: 'auth:token', id: XSS, label: XSS },
+    };
+
+    // The rendered card escapes every server field.
+    const html = await render(health([{ ...queue(hostile), name }], AVAILABLE));
+    assert.doesNotMatch(html, /<img/);
+    assert.ok(html.includes(`orders${XSS_ESCAPED}`));
+    assert.ok(html.includes(`<dd>${XSS_ESCAPED}</dd>`));
+    assert.ok(html.includes(`${XSS_ESCAPED} (auth:token ${XSS_ESCAPED})`));
+
+    // Both confirmations carry the queue name as text only.
+    const options = component({ axios: { async post() { return { data: { outcome: 'paused', activity_dispatch: hostile } }; } } });
+    const pauseQueue = { ...queue(RESUMED), name };
+    const pause = actionContext(options, health([pauseQueue], AVAILABLE), [{ isConfirmed: true, value: { reason: XSS } }]);
+    await pause.context.pauseActivityDispatch(pauseQueue);
+    assert.equal(pause.dialogs[0].titleText, `Pause activity dispatch on ${name}?`);
+    assert.equal(pause.dialogs[0].title, undefined);
+    for (const dialog of pause.dialogs) assertNoMarkupFrom(dialog, XSS);
+
+    const resumeQueue = { ...queue(hostile), name };
+    const resume = actionContext(options, health([resumeQueue], AVAILABLE), []);
+    await resume.context.resumeActivityDispatch(resumeQueue);
+    assert.equal(resume.dialogs[0].titleText, `Resume activity dispatch on ${name}?`);
+    assert.equal(resume.dialogs[0].title, undefined);
+    for (const dialog of resume.dialogs) assertNoMarkupFrom(dialog, XSS);
+
+    // Server and validation messages are shown as text.
+    for (const [status, data] of [
+        [422, { message: XSS, errors: { reason: [XSS] } }],
+        [422, { message: 'Invalid', remote_details: { errors: { task_queue: [XSS] } } }],
+        [409, { message: XSS }],
+        [501, { reason: 'backend_capability_unavailable', message: XSS }],
+    ]) {
+        const failing = component({ axios: { async post() { throw { response: { status, data } }; } } });
+        const failure = actionContext(failing, health([pauseQueue], AVAILABLE), [{ isConfirmed: true, value: { reason: null } }]);
+        await failure.context.pauseActivityDispatch(pauseQueue);
+        assert.equal(failure.dialogs[1].text, XSS, `${status}`);
+        for (const dialog of failure.dialogs) assertNoMarkupFrom(dialog, XSS);
+    }
+});
+
+test('the pause dialog escapes its own labels and validation message', async () => {
+    const shown = [];
+    const executable = script.replace(/^import .*;$/gm, '').replace('export default', 'return');
+    const realDialogs = await import('../../resources/js/dialogs.mjs');
+    const options = Function('axios', 'Swal', 'escapeDialogHtml', 'showDialogValidationText', 'operatorPermission', 'dispatch', executable)(
+        { async post() { throw new Error('must not post'); } },
+        { showValidationMessage: (message) => shown.push(message) },
+        realDialogs.escapeDialogHtml,
+        realDialogs.showDialogValidationText,
+        operatorPermission,
+        dispatch,
+    );
+    const taskQueue = { ...queue(RESUMED), name: XSS };
+    const { context, dialogs } = actionContext(options, health([taskQueue], AVAILABLE), []);
+    const textarea = { value: 'x'.repeat(1001) };
+    globalThis.document = { getElementById: (id) => (id === 'waterline-activity-dispatch-reason' ? textarea : null) };
+    context.$dialog = async (dialog) => {
+        dialogs.push(dialog);
+        return { isConfirmed: dialog.preConfirm() !== false };
+    };
+    try {
+        await context.pauseActivityDispatch(taskQueue);
+    } finally {
+        delete globalThis.document;
+    }
+    assertNoMarkupFrom(dialogs[0], XSS);
+    assert.equal(dialogs.length, 1);
+    assert.deepEqual(shown, ['The reason can be at most 1000 characters.']);
 });
