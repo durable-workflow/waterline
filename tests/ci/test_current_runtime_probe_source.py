@@ -5,11 +5,11 @@ No image pull/build, package install, actual cache command or runtime is selecte
 """
 
 import base64
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import tempfile
 import unittest
@@ -63,6 +63,7 @@ class CurrentRuntimeProbeSourceTest(unittest.TestCase):
 
     def run_source(self, source=None, mode="metadata"):
         run = "waterline-probe-source-" + uuid.uuid4().hex
+        started = datetime.now(timezone.utc).isoformat()
         created = self.docker([
             "create", "--name", run, "--label", "dev.durable-workflow.owner=waterline",
             "--label", "dev.durable-workflow.run=" + run, "--platform", "linux/amd64", "--pull", "never",
@@ -120,6 +121,7 @@ class CurrentRuntimeProbeSourceTest(unittest.TestCase):
             print(json.dumps({"scope": "synthetic-source-control-only", "container_id": cid,
                               "index": IMAGE, "child": CHILD,
                               "source_sha256": hashlib.sha256(source or self.source).hexdigest(),
+                              "started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
                               "absent": True}, sort_keys=True))
 
     def test_synthetic_metadata_never_loads_autoload(self):
