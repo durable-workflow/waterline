@@ -30,7 +30,7 @@ SDK_VERSION = "2.17.2"
 WHEEL_SHA256 = "7dc77d3882fa5cbddbeaee6a4cc63b05285e280523c8ea40dc31e03cc12a40bc"
 FAILURE = "waterline-schedule-observation-controlled-failure"
 # Fixed ephemeral paths inside the isolated consumer; no host pathname inputs.
-STATE = Path("/tmp/waterline-fixture")
+STATE = Path("/run/waterline-fixture")
 WHEEL = STATE / "sdk.whl"
 TOKEN = STATE / "token"
 RELEASE = STATE / "release"
@@ -97,6 +97,8 @@ async def prove(server: str, schedule_id: str, report: dict[str, Any]) -> None:
         raise RuntimeError("launch this fixture with python -I and assertions enabled")
     if not Path("/.dockerenv").is_file():
         raise RuntimeError("fixture requires the isolated consumer container")
+    state = STATE.lstat()
+    assert stat.S_ISDIR(state.st_mode) and state.st_uid == os.geteuid() and stat.S_IMODE(state.st_mode) == 0o700
     report.update(installed_identity())
     url = urlparse(server)
     assert url.scheme == "http" and ipaddress.ip_address(url.hostname).is_loopback and url.port is not None and 1024 <= url.port <= 65535
