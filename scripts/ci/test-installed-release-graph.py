@@ -274,10 +274,32 @@ class RouteCacheDataTest(unittest.TestCase):
 
 
 class UnwiredRuntimeProbeSourceTest(unittest.TestCase):
+    def emitted_source(self):
+        wrapper = (ROOT / "scripts/ci/service-mode-image-smoke.sh").read_bytes()
+        start = wrapper.index(b"current_runtime_probe_source() {")
+        terminator = b"\nWATERLINE_CURRENT_RUNTIME_PHP\n}"
+        end = wrapper.index(terminator, start) + len(terminator)
+        result = subprocess.run(
+            ["sh"], input=wrapper[start:end] + b"\ncurrent_runtime_probe_source\n",
+            capture_output=True, timeout=5, env={"PATH": "/usr/bin:/bin"},
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(b"", result.stderr)
+        return result.stdout
+
+    def test_actual_function_stdout_equals_canonical_literal_including_final_lf(self):
+        wrapper = (ROOT / "scripts/ci/service-mode-image-smoke.sh").read_bytes()
+        literal = wrapper.split(b"cat <<'WATERLINE_CURRENT_RUNTIME_PHP'\n", 1)[1].split(
+            b"WATERLINE_CURRENT_RUNTIME_PHP\n}", 1,
+        )[0]
+        self.assertTrue(literal.endswith(b"\n"))
+        self.assertEqual(literal, self.emitted_source())
+        self.assertNotEqual(literal.rstrip(b"\n"), self.emitted_source())
+
     def test_probe_has_no_ordinary_callsite_and_metadata_precedes_autoload(self):
         wrapper = (ROOT / "scripts/ci/service-mode-image-smoke.sh").read_text()
         self.assertEqual(1, wrapper.count("current_runtime_probe_source"))
-        source = wrapper.split("cat <<'WATERLINE_CURRENT_RUNTIME_PHP'\n", 1)[1].split("\nWATERLINE_CURRENT_RUNTIME_PHP", 1)[0]
+        source = self.emitted_source().decode()
         self.assertLess(source.index("if ($mode === 'metadata')"), source.index("require '/app/vendor/autoload.php'"))
         self.assertEqual(0, subprocess.run(
             ["sh", "-n", str(ROOT / "scripts/ci/service-mode-image-smoke.sh")],
@@ -286,9 +308,7 @@ class UnwiredRuntimeProbeSourceTest(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("php"), "PHP syntax control needs the existing PHP runtime")
     def test_php_probe_compiles_without_executing_application_code(self):
-        wrapper = (ROOT / "scripts/ci/service-mode-image-smoke.sh").read_text()
-        source = wrapper.split("cat <<'WATERLINE_CURRENT_RUNTIME_PHP'\n", 1)[1].split("\nWATERLINE_CURRENT_RUNTIME_PHP", 1)[0]
-        result = subprocess.run([shutil.which("php"), "-l"], input=source, text=True,
+        result = subprocess.run([shutil.which("php"), "-l"], input=self.emitted_source(),
                                 capture_output=True, timeout=5)
         self.assertEqual(0, result.returncode, result.stderr)
 

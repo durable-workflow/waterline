@@ -42,8 +42,21 @@ class CurrentRuntimeProbeSourceTest(unittest.TestCase):
         self.assertEqual(CHILD, image["Descriptor"]["digest"])
         self.assertEqual("amd64", image["Architecture"])
         self.assertEqual("linux", image["Os"])
-        wrapper = (ROOT / "scripts/ci/service-mode-image-smoke.sh").read_text()
-        self.source = wrapper.split("cat <<'WATERLINE_CURRENT_RUNTIME_PHP'\n", 1)[1].split("\nWATERLINE_CURRENT_RUNTIME_PHP", 1)[0].encode()
+        wrapper = (ROOT / "scripts/ci/service-mode-image-smoke.sh").read_bytes()
+        start = wrapper.index(b"current_runtime_probe_source() {")
+        terminator = b"\nWATERLINE_CURRENT_RUNTIME_PHP\n}"
+        end = wrapper.index(terminator, start) + len(terminator)
+        emitted = subprocess.run(
+            ["sh"], input=wrapper[start:end] + b"\ncurrent_runtime_probe_source\n",
+            capture_output=True, timeout=5, env={"PATH": "/usr/bin:/bin"},
+        )
+        self.assertEqual(0, emitted.returncode, emitted.stderr)
+        self.assertEqual(b"", emitted.stderr)
+        literal = wrapper.split(b"cat <<'WATERLINE_CURRENT_RUNTIME_PHP'\n", 1)[1].split(
+            b"WATERLINE_CURRENT_RUNTIME_PHP\n}", 1,
+        )[0]
+        self.assertEqual(literal, emitted.stdout)
+        self.source = emitted.stdout
         self.fixture = self.root / "fixture"
         for name in ("vendor/composer", "bootstrap/cache"):
             (self.fixture / name).mkdir(mode=0o700, parents=True)
