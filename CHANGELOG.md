@@ -18,7 +18,10 @@
   activity dispatch pause calls, so Pause and Resume work there. Development
   and CI use the same SDK, and the install command Waterline suggests when
   service mode starts without an SDK now asks for `^3.16`. Waterline still
-  accepts installed SDKs matching `^2.0 || ^3.0`.
+  accepts installed SDKs matching `^2.0 || ^3.0`. The PHP SDK's Laravel bridge
+  needs Laravel 12.69 or later from SDK 3.10.0 on, so the Laravel 9, 10 and 11
+  CI cells keep SDK 3.9.4; the Laravel matrix now pins an SDK per cell, as it
+  does Workflow.
 
 ## 2.17.0 - 2026-11-12
 

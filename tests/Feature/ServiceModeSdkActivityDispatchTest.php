@@ -46,10 +46,16 @@ final class ServiceModeSdkActivityDispatchTest extends TestCase
     {
         parent::setUp();
         Waterline::auth(static fn (): bool => true);
+
+        // Laravel 9-11 cells keep an older SDK whose Laravel bridge boots there.
+        if (! method_exists(Client::class, 'pauseTaskQueueActivityDispatch')) {
+            $this->markTestSkipped('The activity dispatch pause calls need PHP SDK 3.16.0 or later.');
+        }
     }
 
     public function testThePinnedSdkExposesThePauseCalls(): void
     {
+        $this->assertTrue(version_compare(\Composer\InstalledVersions::getPrettyVersion('durable-workflow/sdk'), '3.16.0', '>='));
         foreach (RemoteBackend::ACTIVITY_DISPATCH_METHODS as $method) {
             $this->assertTrue(method_exists(Client::class, $method), $method);
         }

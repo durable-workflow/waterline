@@ -28,7 +28,7 @@ final class LaravelMatrixContractTest extends TestCase
             $manifest['require-dev']['durable-workflow/workflow'] = $matrix['include'][1]['workflow'];
             file_put_contents($root.'/composer.json', json_encode($manifest, JSON_THROW_ON_ERROR));
             $options = [];
-            foreach (['laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'scaffold', 'resolution'] as $key) {
+            foreach (['laravel', 'testbench', 'workbench', 'php', 'phpunit', 'workflow', 'sdk', 'scaffold', 'resolution'] as $key) {
                 $options[] = '--'.$key.'='.$matrix['include'][0][$key];
             }
 
