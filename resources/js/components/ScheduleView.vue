@@ -621,6 +621,8 @@ export default {
             appliedVisibilityQuery: '',
             listRequest: 0,
             currentPage: 1,
+            pageTokens: {},
+            restartPageOnRefresh: false,
             pendingRowKeys: {},
             refreshing: false,
             dialogReturnFocus: null,
@@ -799,11 +801,17 @@ export default {
             this.appliedWorkflowType = this.workflowTypeFilter.trim();
             this.appliedVisibilityQuery = this.visibilityQueryFilter.trim();
             this.currentPage = 1;
+            this.pageTokens = {};
+            this.restartPageOnRefresh = false;
             return this.loadData();
         },
 
         listParams() {
-            const params = {page: this.currentPage};
+            const page = this.restartPageOnRefresh ? 1 : this.currentPage;
+            const params = {page};
+            if (this.serviceMode && page > 1 && typeof this.pageTokens[page] === 'string') {
+                params.page_token = this.pageTokens[page];
+            }
             if (this.appliedStatus) params.status = this.appliedStatus;
             if (this.appliedWorkflowType) params.workflow_type = this.appliedWorkflowType;
             // An embedded backend without Workflow's schedule query support
@@ -835,6 +843,16 @@ export default {
                 if (Number.isInteger(response.data.current_page) && response.data.current_page >= 1) {
                     this.currentPage = response.data.current_page;
                 }
+                if (this.currentPage === 1) this.pageTokens = {};
+                if (typeof response.data.page_start_token === 'string' && response.data.page_start_token !== '') {
+                    this.pageTokens[this.currentPage] = response.data.page_start_token;
+                }
+                if (typeof response.data.next_page_token === 'string' && response.data.next_page_token !== '') {
+                    this.pageTokens[this.currentPage + 1] = response.data.next_page_token;
+                } else {
+                    delete this.pageTokens[this.currentPage + 1];
+                }
+                this.restartPageOnRefresh = false;
                 this.pagination = {
                     current_page: response.data.current_page,
                     last_page: response.data.last_page,
@@ -845,6 +863,13 @@ export default {
                 };
             } catch (e) {
                 if (request !== this.listRequest) return;
+                if (this.serviceMode && [
+                    'malformed_schedule_page_token', 'stale_schedule_page_token',
+                    'schedule_page_token_namespace_mismatch', 'schedule_page_token_filter_mismatch',
+                ].includes(e?.response?.data?.reason)) {
+                    this.pageTokens = {};
+                    this.restartPageOnRefresh = true;
+                }
                 this.error = this.responseMessage(e, this.$t("Failed to load schedules"));
             } finally {
                 if (request === this.listRequest) {
@@ -1058,6 +1083,7 @@ export default {
         goToPage(page) {
             if (page < 1 || page === '...' || (this.pagination && page > this.pagination.last_page)) return;
             this.currentPage = page;
+            this.restartPageOnRefresh = false;
             void this.loadData();
         },
 

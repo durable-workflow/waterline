@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\CursorPageReplay;
+use Waterline\Support\Remote\MonotonicClock;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ScheduleActionResult;
 use Waterline\Support\ScheduleRow;
@@ -29,18 +30,46 @@ final class RemoteSchedulesController extends RemoteController
         Validator::make($request->query(), [
             'workflow_type' => ['sometimes', 'required', 'string', 'min:1', 'max:255', 'regex:/\S/'],
             'query' => ['sometimes', 'required', 'string', 'min:1', 'max:2048'],
+            'page_token' => ['sometimes', 'required', 'string', 'min:1', 'max:8192'],
         ])->validate();
 
-        $replay = CursorPageReplay::replay(
-            CursorPageReplay::requestedPage($request),
-            fn (?string $token) => $this->backend->client()->listSchedules(
+        $requestedPage = CursorPageReplay::requestedPage($request);
+        $startToken = null;
+        $fetch = function (?string $token) use ($request, &$startToken) {
+            $startToken = $token;
+
+            return $this->backend->client()->listSchedules(
                 status: $this->stringQuery($request, 'status'),
                 workflowType: $this->stringQuery($request, 'workflow_type'),
                 query: $this->stringQuery($request, 'query'),
                 pageSize: self::PAGE_SIZE,
                 nextPageToken: $token,
-            ),
-        );
+            );
+        };
+
+        // Repeated reads of a known page cost one list call. Tokens remain
+        // opaque and the Server validates their namespace and filter binding.
+        $suppliedToken = $request->query('page_token');
+        if ($requestedPage > 1 && is_string($suppliedToken)) {
+            $deadline = app(MonotonicClock::class)->milliseconds() + CursorPageReplay::budgetMilliseconds();
+            $page = $fetch($suppliedToken);
+            // Deletion can empty the tail after a still-valid cursor. Recover
+            // with one first-page read rather than replaying up to 100 pages.
+            if ($page->schedules === []) {
+                CursorPageReplay::assertWithinBudget($deadline, 1, $requestedPage);
+                $page = $fetch(null);
+                $requestedPage = 1;
+            }
+            $token = $page->nextPageToken;
+            $replay = [
+                'page' => $page,
+                'page_number' => $requestedPage,
+                'next_page_token' => $token,
+                'page_limit_reached' => $token !== null && $requestedPage >= CursorPageReplay::MAX_PAGE,
+            ];
+        } else {
+            $replay = CursorPageReplay::replay($requestedPage, $fetch);
+        }
         $pageNumber = $replay['page_number'];
         $token = $replay['next_page_token'];
         $hasMore = $token !== null && ! $replay['page_limit_reached'];
@@ -63,6 +92,7 @@ final class RemoteSchedulesController extends RemoteController
             'per_page' => self::PAGE_SIZE,
             'total' => (($pageNumber - 1) * self::PAGE_SIZE) + count($schedules) + ($hasMore ? 1 : 0),
             'next_page_token' => $token,
+            'page_start_token' => $startToken,
             'page_limit' => CursorPageReplay::MAX_PAGE,
             'page_limit_reached' => $replay['page_limit_reached'],
             'refresh_interval_ms' => $listOnly ? 3000 : 30000,
