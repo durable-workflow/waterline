@@ -35,20 +35,27 @@ function currentFileIdentity(array $state): array
     return array_intersect_key($state, array_flip(['dev', 'ino', 'mode', 'uid', 'gid', 'nlink', 'size', 'mtime', 'ctime']));
 }
 
+function currentRealParents(string $path): void
+{
+    $parent = '';
+    foreach (explode('/', trim(dirname($path), '/')) as $part) {
+        $parent .= '/'.$part;
+        clearstatcache(true, $parent);
+        $state = lstat($parent);
+        if (($state['mode'] & 0170000) !== 0040000) {
+            throw new RuntimeException('Observation parent is not a real directory.');
+        }
+    }
+}
+
 function currentRegularBytes(string $path, int $limit): string
 {
     $allowed = ['/app/composer.lock', '/app/vendor/composer/installed.json', CURRENT_CACHE_PATH, ...array_values(CURRENT_RUNTIME_CLASSES)];
     if (!in_array($path, $allowed, true)) {
         throw new RuntimeException('Unselected observation path.');
     }
-    $parent = '';
-    foreach (explode('/', trim(dirname($path), '/')) as $part) {
-        $parent .= '/'.$part;
-        $state = lstat($parent);
-        if (($state['mode'] & 0170000) !== 0040000) {
-            throw new RuntimeException('Observation parent is not a real directory.');
-        }
-    }
+    currentRealParents($path);
+    clearstatcache(true, $path);
     $before = lstat($path);
     if (($before['mode'] & 0170000) !== 0100000 || $before['size'] > $limit) {
         throw new RuntimeException('Observation input is not a bounded regular file.');
@@ -70,6 +77,7 @@ function currentRegularBytes(string $path, int $limit): string
 
 function currentCacheState(): array
 {
+    currentRealParents(CURRENT_CACHE_PATH);
     $count = 0;
     foreach (new DirectoryIterator(dirname(CURRENT_CACHE_PATH)) as $entry) {
         if (++$count > 128) {
@@ -125,6 +133,9 @@ try {
     if (PHP_VERSION_ID !== 80336 || PHP_INT_SIZE !== 8 || realpath(PHP_BINARY) !== '/usr/local/bin/php') {
         throw new RuntimeException('Unexpected PHP runtime.');
     }
+    if (getenv('APP_ROUTES_CACHE') !== false) {
+        throw new RuntimeException('Route-cache path override is unselected.');
+    }
     $lock = currentRegularBytes('/app/composer.lock', 1024 * 1024);
     $installed = currentRegularBytes('/app/vendor/composer/installed.json', 1024 * 1024);
     if (!hash_equals(CURRENT_LOCK_SHA256, hash('sha256', $lock))) {
@@ -133,12 +144,22 @@ try {
     $report = [
         'schema' => 'waterline.current-standalone-runtime-observation/v1', 'mode' => $mode,
         'php_version' => PHP_VERSION, 'php_int_size' => PHP_INT_SIZE, 'php_binary' => realpath(PHP_BINARY),
+        'effective_uid' => posix_geteuid(),
         'ini_loaded_file' => php_ini_loaded_file() ?: null, 'ini_scanned_files' => php_ini_scanned_files() ?: null,
         'lock_sha256' => hash('sha256', $lock), 'installed_sha256' => hash('sha256', $installed),
     ];
     if ($mode === 'metadata') {
         if (count($argv) !== 2 || currentCacheState()['present']) {
             throw new RuntimeException('Initial image has a route cache or extra arguments.');
+        }
+        $entries = 0;
+        foreach (new DirectoryIterator(dirname(CURRENT_CACHE_PATH)) as $entry) {
+            if (++$entries > 128) {
+                throw new RuntimeException('Fresh cache directory entry bound exceeded.');
+            }
+            if (!in_array($entry->getFilename(), ['.', '..', '.gitignore'], true)) {
+                throw new RuntimeException('Fresh image contains bootstrap cache output.');
+            }
         }
         $report += ['lock_base64' => base64_encode($lock), 'installed_base64' => base64_encode($installed),
                     'cache' => currentCacheState()];
@@ -152,9 +173,13 @@ try {
         require '/app/vendor/autoload.php';
         $app = require '/app/bootstrap/app.php';
         $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
-        $kernel->bootstrap();
+        currentRealParents(CURRENT_CACHE_PATH);
         if ($app->getCachedRoutesPath() !== CURRENT_CACHE_PATH) {
             throw new RuntimeException('Application selected a different cache path.');
+        }
+        $kernel->bootstrap();
+        if ($app->getCachedRoutesPath() !== CURRENT_CACHE_PATH) {
+            throw new RuntimeException('Bootstrap changed the selected cache path.');
         }
         if ($mode !== 'inventory') {
             $command = $mode === 'cache-build' ? 'route:cache' : 'route:clear';
@@ -169,6 +194,10 @@ try {
         if (ob_get_clean() !== '') {
             throw new RuntimeException('Unexpected application output.');
         }
+        if (!hash_equals($report['lock_sha256'], hash('sha256', currentRegularBytes('/app/composer.lock', 1024 * 1024)))
+            || !hash_equals($expectedInstalled, hash('sha256', currentRegularBytes('/app/vendor/composer/installed.json', 1024 * 1024)))) {
+            throw new RuntimeException('Application changed the observed package metadata.');
+        }
     }
     $encoded = json_encode($report, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION);
     if (strlen($encoded) > 1024 * 1024) {
@@ -179,7 +208,8 @@ try {
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
-    fwrite(STDERR, json_encode(['mode' => $mode, 'error_class' => get_class($error)], JSON_THROW_ON_ERROR)."\n");
+    $safeMode = in_array($mode, ['metadata', 'inventory', 'clear-before', 'cache-build', 'clear-after'], true) ? $mode : 'invalid';
+    fwrite(STDERR, json_encode(['mode' => $safeMode, 'error_class' => substr(get_class($error), 0, 256)], JSON_THROW_ON_ERROR)."\n");
     exit(1);
 }
 WATERLINE_CURRENT_RUNTIME_PHP

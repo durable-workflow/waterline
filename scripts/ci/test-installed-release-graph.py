@@ -6,6 +6,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -269,6 +271,26 @@ class RouteCacheDataTest(unittest.TestCase):
         cached[0]["name"] = "some-new-name"
         with self.assertRaises(identity.IdentityError):
             identity.validate_route_cache_routes(self.before, cached, self.before)
+
+
+class UnwiredRuntimeProbeSourceTest(unittest.TestCase):
+    def test_probe_has_no_ordinary_callsite_and_metadata_precedes_autoload(self):
+        wrapper = (ROOT / "scripts/ci/service-mode-image-smoke.sh").read_text()
+        self.assertEqual(1, wrapper.count("current_runtime_probe_source"))
+        source = wrapper.split("cat <<'WATERLINE_CURRENT_RUNTIME_PHP'\n", 1)[1].split("\nWATERLINE_CURRENT_RUNTIME_PHP", 1)[0]
+        self.assertLess(source.index("if ($mode === 'metadata')"), source.index("require '/app/vendor/autoload.php'"))
+        self.assertEqual(0, subprocess.run(
+            ["sh", "-n", str(ROOT / "scripts/ci/service-mode-image-smoke.sh")],
+            capture_output=True, timeout=5,
+        ).returncode)
+
+    @unittest.skipUnless(shutil.which("php"), "PHP syntax control needs the existing PHP runtime")
+    def test_php_probe_compiles_without_executing_application_code(self):
+        wrapper = (ROOT / "scripts/ci/service-mode-image-smoke.sh").read_text()
+        source = wrapper.split("cat <<'WATERLINE_CURRENT_RUNTIME_PHP'\n", 1)[1].split("\nWATERLINE_CURRENT_RUNTIME_PHP", 1)[0]
+        result = subprocess.run([shutil.which("php"), "-l"], input=source, text=True,
+                                capture_output=True, timeout=5)
+        self.assertEqual(0, result.returncode, result.stderr)
 
 
 if __name__ == "__main__":
