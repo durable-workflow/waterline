@@ -1386,5 +1386,18 @@
     "Failed to pause activity dispatch": "Failed to pause activity dispatch",
     "Failed to resume activity dispatch": "Failed to resume activity dispatch",
     "The Server refused this action. Pausing and resuming activity dispatch need a token with the operator or admin role.": "The Server refused this action. Pausing and resuming activity dispatch need a token with the operator or admin role.",
-    "The command outcome is unknown. Inspect the task queue before sending it again.": "The command outcome is unknown. Inspect the task queue before sending it again."
+    "The command outcome is unknown. Inspect the task queue before sending it again.": "The command outcome is unknown. Inspect the task queue before sending it again.",
+    "Queued job": "Queued job",
+    "Repair pass": "Repair pass",
+    "Timeout pass": "Timeout pass",
+    "Schedule tick": "Schedule tick",
+    "The refusal counts could not be read from the cache, so this list may be incomplete.": "The refusal counts could not be read from the cache, so this list may be incomplete.",
+    "Refused work by namespace and path in the last {minutes} minutes.": "Refused work by namespace and path in the last {minutes} minutes.",
+    "Refused work by namespace and path.": "Refused work by namespace and path.",
+    "Path": "Path",
+    "Refusals": "Refusals",
+    "Last seen": "Last seen",
+    "More namespace and path pairs were refused than are listed.": "More namespace and path pairs were refused than are listed.",
+    "This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.": "This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.",
+    "Namespace names are hidden because this Waterline is open without sign-in.": "Namespace names are hidden because this Waterline is open without sign-in."
 }

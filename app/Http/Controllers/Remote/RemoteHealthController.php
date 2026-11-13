@@ -7,6 +7,7 @@ namespace Waterline\Http\Controllers\Remote;
 use DurableWorkflow\Exception\ServerException;
 use Illuminate\Http\JsonResponse;
 use Waterline\Support\BackendConfiguration;
+use Waterline\Support\NamespaceScopeRefusalVisibility;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\WorkerRegistrationRoster;
 
@@ -91,7 +92,7 @@ final class RemoteHealthController extends RemoteController
             ? 503
             : 200;
 
-        return response()->json($payload, $status);
+        return response()->json(NamespaceScopeRefusalVisibility::forRequest($payload), $status);
     }
 
     /**

@@ -47,7 +47,7 @@
             "workbench": "10.1.0",
             "php": "8.2",
             "phpunit": "11.5.56",
-            "workflow": "2.20.3",
+            "workflow": "2.27.0",
             "sdk": "3.16.0",
             "scaffold": "testbench",
             "resolution": "strict"
@@ -60,7 +60,7 @@
             "workbench": "11.1.0",
             "php": "8.3",
             "phpunit": "12.5.31",
-            "workflow": "2.20.3",
+            "workflow": "2.27.0",
             "sdk": "3.16.0",
             "scaffold": "testbench",
             "resolution": "strict"

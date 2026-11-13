@@ -26,6 +26,7 @@ function component(overrides = {}) {
         showDialogValidationText() {},
         operatorPermission,
         dispatch,
+        namespaceScopeRefusals: () => null,
     };
     return Function(...Object.keys(imports), executable)(...Object.values(imports));
 }

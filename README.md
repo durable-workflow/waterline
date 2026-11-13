@@ -149,6 +149,19 @@ Service mode does not read observer-local files or collect source from SDK
 workers. SDK source capture and storage would require a separate optional
 capability.
 
+### Namespace refusals
+
+With Workflow 2.27.0 or later, an app that sets `DW_V2_NAMESPACES` leaves work
+in other namespaces alone. When the `namespace_scope_refusals` health check
+warns, **Workers** lists that refused work by namespace and path (queued job,
+repair, timeout or schedule tick), with counts and when each was last seen,
+next to the namespaces the app serves. Add a namespace the app should serve to
+`DW_V2_NAMESPACES`, or check that the app serving it is running. The names
+appear only to a viewer the `Waterline::auth` gate admits, and are always
+hidden when `WATERLINE_ALLOW_UNAUTHENTICATED=true`; the counts by path remain.
+A Waterline scoped with `WATERLINE_NAMESPACE` only sees refusals of that
+namespace.
+
 ### Worker runtime
 
 The Workers roster's **Worker runtime** column identifies the worker language

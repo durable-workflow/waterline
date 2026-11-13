@@ -1386,5 +1386,18 @@
     "Failed to pause activity dispatch": "Не вдалося призупинити видачу activity",
     "Failed to resume activity dispatch": "Не вдалося поновити видачу activity",
     "The Server refused this action. Pausing and resuming activity dispatch need a token with the operator or admin role.": "Сервер відхилив цю дію. Для призупинення й поновлення видачі activity потрібен токен із роллю operator або admin.",
-    "The command outcome is unknown. Inspect the task queue before sending it again.": "Результат команди невідомий. Перевірте чергу завдань, перш ніж надсилати її знову."
+    "The command outcome is unknown. Inspect the task queue before sending it again.": "Результат команди невідомий. Перевірте чергу завдань, перш ніж надсилати її знову.",
+    "Queued job": "Завдання в черзі",
+    "Repair pass": "Прохід відновлення",
+    "Timeout pass": "Прохід тайм-аутів",
+    "Schedule tick": "Такт розкладу",
+    "The refusal counts could not be read from the cache, so this list may be incomplete.": "Не вдалося прочитати лічильники відмов із кешу, тому цей список може бути неповним.",
+    "Refused work by namespace and path in the last {minutes} minutes.": "Відхилена робота за простором імен і шляхом за останні {minutes} хв.",
+    "Refused work by namespace and path.": "Відхилена робота за простором імен і шляхом.",
+    "Path": "Шлях",
+    "Refusals": "Відмови",
+    "Last seen": "Востаннє",
+    "More namespace and path pairs were refused than are listed.": "Відхилено більше пар простору імен і шляху, ніж показано.",
+    "This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.": "Цей застосунок обслуговує: {namespaces}. Додайте до DW_V2_NAMESPACES кожен простір імен, який він має обслуговувати, або перевірте, чи працює застосунок, що його обслуговує.",
+    "Namespace names are hidden because this Waterline is open without sign-in.": "Назви просторів імен приховано, бо цей Waterline відкритий без входу."
 }

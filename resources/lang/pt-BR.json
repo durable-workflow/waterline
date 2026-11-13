@@ -1386,5 +1386,18 @@
     "Failed to pause activity dispatch": "Falha ao pausar o despacho de atividades",
     "Failed to resume activity dispatch": "Falha ao retomar o despacho de atividades",
     "The Server refused this action. Pausing and resuming activity dispatch need a token with the operator or admin role.": "O servidor recusou esta ação. Pausar e retomar o despacho de atividades exige um token com a função operator ou admin.",
-    "The command outcome is unknown. Inspect the task queue before sending it again.": "O resultado do comando é desconhecido. Inspecione a fila de tarefas antes de enviá-lo novamente."
+    "The command outcome is unknown. Inspect the task queue before sending it again.": "O resultado do comando é desconhecido. Inspecione a fila de tarefas antes de enviá-lo novamente.",
+    "Queued job": "Job na fila",
+    "Repair pass": "Passagem de reparo",
+    "Timeout pass": "Passagem de tempo limite",
+    "Schedule tick": "Ciclo de agendamento",
+    "The refusal counts could not be read from the cache, so this list may be incomplete.": "Não foi possível ler as contagens de recusas do cache, então esta lista pode estar incompleta.",
+    "Refused work by namespace and path in the last {minutes} minutes.": "Trabalho recusado por namespace e caminho nos últimos {minutes} minutos.",
+    "Refused work by namespace and path.": "Trabalho recusado por namespace e caminho.",
+    "Path": "Caminho",
+    "Refusals": "Recusas",
+    "Last seen": "Visto por último",
+    "More namespace and path pairs were refused than are listed.": "Mais pares de namespace e caminho foram recusados do que os listados.",
+    "This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.": "Este app atende: {namespaces}. Adicione a DW_V2_NAMESPACES cada namespace que ele deve atender ou verifique se o app que o atende está em execução.",
+    "Namespace names are hidden because this Waterline is open without sign-in.": "Os nomes dos namespaces estão ocultos porque este Waterline está aberto sem login."
 }
