@@ -120,6 +120,7 @@ jobs:
         "$policy_python" scripts/ci/test-qualification-policy.py
         "$policy_python" scripts/ci/test-database-qualification.py
         "$policy_python" scripts/ci/test-apt-no-retries.py
+        "$policy_python" -B -m unittest discover -s tests/ci -p test_php_container_launcher.py
 
     - name: Scan the public boundary
       run: scripts/check-public-boundary.sh
