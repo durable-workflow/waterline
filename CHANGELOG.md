@@ -2,41 +2,43 @@
 
 ## Unreleased
 
-- Service mode shows each task queue's activity dispatch state when the Server
-  reports `activity_dispatch` (native Server 3.8.0): a paused badge on the
-  queue card, the reason, who paused it and when, and the last resume (#299).
-  Queues from a Server that doesn't report it (published PHP Server 2.x, older
-  native) and embedded mode look as before. **Pause activities** (with an
+## 2.18.0 - 2026-11-13
+
+- Service mode shows each task queue's activity dispatch state on the Workers
+  page when the Server reports it (#299, #301): a paused badge, the reason,
+  who paused it and when, and the last resume. **Pause activities** (with an
   optional reason of at most 1000 characters) and **Resume activities** are
-  offered only in operator access mode, when the Server advertises
-  `task_queue_activity_dispatch_pause` and the PHP SDK can make the calls
-  (PHP SDK 3.16.0 or later; with an older SDK the card shows the state and
-  says why the actions are unavailable). `already_paused` and `not_paused` are
+  offered in operator access mode when the Server advertises
+  `task_queue_activity_dispatch_pause`. This needs native Server 3.8.0 or later
+  and PHP SDK 3.16.0 or later, which the service image now bundles (#303). A
+  pause stops new activity leases on that queue only: ready tasks keep their
+  attempt count, deadlines keep running, and workflow tasks, signals, queries
+  and updates are delivered as before. `already_paused` and `not_paused` are
   shown as information; a 403 from the Server, a 422 and a missing capability
-  each get their own message.
-- The worker health page shows which namespaces this app refused and by which
-  path (#298). With Workflow 2.27.0 or later, when the
-  `namespace_scope_refusals` check warns, it lists the refused work by
-  namespace and path (queued job, repair, timeout or schedule tick) with
-  counts and the last time each was seen, the namespaces this app serves, and
-  whether the list was truncated. Add a namespace the app should serve to
-  `DW_V2_NAMESPACES`. The names appear only to a viewer the host's
-  `Waterline::auth` gate admits. As with embedded exception source, they are
-  always hidden when `WATERLINE_ALLOW_UNAUTHENTICATED=true`: such an observer
-  stack sees the counts by path without any namespace names, in the health and
-  dashboard payloads alike. A Waterline scoped to one namespace only sees
-  refusals of that namespace.
-- Development and CI qualify against Workflow 2.27.0 (was 2.20.3). The
-  Laravel 10 and 11 cells stay on Workflow 2.20.3, the newest release those
-  hosts can install.
-- The service image bundles PHP SDK 3.16.0 (was 3.9.4), which adds the
-  activity dispatch pause calls, so Pause and Resume work there. Development
-  and CI use the same SDK, and the install command Waterline suggests when
-  service mode starts without an SDK now asks for `^3.16`. Waterline still
-  accepts installed SDKs matching `^2.0 || ^3.0`. The PHP SDK's Laravel bridge
-  needs Laravel 12.69 or later from SDK 3.10.0 on, so the Laravel 9, 10 and 11
-  CI cells keep SDK 3.9.4; the Laravel matrix now pins an SDK per cell, as it
-  does Workflow.
+  each get their own message. Published PHP Server 2.x, older native servers,
+  older SDKs and embedded mode show the queues as before, and the card says
+  why the actions are unavailable where the Server reports the state.
+- The Workers page lists which namespaces an embedded app refused and by which
+  path (#298, #302). With Workflow 2.27.0 or later, when the
+  `namespace_scope_refusals` check warns, it shows the refused work by
+  namespace and path (queued job, repair, timeout or schedule tick) with counts
+  and when each was last seen, next to the namespaces the app serves. Add a
+  namespace the app should serve to `DW_V2_NAMESPACES`. The names appear only
+  to a viewer the host's `Waterline::auth` gate admits, and are always hidden
+  when `WATERLINE_ALLOW_UNAUTHENTICATED=true`; the counts by path remain. A
+  Waterline scoped to one namespace only sees refusals of that namespace.
+- The service image bundles PHP SDK 3.16.0 (was 3.9.4), and the install
+  command Waterline suggests when service mode starts without an SDK now asks
+  for `^3.16` (#303). Waterline still accepts installed SDKs matching
+  `^2.0 || ^3.0`.
+- Development and CI qualify against Workflow 2.27.0 and PHP SDK 3.16.0
+  (#302, #303). Workflow 2.21.0 and later, and the SDK's Laravel bridge from
+  3.10.0, need Laravel 12.69 or later, so the Laravel 9, 10 and 11 cells keep
+  Workflow 2.16.0 or 2.20.3 and SDK 3.9.4. The Laravel matrix pins both per
+  cell.
+- The service-image build and publish workflows turn off APT retries before
+  installing skopeo on hosted runners (#300, CVE-2026-109518). The published
+  service image is unchanged by this.
 
 ## 2.17.0 - 2026-11-12
 
