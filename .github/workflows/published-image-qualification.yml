@@ -159,23 +159,40 @@ jobs:
           qualified_workflow="$(jq -er '."require-dev"."durable-workflow/workflow"' "$RUNNER_TEMP/waterline-qualified-source/composer.json")"
           [[ "$qualified_workflow" =~ ^2\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           printf 'EXPECTED_WORKFLOW_VERSION=%s\n' "$qualified_workflow" >> "$GITHUB_ENV"
-      - name: Install isolated Python for dependency trust
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.13'
+      - name: Select Ubuntu's Python 3.12
+        run: |
+          /usr/bin/python3 -I -S -c 'import sys; assert sys.version_info[:2] == (3, 12)'
+          echo /usr/bin >> "$GITHUB_PATH"
+      - name: Create isolated Composer state
+        run: |
+          waterline_php_state="$(mktemp -d "$RUNNER_TEMP/waterline-php-check.XXXXXX")"
+          mkdir -m 700 "$waterline_php_state/home" "$waterline_php_state/cache" "$waterline_php_state/tmp"
+          {
+            echo "COMPOSER_HOME=$waterline_php_state/home"
+            echo "COMPOSER_CACHE_DIR=$waterline_php_state/cache"
+            echo "TMPDIR=$waterline_php_state/tmp"
+          } >> "$GITHUB_ENV"
       - name: Select authenticated dependency trust
-        uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+        uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@242c2a7fb23459db2e1ada5f84dbee6d61d9b1e5 # clean-trust
         with:
-          clients: composer,curl,git
+          clients: pip,python,composer,curl,git
       - name: Disable APT download retries (CVE-2026-109518)
         run: echo 'Acquire::Retries "0";' | sudo tee /etc/apt/apt.conf.d/99-no-retries >/dev/null
       - name: Install PHP and Composer
-        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        uses: durable-workflow/.github/.github/actions/setup-php-linux@411a14ac07d32073eed6ab4977f2825eba4739a7 # bound-linux-php
         with:
           php-version: '8.3'
-          extensions: pdo_sqlite
-          tools: composer:2.10.3
+          ini-file: production
+          tools: composer:2.10.3,phpunit:11.5.57
           coverage: none
+      - name: Require bound stock PHP extensions
+        run: >-
+          php -r '$required = ["pdo_sqlite"]; foreach ($required as $extension) {
+            if (!extension_loaded($extension)) {
+              throw new RuntimeException("Missing required stock extension: ".$extension);
+            }
+          } echo json_encode(["php" => PHP_VERSION, "required_extensions" => $required]), PHP_EOL;'
+
       - name: Install fixed Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -205,14 +222,14 @@ jobs:
           '
           printf '%s\n' '{"private":true}' > "$WATERLINE_CONSUMER_ROOT/package.json"
       - name: Verify Composer before published package requests
-        uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+        uses: durable-workflow/.github/.github/actions/verify-composer-trust@242c2a7fb23459db2e1ada5f84dbee6d61d9b1e5 # clean-trust
         with:
           working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
       - name: Install exact published packages without source overrides
         working-directory: ${{ env.WATERLINE_CONSUMER_ROOT }}
         run: composer install --prefer-dist --no-interaction --no-progress
       - name: Verify Composer before ordinary onboarding requests
-        uses: durable-workflow/.github/.github/actions/verify-composer-trust@75587fc33ff40c34f32ef777293dad56bb6f48c7 # clean-trust
+        uses: durable-workflow/.github/.github/actions/verify-composer-trust@242c2a7fb23459db2e1ada5f84dbee6d61d9b1e5 # clean-trust
       - name: Require ordinary onboarding to select the exact newly published release
         if: needs.request-budget-scope.outputs.onboarding_required == 'true'
         run: >-
