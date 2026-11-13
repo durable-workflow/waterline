@@ -29,9 +29,10 @@ final class ScheduleRowTest extends TestCase
 
     public function testCurrentRunAbsenceIsDistinctFromUnsupportedOrIncompleteObservation(): void
     {
-        $none = ScheduleRow::detail(['latest_workflow_instance_id' => null, 'current_run' => null]);
+        $none = ScheduleRow::detail(['latest_workflow_instance_id' => null, 'latest_instance_id' => 'retained-alias', 'current_run' => null]);
         self::assertSame('none', $none['current_run_state'] ?? null);
         self::assertNull($none['current_run']);
+        self::assertNull($none['latest_workflow_instance_id']);
         self::assertArrayNotHasKey('current_run_state', ScheduleRow::detail([]));
         self::assertArrayNotHasKey('current_run_state', ScheduleRow::detail(['info' => ['current_run' => null]]));
         $valid = ['run_id' => 'run', 'status' => 'running', 'status_bucket' => 'running', 'is_terminal' => false];

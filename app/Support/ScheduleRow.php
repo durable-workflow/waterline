@@ -80,7 +80,9 @@ final class ScheduleRow
     public static function detail(array $source): array
     {
         $flat = self::flatten($source);
-        $latestInstanceId = self::identity($flat['latest_workflow_instance_id'] ?? $flat['latest_instance_id'] ?? null);
+        $latestPointer = array_key_exists('latest_workflow_instance_id', $flat)
+            ? $flat['latest_workflow_instance_id'] : ($flat['latest_instance_id'] ?? null);
+        $latestInstanceId = self::identity($latestPointer);
 
         return [
             ...self::row($source),

@@ -216,6 +216,73 @@ final class ServiceModeSchedulesTest extends TestCase
         );
     }
 
+    public function testLegacyDetailCannotReplaceThePointerBoundToTheListCurrentRun(): void
+    {
+        $this->client->scheduleListItems = [[
+            'schedule_id' => 'nightly-orders', 'namespace' => 'orders', 'status' => 'active',
+            'latest_workflow_instance_id' => 'first-instance',
+            'current_run' => ['run_id' => 'first-run', 'status' => 'running', 'status_bucket' => 'running', 'is_terminal' => false],
+        ]];
+        $this->client->scheduleDetails['nightly-orders'] = [
+            'schedule_id' => 'nightly-orders', 'latest_workflow_instance_id' => 'second-instance',
+            'recent_actions' => [[
+                'outcome' => 'scheduled', 'fired_at' => '2026-11-13T12:00:00Z',
+                'workflow_id' => 'second-instance', 'run_id' => 'second-run',
+            ]],
+        ];
+        $this->getJson('/waterline/api/v2/schedules')->assertOk()
+            ->assertJsonPath('data.0.latest_workflow_instance_id', 'first-instance')
+            ->assertJsonPath('data.0.latest_instance_id', 'first-instance')
+            ->assertJsonPath('data.0.current_run_state', 'known')
+            ->assertJsonPath('data.0.current_run.run_id', 'first-run')
+            ->assertJsonPath('data.0.last_outcome.workflow_id', 'second-instance');
+        self::assertSame(['listSchedules', 'describeSchedule'], array_column($this->scheduleCalls(), 'method'));
+    }
+
+    public function testLegacyDetailCannotSupplyAMissingCurrentRunPointerOrReplaceExplicitAbsence(): void
+    {
+        $current = ['run_id' => 'first-run', 'status' => 'running', 'status_bucket' => 'running', 'is_terminal' => false];
+        foreach ([$current, null] as $run) {
+            $this->client->scheduleListItems = [[
+                'schedule_id' => 'nightly-orders', 'namespace' => 'orders', 'current_run' => $run,
+            ]];
+            $this->client->scheduleDetails['nightly-orders'] = [
+                'schedule_id' => 'nightly-orders', 'latest_workflow_instance_id' => $run === null ? null : 'second-instance',
+            ];
+            $this->getJson('/waterline/api/v2/schedules')->assertOk()
+                ->assertJsonPath('data.0.current_run_state', 'unavailable')
+                ->assertJsonPath('data.0.current_run', null);
+        }
+
+        $this->client->scheduleListItems = [[
+            'schedule_id' => 'nightly-orders', 'namespace' => 'orders',
+            'latest_workflow_instance_id' => null, 'current_run' => null,
+        ]];
+        $this->client->scheduleDetails['nightly-orders'] = [
+            'schedule_id' => 'nightly-orders', 'latest_workflow_instance_id' => 'second-instance',
+            'info' => ['latest_instance_id' => 'second-instance'],
+        ];
+        $this->getJson('/waterline/api/v2/schedules')->assertOk()
+            ->assertJsonPath('data.0.current_run_state', 'none')
+            ->assertJsonPath('data.0.latest_workflow_instance_id', null)
+            ->assertJsonPath('data.0.latest_instance_id', null);
+    }
+
+    public function testDetailCurrentRunCannotBorrowTheListPointer(): void
+    {
+        $this->client->scheduleListItems = [[
+            'schedule_id' => 'nightly-orders', 'namespace' => 'orders',
+            'latest_workflow_instance_id' => 'first-instance',
+        ]];
+        $this->client->scheduleDetails['nightly-orders'] = [
+            'schedule_id' => 'nightly-orders',
+            'current_run' => ['run_id' => 'second-run', 'status' => 'failed', 'status_bucket' => 'failed', 'is_terminal' => true],
+        ];
+        $this->getJson('/waterline/api/v2/schedules')->assertOk()
+            ->assertJsonPath('data.0.current_run_state', 'unavailable')
+            ->assertJsonPath('data.0.current_run', null);
+    }
+
     public function testMixedListReadsDetailsOnlyForRowsWithoutTheObservation(): void
     {
         $this->client->scheduleListItems = [
