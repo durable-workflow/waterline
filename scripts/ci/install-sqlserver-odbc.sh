@@ -36,6 +36,8 @@ curl --fail --location --silent --show-error --proto '=https' --proto-redir '=ht
   --output "$repository_package"
 echo "${repository_package_sha256}  ${repository_package}" | sha256sum --check --quiet -
 sudo dpkg --install "$repository_package"
+# No APT download retries: CVE-2026-109518 (durable-workflow/.github#295).
+echo 'Acquire::Retries "0";' | sudo tee /etc/apt/apt.conf.d/99-no-retries >/dev/null
 sudo apt-get update
 sudo ACCEPT_EULA=Y apt-get install --yes --no-install-recommends msodbcsql18 unixodbc
 

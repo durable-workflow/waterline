@@ -22,6 +22,10 @@ COPY --from=node /usr/local/ /usr/local/
 COPY --from=node /opt/yarn-v1.22.22/ /opt/yarn-v1.22.22/
 COPY verify-node-runtime.mjs /usr/local/share/waterline/verify-node-runtime.mjs
 
+# No APT download retries before the first networked apt-get: CVE-2026-109518
+# (durable-workflow/.github#295).
+RUN echo 'Acquire::Retries "0";' > /etc/apt/apt.conf.d/99-no-retries
+
 # Every curl in this build is HTTPS-only, including redirects (waterline#291).
 RUN printf 'proto = "=https"\nproto-redir = "=https"\nfail\n' > /root/.curlrc \
     && apt-get update \
