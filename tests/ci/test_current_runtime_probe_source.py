@@ -82,6 +82,7 @@ class CurrentRuntimeProbeSourceTest(unittest.TestCase):
             self.assertEqual(0, inspected.returncode)
             info = json.loads(inspected.stdout)[0]
             self.assertEqual(cid, info["Id"])
+            self.assertEqual("waterline", info["Config"]["Labels"]["dev.durable-workflow.owner"])
             self.assertEqual(run, info["Config"]["Labels"]["dev.durable-workflow.run"])
             self.assertEqual(IMAGE, info["Config"]["Image"])
             self.assertEqual(CHILD, info["ImageManifestDescriptor"]["digest"])
@@ -111,6 +112,7 @@ class CurrentRuntimeProbeSourceTest(unittest.TestCase):
             self.assertEqual(0, inspected.returncode)
             info = json.loads(inspected.stdout)[0]
             self.assertEqual(cid, info["Id"])
+            self.assertEqual("waterline", info["Config"]["Labels"]["dev.durable-workflow.owner"])
             self.assertEqual(run, info["Config"]["Labels"]["dev.durable-workflow.run"])
             removed = self.docker(["rm", "--force", "--volumes", cid])
             self.assertEqual(0, removed.returncode)
