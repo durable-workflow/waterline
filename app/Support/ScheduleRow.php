@@ -28,6 +28,9 @@ final class ScheduleRow
      */
     public static function row(array $source): array
     {
+        $summary = array_key_exists('dispatch_summary', $source)
+            ? ScheduleDispatchSummary::read($source['dispatch_summary'])
+            : null;
         $source = self::flatten($source);
         $action = is_array($source['action'] ?? null) ? $source['action'] : [];
         // Identity is passed through unchanged; a trimmed ID would name a
@@ -35,7 +38,7 @@ final class ScheduleRow
         $scheduleId = self::identity($source['schedule_id'] ?? null) ?? '';
         $status = self::string($source['status'] ?? null);
 
-        return [
+        $row = [
             // Kept for clients that read `id`; it always equals schedule_id.
             'id' => $scheduleId,
             'schedule_id' => $scheduleId,
@@ -51,7 +54,7 @@ final class ScheduleRow
             'overlap_policy' => self::string($source['overlap_policy'] ?? null),
             'next_fire_at' => self::timestamp($source['next_fire_at'] ?? $source['next_fire'] ?? null),
             'last_fired_at' => self::timestamp($source['last_fired_at'] ?? $source['last_fire'] ?? null),
-            'last_outcome' => self::lastOutcome($source),
+            'last_outcome' => $summary === null ? self::lastOutcome($source) : self::summaryOutcome($summary),
             'fires_count' => self::integer($source['fires_count'] ?? null),
             'failures_count' => self::integer($source['failures_count'] ?? null),
             'skipped_trigger_count' => self::integer($source['skipped_trigger_count'] ?? null),
@@ -59,6 +62,12 @@ final class ScheduleRow
             'search_attributes' => is_array($source['search_attributes'] ?? null) ? $source['search_attributes'] : null,
             'created_at' => self::timestamp($source['created_at'] ?? null),
             'updated_at' => self::timestamp($source['updated_at'] ?? null),
+        ];
+
+        return $summary === null ? $row : [
+            ...$row,
+            'last_outcome_state' => $summary['state'],
+            'buffered_actions_count' => $summary['buffered_actions_count'],
         ];
     }
 
@@ -107,6 +116,10 @@ final class ScheduleRow
      */
     public static function lastOutcome(array $source): ?array
     {
+        if (array_key_exists('dispatch_summary', $source)) {
+            return self::summaryOutcome(ScheduleDispatchSummary::read($source['dispatch_summary']));
+        }
+
         $source = self::flatten($source);
         $actions = self::recentActions($source['recent_actions'] ?? null);
         $latest = $actions === [] ? null : $actions[array_key_last($actions)];
@@ -148,6 +161,19 @@ final class ScheduleRow
         return $skipTime >= $fireTime ? $skip : $fire;
     }
 
+    private static function summaryOutcome(array $summary): ?array
+    {
+        $outcome = $summary['last_outcome'];
+
+        return $outcome === null ? null : [
+            'outcome' => $outcome['outcome'],
+            'at' => $outcome['recorded_at'],
+            'reason' => $outcome['reason'],
+            'workflow_id' => $outcome['workflow_instance_id'],
+            'run_id' => $outcome['workflow_run_id'],
+        ];
+    }
+
     /**
      * @param array<string, mixed> $source
      * @return array<string, mixed>
@@ -160,7 +186,8 @@ final class ScheduleRow
             }
 
             foreach ($source[$group] as $key => $value) {
-                if (is_string($key) && ! array_key_exists($key, $source)) {
+                // The versioned summary has authority only at the top level.
+                if (is_string($key) && $key !== 'dispatch_summary' && ! array_key_exists($key, $source)) {
                     $source[$key] = $value;
                 }
             }

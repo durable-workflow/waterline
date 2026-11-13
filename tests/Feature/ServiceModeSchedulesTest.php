@@ -164,6 +164,84 @@ final class ServiceModeSchedulesTest extends TestCase
         );
     }
 
+    public function testSummaryListReadsOnePageWithoutAnyPerRowDescribe(): void
+    {
+        $summary = ['version' => 1, 'state' => 'never', 'last_outcome' => null, 'buffered_actions_count' => 0];
+        $this->client->scheduleListItems = array_map(static fn (int $id): array => [
+            'schedule_id' => 'summary-'.$id, 'namespace' => 'orders', 'status' => 'active',
+            'dispatch_summary' => $summary,
+        ], range(1, 50));
+
+        $response = $this->getJson('/waterline/api/v2/schedules')->assertOk();
+        self::assertSame(['listSchedules'], array_column($this->scheduleCalls(), 'method'));
+        $response->assertJsonCount(50, 'data')
+            ->assertJsonPath('data.0.last_outcome', null)
+            ->assertJsonPath('data.0.last_outcome_state', 'never')
+            ->assertJsonPath('data.0.buffered_actions_count', 0)
+            ->assertJsonPath('refresh_interval_ms', 3000);
+
+    }
+
+    public function testInvalidPresentSummaryStaysUnavailableWithoutDetailFallback(): void
+    {
+        foreach ([null, ['version' => 2]] as $summary) {
+            $this->client->scheduleListItems = [[
+                'schedule_id' => 'nightly-orders', 'namespace' => 'orders', 'status' => 'active',
+                'dispatch_summary' => $summary,
+            ]];
+            $this->getJson('/waterline/api/v2/schedules')
+                ->assertOk()
+                ->assertJsonPath('data.0.last_outcome', null)
+                ->assertJsonPath('data.0.last_outcome_state', 'unavailable')
+                ->assertJsonPath('data.0.buffered_actions_count', null)
+                ->assertJsonPath('refresh_interval_ms', 3000);
+        }
+
+        self::assertSame(['listSchedules', 'listSchedules'], array_column($this->scheduleCalls(), 'method'));
+    }
+
+    public function testOlderListRetainsItsSlowRefreshAndDetailCompatibility(): void
+    {
+        $this->getJson('/waterline/api/v2/schedules')
+            ->assertOk()
+            ->assertJsonPath('refresh_interval_ms', 30000)
+            ->assertJsonPath('data.0.last_outcome.outcome', 'scheduled');
+        self::assertSame(
+            ['listSchedules', 'describeSchedule', 'describeSchedule'],
+            array_column($this->scheduleCalls(), 'method'),
+        );
+    }
+
+    public function testMixedListReadsDetailsOnlyForRowsWithoutTheObservation(): void
+    {
+        $this->client->scheduleListItems = [
+            [
+                'schedule_id' => 'summary-row', 'namespace' => 'orders', 'status' => 'active',
+                'dispatch_summary' => [
+                    'version' => 1, 'state' => 'never', 'last_outcome' => null, 'buffered_actions_count' => 0,
+                ],
+            ],
+            ['schedule_id' => 'nightly-orders', 'namespace' => 'orders', 'status' => 'active'],
+        ];
+        $this->getJson('/waterline/api/v2/schedules')
+            ->assertOk()
+            ->assertJsonPath('refresh_interval_ms', 30000)
+            ->assertJsonPath('data.0.last_outcome_state', 'never')
+            ->assertJsonPath('data.1.last_outcome.outcome', 'scheduled');
+        self::assertSame(['listSchedules', 'describeSchedule'], array_column($this->scheduleCalls(), 'method'));
+        self::assertSame('nightly-orders', $this->scheduleCalls()[1]['arguments']['scheduleId']);
+    }
+
+    public function testEmptyListCanRefreshQuicklyWithoutInventingAnObservation(): void
+    {
+        $this->client->scheduleListItems = [];
+        $this->getJson('/waterline/api/v2/schedules')
+            ->assertOk()
+            ->assertJsonCount(0, 'data')
+            ->assertJsonPath('refresh_interval_ms', 3000);
+        self::assertSame(['listSchedules'], array_column($this->scheduleCalls(), 'method'));
+    }
+
     public function testListFiltersAreForwardedToTheServer(): void
     {
         $filters = ['status' => 'paused', 'workflow_type' => 'orders.reconcile', 'query' => 'Note = "nightly"'];

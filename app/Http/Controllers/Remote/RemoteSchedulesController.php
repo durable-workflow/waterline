@@ -44,6 +44,12 @@ final class RemoteSchedulesController extends RemoteController
         $pageNumber = $replay['page_number'];
         $token = $replay['next_page_token'];
         $hasMore = $token !== null && ! $replay['page_limit_reached'];
+        $listOnly = array_reduce(
+            $replay['page']->schedules,
+            static fn (bool $complete, ScheduleDescription $schedule): bool => $complete
+                && array_key_exists('dispatch_summary', $schedule->raw),
+            true,
+        );
 
         $schedules = array_map(
             fn (ScheduleDescription $schedule): array => $this->listRow($schedule->raw),
@@ -59,6 +65,7 @@ final class RemoteSchedulesController extends RemoteController
             'next_page_token' => $token,
             'page_limit' => CursorPageReplay::MAX_PAGE,
             'page_limit_reached' => $replay['page_limit_reached'],
+            'refresh_interval_ms' => $listOnly ? 3000 : 30000,
         ]));
     }
 
@@ -167,17 +174,22 @@ final class RemoteSchedulesController extends RemoteController
     }
 
     /**
-     * Build a list row from the server's list item and the schedule's detail.
+     * A present summary selects the bounded list path. Invalid or unsupported
+     * observations stay unavailable instead of borrowing legacy detail facts.
      *
-     * The list's retained last skip does not establish the latest dispatch, so
-     * detail supplies the outcome. A failed detail read preserves list facts
-     * with an unknown outcome. A successful read supplies its own skip snapshot.
+     * Older lists need detail for the outcome: their retained skip alone cannot
+     * establish the latest dispatch. A failed detail preserves list facts with
+     * an unknown outcome; a successful read supplies its own skip snapshot.
      *
      * @param array<string, mixed> $listItem
      * @return array<string, mixed>
      */
     private function listRow(array $listItem): array
     {
+        if (array_key_exists('dispatch_summary', $listItem)) {
+            return ScheduleRow::detail($this->withNamespace($listItem));
+        }
+
         $scheduleId = is_string($listItem['schedule_id'] ?? null) ? $listItem['schedule_id'] : '';
 
         if ($scheduleId === '') {

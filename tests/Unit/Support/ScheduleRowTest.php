@@ -13,6 +13,60 @@ final class ScheduleRowTest extends TestCase
 {
     private const INTERNAL_KEY = '01JD8Z6Q3K9V7X2M4N5P6R7S8T';
 
+    public function testListSummaryControlsOutcomeWithoutConsultingLegacyArrays(): void
+    {
+        $summary = [
+            'version' => 1, 'state' => 'known', 'buffered_actions_count' => 7,
+            'last_outcome' => [
+                'id' => '01K9ZZEJF50000000000000000', 'outcome' => 'skipped',
+                'recorded_at' => '2026-11-13T10:00:00.000001Z', 'reason' => "\0 paused \0",
+                'workflow_instance_id' => null, 'workflow_run_id' => null,
+            ],
+        ];
+        $source = [...$this->serverDetail(), 'dispatch_summary' => $summary];
+        $row = ScheduleRow::detail($source);
+        self::assertSame([
+            'outcome' => 'skipped', 'at' => '2026-11-13T10:00:00.000001Z',
+            'reason' => "\0 paused \0", 'workflow_id' => null, 'run_id' => null,
+        ], $row['last_outcome']);
+        self::assertSame('known', $row['last_outcome_state']);
+        self::assertSame(7, $row['buffered_actions_count']);
+
+        $source['dispatch_summary'] = [
+            'version' => 1, 'state' => 'never', 'last_outcome' => null, 'buffered_actions_count' => 0,
+        ];
+        $row = ScheduleRow::detail($source);
+        self::assertNull($row['last_outcome']);
+        self::assertSame('never', $row['last_outcome_state']);
+        self::assertSame(0, $row['buffered_actions_count']);
+    }
+
+    public function testUnavailableOrInvalidSummaryCannotFallBackToRetainedDetailFacts(): void
+    {
+        foreach ([
+            null, [], ['version' => 2],
+            ['version' => 1, 'state' => 'unavailable', 'last_outcome' => null, 'buffered_actions_count' => null],
+        ] as $summary) {
+            $source = [...$this->serverDetail(), 'dispatch_summary' => $summary];
+            $row = ScheduleRow::detail($source);
+            self::assertNull($row['last_outcome']);
+            self::assertSame('unavailable', $row['last_outcome_state']);
+            self::assertNull($row['buffered_actions_count']);
+            self::assertNull(ScheduleRow::lastOutcome($source));
+        }
+    }
+
+    public function testNestedLegacyMetadataCannotIntroduceSummaryAuthority(): void
+    {
+        $source = $this->serverDetail();
+        $source['info']['dispatch_summary'] = [
+            'version' => 1, 'state' => 'never', 'last_outcome' => null, 'buffered_actions_count' => 0,
+        ];
+        $row = ScheduleRow::detail($source);
+        self::assertSame('scheduled', $row['last_outcome']['outcome']);
+        self::assertArrayNotHasKey('last_outcome_state', $row);
+    }
+
     public function testStoredSkipReasonRemainsAnExactNullableString(): void
     {
         foreach ([null, '', '  ', "\0", "\0 paused \0", ' reason '] as $reason) {
