@@ -985,6 +985,12 @@ jobs:
         --base-url "${APP_URL}"
         --output-dir run-detail-evidence/schedules
 
+    - name: Qualify compiled schedule refresh and form preservation
+      working-directory: sample-app
+      run: >-
+        node ../waterline/scripts/ci/schedule-refresh-browser.mjs
+        --output-dir run-detail-evidence/schedules/refresh
+
     # These runs change the list and dashboard data, and add a schedule, so
     # this check runs after the schedule check.
     - name: Seed completed, failed and cancelled runs
