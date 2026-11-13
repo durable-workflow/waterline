@@ -9,12 +9,16 @@
   native) and embedded mode look as before. **Pause activities** (with an
   optional reason of at most 1000 characters) and **Resume activities** are
   offered only in operator access mode, when the Server advertises
-  `task_queue_activity_dispatch_pause` and the PHP SDK can make the calls. The
-  pinned PHP SDK can't yet, so until an SDK release adds
-  `pauseTaskQueueActivityDispatch()` and `resumeTaskQueueActivityDispatch()`
-  the card shows the state and says why the actions are unavailable.
-  `already_paused` and `not_paused` are shown as information; a 403 from the
-  Server, a 422 and a missing capability each get their own message.
+  `task_queue_activity_dispatch_pause` and the PHP SDK can make the calls
+  (PHP SDK 3.16.0 or later; with an older SDK the card shows the state and
+  says why the actions are unavailable). `already_paused` and `not_paused` are
+  shown as information; a 403 from the Server, a 422 and a missing capability
+  each get their own message.
+- The service image bundles PHP SDK 3.16.0 (was 3.9.4), which adds the
+  activity dispatch pause calls, so Pause and Resume work there. Development
+  and CI use the same SDK, and the install command Waterline suggests when
+  service mode starts without an SDK now asks for `^3.16`. Waterline still
+  accepts installed SDKs matching `^2.0 || ^3.0`.
 
 ## 2.17.0 - 2026-11-12
 
