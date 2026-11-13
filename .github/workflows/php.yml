@@ -1114,7 +1114,7 @@ jobs:
       run: git diff --exit-code -- public
 
   build:
-    needs: [classify, frontend]
+    needs: [action-policy, classify, frontend]
     if: ${{ needs.classify.outputs.qualification-class == 'complete' }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
