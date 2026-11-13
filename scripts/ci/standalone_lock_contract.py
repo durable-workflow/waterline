@@ -63,7 +63,7 @@ def validate_framework_host(
     requirements = require_mapping(manifest.get("require"), "standalone require")
     constraint = requirements.get(FRAMEWORK)
     floor = (
-        re.fullmatch(r"\^12\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", constraint)
+        re.fullmatch(r"\^12\.(0|[1-9]\d*)\.(0|[1-9]\d*)", constraint, re.ASCII)
         if isinstance(constraint, str) else None
     )
     if floor is None:
@@ -74,7 +74,7 @@ def validate_framework_host(
     package = locked_package(lock, FRAMEWORK)
     version = package.get("version")
     matched = (
-        re.fullmatch(r"v?12\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version)
+        re.fullmatch(r"v?12\.(0|[1-9]\d*)\.(0|[1-9]\d*)", version, re.ASCII)
         if isinstance(version, str) else None
     )
     if matched is None or (12, int(matched[1]), int(matched[2])) < selected_floor:

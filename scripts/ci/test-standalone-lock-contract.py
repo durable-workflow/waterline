@@ -78,7 +78,7 @@ def published(reference: str = REFERENCE) -> dict[str, object]:
 
 class StandaloneLockContractTest(unittest.TestCase):
     def test_requires_patched_framework_floor_even_with_patched_lock(self) -> None:
-        for constraint in (None, "^12.0", "^12.71.0", "^12.72.0 || ^11.0", "^13.41.0"):
+        for constraint in (None, "^12.0", "^12.71.0", "^12.72.0 || ^11.0", "^13.41.0", "^12.7٢.0"):
             with self.subTest(constraint=constraint), self.assertRaises(contract.ContractError):
                 contract.validate_framework_host(
                     {"require": {"laravel/framework": constraint}},
@@ -86,7 +86,7 @@ class StandaloneLockContractTest(unittest.TestCase):
                 )
 
     def test_rejects_affected_or_unstable_framework_lock(self) -> None:
-        for version in (None, "v12.69.3", "v12.71.0", "v12.72.0-beta.1", "v13.41.0"):
+        for version in (None, "v12.69.3", "v12.71.0", "v12.72.0-beta.1", "v13.41.0", "v12.7٢.0"):
             with self.subTest(version=version), self.assertRaises(contract.ContractError):
                 contract.validate_framework_host(
                     {"require": {"laravel/framework": "^12.72.0"}},
