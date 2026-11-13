@@ -7,6 +7,7 @@ namespace Waterline\Support\Remote;
 use BadMethodCallException;
 use Carbon\CarbonInterface;
 use DurableWorkflow\Client;
+use DurableWorkflow\Exception\DurableWorkflowException;
 use DurableWorkflow\Exception\ServerException;
 use Throwable;
 use Waterline\Support\BackendConfiguration;
@@ -15,6 +16,19 @@ use Waterline\Support\RequestTimeouts;
 
 final class RemoteBackend
 {
+    /** Cluster info capability for the per-queue activity dispatch pause (native Server 3.8.0). */
+    public const ACTIVITY_DISPATCH_PAUSE_CAPABILITY = 'task_queue_activity_dispatch_pause';
+
+    /** SDK methods the pause and resume actions need. */
+    public const ACTIVITY_DISPATCH_METHODS = [
+        'clusterInfo',
+        'pauseTaskQueueActivityDispatch',
+        'resumeTaskQueueActivityDispatch',
+    ];
+
+    /** @var array{available: bool, reason: string|null}|null */
+    private ?array $activityDispatchControl = null;
+
     /** @var array<string, mixed>|null */
     private ?array $operatorMetricsResponse = null;
 
@@ -93,6 +107,43 @@ final class RemoteBackend
         $this->serviceCatalogAvailable = true;
 
         return $response;
+    }
+
+    /**
+     * Whether this backend can pause and resume activity dispatch on a task
+     * queue: the SDK must expose the calls and the Server must advertise the
+     * capability. Servers without it (published PHP 2.x, older native) have
+     * no pause routes, so nothing is offered. Read once per request.
+     *
+     * @return array{available: bool, reason: string|null}
+     */
+    public function activityDispatchControl(): array
+    {
+        if ($this->activityDispatchControl !== null) {
+            return $this->activityDispatchControl;
+        }
+
+        foreach (self::ACTIVITY_DISPATCH_METHODS as $method) {
+            if (! $this->supports($method)) {
+                return $this->activityDispatchControl = [
+                    'available' => false,
+                    'reason' => 'activity_dispatch_sdk_unavailable',
+                ];
+            }
+        }
+
+        try {
+            $capabilities = $this->client->clusterInfo()->capabilities;
+        } catch (DurableWorkflowException) {
+            return $this->activityDispatchControl = [
+                'available' => false,
+                'reason' => 'activity_dispatch_capability_unreadable',
+            ];
+        }
+
+        return $this->activityDispatchControl = ($capabilities[self::ACTIVITY_DISPATCH_PAUSE_CAPABILITY] ?? null) === true
+            ? ['available' => true, 'reason' => null]
+            : ['available' => false, 'reason' => 'activity_dispatch_server_unavailable'];
     }
 
     /** @return array<string, mixed> */
