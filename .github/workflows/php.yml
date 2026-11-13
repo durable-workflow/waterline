@@ -1152,7 +1152,8 @@ jobs:
             purpose: retention
             tests: tests/Compatibility/V2RetentionDetailsTest.php
           # Embedded schedule visibility queries need Core 2.21.0 or later;
-          # the development pin skips them.
+          # the development pin covers them, and this lane keeps the oldest
+          # release with queries qualified.
           - workflow: '2.22.0'
             purpose: schedule query
             tests: tests/Feature/V2SchedulesControllerTest.php

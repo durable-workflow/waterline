@@ -5,6 +5,7 @@ namespace Waterline\Http\Controllers;
 use Illuminate\Http\Request;
 use Waterline\Support\EngineSourceReadiness;
 use Waterline\Support\HybridMigrationView;
+use Waterline\Support\NamespaceScopeRefusalVisibility;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\WorkflowEngineSourceResolver;
 use Waterline\Support\WorkflowClassification;
@@ -38,7 +39,7 @@ class DashboardStatsController extends Controller
             : $repository->dashboardStats($selection['workflow_types']);
 
         return response()->json([
-            ...$summary,
+            ...NamespaceScopeRefusalVisibility::forRequest($summary, $request),
             'classification_scope' => $selection,
             'operator_scope' => OperatorScope::payload(),
             'engine_source' => $engineSource,

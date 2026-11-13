@@ -1386,5 +1386,18 @@
     "Failed to pause activity dispatch": "Aktivitätszuteilung konnte nicht pausiert werden",
     "Failed to resume activity dispatch": "Aktivitätszuteilung konnte nicht fortgesetzt werden",
     "The Server refused this action. Pausing and resuming activity dispatch need a token with the operator or admin role.": "Der Server hat diese Aktion abgelehnt. Zum Pausieren und Fortsetzen der Aktivitätszuteilung ist ein Token mit der Rolle operator oder admin nötig.",
-    "The command outcome is unknown. Inspect the task queue before sending it again.": "Der Ausgang des Befehls ist unbekannt. Prüfen Sie die Aufgabenwarteschlange, bevor Sie ihn erneut senden."
+    "The command outcome is unknown. Inspect the task queue before sending it again.": "Der Ausgang des Befehls ist unbekannt. Prüfen Sie die Aufgabenwarteschlange, bevor Sie ihn erneut senden.",
+    "Queued job": "Job in der Warteschlange",
+    "Repair pass": "Reparaturdurchlauf",
+    "Timeout pass": "Timeout-Durchlauf",
+    "Schedule tick": "Zeitplan-Takt",
+    "The refusal counts could not be read from the cache, so this list may be incomplete.": "Die Zählungen der Ablehnungen konnten nicht aus dem Cache gelesen werden; diese Liste ist daher möglicherweise unvollständig.",
+    "Refused work by namespace and path in the last {minutes} minutes.": "Abgelehnte Arbeit nach Namensraum und Pfad in den letzten {minutes} Minuten.",
+    "Refused work by namespace and path.": "Abgelehnte Arbeit nach Namensraum und Pfad.",
+    "Path": "Pfad",
+    "Refusals": "Ablehnungen",
+    "Last seen": "Zuletzt gesehen",
+    "More namespace and path pairs were refused than are listed.": "Es wurden mehr Kombinationen aus Namensraum und Pfad abgelehnt, als hier aufgeführt sind.",
+    "This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.": "Diese App bedient: {namespaces}. Tragen Sie jeden Namensraum, den sie bedienen soll, in DW_V2_NAMESPACES ein, oder prüfen Sie, ob die App läuft, die ihn bedient.",
+    "Namespace names are hidden because this Waterline is open without sign-in.": "Die Namen der Namensräume sind ausgeblendet, weil dieses Waterline ohne Anmeldung zugänglich ist."
 }

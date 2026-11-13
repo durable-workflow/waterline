@@ -1386,5 +1386,18 @@
     "Failed to pause activity dispatch": "Impossible de mettre la distribution des activités en pause",
     "Failed to resume activity dispatch": "Impossible de reprendre la distribution des activités",
     "The Server refused this action. Pausing and resuming activity dispatch need a token with the operator or admin role.": "Le serveur a refusé cette action. La mise en pause et la reprise de la distribution des activités nécessitent un jeton avec le rôle operator ou admin.",
-    "The command outcome is unknown. Inspect the task queue before sending it again.": "Le résultat de la commande est inconnu. Vérifiez la file de tâches avant de la renvoyer."
+    "The command outcome is unknown. Inspect the task queue before sending it again.": "Le résultat de la commande est inconnu. Vérifiez la file de tâches avant de la renvoyer.",
+    "Queued job": "Job en file",
+    "Repair pass": "Passe de réparation",
+    "Timeout pass": "Passe d'expiration",
+    "Schedule tick": "Cycle de planification",
+    "The refusal counts could not be read from the cache, so this list may be incomplete.": "Les décomptes de refus n'ont pas pu être lus depuis le cache : cette liste peut donc être incomplète.",
+    "Refused work by namespace and path in the last {minutes} minutes.": "Travail refusé par espace de noms et par chemin au cours des {minutes} dernières minutes.",
+    "Refused work by namespace and path.": "Travail refusé par espace de noms et par chemin.",
+    "Path": "Chemin",
+    "Refusals": "Refus",
+    "Last seen": "Vu pour la dernière fois",
+    "More namespace and path pairs were refused than are listed.": "Davantage de couples espace de noms et chemin ont été refusés que ceux listés.",
+    "This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.": "Cette application sert : {namespaces}. Ajoutez à DW_V2_NAMESPACES chaque espace de noms qu'elle doit servir, ou vérifiez que l'application qui le sert est en cours d'exécution.",
+    "Namespace names are hidden because this Waterline is open without sign-in.": "Les noms des espaces de noms sont masqués, car ce Waterline est ouvert sans connexion."
 }

@@ -1386,5 +1386,18 @@
     "Failed to pause activity dispatch": "アクティビティのディスパッチの一時停止に失敗しました",
     "Failed to resume activity dispatch": "アクティビティのディスパッチの再開に失敗しました",
     "The Server refused this action. Pausing and resuming activity dispatch need a token with the operator or admin role.": "サーバーがこの操作を拒否しました。アクティビティのディスパッチの一時停止と再開には、operator または admin ロールのトークンが必要です。",
-    "The command outcome is unknown. Inspect the task queue before sending it again.": "コマンドの結果は不明です。再送信する前にタスクキューを確認してください。"
+    "The command outcome is unknown. Inspect the task queue before sending it again.": "コマンドの結果は不明です。再送信する前にタスクキューを確認してください。",
+    "Queued job": "キュー内のジョブ",
+    "Repair pass": "修復処理",
+    "Timeout pass": "タイムアウト処理",
+    "Schedule tick": "スケジュールのティック",
+    "The refusal counts could not be read from the cache, so this list may be incomplete.": "拒否件数をキャッシュから読み取れなかったため、この一覧は不完全な可能性があります。",
+    "Refused work by namespace and path in the last {minutes} minutes.": "直近 {minutes} 分間に拒否された作業（名前空間と経路別）。",
+    "Refused work by namespace and path.": "拒否された作業（名前空間と経路別）。",
+    "Path": "経路",
+    "Refusals": "拒否件数",
+    "Last seen": "最終確認",
+    "More namespace and path pairs were refused than are listed.": "一覧にあるより多くの名前空間と経路の組み合わせが拒否されました。",
+    "This app serves: {namespaces}. Add each namespace it should serve to DW_V2_NAMESPACES, or check that the app serving it is running.": "このアプリが担当する名前空間: {namespaces}。担当すべき名前空間を DW_V2_NAMESPACES に追加するか、その名前空間を担当するアプリが動作しているか確認してください。",
+    "Namespace names are hidden because this Waterline is open without sign-in.": "この Waterline はサインインなしで開かれているため、名前空間の名前は表示されません。"
 }
