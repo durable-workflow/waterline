@@ -6,7 +6,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
+import os
 import re
+import stat
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -23,21 +26,69 @@ SUPPORTED_SDK = re.compile(
     r"^(?P<major>[23])\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)(?:-(?P<stage>alpha|beta|rc)\.(?P<number>[1-9][0-9]*))?$"
 )
 PUBLIC_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+MAX_JSON_BYTES = 1024 * 1024
 
 
 class IdentityError(RuntimeError):
     """The Waterline source or published dependency selection is invalid."""
 
 
+def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise IdentityError("duplicate JSON object key")
+        value[key] = item
+    return value
+
+
+def refuse_json_constant(value: str) -> None:
+    raise IdentityError(f"non-finite JSON constant {value}")
+
+
+def finite_json_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise IdentityError("JSON number exceeds finite range")
+    return parsed
+
+
+def decode_json(raw: bytes, label: str) -> dict[str, Any]:
+    """Validate captured bytes; this does not establish their collection origin."""
+    if not isinstance(raw, bytes) or len(raw) > MAX_JSON_BYTES:
+        raise IdentityError(f"{label} must be a JSON object no larger than 1 MiB")
+    try:
+        value = json.loads(
+            raw.decode("utf-8"), object_pairs_hook=unique_json_object,
+            parse_constant=refuse_json_constant, parse_float=finite_json_float,
+        )
+    except (UnicodeDecodeError, ValueError, RecursionError) as error:
+        raise IdentityError(f"invalid {label} JSON: {error}") from error
+    if not isinstance(value, dict):
+        raise IdentityError(f"{label} must be a JSON object no larger than 1 MiB")
+    return value
+
+
+def file_state(value: os.stat_result) -> tuple[int, ...]:
+    return tuple(getattr(value, name) for name in (
+        "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+        "st_size", "st_mtime_ns", "st_ctime_ns",
+    ))
+
+
 def load_json(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
     try:
-        raw = path.read_bytes()
-        value = json.loads(raw)
-    except (OSError, json.JSONDecodeError) as error:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        with os.fdopen(descriptor, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_JSON_BYTES:
+                raise IdentityError(f"{label} must be a regular file no larger than 1 MiB")
+            raw = stream.read(MAX_JSON_BYTES + 1)
+            if file_state(before) != file_state(os.fstat(stream.fileno())):
+                raise IdentityError(f"{label} changed while being read")
+    except (OSError, ValueError) as error:
         raise IdentityError(f"cannot load {label} {path}: {error}") from error
-    if len(raw) > 1024 * 1024 or not isinstance(value, dict):
-        raise IdentityError(f"{label} must be a JSON object no larger than 1 MiB")
-    return value, raw
+    return decode_json(raw, label), raw
 
 
 def exact_version(value: object, label: str, *, sdk: bool = False) -> str:
@@ -181,7 +232,28 @@ def validate_installed_graph(lock: Mapping[str, Any], installed: Mapping[str, An
     actual = production_graph(installed.get("packages"))
     if actual != expected:
         raise IdentityError("installed production graph differs from the reviewed source lock")
+    if package_authorities(lock["packages"]) != package_authorities(installed["packages"]):
+        raise IdentityError("installed source/dist authorities differ from the reviewed source lock")
     return {"outcome": "verified", "package_count": len(actual), "packages": actual}
+
+
+def package_authorities(packages: list[dict[str, Any]]) -> dict[str, Any]:
+    """Keep source and dist objects distinct, including missing/null/empty values."""
+    result = {}
+    for package in packages:
+        authorities = {}
+        for kind, fields in (("source", {"type", "url", "reference"}),
+                             ("dist", {"type", "url", "reference", "shasum"})):
+            authority = package.get(kind)
+            if not isinstance(authority, dict) or set(authority) != fields:
+                raise IdentityError(f"incomplete {kind} authority for {package['name']}")
+            if any(value is not None and not isinstance(value, str) for value in authority.values()):
+                raise IdentityError(f"invalid {kind} authority for {package['name']}")
+            if any(not isinstance(authority[key], str) or not authority[key] for key in ("type", "url")):
+                raise IdentityError(f"missing {kind} type or URL for {package['name']}")
+            authorities[kind] = dict(authority)
+        result[package["name"]] = authorities
+    return result
 
 
 def validate(
