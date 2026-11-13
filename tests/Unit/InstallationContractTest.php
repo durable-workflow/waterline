@@ -147,8 +147,19 @@ final class InstallationContractTest extends TestCase
             }
         }
 
+        // A Laravel 9-11 compatibility cell rewrites the root require-dev SDK
+        // to its own older pin before this runs. The matrix contract, checked
+        // before that rewrite, ties the Laravel 13 cell to the root pin.
+        $matrix = json_decode(
+            (string) file_get_contents($root.'/.github/laravel-matrix.json'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+        $cellSdks = array_column($matrix['include'], 'sdk', 'label');
+        $this->assertContains($packageManifest['require-dev']['durable-workflow/sdk'] ?? null, $cellSdks);
         $this->assertSame(
-            $packageManifest['require-dev']['durable-workflow/sdk'] ?? null,
+            $cellSdks['Laravel 13'] ?? null,
             $serviceManifest['require']['durable-workflow/sdk'] ?? null,
         );
         $this->assertSame(
