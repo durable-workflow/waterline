@@ -101,7 +101,7 @@ class CurrentRuntimeProbeSourceTest(unittest.TestCase):
             self.assertTrue(mounts["/markers"]["RW"])
             self.assertEqual(str(self.markers), mounts["/markers"]["Source"])
             result = self.docker(["start", "--attach", "--interactive", cid], data=source or self.source)
-            self.assertLessEqual(len(result.stdout), 1024 * 1024 + 1)
+            self.assertLessEqual(len(result.stdout), 1024 * 1024)
             self.assertLessEqual(len(result.stderr), 65536)
             final = json.loads(self.docker(["inspect", cid]).stdout)[0]
             self.assertFalse(final["State"]["OOMKilled"])
@@ -171,6 +171,13 @@ class CurrentRuntimeProbeSourceTest(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertEqual(b"", result.stdout)
         self.assertEqual("invalid", json.loads(result.stderr)["mode"])
+
+    def test_wrong_source_lock_refuses_before_autoload(self):
+        (self.fixture / "composer.lock").write_bytes(self.lock + b'\n')
+        result = self.run_source()
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(b"", result.stdout)
+        self.assertFalse((self.markers / "autoload").exists())
 
 
 if __name__ == "__main__":

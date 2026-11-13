@@ -147,10 +147,10 @@ try {
         throw new RuntimeException('Route-cache path override is unselected.');
     }
     $lock = currentRegularBytes('/app/composer.lock', 1024 * 1024);
-    $installed = currentRegularBytes('/app/vendor/composer/installed.json', 1024 * 1024);
     if (!hash_equals(CURRENT_LOCK_SHA256, hash('sha256', $lock))) {
         throw new RuntimeException('Lock differs from the current-target source.');
     }
+    $installed = currentRegularBytes('/app/vendor/composer/installed.json', 1024 * 1024);
     $report = [
         'schema' => 'waterline.current-standalone-runtime-observation/v1', 'mode' => $mode,
         'php_version' => PHP_VERSION, 'php_int_size' => PHP_INT_SIZE, 'php_binary' => realpath(PHP_BINARY),
@@ -215,7 +215,7 @@ try {
     }
     $report['ini_after'] = currentIniValues();
     $encoded = json_encode($report, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION);
-    if (strlen($encoded) > 1024 * 1024) {
+    if (strlen($encoded) + 1 > 1024 * 1024) {
         throw new RuntimeException('Observation output bound exceeded.');
     }
     echo $encoded, "\n";
