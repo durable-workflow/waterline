@@ -34,20 +34,44 @@ def make_proxy(port, listen_port=0):
                 or '//' in decoded or length != '0' or self.headers.get('Transfer-Encoding')):
                 self.send_error(400)
                 return
+            routes = {
+                '/api/schedules': '/api/schedules',
+                '/api/system/health': '/api/system/health',
+                '/api/system/operator-dashboard/bounded': '/api/system/operator-dashboard/bounded',
+                '/api/system/operator-metrics': '/api/system/operator-metrics',
+                '/api/cluster': '/api/cluster',
+                '/api/cluster/info': '/api/cluster/info',
+                '/api/namespaces': '/api/namespaces',
+            }
+            try:
+                parameters = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True, strict_parsing=True, max_num_fields=8)
+                keys = [key for key, _ in parameters]
+                if len(set(keys)) != len(keys) or any(key not in {'page_size', 'next_page_token', 'workflow_type', 'status', 'query'} or len(value) > 8192 or any(ord(c) < 32 for c in value) for key, value in parameters):
+                    raise ValueError('query outside fixture profile')
+            except ValueError:
+                self.send_error(400)
+                return
             with lock:
                 if len(records) >= 500:
                     self.send_error(429)
                     return
-                record = {'method': 'GET', 'path': parsed.path,
+                record = {'method': 'GET', 'path': decoded,
                           'query_sha256': hashlib.sha256(parsed.query.encode()).hexdigest(),
                           'started': time.monotonic(), 'status': None}
                 records.append(record)
+            target = routes.get(decoded)
+            if target is None:
+                record.update({'status': 400, 'refusal': True, 'finished': time.monotonic()})
+                self.send_error(400)
+                return
+            if parameters:
+                target += '?' + urllib.parse.urlencode(parameters)
             connection = http.client.HTTPConnection('127.0.0.1', port, timeout=4)
             try:
                 headers = {k: v for k, v in self.headers.items()
                            if k.lower() not in HOP | {'host'}}
                 headers['Host'] = '127.0.0.1:' + str(port)
-                connection.request('GET', self.path, headers=headers)
+                connection.request('GET', target, headers=headers)
                 upstream = connection.getresponse()
                 body = upstream.read(MAX_BODY + 1)
                 if len(body) > MAX_BODY:

@@ -16,5 +16,5 @@ def inspect_owned(docker,identifier,labels,missing_ok=False):
 
 def remove_owned(docker,identifier,labels):
  if inspect_owned(docker,identifier,labels,True) is not None:
-  subprocess.run(docker+['rm','--force',identifier],check=True,capture_output=True,timeout=5)
+  subprocess.run(docker+['rm','--force','--volumes',identifier],check=True,capture_output=True,timeout=5)
  if inspect_owned(docker,identifier,labels,True) is not None:raise RuntimeError('owned container remains')

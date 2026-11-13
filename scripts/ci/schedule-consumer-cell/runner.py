@@ -15,11 +15,10 @@ import selectors
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.request
 
-EXPECTED = {'candidate': {'sha256': '668b0299980683b2e53f0db56537960654ee21f9b5ec13dca815c649b7ecd41a', 'bytes': 9704876}, 'loader': {'sha256': 'cecbf80deab40f0229e3fcb4e823e9083df65875fd5fd93ac107e489907cf0c6', 'bytes': 4109}, 'proxy': {'sha256': '1f9e3963df72e4515e551ffb7e67d1c2764eabd33d5af615f99b62ca626d3203', 'bytes': 3422}, 'browser': {'sha256': 'e7dadf67338dc454911016f4d489531ed9ade55b109aa33522d748833ab016bf', 'bytes': 6368}, 'tools': {'sha256': 'f51ce58aef92d863dc04ea0b690c79a150a007d372f436ca211b4cd24560eed8', 'bytes': 25408909}, 'worker': {'sha256': '04802ce2d7fff2d978d6b8f368300b9ae8ba76249555a1307342778920edf0b4', 'bytes': 8537}, 'requirements': {'sha256': '7102fdc18f3ba8c29e5b05bcfd7a2a29f36c7ab48d2cc03fd9ad5b9a52398e47', 'bytes': 866}, 'ownership': {'sha256': '85a6b7c8b5db5a4ea6f5553faea1b3aab86e9453c87b68b64ceff7a0c54607a5', 'bytes': 1255}, 'ca': {'sha256': '50f79f98dac192b20dbf73f35c56f0b0c557ab267ff5199d1117cc1180b70785', 'bytes': 238856}}
+EXPECTED = {'candidate': {'sha256': '668b0299980683b2e53f0db56537960654ee21f9b5ec13dca815c649b7ecd41a', 'bytes': 9704876}, 'loader': {'sha256': 'ccedf708092a35477cf2f54202c0ca0f882f3abaef8ec3dc5a881de178e741d3', 'bytes': 4136}, 'proxy': {'sha256': 'b930ae341b97d414029e7adac2c369bde10ff94faf018475a85b1edf23c99d0c', 'bytes': 4806}, 'browser': {'sha256': 'e7dadf67338dc454911016f4d489531ed9ade55b109aa33522d748833ab016bf', 'bytes': 6368}, 'tools': {'sha256': 'f51ce58aef92d863dc04ea0b690c79a150a007d372f436ca211b4cd24560eed8', 'bytes': 25408909}, 'worker': {'sha256': '04802ce2d7fff2d978d6b8f368300b9ae8ba76249555a1307342778920edf0b4', 'bytes': 8537}, 'requirements': {'sha256': '7102fdc18f3ba8c29e5b05bcfd7a2a29f36c7ab48d2cc03fd9ad5b9a52398e47', 'bytes': 866}, 'ownership': {'sha256': '17ea9df38ac37df5c01e7c9c0ffcd2a4136d4bc5be782aa373ccc1846d6e2d40', 'bytes': 1267}, 'ca': {'sha256': '50f79f98dac192b20dbf73f35c56f0b0c557ab267ff5199d1117cc1180b70785', 'bytes': 238856}, 'workspace': {'sha256': '5513ae43acaae388631bddb3db999677734b2ee69627bd00f6b72c7e517b6ccb', 'bytes': 8078}}
 PYTHON = 'python@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df'
 BROWSER = 'mcr.microsoft.com/playwright@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d'
 APPLICATION = 'docker.io/durableworkflow/waterline@sha256:2750484b0ec80b6b34026cbebb69677a966f4c342a26e7c9313f2b89d3cbb315'
@@ -54,25 +53,44 @@ def captured_inputs(packet):
 
 
 class Cell:
-    def __init__(self, root, subjects):
-        self.root = root
+    def __init__(self, workspace, subjects):
+        self.workspace = workspace
+        self.root = workspace.path
         self.subjects = subjects
         self.ids = {}
         self.labels = {}
         self.processes = []
         self.files = []
         self.nonce = secrets.token_hex(12)
-        config = root / 'docker'
-        config.mkdir(mode=0o700)
-        (config / 'config.json').write_text('{"auths":{}}\n')
-        self.docker = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', '--config', str(config)]
+        config = workspace.directory('docker')
+        workspace.write('config.json', '{"auths":{}}\n', parent=config)
+        self.docker = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', '--config', workspace.proc(config)]
+        self.cleanup_docker = ['/usr/bin/docker', '--host', 'unix:///var/run/docker.sock', '--config', '/proc/self/fd']
+        self.credentials = []
         scope = {}
         exec(compile(subjects['ownership'], 'captured-owned-docker.py', 'exec'), scope)
-        self.inspect = scope['inspect_owned']
+        self.raw_inspect = scope['inspect_owned']
         self.remove = scope['remove_owned']
 
+    def check(self):
+        recheck = globals().get('__waterline_recheck_inputs__')
+        if not callable(recheck):
+            raise RuntimeError('literal reviewed bootstrap required')
+        recheck()
+        self.workspace.check()
+
+    def inspect(self, *args, **kwargs):
+        self.check()
+        result = self.raw_inspect(*args, **kwargs)
+        self.check()
+        return result
+
     def run(self, args, **kwargs):
-        return subprocess.run(self.docker + args, check=True, capture_output=True, timeout=kwargs.pop('timeout', 30), **kwargs)
+        self.check()
+        result = subprocess.run(self.docker + args, check=True, capture_output=True, timeout=kwargs.pop('timeout', 30), **kwargs)
+        if args[0] != 'create':
+            self.check()
+        return result
 
     def create(self, role, image, options, command):
         labels = {'dev.durable-workflow.fixture-owner': 'waterline',
@@ -103,12 +121,17 @@ class Cell:
             options += ['--user', user]
         command = self.docker + options + [self.ids[role], binary]
         command += ['-r', program] if binary == 'php' else ['-I', '-B', '-c', program]
-        return subprocess.run(command, input=data, check=True, capture_output=True, timeout=timeout).stdout
+        result = subprocess.run(command, input=data, check=True, capture_output=True, timeout=timeout).stdout
+        self.check()
+        return result
 
     def process(self, role, arguments, data, name, user=None):
         self.inspect(self.docker, self.ids[role], self.labels[role])
-        output = (self.root / (name + '.stdout')).open('wb')
-        errors = (self.root / (name + '.stderr')).open('wb')
+        stdout_item = self.workspace.write(name + '.stdout', b'', immutable=False)
+        stderr_item = self.workspace.write(name + '.stderr', b'', immutable=False)
+        stdout_item['maximum'] = stderr_item['maximum'] = 4 * 1024 * 1024
+        output = os.fdopen(os.dup(stdout_item['fd']), 'wb')
+        errors = os.fdopen(os.dup(stderr_item['fd']), 'wb')
         self.files.extend([output, errors])
         options = ['exec', '-i'] + (['--user', user] if user else [])
         child = subprocess.Popen(self.docker + options + [self.ids[role], *arguments],
@@ -124,21 +147,31 @@ class Cell:
         errors, oom = [], []
         for role in reversed(list(self.ids)):
             try:
-                state = self.inspect(self.docker, self.ids[role], self.labels[role], True)
+                state = self.raw_inspect(self.cleanup_docker, self.ids[role], self.labels[role], True)
                 if state is not None and state['State'].get('OOMKilled'):
                     oom.append(role)
-                self.remove(self.docker, self.ids[role], self.labels[role])
+                self.remove(self.cleanup_docker, self.ids[role], self.labels[role])
             except Exception as error:
                 errors.append(role + ':' + type(error).__name__)
         for process in self.processes:
-            if process.poll() is None:
-                process.kill()
-            process.wait(timeout=2)
+            try:
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=2)
+            except Exception as error:
+                errors.append('process:' + type(error).__name__)
         for file in self.files:
             file.close()
         result = {'containers_absent': not errors, 'oom': oom, 'errors': errors,
                   'ids': self.ids, 'labels': self.labels, 'host_mounts': [], 'anonymous_volumes': []}
-        (self.root / 'cleanup.json').write_text(json.dumps(result, indent=2))
+        for item in self.credentials:
+            try:
+                self.workspace.remove(item)
+            except Exception as error:
+                errors.append('credential:' + type(error).__name__)
+        result['errors'] = errors
+        self.workspace.check()
+        self.workspace.write('cleanup.json', json.dumps(result, indent=2))
         if errors or oom:
             raise RuntimeError('cleanup or OOM gate failed')
 
@@ -236,7 +269,7 @@ foreach ([Waterline\Http\Controllers\Remote\RemoteSchedulesController::class, Wa
 $input=json_decode(stream_get_contents(STDIN),true,flags:JSON_THROW_ON_ERROR);$candidate=[];
 foreach($input['leaves'] as $leaf) {
  $name=$leaf['path'];$file='/app/waterline/'.$name;$metadata=lstat($file);
- if ($metadata['uid']!==0 || ($metadata['mode'] & 0777)!==0444 || hash_file('sha256',$file)!==$leaf['sha256']) { throw new RuntimeException('Candidate leaf changed.'); }
+ if ($metadata['uid']!==0 || $metadata['gid']!==82 || ($metadata['mode'] & 0777)!==0440 || hash_file('sha256',$file)!==$leaf['sha256']) { throw new RuntimeException('Candidate leaf changed.'); }
  if(str_starts_with($name,'public/') && hash_file('sha256','/app/public/vendor/waterline/'.substr($name,7))!==$leaf['sha256']) { throw new RuntimeException('Served asset changed.'); }
  $candidate[$name]=$leaf['sha256'];
 }
@@ -292,7 +325,9 @@ def wait_json(cell, role, filename, predicate, deadline):
 class BrowserProtocol:
     def __init__(self, cell):
         self.cell = cell
-        errors = (cell.root / 'browser.stderr').open('wb')
+        item = cell.workspace.write('browser.stderr', b'', immutable=False)
+        item['maximum'] = 4 * 1024 * 1024
+        errors = os.fdopen(os.dup(item['fd']), 'wb')
         cell.files.append(errors)
         cell.inspect(cell.docker, cell.ids['browser'], cell.labels['browser'])
         self.child = subprocess.Popen(cell.docker + ['exec', '-i', '--user', '1000:1000', cell.ids['browser'],
@@ -319,7 +354,7 @@ class BrowserProtocol:
                     data = base64.b64decode(result['base64'], validate=True)
                     if len(data) > 4 * 1024 * 1024:
                         raise ValueError('screenshot exceeds budget')
-                    (self.cell.root / (result['name'] + '.png')).write_bytes(data)
+                    self.cell.workspace.write(result['name'] + '.png', data)
                     continue
                 if result['phase'] != expected:
                     raise ValueError('unexpected browser phase')
@@ -341,6 +376,13 @@ class BrowserProtocol:
         self.selector.close()
 
 
+def loader_program(subjects):
+    loader_source = subjects['loader'].decode().removeprefix('<?php')
+    if loader_source.count('declare(strict_types=1);') != 1:
+        raise ValueError('loader declaration differs')
+    return loader_source.replace('declare(strict_types=1);', 'declare(strict_types=1);\n$expectedPayloadSha256="' + EXPECTED['candidate']['sha256'] + '";', 1)
+
+
 def prove(cell, runtime):
     subjects = cell.subjects
     native = 'ghcr.io/durable-workflow/server@' + runtime['index']
@@ -354,11 +396,10 @@ def prove(cell, runtime):
                            '9c241c573f479a13982fa390c21b226ed19759d1', '2.18.0')
     browser_id = image(cell, BROWSER)
     token = secrets.token_hex(32)
-    env = cell.root / 'runtime.env'
-    env.write_text('DW_AUTH_DRIVER=token\nDW_AUTH_TOKEN=' + token + '\nDB_CONNECTION=sqlite\n')
-    env.chmod(0o600)
+    env = cell.workspace.write('runtime.env', 'DW_AUTH_DRIVER=token\nDW_AUTH_TOKEN=' + token + '\nDB_CONNECTION=sqlite\n')
+    cell.credentials.append(env)
     cell.create('runtime', native_id,
-        ['--cpus','1','--memory','1g','--pids-limit','256', '--env-file',str(env),
+        ['--cpus','1','--memory','1g','--pids-limit','256', '--env-file',cell.workspace.proc(env['fd']),
          '--publish','127.0.0.1::8080','--publish','127.0.0.1::8081',
          '--tmpfs','/app/database:rw,nosuid,nodev,noexec,size=256m,uid=1000,gid=1000,mode=0750',
          '--tmpfs','/app/storage:rw,nosuid,nodev,noexec,size=128m,uid=1000,gid=1000,mode=0750',
@@ -396,25 +437,21 @@ finally:server.shutdown();server.server_close();thread.join()
 '''
     cell.process('consumer',['python','-I','-B','-c',proxy_program],None,'proxy')
     wait_json(cell,'consumer','proxy.json',lambda rows: isinstance(rows,list),time.monotonic()+5)
-    app_env = cell.root / 'application.env'
     key=base64.b64encode(secrets.token_bytes(32)).decode()
-    app_env.write_text('APP_KEY=base64:'+key+'\nWATERLINE_SERVER_ENDPOINT=http://127.0.0.1:8082\nWATERLINE_SERVER_TOKEN='+token+'\nWATERLINE_NAMESPACE=default\nWATERLINE_ACCESS_MODE=operator\nWATERLINE_ALLOW_UNAUTHENTICATED=true\n')
-    app_env.chmod(0o600)
+    app_env = cell.workspace.write('application.env', 'APP_KEY=base64:'+key+'\nWATERLINE_SERVER_ENDPOINT=http://127.0.0.1:8082\nWATERLINE_SERVER_TOKEN='+token+'\nWATERLINE_NAMESPACE=default\nWATERLINE_ACCESS_MODE=operator\nWATERLINE_ALLOW_UNAUTHENTICATED=true\n')
+    cell.credentials.append(app_env)
     cell.create('application', application_id,
         ['--cpus','1','--memory','1g','--pids-limit','256','--user','82:82','--network',shared,
-         '--env-file',str(app_env),'--entrypoint','sh','--workdir','/app/public',
-         '--tmpfs','/app/waterline:rw,nosuid,nodev,noexec,size=16m,mode=0755',
-         '--tmpfs','/app/public/vendor/waterline:rw,nosuid,nodev,noexec,size=16m,mode=0755',
+         '--env-file',cell.workspace.proc(app_env['fd']),'--entrypoint','sh','--workdir','/app/public',
+         '--tmpfs','/app/waterline:rw,nosuid,nodev,noexec,size=16m,gid=82,mode=0750',
+         '--tmpfs','/app/public/vendor/waterline:rw,nosuid,nodev,noexec,size=16m,gid=82,mode=0750',
          '--tmpfs','/app/bootstrap/cache:rw,nosuid,nodev,noexec,size=8m,uid=82,gid=82,mode=0750',
          '--tmpfs','/app/storage:rw,nosuid,nodev,noexec,size=64m,uid=82,gid=82,mode=0750',
          '--tmpfs','/data:rw,nosuid,nodev,noexec,size=64m,uid=82,gid=82,mode=0750',
          '--tmpfs','/tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777'], ['-c','sleep 600'])
     # The expected hash comes from this frozen runner, not from candidate stdin.
-    loader_source = subjects['loader'].decode().removeprefix('<?php')
-    if loader_source.count('declare(strict_types=1);') != 1:
-        raise ValueError('loader declaration differs')
-    loader = loader_source.replace('declare(strict_types=1);', 'declare(strict_types=1);\n$expectedPayloadSha256="' + EXPECTED['candidate']['sha256'] + '";', 1)
-    capture = json.loads(cell.execute('application',loader,binary='php',user='0',data=subjects['candidate']))
+    loader = loader_program(subjects)
+    capture = json.loads(cell.execute('application',loader,binary='php',user='0:82',data=subjects['candidate']))
     expected = {leaf['path']:leaf['sha256'] for leaf in json.loads(subjects['candidate'])['leaves']}
     if capture['source'] != CANDIDATE or capture['leaves'] != expected:
         raise ValueError('copied package differs from retained Git capture')
@@ -490,31 +527,41 @@ def main():
         raise RuntimeError('isolated assertions-enabled native amd64 host required')
     def timeout(_signum,_frame):raise TimeoutError('finite cell work deadline')
     signal.signal(signal.SIGALRM,timeout);signal.signal(signal.SIGTERM,timeout);signal.alarm(390)
+    recheck = globals().get('__waterline_recheck_inputs__')
+    if not callable(recheck):raise RuntimeError('literal reviewed bootstrap required')
+    recheck()
     raw=sys.stdin.buffer.read(64*1024*1024+1)
     if len(raw)>64*1024*1024:raise ValueError('packet exceeds bound')
     subjects,runtime=captured_inputs(json.loads(raw))
-    parent=pathlib.Path(os.environ['TMPDIR'])
+    parent=pathlib.Path.cwd()
     metadata=parent.lstat()
     if not parent.is_absolute() or parent.resolve()!=parent or metadata.st_uid!=os.geteuid() or metadata.st_mode & 0o077:
-        raise ValueError('owned private disk-backed TMPDIR required')
-    root=pathlib.Path(tempfile.mkdtemp(prefix='waterline-schedule-cell-',dir=parent))
-    root.chmod(0o700)
+        raise ValueError('owned private disk-backed working directory required')
     os.environ.clear()
-    os.environ.update({'PATH':os.defpath,'TMPDIR':str(parent)})
-    cell=Cell(root,subjects)
-    (root/'subjects.json').write_text(json.dumps({'packet_sha256':digest(raw),'subjects':EXPECTED,'runtime':runtime},indent=2))
-    result={'outcome':'NONPASS'}
-    try:
-        result=prove(cell,runtime)
-    finally:
-        signal.alarm(0)
-        try:cell.cleanup()
+    os.environ.update({'PATH':os.defpath})
+    namespace = {}
+    exec(compile(subjects['workspace'], 'captured-workspace.py', 'exec'), namespace)
+    output = parent / ('waterline-schedule-cell-' + secrets.token_hex(12))
+    with namespace['Workspace'](output) as workspace:
+        os.environ['TMPDIR'] = workspace.proc(workspace.root)
+        cell=Cell(workspace,subjects)
+        workspace.write('subjects.json', json.dumps({'packet_sha256':digest(raw),'subjects':EXPECTED,'runtime':runtime,'bootstrap':globals().get('__waterline_bootstrap_identity__')},indent=2))
+        result={'outcome':'NONPASS'}
+        try:
+            result=prove(cell,runtime)
         finally:
-            for name in ['runtime.env','application.env']:(root/name).unlink(missing_ok=True)
-            (root/'result.json').write_text(json.dumps(result,indent=2))
-    result['outcome']='pass'
-    (root/'result.json').write_text(json.dumps(result,indent=2))
-    print(json.dumps({'outcome':'pass','classification':'source-overlay-candidate','packet_sha256':digest(raw),'evidence_directory':str(root)}))
+            signal.alarm(0)
+            try:
+                cell.cleanup()
+                if result.get('business_observation') == 'pass':
+                    result['outcome']='pass'
+            finally:
+                cell.check()
+                workspace.write('result.json', json.dumps(result,indent=2))
+        # Emit only after rechecking the held evidence and every ancestor.
+        cell.check()
+        evidence=str(output)
+        print(json.dumps({'outcome':'pass','classification':'source-overlay-candidate','packet_sha256':digest(raw),'evidence_directory':evidence}),flush=True)
 
 
 if __name__=='__main__':

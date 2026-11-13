@@ -15,7 +15,7 @@ $served = '/app/public/vendor/waterline';
 foreach ([$package, $served] as $root) {
     $metadata = lstat($root);
     if ($metadata === false || ($metadata['mode'] & 0170000) !== 0040000
-        || $metadata['uid'] !== 0 || scandir($root) !== ['.', '..']) {
+        || $metadata['uid'] !== 0 || $metadata['gid'] !== 82 || scandir($root) !== ['.', '..']) {
         throw new RuntimeException('Expected fresh root-owned capture mount.');
     }
 }
@@ -55,20 +55,20 @@ foreach ($validated as [$name, $data, $sha256]) {
     if (str_starts_with($name, 'public/')) { $targets[] = $served.'/'.substr($name, 7); }
     foreach ($targets as $target) {
         $parent = dirname($target);
-        if (!is_dir($parent) && !mkdir($parent, 0755, true)) { throw new RuntimeException('Capture directory failed.'); }
+        if (!is_dir($parent) && !mkdir($parent, 0750, true)) { throw new RuntimeException('Capture directory failed.'); }
         while ($parent !== $package && $parent !== $served) {
             $directories[$parent] = true; $parent = dirname($parent);
         }
         $file = fopen($target, 'x');
         if ($file === false || fwrite($file, $data) !== strlen($data)) { throw new RuntimeException('Capture write failed.'); }
         fclose($file);
-        if (!chmod($target, 0444) || hash_file('sha256', $target) !== $sha256) { throw new RuntimeException('Capture readback failed.'); }
+        if (!chmod($target, 0440) || hash_file('sha256', $target) !== $sha256) { throw new RuntimeException('Capture readback failed.'); }
     }
     $receipt[$name] = $sha256;
 }
 $paths = array_keys($directories); usort($paths, static fn ($a, $b) => strlen($b) <=> strlen($a));
 foreach ($paths as $directory) {
-    if (!chmod($directory, 0555)) { throw new RuntimeException('Capture directory sealing failed.'); }
+    if (!chmod($directory, 0550)) { throw new RuntimeException('Capture directory sealing failed.'); }
 }
 echo json_encode(['classification' => 'source-overlay-candidate', 'source' => $bundle['commit'],
     'tree' => $bundle['tree'], 'leaves' => $receipt, 'bytes' => $bytes], JSON_THROW_ON_ERROR), PHP_EOL;

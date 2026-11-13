@@ -25,7 +25,7 @@ class PacketBoundaryTest(unittest.TestCase):
     def test_exact_static_helper_files_match_retained_subjects(self):
         for name, file in {'loader': 'load-candidate.php', 'proxy': 'counting-proxy.py',
                            'browser': 'browser.mjs', 'ownership': 'owned-docker.py',
-                           'requirements': 'consumer-requirements.txt',
+                           'requirements': 'consumer-requirements.txt', 'workspace': 'workspace.py',
                            'worker': '../schedule-gated-worker.py'}.items():
             with self.subTest(subject=name):
                 data = (ROOT / file).read_bytes()
@@ -75,6 +75,23 @@ class PacketBoundaryTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     cell.captured_inputs(packet)
 
+
+    def test_id_cleanup_still_runs_after_workspace_refusal(self):
+        class RefusedWorkspace:
+            def check(self):
+                raise ValueError('workspace replaced')
+        fixture = object.__new__(cell.Cell)
+        fixture.workspace = RefusedWorkspace()
+        fixture.ids = {'runtime': 'a' * 64}
+        fixture.labels = {'runtime': {'owner': 'waterline'}}
+        fixture.cleanup_docker = ['/usr/bin/docker', '--config', '/proc/self/fd']
+        fixture.processes = []; fixture.files = []; fixture.credentials = []
+        removed = []
+        fixture.raw_inspect = lambda *args: {'State': {'OOMKilled': False}}
+        fixture.remove = lambda docker, identifier, labels: removed.append((docker, identifier, labels))
+        with self.assertRaises(ValueError):
+            fixture.cleanup()
+        self.assertEqual(removed, [(fixture.cleanup_docker, 'a' * 64, fixture.labels['runtime'])])
 
 if __name__ == '__main__':
     unittest.main()
