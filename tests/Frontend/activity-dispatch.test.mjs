@@ -9,8 +9,13 @@ import * as dispatch from '../../resources/js/activity-dispatch.mjs';
 import { operatorPermission } from '../../resources/js/operator-permissions.mjs';
 
 const source = fs.readFileSync(new URL('../../resources/js/components/WorkerHealth.vue', import.meta.url), 'utf8');
-const script = source.match(/<script>([\s\S]*?)<\/script>/)[1];
-const template = source.match(/<template>([\s\S]*?)<\/template>\s*<script>/)[1];
+// The component's own sections, cut at their fixed SFC delimiters.
+function section(open, close) {
+    const start = source.indexOf(open) + open.length;
+    return source.slice(start, source.indexOf(close, start));
+}
+const script = section('<script>\n', '\n</script>');
+const template = section('<template>\n', '\n</template>\n\n<script>');
 
 function component(overrides = {}) {
     const executable = script.replace(/^import .*;$/gm, '').replace('export default', 'return');
