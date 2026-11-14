@@ -30,6 +30,7 @@ CURRENT_PUBLIC = {
 CANDIDATE_WATERLINE = "2.0.2"
 CANDIDATE_SDK = "2.1.0"
 PUBLIC_SDK_REFERENCE = "0123456789abcdef0123456789abcdef01234567"
+NATIVE_PROVENANCE_COMMAND = "scripts/ci/oci_release.py native"
 
 
 def approved() -> dict:
@@ -289,8 +290,8 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
             {cell["architecture"] for cell in qualification["strategy"]["matrix"]["include"]},
         )
         scripts = [step.get("run", "") for step in qualification["steps"]]
-        self.assertTrue(any("scripts/ci/service-mode-image-smoke.sh" in run for run in scripts))
-        self.assertTrue(any("scripts/ci/oci_release.py native" in run for run in scripts))
+        self.assert_native_invocation(qualification)
+        self.assertTrue(any(NATIVE_PROVENANCE_COMMAND in run for run in scripts))
 
         publication = workflow("service-image-publish.yml")
         publisher = publication["jobs"]["publish"]
@@ -303,6 +304,56 @@ class WaterlineReleaseIdentityTest(unittest.TestCase):
         login = next(index for index, step in enumerate(publisher["steps"])
                      if "DOCKERHUB_TOKEN" in step.get("env", {}))
         self.assertLess(verification, login)
+
+
+    def assert_native_invocation(self, job):
+        selected = [step for step in job["steps"] if step.get("id") == "ordinary"]
+        self.assertEqual(1, len(selected))
+        step = selected[0]
+        self.assertNotIn("if", step)
+        script = step["run"]
+        stage = (ROOT / "scripts/ci/service_smoke_first_stage.py").read_text().rstrip()
+        invocation = 'launch(Path(os.environ["GITHUB_WORKSPACE"]), "native")'
+        guarded = "python3 -I -S - <<'PY'\n" + stage + "\n\n" + invocation + "\nPY\n"
+        self.assertEqual(1, script.count(guarded))
+        self.assertIn("skopeo copy ", script)
+        provenance = NATIVE_PROVENANCE_COMMAND
+        self.assertIn(provenance, script)
+        self.assertLess(script.index("skopeo copy "), script.index(guarded))
+        self.assertLess(script.index(invocation), script.index(provenance))
+        cleanup_call = 'launch(Path(os.environ["ORDINARY_CODE_ROOT"]), "cleanup", {"contexts": contexts})'
+        cleanup = [item for item in job["steps"] if cleanup_call in item.get("run", "")]
+        self.assertEqual(1, len(cleanup))
+        self.assertTrue(cleanup[0]["if"].strip().startswith("always() &&"))
+        self.assertIn("steps.ordinary.outputs.ordinary_code_root", cleanup[0]["if"])
+        self.assertIn(stage + "\n\ncontexts = []", cleanup[0]["run"])
+        upload = [item for item in job["steps"] if item.get("uses", "").startswith("actions/upload-artifact@")]
+        self.assertEqual(1, len(upload))
+        self.assertEqual(["${{ runner.temp }}/native-oci/image.oci.tar", "${{ runner.temp }}/native-oci/provenance.json"],
+                         upload[0]["with"]["path"].splitlines())
+        self.assertLess(job["steps"].index(step), job["steps"].index(cleanup[0]))
+        self.assertLess(job["steps"].index(cleanup[0]), job["steps"].index(upload[0]))
+
+    def test_native_invocation_rejects_guard_bypass_reordering_and_cleanup_or_upload_changes(self):
+        for mutation in ("mutable reopen", "conditional", "missing native call", "early provenance", "conditional cleanup", "extra upload"):
+            job = json.loads(json.dumps(workflow("service-image.yml")["jobs"]["native"]))
+            ordinary = next(step for step in job["steps"] if step.get("id") == "ordinary")
+            if mutation == "mutable reopen":
+                ordinary["run"] = "python3 -I scripts/ci/service_smoke_first_stage.py"
+            elif mutation == "conditional":
+                ordinary["if"] = "success()"
+            elif mutation == "missing native call":
+                ordinary["run"] = ordinary["run"].replace('launch(Path(os.environ["GITHUB_WORKSPACE"]), "native")', 'print("unselected")')
+            elif mutation == "early provenance":
+                ordinary["run"] = NATIVE_PROVENANCE_COMMAND + "\n" + ordinary["run"]
+            elif mutation == "conditional cleanup":
+                cleanup = next(step for step in job["steps"] if '"cleanup", {"contexts": contexts}' in step.get("run", ""))
+                cleanup["if"] = "success()"
+            else:
+                upload = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@"))
+                upload["with"]["path"] += "\n${{ runner.temp }}/ordinary-native-evidence"
+            with self.subTest(mutation=mutation), self.assertRaises(AssertionError):
+                self.assert_native_invocation(job)
 
 class PublishedEmbeddedCohortTest(unittest.TestCase):
     def run_binding(self, *, missing_pin: bool = False, wrong_source: bool = False):
@@ -414,7 +465,7 @@ class RegistryVersionCheckTest(unittest.TestCase):
 
     def test_absent_tag_with_manifest_unknown_is_allowed(self) -> None:
         for message in (
-            "Error: reading manifest 2.18.0: manifest unknown",
+            "Error: reading manifest 2.18.1: manifest unknown",
             'errors: [{"code":"MANIFEST_UNKNOWN"}]',
         ):
             with self.subTest(message=message):

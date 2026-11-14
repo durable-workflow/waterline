@@ -20,7 +20,7 @@ mkdir -p "$work"
 check_registry_version() {
     scripts/ci/check-registry-version.sh "$work" "$(jq -r .image_digest "$work/verified.json")"
 }
-gh api repos/durable-workflow/waterline/git/ref/tags/2.18.0 > "$work/tag-ref.json"
+gh api repos/durable-workflow/waterline/git/ref/tags/2.18.1 > "$work/tag-ref.json"
 if [[ "$(jq -r .object.type "$work/tag-ref.json")" = tag ]]; then
     tag_object="$(jq -r .object.sha "$work/tag-ref.json")"
     [[ "$tag_object" =~ ^[0-9a-f]{40}$ ]]
@@ -58,7 +58,7 @@ printf '%s\n' '{"auths":{}}' > "$work/anonymous-auth.json"
 expected="$(jq -r .image_digest "$work/verified.json")"
 skopeo copy --all --preserve-digests --authfile "$work/anonymous-auth.json" \
     --digestfile "$work/roundtrip-digest.txt" \
-    "oci:$work/verified-oci:2.18.0" "oci:$work/roundtrip-oci:2.18.0"
+    "oci:$work/verified-oci:2.18.1" "oci:$work/roundtrip-oci:2.18.1"
 [[ "$(cat "$work/roundtrip-digest.txt")" = "$expected" ]]
 rm -r -- "$work/roundtrip-oci"
 check_registry_version

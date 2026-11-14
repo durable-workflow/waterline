@@ -148,7 +148,9 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringContainsString('outputs: type=oci,', $workflow);
         $this->assertStringContainsString('push: false', $workflow);
         $this->assertStringContainsString('no-cache: true', $workflow);
-        $this->assertStringContainsString('scripts/ci/service-mode-image-smoke.sh', $workflow);
+        $this->assertStringContainsString('launch(Path(os.environ["GITHUB_WORKSPACE"]), "native")', $workflow);
+        $this->assertStringContainsString('raw = bootstrap_bytes(descriptor)', $workflow);
+        $this->assertStringContainsString('hashlib.sha256(raw).hexdigest() != BOOTSTRAP_SHA256', $workflow);
         $this->assertStringContainsString('scripts/ci/oci_release.py native', $workflow);
         $this->assertStringContainsString('compression-level: 0', $workflow);
     }
@@ -162,7 +164,7 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringContainsString('environment: release-publication', $workflow);
         $this->assertStringContainsString('ref: ${{ github.sha }}', $workflow);
         $this->assertStringContainsString('skopeo copy --all --preserve-digests', $workflow);
-        $this->assertStringContainsString('docker://docker.io/durableworkflow/waterline:2.18.0', $workflow);
+        $this->assertStringContainsString('docker://docker.io/durableworkflow/waterline:2.18.1', $workflow);
         $this->assertStringNotContainsString('docker/build-push-action', $workflow);
         $this->assertStringNotContainsString('docker run', $workflow);
         $this->assertStringNotContainsString('service-mode-image-smoke.sh', $workflow);

@@ -6,7 +6,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
+import os
 import re
+import stat
 import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -23,21 +26,98 @@ SUPPORTED_SDK = re.compile(
     r"^(?P<major>[23])\.(?P<minor>0|[1-9][0-9]*)\.(?P<patch>0|[1-9][0-9]*)(?:-(?P<stage>alpha|beta|rc)\.(?P<number>[1-9][0-9]*))?$"
 )
 PUBLIC_COMMIT = re.compile(r"^[0-9a-f]{40}$")
+MAX_JSON_BYTES = 1024 * 1024
+SOURCE_ROOT = Path(__file__).resolve().parents[2]
+GENERATED_ROUTE_NAME = re.compile(r"generated::[a-zA-Z\d]{16}", re.ASCII)
+ROUTE_FIELDS = frozenset({
+    "methods", "uri", "domain", "name", "action", "middleware", "wheres",
+    "defaults", "binding_fields", "scoped_bindings",
+})
 
 
 class IdentityError(RuntimeError):
     """The Waterline source or published dependency selection is invalid."""
 
 
-def load_json(path: Path, label: str) -> tuple[dict[str, Any], bytes]:
-    try:
-        raw = path.read_bytes()
-        value = json.loads(raw)
-    except (OSError, json.JSONDecodeError) as error:
-        raise IdentityError(f"cannot load {label} {path}: {error}") from error
-    if len(raw) > 1024 * 1024 or not isinstance(value, dict):
+def unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise IdentityError("duplicate JSON object key")
+        value[key] = item
+    return value
+
+
+def refuse_json_constant(value: str) -> None:
+    raise IdentityError(f"non-finite JSON constant {value}")
+
+
+def finite_json_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise IdentityError("JSON number exceeds finite range")
+    return parsed
+
+
+def decode_json(raw: bytes, label: str) -> dict[str, Any]:
+    """Validate captured bytes; this does not establish their collection origin."""
+    if not isinstance(raw, bytes) or len(raw) > MAX_JSON_BYTES:
         raise IdentityError(f"{label} must be a JSON object no larger than 1 MiB")
-    return value, raw
+    try:
+        value = json.loads(
+            raw.decode("utf-8"), object_pairs_hook=unique_json_object,
+            parse_constant=refuse_json_constant, parse_float=finite_json_float,
+        )
+    except (ValueError, RecursionError) as error:
+        raise IdentityError(f"invalid {label} JSON: {error}") from error
+    if not isinstance(value, dict):
+        raise IdentityError(f"{label} must be a JSON object no larger than 1 MiB")
+    return value
+
+
+def file_state(value: os.stat_result) -> tuple[int, ...]:
+    return tuple(getattr(value, name) for name in (
+        "st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
+        "st_size", "st_mtime_ns", "st_ctime_ns",
+    ))
+
+
+def open_json_input(path: Path, root: Path) -> int:
+    """Walk beneath a caller-admitted root without following path components."""
+    anchor = root.resolve(strict=True)
+    supplied = path if path.is_absolute() else Path.cwd() / path
+    try:
+        parts = supplied.relative_to(anchor).parts
+    except ValueError as error:
+        raise IdentityError("JSON input escapes its admitted root") from error
+    if not parts or any(part in (".", "..") for part in parts):
+        raise IdentityError("JSON input must name a file beneath its admitted root")
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    parent = os.open(anchor, directory_flags)
+    try:
+        for part in parts[:-1]:
+            child = os.open(part, directory_flags, dir_fd=parent)
+            os.close(parent)
+            parent = child
+        return os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                       dir_fd=parent)
+    finally:
+        os.close(parent)
+
+
+def load_json(path: Path, label: str, *, root: Path = SOURCE_ROOT) -> tuple[dict[str, Any], bytes]:
+    try:
+        descriptor = open_json_input(path, root)
+        with os.fdopen(descriptor, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_JSON_BYTES:
+                raise IdentityError(f"{label} must be a regular file no larger than 1 MiB")
+            raw = stream.read(MAX_JSON_BYTES + 1)
+            if file_state(before) != file_state(os.fstat(stream.fileno())):
+                raise IdentityError(f"{label} changed while being read")
+    except (OSError, ValueError) as error:
+        raise IdentityError(f"cannot load {label} {path}: {error}") from error
+    return decode_json(raw, label), raw
 
 
 def exact_version(value: object, label: str, *, sdk: bool = False) -> str:
@@ -181,7 +261,110 @@ def validate_installed_graph(lock: Mapping[str, Any], installed: Mapping[str, An
     actual = production_graph(installed.get("packages"))
     if actual != expected:
         raise IdentityError("installed production graph differs from the reviewed source lock")
+    if package_authorities(lock["packages"]) != package_authorities(installed["packages"]):
+        raise IdentityError("installed source/dist authorities differ from the reviewed source lock")
     return {"outcome": "verified", "package_count": len(actual), "packages": actual}
+
+
+def package_authorities(packages: list[dict[str, Any]]) -> dict[str, Any]:
+    """Keep source and dist objects distinct, including missing/null/empty values."""
+    result = {}
+    for package in packages:
+        authorities = {}
+        for kind, fields in (("source", {"type", "url", "reference"}),
+                             ("dist", {"type", "url", "reference", "shasum"})):
+            authority = package.get(kind)
+            if not isinstance(authority, dict) or set(authority) != fields:
+                raise IdentityError(f"incomplete {kind} authority for {package['name']}")
+            if any(value is not None and not isinstance(value, str) for value in authority.values()):
+                raise IdentityError(f"invalid {kind} authority for {package['name']}")
+            if any(not isinstance(authority[key], str) or not authority[key] for key in ("type", "url")):
+                raise IdentityError(f"missing {kind} type or URL for {package['name']}")
+            authorities[kind] = dict(authority)
+        result[package["name"]] = authorities
+    return result
+
+
+def route_string_map(value: object) -> bool:
+    return isinstance(value, dict) and all(
+        isinstance(key, str) and isinstance(item, str) for key, item in value.items()
+    )
+
+
+def route_string_list(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) and item for item in value)
+
+
+def canonical_json(value: object) -> str:
+    try:
+        return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except (ValueError, TypeError, RecursionError) as error:
+        raise IdentityError("route identities must be finite JSON") from error
+
+
+def validate_route_record(route: object) -> dict[str, Any]:
+    if not isinstance(route, dict) or set(route) != ROUTE_FIELDS:
+        raise IdentityError("incomplete route identity")
+    if not all(route_string_list(route[field]) for field in ("methods", "middleware")):
+        raise IdentityError("invalid route methods or middleware")
+    if not route["methods"] or len(set(route["methods"])) != len(route["methods"]):
+        raise IdentityError("missing or duplicate route methods")
+    if not all(isinstance(route[field], str) and route[field] for field in ("uri", "action")):
+        raise IdentityError("invalid route URI or action")
+    if not all(route[field] is None or isinstance(route[field], str) for field in ("domain", "name")):
+        raise IdentityError("invalid route domain or name")
+    if not all(route_string_map(route[field]) for field in ("wheres", "binding_fields")):
+        raise IdentityError("invalid route parameter constraints")
+    if not isinstance(route["defaults"], dict) or type(route["scoped_bindings"]) is not bool:
+        raise IdentityError("invalid route defaults or binding scope")
+    canonical_json(route["defaults"])
+    return route
+
+
+def validate_route_inventory(routes: object) -> list[dict[str, Any]]:
+    if not isinstance(routes, list) or not 1 <= len(routes) <= 2048:
+        raise IdentityError("route inventory must contain between 1 and 2048 records")
+    names = set()
+    identities = set()
+    for value in routes:
+        route = validate_route_record(value)
+        name = route["name"]
+        if name:
+            if name in names:
+                raise IdentityError("route name collision")
+            names.add(name)
+        for method in route["methods"]:
+            identity = (method, route["domain"], route["uri"])
+            if identity in identities:
+                raise IdentityError("route method/domain/URI collision")
+            identities.add(identity)
+    return routes
+
+
+def validate_cached_routes(before: object, cached: object) -> dict[str, Any]:
+    """Check the cached inventory before any next-phase API effect is selected."""
+    original = validate_route_inventory(before)
+    compiled = validate_route_inventory(cached)
+    if len(compiled) != len(original):
+        raise IdentityError("cached route count changed")
+    for route, cached_route in zip(original, compiled, strict=True):
+        comparison = dict(cached_route)
+        cached_name = comparison["name"]
+        if route["name"] in (None, "") and isinstance(cached_name, str):
+            if GENERATED_ROUTE_NAME.fullmatch(cached_name):
+                comparison["name"] = route["name"]
+        if canonical_json(comparison) != canonical_json(route):
+            raise IdentityError("cache changed a stable route identity")
+    return {"outcome": "matched", "route_count": len(original)}
+
+
+def validate_route_cache_routes(before: object, cached: object, cleared: object) -> dict[str, Any]:
+    """Compare inert phase data; collection, cache effects and origin stay separate."""
+    result = validate_cached_routes(before, cached)
+    restored = validate_route_inventory(cleared)
+    if canonical_json(restored) != canonical_json(before):
+        raise IdentityError("clear-after route order or identity changed")
+    return result
 
 
 def validate(
