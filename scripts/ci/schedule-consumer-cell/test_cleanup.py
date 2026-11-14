@@ -90,26 +90,29 @@ class CleanupBoundaryTest(unittest.TestCase):
     def create(self, fixture, role='runtime'):
         return fixture.create(role, 'sha256:' + 'c' * 64, [], ['fixed-inert-command'])
 
-    def test_lost_or_failed_create_is_recovered_for_deletion_without_start(self):
+    def test_lost_or_failed_create_is_preserved_without_start_or_delete(self):
         for loss, exception in [('malformed', ValueError), ('exception', subprocess.CalledProcessError)]:
             fixture, engine = self.fixture(loss)
             with self.subTest(loss=loss), patch.object(cell.subprocess, 'run', engine.cli):
                 with self.assertRaises(exception):
                     self.create(fixture)
-                fixture.cleanup()
-                self.assertEqual({}, engine.objects)
-                self.assertEqual([('create', 'a' * 64), ('destroy', 'a' * 64)], engine.events)
-                self.assertEqual({'runtime': 'a' * 64}, fixture.recovered_ids)
+                with self.assertRaises(RuntimeError):
+                    fixture.cleanup()
+                self.assertEqual(['a' * 64], list(engine.objects))
+                self.assertEqual([('create', 'a' * 64)], engine.events)
+                self.assertEqual({}, fixture.recovered_ids)
 
     def test_known_other_role_is_independently_removed(self):
         fixture, engine = self.fixture()
         with patch.object(cell.subprocess, 'run', engine.cli):
+            self.create(fixture, 'consumer')
             with self.assertRaises(ValueError):
                 self.create(fixture)
-            self.create(fixture, 'consumer')
-            fixture.cleanup()
-        self.assertEqual({}, engine.objects)
-        self.assertEqual([('start', 'b' * 64)], [event for event in engine.events if event[0] == 'start'])
+            with self.assertRaises(RuntimeError):
+                fixture.cleanup()
+        self.assertEqual(['b' * 64], list(engine.objects))
+        self.assertEqual([('start', 'a' * 64)], [event for event in engine.events if event[0] == 'start'])
+        self.assertEqual([('destroy', 'a' * 64)], [event for event in engine.events if event[0] == 'destroy'])
 
     def test_foreign_image_or_duplicate_role_is_preserved_as_nonpass(self):
         for mutation in ('image', 'duplicate'):
@@ -135,6 +138,19 @@ class CleanupBoundaryTest(unittest.TestCase):
                 fixture.cleanup()
         self.assertEqual(['b' * 64], list(engine.objects))
         self.assertFalse(any(event[0] == 'destroy' for event in engine.events))
+
+    def test_lost_create_same_label_same_image_replacement_is_preserved(self):
+        fixture, engine = self.fixture()
+        with patch.object(cell.subprocess, 'run', engine.cli):
+            with self.assertRaises(ValueError):
+                self.create(fixture)
+            replacement = dict(engine.objects.pop('a' * 64), Id='b' * 64,
+                               Mounts=[{'Type': 'bind', 'Source': '/foreign'}])
+            engine.objects['b' * 64] = replacement
+            with self.assertRaises(RuntimeError):
+                fixture.cleanup()
+        self.assertEqual({'b' * 64: replacement}, engine.objects)
+        self.assertFalse(any(event[0] in ('start', 'destroy') for event in engine.events))
 
 
 if __name__ == '__main__':

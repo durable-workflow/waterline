@@ -18,7 +18,7 @@ import sys
 import time
 import urllib.request
 
-EXPECTED = {'candidate': {'sha256': '668b0299980683b2e53f0db56537960654ee21f9b5ec13dca815c649b7ecd41a', 'bytes': 9704876}, 'loader': {'sha256': 'ccedf708092a35477cf2f54202c0ca0f882f3abaef8ec3dc5a881de178e741d3', 'bytes': 4136}, 'proxy': {'sha256': 'b930ae341b97d414029e7adac2c369bde10ff94faf018475a85b1edf23c99d0c', 'bytes': 4806}, 'browser': {'sha256': 'e7dadf67338dc454911016f4d489531ed9ade55b109aa33522d748833ab016bf', 'bytes': 6368}, 'tools': {'sha256': 'f51ce58aef92d863dc04ea0b690c79a150a007d372f436ca211b4cd24560eed8', 'bytes': 25408909}, 'worker': {'sha256': '04802ce2d7fff2d978d6b8f368300b9ae8ba76249555a1307342778920edf0b4', 'bytes': 8537}, 'requirements': {'sha256': '7102fdc18f3ba8c29e5b05bcfd7a2a29f36c7ab48d2cc03fd9ad5b9a52398e47', 'bytes': 866}, 'ownership': {'sha256': '17ea9df38ac37df5c01e7c9c0ffcd2a4136d4bc5be782aa373ccc1846d6e2d40', 'bytes': 1267}, 'ca': {'sha256': '50f79f98dac192b20dbf73f35c56f0b0c557ab267ff5199d1117cc1180b70785', 'bytes': 238856}, 'workspace': {'sha256': '5513ae43acaae388631bddb3db999677734b2ee69627bd00f6b72c7e517b6ccb', 'bytes': 8078}}
+EXPECTED = {'candidate': {'sha256': '668b0299980683b2e53f0db56537960654ee21f9b5ec13dca815c649b7ecd41a', 'bytes': 9704876}, 'loader': {'sha256': 'ccedf708092a35477cf2f54202c0ca0f882f3abaef8ec3dc5a881de178e741d3', 'bytes': 4136}, 'proxy': {'sha256': 'b930ae341b97d414029e7adac2c369bde10ff94faf018475a85b1edf23c99d0c', 'bytes': 4806}, 'browser': {'sha256': 'e7dadf67338dc454911016f4d489531ed9ade55b109aa33522d748833ab016bf', 'bytes': 6368}, 'tools': {'sha256': 'f51ce58aef92d863dc04ea0b690c79a150a007d372f436ca211b4cd24560eed8', 'bytes': 25408909}, 'worker': {'sha256': '04802ce2d7fff2d978d6b8f368300b9ae8ba76249555a1307342778920edf0b4', 'bytes': 8537}, 'requirements': {'sha256': '7102fdc18f3ba8c29e5b05bcfd7a2a29f36c7ab48d2cc03fd9ad5b9a52398e47', 'bytes': 866}, 'ownership': {'sha256': '17ea9df38ac37df5c01e7c9c0ffcd2a4136d4bc5be782aa373ccc1846d6e2d40', 'bytes': 1267}, 'ca': {'sha256': '50f79f98dac192b20dbf73f35c56f0b0c557ab267ff5199d1117cc1180b70785', 'bytes': 238856}, 'workspace': {'sha256': '4b7d471dc9ab4aef6bc95c212d1397d8617bc7f1eba924fe9fdc922adca2aff0', 'bytes': 9768}}
 PYTHON = 'python@sha256:935c3c5b12357a7e10caa9c1e6ca5692344d97cf229832ef584be2cec9fc03df'
 BROWSER = 'mcr.microsoft.com/playwright@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d'
 APPLICATION = 'docker.io/durableworkflow/waterline@sha256:2750484b0ec80b6b34026cbebb69677a966f4c342a26e7c9313f2b89d3cbb315'
@@ -164,13 +164,10 @@ class Cell:
     def cleanup_role(self, role):
         identifier = self.ids.get(role)
         if identifier is None:
-            found = self.owned_role_ids(role)
-            if found:
-                identifier = found[0]
-                state = self.raw_inspect(self.cleanup_docker, identifier, self.labels[role], True)
-                if state is not None and state.get('Image') != self.images[role]:
-                    raise ValueError('unreported role image differs; preserved')
-                self.recovered_ids[role] = identifier
+            # Discoverable labels and image identity do not establish which
+            # object the held create returned. Unknown matches stay untouched.
+            if self.owned_role_ids(role):
+                raise RuntimeError('unreported role has no held create ID; preserved')
         oom = False
         if identifier is not None:
             state = self.raw_inspect(self.cleanup_docker, identifier, self.labels[role], True)
@@ -432,7 +429,7 @@ def prove(cell, runtime):
                            '9c241c573f479a13982fa390c21b226ed19759d1', '2.18.0')
     browser_id = image(cell, BROWSER)
     token = secrets.token_hex(32)
-    env = cell.workspace.write('runtime.env', 'DW_AUTH_DRIVER=token\nDW_AUTH_TOKEN=' + token + '\nDB_CONNECTION=sqlite\n')
+    env = cell.workspace.credential('DW_AUTH_DRIVER=token\nDW_AUTH_TOKEN=' + token + '\nDB_CONNECTION=sqlite\n')
     cell.credentials.append(env)
     cell.create('runtime', native_id,
         ['--cpus','1','--memory','1g','--pids-limit','256', '--env-file',cell.workspace.proc(env['fd']),
@@ -474,7 +471,7 @@ finally:server.shutdown();server.server_close();thread.join()
     cell.process('consumer',['python','-I','-B','-c',proxy_program],None,'proxy')
     wait_json(cell,'consumer','proxy.json',lambda rows: isinstance(rows,list),time.monotonic()+5)
     key=base64.b64encode(secrets.token_bytes(32)).decode()
-    app_env = cell.workspace.write('application.env', 'APP_KEY=base64:'+key+'\nWATERLINE_SERVER_ENDPOINT=http://127.0.0.1:8082\nWATERLINE_SERVER_TOKEN='+token+'\nWATERLINE_NAMESPACE=default\nWATERLINE_ACCESS_MODE=operator\nWATERLINE_ALLOW_UNAUTHENTICATED=true\n')
+    app_env = cell.workspace.credential('APP_KEY=base64:'+key+'\nWATERLINE_SERVER_ENDPOINT=http://127.0.0.1:8082\nWATERLINE_SERVER_TOKEN='+token+'\nWATERLINE_NAMESPACE=default\nWATERLINE_ACCESS_MODE=operator\nWATERLINE_ALLOW_UNAUTHENTICATED=true\n')
     cell.credentials.append(app_env)
     cell.create('application', application_id,
         ['--cpus','1','--memory','1g','--pids-limit','256','--user','82:82','--network',shared,

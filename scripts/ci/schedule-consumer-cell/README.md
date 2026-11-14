@@ -1,15 +1,17 @@
 This is the finite acceptance cell proposal for Waterline #222 / #310. Execution is held for independent review of the complete frozen runner, literal bootstrap and input packet. No workflow invokes it automatically. Frozen01 and earlier mutable preparation packets remain held and must not execute.
 
 The cleanup source successor records role, nonce and image before creation. Lost
-create output permits only deletion of one exact matching object, never a start.
-Foreign images, duplicate roles and replacements remain preserved as NONPASS.
+create output supplies no deletion authority: every matching object is preserved
+as NONPASS unless its exact full ID was retained from the create response.
+Discoverable labels and an image match cannot authorize starting or deleting an
+unreported object. Known other roles still receive independent cleanup.
 Its inert controls do not qualify a real Docker boundary or activate an old packet.
 
 The ten-subject stdin packet contains the captured candidate, loader, proxy, browser, browser libraries, Worker, all-wheel requirements, ownership helper, workspace guard and public CA. `runner.py` checks every byte/size/hash before Docker effects. The qualified native 3.10.0 tuple is literal and must match the packet. The candidate package is Git 4d89fcdd, distinct from the runner source: 184 regular Git leaves/7,247,164 bytes. Capture never executes working-tree code.
 
 `trusted_bootstrap.py` renders a literal first-code program from independently supplied reviewed identities. Freeze its exact rendered bytes/hash in the review and invocation. It reads the approved Git runner blob, verifies its independent SHA-256, captures no-follow runner/packet descriptors and rejects pre-open substitutions before compiling only retained Git bytes. It retains/rechecks input identities through execution. Never invoke a runner or bootstrap pathname as executable source. The runner’s callback guard only prevents accidental direct invocation; the independently fixed literal bootstrap supplies authority.
 
-`workspace.py` adapts the generic held-descriptor pattern from SDK Python321/377a; no qualification is inherited. Every ancestor, private directory, config/credential/evidence file remains bound to no-follow descriptors and checked identities. Config/credential Docker reads use held `/proc/<controller-pid>/fd` paths. Log/evidence writes are exclusive and descriptor-relative, with retained creation descriptors through final result emission. Known-ID cleanup uses an empty kernel FD configuration directory even after workspace refusal, preserving substituted paths/objects. The local Docker socket and clean controller environment are fixed.
+`workspace.py` adapts the generic held-descriptor pattern from SDK Python321/377a; no qualification is inherited. Every ancestor, private directory, config/evidence file remains bound to no-follow descriptors and checked identities. Host fixture credentials start in bounded, sealed anonymous memory files with no directory entry. Docker reads them through held `/proc/<controller-pid>/fd` paths; cleanup closes those exact descriptors and never unlinks a credential pathname. Named evidence and data remain retained. Log/evidence writes are exclusive and descriptor-relative, with retained creation descriptors through final result emission. Known-ID cleanup uses an empty kernel FD configuration directory even after workspace refusal, preserving substituted paths/objects. The local Docker socket and clean controller environment are fixed.
 
 The expected candidate input hash comes from the trusted runner’s literal inventory, inserted after PHP’s strict-types declaration and before input parsing. It is never supplied by candidate data. The one-time loader validates all members before writes into fresh fixed package/served-asset tmpfs roots. Files/directories are sealed root:82,0440/0550 before unprivileged UID82 application execution. No public permissions or writable host code/wrapper mounts exist. Code/assets, vendor and installed Python environment are checked afterward.
 

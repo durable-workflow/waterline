@@ -6,9 +6,12 @@ No source or execution qualification is inherited from that proposal.
 from __future__ import annotations
 
 import hashlib
+import fcntl
 import os
 import stat
 from pathlib import Path
+
+CREDENTIAL_SEALS = fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL
 
 NATIVE_PREFLIGHT = """set -eu
 test -d "$1" && test ! -L "$1" || exit 78
@@ -30,6 +33,7 @@ class Workspace:
         self.handles = []
         self.directories = []
         self.files = {}
+        self.credentials = {}
         if ".." in self.path.parts:
             raise ValueError("workspace path is not canonical")
         try:
@@ -61,6 +65,8 @@ class Workspace:
                 raise ValueError("held workspace directory was replaced")
         for item in self.files.values():
             self.check_file(item)
+        for item in self.credentials.values():
+            self.check_credential(item)
 
     def directory(self, name):
         self.check()
@@ -180,24 +186,52 @@ class Workspace:
         self.check()
         return item
 
-    def remove(self, item):
-        # Cleanup authority comes from the held parent/inode even if an outer
-        # pathname was renamed. A replacement entry is preserved.
-        self.check_file(item)
-        os.unlink(item["name"], dir_fd=item["parent"])
-        del self.files[(item["parent"], item["name"])]
+    def credential(self, data):
+        self.check()
+        data = data.encode() if isinstance(data, str) else data
+        if not isinstance(data, bytes) or not 0 < len(data) <= 8192:
+            raise ValueError("fixture credential exceeds its bound")
+        descriptor = os.memfd_create("waterline-schedule-fixture", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+        try:
+            os.fchmod(descriptor, 0o600)
+            remaining = memoryview(data)
+            while remaining:
+                written = os.write(descriptor, remaining)
+                if written <= 0:
+                    raise OSError("credential write did not advance")
+                remaining = remaining[written:]
+            fcntl.fcntl(descriptor, fcntl.F_ADD_SEALS, CREDENTIAL_SEALS)
+            item = {"fd": descriptor, "shape": shape(os.fstat(descriptor)),
+                    "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+            self.check_credential(item)
+            self.check()
+        except BaseException:
+            os.close(descriptor)
+            raise
+        self.handles.append(descriptor)
+        self.credentials[descriptor] = item
+        return item
 
-    def remove_database(self, directory):
-        self.check()
-        for name in os.listdir(directory):
-            item = self.files.get((directory, name))
-            if item is None:
-                item = self.capture(directory, name)
-            self.remove(item)
-        entry = next(value for value in self.directories if value[2] == directory)
-        self.check()
-        os.rmdir(entry[1], dir_fd=entry[0])
-        self.directories.remove(entry)
+    @staticmethod
+    def check_credential(item):
+        held = os.fstat(item["fd"])
+        if (shape(held) != item["shape"] or not stat.S_ISREG(held.st_mode)
+            or held.st_uid != os.getuid() or stat.S_IMODE(held.st_mode) != 0o600
+            or held.st_nlink != 0 or held.st_size != item["bytes"]
+            or fcntl.fcntl(item["fd"], fcntl.F_GET_SEALS) != CREDENTIAL_SEALS
+            or hashlib.sha256(os.pread(item["fd"], 8193, 0)).hexdigest() != item["sha256"]):
+            raise ValueError("held anonymous credential differs")
+
+    def remove(self, item):
+        # Releasing an anonymous held descriptor cannot unlink a replacement.
+        # Named evidence and data files are retained; they carry no delete API.
+        descriptor = item.get("fd")
+        if self.credentials.get(descriptor) is not item:
+            raise ValueError("only held anonymous credentials can be released")
+        self.check_credential(item)
+        os.close(descriptor)
+        self.handles.remove(descriptor)
+        del self.credentials[descriptor]
 
     def close(self):
         for descriptor in reversed(self.handles):
