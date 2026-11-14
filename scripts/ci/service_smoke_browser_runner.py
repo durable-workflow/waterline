@@ -13,6 +13,7 @@ from service_smoke_io import bounded_process
 from service_smoke_subjects import file_identity
 from waterline_release_identity import decode_json
 
+SELF_FD = "/proc/self/fd/"
 
 class NodeImage:
     def __init__(self, descriptor: int, expected_sha256: str):
@@ -44,7 +45,7 @@ class NodeImage:
     @property
     def path(self):
         self.check()
-        return "/proc/self/fd/" + str(self.descriptor)
+        return SELF_FD + str(self.descriptor)
 
     def check(self):
         if file_identity(os.fstat(self.descriptor)) != self.identity:
@@ -59,11 +60,11 @@ class NodeImage:
 def process_limits():
     available = sorted(os.sched_getaffinity(0))
     os.sched_setaffinity(0, set(available[:2]))
-    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    resource.setrlimit(resource.RLIMIT_CPU, (120, 120))
-    resource.setrlimit(resource.RLIMIT_NOFILE, (1024, 1024))
-    resource.setrlimit(resource.RLIMIT_NPROC, (512, 512))
-    resource.setrlimit(resource.RLIMIT_FSIZE, (64 * 1024 * 1024, 64 * 1024 * 1024))
+    for kind, ceiling in ((resource.RLIMIT_CORE, 0), (resource.RLIMIT_CPU, 120), (resource.RLIMIT_NOFILE, 1024),
+                           (resource.RLIMIT_NPROC, 512), (resource.RLIMIT_FSIZE, 64 * 1024 * 1024)):
+        inherited = [value for value in resource.getrlimit(kind) if value >= 0]
+        selected = min([ceiling, *inherited])
+        resource.setrlimit(kind, (selected, selected))
 
 
 def tooling_inventory(node: NodeImage, dependencies) -> dict:
@@ -119,8 +120,8 @@ class BrowserRunner:
         self.original, self.kind, self.source = original, kind, source
         self.tooling = tooling_inventory(node, dependencies)
         self.tooling["host_memory_bytes"] = hosted_memory_bound()
-        self.tooling["process_bounds"] = {"cpu_affinity_count": 2, "cpu_seconds": 120, "wall_seconds": 180,
-                                           "uid_process_limit": 512, "node_heap_mib": 2048, "file_bytes": 64 * 1024 * 1024}
+        self.tooling["process_bounds"] = {"cpu_affinity_ceiling": 2, "cpu_seconds": 120, "wall_seconds": 180,
+                                           "uid_process_ceiling": 512, "node_heap_mib": 2048, "file_bytes": 64 * 1024 * 1024}
 
     def __call__(self, phase, fixture, port, role_check):
         name, output_fd, temporary_fd = phase_output(self.outputs, phase)
@@ -137,8 +138,8 @@ class BrowserRunner:
 
         try:
             program = browser_program(self.original, kind=self.kind, source=self.source, phase=phase,
-                                      base="http://127.0.0.1:" + str(port), output="/proc/self/fd/" + str(output_fd),
-                                      dependency_root="/proc/self/fd/" + str(self.dependencies.descriptor))
+                                      base="http://127.0.0.1:" + str(port), output=SELF_FD + str(output_fd),
+                                      dependency_root=SELF_FD + str(self.dependencies.descriptor))
             result = rpc_process([self.node.path, "--max-old-space-size=2048", "--input-type=module", "--eval", program],
                                  fixture, guard, pass_fds=(self.node.descriptor, self.dependencies.descriptor, output_fd),
                                  temporary="/proc/" + str(os.getpid()) + "/fd/" + str(temporary_fd), limits=process_limits)

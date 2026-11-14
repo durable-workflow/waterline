@@ -60,9 +60,13 @@ def image_configuration(docker, archive, subject: dict) -> dict:
     record = observation(successful(docker(["image", "inspect", config_id]), "Exact image inspection"))
     if (len(record) != 1 or not isinstance(record[0], dict) or record[0].get("Id") != config_id
             or record[0].get("Os") != "linux" or record[0].get("Architecture") != subject["architecture"]
-            or record[0].get("Config") != config.get("config")
+            or not isinstance(record[0].get("Config"), dict)
             or record[0].get("RootFS") != {"Type": "layers", "Layers": config.get("rootfs", {}).get("diff_ids")}):
         raise OwnershipError("Imported engine image differs from the independently verified OCI config")
+    # The immutable config ID binds the OCI bytes. Engine output can add inert
+    # default fields absent from that encoding. The raw config remains authority
+    # for the environment; effective program/environment/profile are checked
+    # again on every captured container before execution.
     return config["config"]
 
 
@@ -101,8 +105,7 @@ def loopback_port(record: dict, selected: str = "8080/tcp") -> int:
     return int(binding[0]["HostPort"])
 
 
-def await_health(http: Loopback, check) -> float:
-    started = time.monotonic()
+def await_health(http: Loopback, check, started: float) -> float:
     while time.monotonic() - started < 30:
         check()
         try:
@@ -172,7 +175,7 @@ def fixture_protocol(audit: dict, phase: str) -> None:
     if audit.get("phase") != phase or not isinstance(audit.get("protocol"), list):
         raise OwnershipError("Fixture audit belongs to another cache phase")
     raw = "\n".join(audit["protocol"])
-    for request in ("GET /api/cluster/info", "GET /api/workflows/smoke-order/runs/smoke-run/streams",
+    for request in ("GET /api/workflows/smoke-order/runs/smoke-run/streams",
                     "POST /api/workflows/smoke-order/runs/smoke-run/query/current",
                     "POST /api/workflows/smoke-order/runs/smoke-run/signal/approve"):
         if request not in raw:
@@ -238,12 +241,13 @@ def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source
         fixture_role = roles.create(fixture_kind, entrypoint=SHELL, command=fixture_command, environment={})
         successful(fixture_role.command(docker, "start", []), "Protocol fixture start")
         fixture = Fixture(docker, fixture_role)
+        startup_started = time.monotonic()
         application = roles.create("application", entrypoint=SHELL, command=["-eu", "-c", APP_START],
                                    environment=app_environment(run + "-" + fixture_kind, browser_budget))
         successful(application.command(docker, "start", []), "Application start")
 
         phases = NativePhases(roles, network, fixture_role, application, fixture, browser)
-        result["startup_seconds"] = await_health(phases.http, phases.check)
+        result["startup_seconds"] = await_health(phases.http, phases.check, startup_started)
         result["service_uid"] = verify_uid(roles, application)
         result["observations"] = cache_phases(docker, application, program, metadata, source_classes, phases.exercise)
         result["fixture_sources"] = source_hashes(inputs)

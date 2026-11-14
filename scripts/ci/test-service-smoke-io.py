@@ -102,6 +102,16 @@ class AnonymousConfigTest(unittest.TestCase):
             os.open("config.json", os.O_CREAT | os.O_WRONLY, 0o600, dir_fd=config.descriptor)
         config.check()
 
+    def test_absolute_marker_child_has_only_kernel_home_config_and_helper_path(self):
+        config = self.config()
+        program = "import json,os; print(json.dumps({key:os.environ[key] for key in ('PATH','HOME','DOCKER_CONFIG','XDG_CONFIG_HOME')}))"
+        result = smoke.bounded_process([sys.executable, "-I", "-c", program],
+                                       pass_fds=(config.descriptor,), kernel_directory=config.descriptor)
+        self.assertEqual(0, result.returncode)
+        self.assertEqual({key: config.path for key in ("PATH", "HOME", "DOCKER_CONFIG", "XDG_CONFIG_HOME")}, json.loads(result.stdout))
+        with self.assertRaises(smoke.TransportError):
+            smoke.child_environment(config.descriptor, ())
+
     def test_path_predecessor_reads_replacement_while_held_config_preserves_it(self):
         config = self.config()
         original = os.readlink(config.path)
@@ -159,6 +169,34 @@ class AnonymousConfigTest(unittest.TestCase):
             for arguments in variants:
                 with self.subTest(arguments=arguments), self.assertRaises(smoke.TransportError):
                     docker.cleanup(arguments)
+            command.assert_not_called()
+
+    def test_cancelled_scope_refuses_ordinary_operations_but_allows_id_cleanup(self):
+        def cancelled():
+            raise InterruptedError("synthetic cancellation")
+        docker = smoke.Docker(self.parent, scope_check=cancelled)
+        self.addCleanup(docker.close)
+        returned = subprocess.CompletedProcess([], 0, b"[]", b"")
+        with patch.object(smoke, "bounded_process", return_value=returned) as command:
+            with self.assertRaises(InterruptedError):
+                docker(["inspect", "a" * 64])
+            command.assert_not_called()
+            docker.cleanup(["inspect", "a" * 64])
+            self.assertEqual(1, command.call_count)
+
+    def test_acquisition_has_one_closed_index_platform_and_its_own_finite_bound(self):
+        docker = smoke.Docker(self.parent)
+        self.addCleanup(docker.close)
+        returned = subprocess.CompletedProcess([], 0, b"synthetic acquisition output", b"")
+        with patch.object(smoke, "execute_bounded", return_value=returned) as command:
+            docker.acquire("docker.io/durableworkflow/waterline@sha256:" + "a" * 64, "linux/amd64")
+            self.assertEqual(180, command.call_args.kwargs["timeout"])
+            self.assertEqual((docker.config.descriptor,), command.call_args.kwargs["pass_fds"])
+            command.reset_mock()
+            for image, platform in (("foreign/image:tag", "linux/amd64"), ("docker.io/durableworkflow/waterline:latest", "linux/amd64"),
+                                    ("docker.io/durableworkflow/waterline@sha256:" + "a" * 64, "emulated")):
+                with self.subTest(image=image, platform=platform), self.assertRaises(smoke.TransportError):
+                    docker.acquire(image, platform)
             command.assert_not_called()
 
     def test_cleanup_listing_requires_the_exact_owner_run_role_filter_set(self):

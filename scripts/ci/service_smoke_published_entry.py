@@ -21,8 +21,8 @@ from service_smoke_subjects import GitInputs
 
 
 FIELDS = {"index_digest", "architecture", "source", "source_tree", "runner_commit", "runner_tree",
-          "publisher_commit", "producer_run_id", "producer_run_attempt", "run_id", "run_attempt"}
-DOCS = {"index": "index.json", "child": "child.json", "config": "config.json", "attestation": "attestation.json"}
+          "publisher_commit", "verification_run_id", "verification_run_attempt", "run_id", "run_attempt"}
+DOCS = {"index": "index.json", "child": "child.json", "engine": "engine-image.json", "attestation": "attestation.json"}
 
 
 def selected_context(value: dict):
@@ -31,7 +31,7 @@ def selected_context(value: dict):
     for key in ("source", "source_tree", "runner_commit", "runner_tree", "publisher_commit"):
         if not isinstance(value[key], str) or re.fullmatch(r"[a-f\d]{40}", value[key], re.ASCII) is None:
             raise EntryError("Invalid published immutable source identity")
-    for key in ("producer_run_id", "producer_run_attempt", "run_id", "run_attempt"):
+    for key in ("verification_run_id", "verification_run_attempt", "run_id", "run_attempt"):
         if type(value[key]) is not int or value[key] <= 0:
             raise EntryError("Invalid exact producer/acceptance run identity")
     if (value["architecture"] not in {"amd64", "arm64"} or not isinstance(value["index_digest"], str)
@@ -48,11 +48,11 @@ def child_root(outputs, kind: str, root_type):
 
 
 def published_lane(*, kind: str, selected: dict, subject, source, runner, inputs, outputs,
-                   dependencies, node: NodeImage, context_ready) -> dict:
+                   dependencies, node: NodeImage, context_ready, started=None, scope_check=None) -> dict:
     nonce = "waterline-service-" + uuid.uuid4().hex
     context_ready(kind, cleanup_context(nonce, subject.subject["config_digest"], selected["architecture"]))
     journal = Journal(outputs, {"run": nonce, "image": subject.subject["config_digest"], "selected": selected})
-    docker = Docker(outputs.path)
+    docker = Docker(outputs.path, started=started, scope_check=scope_check)
     try:
         original = runner.read("scripts/ci/" + ("request-budget-browser.mjs" if kind == "primary" else "request-budget-auto.mjs"))
         browser = BrowserRunner(node=node, dependencies=dependencies, outputs=outputs, original=original,
@@ -82,7 +82,8 @@ def published_lane(*, kind: str, selected: dict, subject, source, runner, inputs
 
 
 def run_published(selected: dict, *, repository, inputs, outputs, dependencies, node_descriptor: int,
-                  node_sha256: str, root_type, context_ready, producer_gate_succeeded: bool) -> dict:
+                  node_sha256: str, root_type, context_ready, producer_gate_succeeded: bool,
+                  started=None, scope_check=None) -> dict:
     selected_context(selected)
     # The value comes from the existing completed job dependency in the trusted
     # literal invocation, never from an application or retained data report.
@@ -93,8 +94,8 @@ def run_published(selected: dict, *, repository, inputs, outputs, dependencies, 
               "started_at": timestamp(), "lanes": {}, "status": "nonpass"}
     try:
         captured = {key: inputs.read(path) for key, path in DOCS.items()}
-        subject = PublishedInputs(index_digest=selected["index_digest"], architecture=selected["architecture"],
-                                  source=selected["source"], **captured)
+        subject = PublishedInputs.from_engine(index_digest=selected["index_digest"], architecture=selected["architecture"],
+                                              source=selected["source"], **captured)
         source = GitInputs(repository, selected["source"])
         runner = GitInputs(repository, selected["runner_commit"])
         if source.tree != selected["source_tree"] or runner.tree != selected["runner_tree"]:
@@ -106,7 +107,7 @@ def run_published(selected: dict, *, repository, inputs, outputs, dependencies, 
             try:
                 result = published_lane(kind=kind, selected=selected, subject=subject, source=source, runner=runner,
                                         inputs=inputs, outputs=lane_root, dependencies=dependencies,
-                                        node=node, context_ready=context_ready)
+                                        node=node, context_ready=context_ready, started=started, scope_check=scope_check)
                 report["lanes"][kind] = result
             finally:
                 lane_root.close()

@@ -125,6 +125,15 @@ class ObservationTest(unittest.TestCase):
         self.assertEqual(self.installed_sha, metadata.installed_sha256)
         self.assertEqual(79, len(json.loads(metadata.installed)["packages"]))
 
+    def test_sdk_provenance_comes_from_the_actual_captured_installed_metadata(self):
+        report = self.verified().report
+        observed = observation.installed_sdk(report)
+        self.assertEqual("3.16.0", observed["sdk"])
+        self.assertEqual("00a531e688ccbcaf4ce59a662cdbcd03dd49ee4c", observed["sdk_source"])
+        report["installed_base64"] = base64.b64encode(b'{"unselected":true}').decode()
+        with self.assertRaises(observation.ObservationError):
+            observation.installed_sdk(report)
+
     def test_program_or_source_lock_swap_refuses_before_transport(self):
         for program, lock in ((self.program[:-1], self.lock), (self.program, self.lock + b"\n")):
             role = InertRole("metadata", [self.metadata_report()])

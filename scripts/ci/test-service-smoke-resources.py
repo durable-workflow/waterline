@@ -186,6 +186,15 @@ class CapturedContainerTest(unittest.TestCase):
                 self.record.remove(docker)
                 self.assertIn(FOREIGN_ID, docker.containers)
 
+    def test_disabled_inherited_health_timings_never_enable_image_execution(self):
+        self.docker.owned["Config"]["Healthcheck"] = {"Test": ["NONE"], "Interval": 5_000_000_000,
+                                                     "Timeout": 2_000_000_000, "StartPeriod": 5_000_000_000, "Retries": 5}
+        resources.validate_profile(self.docker.owned, "application", NETWORK)
+        self.docker.owned["Config"]["Healthcheck"]["Test"] = ["CMD", "unselected-program"]
+        with self.assertRaises(resources.OwnershipError):
+            self.record.command(self.docker, "start", [])
+        self.assertFalse(any(call[0] == "start" for call in self.docker.calls))
+
     def test_host_mount_and_published_port_escapes_refuse(self):
         variants = [
             ("Mounts", [{"Type": "bind", "Source": "/host", "Destination": "/app"}]),

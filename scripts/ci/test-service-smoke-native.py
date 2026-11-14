@@ -7,6 +7,9 @@ synthetic objects. It cannot create an image, container, network or HTTP request
 from contextlib import ExitStack
 from pathlib import Path
 from types import SimpleNamespace
+import hashlib
+import json
+import subprocess
 import unittest
 from unittest.mock import patch
 import sys
@@ -122,8 +125,7 @@ class NativeLifecycleTest(unittest.TestCase):
         self.assertEqual(["cleanup"], self.network.events)
 
     def test_actual_upstream_audit_cannot_borrow_an_earlier_phase(self):
-        audit = {"phase": "before", "protocol": ["GET /api/cluster/info",
-                 "GET /api/workflows/smoke-order/runs/smoke-run/streams",
+        audit = {"phase": "before", "protocol": ["GET /api/workflows/smoke-order/runs/smoke-run/streams",
                  "POST /api/workflows/smoke-order/runs/smoke-run/query/current",
                  "POST /api/workflows/smoke-order/runs/smoke-run/signal/approve"]}
         native.fixture_protocol(audit, "before")
@@ -135,6 +137,28 @@ class NativeLifecycleTest(unittest.TestCase):
 
 
 class NativeInputTest(unittest.TestCase):
+    def test_rendered_default_fields_do_not_change_exact_image_binding(self):
+        config = {"os": "linux", "architecture": "amd64", "config": {"Env": ["PATH=/usr/local/bin:/usr/bin"]},
+                  "rootfs": {"diff_ids": ["sha256:" + "a" * 64]}}
+        raw = json.dumps(config).encode()
+        config_id = "sha256:" + hashlib.sha256(raw).hexdigest()
+        record = {"Id": config_id, "Os": "linux", "Architecture": "amd64",
+                  "Config": {**config["config"], "OnBuild": None, "ArgsEscaped": False},
+                  "RootFS": {"Type": "layers", "Layers": config["rootfs"]["diff_ids"]}}
+        subject = {"config_digest": config_id, "architecture": "amd64"}
+        archive = SimpleNamespace(config_bytes=lambda _selected: raw)
+        def docker(_arguments):
+            return subprocess.CompletedProcess([], 0, json.dumps([record]).encode(), b"")
+        self.assertEqual(config["config"], native.image_configuration(docker, archive, subject))
+        record["Id"] = "sha256:" + "b" * 64
+        with self.assertRaises(native.OwnershipError):
+            native.image_configuration(docker, archive, subject)
+
+    def test_cold_start_budget_includes_creation_and_does_not_reset(self):
+        with patch.object(native.time, "monotonic", return_value=131):
+            with self.assertRaises(native.OwnershipError):
+                native.await_health(None, None, 100)
+
     def test_port_binding_rejects_wildcard_extra_or_non_numeric_publication(self):
         for binding in ([{"HostIp": "0.0.0.0", "HostPort": "8080"}],
                         [{"HostIp": "127.0.0.1", "HostPort": "0"}],

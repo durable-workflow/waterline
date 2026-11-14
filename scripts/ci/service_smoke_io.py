@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import math
+import re
 from pathlib import Path
 import selectors
 import signal
@@ -88,14 +90,32 @@ def kill_group(process) -> None:
 
 def bounded_process(command: list[str], *, data: bytes = b"", timeout: float = 30,
                     stdout_limit: int = 1024 * 1024, stderr_limit: int = 65536,
-                    pass_fds: tuple[int, ...] = ()) -> subprocess.CompletedProcess:
+                    pass_fds: tuple[int, ...] = (), kernel_directory: int | None = None) -> subprocess.CompletedProcess:
     validate_command_bounds(command, data, timeout, stdout_limit, stderr_limit)
+    return execute_bounded(command, data=data, timeout=timeout, stdout_limit=stdout_limit,
+                           stderr_limit=stderr_limit, pass_fds=pass_fds, kernel_directory=kernel_directory)
+
+
+def child_environment(kernel_directory: int | None, pass_fds: tuple[int, ...]) -> dict:
+    result = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8",
+              "GIT_NO_LAZY_FETCH": "1", "GIT_NO_REPLACE_OBJECTS": "1",
+              "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+    if kernel_directory is not None:
+        state = os.fstat(kernel_directory)
+        if (kernel_directory not in pass_fds or not stat.S_ISDIR(state.st_mode) or state.st_nlink != 0
+                or state.st_uid != os.getuid() or stat.S_IMODE(state.st_mode) != 0o700 or os.listdir(kernel_directory)):
+            raise TransportError("Helper namespace must be the retained empty kernel directory")
+        path = "/proc/self/fd/" + str(kernel_directory)
+        result |= {"PATH": path, "HOME": path, "DOCKER_CONFIG": path, "XDG_CONFIG_HOME": path}
+    return result
+
+
+def execute_bounded(command: list[str], *, data: bytes, timeout: float,
+                    stdout_limit: int, stderr_limit: int, pass_fds: tuple[int, ...], kernel_directory: int | None = None):
     process = subprocess.Popen(
         command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         start_new_session=True, pass_fds=pass_fds,
-        env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8",
-             "GIT_NO_LAZY_FETCH": "1", "GIT_NO_REPLACE_OBJECTS": "1",
-             "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"},
+        env=child_environment(kernel_directory, pass_fds),
     )
     buffers = {process.stdout: bytearray(), process.stderr: bytearray()}
     limits = {process.stdout: stdout_limit, process.stderr: stderr_limit}
@@ -186,12 +206,18 @@ class AnonymousConfig:
 class Docker:
     """Finite local Docker transport; this class creates no container itself."""
 
-    def __init__(self, parent: Path):
+    def __init__(self, parent: Path, *, started: float | None = None, scope_check=None):
+        now = time.monotonic()
+        if started is not None and (type(started) not in (int, float) or not math.isfinite(started) or not 0 <= now - started <= 600):
+            raise TransportError("Invalid shared ordinary workload deadline")
         self.config = AnonymousConfig(parent)
-        self.started = time.monotonic()
+        self.started = now if started is None else started
         self.cleanup_started = None
+        self.scope_check = scope_check
 
     def __call__(self, arguments: list[str], *, data: bytes = b"") -> subprocess.CompletedProcess:
+        if self.scope_check is not None:
+            self.scope_check()
         remaining = 600 - (time.monotonic() - self.started)
         if remaining <= 0:
             raise TransportError("Ordinary smoke total deadline exceeded")
@@ -202,7 +228,27 @@ class Docker:
         result = bounded_process(
             ["/usr/bin/docker", "--host", "unix:///var/run/docker.sock", "--config", self.config.path,
              *arguments], data=data, timeout=timeout, pass_fds=(self.config.descriptor,),
+            kernel_directory=self.config.descriptor,
         )
+        self.config.check()
+        return result
+
+    def acquire(self, image: str, platform: str) -> subprocess.CompletedProcess:
+        if self.scope_check is not None:
+            self.scope_check()
+        if (not isinstance(image, str)
+                or re.fullmatch(r"docker\.io/durableworkflow/waterline@sha256:[a-f\d]{64}", image, re.ASCII) is None
+                or platform not in {"linux/amd64", "linux/arm64"}):
+            raise TransportError("Acquisition accepts only the selected public Waterline index/platform")
+        remaining = 600 - (time.monotonic() - self.started)
+        if remaining <= 0:
+            raise TransportError("Ordinary smoke total deadline exceeded")
+        self.config.check()
+        command = ["/usr/bin/docker", "--host", "unix:///var/run/docker.sock", "--config", self.config.path,
+                   "pull", "--platform", platform, image]
+        validate_command_bounds(command, b"", min(remaining, 30), 1024 * 1024, 65536)
+        result = execute_bounded(command, data=b"", timeout=min(remaining, 180), stdout_limit=1024 * 1024,
+                                 stderr_limit=65536, pass_fds=(self.config.descriptor,), kernel_directory=self.config.descriptor)
         self.config.check()
         return result
 

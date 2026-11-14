@@ -171,6 +171,15 @@ def verify_metadata(docker: Callable, role: Container, program: bytes, source_lo
     return Metadata(role.run, role.image, role.identifier, lock, installed, digest(installed), report)
 
 
+def installed_sdk(report: dict) -> dict:
+    installed = identity.decode_json(raw_metadata(report, "installed"), "actual installed metadata")
+    graph = identity.production_graph(installed.get("packages"))
+    sdk = graph.get(identity.SDK_PACKAGE)
+    if sdk is None:
+        raise ObservationError("Verified installed graph has no SDK identity")
+    return {"sdk": sdk["version"], "sdk_source": sdk["source_reference"]}
+
+
 def verify_classes(value: object, source_classes: dict[str, str]) -> dict:
     if not isinstance(value, dict) or set(value) != set(CLASSES):
         raise ObservationError("Canonical runtime classes are missing or extra")

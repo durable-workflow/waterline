@@ -74,7 +74,7 @@ def validate_profile(record: dict, role: str, network: str | None) -> None:
         "RestartPolicy": {"Name": "no", "MaximumRetryCount": 0},
         "LogConfig": {"Type": "json-file", "Config": {"max-size": "1m", "max-file": "1"}},
     }
-    if (config.get("User") != expected["user"] or config.get("Healthcheck") != {"Test": ["NONE"]}
+    if (config.get("User") != expected["user"] or not disabled_healthcheck(config.get("Healthcheck"))
             or any(host.get(k) != v for k, v in required.items())):
         raise OwnershipError("Effective container profile differs from selected bounds")
     if host.get("Mounts") or host.get("Devices") or host.get("DeviceRequests"):
@@ -84,6 +84,13 @@ def validate_profile(record: dict, role: str, network: str | None) -> None:
         raise OwnershipError("Missing selected private temporary directory")
     validate_mounts(record.get("Mounts"), expected["tmpfs"])
     validate_ports(host.get("PortBindings") or {}, role)
+
+
+def disabled_healthcheck(value: object) -> bool:
+    if not isinstance(value, dict) or value.get("Test") != ["NONE"]:
+        return False
+    timing = {"Interval", "Timeout", "StartPeriod", "StartInterval", "Retries"}
+    return set(value) <= timing | {"Test"} and all(type(value[key]) is int and value[key] >= 0 for key in value.keys() & timing)
 
 
 def validate_mounts(mounts: object, selected: dict) -> None:

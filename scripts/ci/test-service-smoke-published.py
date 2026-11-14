@@ -67,6 +67,27 @@ class PublishedInputTest(unittest.TestCase):
             with self.subTest(raw=raw[:30]), self.assertRaises(RuntimeError):
                 published.document(raw, selected)
 
+    def test_engine_observation_binds_config_id_without_claiming_original_encoding(self):
+        raw = inputs()
+        original = json.loads(raw.pop("config"))
+        selected_config = json.loads(raw["child"])["config"]["digest"]
+        observation = [{"Id": selected_config, "Architecture": "amd64", "Os": "linux", "Config": original["config"],
+                        "RootFS": {"Type": "layers", "Layers": ["sha256:" + "1" * 64]}}]
+        engine = encode(observation)
+        held = published.PublishedInputs.from_engine(**raw, engine=engine)
+        self.assertEqual(selected_config, held.subject["config_digest"])
+        self.assertEqual(published.digest(engine), held.subject["config_observation_sha256"])
+        self.assertNotEqual(selected_config, published.digest(held.config_bytes(selected_config)))
+        observation[0]["Id"] = "sha256:" + "2" * 64
+        with self.assertRaises(published.PublishedError):
+            published.PublishedInputs.from_engine(**raw, engine=encode(observation))
+
+    def test_mutating_selected_subject_cannot_change_image_authority(self):
+        held = published.PublishedInputs(**inputs())
+        held.subject["config_digest"] = "sha256:" + "0" * 64
+        with self.assertRaises(published.PublishedError):
+            held.verify_unchanged()
+
 
 if __name__ == "__main__":
     unittest.main()

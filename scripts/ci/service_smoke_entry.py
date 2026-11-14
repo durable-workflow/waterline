@@ -19,6 +19,7 @@ import oci_release
 from service_smoke_io import Docker
 from service_smoke_cleanup import context as cleanup_context
 from service_smoke_native import exercise_native
+from service_smoke_observation import installed_sdk
 from service_smoke_resources import ROLES, exact_id
 from service_smoke_subjects import GitInputs, HeldArchive, file_identity
 from waterline_release_identity import decode_json
@@ -121,7 +122,8 @@ def probe_source(raw: bytes) -> bytes:
     return raw.split(begin, 1)[1].split(end, 1)[0]
 
 
-def run_native(selected: dict, *, repository: Path, inputs, outputs, frozen_document, context_ready) -> dict:
+def run_native(selected: dict, *, repository: Path, inputs, outputs, frozen_document, context_ready,
+               started=None, scope_check=None) -> dict:
     check_selection(selected)
     source = runner = archive = docker = journal = None
     report = {"schema": "waterline.ordinary-native-acceptance/v1", "selected": dict(selected), "started_at": timestamp()}
@@ -153,7 +155,7 @@ def run_native(selected: dict, *, repository: Path, inputs, outputs, frozen_docu
         report["run"] = nonce
         context_ready(cleanup_context(nonce, subject["config_digest"], selected["architecture"]))
         journal = Journal(outputs, {"run": nonce, "image": subject["config_digest"], "selected": selected})
-        docker = Docker(outputs.path)
+        docker = Docker(outputs.path, started=started, scope_check=scope_check)
 
         def guarded(arguments, **kwargs):
             inputs.check()
@@ -171,6 +173,8 @@ def run_native(selected: dict, *, repository: Path, inputs, outputs, frozen_docu
         report["subject"] = subject
         report["result"] = exercise_native(guarded, docker.cleanup, run=nonce, archive=archive, subject=subject,
                                            source=source, program=program, checkpoint=journal.checkpoint)
+        if report["result"]["status"] == "pass":
+            report["sdk"] = installed_sdk(report["result"]["metadata"])
         report["status"] = report["result"]["status"]
     except Exception as error:
         report["status"] = "nonpass"

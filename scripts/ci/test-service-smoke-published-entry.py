@@ -16,7 +16,7 @@ class PublishedEntryTest(unittest.TestCase):
     def selected(self):
         return {"index_digest": "sha256:" + "a" * 64, "architecture": "amd64", "source": "b" * 40,
                 "source_tree": "c" * 40, "runner_commit": "d" * 40, "runner_tree": "e" * 40,
-                "publisher_commit": "f" * 40, "producer_run_id": 1, "producer_run_attempt": 1, "run_id": 2, "run_attempt": 1}
+                "publisher_commit": "f" * 40, "verification_run_id": 2, "verification_run_attempt": 1, "run_id": 2, "run_attempt": 1}
 
     def test_missing_producer_or_runner_subject_cannot_select_a_lane(self):
         entry.selected_context(self.selected())
