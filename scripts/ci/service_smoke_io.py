@@ -17,6 +17,8 @@ import uuid
 
 from service_smoke_resources import role_listing_arguments
 
+DOCKER_BINARY = "/usr/bin/docker"
+DOCKER_ENDPOINT = "unix:///var/run/docker.sock"
 DEADLINE_EXCEEDED = "Command deadline exceeded"
 TOTAL_DEADLINE_EXCEEDED = "Ordinary smoke total deadline exceeded"
 
@@ -313,7 +315,7 @@ class Docker:
     def _command(self, arguments: list[str], *, data: bytes = b"", timeout: float) -> subprocess.CompletedProcess:
         self.config.check()
         result = bounded_process(
-            ["/usr/bin/docker", "--host", "unix:///var/run/docker.sock", "--config", self.config.path,
+            [DOCKER_BINARY, "--host", DOCKER_ENDPOINT, "--config", self.config.path,
              *arguments], data=data, timeout=timeout, pass_fds=(self.config.descriptor,),
             kernel_directory=self.config.descriptor,
         )
@@ -337,7 +339,7 @@ class Docker:
         try:
             self.config.check()
             state.check()
-            command = ["/usr/bin/docker", "--host", "unix:///var/run/docker.sock", "--config", self.config.path,
+            command = [DOCKER_BINARY, "--host", DOCKER_ENDPOINT, "--config", self.config.path,
                        "buildx", "imagetools", "inspect", "--raw", image]
             result = bounded_process(command, timeout=min(30, remaining),
                                      pass_fds=(self.config.descriptor, state.descriptor),
@@ -368,7 +370,7 @@ class Docker:
         if remaining <= 0:
             raise TransportError(TOTAL_DEADLINE_EXCEEDED)
         self.config.check()
-        command = ["/usr/bin/docker", "--host", "unix:///var/run/docker.sock", "--config", self.config.path,
+        command = [DOCKER_BINARY, "--host", DOCKER_ENDPOINT, "--config", self.config.path,
                    "pull", "--platform", platform, image]
         validate_command_bounds(command, b"", min(remaining, 30), 1024 * 1024, 65536)
         result = execute_bounded(command, data=b"", timeout=min(remaining, 180), stdout_limit=1024 * 1024,
