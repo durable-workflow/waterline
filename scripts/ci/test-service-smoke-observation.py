@@ -101,6 +101,8 @@ class ObservationTest(unittest.TestCase):
         for mode, present in [("clear-before", False), ("inventory", False), ("cache-build", True),
                               ("inventory", True), ("clear-after", False), ("inventory", False)]:
             report = {**self.base(mode), "classes": copy.deepcopy(self.classes), "cache": self.cache(present)}
+            report["ini_after"]["include_path"] = ":".join(
+                (*observation.COMPOSER_INCLUDE_PATHS, observation.INITIAL_INCLUDE_PATH))
             report.update({"routes": copy.deepcopy(self.routes)} if mode == "inventory" else {
                 "command": "route:cache" if mode == "cache-build" else "route:clear", "exit_status": 0,
             })
@@ -293,6 +295,46 @@ class ObservationTest(unittest.TestCase):
         self.assertTrue(all(call["data"] == self.program and call["arguments"][-1] == self.installed_sha for call in role.commands))
         self.assertEqual([("before", role.identifier), ("cached", role.identifier), ("cleared", role.identifier)], self.exercised)
         self.assertEqual({"outcome": "matched", "route_count": 1}, result["route_comparison"])
+
+    def test_autoload_include_paths_match_only_the_sealed_lock_declarations(self):
+        declared = tuple("/app/vendor/" + package["name"]
+                         for package in json.loads(self.lock)["packages"] if package.get("include-path"))
+        self.assertEqual(observation.COMPOSER_INCLUDE_PATHS, declared)
+        self.assertEqual([["./"], ["."]], [package["include-path"]
+                         for package in json.loads(self.lock)["packages"] if package.get("include-path")])
+        self.phases()
+        self.assertEqual(["before", "cached", "cleared"], [phase for phase, _identifier in self.exercised])
+
+    def test_missing_foreign_reordered_or_duplicate_autoload_paths_refuse_before_http(self):
+        paths = observation.COMPOSER_INCLUDE_PATHS
+        variants = [observation.INITIAL_INCLUDE_PATH,
+                    ":".join((*reversed(paths), observation.INITIAL_INCLUDE_PATH)),
+                    ":".join((*paths, paths[0], observation.INITIAL_INCLUDE_PATH)),
+                    ":".join((*paths, "/unselected/private-input", observation.INITIAL_INCLUDE_PATH)),
+                    ":".join((*paths, "/unselected/tail")),
+                    ":".join((paths[0] + "/../foreign", paths[1], observation.INITIAL_INCLUDE_PATH))]
+        for value in variants:
+            reports = self.phase_reports()
+            reports[0]["ini_after"]["include_path"] = value
+            with self.subTest(value=value), self.assertRaises(observation.ObservationError):
+                self.phases(reports)
+            self.assertEqual([], self.exercised)
+
+    def test_other_ini_changes_and_metadata_autoload_remain_refusals(self):
+        for key in sorted(observation.INI_KEYS - {"include_path"}):
+            reports = self.phase_reports()
+            reports[0]["ini_after"][key] = "unselected-private-value"
+            with self.subTest(key=key), self.assertRaises(observation.ObservationError) as error:
+                self.phases(reports)
+            self.assertIn(key, str(error.exception))
+            self.assertNotIn("unselected-private-value", str(error.exception))
+            self.assertEqual([], self.exercised)
+        report = self.metadata_report()
+        report["ini_after"]["include_path"] = ":".join(
+            (*observation.COMPOSER_INCLUDE_PATHS, observation.INITIAL_INCLUDE_PATH))
+        role = InertRole("metadata", [report])
+        with self.assertRaises(observation.ObservationError):
+            observation.verify_metadata(None, role, self.program, self.lock)
 
     def test_cross_image_or_run_and_missing_source_authority_refuse_before_command(self):
         metadata = self.verified()
