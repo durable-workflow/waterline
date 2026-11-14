@@ -2,6 +2,7 @@ import Dashboard from './screens/dashboard.vue';
 import Workers from './screens/workers.vue';
 import Schedules from './screens/schedules.vue';
 import Services from './screens/services.vue';
+import VersionUsage from './screens/version-usage.vue';
 import Flow from './screens/flows/flow.vue';
 import Flows from './screens/flows/index.vue';
 
@@ -30,6 +31,12 @@ export default [
         path: '/services',
         name: 'services',
         component: Services,
+    },
+
+    {
+        path: '/version-usage',
+        name: 'version-usage',
+        component: VersionUsage,
     },
 
     {

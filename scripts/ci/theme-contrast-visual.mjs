@@ -108,7 +108,7 @@ async function settle(page) {
 }
 
 // Runs in the page. Returns every visible text target of each category.
-function auditContrast(categories) {
+export function auditContrast(categories) {
     // Computed colours serialize as rgb()/rgba(), or color(srgb ...) after color-mix().
     const parse = (value) => {
         const wrapper = value.match(/^(rgba?|color)\((.*)\)$/);
@@ -134,7 +134,9 @@ function auditContrast(categories) {
     const luminance = (c) => 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
     const contrast = (a, b) => (Math.max(luminance(a), luminance(b)) + 0.05) / (Math.min(luminance(a), luminance(b)) + 0.05);
     const hex = (c) => `#${[c.r, c.g, c.b].map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('')}`;
-    const ownText = (element) => [...element.childNodes].filter((node) => node.nodeType === 3).map((node) => node.nodeValue).join('').replace(/\s+/g, ' ').trim();
+    // Measure native form controls without recording their entered values.
+    const control = (element) => element.matches('input, textarea, select');
+    const ownText = (element) => control(element) ? '[control]' : [...element.childNodes].filter((node) => node.nodeType === 3).map((node) => node.nodeValue).join('').replace(/\s+/g, ' ').trim();
     const hasTextBox = (node) => {
         if (node.nodeType !== 3 || !node.nodeValue.trim()) return false;
         const range = document.createRange();
@@ -145,6 +147,10 @@ function auditContrast(categories) {
         for (let node = element; node; node = node.parentElement) {
             const style = getComputedStyle(node);
             if (style.display === 'none' || style.visibility !== 'visible' || Number(style.opacity) === 0 || node.classList.contains('sr-only')) return false;
+        }
+        if (control(element)) {
+            const rect = element.getBoundingClientRect();
+            return rect.width > 1 && rect.height > 1;
         }
         return [...element.childNodes].some(hasTextBox);
     };
