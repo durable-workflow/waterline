@@ -31,21 +31,26 @@ final class ScheduleDispatchSummary
             return $unavailable;
         }
 
+        if ($value['state'] === 'never') {
+            return $value['last_outcome'] === null && $value['buffered_actions_count'] === 0 ? $value : $unavailable;
+        }
+
+        return self::knownObservation($value) ? $value : $unavailable;
+    }
+
+    private static function knownObservation(array $value): bool
+    {
         $count = $value['buffered_actions_count'];
         $outcome = $value['last_outcome'];
 
-        if ($value['state'] === 'never') {
-            return $outcome === null && $count === 0 ? $value : $unavailable;
-        }
-
         if ($value['state'] !== 'known' || ! is_int($count) || $count < 0
             || $count > self::MAX_COUNT || ! self::outcome($outcome)) {
-            return $unavailable;
+            return false;
         }
 
         $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
-        return is_string($encoded) && strlen($encoded) <= 4096 ? $value : $unavailable;
+        return is_string($encoded) && strlen($encoded) <= 4096;
     }
 
     private static function fields(mixed $value, array $fields): bool
@@ -69,10 +74,12 @@ final class ScheduleDispatchSummary
                 && self::ulid($value['workflow_run_id']);
         }
 
-        if ($value['workflow_instance_id'] !== null || $value['workflow_run_id'] !== null) {
-            return false;
-        }
+        return $value['workflow_instance_id'] === null && $value['workflow_run_id'] === null
+            && self::outcomeWithoutRun($value);
+    }
 
+    private static function outcomeWithoutRun(array $value): bool
+    {
         if ($value['outcome'] === 'buffered') {
             return $value['reason'] === null;
         }

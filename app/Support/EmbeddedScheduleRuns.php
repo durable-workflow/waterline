@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Waterline\Support;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Workflow\V2\Models\WorkflowSchedule;
 
@@ -47,16 +48,26 @@ final class EmbeddedScheduleRuns
             ->get(['id', 'namespace', 'workflow_instance_id', 'status']);
         $observations = [];
         foreach ($schedules as $schedule) {
-            $instance = $matched[spl_object_id($schedule)];
-            $run = $instance === null ? null : $runs->first(static fn ($run): bool =>
-                $run->getRawOriginal('id') === $instance->getRawOriginal('current_run_id')
-                && $run->getRawOriginal('workflow_instance_id') === $instance->getRawOriginal('id')
-                && $run->getRawOriginal('namespace') === $schedule->getRawOriginal('namespace'));
-            $observations[spl_object_id($schedule)] = ['current_run' => $run === null ? null : ScheduleCurrentRun::fromStatus(
-                $run->getRawOriginal('id'), $run->getRawOriginal('status'),
+            $observations[spl_object_id($schedule)] = ['current_run' => self::currentRun(
+                $runs, $matched[spl_object_id($schedule)], $schedule,
             )];
         }
 
         return $observations;
+    }
+
+    private static function currentRun(Collection $runs, ?Model $instance, WorkflowSchedule $schedule): ?array
+    {
+        if ($instance === null) {
+            return null;
+        }
+        $run = $runs->first(static fn ($run): bool =>
+            $run->getRawOriginal('id') === $instance->getRawOriginal('current_run_id')
+            && $run->getRawOriginal('workflow_instance_id') === $instance->getRawOriginal('id')
+            && $run->getRawOriginal('namespace') === $schedule->getRawOriginal('namespace'));
+
+        return $run === null ? null : ScheduleCurrentRun::fromStatus(
+            $run->getRawOriginal('id'), $run->getRawOriginal('status'),
+        );
     }
 }

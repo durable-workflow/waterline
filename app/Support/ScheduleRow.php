@@ -144,7 +144,11 @@ final class ScheduleRow
             return self::summaryOutcome(ScheduleDispatchSummary::read($source['dispatch_summary']));
         }
 
-        $source = self::flatten($source);
+        return self::legacyOutcome(self::flatten($source));
+    }
+
+    private static function legacyOutcome(array $source): ?array
+    {
         $actions = self::recentActions($source['recent_actions'] ?? null);
         $latest = $actions === [] ? null : $actions[array_key_last($actions)];
 

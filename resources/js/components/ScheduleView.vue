@@ -828,6 +828,38 @@ export default {
             return params;
         },
 
+        applyListResponse(data) {
+            this.schedules = data.data || [];
+            this.operatorScope = data.operator_scope || null;
+            this.observedBackend = data.backend || null;
+            this.serviceRefreshMilliseconds = [LIST_REFRESH_MILLISECONDS, SERVICE_REFRESH_MILLISECONDS].includes(data.refresh_interval_ms)
+                ? data.refresh_interval_ms : null;
+            if (this.refreshTimer !== null) this.startPeriodicRefresh();
+            // Service mode answers a page past the end with the last page
+            // it read; adopt it so Previous, Next and Refresh follow it.
+            if (Number.isInteger(data.current_page) && data.current_page >= 1) {
+                this.currentPage = data.current_page;
+            }
+            if (this.currentPage === 1) this.pageTokens = {};
+            if (typeof data.page_start_token === 'string' && data.page_start_token !== '') {
+                this.pageTokens[this.currentPage] = data.page_start_token;
+            }
+            if (typeof data.next_page_token === 'string' && data.next_page_token !== '') {
+                this.pageTokens[this.currentPage + 1] = data.next_page_token;
+            } else {
+                delete this.pageTokens[this.currentPage + 1];
+            }
+            this.restartPageOnRefresh = false;
+            this.pagination = {
+                current_page: data.current_page,
+                last_page: data.last_page,
+                per_page: data.per_page,
+                total: data.total,
+                page_limit: data.page_limit ?? null,
+                page_limit_reached: data.page_limit_reached === true
+            };
+        },
+
         async loadData() {
             const request = ++this.listRequest;
             // A refresh keeps the current rows on screen so a row action keeps
@@ -839,35 +871,7 @@ export default {
             try {
                 const response = await axios.get(this.resolvedApiEndpoint(), {params: this.listParams()});
                 if (request !== this.listRequest) return;
-                this.schedules = response.data.data || [];
-                this.operatorScope = response.data.operator_scope || null;
-                this.observedBackend = response.data.backend || null;
-                this.serviceRefreshMilliseconds = [LIST_REFRESH_MILLISECONDS, SERVICE_REFRESH_MILLISECONDS].includes(response.data.refresh_interval_ms)
-                    ? response.data.refresh_interval_ms : null;
-                if (this.refreshTimer !== null) this.startPeriodicRefresh();
-                // Service mode answers a page past the end with the last page
-                // it read; adopt it so Previous, Next and Refresh follow it.
-                if (Number.isInteger(response.data.current_page) && response.data.current_page >= 1) {
-                    this.currentPage = response.data.current_page;
-                }
-                if (this.currentPage === 1) this.pageTokens = {};
-                if (typeof response.data.page_start_token === 'string' && response.data.page_start_token !== '') {
-                    this.pageTokens[this.currentPage] = response.data.page_start_token;
-                }
-                if (typeof response.data.next_page_token === 'string' && response.data.next_page_token !== '') {
-                    this.pageTokens[this.currentPage + 1] = response.data.next_page_token;
-                } else {
-                    delete this.pageTokens[this.currentPage + 1];
-                }
-                this.restartPageOnRefresh = false;
-                this.pagination = {
-                    current_page: response.data.current_page,
-                    last_page: response.data.last_page,
-                    per_page: response.data.per_page,
-                    total: response.data.total,
-                    page_limit: response.data.page_limit ?? null,
-                    page_limit_reached: response.data.page_limit_reached === true
-                };
+                this.applyListResponse(response.data);
             } catch (e) {
                 if (request !== this.listRequest) return;
                 if (this.serviceMode && [

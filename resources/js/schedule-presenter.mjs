@@ -135,6 +135,20 @@ function emptyLastResult(state, at = null) {
     return { state, at, outcome: null, label: null, tone: 'muted', reason: null, workflowId: null };
 }
 
+function recordedLastResult(outcome, lastFiredAt) {
+    const known = OUTCOMES[outcome.outcome];
+
+    return {
+        state: 'recorded',
+        at: text(outcome.at) ?? lastFiredAt,
+        outcome: outcome.outcome,
+        label: known ? known.label : null,
+        tone: known ? known.tone : 'muted',
+        reason: typeof outcome.reason === 'string' ? outcome.reason : null,
+        workflowId: text(outcome.workflow_id),
+    };
+}
+
 // An explicit summary state is authoritative. Legacy fire/skip fields cannot
 // fill in an unavailable summary or turn it into an observed "never".
 export function scheduleLastResult(schedule) {
@@ -156,17 +170,7 @@ export function scheduleLastResult(schedule) {
     }
 
     if (outcome && typeof outcome === 'object' && text(outcome.outcome) !== null) {
-        const known = OUTCOMES[outcome.outcome];
-
-        return {
-            state: 'recorded',
-            at: text(outcome.at) ?? lastFiredAt,
-            outcome: outcome.outcome,
-            label: known ? known.label : null,
-            tone: known ? known.tone : 'muted',
-            reason: typeof outcome.reason === 'string' ? outcome.reason : null,
-            workflowId: text(outcome.workflow_id),
-        };
+        return recordedLastResult(outcome, lastFiredAt);
     }
 
     const hasSkip = text(schedule?.last_skipped_at) !== null

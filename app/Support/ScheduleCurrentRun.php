@@ -18,16 +18,21 @@ final class ScheduleCurrentRun
         if ($source['latest_workflow_instance_id'] === null && $current === null) {
             return ['current_run_state' => 'none', 'current_run' => null];
         }
-        if (self::identifier($source['latest_workflow_instance_id'], 191) === null || ! is_array($current)) {
-            return $unavailable;
+        $expected = self::validatedRun($source['latest_workflow_instance_id'], $current);
+
+        return $expected === null ? $unavailable : ['current_run_state' => 'known', 'current_run' => $expected];
+    }
+
+    private static function validatedRun(mixed $instanceId, mixed $current): ?array
+    {
+        if (self::identifier($instanceId, 191) === null || ! is_array($current)) {
+            return null;
         }
         $expected = self::fromStatus($current['run_id'] ?? null, $current['status'] ?? null);
-        if ($expected === null || ($current['status_bucket'] ?? null) !== $expected['status_bucket']
-            || ($current['is_terminal'] ?? null) !== $expected['is_terminal']) {
-            return $unavailable;
-        }
 
-        return ['current_run_state' => 'known', 'current_run' => $expected];
+        return $expected !== null
+            && ($current['status_bucket'] ?? null) === $expected['status_bucket']
+            && ($current['is_terminal'] ?? null) === $expected['is_terminal'] ? $expected : null;
     }
 
     /** @return array{run_id: string, status: string, status_bucket: string, is_terminal: bool}|null */
