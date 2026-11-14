@@ -312,6 +312,56 @@ class UnwiredRuntimeProbeSourceTest(unittest.TestCase):
                                 capture_output=True, timeout=5)
         self.assertEqual(0, result.returncode, result.stderr)
 
+    def handler_control(self, operation):
+        source = self.emitted_source().decode()
+        handler = source.split("$mode = $argv[1] ?? '';\n", 1)[1].split("\ntry {", 1)[0]
+        # Only the emitted handler runs. The application and package probe body
+        # are excluded; the missing path belongs to this disposable fixture.
+        with tempfile.TemporaryDirectory() as directory:
+            return subprocess.run(
+                [shutil.which("php"), "-n", "-d", "display_errors=0", "-r",
+                 "error_reporting(0);\n" + handler + "\n" + operation,
+                 str(Path(directory) / "optional-missing.env")],
+                capture_output=True, timeout=5,
+            )
+
+    @unittest.skipUnless(shutil.which("php"), "PHP warning controls need the existing PHP runtime")
+    def test_suppressed_optional_read_then_enabled_warning_retains_strict_handler(self):
+        result = self.handler_control("""
+if (@file_get_contents($argv[1]) !== false || error_reporting() !== E_ALL) { exit(2); }
+try { file_get_contents($argv[1]); exit(3); }
+catch (ErrorException $error) {
+    echo json_encode([$error->getSeverity(), error_reporting() === E_ALL]);
+}
+""")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(b"", result.stderr)
+        self.assertEqual([2, True], json.loads(result.stdout))
+
+    @unittest.skipUnless(shutil.which("php"), "PHP warning controls need the existing PHP runtime")
+    def test_enabled_user_warning_and_notice_still_throw(self):
+        result = self.handler_control("""
+$seen = [];
+foreach ([E_USER_WARNING, E_USER_NOTICE] as $severity) {
+    try { trigger_error('synthetic enabled source control', $severity); exit(2); }
+    catch (ErrorException $error) { $seen[] = $error->getSeverity(); }
+}
+echo json_encode($seen);
+""")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(b"", result.stderr)
+        self.assertEqual([512, 1024], json.loads(result.stdout))
+
+    @unittest.skipUnless(shutil.which("php"), "PHP warning controls need the existing PHP runtime")
+    def test_at_operator_cannot_suppress_fatal_user_error(self):
+        result = self.handler_control("""
+try { @trigger_error('synthetic fatal source control', E_USER_ERROR); exit(2); }
+catch (ErrorException $error) { echo json_encode($error->getSeverity()); }
+""")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(b"", result.stderr)
+        self.assertEqual(256, json.loads(result.stdout))
+
 
 if __name__ == "__main__":
     unittest.main()
