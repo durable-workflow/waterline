@@ -29,14 +29,14 @@
             <p>{{ $t(error) }}</p>
             <button v-if="lastAttempt" type="button" class="btn btn-secondary" @click="retry" :disabled="loading">{{ $t('Retry') }}</button>
         </div>
-        <p v-if="loading" role="status">{{ $t('Loading...') }}</p>
+        <output v-if="loading">{{ $t('Loading...') }}</output>
         <template v-if="page">
             <dl class="usage-counts" :aria-label="$t('All-state counts')">
                 <div v-for="state in ['total', ...states]" :key="state" :class="{'usage-count--unknown': state === 'unknown'}">
                     <dt>{{ $t(stateLabels[state]) }}</dt><dd>{{ page.counts[state].toLocaleString($i18n.locale) }}</dd>
                 </div>
             </dl>
-            <div class="usage-table" role="region" tabindex="0" :aria-label="$t('Open runs')">
+            <section class="usage-table" tabindex="0" :aria-label="$t('Open runs')">
                 <table class="table">
                     <thead><tr>
                         <th scope="col">{{ $t('Instance / run') }}</th><th scope="col">{{ $t('Status') }}</th>
@@ -52,7 +52,7 @@
                         <tr v-if="page.runs.length === 0"><td colspan="5">{{ $t('No matching open runs on this page.') }}</td></tr>
                     </tbody>
                 </table>
-            </div>
+            </section>
             <nav class="usage-paging" :aria-label="$t('Version usage pages')">
                 <button type="button" class="btn btn-secondary" @click="search" :disabled="loading">{{ $t('Restart query') }}</button>
                 <button type="button" class="btn btn-secondary" @click="next" :disabled="loading || !page.has_more">{{ $t('Next page') }}</button>
@@ -119,12 +119,15 @@ export default {
                 this.query = query;
             } catch (error) {
                 if (request !== this.serial) return;
-                this.error = error.response?.status === 501 ? 'Version usage is unavailable on this backend.'
-                    : error.response?.status === 422 ? 'The query or cursor was refused. Check the filters or restart the query.'
-                    : 'Version usage could not be read. No counts are available.';
+                this.error = this.readError(error.response?.status);
             } finally {
                 if (request === this.serial) this.loading = false;
             }
+        },
+        readError(status) {
+            if (status === 501) return 'Version usage is unavailable on this backend.';
+            if (status === 422) return 'The query or cursor was refused. Check the filters or restart the query.';
+            return 'Version usage could not be read. No counts are available.';
         },
         runRoute(run) {
             return {name: 'flow-detail-run', params: {instanceId: run.instance_id, runId: run.run_id}};

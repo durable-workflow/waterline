@@ -20,6 +20,12 @@ final class RemoteVersionUsageController extends RemoteController
             return $unavailable;
         }
 
+        return $this->readPage($query);
+    }
+
+    /** @param array<string, mixed> $query */
+    private function readPage(array $query): JsonResponse
+    {
         try {
             // The SDK owns capability discovery, control authentication,
             // namespace selection and its configured request budgets.

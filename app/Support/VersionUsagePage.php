@@ -20,12 +20,28 @@ final class VersionUsagePage
             self::require($page[$key] === $query[$key]);
         }
 
-        $counts = $page['counts'];
+        self::counts($page['counts']);
+        self::paging($page, $query);
+        self::runs($page);
+
+        return $page;
+    }
+
+    private static function counts(mixed $counts): void
+    {
         self::require(self::keys($counts, ['total', 'legacy', 'current', 'unknown']));
         foreach ($counts as $count) {
             self::require(is_int($count) && $count >= 0);
         }
         self::require($counts['total'] === $counts['legacy'] + $counts['current'] + $counts['unknown']);
+    }
+
+    /** @param array<string, mixed> $page
+     *  @param array<string, mixed> $query
+     */
+    private static function paging(array $page, array $query): void
+    {
+        $counts = $page['counts'];
         self::require(is_array($page['runs']) && array_is_list($page['runs']) && count($page['runs']) <= $page['limit']);
         self::require($page['returned_count'] === count($page['runs']) && is_bool($page['has_more']));
         self::require($page['has_more'] ? self::text($page['next_cursor'], 8192) && $page['runs'] !== [] : $page['next_cursor'] === null);
@@ -38,7 +54,11 @@ final class VersionUsagePage
         } elseif (($query['cursor'] ?? null) === null) {
             self::require($selectedCount === count($page['runs']));
         }
+    }
 
+    /** @param array<string, mixed> $page */
+    private static function runs(array $page): void
+    {
         $previous = null;
         $seen = ['legacy' => 0, 'current' => 0, 'unknown' => 0];
         foreach ($page['runs'] as $run) {
@@ -54,10 +74,8 @@ final class VersionUsagePage
             $seen[$run['state']]++;
         }
         foreach ($seen as $state => $count) {
-            self::require($counts[$state] >= $count);
+            self::require($page['counts'][$state] >= $count);
         }
-
-        return $page;
     }
 
     /** @param array<string, mixed> $run */

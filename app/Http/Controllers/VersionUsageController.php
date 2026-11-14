@@ -25,6 +25,12 @@ final class VersionUsageController extends Controller
             ], 501);
         }
 
+        return $this->readPage($reader, $query);
+    }
+
+    /** @param array<string, mixed> $query */
+    private function readPage(EmbeddedVersionUsage $reader, array $query): JsonResponse
+    {
         try {
             return response()->json($reader->page($query));
         } catch (InvalidArgumentException) {

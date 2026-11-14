@@ -23,8 +23,9 @@ function byteCompare(left, right) {
 }
 
 export function usageQuery(draft, namespace) {
-    const minimum = typeof draft.minimum === 'number' ? draft.minimum
-        : typeof draft.minimum === 'string' && /^[+-]?\d+$/.test(draft.minimum) ? Number(draft.minimum) : NaN;
+    let minimum = Number.NaN;
+    if (typeof draft.minimum === 'number') minimum = draft.minimum;
+    else if (typeof draft.minimum === 'string' && /^[+-]?\d+$/.test(draft.minimum)) minimum = Number(draft.minimum);
     if (!text(draft.workflowType, 255) || !text(draft.changeId, 1024)
         || !integer(minimum, -2147483648, 2147483647)
         || !['', ...usageStates].includes(draft.state)
@@ -44,10 +45,28 @@ export function validateUsagePage(page, query, boundary = null) {
         'through_run_id', 'counts', 'runs', 'limit', 'returned_count', 'has_more', 'next_cursor']));
     requireValid(page.schema_version === 1 && page.consistency === 'live');
     for (const key of ['namespace', 'workflow_type', 'change_id', 'min_version', 'state', 'limit']) requireValid(page[key] === query[key]);
-    requireValid(keys(page.counts, ['total', ...usageStates]));
-    requireValid(Object.values(page.counts).every(count => integer(count, 0, Number.MAX_SAFE_INTEGER)));
-    requireValid(Number.isSafeInteger(page.counts.legacy + page.counts.current + page.counts.unknown)
-        && page.counts.total === page.counts.legacy + page.counts.current + page.counts.unknown);
+    validateCounts(page.counts);
+    validatePaging(page, query);
+    if (boundary) requireValid(page.through_run_id === boundary.through);
+    let previous = boundary?.after ?? null;
+    const seen = {legacy: 0, current: 0, unknown: 0};
+    for (const run of page.runs) {
+        validateRun(run, page, previous);
+        seen[run.state]++;
+        previous = run.run_id;
+    }
+    for (const state of usageStates) requireValid(seen[state] <= page.counts[state]);
+    return page;
+}
+
+function validateCounts(counts) {
+    requireValid(keys(counts, ['total', ...usageStates]));
+    requireValid(Object.values(counts).every(count => integer(count, 0, Number.MAX_SAFE_INTEGER)));
+    requireValid(Number.isSafeInteger(counts.legacy + counts.current + counts.unknown)
+        && counts.total === counts.legacy + counts.current + counts.unknown);
+}
+
+function validatePaging(page, query) {
     requireValid(Array.isArray(page.runs) && page.runs.length <= page.limit && page.returned_count === page.runs.length);
     requireValid(typeof page.has_more === 'boolean' && (page.has_more ? text(page.next_cursor, 8192) && page.runs.length > 0 : page.next_cursor === null));
     requireValid(page.through_run_id === null || text(page.through_run_id));
@@ -58,26 +77,20 @@ export function validateUsagePage(page, query, boundary = null) {
     } else if (query.cursor === null) {
         requireValid(selectedCount === page.runs.length);
     }
-    if (boundary) requireValid(page.through_run_id === boundary.through);
-    let previous = boundary?.after ?? null;
-    const seen = {legacy: 0, current: 0, unknown: 0};
-    for (const run of page.runs) {
-        requireValid(keys(run, ['instance_id', 'run_id', 'status', 'state', 'recorded_version', 'unknown_reason']));
-        requireValid(text(run.instance_id) && text(run.run_id) && ['pending', 'running', 'waiting'].includes(run.status));
-        requireValid(usageStates.includes(run.state) && (page.state === null || run.state === page.state));
-        requireValid(typeof page.through_run_id === 'string' && byteCompare(run.run_id, page.through_run_id) <= 0);
-        requireValid(previous === null || byteCompare(previous, run.run_id) < 0);
-        if (run.state === 'unknown') {
-            requireValid(run.recorded_version === null && Object.hasOwn(usageReasons, run.unknown_reason));
-        } else {
-            requireValid(integer(run.recorded_version, -2147483648, 2147483647) && run.unknown_reason === null);
-            requireValid((run.recorded_version < page.min_version) === (run.state === 'legacy'));
-        }
-        seen[run.state]++;
-        previous = run.run_id;
+}
+
+function validateRun(run, page, previous) {
+    requireValid(keys(run, ['instance_id', 'run_id', 'status', 'state', 'recorded_version', 'unknown_reason']));
+    requireValid(text(run.instance_id) && text(run.run_id) && ['pending', 'running', 'waiting'].includes(run.status));
+    requireValid(usageStates.includes(run.state) && (page.state === null || run.state === page.state));
+    requireValid(typeof page.through_run_id === 'string' && byteCompare(run.run_id, page.through_run_id) <= 0);
+    requireValid(previous === null || byteCompare(previous, run.run_id) < 0);
+    if (run.state === 'unknown') {
+        requireValid(run.recorded_version === null && Object.hasOwn(usageReasons, run.unknown_reason));
+    } else {
+        requireValid(integer(run.recorded_version, -2147483648, 2147483647) && run.unknown_reason === null);
+        requireValid((run.recorded_version < page.min_version) === (run.state === 'legacy'));
     }
-    for (const state of usageStates) requireValid(seen[state] <= page.counts[state]);
-    return page;
 }
 
 export function usageParams(query) {

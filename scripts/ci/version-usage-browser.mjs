@@ -19,7 +19,7 @@ const browser = await chromium.launch({args: ['--no-sandbox'],
 });
 fs.mkdirSync(output, {recursive: true});
 const reports = [];
-const origin = 'http://waterline.invalid';
+const origin = 'https://waterline.invalid';
 const catalogs = new URL('../../resources/lang/', import.meta.url);
 
 function observation(url, paginated) {
@@ -28,7 +28,7 @@ function observation(url, paginated) {
     let runs = ['legacy', 'current', 'unknown'].map((state, index) => ({
         instance_id: index === 2 ? 'long-instance-'.repeat(25) : `order-${index + 1}`,
         run_id: `run-${index + 1}`, status: ['waiting', 'running', 'pending'][index], state,
-        recorded_version: index === 2 ? null : minimum - (index === 0 ? 1 : 0),
+        recorded_version: [minimum - 1, minimum, null][index],
         unknown_reason: index === 2 ? 'marker_absent' : null,
     }));
     if (paginated) {
@@ -38,7 +38,9 @@ function observation(url, paginated) {
     const counts = {total: runs.length, legacy: 1, current: runs.length - 2, unknown: 1};
     runs = runs.filter(run => get('state') === null || run.state === get('state'));
     const continuation = get('cursor') !== null;
-    const visible = paginated && !continuation ? runs.slice(0, 50) : continuation ? runs.slice(50) : runs;
+    let visible = runs;
+    if (continuation) visible = runs.slice(50);
+    else if (paginated) visible = runs.slice(0, 50);
     return {
         schema_version: 1, namespace: get('namespace'), workflow_type: get('workflow_type'), change_id: get('change_id'),
         min_version: minimum, state: get('state'), consistency: 'live', through_run_id: paginated ? 'run-051' : 'run-3',
