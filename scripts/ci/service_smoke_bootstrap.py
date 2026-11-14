@@ -32,7 +32,7 @@ REVIEWED = {
     "service_smoke_entry": "1bfe19c1a099bee4ca63dae3b4b8b380ebeb17ea5199093d7f2efecc8dd38710",
     "service_smoke_fixture": "01e673516ad5d96e100b3cda37fd39063dd60c38f49f87faadcfd5abef07c4a2",
     "service_smoke_http": "1fb1acf0399e038ea98189d30b313c03c7079d191e03762ed95f8b1215718104",
-    "service_smoke_io": "c0f9f5d2810b278b61a226223742a3f6de22c42ea70b7c64662fa57e98e95a29",
+    "service_smoke_io": "0fef131a053b2ebb91cb0a37fa2c190eec6f583665b39c52192c828692b1b32e",
     "service_smoke_native": "b687f239d6a7465d2b2b356f3997347bc7d4a299a672b6d943c6cce42138c939",
     "service_smoke_network": "dd0b17cd7f457182b9bfa605f37d332763b2d53c8f266f0c2a298e8423a2f7cf",
     "service_smoke_observation": "14c8eb1a134a2c78f9734befa3ba1f2cdcdf151073422f489fbcc85e917b1d97",
@@ -229,7 +229,7 @@ def registry_documents(loaded, loader, selected: dict, inputs, started: float):
     docker = loaded["service_smoke_io"].Docker(inputs.path, started=started, scope_check=__scope_check__)
     try:
         def manifest(digest: str) -> bytes:
-            result = docker(["buildx", "imagetools", "inspect", "--raw", PUBLIC_IMAGE + "@" + digest])
+            result = docker.manifest(PUBLIC_IMAGE + "@" + digest)
             if result.returncode != 0 or result.stderr:
                 raise RuntimeError("Anonymous current registry manifest read failed")
             return result.stdout
@@ -253,6 +253,7 @@ def registry_documents(loaded, loader, selected: dict, inputs, started: float):
             loader.write_regular(inputs.descriptor, name, raw)
     finally:
         docker.close()
+        print(json.dumps({"ordinary_registry_reads": docker.manifest_events}), flush=True)
 
 
 def published(producer_gate_succeeded: bool):

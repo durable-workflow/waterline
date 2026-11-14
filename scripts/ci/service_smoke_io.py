@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import base64
 import os
 import math
 import re
 from pathlib import Path
 import selectors
 import signal
+import shutil
 import stat
 import subprocess
 import time
@@ -16,6 +18,7 @@ import uuid
 from service_smoke_resources import role_listing_arguments
 
 DEADLINE_EXCEEDED = "Command deadline exceeded"
+TOTAL_DEADLINE_EXCEEDED = "Ordinary smoke total deadline exceeded"
 
 
 class TransportError(RuntimeError):
@@ -90,13 +93,15 @@ def kill_group(process) -> None:
 
 def bounded_process(command: list[str], *, data: bytes = b"", timeout: float = 30,
                     stdout_limit: int = 1024 * 1024, stderr_limit: int = 65536,
-                    pass_fds: tuple[int, ...] = (), kernel_directory: int | None = None) -> subprocess.CompletedProcess:
+                    pass_fds: tuple[int, ...] = (), kernel_directory: int | None = None,
+                    buildx_directory: int | None = None) -> subprocess.CompletedProcess:
     validate_command_bounds(command, data, timeout, stdout_limit, stderr_limit)
     return execute_bounded(command, data=data, timeout=timeout, stdout_limit=stdout_limit,
-                           stderr_limit=stderr_limit, pass_fds=pass_fds, kernel_directory=kernel_directory)
+                           stderr_limit=stderr_limit, pass_fds=pass_fds, kernel_directory=kernel_directory,
+                           buildx_directory=buildx_directory)
 
 
-def child_environment(kernel_directory: int | None, pass_fds: tuple[int, ...]) -> dict:
+def child_environment(kernel_directory: int | None, pass_fds: tuple[int, ...], buildx_directory: int | None = None) -> dict:
     result = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8",
               "GIT_NO_LAZY_FETCH": "1", "GIT_NO_REPLACE_OBJECTS": "1",
               "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
@@ -107,15 +112,24 @@ def child_environment(kernel_directory: int | None, pass_fds: tuple[int, ...]) -
             raise TransportError("Helper namespace must be the retained empty kernel directory")
         path = "/proc/self/fd/" + str(kernel_directory)
         result |= {"PATH": path, "HOME": path, "DOCKER_CONFIG": path, "XDG_CONFIG_HOME": path}
+    if buildx_directory is not None:
+        state = os.fstat(buildx_directory)
+        if (kernel_directory is None or buildx_directory not in pass_fds or not stat.S_ISDIR(state.st_mode)
+                or state.st_nlink < 2 or state.st_uid != os.getuid() or stat.S_IMODE(state.st_mode) != 0o700):
+            raise TransportError("Buildx state must be a separate retained private directory")
+        # Docker invokes Buildx as a child plugin. Its state authority refers to
+        # this controller's held descriptor, independent of plugin FD inheritance.
+        result["BUILDX_CONFIG"] = "/proc/" + str(os.getpid()) + "/fd/" + str(buildx_directory)
     return result
 
 
 def execute_bounded(command: list[str], *, data: bytes, timeout: float,
-                    stdout_limit: int, stderr_limit: int, pass_fds: tuple[int, ...], kernel_directory: int | None = None):
+                    stdout_limit: int, stderr_limit: int, pass_fds: tuple[int, ...], kernel_directory: int | None = None,
+                    buildx_directory: int | None = None):
     process = subprocess.Popen(
         command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         start_new_session=True, pass_fds=pass_fds,
-        env=child_environment(kernel_directory, pass_fds),
+        env=child_environment(kernel_directory, pass_fds, buildx_directory),
     )
     buffers = {process.stdout: bytearray(), process.stderr: bytearray()}
     limits = {process.stdout: stdout_limit, process.stderr: stderr_limit}
@@ -203,6 +217,75 @@ class AnonymousConfig:
             self.descriptor = -1
 
 
+class BuildxConfig:
+    """Fresh plugin state, separate from the unlinked Docker credential root."""
+
+    def __init__(self, parent: Path):
+        self.parent_path = parent
+        self.parent = trusted_parent(parent)
+        self.name = "waterline-buildx-state-" + uuid.uuid4().hex
+        self.descriptor = -1
+        try:
+            self.parent_identity = self.identity(os.fstat(self.parent))
+            os.mkdir(self.name, mode=0o700, dir_fd=self.parent)
+            self.descriptor = os.open(self.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=self.parent)
+            self.selected = self.identity(os.fstat(self.descriptor))
+            self.check()
+        except BaseException:
+            self.close()
+            raise
+
+    @staticmethod
+    def identity(value):
+        return value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid
+
+    def check(self):
+        current = trusted_parent(self.parent_path)
+        try:
+            if self.identity(os.fstat(current)) != self.parent_identity:
+                raise TransportError("Buildx state parent namespace changed")
+        finally:
+            os.close(current)
+        self.check_held()
+
+    def check_held(self):
+        named = os.stat(self.name, dir_fd=self.parent, follow_symlinks=False)
+        held = os.fstat(self.descriptor)
+        if (self.identity(named) != self.selected or self.identity(held) != self.selected
+                or held.st_uid != os.getuid() or stat.S_IMODE(held.st_mode) != 0o700):
+            raise TransportError("Buildx state identity changed")
+
+    def clear_held(self):
+        if not shutil.rmtree.avoids_symlink_attacks:
+            raise TransportError("Descriptor-relative state cleanup is unavailable")
+        for name in os.listdir(self.descriptor):
+            state = os.stat(name, dir_fd=self.descriptor, follow_symlinks=False)
+            if stat.S_ISDIR(state.st_mode):
+                shutil.rmtree(name, dir_fd=self.descriptor)
+            else:
+                os.unlink(name, dir_fd=self.descriptor)
+
+    def close(self):
+        try:
+            if self.descriptor >= 0:
+                # Clean through the held owned directory even after a parent
+                # rename. Never traverse a replacement of its original name.
+                self.clear_held()
+                self.check_held()
+                os.rmdir(self.name, dir_fd=self.parent)
+                try:
+                    os.stat(self.name, dir_fd=self.parent, follow_symlinks=False)
+                except FileNotFoundError:
+                    return
+                raise TransportError("Buildx state absence was not confirmed")
+        finally:
+            for field in ("descriptor", "parent"):
+                value = getattr(self, field, -1)
+                if value >= 0:
+                    os.close(value)
+                    setattr(self, field, -1)
+
+
 class Docker:
     """Finite local Docker transport; this class creates no container itself."""
 
@@ -211,16 +294,20 @@ class Docker:
         if started is not None and (type(started) not in (int, float) or not math.isfinite(started) or not 0 <= now - started <= 600):
             raise TransportError("Invalid shared ordinary workload deadline")
         self.config = AnonymousConfig(parent)
+        self.parent = parent
+        self.manifest_events = []
         self.started = now if started is None else started
         self.cleanup_started = None
         self.scope_check = scope_check
 
     def __call__(self, arguments: list[str], *, data: bytes = b"") -> subprocess.CompletedProcess:
+        if arguments and arguments[0] == "buildx":
+            raise TransportError("Buildx reads require their separate private state boundary")
         if self.scope_check is not None:
             self.scope_check()
         remaining = 600 - (time.monotonic() - self.started)
         if remaining <= 0:
-            raise TransportError("Ordinary smoke total deadline exceeded")
+            raise TransportError(TOTAL_DEADLINE_EXCEEDED)
         return self._command(arguments, data=data, timeout=min(30, remaining))
 
     def _command(self, arguments: list[str], *, data: bytes = b"", timeout: float) -> subprocess.CompletedProcess:
@@ -233,6 +320,43 @@ class Docker:
         self.config.check()
         return result
 
+    def manifest(self, image: str) -> subprocess.CompletedProcess:
+        if self.scope_check is not None:
+            self.scope_check()
+        if (not isinstance(image, str)
+                or re.fullmatch(r"docker\.io/durableworkflow/waterline@sha256:[a-f\d]{64}", image, re.ASCII) is None):
+            raise TransportError("Manifest reads accept only the selected public Waterline digest")
+        if len(self.manifest_events) >= 3:
+            raise TransportError("Only the three selected registry manifests may be read")
+        remaining = 600 - (time.monotonic() - self.started)
+        if remaining <= 0:
+            raise TransportError(TOTAL_DEADLINE_EXCEEDED)
+        state = BuildxConfig(self.parent)
+        event = {"image": image, "private_state_identity": list(state.selected), "cleanup": "nonpass"}
+        self.manifest_events.append(event)
+        try:
+            self.config.check()
+            state.check()
+            command = ["/usr/bin/docker", "--host", "unix:///var/run/docker.sock", "--config", self.config.path,
+                       "buildx", "imagetools", "inspect", "--raw", image]
+            result = bounded_process(command, timeout=min(30, remaining),
+                                     pass_fds=(self.config.descriptor, state.descriptor),
+                                     kernel_directory=self.config.descriptor, buildx_directory=state.descriptor)
+            event.update({"exit": result.returncode, "stderr_base64": base64.b64encode(result.stderr).decode()})
+            self.config.check()
+            state.check()
+            return result
+        except BaseException as error:
+            event["failure"] = {"class": type(error).__name__, "message": str(error)}
+            raise
+        finally:
+            try:
+                state.close()
+                event["cleanup"] = "pass"
+            except BaseException as error:
+                event["cleanup_failure"] = {"class": type(error).__name__, "message": str(error)}
+                raise
+
     def acquire(self, image: str, platform: str) -> subprocess.CompletedProcess:
         if self.scope_check is not None:
             self.scope_check()
@@ -242,7 +366,7 @@ class Docker:
             raise TransportError("Acquisition accepts only the selected public Waterline index/platform")
         remaining = 600 - (time.monotonic() - self.started)
         if remaining <= 0:
-            raise TransportError("Ordinary smoke total deadline exceeded")
+            raise TransportError(TOTAL_DEADLINE_EXCEEDED)
         self.config.check()
         command = ["/usr/bin/docker", "--host", "unix:///var/run/docker.sock", "--config", self.config.path,
                    "pull", "--platform", platform, image]

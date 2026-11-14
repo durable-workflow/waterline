@@ -168,3 +168,13 @@ operator input, permission, uploader or historical evidence retrieval is added.
 These are implemented source boundaries and proposed call sites. The workflow
 connection, exact artifact/run subjects and first qualifying execution remain
 unselected pending the complete source/effect review on #317.
+
+Buildx raw-manifest reads have a separate fresh owner-only plugin-state directory.
+Only that closed command receives `BUILDX_CONFIG`; ordinary Docker acquisition,
+inspection and cleanup retain their unlinked, non-creatable credential root.
+The plugin state is addressed through the controller's held descriptor, checked
+before and after each read, and removed through the held parent even if its
+namespace is renamed. A foreign replacement is preserved and makes cleanup
+NONPASS. Bounded stderr and state cleanup outcomes remain in the same job log.
+The causal controls use synthetic mkdir/descriptor children, not a live registry
+or Buildx invocation. Actual plugin compatibility remains a separate effect gate.

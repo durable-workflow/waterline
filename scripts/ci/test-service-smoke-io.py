@@ -1,5 +1,6 @@
 """Local inert/stdio controls. No Docker, application or package is executed."""
 
+import base64
 import json
 import os
 import signal
@@ -213,6 +214,124 @@ class AnonymousConfigTest(unittest.TestCase):
                 with self.subTest(changed=changed), self.assertRaises(smoke.TransportError):
                     docker.cleanup(changed)
             self.assertEqual(1, command.call_count)
+
+
+class BuildxStateTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix="waterline-buildx-source-")
+        self.addCleanup(self.directory.cleanup)
+        self.parent = Path(self.directory.name)
+
+    def test_old_noncreatable_default_fails_while_actual_separate_state_writes_and_is_removed(self):
+        # This child exercises the actual mkdir/FD boundary without running a
+        # Docker plugin, registry request, package, application or container.
+        program = """import json,os,pathlib,sys
+state=pathlib.Path(os.environ.get('BUILDX_CONFIG',os.environ['DOCKER_CONFIG']+'/buildx'))
+try:
+ state.mkdir(exist_ok=True)
+ (state/'synthetic-marker').write_text('state')
+ print(json.dumps({'state':str(state),'home':os.environ['HOME']}))
+except OSError as error:
+ print(str(error),file=sys.stderr)
+ sys.exit(7)
+"""
+        docker = smoke.Docker(self.parent)
+        self.addCleanup(docker.close)
+        predecessor = smoke.bounded_process([sys.executable, "-I", "-c", program],
+                                            pass_fds=(docker.config.descriptor,), kernel_directory=docker.config.descriptor)
+        self.assertEqual(7, predecessor.returncode)
+        self.assertIn(b"No such file or directory", predecessor.stderr)
+        actual = smoke.bounded_process
+        calls = []
+
+        def marker(command, **options):
+            calls.append((command, options))
+            return actual([sys.executable, "-I", "-c", program], **options)
+
+        with patch.object(smoke, "bounded_process", side_effect=marker):
+            result = docker.manifest("docker.io/durableworkflow/waterline@sha256:" + "a" * 64)
+        self.assertEqual(0, result.returncode, result.stderr)
+        observed = json.loads(result.stdout)
+        self.assertTrue(observed["state"].startswith("/proc/" + str(os.getpid()) + "/fd/"))
+        self.assertEqual(docker.config.path, observed["home"])
+        self.assertEqual([], list(self.parent.iterdir()))
+        self.assertEqual("pass", docker.manifest_events[0]["cleanup"])
+        self.assertEqual(["buildx", "imagetools", "inspect", "--raw"], calls[0][0][5:9])
+        docker.config.check()
+
+    def test_stderr_is_retained_and_state_removed_on_failed_manifest(self):
+        docker = smoke.Docker(self.parent)
+        self.addCleanup(docker.close)
+        response = subprocess.CompletedProcess([], 7, b"", b"synthetic Buildx diagnostic")
+        with patch.object(smoke, "bounded_process", return_value=response):
+            result = docker.manifest("docker.io/durableworkflow/waterline@sha256:" + "a" * 64)
+        self.assertEqual(7, result.returncode)
+        self.assertEqual(response.stderr, base64.b64decode(docker.manifest_events[0]["stderr_base64"]))
+        self.assertEqual("pass", docker.manifest_events[0]["cleanup"])
+        self.assertEqual([], list(self.parent.iterdir()))
+
+    def test_parent_rename_refuses_work_but_cleanup_uses_held_parent(self):
+        state = smoke.BuildxConfig(self.parent)
+        renamed = self.parent.with_name(self.parent.name + "-moved")
+        self.parent.rename(renamed)
+        try:
+            with self.assertRaises(FileNotFoundError):
+                state.check()
+            state.close()
+            self.assertEqual([], list(renamed.iterdir()))
+        finally:
+            renamed.rename(self.parent)
+
+    def test_transport_refusal_still_removes_state_and_retains_original_failure(self):
+        docker = smoke.Docker(self.parent)
+        self.addCleanup(docker.close)
+        with patch.object(smoke, "bounded_process", side_effect=smoke.TransportError("synthetic deadline")):
+            with self.assertRaises(smoke.TransportError):
+                docker.manifest("docker.io/durableworkflow/waterline@sha256:" + "a" * 64)
+        self.assertEqual([], list(self.parent.iterdir()))
+        self.assertEqual("synthetic deadline", docker.manifest_events[0]["failure"]["message"])
+        self.assertEqual("pass", docker.manifest_events[0]["cleanup"])
+
+    def test_nested_state_link_cleanup_preserves_its_foreign_target(self):
+        target = self.parent / "foreign-target"
+        target.mkdir()
+        marker = target / "marker"
+        marker.write_text("preserve")
+        state = smoke.BuildxConfig(self.parent)
+        nested = self.parent / state.name / "nested"
+        nested.mkdir()
+        (nested / "link").symlink_to(target, target_is_directory=True)
+        state.close()
+        self.assertEqual("preserve", marker.read_text())
+        self.assertEqual([target], list(self.parent.iterdir()))
+
+    def test_foreign_state_name_replacement_is_preserved_and_cleanup_is_nonpass(self):
+        state = smoke.BuildxConfig(self.parent)
+        original = self.parent / state.name
+        moved = self.parent / "owned-moved"
+        original.rename(moved)
+        original.mkdir(mode=0o700)
+        marker = original / "foreign-marker"
+        marker.write_text("preserve")
+        with self.assertRaises(smoke.TransportError):
+            state.check()
+        with self.assertRaises(smoke.TransportError):
+            state.close()
+        self.assertEqual("preserve", marker.read_text())
+        self.assertTrue(moved.is_dir())
+
+    def test_ordinary_docker_and_id_cleanup_never_inherit_buildx_state(self):
+        docker = smoke.Docker(self.parent)
+        self.addCleanup(docker.close)
+        response = subprocess.CompletedProcess([], 0, b"[]", b"")
+        with patch.object(smoke, "bounded_process", return_value=response) as command:
+            docker(["inspect", "a" * 64])
+            self.assertNotIn("buildx_directory", command.call_args.kwargs)
+            docker.cleanup(["inspect", "a" * 64])
+            self.assertNotIn("buildx_directory", command.call_args.kwargs)
+            with self.assertRaises(smoke.TransportError):
+                docker(["buildx", "imagetools", "inspect", "--raw", "unselected"])
+        self.assertEqual([], list(self.parent.iterdir()))
 
 
 if __name__ == "__main__":
