@@ -7,6 +7,7 @@ import {
     formatIsoDuration,
     outcomeTone,
     scheduleCadence,
+    scheduleCurrentRun,
     scheduleLastResult,
     scheduleRequest,
     scheduleId,
@@ -104,6 +105,58 @@ test('retained skip facts without a complete outcome remain unreported', () => {
         assert.equal(result.at, null)
         assert.equal(result.outcome, null)
     }
+})
+
+test('explicit summary authority prevents unavailable observations from becoming never', () => {
+    for (const state of ['unavailable', 'future', null]) {
+        const result = scheduleLastResult({
+            last_outcome_state: state, buffered_actions_count: null, last_fired_at: null,
+            last_outcome: {outcome: 'scheduled', at: '2026-10-20T02:00:00Z'},
+        })
+        assert.equal(result.state, 'unavailable')
+        assert.equal(result.at, null)
+        assert.equal(result.outcome, null)
+    }
+
+    const never = scheduleLastResult({
+        last_outcome_state: 'never', buffered_actions_count: 0, last_outcome: null,
+        last_fired_at: '2026-10-20T02:00:00Z', last_skip_reason: 'retained legacy text',
+    })
+    assert.equal(never.state, 'never')
+    assert.equal(never.at, null)
+    assert.equal(scheduleLastResult({last_outcome_state: 'never'}).state, 'unavailable')
+
+    const started = scheduleLastResult({
+        last_outcome_state: 'known', buffered_actions_count: 0,
+        last_outcome: {outcome: 'started', at: '2026-10-20T02:00:00.000001Z', reason: null},
+        current_run: {status: 'failed'},
+    })
+    assert.equal(started.state, 'recorded')
+    assert.equal(started.label, 'Started', 'current run failure must not rewrite a recorded dispatch')
+    assert.equal(scheduleLastResult({
+        last_outcome_state: 'known', buffered_actions_count: -1,
+        last_outcome: {outcome: 'started', at: '2026-10-20T02:00:00.000001Z'},
+    }).state, 'unavailable')
+})
+
+test('latest run status changes independently from the recorded dispatch', () => {
+    const schedule = {
+        latest_workflow_instance_id: 'instance', current_run_state: 'known',
+        last_outcome_state: 'known', buffered_actions_count: 0,
+        last_outcome: {outcome: 'started', at: '2026-11-13T12:00:00.000001Z'},
+    }
+    for (const [status, bucket] of [
+        ['pending', 'running'], ['running', 'running'], ['waiting', 'running'],
+        ['completed', 'completed'], ['failed', 'failed'], ['cancelled', 'failed'], ['terminated', 'failed'],
+    ]) {
+        schedule.current_run = {run_id: 'run', status, status_bucket: bucket, is_terminal: bucket !== 'running'}
+        assert.deepEqual(scheduleCurrentRun(schedule), {state: 'known', status, bucket})
+        assert.equal(scheduleLastResult(schedule).label, 'Started')
+    }
+    assert.equal(scheduleCurrentRun({}).state, 'unavailable')
+    assert.equal(scheduleCurrentRun({...schedule, current_run: null}).state, 'unavailable')
+    assert.equal(scheduleCurrentRun({...schedule, current_run: {...schedule.current_run, status: 'future'}}).state, 'unavailable')
+    assert.equal(scheduleCurrentRun({current_run_state: 'none', current_run: null, latest_workflow_instance_id: null}).state, 'none')
 })
 
 test('literal reasons remain evidence and keep their exact recorded text', () => {

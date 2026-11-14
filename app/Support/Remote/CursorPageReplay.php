@@ -68,12 +68,8 @@ final class CursorPageReplay
         $current = 0;
 
         while ($current < $requestedPage) {
-            if ($current > 0 && $clock->milliseconds() >= $deadline) {
-                self::refuse(504, 'page_replay_budget_exceeded', sprintf(
-                    'Waterline stopped after reading %d of %d server pages because the request budget elapsed. Retry, or narrow the filters.',
-                    $current,
-                    $requestedPage,
-                ), ['pages_read' => $current, 'requested_page' => $requestedPage]);
+            if ($current > 0) {
+                self::assertWithinBudget($deadline, $current, $requestedPage);
             }
 
             $page = $fetch($token);
@@ -102,6 +98,17 @@ final class CursorPageReplay
         $browser = RequestTimeouts::browserMilliseconds();
 
         return max(intdiv($browser, 2), $browser - self::RESPONSE_MARGIN_MS);
+    }
+
+    public static function assertWithinBudget(float $deadline, int $pagesRead, int $requestedPage): void
+    {
+        if (app(MonotonicClock::class)->milliseconds() >= $deadline) {
+            self::refuse(504, 'page_replay_budget_exceeded', sprintf(
+                'Waterline stopped after reading %d of %d server pages because the request budget elapsed. Retry, or narrow the filters.',
+                $pagesRead,
+                $requestedPage,
+            ), ['pages_read' => $pagesRead, 'requested_page' => $requestedPage]);
+        }
     }
 
     private static function nextToken(object $page): ?string

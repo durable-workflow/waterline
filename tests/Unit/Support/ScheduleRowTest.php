@@ -13,6 +13,103 @@ final class ScheduleRowTest extends TestCase
 {
     private const INTERNAL_KEY = '01JD8Z6Q3K9V7X2M4N5P6R7S8T';
 
+    public function testCurrentRunIsIndependentFromDispatchAndPreservesCompleteIdentities(): void
+    {
+        $source = [
+            ...$this->serverDetail(),
+            'latest_workflow_instance_id' => " instance\0🙂 ",
+            'current_run' => ['run_id' => " run\0🙂 ", 'status' => 'failed', 'status_bucket' => 'failed', 'is_terminal' => true],
+        ];
+        $row = ScheduleRow::detail($source);
+        self::assertSame('known', $row['current_run_state'] ?? null);
+        self::assertSame($source['current_run'], $row['current_run']);
+        self::assertSame($source['latest_workflow_instance_id'], $row['latest_workflow_instance_id']);
+        self::assertSame('scheduled', $row['last_outcome']['outcome']);
+    }
+
+    public function testCurrentRunAbsenceIsDistinctFromUnsupportedOrIncompleteObservation(): void
+    {
+        $none = ScheduleRow::detail(['latest_workflow_instance_id' => null, 'latest_instance_id' => 'retained-alias', 'current_run' => null]);
+        self::assertSame('none', $none['current_run_state'] ?? null);
+        self::assertNull($none['current_run']);
+        self::assertNull($none['latest_workflow_instance_id']);
+        self::assertArrayNotHasKey('current_run_state', ScheduleRow::detail([]));
+        self::assertArrayNotHasKey('current_run_state', ScheduleRow::detail(['info' => ['current_run' => null]]));
+        $valid = ['run_id' => 'run', 'status' => 'running', 'status_bucket' => 'running', 'is_terminal' => false];
+        foreach ([
+            ['current_run' => null],
+            ['latest_workflow_instance_id' => 'instance', 'current_run' => null],
+            ['latest_workflow_instance_id' => null, 'current_run' => $valid],
+            ['latest_workflow_instance_id' => '', 'current_run' => $valid],
+            ['latest_workflow_instance_id' => str_repeat('🙂', 192), 'current_run' => $valid],
+            ['latest_workflow_instance_id' => 'instance', 'current_run' => []],
+            ...array_map(static fn (array $change): array => [
+                'latest_workflow_instance_id' => 'instance', 'current_run' => [...$valid, ...$change],
+            ], [
+                ['run_id' => ''], ['run_id' => str_repeat('🙂', 27)], ['status' => 'future'],
+                ['status_bucket' => 'completed'], ['is_terminal' => true], ['is_terminal' => 0],
+            ]),
+        ] as $source) {
+            $row = ScheduleRow::detail($source);
+            self::assertSame('unavailable', $row['current_run_state'] ?? null);
+            self::assertNull($row['current_run']);
+        }
+    }
+
+    public function testListSummaryControlsOutcomeWithoutConsultingLegacyArrays(): void
+    {
+        $summary = [
+            'version' => 1, 'state' => 'known', 'buffered_actions_count' => 7,
+            'last_outcome' => [
+                'id' => '01K9ZZEJF50000000000000000', 'outcome' => 'skipped',
+                'recorded_at' => '2026-11-13T10:00:00.000001Z', 'reason' => "\0 paused \0",
+                'workflow_instance_id' => null, 'workflow_run_id' => null,
+            ],
+        ];
+        $source = [...$this->serverDetail(), 'dispatch_summary' => $summary];
+        $row = ScheduleRow::detail($source);
+        self::assertSame([
+            'outcome' => 'skipped', 'at' => '2026-11-13T10:00:00.000001Z',
+            'reason' => "\0 paused \0", 'workflow_id' => null, 'run_id' => null,
+        ], $row['last_outcome']);
+        self::assertSame('known', $row['last_outcome_state']);
+        self::assertSame(7, $row['buffered_actions_count']);
+
+        $source['dispatch_summary'] = [
+            'version' => 1, 'state' => 'never', 'last_outcome' => null, 'buffered_actions_count' => 0,
+        ];
+        $row = ScheduleRow::detail($source);
+        self::assertNull($row['last_outcome']);
+        self::assertSame('never', $row['last_outcome_state']);
+        self::assertSame(0, $row['buffered_actions_count']);
+    }
+
+    public function testUnavailableOrInvalidSummaryCannotFallBackToRetainedDetailFacts(): void
+    {
+        foreach ([
+            null, [], ['version' => 2],
+            ['version' => 1, 'state' => 'unavailable', 'last_outcome' => null, 'buffered_actions_count' => null],
+        ] as $summary) {
+            $source = [...$this->serverDetail(), 'dispatch_summary' => $summary];
+            $row = ScheduleRow::detail($source);
+            self::assertNull($row['last_outcome']);
+            self::assertSame('unavailable', $row['last_outcome_state']);
+            self::assertNull($row['buffered_actions_count']);
+            self::assertNull(ScheduleRow::lastOutcome($source));
+        }
+    }
+
+    public function testNestedLegacyMetadataCannotIntroduceSummaryAuthority(): void
+    {
+        $source = $this->serverDetail();
+        $source['info']['dispatch_summary'] = [
+            'version' => 1, 'state' => 'never', 'last_outcome' => null, 'buffered_actions_count' => 0,
+        ];
+        $row = ScheduleRow::detail($source);
+        self::assertSame('scheduled', $row['last_outcome']['outcome']);
+        self::assertArrayNotHasKey('last_outcome_state', $row);
+    }
+
     public function testStoredSkipReasonRemainsAnExactNullableString(): void
     {
         foreach ([null, '', '  ', "\0", "\0 paused \0", ' reason '] as $reason) {

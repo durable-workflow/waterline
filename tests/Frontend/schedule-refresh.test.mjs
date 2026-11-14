@@ -111,6 +111,40 @@ test('embedded mode refreshes on the list cadence, service mode more slowly, and
     }
 });
 
+test('service cadence follows the bounded page observation and retires the previous timer', async () => {
+    const timers = [];
+    const cleared = [];
+    const original = {set: globalThis.setInterval, clear: globalThis.clearInterval};
+    globalThis.setInterval = (callback, milliseconds) => (timers.push({callback, milliseconds}), timers.length);
+    globalThis.clearInterval = id => cleared.push(id);
+    try {
+        const {state, requests} = fixture({mode: 'service'});
+        state.startPeriodicRefresh();
+        assert.equal(timers[0].milliseconds, 30000);
+
+        const first = state.loadData();
+        const fast = page('active', 'started');
+        fast.data.refresh_interval_ms = 3000;
+        requests[0].resolve(fast);
+        await first;
+        assert.equal(timers[1].milliseconds, 3000);
+        assert.deepEqual(cleared, [1]);
+
+        const second = state.loadData();
+        const legacy = page('active', 'started');
+        legacy.data.refresh_interval_ms = 30000;
+        requests[1].resolve(legacy);
+        await second;
+        assert.equal(timers[2].milliseconds, 30000);
+        assert.deepEqual(cleared, [1, 2]);
+        state.unmount();
+        assert.deepEqual(cleared, [1, 2, 3]);
+    } finally {
+        globalThis.setInterval = original.set;
+        globalThis.clearInterval = original.clear;
+    }
+});
+
 test('a hidden tab skips the refresh and the next visible tick resumes it', async () => {
     const {state, requests} = fixture();
     const first = state.loadData();
@@ -128,4 +162,53 @@ test('a hidden tab skips the refresh and the next visible tick resumes it', asyn
         if (original) Object.defineProperty(globalThis, 'document', original);
         else delete globalThis.document;
     }
+});
+
+test('service page navigation and refresh reuse cursors and applying filters discards them', async () => {
+    const {state, requests} = fixture({mode: 'service'});
+    const first = state.loadData();
+    requests[0].resolve({data: {...page('active', 'started').data,
+        current_page: 1, page_start_token: null, next_page_token: 'opaque page 2'}});
+    await first;
+
+    state.currentPage = 2;
+    const second = state.loadData();
+    assert.equal(requests[1].options.params.page_token, 'opaque page 2');
+    requests[1].resolve({data: {...page('active', 'started').data,
+        page_start_token: 'opaque page 2', next_page_token: 'opaque page 3'}});
+    await second;
+    const refresh = state.loadData();
+    assert.equal(requests[2].options.params.page_token, 'opaque page 2');
+    requests[2].resolve(page('paused', 'started'));
+    await refresh;
+
+    const filtered = state.applyFilters();
+    assert.deepEqual(requests[3].options.params, {page: 1});
+    requests[3].resolve({data: {...page('active', 'started').data, current_page: 1}});
+    await filtered;
+    state.currentPage = 2;
+    assert.equal(state.listParams().page_token, undefined);
+});
+
+test('a refused stale cursor restarts on the next read while transient failures retain it', async () => {
+    const {state, requests} = fixture({mode: 'service'});
+    const first = state.loadData();
+    requests[0].resolve({data: {...page('active', 'started').data, page_start_token: 'page 2'}});
+    await first;
+
+    const transient = state.loadData();
+    requests[1].reject({response: {data: {message: 'Unavailable'}, status: 503}});
+    await transient;
+    assert.equal(state.listParams().page_token, 'page 2');
+    const stale = state.loadData();
+    requests[2].reject({response: {data: {message: 'Restart pagination', reason: 'stale_schedule_page_token'}, status: 409}});
+    await stale;
+    assert.equal(state.error, 'Restart pagination');
+    assert.equal(state.currentPage, 2, 'retained rows still belong to page 2');
+    assert.deepEqual(state.listParams(), {page: 1}, 'next read restarts without replaying earlier pages');
+    const recovered = state.loadData();
+    requests[3].resolve({data: {...page('paused', 'started').data, current_page: 1}});
+    await recovered;
+    assert.equal(state.currentPage, 1);
+    assert.equal(state.error, null);
 });

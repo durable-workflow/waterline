@@ -167,6 +167,11 @@
                                         <span class="schedule-view__pill" :class="statusToneClass(row.schedule.status)">
                                             {{ stateLabel(row.schedule.status || 'unknown') }}
                                         </span>
+                                        <div class="schedule-view__cell-meta" data-latest-run>
+                                            {{ $t("Latest run") }}
+                                            <span v-if="row.currentRun.state === 'known'" :class="toneTextClass(runTone(row.currentRun.bucket))">{{ stateLabel(row.currentRun.status) }}</span>
+                                            <span v-else class="text-muted">{{ row.currentRun.state === 'none' ? '—' : $t("Unavailable") }}</span>
+                                        </div>
                                     </td>
 
                                     <td v-if="columnEnabled('next_fire')" :data-label="$t('Next Fire')">
@@ -188,7 +193,7 @@
                                                 <span :class="toneTextClass(row.lastResult.tone)">{{ outcomeText(row.lastResult) }}</span>
                                                 <span v-if="row.lastResult.reason" class="schedule-view__reason" :title="row.lastResult.reason"> · {{ row.lastResult.reason }}</span>
                                             </div>
-                                            <div class="schedule-view__cell-meta" v-else-if="row.lastResult.state === 'unreported'">
+                                            <div class="schedule-view__cell-meta" v-else-if="['unreported', 'unavailable'].includes(row.lastResult.state)">
                                                 {{ $t("Outcome not reported") }}
                                             </div>
                                         </div>
@@ -492,7 +497,7 @@
                                     <span v-if="detailLastResult.at"> · {{ formatTimestamp(detailLastResult.at) }}</span>
                                     <div v-if="detailLastResult.reason" class="schedule-view__cell-meta schedule-view__reason">{{ detailLastResult.reason }}</div>
                                 </template>
-                                <template v-else-if="detailLastResult.state === 'unreported'">
+                                <template v-else-if="['unreported', 'unavailable'].includes(detailLastResult.state)">
                                     <span v-if="detailLastResult.at">{{ formatTimestamp(detailLastResult.at) }} · </span>
                                     <span class="text-muted">{{ $t("Outcome not reported") }}</span>
                                 </template>
@@ -583,6 +588,7 @@ import {
     outcomeLabel,
     outcomeTone,
     scheduleCadence,
+    scheduleCurrentRun,
     scheduleId,
     scheduleLastResult,
     scheduleRequest,
@@ -591,8 +597,8 @@ import {
 
 // Same cadence as the workflow list.
 const LIST_REFRESH_MILLISECONDS = 3000;
-// Service mode reads each row's last outcome with its own describe call until
-// the Server's schedule list carries it, so one refresh can be 1 + 50 reads.
+// Older service lists still require per-row describes. A complete bounded
+// list observation can explicitly opt into the normal list cadence.
 const SERVICE_REFRESH_MILLISECONDS = 30000;
 
 export default {
@@ -621,6 +627,8 @@ export default {
             appliedVisibilityQuery: '',
             listRequest: 0,
             currentPage: 1,
+            pageTokens: {},
+            restartPageOnRefresh: false,
             pendingRowKeys: {},
             refreshing: false,
             dialogReturnFocus: null,
@@ -648,6 +656,8 @@ export default {
             detailLoading: false,
             detailError: null,
             refreshTimer: null,
+            refreshTimerMilliseconds: null,
+            serviceRefreshMilliseconds: null,
             unmounted: false
         };
     },
@@ -690,6 +700,7 @@ export default {
                 id: scheduleId(schedule),
                 cadence: scheduleCadence(schedule.spec),
                 lastResult: scheduleLastResult(schedule),
+                currentRun: scheduleCurrentRun(schedule),
             }));
         },
 
@@ -788,6 +799,7 @@ export default {
         this.unmounted = true;
         clearInterval(this.refreshTimer);
         this.refreshTimer = null;
+        this.refreshTimerMilliseconds = null;
     },
 
     methods: {
@@ -796,11 +808,17 @@ export default {
             this.appliedWorkflowType = this.workflowTypeFilter.trim();
             this.appliedVisibilityQuery = this.visibilityQueryFilter.trim();
             this.currentPage = 1;
+            this.pageTokens = {};
+            this.restartPageOnRefresh = false;
             return this.loadData();
         },
 
         listParams() {
-            const params = {page: this.currentPage};
+            const page = this.restartPageOnRefresh ? 1 : this.currentPage;
+            const params = {page};
+            if (this.serviceMode && page > 1 && typeof this.pageTokens[page] === 'string') {
+                params.page_token = this.pageTokens[page];
+            }
             if (this.appliedStatus) params.status = this.appliedStatus;
             if (this.appliedWorkflowType) params.workflow_type = this.appliedWorkflowType;
             // An embedded backend without Workflow's schedule query support
@@ -808,6 +826,38 @@ export default {
             // value applied earlier is not sent.
             if (this.visibilityQuerySupported && this.appliedVisibilityQuery) params.query = this.appliedVisibilityQuery;
             return params;
+        },
+
+        applyListResponse(data) {
+            this.schedules = data.data || [];
+            this.operatorScope = data.operator_scope || null;
+            this.observedBackend = data.backend || null;
+            this.serviceRefreshMilliseconds = [LIST_REFRESH_MILLISECONDS, SERVICE_REFRESH_MILLISECONDS].includes(data.refresh_interval_ms)
+                ? data.refresh_interval_ms : null;
+            if (this.refreshTimer !== null) this.startPeriodicRefresh();
+            // Service mode answers a page past the end with the last page
+            // it read; adopt it so Previous, Next and Refresh follow it.
+            if (Number.isInteger(data.current_page) && data.current_page >= 1) {
+                this.currentPage = data.current_page;
+            }
+            if (this.currentPage === 1) this.pageTokens = {};
+            if (typeof data.page_start_token === 'string' && data.page_start_token !== '') {
+                this.pageTokens[this.currentPage] = data.page_start_token;
+            }
+            if (typeof data.next_page_token === 'string' && data.next_page_token !== '') {
+                this.pageTokens[this.currentPage + 1] = data.next_page_token;
+            } else {
+                delete this.pageTokens[this.currentPage + 1];
+            }
+            this.restartPageOnRefresh = false;
+            this.pagination = {
+                current_page: data.current_page,
+                last_page: data.last_page,
+                per_page: data.per_page,
+                total: data.total,
+                page_limit: data.page_limit ?? null,
+                page_limit_reached: data.page_limit_reached === true
+            };
         },
 
         async loadData() {
@@ -821,24 +871,16 @@ export default {
             try {
                 const response = await axios.get(this.resolvedApiEndpoint(), {params: this.listParams()});
                 if (request !== this.listRequest) return;
-                this.schedules = response.data.data || [];
-                this.operatorScope = response.data.operator_scope || null;
-                this.observedBackend = response.data.backend || null;
-                // Service mode answers a page past the end with the last page
-                // it read; adopt it so Previous, Next and Refresh follow it.
-                if (Number.isInteger(response.data.current_page) && response.data.current_page >= 1) {
-                    this.currentPage = response.data.current_page;
-                }
-                this.pagination = {
-                    current_page: response.data.current_page,
-                    last_page: response.data.last_page,
-                    per_page: response.data.per_page,
-                    total: response.data.total,
-                    page_limit: response.data.page_limit ?? null,
-                    page_limit_reached: response.data.page_limit_reached === true
-                };
+                this.applyListResponse(response.data);
             } catch (e) {
                 if (request !== this.listRequest) return;
+                if (this.serviceMode && [
+                    'malformed_schedule_page_token', 'stale_schedule_page_token',
+                    'schedule_page_token_namespace_mismatch', 'schedule_page_token_filter_mismatch',
+                ].includes(e?.response?.data?.reason)) {
+                    this.pageTokens = {};
+                    this.restartPageOnRefresh = true;
+                }
                 this.error = this.responseMessage(e, this.$t("Failed to load schedules"));
             } finally {
                 if (request === this.listRequest) {
@@ -853,13 +895,17 @@ export default {
         },
 
         refreshMilliseconds() {
-            return this.serviceMode ? SERVICE_REFRESH_MILLISECONDS : LIST_REFRESH_MILLISECONDS;
+            return this.serviceMode ? (this.serviceRefreshMilliseconds ?? SERVICE_REFRESH_MILLISECONDS) : LIST_REFRESH_MILLISECONDS;
         },
 
         // The cadence is chosen after the first load, once the backend mode is known.
         startPeriodicRefresh() {
-            if (this.unmounted || this.refreshTimer !== null) return;
-            this.refreshTimer = setInterval(() => this.refreshPeriodically(), this.refreshMilliseconds());
+            if (this.unmounted) return;
+            const milliseconds = this.refreshMilliseconds();
+            if (this.refreshTimer !== null && this.refreshTimerMilliseconds === milliseconds) return;
+            if (this.refreshTimer !== null) clearInterval(this.refreshTimer);
+            this.refreshTimerMilliseconds = milliseconds;
+            this.refreshTimer = setInterval(() => this.refreshPeriodically(), milliseconds);
         },
 
         // Follows the top bar's Auto refresh control, like the workflow list.
@@ -1048,6 +1094,7 @@ export default {
         goToPage(page) {
             if (page < 1 || page === '...' || (this.pagination && page > this.pagination.last_page)) return;
             this.currentPage = page;
+            this.restartPageOnRefresh = false;
             void this.loadData();
         },
 
@@ -1455,6 +1502,10 @@ export default {
                 paused: 'is-warning',
                 deleted: 'is-muted',
             }[status] || 'is-muted';
+        },
+
+        runTone(bucket) {
+            return {completed: 'success', failed: 'danger', running: 'muted'}[bucket] || 'muted';
         },
 
         toneTextClass(tone) {

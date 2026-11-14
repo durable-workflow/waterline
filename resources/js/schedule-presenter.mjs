@@ -131,24 +131,46 @@ export function scheduleCadence(spec) {
     };
 }
 
-// state is "recorded" (an outcome exists), "unreported" (the backend has a
-// last fire time but no outcome for it) or "never" (no fire recorded).
+function emptyLastResult(state, at = null) {
+    return { state, at, outcome: null, label: null, tone: 'muted', reason: null, workflowId: null };
+}
+
+function recordedLastResult(outcome, lastFiredAt) {
+    const known = OUTCOMES[outcome.outcome];
+
+    return {
+        state: 'recorded',
+        at: text(outcome.at) ?? lastFiredAt,
+        outcome: outcome.outcome,
+        label: known ? known.label : null,
+        tone: known ? known.tone : 'muted',
+        reason: typeof outcome.reason === 'string' ? outcome.reason : null,
+        workflowId: text(outcome.workflow_id),
+    };
+}
+
+// An explicit summary state is authoritative. Legacy fire/skip fields cannot
+// fill in an unavailable summary or turn it into an observed "never".
 export function scheduleLastResult(schedule) {
     const outcome = schedule?.last_outcome;
     const lastFiredAt = text(schedule?.last_fired_at);
+    const hasSummary = Object.hasOwn(schedule ?? {}, 'last_outcome_state');
+
+    if (hasSummary) {
+        if (schedule.last_outcome_state === 'never' && outcome === null && schedule.buffered_actions_count === 0) {
+            return emptyLastResult('never');
+        }
+
+        if (schedule.last_outcome_state !== 'known'
+            || !Number.isSafeInteger(schedule.buffered_actions_count) || schedule.buffered_actions_count < 0
+            || !['started', 'buffered', 'skipped', 'failed'].includes(outcome?.outcome)
+            || text(outcome?.at) === null) {
+            return emptyLastResult('unavailable');
+        }
+    }
 
     if (outcome && typeof outcome === 'object' && text(outcome.outcome) !== null) {
-        const known = OUTCOMES[outcome.outcome];
-
-        return {
-            state: 'recorded',
-            at: text(outcome.at) ?? lastFiredAt,
-            outcome: outcome.outcome,
-            label: known ? known.label : null,
-            tone: known ? known.tone : 'muted',
-            reason: typeof outcome.reason === 'string' ? outcome.reason : null,
-            workflowId: text(outcome.workflow_id),
-        };
+        return recordedLastResult(outcome, lastFiredAt);
     }
 
     const hasSkip = text(schedule?.last_skipped_at) !== null
@@ -156,10 +178,27 @@ export function scheduleLastResult(schedule) {
         || (Number.isInteger(schedule?.skipped_trigger_count) && schedule.skipped_trigger_count > 0);
 
     if (lastFiredAt !== null || hasSkip) {
-        return { state: 'unreported', at: lastFiredAt, outcome: null, label: null, tone: 'muted', reason: null, workflowId: null };
+        return emptyLastResult('unreported', lastFiredAt);
     }
 
-    return { state: 'never', at: null, outcome: null, label: null, tone: 'muted', reason: null, workflowId: null };
+    return emptyLastResult('never');
+}
+
+export function scheduleCurrentRun(schedule) {
+    const unavailable = {state: 'unavailable', status: null, bucket: null};
+    if (schedule?.current_run_state === 'none' && schedule.current_run === null && schedule.latest_workflow_instance_id === null) {
+        return {state: 'none', status: null, bucket: null};
+    }
+    const run = schedule?.current_run;
+    if (schedule?.current_run_state !== 'known' || identity(schedule.latest_workflow_instance_id) === null
+        || identity(run?.run_id) === null) return unavailable;
+    const bucket = {
+        pending: 'running', running: 'running', waiting: 'running',
+        completed: 'completed', failed: 'failed', cancelled: 'failed', terminated: 'failed',
+    }[run.status];
+    if (typeof bucket !== 'string' || run.status_bucket !== bucket || run.is_terminal !== (bucket !== 'running')) return unavailable;
+
+    return {state: 'known', status: run.status, bucket};
 }
 
 export function outcomeLabel(outcome) {

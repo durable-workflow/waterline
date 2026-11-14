@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\CursorPageReplay;
+use Waterline\Support\Remote\MonotonicClock;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ScheduleActionResult;
 use Waterline\Support\ScheduleRow;
@@ -29,21 +30,55 @@ final class RemoteSchedulesController extends RemoteController
         Validator::make($request->query(), [
             'workflow_type' => ['sometimes', 'required', 'string', 'min:1', 'max:255', 'regex:/\S/'],
             'query' => ['sometimes', 'required', 'string', 'min:1', 'max:2048'],
+            'page_token' => ['sometimes', 'required', 'string', 'min:1', 'max:8192'],
         ])->validate();
 
-        $replay = CursorPageReplay::replay(
-            CursorPageReplay::requestedPage($request),
-            fn (?string $token) => $this->backend->client()->listSchedules(
+        $requestedPage = CursorPageReplay::requestedPage($request);
+        $startToken = null;
+        $fetch = function (?string $token) use ($request, &$startToken) {
+            $startToken = $token;
+
+            return $this->backend->client()->listSchedules(
                 status: $this->stringQuery($request, 'status'),
                 workflowType: $this->stringQuery($request, 'workflow_type'),
                 query: $this->stringQuery($request, 'query'),
                 pageSize: self::PAGE_SIZE,
                 nextPageToken: $token,
-            ),
-        );
+            );
+        };
+
+        // Repeated reads of a known page cost one list call. Tokens remain
+        // opaque and the Server validates their namespace and filter binding.
+        $suppliedToken = $request->query('page_token');
+        if ($requestedPage > 1 && is_string($suppliedToken)) {
+            $deadline = app(MonotonicClock::class)->milliseconds() + CursorPageReplay::budgetMilliseconds();
+            $page = $fetch($suppliedToken);
+            // Deletion can empty the tail after a still-valid cursor. Recover
+            // with one first-page read rather than replaying up to 100 pages.
+            if ($page->schedules === []) {
+                CursorPageReplay::assertWithinBudget($deadline, 1, $requestedPage);
+                $page = $fetch(null);
+                $requestedPage = 1;
+            }
+            $token = $page->nextPageToken;
+            $replay = [
+                'page' => $page,
+                'page_number' => $requestedPage,
+                'next_page_token' => $token,
+                'page_limit_reached' => $token !== null && $requestedPage >= CursorPageReplay::MAX_PAGE,
+            ];
+        } else {
+            $replay = CursorPageReplay::replay($requestedPage, $fetch);
+        }
         $pageNumber = $replay['page_number'];
         $token = $replay['next_page_token'];
         $hasMore = $token !== null && ! $replay['page_limit_reached'];
+        $listOnly = array_reduce(
+            $replay['page']->schedules,
+            static fn (bool $complete, ScheduleDescription $schedule): bool => $complete
+                && array_key_exists('dispatch_summary', $schedule->raw),
+            true,
+        );
 
         $schedules = array_map(
             fn (ScheduleDescription $schedule): array => $this->listRow($schedule->raw),
@@ -57,8 +92,10 @@ final class RemoteSchedulesController extends RemoteController
             'per_page' => self::PAGE_SIZE,
             'total' => (($pageNumber - 1) * self::PAGE_SIZE) + count($schedules) + ($hasMore ? 1 : 0),
             'next_page_token' => $token,
+            'page_start_token' => $startToken,
             'page_limit' => CursorPageReplay::MAX_PAGE,
             'page_limit_reached' => $replay['page_limit_reached'],
+            'refresh_interval_ms' => $listOnly ? 3000 : 30000,
         ]));
     }
 
@@ -167,16 +204,26 @@ final class RemoteSchedulesController extends RemoteController
     }
 
     /**
-     * Build a list row from the server's list item and the schedule's detail.
+     * A present summary selects the bounded list path. Invalid or unsupported
+     * observations stay unavailable instead of borrowing legacy detail facts.
      *
-     * The list's retained last skip does not establish the latest dispatch, so
-     * detail supplies the outcome. A failed detail read preserves list facts
-     * with an unknown outcome. A successful read supplies its own skip snapshot.
+     * Older lists need detail for the outcome: their retained skip alone cannot
+     * establish the latest dispatch. A failed detail preserves list facts with
+     * an unknown outcome; a successful read supplies its own skip snapshot.
      *
      * @param array<string, mixed> $listItem
      * @return array<string, mixed>
      */
     private function listRow(array $listItem): array
+    {
+        if (array_key_exists('dispatch_summary', $listItem)) {
+            return ScheduleRow::detail($this->withNamespace($listItem));
+        }
+
+        return $this->legacyListRow($listItem);
+    }
+
+    private function legacyListRow(array $listItem): array
     {
         $scheduleId = is_string($listItem['schedule_id'] ?? null) ? $listItem['schedule_id'] : '';
 
@@ -194,7 +241,15 @@ final class RemoteSchedulesController extends RemoteController
         // including nulls or fields unavailable in that detail's contract.
         unset($listItem['last_skip_reason'], $listItem['last_skipped_at'], $listItem['skipped_trigger_count']);
 
-        return ScheduleRow::detail($this->withNamespace([...$listItem, ...$detail]));
+        // Current run and its instance pointer belong to one observation.
+        // A later detail read may see another dispatch; neither direction may
+        // fill a missing pointer from the other read or replace explicit null.
+        $observation = array_key_exists('current_run', $listItem) ? $listItem : $detail;
+
+        return [
+            ...ScheduleRow::detail($this->withNamespace([...$listItem, ...$detail])),
+            ...ScheduleRow::currentRunObservation($observation),
+        ];
     }
 
     private function detailResponse(string $scheduleId): JsonResponse
