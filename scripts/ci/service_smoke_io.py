@@ -11,6 +11,8 @@ import subprocess
 import time
 import uuid
 
+from service_smoke_resources import role_listing_arguments
+
 DEADLINE_EXCEEDED = "Command deadline exceeded"
 
 
@@ -210,12 +212,25 @@ class Docker:
         remaining = 120 - (time.monotonic() - self.cleanup_started)
         if remaining <= 0:
             raise TransportError("Ordinary smoke cleanup deadline exceeded")
-        selected = (len(arguments) == 2 and arguments[0] == "inspect") or (
+        listing = self.is_role_listing(arguments)
+        selected = listing or (len(arguments) == 2 and arguments[0] == "inspect") or (
             len(arguments) == 4 and arguments[:3] == ["rm", "--force", "--volumes"]
         ) or (len(arguments) == 3 and arguments[:2] in (["network", "inspect"], ["network", "rm"]))
-        if not selected or len(arguments[-1]) != 64 or any(c not in "0123456789abcdef" for c in arguments[-1]):
+        if not selected or (not listing and (len(arguments[-1]) != 64 or any(c not in "0123456789abcdef" for c in arguments[-1]))):
             raise TransportError("Cleanup accepts only full-ID inspection and removal")
         return self._command(arguments, timeout=min(30, remaining))
+
+    @staticmethod
+    def is_role_listing(arguments: list[str]) -> bool:
+        if len(arguments) != 11 or not arguments[6].startswith("label=dev.durable-workflow.run="):
+            return False
+        if not arguments[8].startswith("label=dev.durable-workflow.role="):
+            return False
+        run, role = arguments[6].split("=", 2)[2], arguments[8].split("=", 2)[2]
+        try:
+            return arguments == role_listing_arguments(run, role)
+        except (ValueError, RuntimeError):
+            return False
 
     def close(self) -> None:
         self.config.close()

@@ -22,7 +22,12 @@ MIB = 1024 * 1024
 TEMP_PATH = "/run/waterline"
 APPLICATION_PORT = "8080/tcp"
 DATA = "rw,nosuid,nodev,noexec,size=64m,uid=82,gid=82,mode=0755"
+ROOT_DATA = "rw,nosuid,nodev,noexec,size=64m,uid=0,gid=0,mode=0755"
 CACHE = "rw,nosuid,nodev,noexec,size=16m,uid=82,gid=82,mode=0755"
+ROLE_ENVIRONMENT_KEYS = {"APP_KEY", "DB_CONNECTION", "DB_DATABASE", "PORT", "WATERLINE_SERVER_ENDPOINT",
+                         "WATERLINE_SERVER_TOKEN", "WATERLINE_NAMESPACE", "WATERLINE_ACCESS_MODE",
+                         "WATERLINE_ALLOW_UNAUTHENTICATED", "WATERLINE_SERVER_REQUEST_TIMEOUT",
+                         "WATERLINE_BROWSER_REQUEST_TIMEOUT"}
 
 
 def profile(role: str, network: str | None) -> dict:
@@ -34,7 +39,7 @@ def profile(role: str, network: str | None) -> dict:
         raise OwnershipError("This role cannot join an application network")
     uid = 82 if role in {"application", "memory-refusal"} else 1000
     temporary = f"rw,nosuid,nodev,noexec,size=16m,uid={uid},gid={uid},mode=0700"
-    writable = {"/data": DATA, TEMP_PATH: temporary}
+    writable = {"/data": ROOT_DATA, TEMP_PATH: temporary}
     if role in {"application", "memory-refusal"}:
         writable |= {"/app/bootstrap/cache": CACHE, "/app/storage": DATA}
     return {
@@ -168,6 +173,8 @@ def validate_command(role: str, verb: str, arguments: list[str], options: tuple[
     }
     if verb not in selected or options not in selected[verb]:
         raise OwnershipError("Unselected container operation")
+    if verb == "start" and (role == "metadata") != (options == ("--attach", "--interactive")):
+        raise OwnershipError("Unselected role input attachment")
     if not isinstance(arguments, list) or any(not isinstance(argument, str) for argument in arguments):
         raise OwnershipError("Invalid container operation arguments")
     if verb in {"start", "stop", "logs"} and arguments:
@@ -187,17 +194,33 @@ def validate_input(role: str, verb: str, options: tuple[str, ...], data: bytes) 
 
 
 @dataclass(frozen=True)
+class CreationSpec:
+    entrypoint: tuple[str, ...]
+    command: tuple[str, ...]
+    environment: tuple[str, ...]
+
+    def check(self, config: dict) -> None:
+        actual_environment = config.get("Env")
+        if (config.get("Entrypoint") != list(self.entrypoint) or (config.get("Cmd") or []) != list(self.command)
+                or not isinstance(actual_environment, list) or not all(isinstance(value, str) for value in actual_environment)
+                or tuple(sorted(actual_environment)) != self.environment):
+            raise OwnershipError("Created role program or environment differs from captured arguments")
+
+
+@dataclass(frozen=True)
 class Container:
     identifier: str
     run: str
     role: str
     image: str
     network: str | None = None
+    creation: CreationSpec | None = None
 
     def __post_init__(self):
         exact_id(self.identifier)
         ownership_labels(self.run, self.role)
-        profile(self.role, self.network)
+        if self.network is not None:
+            exact_id(self.network)
         if not isinstance(self.image, str) or re.fullmatch(r"sha256:[a-f\d]{64}", self.image, re.ASCII) is None:
             raise OwnershipError("Expected the captured immutable engine image ID")
 
@@ -206,7 +229,9 @@ class Container:
         return ownership_labels(self.run, self.role)
 
     def inspect(self, docker: Callable) -> dict:
-        result = docker(["inspect", self.identifier])
+        return self.validate_inspection(docker(["inspect", self.identifier]))
+
+    def validate_inspection(self, result) -> dict:
         if result.returncode != 0:
             raise OwnershipError("Cannot inspect the captured container")
         value = observation(result.stdout)
@@ -225,7 +250,11 @@ class Container:
                 options: tuple[str, ...] = (), data: bytes = b"") -> object:
         validate_command(self.role, verb, arguments, options)
         validate_input(self.role, verb, options, data)
-        validate_profile(self.inspect(docker), self.role, self.network)
+        if self.creation is None:
+            raise OwnershipError("Cleanup-only resource has no captured creation specification")
+        record = self.inspect(docker)
+        self.creation.check(record["Config"])
+        validate_profile(record, self.role, self.network)
         return docker([verb, *options, self.identifier, *arguments], data=data)
 
     def remove(self, docker: Callable) -> None:
@@ -234,12 +263,171 @@ class Container:
         if result.returncode != 0:
             raise OwnershipError("Captured container removal failed")
         absent = docker(["inspect", self.identifier])
-        missing = (b"no such object: " + self.identifier.encode())
-        if (absent.returncode != 1 or observation(absent.stdout) != []
-                or missing not in absent.stderr.lower()):
+        if not exact_missing(absent, self.identifier):
             raise OwnershipError("Captured container absence is unconfirmed")
 
 
 def labels_arguments(run: str, role: str) -> list[str]:
     return [argument for key, value in ownership_labels(run, role).items()
             for argument in ("--label", key + "=" + value)]
+
+
+def role_listing_arguments(run: str, role: str) -> list[str]:
+    arguments = ["ps", "--all", "--no-trunc"]
+    for key, value in ownership_labels(run, role).items():
+        arguments += ["--filter", "label=" + key + "=" + value]
+    return arguments + ["--format", "{{.ID}}"]
+
+
+def role_candidates(docker: Callable, run: str, role: str) -> list[str]:
+    result = docker(role_listing_arguments(run, role))
+    if (result.returncode != 0 or result.stderr or len(result.stdout) > 130
+            or re.fullmatch(rb"(?:[a-f0-9]{64}\n){0,2}", result.stdout) is None):
+        raise OwnershipError("Role reconciliation was incomplete")
+    identifiers = result.stdout.decode("ascii").splitlines()
+    if len(identifiers) > 1:
+        raise OwnershipError("Ambiguous role candidates are preserved")
+    return identifiers
+
+
+def exact_missing(result, identifier: str) -> bool:
+    return (result.returncode == 1 and result.stdout in (b"[]\n", b"[]")
+            and result.stderr.lower() == b"error: no such object: " + identifier.encode() + b"\n")
+
+
+def clean_role(docker: Callable, run: str, role: str, image: str, network: str | None,
+               captured: str | None) -> dict:
+    matches = role_candidates(docker, run, role)
+    if captured is not None and matches and matches != [captured]:
+        raise OwnershipError("Foreign same-role replacement is preserved")
+    selected = captured or (matches[0] if matches else None)
+    if selected is None:
+        return {"absent": True, "recovered_id": None}
+    exact_id(selected)
+    inspection = docker(["inspect", selected])
+    if not exact_missing(inspection, selected):
+        # Reconciliation grants deletion only. The recovered object is never
+        # returned to the caller's launch path or used for evidence collection.
+        record = Container(selected, run, role, image, network)
+        record.validate_inspection(inspection)
+        record.remove(docker)
+    if role_candidates(docker, run, role):
+        raise OwnershipError("A labelled role remains after captured-ID cleanup")
+    return {"absent": True, "recovered_id": selected if captured is None else None}
+
+
+def audit_role_absence(docker: Callable, run: str, role: str, identifier: str | None) -> None:
+    if role_candidates(docker, run, role):
+        raise OwnershipError("A labelled role appeared during final cleanup audit")
+    if identifier is not None and not exact_missing(docker(["inspect", exact_id(identifier)]), identifier):
+        raise OwnershipError("Final captured-ID absence is unconfirmed")
+
+
+def create_profile_arguments(role: str, run: str, network: str | None, platform: str) -> list[str]:
+    selected = profile(role, network)
+    if platform not in {"linux/amd64", "linux/arm64"}:
+        raise OwnershipError("Unselected native platform")
+    arguments = ["create", "--name", run + "-" + role, *labels_arguments(run, role),
+                 "--platform", platform, "--pull", "never", "--init", "--read-only",
+                 "--cpus", str(selected["cpus"] // 1_000_000_000), "--memory", str(selected["memory"]),
+                 "--memory-swap", str(selected["memory"]), "--pids-limit", str(selected["pids"]),
+                 "--user", selected["user"], "--network", selected["network"], "--cap-drop", "ALL",
+                 "--security-opt", "no-new-privileges", "--ipc", "private", "--cgroupns", "private",
+                 "--restart", "no", "--log-driver", "json-file", "--log-opt", "max-size=1m", "--log-opt", "max-file=1"]
+    for capability in selected["cap_add"]:
+        arguments += ["--cap-add", capability]
+    for path, options in selected["tmpfs"].items():
+        arguments += ["--tmpfs", path + ":" + options]
+    if role == "metadata":
+        arguments += ["--interactive"]
+    if role == "application":
+        arguments += ["--publish", "127.0.0.1::8080"]
+    return arguments
+
+
+def environment_map(values: tuple[str, ...]) -> dict[str, str]:
+    if not isinstance(values, tuple):
+        raise OwnershipError("Image environment must be captured as immutable values")
+    result = {}
+    for item in values:
+        if not isinstance(item, str) or "=" not in item or "\0" in item:
+            raise OwnershipError("Invalid captured image environment")
+        key, value = item.split("=", 1)
+        if not key or key in result:
+            raise OwnershipError("Duplicate captured image environment variable")
+        result[key] = value
+    return result
+
+
+def selected_environment(base: tuple[str, ...], environment: dict[str, str]) -> dict[str, str]:
+    if not isinstance(environment, dict) or any(
+        key not in ROLE_ENVIRONMENT_KEYS or not isinstance(value, str) or "\0" in value or len(value) > 1024
+        for key, value in environment.items()
+    ):
+        raise OwnershipError("Unselected role environment override")
+    result = environment_map(base)
+    if any(key.startswith("LD_") or key in {"PHPRC", "PHP_INI_SCAN_DIR", "APP_ROUTES_CACHE", "ENV", "BASH_ENV"} for key in result):
+        raise OwnershipError("Unselected image loader environment")
+    return {**result, **environment, "TMPDIR": TEMP_PATH}
+
+
+class RoleSet:
+    """At most five roles in one ordinary smoke invocation, with no name cleanup."""
+
+    def __init__(self, docker: Callable, cleanup: Callable, *, run: str, image: str,
+                 platform: str, base_environment: tuple[str, ...], network: str | None = None):
+        ownership_labels(run, "metadata")
+        if not isinstance(image, str) or re.fullmatch(r"sha256:[a-f\d]{64}", image, re.ASCII) is None:
+            raise OwnershipError("Expected a captured immutable image ID")
+        self.docker, self.cleanup_transport = docker, cleanup
+        self.run, self.image, self.platform, self.network = run, image, platform, network
+        self.base_environment = base_environment
+        selected_environment(base_environment, {})
+        self.attempted: dict[str, Container | None] = {}
+
+    def create(self, role: str, *, entrypoint: str, command: list[str], environment: dict[str, str]) -> Container:
+        if role in self.attempted:
+            raise OwnershipError("A role may be created only once per run")
+        network = self.network if role in {"fixture", "application"} else None
+        arguments = create_profile_arguments(role, self.run, network, self.platform)
+        if (entrypoint not in {"/usr/local/bin/php", "/bin/sh", "/app/entrypoint.sh"}
+                or not isinstance(command, list) or any(not isinstance(value, str) or "\0" in value for value in command)):
+            raise OwnershipError("Invalid fixed role program")
+        expected_environment = selected_environment(self.base_environment, environment)
+        for key, value in {**environment, "TMPDIR": TEMP_PATH}.items():
+            arguments += ["--env", key + "=" + value]
+        self.attempted[role] = None
+        result = self.docker([*arguments, "--entrypoint", entrypoint, self.image, *command])
+        if re.fullmatch(rb"[a-f0-9]{64}\n", result.stdout) is None:
+            raise OwnershipError("Creation did not return one full captured ID")
+        creation = CreationSpec((entrypoint,), tuple(command), tuple(sorted(key + "=" + value for key, value in expected_environment.items())))
+        record = Container(result.stdout.decode().rstrip("\n"), self.run, role, self.image, network, creation)
+        self.attempted[role] = record
+        if result.returncode != 0 or result.stderr:
+            raise OwnershipError("Creation failed after returning its captured ID")
+        inspected = record.inspect(self.docker)
+        validate_profile(inspected, role, network)
+        creation.check(inspected["Config"])
+        return record
+
+    def cleanup(self) -> dict:
+        results, errors = {}, []
+        for role, captured in reversed(list(self.attempted.items())):
+            try:
+                results[role] = clean_role(
+                    self.cleanup_transport, self.run, role, self.image,
+                    self.network if role in {"fixture", "application"} else None,
+                    captured.identifier if captured else None,
+                )
+            except Exception as error:
+                # One refused object must not skip another role's cleanup.
+                errors.append({"role": role, "error_class": type(error).__name__})
+                results[role] = {"absent": False, "recovered_id": None}
+        for role, captured in self.attempted.items():
+            try:
+                identifier = captured.identifier if captured else results[role]["recovered_id"]
+                audit_role_absence(self.cleanup_transport, self.run, role, identifier)
+            except Exception as error:
+                errors.append({"role": role, "error_class": type(error).__name__})
+                results[role]["absent"] = False
+        return {"roles": results, "errors": errors, "absent": not errors}

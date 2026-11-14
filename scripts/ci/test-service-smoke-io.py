@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import service_smoke_io as smoke
+import service_smoke_resources as resources
 
 
 class FiniteProcessTest(unittest.TestCase):
@@ -159,6 +160,21 @@ class AnonymousConfigTest(unittest.TestCase):
                 with self.subTest(arguments=arguments), self.assertRaises(smoke.TransportError):
                     docker.cleanup(arguments)
             command.assert_not_called()
+
+    def test_cleanup_listing_requires_the_exact_owner_run_role_filter_set(self):
+        docker = smoke.Docker(self.parent)
+        self.addCleanup(docker.close)
+        arguments = resources.role_listing_arguments("waterline-service-" + "a" * 32, "metadata")
+        with patch.object(smoke, "bounded_process", return_value=subprocess.CompletedProcess([], 0, b"", b"")) as command:
+            docker.cleanup(arguments)
+            self.assertEqual(arguments, command.call_args.args[0][5:])
+            variants = [arguments[:-2], arguments + ["another-selector"],
+                        [value.replace("owner=waterline", "owner=foreign") for value in arguments],
+                        [value.replace("role=metadata", "role=unselected") for value in arguments]]
+            for changed in variants:
+                with self.subTest(changed=changed), self.assertRaises(smoke.TransportError):
+                    docker.cleanup(changed)
+            self.assertEqual(1, command.call_count)
 
 
 if __name__ == "__main__":

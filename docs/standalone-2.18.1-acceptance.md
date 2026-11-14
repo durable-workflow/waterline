@@ -41,7 +41,8 @@ hash cannot supply them.
 | Read `/app/composer.lock` and `/app/vendor/composer/installed.json` from the exact image before application start | Proposed narrow addition to ordinary unprivileged acceptance | New source still required. Use a captured, inspected creation ID; bounded regular-file extraction; reject links, extra members, duplicate JSON keys and oversized output. Compare all 79 packages outside application code before autoload or startup. No held collector invocation or port. |
 | Start the ordinary service/fixture roles and inspect PHP and canonical classes | Existing `service-mode-image-smoke.sh` ordinary path | New graph/cache integration remains unselected. Bind the inspected image/config and captured role IDs, synthetic data only, no host control/code mounts or production credentials. The two existing held proposal variables remain unset. |
 | Clear, build, inspect and clear the route cache in that fresh application filesystem | Proposed narrow addition to the same ordinary path | New source and inert controls required. Only current-target `/app/bootstrap/cache` in the disposable role is writable for these commands. No old compiled cache/vendor copy or M1 collector supplies evidence. |
-| Observe stable routes and actual service/API/budget/refusal behavior before and after cache rebuild | Existing ordinary service and request-budget acceptance commands | The implementation must preserve their assertions and bind every observation to its phase and role. Existing one-phase smoke is insufficient. No shortened assertions, synthetic PASS, production probe or Server failover. |
+| Observe stable routes and native service/API/Server-budget behavior before and after cache rebuild | Existing ordinary native service acceptance | Preserve all native assertions and bind each observation to its phase and role. The existing job division does not require adding the full Playwright matrix to native OCI jobs. No shortened assertions, synthetic PASS, production probe or Server failover. |
+| Repeat all browser budget, typed refusal and recovery assertions across cache phases | Existing published-image request-budget job | Phase-wrap the complete unchanged browser assertions in their existing job. Each published platform retains its required graph/cache proof and exact source/artifact/config binding. No earlier phase, base or platform supplies a missing observation. |
 | Repeat graph/cache checks on each anonymous published platform | Existing `published-image-qualification.yml` unprivileged image jobs | Unselected until a separately accepted published tuple exists. Reports must bind the exact index/child/config/source. Embedded hosts keep their separate lock/cache authority. |
 | Verify and publish inert OCI; sign provenance | Existing protected publisher | Separate later gate. Publisher remains inert and its native artifact allowlist stays exactly `image.oci.tar` and `provenance.json`. It never executes the new observer or candidate code. |
 | Retain graph/cache reports | Existing same-job acceptance evidence | Reports stay separate from the publisher's two-file input. No new remote retrieval/uploader, reusable admission token or cross-run collector route. Retention and exact output subjects must be fixed before selection. |
@@ -72,8 +73,10 @@ The implementation must close these concrete gaps before review can select a run
    only the existing documented normalization for generated cached route names;
    changed methods, URI, middleware, actions, order or collisions refuse.
 4. Exercise `/up` and the existing service/API, budget, typed refusal/recovery
-   controls before and after rebuilding. Preserve the existing actual assertions
-   and source/artifact identities. Fix state isolation for any repeated writes;
+   controls before and after rebuilding. Follow the [clarified existing job division](https://github.com/durable-workflow/waterline/issues/311#issuecomment-6867649075):
+   native service/API and actual Server-budget checks stay in native acceptance;
+   all browser assertions repeat in the existing published request-budget job.
+   Preserve the actual assertions and source/artifact identities. Fix state isolation for repeated writes;
    do not count replayed synthetic reports as fresh behavior.
 5. Specify and inspect finite CPU/RAM/PID limits, role count, total deadline,
    per-command/output bounds, network, writable paths and cleanup ownership.
