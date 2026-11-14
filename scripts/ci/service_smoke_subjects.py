@@ -283,6 +283,11 @@ class HeldArchive:
         if self.hash_range(0, self.size) != self.digest:
             raise SubjectError("Retained OCI bytes changed before result emission")
 
+    def config_bytes(self, expected: str) -> bytes:
+        if not isinstance(expected, str) or re.fullmatch(r"sha256:[a-f\d]{64}", expected, re.ASCII) is None:
+            raise SubjectError("Unselected retained config digest")
+        return (ArchivePath(self) / "blobs/sha256" / expected.split(":")[1]).read_bytes()
+
     def close(self):
         if self.descriptor >= 0:
             os.close(self.descriptor)

@@ -1,6 +1,7 @@
 """Source/marker controls only. No acceptance module or Docker is executed."""
 
 import hashlib
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -91,6 +92,43 @@ class FrozenLoadingTest(unittest.TestCase):
         sys.modules[loading.MODULES[0]] = object()
         with self.assertRaises(loading.LoadingError):
             loading.load_sources(captured, self.subjects)
+
+    @staticmethod
+    def writable(path):
+        for parent, directories, files in os.walk(path):
+            Path(parent).chmod(0o700)
+            for name in directories:
+                (Path(parent) / name).chmod(0o700)
+            for name in files:
+                (Path(parent) / name).chmod(0o600)
+
+    def test_frozen_cleanup_code_snapshot_survives_refused_data_root(self):
+        captured = loading.capture_sources(self.root, self.subjects)
+        extra = {name: (b"synthetic bootstrap bytes\n", hashlib.sha256(b"synthetic bootstrap bytes\n").hexdigest())
+                 for name in ("service_smoke_loading.py", "service_smoke_bootstrap.py")}
+        snapshot = loading.store_snapshot(self.root, captured, self.subjects, extra)
+        self.addCleanup(snapshot.close)
+        self.addCleanup(self.writable, snapshot.path)
+        evidence = self.path / "evidence"
+        evidence.mkdir(mode=0o700)
+        data = loading.SourceRoot(evidence)
+        self.addCleanup(data.close)
+        evidence.rename(self.path / "moved-evidence")
+        evidence.mkdir(mode=0o700)
+        with self.assertRaises(loading.LoadingError):
+            data.check()
+        self.assertEqual(captured, loading.capture_sources(snapshot, self.subjects))
+        self.assertEqual(0o500, snapshot.path.stat().st_mode & 0o777)
+        self.assertEqual(0o400, (snapshot.path / "scripts/ci" / (loading.MODULES[0] + ".py")).stat().st_mode & 0o777)
+
+    def test_unverified_bootstrap_snapshot_refuses_before_writing(self):
+        captured = loading.capture_sources(self.root, self.subjects)
+        extra = {name: (b"unselected bytes", "0" * 64)
+                 for name in ("service_smoke_loading.py", "service_smoke_bootstrap.py")}
+        before = set(self.path.iterdir())
+        with self.assertRaises(loading.LoadingError):
+            loading.store_snapshot(self.root, captured, self.subjects, extra)
+        self.assertEqual(before, set(self.path.iterdir()))
 
 
 if __name__ == "__main__":

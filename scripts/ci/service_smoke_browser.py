@@ -107,13 +107,16 @@ class RpcReader:
         return {"report": self.completed, "stderr": self.diagnostics.decode("utf-8", errors="strict"), "exit_code": code}
 
 
-def rpc_process(command: list[str], fixture, guard, *, pass_fds=(), timeout: float = 180) -> dict:
+def rpc_process(command: list[str], fixture, guard, *, pass_fds=(), timeout: float = 180,
+                temporary: str | None = None, limits=None) -> dict:
     if not 0 < timeout <= 180 or not isinstance(command, list) or sum(len(value) for value in command) > 128 * 1024:
         raise BrowserError("Unselected browser process bound")
     guard()
+    environment = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
+    if temporary is not None:
+        environment["TMPDIR"] = temporary
     process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               start_new_session=True, pass_fds=pass_fds,
-                               env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"})
+                               start_new_session=True, pass_fds=pass_fds, preexec_fn=limits, env=environment)
     try:
         return RpcReader(process, fixture, guard, time.monotonic() + timeout).drain()
     finally:

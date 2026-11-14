@@ -463,3 +463,15 @@ class RoleSet:
                 errors.append({"role": role, "error_class": type(error).__name__})
                 results[role]["absent"] = False
         return {"roles": results, "errors": errors, "absent": not errors}
+
+    def evidence(self) -> dict:
+        result = {}
+        for role, captured in self.attempted.items():
+            if captured is None:
+                result[role] = {"id": None, "creation_output": "unavailable"}
+                continue
+            record = captured.inspect(self.docker)
+            captured.creation.check(record["Config"])
+            validate_profile(record, role, captured.network)
+            result[role] = {key: record.get(key) for key in ("Id", "Image", "State", "Config", "HostConfig", "Mounts")}
+        return result

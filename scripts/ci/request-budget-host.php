@@ -37,10 +37,9 @@ if (PHP_SAPI !== 'cli') {
         $port = $nativeBase === null
             ? filter_var($nativePort, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]])
             : 8080;
-        if ($nativeBase !== null) {
-            if (!is_string($nativeBase) || preg_match('#^http://waterline-service-[a-f0-9]{32}-application:8080$#D', $nativeBase) !== 1) {
-                throw new NativeBudgetFixtureException('Expected the owned synthetic native application.');
-            }
+        if ($nativeBase !== null
+            && (!is_string($nativeBase) || preg_match('#^http://waterline-service-[a-f0-9]{32}-application:8080$#D', $nativeBase) !== 1)) {
+            throw new NativeBudgetFixtureException('Expected the owned synthetic native application.');
         }
         if ($port === false || !str_starts_with($_SERVER['REQUEST_URI'], '/')) {
             http_response_code(400);

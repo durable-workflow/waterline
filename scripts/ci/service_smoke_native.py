@@ -17,7 +17,6 @@ from service_smoke_http import Loopback, native_api, native_budget
 from service_smoke_network import Network
 from service_smoke_observation import CLASSES, FRAMEWORK_CLASS, PHP_BINARY, cache_phases, verify_metadata
 from service_smoke_resources import RoleSet, OwnershipError, observation, validate_profile
-from service_smoke_subjects import ArchivePath
 from waterline_release_identity import decode_json
 
 
@@ -57,7 +56,7 @@ def successful(result, label: str) -> bytes:
 
 def image_configuration(docker, archive, subject: dict) -> dict:
     config_id = subject["config_digest"]
-    config = decode_json((ArchivePath(archive) / "blobs/sha256" / config_id.split(":")[1]).read_bytes(), "held OCI config")
+    config = decode_json(archive.config_bytes(config_id), "held image config")
     record = observation(successful(docker(["image", "inspect", config_id]), "Exact image inspection"))
     if (len(record) != 1 or not isinstance(record[0], dict) or record[0].get("Id") != config_id
             or record[0].get("Os") != "linux" or record[0].get("Architecture") != subject["architecture"]
@@ -253,6 +252,12 @@ def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source
     except Exception as error:
         failure = {"class": type(error).__name__, "message": str(error)}
     finally:
+        try:
+            result["roles"] = roles.evidence()
+        except Exception as error:
+            result["role_evidence_failure"] = {"class": type(error).__name__, "message": str(error)}
+            if failure is None:
+                failure = result["role_evidence_failure"]
         result["cleanup"] = roles.cleanup()
         try:
             result["network_cleanup"] = network.cleanup()

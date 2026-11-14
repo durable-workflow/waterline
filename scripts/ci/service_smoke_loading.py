@@ -12,14 +12,16 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import sys
+import uuid
 from types import ModuleType, SimpleNamespace
 
 
 MODULES = (
     "waterline_release_identity", "service_smoke_resources", "service_smoke_network", "service_smoke_io",
-    "oci_release", "service_smoke_subjects", "service_smoke_observation", "service_smoke_fixture",
-    "service_smoke_http", "service_smoke_browser_source", "service_smoke_browser", "service_smoke_native",
-    "service_smoke_cleanup", "service_smoke_entry",
+    "oci_release", "published_provenance", "service_smoke_subjects", "service_smoke_published",
+    "service_smoke_observation", "service_smoke_fixture",
+    "service_smoke_http", "service_smoke_browser_source", "service_smoke_browser", "service_smoke_browser_runner", "service_smoke_native",
+    "service_smoke_cleanup", "service_smoke_entry", "service_smoke_published_entry",
 )
 MAX_SOURCE = 1024 * 1024
 
@@ -147,12 +149,74 @@ def capture_sources(root: SourceRoot, reviewed: dict[str, str]) -> dict[str, byt
     return captured
 
 
-def load_sources(captured: dict[str, bytes], reviewed: dict[str, str]) -> dict[str, ModuleType]:
+def checked_sources(captured: dict[str, bytes], reviewed: dict[str, str]):
     if set(captured) != set(MODULES) or set(reviewed) != set(MODULES):
         raise LoadingError("Incomplete frozen module set")
     if any(not isinstance(captured[name], bytes) or not 0 < len(captured[name]) <= MAX_SOURCE
            or hashlib.sha256(captured[name]).hexdigest() != reviewed[name] for name in MODULES):
         raise LoadingError("Captured module changed before compilation")
+
+
+def write_regular(parent: int, name: str, raw: bytes):
+    descriptor = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=parent)
+    try:
+        pending = memoryview(raw)
+        while pending:
+            count = os.write(descriptor, pending)
+            if count == 0:
+                raise LoadingError("Frozen code write was incomplete")
+            pending = pending[count:]
+        os.fsync(descriptor)
+        os.fchmod(descriptor, 0o400)
+    finally:
+        os.close(descriptor)
+
+
+def store_snapshot(parent: SourceRoot, captured: dict[str, bytes], reviewed: dict[str, str],
+                   extra: dict[str, tuple[bytes, str]]) -> SourceRoot:
+    checked_sources(captured, reviewed)
+    if set(extra) != {"service_smoke_loading.py", "service_smoke_bootstrap.py"}:
+        raise LoadingError("Incomplete independently verified bootstrap snapshot")
+    for raw, digest in extra.values():
+        if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_SOURCE or hashlib.sha256(raw).hexdigest() != digest:
+            raise LoadingError("Bootstrap snapshot differs from its verified source")
+    parent.check()
+    name = "waterline-frozen-code-" + uuid.uuid4().hex
+    os.mkdir(name, 0o700, dir_fd=parent.descriptor)
+    root = SourceRoot(parent.path / name)
+    scripts = ci = -1
+    try:
+        os.mkdir("scripts", 0o700, dir_fd=root.descriptor)
+        scripts = os.open("scripts", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=root.descriptor)
+        os.mkdir("ci", 0o700, dir_fd=scripts)
+        ci = os.open("ci", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=scripts)
+        for module, raw in captured.items():
+            write_regular(ci, module + ".py", raw)
+        for filename, (raw, _digest) in extra.items():
+            write_regular(ci, filename, raw)
+        root.check()
+        os.fchmod(ci, 0o500)
+        os.fchmod(scripts, 0o500)
+        os.fchmod(root.descriptor, 0o500)
+        root.identity = directory_identity(os.fstat(root.descriptor))
+        if capture_sources(root, reviewed) != captured:
+            raise LoadingError("Frozen code snapshot readback differs")
+        for filename, (raw, _digest) in extra.items():
+            if root.read("scripts/ci/" + filename) != raw:
+                raise LoadingError("Frozen bootstrap snapshot readback differs")
+        parent.check()
+        return root
+    except BaseException:
+        root.close()
+        raise
+    finally:
+        for descriptor in (ci, scripts):
+            if descriptor >= 0:
+                os.close(descriptor)
+
+
+def load_sources(captured: dict[str, bytes], reviewed: dict[str, str]) -> dict[str, ModuleType]:
+    checked_sources(captured, reviewed)
     if any(name in sys.modules for name in MODULES):
         raise LoadingError("Acceptance modules were imported before frozen loading")
     # Check every subject before compiling any one of them. Imports among these

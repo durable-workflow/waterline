@@ -321,6 +321,16 @@ class CreationCleanupTest(unittest.TestCase):
         self.assertTrue(result["absent"])
         self.assertIsNone(result["roles"]["metadata"]["recovered_id"])
 
+    def test_evidence_captures_actual_profile_and_refuses_changed_program(self):
+        captured = self.create()
+        observed = self.roles.evidence()
+        self.assertEqual(captured.identifier, observed["metadata"]["Id"])
+        self.assertEqual(268435456, observed["metadata"]["HostConfig"]["Memory"])
+        self.docker.containers[captured.identifier]["Config"]["Cmd"] = ["unselected program"]
+        with self.assertRaises(resources.OwnershipError):
+            self.roles.evidence()
+        self.assertTrue(self.roles.cleanup()["absent"])
+
     def test_checkpoint_failure_after_create_keeps_the_captured_id_for_cleanup(self):
         def checkpoint(_kind, _role, identifier):
             if identifier is not None:

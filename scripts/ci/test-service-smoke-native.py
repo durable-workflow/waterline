@@ -40,6 +40,9 @@ class FakeRoleSet:
         self.events.append("cleanup")
         return {"absent": self.absent}
 
+    def evidence(self):
+        return {"synthetic": True}
+
 
 class FakeNetwork:
     def __init__(self, *_args):
