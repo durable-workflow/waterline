@@ -16,6 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import service_smoke_io as smoke
 import service_smoke_resources as resources
 
+STATE_PREFIX = "waterline-buildx-state-"
+
 
 class FiniteProcessTest(unittest.TestCase):
     def test_exact_bytes_and_nonzero_status_are_retained(self):
@@ -221,6 +223,119 @@ class BuildxStateTest(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory(prefix="waterline-buildx-source-")
         self.addCleanup(self.directory.cleanup)
         self.parent = Path(self.directory.name)
+
+    def assert_staged_failure_cleaned(self, stage):
+        actual_open, actual_fstat = os.open, os.fstat
+        opened = []
+
+        def intercept_open(name, flags, *args, **kwargs):
+            if isinstance(name, str) and name.startswith(STATE_PREFIX):
+                if stage == "open":
+                    raise OSError("synthetic staged open refusal")
+                descriptor = actual_open(name, flags, *args, **kwargs)
+                opened.append(descriptor)
+                return descriptor
+            return actual_open(name, flags, *args, **kwargs)
+
+        def intercept_fstat(descriptor):
+            if stage == "fstat" and descriptor in opened:
+                raise OSError("synthetic first held fstat refusal")
+            return actual_fstat(descriptor)
+
+        event = {}
+        with patch.object(smoke.os, "open", side_effect=intercept_open), patch.object(smoke.os, "fstat", side_effect=intercept_fstat):
+            with self.assertRaises(OSError):
+                smoke.BuildxConfig(self.parent, event=event)
+        self.assertEqual([], list(self.parent.iterdir()))
+        self.assertEqual("pass", event["cleanup"])
+        self.assertIn("creation_failure", event)
+        self.assertIn("private_state_identity", event)
+
+    def test_post_mkdir_open_failure_removes_only_captured_empty_state(self):
+        self.assert_staged_failure_cleaned("open")
+
+    def test_first_held_fstat_failure_removes_only_captured_empty_state(self):
+        self.assert_staged_failure_cleaned("fstat")
+
+    def test_staged_foreign_replacement_is_preserved_and_reported(self):
+        actual_open = os.open
+        moved = self.parent / "owned-moved"
+        foreign = []
+
+        def replacement(name, flags, *args, **kwargs):
+            if isinstance(name, str) and name.startswith(STATE_PREFIX):
+                original = self.parent / name
+                original.rename(moved)
+                original.mkdir(mode=0o700)
+                marker = original / "foreign-marker"
+                marker.write_text("preserve")
+                foreign.append(marker)
+                raise OSError("synthetic open refusal after replacement")
+            return actual_open(name, flags, *args, **kwargs)
+
+        event = {}
+        with patch.object(smoke.os, "open", side_effect=replacement):
+            with self.assertRaises(smoke.TransportError):
+                smoke.BuildxConfig(self.parent, event=event)
+        self.assertEqual("preserve", foreign[0].read_text())
+        self.assertTrue(moved.is_dir())
+        self.assertEqual("nonpass", event["cleanup"])
+        self.assertIn("creation_failure", event)
+        self.assertIn("cleanup_failure", event)
+
+    def test_failed_initial_identity_capture_preserves_unknown_state_as_nonpass(self):
+        actual_stat = os.stat
+
+        def failure(name, *args, **kwargs):
+            if isinstance(name, str) and name.startswith(STATE_PREFIX):
+                raise OSError("synthetic initial identity refusal")
+            return actual_stat(name, *args, **kwargs)
+
+        event = {}
+        with patch.object(smoke.os, "stat", side_effect=failure):
+            with self.assertRaises(smoke.TransportError):
+                smoke.BuildxConfig(self.parent, event=event)
+        self.assertEqual(1, len(list(self.parent.iterdir())))
+        self.assertEqual("nonpass", event["cleanup"])
+        self.assertIn("cleanup_failure", event)
+
+    def test_manifest_records_attempt_before_constructor_refuses(self):
+        docker = smoke.Docker(self.parent)
+        self.addCleanup(docker.close)
+        actual_open = os.open
+
+        def failure(name, flags, *args, **kwargs):
+            if isinstance(name, str) and name.startswith(STATE_PREFIX):
+                raise OSError("synthetic staged open refusal")
+            return actual_open(name, flags, *args, **kwargs)
+
+        with patch.object(smoke.os, "open", side_effect=failure), patch.object(smoke, "bounded_process") as command:
+            with self.assertRaises(OSError):
+                docker.manifest("docker.io/durableworkflow/waterline@sha256:" + "a" * 64)
+            command.assert_not_called()
+        self.assertEqual(1, len(docker.manifest_events))
+        self.assertEqual("pass", docker.manifest_events[0]["cleanup"])
+        self.assertIn("creation_failure", docker.manifest_events[0])
+        self.assertEqual([], list(self.parent.iterdir()))
+
+    def test_staged_nonempty_state_is_preserved_as_nonpass(self):
+        actual_open = os.open
+        markers = []
+
+        def failure(name, flags, *args, **kwargs):
+            if isinstance(name, str) and name.startswith(STATE_PREFIX):
+                marker = self.parent / name / "unadmitted-marker"
+                marker.write_text("preserve")
+                markers.append(marker)
+                raise OSError("synthetic open refusal after unexpected write")
+            return actual_open(name, flags, *args, **kwargs)
+
+        event = {}
+        with patch.object(smoke.os, "open", side_effect=failure):
+            with self.assertRaises(OSError):
+                smoke.BuildxConfig(self.parent, event=event)
+        self.assertEqual("preserve", markers[0].read_text())
+        self.assertEqual("nonpass", event["cleanup"])
 
     def test_old_noncreatable_default_fails_while_actual_separate_state_writes_and_is_removed(self):
         # This child exercises the actual mkdir/FD boundary without running a

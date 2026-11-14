@@ -32,7 +32,7 @@ REVIEWED = {
     "service_smoke_entry": "1bfe19c1a099bee4ca63dae3b4b8b380ebeb17ea5199093d7f2efecc8dd38710",
     "service_smoke_fixture": "01e673516ad5d96e100b3cda37fd39063dd60c38f49f87faadcfd5abef07c4a2",
     "service_smoke_http": "1fb1acf0399e038ea98189d30b313c03c7079d191e03762ed95f8b1215718104",
-    "service_smoke_io": "38bf94840a4eeaccc7c7f93c8a493ec3ee5a5a3002c968f374f00bf03c36256e",
+    "service_smoke_io": "d5f59fea36a5946fbd2e82b95e7d0b6d1b1e5ae55ebcf5c359a1d39182836f5a",
     "service_smoke_native": "b687f239d6a7465d2b2b356f3997347bc7d4a299a672b6d943c6cce42138c939",
     "service_smoke_network": "dd0b17cd7f457182b9bfa605f37d332763b2d53c8f266f0c2a298e8423a2f7cf",
     "service_smoke_observation": "14c8eb1a134a2c78f9734befa3ba1f2cdcdf151073422f489fbcc85e917b1d97",

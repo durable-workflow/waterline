@@ -178,3 +178,11 @@ namespace is renamed. A foreign replacement is preserved and makes cleanup
 NONPASS. Bounded stderr and state cleanup outcomes remain in the same job log.
 The causal controls use synthetic mkdir/descriptor children, not a live registry
 or Buildx invocation. Actual plugin compatibility remains a separate effect gate.
+
+The manifest attempt is recorded before state construction. Immediately after
+`mkdir`, the constructor captures the no-follow directory identity before any
+open or held `fstat`. Failed construction permits only removal of that exact
+still-named empty owned inode. Unknown identity, nonempty state or a replacement
+is preserved and reported as cleanup NONPASS. The original creation failure and
+cleanup outcome are both retained. Predecessor controls against the earlier Git
+source reproduce the two staged open/fstat cleanup failures.

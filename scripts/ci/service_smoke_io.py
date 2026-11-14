@@ -222,18 +222,31 @@ class AnonymousConfig:
 class BuildxConfig:
     """Fresh plugin state, separate from the unlinked Docker credential root."""
 
-    def __init__(self, parent: Path):
+    def __init__(self, parent: Path, *, event: dict | None = None):
         self.parent_path = parent
-        self.parent = trusted_parent(parent)
+        self.parent = -1
         self.name = "waterline-buildx-state-" + uuid.uuid4().hex
         self.descriptor = -1
+        self.selected = None
+        self.created = self.ready = False
+        self.event = {} if event is None else event
+        self.event.update({"state_name": self.name, "state_created": False, "cleanup": "nonpass"})
         try:
+            self.parent = trusted_parent(parent)
             self.parent_identity = self.identity(os.fstat(self.parent))
             os.mkdir(self.name, mode=0o700, dir_fd=self.parent)
+            self.created = True
+            self.event["state_created"] = True
+            # mkdir has no returned descriptor. Capture its no-follow identity
+            # before the first open, so an open/fstat failure retains authority
+            # to remove only that exact still-named empty owned directory.
+            self.selected = self.identity(os.stat(self.name, dir_fd=self.parent, follow_symlinks=False))
+            self.event["private_state_identity"] = list(self.selected)
             self.descriptor = os.open(self.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=self.parent)
-            self.selected = self.identity(os.fstat(self.descriptor))
             self.check()
-        except BaseException:
+            self.ready = True
+        except BaseException as error:
+            self.event["creation_failure"] = {"class": type(error).__name__, "message": str(error)}
             self.close()
             raise
 
@@ -267,19 +280,38 @@ class BuildxConfig:
             else:
                 os.unlink(name, dir_fd=self.descriptor)
 
-    def close(self):
+    def remove_empty_named(self):
+        if self.selected is None:
+            raise TransportError("Buildx creation identity is unknown; state preserved")
+        named = os.stat(self.name, dir_fd=self.parent, follow_symlinks=False)
+        if (self.identity(named) != self.selected or not stat.S_ISDIR(named.st_mode)
+                or named.st_uid != os.getuid() or stat.S_IMODE(named.st_mode) != 0o700):
+            raise TransportError("Buildx staged cleanup found a foreign state replacement")
+        os.rmdir(self.name, dir_fd=self.parent)
         try:
-            if self.descriptor >= 0:
-                # Clean through the held owned directory even after a parent
-                # rename. Never traverse a replacement of its original name.
+            os.stat(self.name, dir_fd=self.parent, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        raise TransportError("Buildx state absence was not confirmed")
+
+    def cleanup_directory(self):
+        if self.created:
+            if self.ready:
+                # After a completed open, clean through the held owned root.
+                # During failed construction, only exact empty removal is safe.
                 self.clear_held()
                 self.check_held()
-                os.rmdir(self.name, dir_fd=self.parent)
-                try:
-                    os.stat(self.name, dir_fd=self.parent, follow_symlinks=False)
-                except FileNotFoundError:
-                    return
-                raise TransportError("Buildx state absence was not confirmed")
+            self.remove_empty_named()
+
+    def close(self):
+        if self.parent < 0:
+            return
+        try:
+            self.cleanup_directory()
+            self.event["cleanup"] = "pass"
+        except BaseException as error:
+            self.event["cleanup_failure"] = {"class": type(error).__name__, "message": str(error)}
+            raise
         finally:
             for field in ("descriptor", "parent"):
                 value = getattr(self, field, -1)
@@ -333,10 +365,11 @@ class Docker:
         remaining = 600 - (time.monotonic() - self.started)
         if remaining <= 0:
             raise TransportError(TOTAL_DEADLINE_EXCEEDED)
-        state = BuildxConfig(self.parent)
-        event = {"image": image, "private_state_identity": list(state.selected), "cleanup": "nonpass"}
+        event = {"image": image, "cleanup": "nonpass"}
         self.manifest_events.append(event)
+        state = None
         try:
+            state = BuildxConfig(self.parent, event=event)
             self.config.check()
             state.check()
             command = [DOCKER_BINARY, "--host", DOCKER_ENDPOINT, "--config", self.config.path,
@@ -352,12 +385,8 @@ class Docker:
             event["failure"] = {"class": type(error).__name__, "message": str(error)}
             raise
         finally:
-            try:
+            if state is not None:
                 state.close()
-                event["cleanup"] = "pass"
-            except BaseException as error:
-                event["cleanup_failure"] = {"class": type(error).__name__, "message": str(error)}
-                raise
 
     def acquire(self, image: str, platform: str) -> subprocess.CompletedProcess:
         if self.scope_check is not None:
