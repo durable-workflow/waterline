@@ -93,7 +93,9 @@ def bounded_process(command: list[str], *, data: bytes = b"", timeout: float = 3
     process = subprocess.Popen(
         command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         start_new_session=True, pass_fds=pass_fds,
-        env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"},
+        env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8",
+             "GIT_NO_LAZY_FETCH": "1", "GIT_NO_REPLACE_OBJECTS": "1",
+             "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"},
     )
     buffers = {process.stdout: bytearray(), process.stderr: bytearray()}
     limits = {process.stdout: stdout_limit, process.stderr: stderr_limit}

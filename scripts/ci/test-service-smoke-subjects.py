@@ -4,6 +4,7 @@ import io
 import os
 from pathlib import Path
 import runpy
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -129,6 +130,61 @@ class HeldArchiveTest(unittest.TestCase):
         # Holding an input during bounded application phases does not consume
         # the independent 30-second final byte-validation window.
         archive.verify_unchanged()
+
+
+class GitInputTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix="waterline-git-source-")
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name) / "repository"
+        self.root.mkdir(mode=0o700)
+        self.git("init", "-q", "--initial-branch=main")
+        (self.root / "input.json").write_bytes(b'{"synthetic":"committed"}\n')
+        self.git("add", "input.json")
+        self.git("-c", "user.name=Synthetic Fixture", "-c", "user.email=fixture@example.invalid",
+                 "commit", "-q", "-m", "Synthetic source data")
+        self.commit = self.git("rev-parse", "HEAD").decode().strip()
+        self.inputs = subjects.GitInputs(self.root, self.commit)
+        self.addCleanup(self.inputs.close)
+
+    def git(self, *arguments, data=None):
+        result = subprocess.run(["/usr/bin/git", "-C", str(self.root), *arguments], input=data,
+                                capture_output=True, timeout=5,
+                                env={"PATH": "/usr/bin:/bin", "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"})
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout
+
+    def test_committed_bytes_do_not_follow_a_later_working_tree_edit(self):
+        (self.root / "input.json").write_bytes(b'{"unselected":"working-tree"}\n')
+        self.assertEqual(b'{"synthetic":"committed"}\n', self.inputs.read("input.json"))
+
+    def test_replace_refs_cannot_substitute_immutable_source_bytes(self):
+        original = self.git("rev-parse", "HEAD:input.json").decode().strip()
+        replacement = self.git("hash-object", "-w", "--stdin", data=b"unselected replacement").decode().strip()
+        self.git("replace", original, replacement)
+        self.assertEqual(b'{"synthetic":"committed"}\n', self.inputs.read("input.json"))
+
+    def test_repository_namespace_swap_refuses_before_git_execution(self):
+        moved = self.root.with_name("moved")
+        self.root.rename(moved)
+        self.root.mkdir(mode=0o700)
+        with patch.object(subjects, "bounded_process") as command:
+            with self.assertRaises(subjects.SubjectError):
+                self.inputs.read("input.json")
+            command.assert_not_called()
+
+    def test_unselected_paths_and_oversized_blob_refuse(self):
+        for path in ("../input.json", "/input.json", "./input.json", None):
+            with self.subTest(path=path), self.assertRaises(subjects.SubjectError):
+                self.inputs.read(path)
+        (self.root / "large").write_bytes(b"x" * (1024 * 1024 + 1))
+        self.git("add", "large")
+        self.git("-c", "user.name=Synthetic Fixture", "-c", "user.email=fixture@example.invalid",
+                 "commit", "-q", "-m", "Synthetic bounded input")
+        current = subjects.GitInputs(self.root, self.git("rev-parse", "HEAD").decode().strip())
+        self.addCleanup(current.close)
+        with self.assertRaises(subjects.SubjectError):
+            current.read("large")
 
 
 if __name__ == "__main__":

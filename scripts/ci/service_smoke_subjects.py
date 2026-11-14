@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import io
 import os
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 import re
 import stat
 import tarfile
@@ -17,6 +17,7 @@ import time
 from types import SimpleNamespace
 
 import oci_release
+from service_smoke_io import bounded_process, trusted_parent
 
 
 BLOCK_SIZE = tarfile.BLOCKSIZE
@@ -26,6 +27,68 @@ MAX_DOCUMENT = 32 * 1024 * 1024
 
 class SubjectError(RuntimeError):
     """An artifact does not have the selected immutable input identity."""
+
+
+def directory_identity(value: os.stat_result) -> tuple:
+    return value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid
+
+
+class GitInputs:
+    """Capture local immutable Git objects, never source files from later paths."""
+
+    def __init__(self, repository: Path, commit: str):
+        self.commit = oci_release.commit(commit)
+        self.repository = repository
+        self.descriptor = trusted_parent(repository)
+        self.identity = directory_identity(os.fstat(self.descriptor))
+        try:
+            raw = self.command(["rev-parse", "--verify", self.commit + "^{tree}"]).stdout
+            if re.fullmatch(rb"[a-f0-9]{40}\n", raw) is None:
+                raise SubjectError("Source commit did not resolve to one immutable tree")
+            self.tree = raw.decode().rstrip("\n")
+        except BaseException:
+            self.close()
+            raise
+
+    def check(self):
+        current = trusted_parent(self.repository)
+        try:
+            if directory_identity(os.fstat(current)) != self.identity or directory_identity(os.fstat(self.descriptor)) != self.identity:
+                raise SubjectError("Source repository namespace changed")
+        finally:
+            os.close(current)
+
+    def command(self, arguments: list[str], limit: int = 1024 * 1024):
+        self.check()
+        result = bounded_process(
+            ["/usr/bin/git", "--no-replace-objects", "-C", "/proc/self/fd/" + str(self.descriptor), *arguments],
+            pass_fds=(self.descriptor,), stdout_limit=limit,
+        )
+        self.check()
+        if result.returncode != 0 or result.stderr:
+            raise SubjectError("Local immutable source read failed")
+        return result
+
+    def read(self, path: str) -> bytes:
+        if not isinstance(path, str):
+            raise SubjectError("Unselected immutable source path")
+        name = PurePosixPath(path)
+        if (name.is_absolute() or ".." in name.parts
+                or str(name) != path or not name.parts):
+            raise SubjectError("Unselected immutable source path")
+        specification = self.commit + ":" + path
+        size = self.command(["cat-file", "-s", specification], limit=64).stdout
+        if re.fullmatch(rb"(?:0|[1-9][0-9]{0,6})\n", size) is None or int(size) > 1024 * 1024:
+            raise SubjectError("Immutable source blob exceeds its bound")
+        raw = self.command(["cat-file", "blob", specification]).stdout
+        if len(raw) != int(size):
+            raise SubjectError("Immutable source blob length changed")
+        return raw
+
+    def close(self):
+        if self.descriptor >= 0:
+            os.close(self.descriptor)
+            self.descriptor = -1
 
 
 def file_identity(value: os.stat_result) -> tuple:
