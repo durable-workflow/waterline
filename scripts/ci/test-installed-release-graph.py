@@ -362,6 +362,31 @@ catch (ErrorException $error) { echo json_encode($error->getSeverity()); }
         self.assertEqual(b"", result.stderr)
         self.assertEqual(256, json.loads(result.stdout))
 
+    @unittest.skipUnless(shutil.which("php"), "PHP INI control needs the existing PHP runtime")
+    def test_composer_include_path_transition_preserves_other_observed_ini_values(self):
+        source = self.emitted_source().decode()
+        snapshot = "function currentIniValues()" + source.split("function currentIniValues()", 1)[1].split(
+            "function currentRoutes", 1)[0]
+        lock = json.loads((ROOT / "standalone/composer.lock").read_bytes())
+        paths = ["/app/vendor/" + package["name"] for package in lock["packages"] if package.get("include-path")]
+        # Composer's generated autoloader prepends the declared package paths.
+        operation = """
+set_include_path('.:/usr/local/lib/php');
+$before = currentIniValues();
+$includePaths = json_decode($argv[1], true, 512, JSON_THROW_ON_ERROR);
+$includePaths[] = get_include_path();
+set_include_path(implode(PATH_SEPARATOR, $includePaths));
+echo json_encode([$before, currentIniValues()], JSON_THROW_ON_ERROR);
+"""
+        result = subprocess.run([shutil.which("php"), "-n", "-r", snapshot + operation, json.dumps(paths)],
+                                capture_output=True, timeout=5)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(b"", result.stderr)
+        before, after = json.loads(result.stdout)
+        self.assertEqual(":".join([*paths, before["include_path"]]), after["include_path"])
+        self.assertEqual({key: value for key, value in before.items() if key != "include_path"},
+                         {key: value for key, value in after.items() if key != "include_path"})
+
 
 if __name__ == "__main__":
     unittest.main()

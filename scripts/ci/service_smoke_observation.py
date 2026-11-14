@@ -30,6 +30,9 @@ CLASSES = {
 }
 INI_KEYS = {"memory_limit", "date.timezone", "auto_prepend_file", "auto_append_file", "include_path",
             "opcache.enable_cli", "opcache.file_cache", "allow_url_include"}
+INITIAL_INCLUDE_PATH = ".:/usr/local/lib/php"
+# These are the only include-path declarations in the exact sealed lock.
+COMPOSER_INCLUDE_PATHS = ("/app/vendor/pear/net_url2", "/app/vendor/pear/pear_exception")
 BASE_KEYS = {"schema", "mode", "php_version", "php_int_size", "php_binary", "effective_uid",
              "ini_loaded_file", "ini_scanned_files", "ini_before", "ini_after", "lock_sha256", "installed_sha256"}
 PHP_ERROR_CLASSES = frozenset({"Error", "ErrorException", "Exception", "RuntimeException", "TypeError",
@@ -100,10 +103,18 @@ def check_program(program: bytes) -> None:
 
 def check_ini(report: dict, *, metadata: bool) -> None:
     before, after = report.get("ini_before"), report.get("ini_after")
-    if not isinstance(before, dict) or set(before) != INI_KEYS or before != after:
-        raise ObservationError("PHP configuration changed or is incomplete")
-    if any(not isinstance(value, str) and value is not False for value in before.values()):
+    if (not isinstance(before, dict) or not isinstance(after, dict)
+            or set(before) != INI_KEYS or set(after) != INI_KEYS):
+        raise ObservationError("PHP configuration is incomplete")
+    if any(not isinstance(value, str) and value is not False for value in [*before.values(), *after.values()]):
         raise ObservationError("Invalid PHP configuration value")
+    expected = dict(before)
+    if not metadata:
+        expected["include_path"] = ":".join((*COMPOSER_INCLUDE_PATHS, INITIAL_INCLUDE_PATH))
+    changed = sorted(key for key in INI_KEYS if expected[key] != after[key])
+    if before["include_path"] != INITIAL_INCLUDE_PATH or changed:
+        # Closed names only; never include an observed configuration value.
+        raise ObservationError("PHP configuration mismatch: " + ",".join(changed or ["include_path"]))
     for key in ("auto_prepend_file", "auto_append_file", "opcache.file_cache", "allow_url_include"):
         if before[key] not in (False, "", "0"):
             raise ObservationError("Unselected PHP bootstrap or executable cache input")
