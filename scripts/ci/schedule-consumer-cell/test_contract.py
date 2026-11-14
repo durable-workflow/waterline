@@ -84,6 +84,9 @@ class PacketBoundaryTest(unittest.TestCase):
         fixture.workspace = RefusedWorkspace()
         fixture.ids = {'runtime': 'a' * 64}
         fixture.labels = {'runtime': {'owner': 'waterline'}}
+        fixture.images = {'runtime': 'sha256:' + 'b' * 64}
+        fixture.recovered_ids = {}
+        fixture.owned_role_ids = lambda role: []
         fixture.cleanup_docker = ['/usr/bin/docker', '--config', '/proc/self/fd']
         fixture.processes = []; fixture.files = []; fixture.credentials = []
         removed = []

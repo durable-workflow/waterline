@@ -59,6 +59,8 @@ class Cell:
         self.subjects = subjects
         self.ids = {}
         self.labels = {}
+        self.images = {}
+        self.recovered_ids = {}
         self.processes = []
         self.files = []
         self.nonce = secrets.token_hex(12)
@@ -93,9 +95,13 @@ class Cell:
         return result
 
     def create(self, role, image, options, command):
+        if role in self.labels:
+            raise ValueError('role create context already exists')
         labels = {'dev.durable-workflow.fixture-owner': 'waterline',
                   'dev.durable-workflow.fixture-run': self.nonce,
                   'dev.durable-workflow.fixture-role': role}
+        # Retain deletion-only context before Docker can create an object.
+        self.labels[role], self.images[role] = labels, image
         flags = [part for k, v in labels.items() for part in ['--label', k + '=' + v]]
         result = self.run(['create', '--name', 'waterline-222-' + role + '-' + self.nonce,
                            '--init', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
@@ -103,7 +109,7 @@ class Cell:
         identifier = result.stdout.decode().strip()
         if re.fullmatch(r'[0-9a-f]{64}', identifier) is None:
             raise ValueError('create did not return full ID')
-        self.ids[role], self.labels[role] = identifier, labels
+        self.ids[role] = identifier
         state = self.inspect(self.docker, identifier, labels)
         if any(mount['Type'] != 'tmpfs' for mount in state['Mounts']):
             raise ValueError('host mounts and anonymous volumes are forbidden')
@@ -143,14 +149,43 @@ class Cell:
             child.stdin = None
         return child
 
+    def owned_role_ids(self, role):
+        filters = [part for key, value in self.labels[role].items()
+                   for part in ['--filter', 'label=' + key + '=' + value]]
+        result = subprocess.run(self.cleanup_docker + ['ps', '--all', '--quiet', '--no-trunc', *filters],
+                                check=True, capture_output=True, timeout=5)
+        if len(result.stdout) > 130:
+            raise ValueError('owned role inventory exceeds its bound')
+        identifiers = result.stdout.decode('ascii').splitlines()
+        if len(identifiers) > 1 or any(re.fullmatch('[0-9a-f]{64}', item) is None for item in identifiers):
+            raise ValueError('owned role inventory is ambiguous or malformed')
+        return identifiers
+
+    def cleanup_role(self, role):
+        identifier = self.ids.get(role)
+        if identifier is None:
+            found = self.owned_role_ids(role)
+            if found:
+                identifier = found[0]
+                state = self.raw_inspect(self.cleanup_docker, identifier, self.labels[role], True)
+                if state is not None and state.get('Image') != self.images[role]:
+                    raise ValueError('unreported role image differs; preserved')
+                self.recovered_ids[role] = identifier
+        oom = False
+        if identifier is not None:
+            state = self.raw_inspect(self.cleanup_docker, identifier, self.labels[role], True)
+            oom = state is not None and state['State'].get('OOMKilled', False)
+            self.remove(self.cleanup_docker, identifier, self.labels[role])
+        if self.owned_role_ids(role):
+            raise RuntimeError('owned role label set remains; preserved')
+        return oom
+
     def cleanup(self):
         errors, oom = [], []
-        for role in reversed(list(self.ids)):
+        for role in reversed(list(self.labels)):
             try:
-                state = self.raw_inspect(self.cleanup_docker, self.ids[role], self.labels[role], True)
-                if state is not None and state['State'].get('OOMKilled'):
+                if self.cleanup_role(role):
                     oom.append(role)
-                self.remove(self.cleanup_docker, self.ids[role], self.labels[role])
             except Exception as error:
                 errors.append(role + ':' + type(error).__name__)
         for process in self.processes:
@@ -163,7 +198,8 @@ class Cell:
         for file in self.files:
             file.close()
         result = {'containers_absent': not errors, 'oom': oom, 'errors': errors,
-                  'ids': self.ids, 'labels': self.labels, 'host_mounts': [], 'anonymous_volumes': []}
+                  'ids': self.ids, 'recovered_ids': self.recovered_ids, 'labels': self.labels,
+                  'host_mounts': [], 'anonymous_volumes': []}
         for item in self.credentials:
             try:
                 self.workspace.remove(item)
