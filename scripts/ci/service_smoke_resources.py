@@ -21,6 +21,8 @@ ROLES = {"metadata", "trust", "memory-refusal", "fixture", "application"}
 MIB = 1024 * 1024
 TEMP_PATH = "/run/waterline"
 APPLICATION_PORT = "8080/tcp"
+PHP_BINARY = "/usr/local/bin/php"
+STDIN = "/dev/stdin"
 DATA = "rw,nosuid,nodev,noexec,size=64m,uid=82,gid=82,mode=0755"
 ROOT_DATA = "rw,nosuid,nodev,noexec,size=64m,uid=0,gid=0,mode=0755"
 CACHE = "rw,nosuid,nodev,noexec,size=16m,uid=82,gid=82,mode=0755"
@@ -161,18 +163,26 @@ def observation(raw: bytes) -> list:
 
 def valid_probe_arguments(role: str, arguments: list[str]) -> bool:
     return role == "application" and ((len(arguments) == 4
-            and arguments[:2] == ["/usr/local/bin/php", "/dev/stdin"]
+            and arguments[:2] == [PHP_BINARY, STDIN]
             and arguments[2] in {"inventory", "clear-before", "cache-build", "clear-after"}
             and re.fullmatch(r"[a-f\d]{64}", arguments[3], re.ASCII) is not None) or (
-                arguments == ["/usr/local/bin/php", "-n", "/dev/stdin", "service-uid"]))
+                arguments == [PHP_BINARY, "-n", STDIN, "service-uid"]))
 
 
 def valid_fixture_arguments(role: str, arguments: list[str]) -> bool:
-    if role != "fixture" or len(arguments) != 5 or arguments[:3] != ["/usr/local/bin/php", "-n", "/dev/stdin"]:
+    if role != "fixture" or len(arguments) != 5 or arguments[:3] != [PHP_BINARY, "-n", STDIN]:
         return False
     return (arguments[3] == "phase" and arguments[4] in {"before", "cached", "cleared"}) or (
         arguments[3] == "mode" and arguments[4] in {"healthy", "backend-stall", "write-stall"}
     ) or arguments[3:] == ["audit", ""]
+
+
+def validate_exec(role: str, arguments: list[str], options: tuple[str, ...]) -> None:
+    valid = (valid_probe_arguments(role, arguments) and options == ("--interactive", "--user", "82:82")) or (
+        valid_fixture_arguments(role, arguments) and options == ("--interactive", "--user", "1000:1000")
+    )
+    if not valid:
+        raise OwnershipError("Unselected probe command")
 
 
 def validate_command(role: str, verb: str, arguments: list[str], options: tuple[str, ...]) -> None:
@@ -192,11 +202,7 @@ def validate_command(role: str, verb: str, arguments: list[str], options: tuple[
     if verb == "port" and arguments != [APPLICATION_PORT]:
         raise OwnershipError("Unselected application port")
     if verb == "exec":
-        valid = (valid_probe_arguments(role, arguments) and options == ("--interactive", "--user", "82:82")) or (
-            valid_fixture_arguments(role, arguments) and options == ("--interactive", "--user", "1000:1000")
-        )
-        if not valid:
-            raise OwnershipError("Unselected probe command")
+        validate_exec(role, arguments, options)
 
 
 def validate_input(role: str, verb: str, options: tuple[str, ...], data: bytes) -> None:
@@ -404,7 +410,7 @@ class RoleSet:
             raise OwnershipError("A role may be created only once per run")
         network = self.network if role in {"fixture", "application"} else None
         arguments = create_profile_arguments(role, self.run, network, self.platform)
-        if (entrypoint not in {"/usr/local/bin/php", "/bin/sh", "/app/entrypoint.sh"}
+        if (entrypoint not in {PHP_BINARY, "/bin/sh", "/app/entrypoint.sh"}
                 or not isinstance(command, list) or any(not isinstance(value, str) or "\0" in value for value in command)):
             raise OwnershipError("Invalid fixed role program")
         expected_environment = selected_environment(self.base_environment, environment)

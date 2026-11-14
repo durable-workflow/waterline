@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import re
 import time
+from urllib.parse import urlunsplit
 
 from service_smoke_fixture import FILES, Fixture, source_hashes, startup
 from service_smoke_http import Loopback, native_api, native_budget
@@ -21,6 +22,7 @@ from waterline_release_identity import decode_json
 
 APP_START = """mkdir -p /app/storage/framework/cache/data /app/storage/framework/sessions /app/storage/framework/views /app/storage/logs
 exec timeout -s TERM -k 5 600 /app/entrypoint.sh"""
+SHELL = "/bin/sh"
 TRUST = """/usr/local/bin/php /usr/local/share/waterline/verify-ca-trust.php
 /usr/local/bin/php /usr/local/share/waterline/verify-brotli.php
 exec /usr/local/bin/php /usr/local/share/waterline/verify-curl.php"""
@@ -67,8 +69,11 @@ def image_configuration(docker, archive, subject: dict) -> dict:
 def app_environment(fixture_name: str) -> dict:
     if re.fullmatch(r"waterline-service-[a-f0-9]{32}-fixture", fixture_name) is None:
         raise OwnershipError("Unselected synthetic fixture endpoint")
+    # This closed authority is the owned synthetic peer on the local bridge.
+    # It carries no production data and cannot select an external endpoint.
+    endpoint = urlunsplit(("http", fixture_name + ":18081", "", "", ""))
     return {"APP_KEY": "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "DB_CONNECTION": "sqlite",
-            "DB_DATABASE": "/data/waterline.sqlite", "WATERLINE_SERVER_ENDPOINT": "http://" + fixture_name + ":18081",
+            "DB_DATABASE": "/data/waterline.sqlite", "WATERLINE_SERVER_ENDPOINT": endpoint,
             "WATERLINE_SERVER_TOKEN": "smoke-token", "WATERLINE_NAMESPACE": "smoke", "WATERLINE_ACCESS_MODE": "operator",
             "WATERLINE_ALLOW_UNAUTHENTICATED": "true", "WATERLINE_SERVER_REQUEST_TIMEOUT": "0.2",
             "WATERLINE_BROWSER_REQUEST_TIMEOUT": "0.8"}
@@ -88,7 +93,7 @@ def loopback_port(record: dict) -> int:
     ports = record.get("NetworkSettings", {}).get("Ports", {})
     binding = ports.get("8080/tcp")
     if (not isinstance(binding, list) or len(binding) != 1 or set(binding[0]) != {"HostIp", "HostPort"}
-            or binding[0]["HostIp"] != "127.0.0.1" or re.fullmatch(r"[1-9][0-9]{0,4}", binding[0]["HostPort"], re.ASCII) is None
+            or binding[0]["HostIp"] != "127.0.0.1" or re.fullmatch(r"[1-9]\d{0,4}", binding[0]["HostPort"], re.ASCII) is None
             or int(binding[0]["HostPort"]) > 65535):
         raise OwnershipError("Actual application publication differs from numeric loopback")
     return int(binding[0]["HostPort"])
@@ -123,7 +128,7 @@ def verify_uid(roles: RoleSet, role) -> dict:
 
 def memory_refusal(roles: RoleSet) -> dict:
     environment = app_environment(roles.run + "-fixture") | {"DB_DATABASE": ":memory:"}
-    role = roles.create("memory-refusal", entrypoint="/bin/sh",
+    role = roles.create("memory-refusal", entrypoint=SHELL,
                         command=["-eu", "-c", "exec timeout -s TERM -k 5 25 /app/entrypoint.sh"], environment=environment)
     successful(role.command(roles.docker, "start", []), "Memory-refusal start")
     until = time.monotonic() + 10
@@ -143,7 +148,7 @@ def memory_refusal(roles: RoleSet) -> dict:
 
 
 def trust_controls(roles: RoleSet) -> dict:
-    role = roles.create("trust", entrypoint="/bin/sh", command=["-eu", "-c", TRUST], environment={})
+    role = roles.create("trust", entrypoint=SHELL, command=["-eu", "-c", TRUST], environment={})
     successful(role.command(roles.docker, "start", []), "Trust controls start")
     until = time.monotonic() + 10
     while time.monotonic() < until:
@@ -192,10 +197,10 @@ def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source
         result["trust_controls"] = trust_controls(roles)
         result["memory_refusal"] = memory_refusal(roles)
         roles.network = network.create()
-        fixture_role = roles.create("fixture", entrypoint="/bin/sh", command=startup(inputs), environment={})
+        fixture_role = roles.create("fixture", entrypoint=SHELL, command=startup(inputs), environment={})
         successful(fixture_role.command(docker, "start", []), "Protocol fixture start")
         fixture = Fixture(docker, fixture_role)
-        application = roles.create("application", entrypoint="/bin/sh", command=["-eu", "-c", APP_START],
+        application = roles.create("application", entrypoint=SHELL, command=["-eu", "-c", APP_START],
                                    environment=app_environment(run + "-fixture"))
         successful(application.command(docker, "start", []), "Application start")
 

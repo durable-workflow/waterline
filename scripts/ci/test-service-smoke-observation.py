@@ -241,8 +241,9 @@ class ObservationTest(unittest.TestCase):
         role = InertRole("application", self.phase_reports())
         def refuse(_phase, _role):
             raise RuntimeError("synthetic HTTP refusal")
+        metadata = self.verified()
         with self.assertRaisesRegex(RuntimeError, "synthetic HTTP refusal"):
-            observation.cache_phases(None, role, self.program, self.verified(), self.source_classes, refuse)
+            observation.cache_phases(None, role, self.program, metadata, self.source_classes, refuse)
         self.assertEqual(["clear-before", "inventory"], [call["mode"] for call in role.commands])
 
 

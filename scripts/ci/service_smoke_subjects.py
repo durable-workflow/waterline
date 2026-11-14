@@ -15,6 +15,7 @@ import stat
 import tarfile
 import time
 from types import SimpleNamespace
+from typing import Any, cast
 
 import oci_release
 from service_smoke_io import bounded_process, trusted_parent
@@ -78,7 +79,7 @@ class GitInputs:
             raise SubjectError("Unselected immutable source path")
         specification = self.commit + ":" + path
         size = self.command(["cat-file", "-s", specification], limit=64).stdout
-        if re.fullmatch(rb"(?:0|[1-9][0-9]{0,6})\n", size) is None or int(size) > 1024 * 1024:
+        if re.fullmatch(rb"(?:0|[1-9]\d{0,6})\n", size) is None or int(size) > 1024 * 1024:
             raise SubjectError("Immutable source blob exceeds its bound")
         raw = self.command(["cat-file", "blob", specification]).stdout
         if len(raw) != int(size):
@@ -216,7 +217,7 @@ class HeldArchive:
             return None
         try:
             member = tarfile.TarInfo.frombuf(raw, encoding="utf-8", errors="strict")
-        except (tarfile.HeaderError, UnicodeError, ValueError) as error:
+        except (tarfile.HeaderError, ValueError) as error:
             raise SubjectError("Invalid OCI tar header") from error
         if member.type not in {tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE}:
             raise SubjectError("OCI links, extended headers and special files are forbidden")
@@ -240,16 +241,20 @@ class HeldArchive:
                 raise SubjectError("Unsafe or duplicate OCI member")
             seen.add(name)
             data_offset = offset + BLOCK_SIZE
-            if member.isdir():
-                if name not in {"blobs", "blobs/sha256"} or member.size != 0:
-                    raise SubjectError("Unselected OCI directory")
-            else:
-                total += member.size
-                if not 0 <= member.size <= MAX_ARCHIVE or total > MAX_ARCHIVE or data_offset + member.size > self.size:
-                    raise SubjectError("Oversized or truncated OCI member")
-                self.capture_member(name, data_offset, member.size)
+            total = self.record_member(member, name, data_offset, total)
             offset = data_offset + ((member.size + BLOCK_SIZE - 1) // BLOCK_SIZE) * BLOCK_SIZE
         raise SubjectError("Missing OCI tar terminator")
+
+    def record_member(self, member, name: str, offset: int, total: int) -> int:
+        if member.isdir():
+            if name not in {"blobs", "blobs/sha256"} or member.size != 0:
+                raise SubjectError("Unselected OCI directory")
+            return total
+        total += member.size
+        if not 0 <= member.size <= MAX_ARCHIVE or total > MAX_ARCHIVE or offset + member.size > self.size:
+            raise SubjectError("Oversized or truncated OCI member")
+        self.capture_member(name, offset, member.size)
+        return total
 
     def capture_member(self, name: str, offset: int, size: int):
         if name not in {"oci-layout", "index.json"} and re.fullmatch(r"blobs/sha256/[a-f\d]{64}", name, re.ASCII) is None:
@@ -263,7 +268,9 @@ class HeldArchive:
             raise SubjectError("Unselected native artifact platform")
         source = oci_release.commit(source)
         self.deadline = time.monotonic() + 30
-        descriptor, config, attestation = oci_release.inspect_oci(ArchivePath(self), architecture, source)
+        # The adapter implements the verifier's read-only path operations while
+        # keeping all reads on the held descriptor instead of a filesystem tree.
+        descriptor, config, attestation = oci_release.inspect_oci(cast(Any, ArchivePath(self)), architecture, source)
         oci_release.validate_image_security(security, self.digest, architecture, config)
         self.check()
         return {"archive_digest": self.digest, "architecture": architecture, "source": source,

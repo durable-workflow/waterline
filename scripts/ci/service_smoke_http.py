@@ -17,6 +17,8 @@ from waterline_release_identity import decode_json
 
 API = "/waterline/api"
 SELECTED = API + "/instances/smoke-order/runs/smoke-run"
+RUNNING = API + "/flows/running"
+WORKFLOW_TYPE = "smoke.order"
 
 
 class HttpError(RuntimeError):
@@ -67,8 +69,8 @@ class Loopback:
         self.check()
         require(result.returncode == 0 and not result.stderr, "Finite loopback HTTP request failed")
         parts = result.stdout.rsplit(b"\n", 3)
-        require(len(parts) == 4 and parts[3] == b"" and re.fullmatch(rb"[1-5][0-9]{2}", parts[1]) is not None
-                and re.fullmatch(rb"[0-5]\.[0-9]{6}", parts[2]) is not None, "Malformed finite HTTP result")
+        require(len(parts) == 4 and parts[3] == b"" and re.fullmatch(rb"[1-5]\d{2}", parts[1]) is not None
+                and re.fullmatch(rb"[0-5]\.\d{6}", parts[2]) is not None, "Malformed finite HTTP result")
         return Reply(int(parts[1]), parts[0], float(parts[2]))
 
 
@@ -97,11 +99,11 @@ def document(request, method: str, path: str, status: int, payload: dict | None 
 def native_api(request, phase: str) -> dict:
     require(phase in {"before", "cached", "cleared"}, "Unselected API phase")
     require(request("GET", "/up", None).status == 200, "Application health failed")
-    listing = document(request, "GET", API + "/flows/running", 200)
+    listing = document(request, "GET", RUNNING, 200)
     saved = document(request, "GET", API + "/saved-views?bucket=running", 200)
     created = document(request, "POST", API + "/saved-views", 201,
                        {"name": "Smoke orders " + phase, "bucket": "running",
-                        "filters": {"workflow_type": "smoke.order"}, "shared": True})
+                        "filters": {"workflow_type": WORKFLOW_TYPE}, "shared": True})
     selected = created.get("id")
     require(isinstance(selected, str) and 0 < len(selected) <= 256, "Saved view ID is absent or oversized")
     narrowed = document(request, "GET", API + "/flows/running?view=" + quote(selected, safe=""), 200)
@@ -113,12 +115,12 @@ def native_api(request, phase: str) -> dict:
     exact_fields(saved, {"filter_version": 7, "supported_filter_versions": [6, 7],
                          "filter_definition.version": 7, "filter_definition.fields.repair_state.label": "Repair State",
                          "filter_definition.fields.repair_state.filterable": False}, "Saved views")
-    exact_fields(created, {"filter_version": 7, "filters.workflow_type": "smoke.order",
+    exact_fields(created, {"filter_version": 7, "filters.workflow_type": WORKFLOW_TYPE,
                            "service_mode_available": True}, "Created view")
     require(isinstance(narrowed.get("data"), list) and len(narrowed["data"]) == 1, "Saved view did not narrow rows")
     exact_fields(narrowed, {"data.0.instance_id": "smoke-order", "visibility_filters.saved_view.id": selected,
                             "visibility_filters.saved_view_applied": True,
-                            "visibility_filters.applied.workflow_type": "smoke.order",
+                            "visibility_filters.applied.workflow_type": WORKFLOW_TYPE,
                             "visibility_filters.capability.fully_applied": True}, "Selected view")
     exact_fields(detail, {"selected_run_id": "smoke-run", "timeline.0.event_type": "WorkflowStarted",
                           "timeline.0.type": "WorkflowStarted", "timeline.0.recorded_at": "2026-07-22T12:00:00Z",
@@ -137,13 +139,13 @@ def native_api(request, phase: str) -> dict:
 
 def native_budget(request, fixture) -> dict:
     fixture.mode("backend-stall")
-    reply = request("GET", API + "/flows/running", None)
+    reply = request("GET", RUNNING, None)
     require(reply.status == 502 and 0.15 <= reply.elapsed < 1.8, "Server read exceeded its selected request budget")
     failure = reply.document()
     exact_fields(failure, {"reason": "request_timeout", "remote_details.timeout_seconds": 0.2}, "Read timeout")
     fixture.drain(3.3)
     fixture.mode("healthy")
-    recovered = document(request, "GET", API + "/flows/running", 200)
+    recovered = document(request, "GET", RUNNING, 200)
     require(isinstance(recovered.get("data"), list) and len(recovered["data"]) == 2, "Explicit read recovery failed")
     fixture.mode("write-stall")
     write = request("POST", SELECTED + "/cancel", {})

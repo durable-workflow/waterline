@@ -99,14 +99,7 @@ class Network:
             raise OwnershipError("Foreign network replacement is preserved")
         selected = self.identifier or (matches[0] if matches else None)
         if selected is not None and matches:
-            record = inspect(self.cleanup_transport, selected, self.run)
-            # Changed execution settings do not revoke deletion authority, but
-            # an attached object must be handled by its own captured-role owner.
-            if record.get("Containers") != {}:
-                raise OwnershipError("Network still contains attached resources")
-            result = self.cleanup_transport(["network", "rm", selected])
-            if result.returncode != 0 or result.stderr:
-                raise OwnershipError("Captured network removal failed")
+            self.remove(selected)
         if candidates(self.cleanup_transport, self.run):
             raise OwnershipError("Labelled network remains after cleanup")
         if selected is not None:
@@ -115,3 +108,13 @@ class Network:
             if result.returncode != 1 or result.stdout.strip() != b"[]" or result.stderr.lower() != expected:
                 raise OwnershipError("Captured network absence is unconfirmed")
         return {"absent": True, "recovered_id": selected if self.identifier is None else None}
+
+    def remove(self, identifier: str):
+        record = inspect(self.cleanup_transport, identifier, self.run)
+        # Changed execution settings do not revoke deletion authority, but an
+        # attached object must be handled by its own captured-role owner.
+        if record.get("Containers") != {}:
+            raise OwnershipError("Network still contains attached resources")
+        result = self.cleanup_transport(["network", "rm", identifier])
+        if result.returncode != 0 or result.stderr:
+            raise OwnershipError("Captured network removal failed")
