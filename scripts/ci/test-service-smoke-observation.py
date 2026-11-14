@@ -175,8 +175,9 @@ class ObservationTest(unittest.TestCase):
             return result
         role.command = command
         self.exercised = []
+        metadata = self.verified()
         with self.assertRaisesRegex(observation.ObservationError, r"Cache probe 3/6 \(cache-build\):"):
-            observation.cache_phases(None, role, self.program, self.verified(), self.source_classes, self.exercise)
+            observation.cache_phases(None, role, self.program, metadata, self.source_classes, self.exercise)
         self.assertEqual(["clear-before", "inventory", "cache-build"], [call["mode"] for call in role.commands])
         self.assertEqual(["before"], [phase for phase, _role in self.exercised])
 
