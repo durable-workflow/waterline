@@ -17,10 +17,12 @@ FULL_ID = re.compile(r"[a-f\d]{64}", re.ASCII)
 OWNER_KEY = "dev.durable-workflow.owner"
 RUN_KEY = "dev.durable-workflow.run"
 ROLE_KEY = "dev.durable-workflow.role"
-ROLES = {"metadata", "trust", "memory-refusal", "fixture", "application"}
+ROLES = {"metadata", "trust", "memory-refusal", "fixture", "browser-fixture", "application"}
+NETWORK_ROLES = {"fixture", "browser-fixture", "application"}
 MIB = 1024 * 1024
 TEMP_PATH = "/run/waterline"
 APPLICATION_PORT = "8080/tcp"
+FIXTURE_PORT = "18082/tcp"
 PHP_BINARY = "/usr/local/bin/php"
 STDIN = "/dev/stdin"
 DATA = "rw,nosuid,nodev,noexec,size=64m,uid=82,gid=82,mode=0755"
@@ -35,7 +37,7 @@ ROLE_ENVIRONMENT_KEYS = {"APP_KEY", "DB_CONNECTION", "DB_DATABASE", "PORT", "WAT
 def profile(role: str, network: str | None) -> dict:
     if role not in ROLES:
         raise OwnershipError("Unselected ordinary smoke role")
-    if role in {"fixture", "application"}:
+    if role in NETWORK_ROLES:
         exact_id(network)
     elif network is not None:
         raise OwnershipError("This role cannot join an application network")
@@ -96,11 +98,12 @@ def validate_mounts(mounts: object, selected: dict) -> None:
 
 
 def validate_ports(ports: dict, role: str) -> None:
-    if role == "application":
-        if (set(ports) != {APPLICATION_PORT} or not isinstance(ports[APPLICATION_PORT], list)
-                or len(ports[APPLICATION_PORT]) != 1):
+    if role in {"application", "browser-fixture"}:
+        port = APPLICATION_PORT if role == "application" else FIXTURE_PORT
+        if (set(ports) != {port} or not isinstance(ports[port], list)
+                or len(ports[port]) != 1):
             raise OwnershipError("Application must publish only its one loopback port")
-        binding = ports[APPLICATION_PORT][0]
+        binding = ports[port][0]
         if (not isinstance(binding, dict) or set(binding) != {"HostIp", "HostPort"}
                 or binding["HostIp"] != "127.0.0.1" or not isinstance(binding["HostPort"], str)
                 or (binding["HostPort"] and (re.fullmatch(r"[1-9]\d{0,4}", binding["HostPort"], re.ASCII) is None
@@ -170,11 +173,13 @@ def valid_probe_arguments(role: str, arguments: list[str]) -> bool:
 
 
 def valid_fixture_arguments(role: str, arguments: list[str]) -> bool:
-    if role != "fixture" or len(arguments) != 5 or arguments[:3] != [PHP_BINARY, "-n", STDIN]:
+    if role not in {"fixture", "browser-fixture"} or len(arguments) != 5 or arguments[:3] != [PHP_BINARY, "-n", STDIN]:
         return False
     return (arguments[3] == "phase" and arguments[4] in {"before", "cached", "cleared"}) or (
         arguments[3] == "mode" and arguments[4] in {"healthy", "backend-stall", "write-stall"}
-    ) or arguments[3:] == ["audit", ""]
+    ) or arguments[3:] == ["audit", ""] or (
+        role == "browser-fixture" and arguments[3] == "browser-mode" and 0 < len(arguments[4]) <= 8192
+    )
 
 
 def validate_exec(role: str, arguments: list[str], options: tuple[str, ...]) -> None:
@@ -360,8 +365,8 @@ def create_profile_arguments(role: str, run: str, network: str | None, platform:
         arguments += ["--tmpfs", path + ":" + options]
     if role == "metadata":
         arguments += ["--interactive"]
-    if role == "application":
-        arguments += ["--publish", "127.0.0.1::8080"]
+    if role in {"application", "browser-fixture"}:
+        arguments += ["--publish", "127.0.0.1::" + ("8080" if role == "application" else "18082")]
     return arguments
 
 
@@ -409,7 +414,9 @@ class RoleSet:
     def create(self, role: str, *, entrypoint: str, command: list[str], environment: dict[str, str]) -> Container:
         if role in self.attempted:
             raise OwnershipError("A role may be created only once per run")
-        network = self.network if role in {"fixture", "application"} else None
+        if role in {"fixture", "browser-fixture"} and ({"fixture", "browser-fixture"} & self.attempted.keys()):
+            raise OwnershipError("One invocation cannot create both fixture profiles")
+        network = self.network if role in NETWORK_ROLES else None
         arguments = create_profile_arguments(role, self.run, network, self.platform)
         if (entrypoint not in {PHP_BINARY, "/bin/sh", "/app/entrypoint.sh"}
                 or not isinstance(command, list) or any(not isinstance(value, str) or "\0" in value for value in command)):
@@ -441,7 +448,7 @@ class RoleSet:
             try:
                 results[role] = clean_role(
                     self.cleanup_transport, self.run, role, self.image,
-                    self.network if role in {"fixture", "application"} else None,
+                    self.network if role in NETWORK_ROLES else None,
                     captured.identifier if captured else None,
                 )
             except Exception as error:

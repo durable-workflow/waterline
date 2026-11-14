@@ -32,8 +32,18 @@ if (PHP_SAPI !== 'cli') {
     }
 
     $nativePort = getenv('BUDGET_NATIVE_PORT');
-    if ($nativePort !== false) {
-        $port = filter_var($nativePort, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]]);
+    $nativeBase = defined('WATERLINE_NATIVE_BUDGET_BASE') ? WATERLINE_NATIVE_BUDGET_BASE : null;
+    if ($nativePort !== false || $nativeBase !== null) {
+        $port = $nativeBase === null
+            ? filter_var($nativePort, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 65535]])
+            : 8080;
+        $host = '127.0.0.1';
+        if ($nativeBase !== null) {
+            if (!is_string($nativeBase) || preg_match('#^http://(waterline-service-[a-f0-9]{32}-application):8080$#D', $nativeBase, $authority) !== 1) {
+                throw new NativeBudgetFixtureException('Expected the owned synthetic native application.');
+            }
+            $host = $authority[1];
+        }
         if ($port === false || !str_starts_with($_SERVER['REQUEST_URI'], '/')) {
             http_response_code(400);
             throw new NativeBudgetFixtureException('Expected a local native-image port and request path.');
@@ -47,7 +57,7 @@ if (PHP_SAPI !== 'cli') {
         }
         $targetPath = '/'.implode('/', array_map('rawurlencode', $segments));
         $query = parse_url($_SERVER['REQUEST_URI'], PHP_URL_QUERY);
-        $target = 'http://127.0.0.1:'.$port.$targetPath.($query === null ? '' : '?'.$query);
+        $target = 'http://'.$host.':'.$port.$targetPath.($query === null ? '' : '?'.$query);
         $headers = ['Host: 127.0.0.1:8080'];
         foreach (getallheaders() as $name => $value) {
             if (!in_array(strtolower($name), ['host', 'connection', 'content-length', 'transfer-encoding'], true)) {

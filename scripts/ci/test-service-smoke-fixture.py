@@ -51,6 +51,14 @@ class FixtureTest(unittest.TestCase):
         after = fixture.source_hashes({"server.php": b"replacement"})
         self.assertNotEqual(before, after)
 
+    def test_browser_proxy_accepts_only_its_exact_owned_application_authority(self):
+        selected = {name: b"synthetic readonly bytes" for name in fixture.FILES}
+        selected["host.php"] = b"synthetic proxy source"
+        fixture.startup(selected, "waterline-service-" + "a" * 32 + "-application")
+        for authority in ("foreign.example", "waterline-service-" + "a" * 32 + "-application;unselected"):
+            with self.subTest(authority=authority), self.assertRaises(resources.OwnershipError):
+                fixture.startup(selected, authority)
+
     def test_fixture_uid_cannot_be_used_for_an_application_probe(self):
         with self.assertRaises(resources.OwnershipError):
             resources.validate_command("application", "exec", ["/usr/local/bin/php", "-n", "/dev/stdin", "service-uid"],

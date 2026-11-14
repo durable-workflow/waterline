@@ -12,7 +12,7 @@ import re
 import time
 from urllib.parse import urlunsplit
 
-from service_smoke_fixture import FILES, Fixture, source_hashes, startup
+from service_smoke_fixture import BROWSER_FILE, FILES, Fixture, source_hashes, startup
 from service_smoke_http import Loopback, native_api, native_budget
 from service_smoke_network import Network
 from service_smoke_observation import CLASSES, FRAMEWORK_CLASS, PHP_BINARY, cache_phases, verify_metadata
@@ -67,9 +67,11 @@ def image_configuration(docker, archive, subject: dict) -> dict:
     return config["config"]
 
 
-def app_environment(fixture_name: str) -> dict:
-    if re.fullmatch(r"waterline-service-[a-f0-9]{32}-fixture", fixture_name) is None:
+def app_environment(fixture_name: str, browser_budget: float = 0.8) -> dict:
+    if re.fullmatch(r"waterline-service-[a-f\d]{32}-(?:browser-)?fixture", fixture_name) is None:
         raise OwnershipError("Unselected synthetic fixture endpoint")
+    if browser_budget not in {0.8, 3.5}:
+        raise OwnershipError("Unselected existing browser budget")
     # This closed authority is the owned synthetic peer on the local bridge.
     # It carries no production data and cannot select an external endpoint.
     endpoint = urlunsplit(("http", fixture_name + ":18081", "", "", ""))
@@ -77,7 +79,7 @@ def app_environment(fixture_name: str) -> dict:
             "DB_DATABASE": "/data/waterline.sqlite", "WATERLINE_SERVER_ENDPOINT": endpoint,
             "WATERLINE_SERVER_TOKEN": "smoke-token", "WATERLINE_NAMESPACE": "smoke", "WATERLINE_ACCESS_MODE": "operator",
             "WATERLINE_ALLOW_UNAUTHENTICATED": "true", "WATERLINE_SERVER_REQUEST_TIMEOUT": "0.2",
-            "WATERLINE_BROWSER_REQUEST_TIMEOUT": "0.8"}
+            "WATERLINE_BROWSER_REQUEST_TIMEOUT": str(browser_budget)}
 
 
 def running(roles: RoleSet, role) -> dict:
@@ -90,9 +92,9 @@ def running(roles: RoleSet, role) -> dict:
     return record
 
 
-def loopback_port(record: dict) -> int:
+def loopback_port(record: dict, selected: str = "8080/tcp") -> int:
     ports = record.get("NetworkSettings", {}).get("Ports", {})
-    binding = ports.get("8080/tcp")
+    binding = ports.get(selected)
     if (not isinstance(binding, list) or len(binding) != 1 or set(binding[0]) != {"HostIp", "HostPort"}
             or binding[0]["HostIp"] != "127.0.0.1" or re.fullmatch(r"[1-9]\d{0,4}", binding[0]["HostPort"], re.ASCII) is None
             or int(binding[0]["HostPort"]) > 65535):
@@ -178,7 +180,37 @@ def fixture_protocol(audit: dict, phase: str) -> None:
             raise OwnershipError("Missing fresh actual upstream request: " + request)
 
 
-def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source, program: bytes, checkpoint=None) -> dict:
+class NativePhases:
+    def __init__(self, roles, network, fixture_role, application, fixture, browser):
+        self.roles, self.network, self.fixture_role, self.application = roles, network, fixture_role, application
+        self.fixture, self.browser = fixture, browser
+        self.port = loopback_port(running(roles, application))
+        self.fixture_port = loopback_port(running(roles, fixture_role), "18082/tcp") if browser is not None else None
+        self.http = Loopback(self.port, self.check)
+
+    def check(self):
+        fixture_record = running(self.roles, self.fixture_role)
+        record = running(self.roles, self.application)
+        self.network.check({self.fixture_role.identifier, self.application.identifier})
+        if loopback_port(record) != self.port:
+            raise OwnershipError("Application publication changed")
+        if self.browser is not None and loopback_port(fixture_record, "18082/tcp") != self.fixture_port:
+            raise OwnershipError("Browser fixture publication changed")
+
+    def exercise(self, phase, _role):
+        self.check()
+        self.fixture.phase(phase)
+        observed = {"api": native_api(self.http.request, phase), "budget": native_budget(self.http.request, self.fixture)}
+        fixture_protocol(observed["budget"]["fixture_audit"], phase)
+        if self.browser is not None:
+            self.fixture.phase(phase)
+            observed["browser"] = self.browser(phase, self.fixture, self.fixture_port, self.check)
+        self.check()
+        return observed
+
+
+def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source, program: bytes,
+                    checkpoint=None, browser=None, browser_budget: float = 0.8) -> dict:
     """Complete inner lifecycle. Only the later reviewed outer caller can bind inputs."""
     if platform.machine() != {"amd64": "x86_64", "arm64": "aarch64"}.get(subject.get("architecture")):
         raise OwnershipError("Acceptance must run on the artifact's actual native architecture")
@@ -186,6 +218,8 @@ def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source
     if subject.get("source") != source.commit:
         raise OwnershipError("Artifact source differs from the selected immutable Git input")
     inputs = {name: source.read(path) for name, path in FILES.items()}
+    if browser is not None:
+        inputs["host.php"] = source.read(BROWSER_FILE)
     lock = source.read("standalone/composer.lock")
     source_classes = {name: hashlib.sha256(source.read(path.removeprefix("/app/waterline/"))).hexdigest()
                       for name, path in CLASSES.items() if name != FRAMEWORK_CLASS}
@@ -200,34 +234,19 @@ def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source
         result["trust_controls"] = trust_controls(roles)
         result["memory_refusal"] = memory_refusal(roles)
         roles.network = network.create()
-        fixture_role = roles.create("fixture", entrypoint=SHELL, command=startup(inputs), environment={})
+        fixture_kind = "fixture" if browser is None else "browser-fixture"
+        fixture_command = startup(inputs, run + "-application" if browser is not None else None)
+        fixture_role = roles.create(fixture_kind, entrypoint=SHELL, command=fixture_command, environment={})
         successful(fixture_role.command(docker, "start", []), "Protocol fixture start")
         fixture = Fixture(docker, fixture_role)
         application = roles.create("application", entrypoint=SHELL, command=["-eu", "-c", APP_START],
-                                   environment=app_environment(run + "-fixture"))
+                                   environment=app_environment(run + "-" + fixture_kind, browser_budget))
         successful(application.command(docker, "start", []), "Application start")
 
-        def check():
-            running(roles, fixture_role)
-            record = running(roles, application)
-            network.check({fixture_role.identifier, application.identifier})
-            if loopback_port(record) != port:
-                raise OwnershipError("Application publication changed")
-
-        port = loopback_port(running(roles, application))
-        http = Loopback(port, check)
-        result["startup_seconds"] = await_health(http, check)
+        phases = NativePhases(roles, network, fixture_role, application, fixture, browser)
+        result["startup_seconds"] = await_health(phases.http, phases.check)
         result["service_uid"] = verify_uid(roles, application)
-
-        def exercise(phase, _role):
-            check()
-            fixture.phase(phase)
-            observed = {"api": native_api(http.request, phase), "budget": native_budget(http.request, fixture)}
-            fixture_protocol(observed["budget"]["fixture_audit"], phase)
-            check()
-            return observed
-
-        result["observations"] = cache_phases(docker, application, program, metadata, source_classes, exercise)
+        result["observations"] = cache_phases(docker, application, program, metadata, source_classes, phases.exercise)
         result["fixture_sources"] = source_hashes(inputs)
         archive.verify_unchanged()
         source.check()

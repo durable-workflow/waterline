@@ -266,7 +266,7 @@ class CreationFixture(DockerFixture):
         identity = next(self.next_ids)
         labels = dict(arguments[i + 1].split("=", 1) for i, value in enumerate(arguments) if value == "--label")
         role = labels[resources.ROLE_KEY]
-        selected = resources.profile(role, NETWORK if role in {"fixture", "application"} else None)
+        selected = resources.profile(role, NETWORK if role in resources.NETWORK_ROLES else None)
         record = copy.deepcopy(self.template)
         record.update({"Id": identity, "Image": IMAGE})
         image_offset = arguments.index(IMAGE)
@@ -278,9 +278,10 @@ class CreationFixture(DockerFixture):
         record["HostConfig"].update({"NanoCpus": selected["cpus"], "Memory": selected["memory"],
                                      "MemorySwap": selected["memory"], "PidsLimit": selected["pids"],
                                      "NetworkMode": selected["network"], "CapAdd": selected["cap_add"] or None,
-                                     "Tmpfs": selected["tmpfs"], "PortBindings": {} if role != "application" else {
-                                         "8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": ""}],
-                                     }})
+                                     "Tmpfs": selected["tmpfs"], "PortBindings": {}})
+        if role in {"application", "browser-fixture"}:
+            port = "8080/tcp" if role == "application" else "18082/tcp"
+            record["HostConfig"]["PortBindings"] = {port: [{"HostIp": "127.0.0.1", "HostPort": ""}]}
         self.containers[identity] = record
         if isinstance(self.create_output, Exception):
             raise self.create_output
@@ -339,6 +340,21 @@ class CreationCleanupTest(unittest.TestCase):
         self.assertEqual(OWN_ID, captured.identifier)
         self.assertEqual(1, sum(call[0] == "create" for call in self.docker.calls))
         self.assertFalse(any(call[0] == "start" for call in self.docker.calls))
+
+    def test_browser_fixture_cannot_be_added_beside_the_native_fixture(self):
+        self.create("fixture")
+        with self.assertRaises(resources.OwnershipError):
+            self.create("browser-fixture")
+        self.assertTrue(self.roles.cleanup()["absent"])
+
+    def test_browser_fixture_has_only_its_loopback_proxy_publication(self):
+        role = self.create("browser-fixture")
+        record = self.docker.containers[role.identifier]
+        resources.validate_profile(record, "browser-fixture", NETWORK)
+        record["HostConfig"]["PortBindings"]["8080/tcp"] = [{"HostIp": "0.0.0.0", "HostPort": "8080"}]
+        with self.assertRaises(resources.OwnershipError):
+            resources.validate_profile(record, "browser-fixture", NETWORK)
+        self.assertTrue(self.roles.cleanup()["absent"])
 
     def test_loader_overrides_and_mutable_image_environment_refuse_before_create(self):
         for environment in ({"LD_PRELOAD": "unselected"}, {"TMPDIR": "/tmp"}, {"APP_ROUTES_CACHE": "unselected"}):

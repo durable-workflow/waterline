@@ -91,6 +91,26 @@ The implementation must close these concrete gaps before review can select a run
 
 No native or published installed graph/cache observation exists at this source
 checkpoint.
+
+The unwired ordinary implementation is being assembled in [#317](https://github.com/durable-workflow/waterline/pull/317).
+Its native inner lifecycle keeps the service/API and actual Server-budget
+assertions. The proposed published connection adds one alternative fixture
+profile with a loopback-only proxy and a finite stdio control channel. One
+invocation cannot create both fixture profiles. Neither profile mounts host
+code or writable host data into a container.
+
+The original browser programs remain byte-identical, including their pinned
+ordinary-input hashes. `service_smoke_browser_source.py` constructs ordinary
+callable modules from those exact inputs, checks their literal output hashes,
+and retains all original assertion lines. The actual primary callable is
+8,521 bytes, SHA256
+`66830e03aa579b884c9a88fcee8f1dab3ec38baa5905cc0719043cd523dac4ec`;
+the automatic-refresh callable is 2,616 bytes, SHA256
+`5e258805d90be6f95d53652662670782067f612b83d66459e843b7039fb5a4ce`.
+These subjects establish only source identity. The wrapper has no ordinary
+call site and has not run a browser or application. It imports no held adapter,
+VM hook or collector. Its complete source/scope disposition remains open.
+
 Source/main checks, #312/#313 merges and this map do not qualify a patched base,
 resume stopped M1 inspection/retrieval/observation tasks, permit a PHP Server
 release, close #311, or allow #310's candidate execution.

@@ -18,7 +18,7 @@ from types import ModuleType, SimpleNamespace
 MODULES = (
     "waterline_release_identity", "service_smoke_resources", "service_smoke_network", "service_smoke_io",
     "oci_release", "service_smoke_subjects", "service_smoke_observation", "service_smoke_fixture",
-    "service_smoke_http", "service_smoke_native", "service_smoke_entry",
+    "service_smoke_http", "service_smoke_browser_source", "service_smoke_browser", "service_smoke_native", "service_smoke_entry",
 )
 MAX_SOURCE = 1024 * 1024
 
