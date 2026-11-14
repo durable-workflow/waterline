@@ -15,6 +15,8 @@ import published_provenance
 from service_smoke_resources import observation as docker_observation
 from waterline_release_identity import decode_json
 
+DIGEST_PATTERN = r"sha256:[a-f\d]{64}"
+
 
 class PublishedError(RuntimeError):
     """The current public index, child or config does not bind the subject."""
@@ -26,7 +28,7 @@ def digest(raw: bytes) -> str:
 
 def document(raw: bytes, expected: str) -> dict:
     if (not isinstance(raw, bytes) or not 0 < len(raw) <= 1024 * 1024
-            or not isinstance(expected, str) or re.fullmatch(r"sha256:[a-f\d]{64}", expected, re.ASCII) is None
+            or not isinstance(expected, str) or re.fullmatch(DIGEST_PATTERN, expected, re.ASCII) is None
             or digest(raw) != expected):
         raise PublishedError("Registry input differs from its independently selected digest")
     value = decode_json(raw, "captured published registry document")
@@ -60,7 +62,7 @@ class PublishedInputs:
         selected_config = child_value.get("config", {})
         if (selected_config.get("mediaType") != oci_release.CONFIG
                 or not isinstance(selected_config.get("digest"), str)
-                or re.fullmatch(r"sha256:[a-f\d]{64}", selected_config["digest"], re.ASCII) is None):
+                or re.fullmatch(DIGEST_PATTERN, selected_config["digest"], re.ASCII) is None):
             raise PublishedError("Published child has an unsupported config type")
         attestation_value = document(attestation, selected["attestation"])
         published_provenance.check_attestation(attestation_value, selected["image"])
@@ -99,7 +101,7 @@ class PublishedInputs:
         root = image.get("RootFS", {})
         if (root.get("Type") != "layers" or not isinstance(root.get("Layers"), list)
                 or not 0 < len(root["Layers"]) <= 128
-                or any(not isinstance(layer, str) or re.fullmatch(r"sha256:[a-f\d]{64}", layer, re.ASCII) is None for layer in root["Layers"])):
+                or any(not isinstance(layer, str) or re.fullmatch(DIGEST_PATTERN, layer, re.ASCII) is None for layer in root["Layers"])):
             raise PublishedError("Published engine layer identities are incomplete")
         normalized = {"architecture": image.get("Architecture"), "os": image.get("Os"),
                       "config": image["Config"], "rootfs": {"type": "layers", "diff_ids": root["Layers"]}}

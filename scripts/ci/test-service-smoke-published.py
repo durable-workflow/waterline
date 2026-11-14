@@ -79,8 +79,9 @@ class PublishedInputTest(unittest.TestCase):
         self.assertEqual(published.digest(engine), held.subject["config_observation_sha256"])
         self.assertNotEqual(selected_config, published.digest(held.config_bytes(selected_config)))
         observation[0]["Id"] = "sha256:" + "2" * 64
+        replaced = encode(observation)
         with self.assertRaises(published.PublishedError):
-            published.PublishedInputs.from_engine(**raw, engine=encode(observation))
+            published.PublishedInputs.from_engine(**raw, engine=replaced)
 
     def test_mutating_selected_subject_cannot_change_image_authority(self):
         held = published.PublishedInputs(**inputs())
