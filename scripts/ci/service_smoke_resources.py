@@ -52,7 +52,9 @@ def profile(role: str, network: str | None) -> dict:
         "pids": 256 if role == "application" else 128,
         "user": "0:0" if role in {"application", "memory-refusal"} else "1000:1000",
         "network": network or "none", "tmpfs": writable,
-        "cap_add": ["CHOWN", "DAC_OVERRIDE", "SETGID", "SETUID"]
+        # Docker's client canonicalizes these before submitting the create.
+        # Compare the exact canonical list rather than accepting extra aliases.
+        "cap_add": ["CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_SETGID", "CAP_SETUID"]
         if role in {"application", "memory-refusal"} else [],
     }
 
@@ -74,9 +76,15 @@ def validate_profile(record: dict, role: str, network: str | None) -> None:
         "RestartPolicy": {"Name": "no", "MaximumRetryCount": 0},
         "LogConfig": {"Type": "json-file", "Config": {"max-size": "1m", "max-file": "1"}},
     }
-    if (config.get("User") != expected["user"] or not disabled_healthcheck(config.get("Healthcheck"))
-            or any(host.get(k) != v for k, v in required.items())):
-        raise OwnershipError("Effective container profile differs from selected bounds")
+    differences = ["HostConfig." + key for key, value in required.items() if host.get(key) != value]
+    if config.get("User") != expected["user"]:
+        differences.append("Config.User")
+    if not disabled_healthcheck(config.get("Healthcheck")):
+        differences.append("Config.Healthcheck")
+    if differences:
+        # Only closed field names leave this boundary; never emit observed
+        # configuration values or inherited environment data on refusal.
+        raise OwnershipError("Effective container profile differs from selected bounds: " + ", ".join(sorted(differences)))
     if host.get("Mounts") or host.get("Devices") or host.get("DeviceRequests"):
         raise OwnershipError("Host mounts or devices are unselected")
     environment = config.get("Env")
