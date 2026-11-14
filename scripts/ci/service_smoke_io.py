@@ -214,7 +214,7 @@ class Docker:
         remaining = 120 - (time.monotonic() - self.cleanup_started)
         if remaining <= 0:
             raise TransportError("Ordinary smoke cleanup deadline exceeded")
-        listing = self.is_role_listing(arguments)
+        listing = self.is_role_listing(arguments) or self.is_network_listing(arguments)
         selected = listing or (len(arguments) == 2 and arguments[0] == "inspect") or (
             len(arguments) == 4 and arguments[:3] == ["rm", "--force", "--volumes"]
         ) or (len(arguments) == 3 and arguments[:2] in (["network", "inspect"], ["network", "rm"]))
@@ -231,6 +231,18 @@ class Docker:
         run, role = arguments[6].split("=", 2)[2], arguments[8].split("=", 2)[2]
         try:
             return arguments == role_listing_arguments(run, role)
+        except (ValueError, RuntimeError):
+            return False
+
+    @staticmethod
+    def is_network_listing(arguments: list[str]) -> bool:
+        # Import only for this independent deletion path, avoiding an import
+        # cycle with the ordinary transport and container ownership primitive.
+        from service_smoke_network import listing
+        if len(arguments) != 11 or not arguments[6].startswith("label=dev.durable-workflow.run="):
+            return False
+        try:
+            return arguments == listing(arguments[6].split("=", 2)[2])
         except (ValueError, RuntimeError):
             return False
 

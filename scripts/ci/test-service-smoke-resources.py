@@ -22,7 +22,7 @@ class DockerFixture:
     def __init__(self):
         labels = resources.ownership_labels(RUN, "application")
         self.owned = {"Id": OWN_ID, "Image": IMAGE, "Config": {"Labels": labels, "User": "0:0", "Env": ["TMPDIR=/run/waterline"],
-                                                               "Entrypoint": ["/app/entrypoint.sh"], "Cmd": []},
+                                                               "Entrypoint": ["/app/entrypoint.sh"], "Cmd": [], "Healthcheck": {"Test": ["NONE"]}},
                       "Mounts": [], "HostConfig": {
                           "ReadonlyRootfs": True, "Init": True, "NanoCpus": 2_000_000_000,
                           "Memory": 805306368, "MemorySwap": 805306368, "PidsLimit": 256,
@@ -173,7 +173,7 @@ class CapturedContainerTest(unittest.TestCase):
         self.assertNotIn(OWN_ID, self.docker.containers)
 
     def test_program_or_environment_swap_refuses_before_start(self):
-        variants = [("Entrypoint", ["/bin/sh"]), ("Cmd", ["unselected"]),
+        variants = [("Entrypoint", ["/bin/sh"]), ("Cmd", ["unselected"]), ("Healthcheck", {"Test": ["CMD", "unselected"]}),
                     ("Env", ["TMPDIR=/run/waterline", "EXTRA=unselected"]),
                     ("Env", ["TMPDIR=/run/waterline", "TMPDIR=/run/waterline"])]
         for key, value in variants:
@@ -271,6 +271,7 @@ class CreationFixture(DockerFixture):
         record.update({"Id": identity, "Image": IMAGE})
         image_offset = arguments.index(IMAGE)
         record["Config"] = {"Labels": labels, "User": selected["user"],
+                            "Healthcheck": {"Test": ["NONE"]},
                             "Entrypoint": [arguments[arguments.index("--entrypoint") + 1]],
                             "Cmd": arguments[image_offset + 1:],
                             "Env": [arguments[i + 1] for i, value in enumerate(arguments) if value == "--env"]}

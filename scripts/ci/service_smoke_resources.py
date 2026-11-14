@@ -70,7 +70,8 @@ def validate_profile(record: dict, role: str, network: str | None) -> None:
         "RestartPolicy": {"Name": "no", "MaximumRetryCount": 0},
         "LogConfig": {"Type": "json-file", "Config": {"max-size": "1m", "max-file": "1"}},
     }
-    if config.get("User") != expected["user"] or any(host.get(k) != v for k, v in required.items()):
+    if (config.get("User") != expected["user"] or config.get("Healthcheck") != {"Test": ["NONE"]}
+            or any(host.get(k) != v for k, v in required.items())):
         raise OwnershipError("Effective container profile differs from selected bounds")
     if host.get("Mounts") or host.get("Devices") or host.get("DeviceRequests"):
         raise OwnershipError("Host mounts or devices are unselected")
@@ -159,16 +160,25 @@ def observation(raw: bytes) -> list:
 
 
 def valid_probe_arguments(role: str, arguments: list[str]) -> bool:
-    return (role == "application" and len(arguments) == 4
+    return role == "application" and ((len(arguments) == 4
             and arguments[:2] == ["/usr/local/bin/php", "/dev/stdin"]
             and arguments[2] in {"inventory", "clear-before", "cache-build", "clear-after"}
-            and re.fullmatch(r"[a-f\d]{64}", arguments[3], re.ASCII) is not None)
+            and re.fullmatch(r"[a-f\d]{64}", arguments[3], re.ASCII) is not None) or (
+                arguments == ["/usr/local/bin/php", "-n", "/dev/stdin", "service-uid"]))
+
+
+def valid_fixture_arguments(role: str, arguments: list[str]) -> bool:
+    if role != "fixture" or len(arguments) != 5 or arguments[:3] != ["/usr/local/bin/php", "-n", "/dev/stdin"]:
+        return False
+    return (arguments[3] == "phase" and arguments[4] in {"before", "cached", "cleared"}) or (
+        arguments[3] == "mode" and arguments[4] in {"healthy", "backend-stall", "write-stall"}
+    ) or arguments[3:] == ["audit", ""]
 
 
 def validate_command(role: str, verb: str, arguments: list[str], options: tuple[str, ...]) -> None:
     selected = {
         "start": ((), ("--attach", "--interactive")),
-        "exec": (("--interactive", "--user", "82:82"),),
+        "exec": (("--interactive", "--user", "82:82"), ("--interactive", "--user", "1000:1000")),
         "logs": (("--tail", "200"),), "port": ((),), "stop": (("--time", "5"),),
     }
     if verb not in selected or options not in selected[verb]:
@@ -181,8 +191,12 @@ def validate_command(role: str, verb: str, arguments: list[str], options: tuple[
         raise OwnershipError("Additional container selectors are forbidden")
     if verb == "port" and arguments != [APPLICATION_PORT]:
         raise OwnershipError("Unselected application port")
-    if verb == "exec" and not valid_probe_arguments(role, arguments):
-        raise OwnershipError("Unselected probe command")
+    if verb == "exec":
+        valid = (valid_probe_arguments(role, arguments) and options == ("--interactive", "--user", "82:82")) or (
+            valid_fixture_arguments(role, arguments) and options == ("--interactive", "--user", "1000:1000")
+        )
+        if not valid:
+            raise OwnershipError("Unselected probe command")
 
 
 def validate_input(role: str, verb: str, options: tuple[str, ...], data: bytes) -> None:
@@ -328,7 +342,7 @@ def create_profile_arguments(role: str, run: str, network: str | None, platform:
     if platform not in {"linux/amd64", "linux/arm64"}:
         raise OwnershipError("Unselected native platform")
     arguments = ["create", "--name", run + "-" + role, *labels_arguments(run, role),
-                 "--platform", platform, "--pull", "never", "--init", "--read-only",
+                 "--platform", platform, "--pull", "never", "--init", "--read-only", "--no-healthcheck",
                  "--cpus", str(selected["cpus"] // 1_000_000_000), "--memory", str(selected["memory"]),
                  "--memory-swap", str(selected["memory"]), "--pids-limit", str(selected["pids"]),
                  "--user", selected["user"], "--network", selected["network"], "--cap-drop", "ALL",

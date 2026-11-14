@@ -17,8 +17,8 @@ RUN test ! -e vendor && test ! -L vendor \
         printf 'waterline-build: cache_directory_present_before_install=true\n'; \
        else \
         printf 'waterline-build: cache_directory_present_before_install=false\n'; \
-       fi \
-    && composer install \
+       fi
+RUN composer install \
     --no-dev \
     --no-interaction \
     --no-progress \
