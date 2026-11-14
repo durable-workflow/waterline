@@ -17,7 +17,7 @@ import waterline_release_identity as identity
 from service_smoke_resources import Container, validate_profile
 
 
-PROBE_SHA256 = "a99f682c6b55271c8653aa008815b6b6bd54c08cc02d6cfc20bd19c31aad0ede"
+PROBE_SHA256 = "61aa68ae6d8a295550d34bb5593a35dde919276affee0cb76709eef459fd06eb"
 LOCK_SHA256 = "c2181f466bcbb799e3ce183d58531574d32de0cf9eba2f78dd9c18b211c60466"
 CACHE_PATH = "/app/bootstrap/cache/routes-v7.php"
 SCHEMA = "waterline.current-standalone-runtime-observation/v1"
@@ -34,6 +34,7 @@ BASE_KEYS = {"schema", "mode", "php_version", "php_int_size", "php_binary", "eff
              "ini_loaded_file", "ini_scanned_files", "ini_before", "ini_after", "lock_sha256", "installed_sha256"}
 PHP_ERROR_CLASSES = frozenset({"Error", "ErrorException", "Exception", "RuntimeException", "TypeError",
                                "ValueError", "ParseError", "ArgumentCountError", "ReflectionException", "PDOException"})
+PHP_ERROR_SEVERITIES = frozenset({1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384})
 
 
 class ObservationError(RuntimeError):
@@ -44,26 +45,44 @@ def digest(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def closed_php_error(stderr: bytes, mode: str) -> str:
+def closed_php_origin(value: object, error_class: str) -> dict | None:
+    if not isinstance(value, dict) or set(value) != {"file_sha256", "line", "severity"}:
+        return None
+    file_hash, line, severity = value["file_sha256"], value["line"], value["severity"]
+    if (file_hash is not None and not is_digest(file_hash)) or (
+            line is not None and (type(line) is not int or not 0 <= line <= 1000000)):
+        return None
+    if severity is not None and (error_class != "ErrorException" or type(severity) is not int
+                                 or severity not in PHP_ERROR_SEVERITIES):
+        return None
+    return {"file_sha256": file_hash, "line": line, "severity": severity}
+
+
+def closed_php_error(stderr: bytes, mode: str) -> tuple[str, dict | None]:
     if not 0 < len(stderr) <= 1024:
-        return "unavailable"
+        return "unavailable", None
     try:
         value = identity.decode_json(stderr, "bounded PHP refusal")
     except identity.IdentityError:
-        return "unavailable"
-    if set(value) != {"mode", "error_class"} or value["mode"] != mode:
-        return "unavailable"
+        return "unavailable", None
+    if set(value) != {"mode", "error_class", "origin"} or value["mode"] != mode:
+        return "unavailable", None
     error_class = value["error_class"]
-    return error_class if isinstance(error_class, str) and error_class in PHP_ERROR_CLASSES else "unrecognized"
+    if not isinstance(error_class, str) or error_class not in PHP_ERROR_CLASSES:
+        return "unrecognized", None
+    origin = closed_php_origin(value["origin"], error_class)
+    return (error_class, origin) if origin is not None else ("unavailable", None)
 
 
 def probe_refusal(mode: str, result) -> ObservationError:
     # Retain only trusted mode, bounded process metadata and a closed class
-    # from the existing PHP refusal shape. Never include either raw stream.
+    # from the PHP refusal shape. Origin is only a filename hash and bounded
+    # numbers, never a path, message, extra file read or either raw stream.
+    error_class, origin = closed_php_error(result.stderr, mode)
     details = {
         "schema": "waterline.ordinary-probe-refusal/v1", "mode": mode,
         "returncode": result.returncode if type(result.returncode) is int and -255 <= result.returncode <= 255 else None,
-        "php_error_class": closed_php_error(result.stderr, mode),
+        "php_error_class": error_class, "php_error_origin": origin,
         "stdout": {"bytes": len(result.stdout), "sha256": digest(result.stdout)},
         "stderr": {"bytes": len(result.stderr), "sha256": digest(result.stderr)},
     }
@@ -75,7 +94,7 @@ def is_digest(value: object) -> bool:
 
 
 def check_program(program: bytes) -> None:
-    if not isinstance(program, bytes) or len(program) != 9803 or digest(program) != PROBE_SHA256:
+    if not isinstance(program, bytes) or len(program) != 10321 or digest(program) != PROBE_SHA256:
         raise ObservationError("Probe differs from the one reviewed callable representation")
 
 

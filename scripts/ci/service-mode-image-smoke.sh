@@ -224,7 +224,16 @@ try {
         ob_end_clean();
     }
     $safeMode = in_array($mode, ['metadata', 'inventory', 'clear-before', 'cache-build', 'clear-after'], true) ? $mode : 'invalid';
-    fwrite(STDERR, json_encode(['mode' => $safeMode, 'error_class' => substr(get_class($error), 0, 256)], JSON_THROW_ON_ERROR)."\n");
+    $file = $error->getFile();
+    $line = $error->getLine();
+    $severity = $error instanceof ErrorException ? $error->getSeverity() : null;
+    $origin = [
+        'file_sha256' => $file !== '' && strlen($file) <= 4096 ? hash('sha256', $file) : null,
+        'line' => $line >= 0 && $line <= 1000000 ? $line : null,
+        'severity' => in_array($severity, [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384], true) ? $severity : null,
+    ];
+    fwrite(STDERR, json_encode(['mode' => $safeMode, 'error_class' => substr(get_class($error), 0, 256),
+                               'origin' => $origin], JSON_THROW_ON_ERROR)."\n");
     exit(1);
 }
 WATERLINE_CURRENT_RUNTIME_PHP
