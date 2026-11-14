@@ -101,13 +101,7 @@ def check_program(program: bytes) -> None:
         raise ObservationError("Probe differs from the one reviewed callable representation")
 
 
-def check_ini(report: dict, *, metadata: bool) -> None:
-    before, after = report.get("ini_before"), report.get("ini_after")
-    if (not isinstance(before, dict) or not isinstance(after, dict)
-            or set(before) != INI_KEYS or set(after) != INI_KEYS):
-        raise ObservationError("PHP configuration is incomplete")
-    if any(not isinstance(value, str) and value is not False for value in [*before.values(), *after.values()]):
-        raise ObservationError("Invalid PHP configuration value")
+def check_ini_transition(before: dict, after: dict, *, metadata: bool) -> None:
     expected = dict(before)
     if not metadata:
         expected["include_path"] = ":".join((*COMPOSER_INCLUDE_PATHS, INITIAL_INCLUDE_PATH))
@@ -115,6 +109,16 @@ def check_ini(report: dict, *, metadata: bool) -> None:
     if before["include_path"] != INITIAL_INCLUDE_PATH or changed:
         # Closed names only; never include an observed configuration value.
         raise ObservationError("PHP configuration mismatch: " + ",".join(changed or ["include_path"]))
+
+
+def check_ini(report: dict, *, metadata: bool) -> None:
+    before, after = report.get("ini_before"), report.get("ini_after")
+    if (not isinstance(before, dict) or not isinstance(after, dict)
+            or set(before) != INI_KEYS or set(after) != INI_KEYS):
+        raise ObservationError("PHP configuration is incomplete")
+    if any(not isinstance(value, str) and value is not False for value in [*before.values(), *after.values()]):
+        raise ObservationError("Invalid PHP configuration value")
+    check_ini_transition(before, after, metadata=metadata)
     for key in ("auto_prepend_file", "auto_append_file", "opcache.file_cache", "allow_url_include"):
         if before[key] not in (False, "", "0"):
             raise ObservationError("Unselected PHP bootstrap or executable cache input")
