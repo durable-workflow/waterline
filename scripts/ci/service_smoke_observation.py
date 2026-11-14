@@ -17,7 +17,7 @@ import waterline_release_identity as identity
 from service_smoke_resources import Container, validate_profile
 
 
-PROBE_SHA256 = "61aa68ae6d8a295550d34bb5593a35dde919276affee0cb76709eef459fd06eb"
+PROBE_SHA256 = "4c841cc4685fca70cb791efe1cdcbc4f49bb418500414eae63dbebccab7215ba"
 LOCK_SHA256 = "c2181f466bcbb799e3ce183d58531574d32de0cf9eba2f78dd9c18b211c60466"
 CACHE_PATH = "/app/bootstrap/cache/routes-v7.php"
 SCHEMA = "waterline.current-standalone-runtime-observation/v1"
@@ -46,16 +46,16 @@ def digest(raw: bytes) -> str:
 
 
 def closed_php_origin(value: object, error_class: str) -> dict | None:
-    if not isinstance(value, dict) or set(value) != {"file_sha256", "line", "severity"}:
+    if not isinstance(value, dict) or set(value) != {"filename_sha256", "line", "severity"}:
         return None
-    file_hash, line, severity = value["file_sha256"], value["line"], value["severity"]
+    file_hash, line, severity = value["filename_sha256"], value["line"], value["severity"]
     if (file_hash is not None and not is_digest(file_hash)) or (
             line is not None and (type(line) is not int or not 0 <= line <= 1000000)):
         return None
     if severity is not None and (error_class != "ErrorException" or type(severity) is not int
                                  or severity not in PHP_ERROR_SEVERITIES):
         return None
-    return {"file_sha256": file_hash, "line": line, "severity": severity}
+    return {"filename_sha256": file_hash, "line": line, "severity": severity}
 
 
 def closed_php_error(stderr: bytes, mode: str) -> tuple[str, dict | None]:
@@ -94,7 +94,7 @@ def is_digest(value: object) -> bool:
 
 
 def check_program(program: bytes) -> None:
-    if not isinstance(program, bytes) or len(program) != 10321 or digest(program) != PROBE_SHA256:
+    if not isinstance(program, bytes) or len(program) != 10325 or digest(program) != PROBE_SHA256:
         raise ObservationError("Probe differs from the one reviewed callable representation")
 
 

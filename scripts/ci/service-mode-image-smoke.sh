@@ -228,7 +228,7 @@ try {
     $line = $error->getLine();
     $severity = $error instanceof ErrorException ? $error->getSeverity() : null;
     $origin = [
-        'file_sha256' => $file !== '' && strlen($file) <= 4096 ? hash('sha256', $file) : null,
+        'filename_sha256' => $file !== '' && strlen($file) <= 4096 ? hash('sha256', $file) : null,
         'line' => $line >= 0 && $line <= 1000000 ? $line : null,
         'severity' => in_array($severity, [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384], true) ? $severity : null,
     ];

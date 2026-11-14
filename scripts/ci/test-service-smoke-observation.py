@@ -134,21 +134,21 @@ class ObservationTest(unittest.TestCase):
 
     def test_failed_probe_retains_closed_mode_class_and_stream_identity(self):
         stderr = (b'{"mode":"clear-before","error_class":"ErrorException",'
-                  b'"origin":{"file_sha256":null,"line":0,"severity":2}}\n')
+                  b'"origin":{"filename_sha256":null,"line":0,"severity":2}}\n')
         message = self.refused_probe(stderr)
         self.assertIn('"mode":"clear-before"', message)
         report = json.loads(message.split(": ", 1)[1])
         self.assertEqual("waterline.ordinary-probe-refusal/v1", report["schema"])
         self.assertEqual(1, report["returncode"])
         self.assertEqual("ErrorException", report["php_error_class"])
-        self.assertEqual({"file_sha256": None, "line": 0, "severity": 2}, report["php_error_origin"])
+        self.assertEqual({"filename_sha256": None, "line": 0, "severity": 2}, report["php_error_origin"])
         self.assertEqual({"bytes": len(stderr), "sha256": hashlib.sha256(stderr).hexdigest()}, report["stderr"])
         self.assertEqual(hashlib.sha256(b"private-observed-stdout").hexdigest(), report["stdout"]["sha256"])
         self.assertNotIn("private-observed-stdout", message)
 
     def test_closed_exception_origin_is_retained_without_path_or_message(self):
         private_path = "/private-observed-path/file.php"
-        origin = {"file_sha256": hashlib.sha256(private_path.encode()).hexdigest(), "line": 193, "severity": 2}
+        origin = {"filename_sha256": hashlib.sha256(private_path.encode()).hexdigest(), "line": 193, "severity": 2}
         stderr = json.dumps({"mode": "clear-before", "error_class": "ErrorException", "origin": origin}).encode()
         message = self.refused_probe(stderr)
         report = json.loads(message.split(": ", 1)[1])
@@ -157,9 +157,9 @@ class ObservationTest(unittest.TestCase):
         self.assertNotIn(private_path, message)
 
     def test_invalid_extra_raw_or_unbounded_origin_is_discarded(self):
-        valid = {"file_sha256": "1" * 64, "line": 193, "severity": 2}
+        valid = {"filename_sha256": "1" * 64, "line": 193, "severity": 2}
         variants = [None, [], {**valid, "path": "/private-observed-path"}]
-        for key, invalid in [("file_sha256", "/private-observed-path"), ("file_sha256", "f" * 63),
+        for key, invalid in [("filename_sha256", "/private-observed-path"), ("filename_sha256", "f" * 63),
                              ("line", True), ("line", -1), ("line", 1000001),
                              ("severity", True), ("severity", 3), ("severity", "private-observed-message")]:
             variants.append({**valid, key: invalid})
@@ -173,7 +173,7 @@ class ObservationTest(unittest.TestCase):
                 self.assertNotIn("private-observed", message)
 
     def test_warning_severity_is_not_accepted_for_another_exception_class(self):
-        origin = {"file_sha256": None, "line": None, "severity": 2}
+        origin = {"filename_sha256": None, "line": None, "severity": 2}
         stderr = json.dumps({"mode": "clear-before", "error_class": "RuntimeException", "origin": origin}).encode()
         report = json.loads(self.refused_probe(stderr).split(": ", 1)[1])
         self.assertEqual("unavailable", report["php_error_class"])
@@ -206,7 +206,7 @@ class ObservationTest(unittest.TestCase):
         def command(*args, **kwargs):
             result = original(*args, **kwargs)
             if role.commands[-1]["mode"] == "cache-build":
-                stderr = b'{"mode":"cache-build","error_class":"RuntimeException","origin":{"file_sha256":null,"line":null,"severity":null}}'
+                stderr = b'{"mode":"cache-build","error_class":"RuntimeException","origin":{"filename_sha256":null,"line":null,"severity":null}}'
                 return subprocess.CompletedProcess([], 1, b"", stderr)
             return result
         role.command = command
