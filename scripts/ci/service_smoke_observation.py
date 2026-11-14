@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 import hashlib
+import json
 import re
 from typing import Callable
 
@@ -31,6 +32,8 @@ INI_KEYS = {"memory_limit", "date.timezone", "auto_prepend_file", "auto_append_f
             "opcache.enable_cli", "opcache.file_cache", "allow_url_include"}
 BASE_KEYS = {"schema", "mode", "php_version", "php_int_size", "php_binary", "effective_uid",
              "ini_loaded_file", "ini_scanned_files", "ini_before", "ini_after", "lock_sha256", "installed_sha256"}
+PHP_ERROR_CLASSES = frozenset({"Error", "ErrorException", "Exception", "RuntimeException", "TypeError",
+                               "ValueError", "ParseError", "ArgumentCountError", "ReflectionException", "PDOException"})
 
 
 class ObservationError(RuntimeError):
@@ -39,6 +42,32 @@ class ObservationError(RuntimeError):
 
 def digest(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def closed_php_error(stderr: bytes, mode: str) -> str:
+    if not 0 < len(stderr) <= 1024:
+        return "unavailable"
+    try:
+        value = identity.decode_json(stderr, "bounded PHP refusal")
+    except identity.IdentityError:
+        return "unavailable"
+    if set(value) != {"mode", "error_class"} or value["mode"] != mode:
+        return "unavailable"
+    error_class = value["error_class"]
+    return error_class if isinstance(error_class, str) and error_class in PHP_ERROR_CLASSES else "unrecognized"
+
+
+def probe_refusal(mode: str, result) -> ObservationError:
+    # Retain only trusted mode, bounded process metadata and a closed class
+    # from the existing PHP refusal shape. Never include either raw stream.
+    details = {
+        "schema": "waterline.ordinary-probe-refusal/v1", "mode": mode,
+        "returncode": result.returncode if type(result.returncode) is int and -255 <= result.returncode <= 255 else None,
+        "php_error_class": closed_php_error(result.stderr, mode),
+        "stdout": {"bytes": len(result.stdout), "sha256": digest(result.stdout)},
+        "stderr": {"bytes": len(result.stderr), "sha256": digest(result.stderr)},
+    }
+    return ObservationError("Probe failed or produced unexpected diagnostics: " + json.dumps(details, sort_keys=True, separators=(",", ":")))
 
 
 def is_digest(value: object) -> bool:
@@ -147,7 +176,7 @@ def captured_report(docker: Callable, role: Container, program: bytes, mode: str
     check_program(program)
     result = run_probe(docker, role, program, mode, installed_sha256)
     if result.returncode != 0 or result.stderr:
-        raise ObservationError("Probe failed or produced unexpected diagnostics")
+        raise probe_refusal(mode, result)
     check_role_state(docker, role, mode)
     report = identity.decode_json(result.stdout, "captured current-target probe")
     check_base(report, mode, installed_sha256)
@@ -237,8 +266,11 @@ def cache_phases(docker: Callable, role: Container, program: bytes, metadata: Me
     built_cache = None
     stages = [("clear-before", False), ("inventory", False), ("cache-build", True),
               ("inventory", True), ("clear-after", False), ("inventory", False)]
-    for mode, present in stages:
-        report = captured_report(docker, role, program, mode, installed_sha256=metadata.installed_sha256)
+    for index, (mode, present) in enumerate(stages, 1):
+        try:
+            report = captured_report(docker, role, program, mode, installed_sha256=metadata.installed_sha256)
+        except ObservationError as error:
+            raise ObservationError(f"Cache probe {index}/{len(stages)} ({mode}): {error}") from error
         verify_phase(report, mode, present, source_classes)
         classes = {key: report[key] for key in ("classes", "ini_before", "ini_loaded_file", "ini_scanned_files")}
         if stable_classes is not None and classes != stable_classes:

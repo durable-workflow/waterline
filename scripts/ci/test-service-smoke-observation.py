@@ -125,6 +125,62 @@ class ObservationTest(unittest.TestCase):
         self.assertEqual(self.installed_sha, metadata.installed_sha256)
         self.assertEqual(79, len(json.loads(metadata.installed)["packages"]))
 
+    def refused_probe(self, stderr, code=1):
+        role = InertRole("application", [b"private-observed-stdout"])
+        role.code, role.stderr = code, stderr
+        with self.assertRaises(observation.ObservationError) as caught:
+            observation.captured_report(None, role, self.program, "clear-before", installed_sha256=self.installed_sha)
+        return str(caught.exception)
+
+    def test_failed_probe_retains_closed_mode_class_and_stream_identity(self):
+        stderr = b'{"mode":"clear-before","error_class":"ErrorException"}\n'
+        message = self.refused_probe(stderr)
+        self.assertIn('"mode":"clear-before"', message)
+        report = json.loads(message.split(": ", 1)[1])
+        self.assertEqual("waterline.ordinary-probe-refusal/v1", report["schema"])
+        self.assertEqual(1, report["returncode"])
+        self.assertEqual("ErrorException", report["php_error_class"])
+        self.assertEqual({"bytes": len(stderr), "sha256": hashlib.sha256(stderr).hexdigest()}, report["stderr"])
+        self.assertEqual(hashlib.sha256(b"private-observed-stdout").hexdigest(), report["stdout"]["sha256"])
+        self.assertNotIn("private-observed-stdout", message)
+
+    def test_foreign_malformed_oversized_or_unrecognized_stderr_never_discloses_payload(self):
+        cases = [b'private-observed-stderr', b'\xff', b'{"mode":"clear-before","mode":"clear-before","error_class":"Error"}',
+                 b'{"mode":"cache-build","error_class":"Error"}',
+                 b'{"mode":"clear-before","error_class":"Error","message":"private-observed-stderr"}',
+                 b'{"mode":"clear-before","error_class":"private-observed-stderr"}',
+                 b'{"mode":"clear-before","error_class":[]}', b'private-observed-stderr' * 100]
+        for stderr in cases:
+            with self.subTest(bytes=len(stderr)):
+                message = self.refused_probe(stderr)
+                report = json.loads(message.split(": ", 1)[1])
+                self.assertIn(report["php_error_class"], {"unavailable", "unrecognized"})
+                self.assertNotIn("private-observed-stderr", message)
+                self.assertNotIn("private-observed-stdout", message)
+                self.assertLess(len(message), 700)
+
+    def test_stderr_still_refuses_even_with_zero_exit_and_empty_stderr_keeps_exit(self):
+        for code, stderr in [(0, b'{"mode":"clear-before","error_class":"Error"}'), (-9, b""), (1, b"")]:
+            with self.subTest(code=code):
+                report = json.loads(self.refused_probe(stderr, code).split(": ", 1)[1])
+                self.assertEqual(code, report["returncode"])
+
+    def test_cache_refusal_retains_ordinal_and_stops_before_later_effects(self):
+        role = InertRole("application", self.phase_reports())
+        original = role.command
+        def command(*args, **kwargs):
+            result = original(*args, **kwargs)
+            if role.commands[-1]["mode"] == "cache-build":
+                return subprocess.CompletedProcess([], 1, b"", b'{"mode":"cache-build","error_class":"RuntimeException"}')
+            return result
+        role.command = command
+        self.exercised = []
+        metadata = self.verified()
+        with self.assertRaisesRegex(observation.ObservationError, r"Cache probe 3/6 \(cache-build\):"):
+            observation.cache_phases(None, role, self.program, metadata, self.source_classes, self.exercise)
+        self.assertEqual(["clear-before", "inventory", "cache-build"], [call["mode"] for call in role.commands])
+        self.assertEqual(["before"], [phase for phase, _role in self.exercised])
+
     def test_sdk_provenance_comes_from_the_actual_captured_installed_metadata(self):
         report = self.verified().report
         observed = observation.installed_sdk(report)
