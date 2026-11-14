@@ -38,7 +38,7 @@ REVIEWED = {
     "service_smoke_observation": "14c8eb1a134a2c78f9734befa3ba1f2cdcdf151073422f489fbcc85e917b1d97",
     "service_smoke_published": "63183a58bbcc8dd0679b0bed6aac56354c7bb13a49c2cb64825f3b7bb73de95d",
     "service_smoke_published_entry": "412a76aeb2f008a3c7343d605c9e03cc3f26c22e0abb8b815d5d7973f3ae6ff3",
-    "service_smoke_resources": "6a9965bb6546e95cc9eb65d4855c4eb27623b19731b7f53e47318528e4310b77",
+    "service_smoke_resources": "9a03ecc9b3a7f5db44a9f64beb6e45710591a92112a22231e84b51bc1e50ec67",
     "service_smoke_subjects": "b020667def1e182b82de00b0f6aea464ae4668f39366fdd1b338f7e21d839b14",
     "waterline_release_identity": "4a1f9d251cb67083f59c16ed90360962244aa6e6ee8e382e13205dcc80e2135b"
 }

@@ -28,7 +28,7 @@ class DockerFixture:
                           "Memory": 805306368, "MemorySwap": 805306368, "PidsLimit": 256,
                           "NetworkMode": NETWORK, "Privileged": False, "PidMode": "", "UTSMode": "",
                           "IpcMode": "private", "CgroupnsMode": "private", "Binds": None,
-                          "CapDrop": ["ALL"], "CapAdd": ["CHOWN", "DAC_OVERRIDE", "SETGID", "SETUID"],
+                          "CapDrop": ["ALL"], "CapAdd": ["CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_SETGID", "CAP_SETUID"],
                           "SecurityOpt": ["no-new-privileges"],
                           "Tmpfs": {"/data": "rw,nosuid,nodev,noexec,size=64m,uid=0,gid=0,mode=0755",
                                     "/run/waterline": "rw,nosuid,nodev,noexec,size=16m,uid=82,gid=82,mode=0700",
@@ -66,6 +66,42 @@ class CapturedContainerTest(unittest.TestCase):
         self.docker = DockerFixture()
         creation = resources.CreationSpec(("/app/entrypoint.sh",), (), ("TMPDIR=/run/waterline",))
         self.record = resources.Container(OWN_ID, RUN, "application", IMAGE, NETWORK, creation)
+
+    def test_engine_canonical_capabilities_preserve_the_exact_four_capabilities(self):
+        # Docker 28.0.4 client/container_create.go normalizes CapAdd before
+        # creation. This literal fixture is independent of profile().
+        expected = ["CAP_CHOWN", "CAP_DAC_OVERRIDE", "CAP_SETGID", "CAP_SETUID"]
+        self.assertEqual(expected, self.docker.owned["HostConfig"]["CapAdd"])
+        resources.validate_profile(self.docker.owned, "application", NETWORK)
+        arguments = resources.create_profile_arguments("application", RUN, NETWORK, "linux/amd64")
+        self.assertEqual(expected, [arguments[index + 1] for index, value in enumerate(arguments) if value == "--cap-add"])
+        refusal = copy.deepcopy(self.docker.owned)
+        refusal["HostConfig"].update({"NanoCpus": 1_000_000_000, "Memory": 268435456,
+                                      "MemorySwap": 268435456, "PidsLimit": 128,
+                                      "NetworkMode": "none", "PortBindings": {}})
+        resources.validate_profile(refusal, "memory-refusal", None)
+
+    def test_capability_aliases_duplicates_missing_and_additional_values_refuse(self):
+        canonical = self.docker.owned["HostConfig"]["CapAdd"]
+        for actual in (None, [], "CAP_CHOWN", canonical[:-1], canonical + ["CAP_SYS_ADMIN"],
+                       canonical + ["CAP_CHOWN"], ["CHOWN", *canonical[1:]], list(reversed(canonical)),
+                       ["cap_chown", *canonical[1:]], ["CAP_CAP_CHOWN", *canonical[1:]]):
+            with self.subTest(actual=actual):
+                record = copy.deepcopy(self.docker.owned)
+                record["HostConfig"]["CapAdd"] = actual
+                with self.assertRaisesRegex(resources.OwnershipError, "HostConfig.CapAdd"):
+                    resources.validate_profile(record, "application", NETWORK)
+
+    def test_profile_refusal_reports_only_closed_field_names(self):
+        record = copy.deepcopy(self.docker.owned)
+        record["Config"]["User"] = "private-observed-value"
+        record["HostConfig"]["Memory"] = 0
+        record["HostConfig"]["PrivateUnexpectedField"] = "private-observed-value"
+        with self.assertRaises(resources.OwnershipError) as caught:
+            resources.validate_profile(record, "application", NETWORK)
+        self.assertEqual("Effective container profile differs from selected bounds: Config.User, HostConfig.Memory",
+                         str(caught.exception))
+        self.assertNotIn("private-observed-value", str(caught.exception))
 
     def test_removes_recorded_id_and_preserves_foreign_name_replacement(self):
         self.record.remove(self.docker)
