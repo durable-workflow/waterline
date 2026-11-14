@@ -148,7 +148,9 @@ final class ServiceImageReleaseContractTest extends TestCase
         $this->assertStringContainsString('outputs: type=oci,', $workflow);
         $this->assertStringContainsString('push: false', $workflow);
         $this->assertStringContainsString('no-cache: true', $workflow);
-        $this->assertStringContainsString('scripts/ci/service-mode-image-smoke.sh', $workflow);
+        $this->assertStringContainsString('launch(Path(os.environ["GITHUB_WORKSPACE"]), "native")', $workflow);
+        $this->assertStringContainsString('raw = bootstrap_bytes(descriptor)', $workflow);
+        $this->assertStringContainsString('hashlib.sha256(raw).hexdigest() != BOOTSTRAP_SHA256', $workflow);
         $this->assertStringContainsString('scripts/ci/oci_release.py native', $workflow);
         $this->assertStringContainsString('compression-level: 0', $workflow);
     }
