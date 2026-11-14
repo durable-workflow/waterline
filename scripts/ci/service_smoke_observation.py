@@ -17,7 +17,7 @@ import waterline_release_identity as identity
 from service_smoke_resources import Container, validate_profile
 
 
-PROBE_SHA256 = "4c841cc4685fca70cb791efe1cdcbc4f49bb418500414eae63dbebccab7215ba"
+PROBE_SHA256 = "45135ff1488cbc8f450a95af1e8ff6697c8daf87c03c9859d74f6602aa0287c7"
 LOCK_SHA256 = "c2181f466bcbb799e3ce183d58531574d32de0cf9eba2f78dd9c18b211c60466"
 CACHE_PATH = "/app/bootstrap/cache/routes-v7.php"
 SCHEMA = "waterline.current-standalone-runtime-observation/v1"
@@ -94,7 +94,7 @@ def is_digest(value: object) -> bool:
 
 
 def check_program(program: bytes) -> None:
-    if not isinstance(program, bytes) or len(program) != 10325 or digest(program) != PROBE_SHA256:
+    if not isinstance(program, bytes) or len(program) != 10501 or digest(program) != PROBE_SHA256:
         raise ObservationError("Probe differs from the one reviewed callable representation")
 
 

@@ -133,7 +133,12 @@ function currentRoutes(object $app): array
 }
 
 $mode = $argv[1] ?? '';
-set_error_handler(static function (int $severity, string $message, string $file, int $line): never {
+error_reporting(E_ALL);
+set_error_handler(static function (int $severity, string $message, string $file, int $line): bool {
+    // Optional dependency reads use @ before Laravel installs its handler.
+    if ((error_reporting() & $severity) === 0) {
+        return false;
+    }
     throw new ErrorException($message, 0, $severity, $file, $line);
 });
 try {
