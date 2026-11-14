@@ -10,6 +10,16 @@ RUN php /usr/local/share/waterline/verify-ca-trust.php /usr/bin/composer \
 
 WORKDIR /build/standalone
 COPY standalone/composer.json standalone/composer.lock ./
+RUN test ! -e vendor && test ! -L vendor \
+    && waterline_composer_cache="$(composer config --no-plugins cache-dir)" \
+    && printf '%s cache_directory=%s\n' \
+        'waterline-build: fresh_vendor=true composer_install_no_plugins_flag=false' \
+        "$waterline_composer_cache" \
+    && if [ -e "$waterline_composer_cache" ]; then \
+        printf 'waterline-build: cache_directory_present_before_install=true\n'; \
+       else \
+        printf 'waterline-build: cache_directory_present_before_install=false\n'; \
+       fi
 RUN composer install \
     --no-dev \
     --no-interaction \

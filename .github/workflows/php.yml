@@ -216,6 +216,24 @@ jobs:
         python scripts/ci/test-onboarding-composer.py
         python -I scripts/ci/test-oci-release.py
         python -I scripts/ci/test-installed-release-graph.py
+        python -I scripts/ci/test-service-smoke-resources.py
+        python -I scripts/ci/test-service-smoke-io.py
+        python -I scripts/ci/test-service-smoke-observation.py
+        python -I scripts/ci/test-service-smoke-subjects.py
+        python -I scripts/ci/test-service-smoke-network.py
+        python -I scripts/ci/test-service-smoke-http.py
+        python -I scripts/ci/test-service-smoke-native.py
+        python -I scripts/ci/test-service-smoke-fixture.py
+        python -I scripts/ci/test-service-smoke-loading.py
+        python -I scripts/ci/test-service-smoke-entry.py
+        python -I scripts/ci/test-service-smoke-browser.py
+        python -I scripts/ci/test-service-smoke-browser-source.py
+        python -I scripts/ci/test-service-smoke-cleanup.py
+        python -I scripts/ci/test-service-smoke-published.py
+        python -I scripts/ci/test-service-smoke-browser-runner.py
+        python -I scripts/ci/test-service-smoke-published-entry.py
+        python -I scripts/ci/test-service-smoke-first-stage.py
+        python -I scripts/ci/test-service-smoke-bootstrap.py
         python -I scripts/ci/test-published-provenance.py
         python -I scripts/ci/test-publication-docker-config.py
         python scripts/ci/test-standalone-lock-contract.py
