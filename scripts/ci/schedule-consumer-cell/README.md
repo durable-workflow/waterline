@@ -1,5 +1,10 @@
 This is the finite acceptance cell proposal for Waterline #222 / #310. Execution is held for independent review of the complete frozen runner, literal bootstrap and input packet. No workflow invokes it automatically. Frozen01 and earlier mutable preparation packets remain held and must not execute.
 
+The cleanup source successor records role, nonce and image before creation. Lost
+create output permits only deletion of one exact matching object, never a start.
+Foreign images, duplicate roles and replacements remain preserved as NONPASS.
+Its inert controls do not qualify a real Docker boundary or activate an old packet.
+
 The ten-subject stdin packet contains the captured candidate, loader, proxy, browser, browser libraries, Worker, all-wheel requirements, ownership helper, workspace guard and public CA. `runner.py` checks every byte/size/hash before Docker effects. The qualified native 3.10.0 tuple is literal and must match the packet. The candidate package is Git 4d89fcdd, distinct from the runner source: 184 regular Git leaves/7,247,164 bytes. Capture never executes working-tree code.
 
 `trusted_bootstrap.py` renders a literal first-code program from independently supplied reviewed identities. Freeze its exact rendered bytes/hash in the review and invocation. It reads the approved Git runner blob, verifies its independent SHA-256, captures no-follow runner/packet descriptors and rejects pre-open substitutions before compiling only retained Git bytes. It retains/rechecks input identities through execution. Never invoke a runner or bootstrap pathname as executable source. The runner’s callback guard only prevents accidental direct invocation; the independently fixed literal bootstrap supplies authority.
