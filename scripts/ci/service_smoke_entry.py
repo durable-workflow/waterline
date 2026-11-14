@@ -17,6 +17,7 @@ import uuid
 
 import oci_release
 from service_smoke_io import Docker
+from service_smoke_cleanup import context as cleanup_context
 from service_smoke_native import exercise_native
 from service_smoke_resources import ROLES, exact_id
 from service_smoke_subjects import GitInputs, HeldArchive, file_identity
@@ -120,7 +121,7 @@ def probe_source(raw: bytes) -> bytes:
     return raw.split(begin, 1)[1].split(end, 1)[0]
 
 
-def run_native(selected: dict, *, repository: Path, inputs, outputs, frozen_document) -> dict:
+def run_native(selected: dict, *, repository: Path, inputs, outputs, frozen_document, context_ready) -> dict:
     check_selection(selected)
     source = runner = archive = docker = journal = None
     report = {"schema": "waterline.ordinary-native-acceptance/v1", "selected": dict(selected), "started_at": timestamp()}
@@ -150,6 +151,7 @@ def run_native(selected: dict, *, repository: Path, inputs, outputs, frozen_docu
         program = probe_source(runner.read("scripts/ci/service-mode-image-smoke.sh"))
         nonce = "waterline-service-" + uuid.uuid4().hex
         report["run"] = nonce
+        context_ready(cleanup_context(nonce, subject["config_digest"], selected["architecture"]))
         journal = Journal(outputs, {"run": nonce, "image": subject["config_digest"], "selected": selected})
         docker = Docker(outputs.path)
 

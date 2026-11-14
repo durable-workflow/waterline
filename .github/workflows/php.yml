@@ -228,6 +228,7 @@ jobs:
         python -I scripts/ci/test-service-smoke-entry.py
         python -I scripts/ci/test-service-smoke-browser.py
         python -I scripts/ci/test-service-smoke-browser-source.py
+        python -I scripts/ci/test-service-smoke-cleanup.py
         python -I scripts/ci/test-published-provenance.py
         python -I scripts/ci/test-publication-docker-config.py
         python scripts/ci/test-standalone-lock-contract.py

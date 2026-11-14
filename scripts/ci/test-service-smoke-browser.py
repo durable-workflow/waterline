@@ -36,21 +36,24 @@ class BrowserTransportTest(unittest.TestCase):
     def test_unselected_operation_cannot_reach_fixture(self):
         fixture = Fixture()
         program = "print('{\"operation\":\"start\",\"value\":\"foreign\"}',flush=True)"
+        command = self.command(program)
         with self.assertRaises(browser.BrowserError):
-            browser.rpc_process(self.command(program), fixture, lambda: None, timeout=2)
+            browser.rpc_process(command, fixture, lambda: None, timeout=2)
         self.assertEqual([], fixture.modes)
 
     def test_missing_partial_failed_or_duplicate_completion_cannot_pass(self):
         programs = ["print('{}',end='')", "pass", "print('{\"complete\":{\"status\":\"nonpass\"}}')",
                     "print('{\"complete\":{\"status\":\"pass\"}}\\n{\"complete\":{\"status\":\"pass\"}}')"]
         for program in programs:
+            command, fixture = self.command(program), Fixture()
             with self.subTest(program=program), self.assertRaises(browser.BrowserError):
-                browser.rpc_process(self.command(program), Fixture(), lambda: None, timeout=2)
+                browser.rpc_process(command, fixture, lambda: None, timeout=2)
 
     def test_deadline_and_output_overrun_reap_marker_children(self):
         for program in ("import time;time.sleep(10)", "print('x'*70000)"):
+            command, fixture = self.command(program), Fixture()
             with self.subTest(program=program), self.assertRaises(RuntimeError):
-                browser.rpc_process(self.command(program), Fixture(), lambda: None, timeout=0.1)
+                browser.rpc_process(command, fixture, lambda: None, timeout=0.1)
 
     def test_frozen_source_goes_to_data_url_and_phase_is_explicit(self):
         original = Path(__file__).with_name("request-budget-browser.mjs").read_bytes()
