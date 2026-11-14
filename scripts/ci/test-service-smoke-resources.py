@@ -320,6 +320,18 @@ class CreationCleanupTest(unittest.TestCase):
         self.assertTrue(result["absent"])
         self.assertIsNone(result["roles"]["metadata"]["recovered_id"])
 
+    def test_checkpoint_failure_after_create_keeps_the_captured_id_for_cleanup(self):
+        def checkpoint(_kind, _role, identifier):
+            if identifier is not None:
+                raise RuntimeError("synthetic output namespace refusal")
+        self.roles.checkpoint = checkpoint
+        with self.assertRaisesRegex(RuntimeError, "synthetic output namespace refusal"):
+            self.create()
+        captured = self.roles.attempted["metadata"].identifier
+        self.assertIn(captured, self.docker.containers)
+        self.assertTrue(self.roles.cleanup()["absent"])
+        self.assertNotIn(captured, self.docker.containers)
+
     def test_role_can_be_created_only_once_and_is_not_started_by_create(self):
         captured = self.create()
         with self.assertRaises(resources.OwnershipError):

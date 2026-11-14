@@ -7,6 +7,7 @@ bootstrap and independently selected native input descriptors remain separate.
 from __future__ import annotations
 
 import hashlib
+import platform
 import re
 import time
 from urllib.parse import urlunsplit
@@ -177,8 +178,10 @@ def fixture_protocol(audit: dict, phase: str) -> None:
             raise OwnershipError("Missing fresh actual upstream request: " + request)
 
 
-def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source, program: bytes) -> dict:
+def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source, program: bytes, checkpoint=None) -> dict:
     """Complete inner lifecycle. Only the later reviewed outer caller can bind inputs."""
+    if platform.machine() != {"amd64": "x86_64", "arm64": "aarch64"}.get(subject.get("architecture")):
+        raise OwnershipError("Acceptance must run on the artifact's actual native architecture")
     config = image_configuration(docker, archive, subject)
     if subject.get("source") != source.commit:
         raise OwnershipError("Artifact source differs from the selected immutable Git input")
@@ -187,8 +190,8 @@ def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source
     source_classes = {name: hashlib.sha256(source.read(path.removeprefix("/app/waterline/"))).hexdigest()
                       for name, path in CLASSES.items() if name != FRAMEWORK_CLASS}
     roles = RoleSet(docker, cleanup, run=run, image=subject["config_digest"], platform="linux/" + subject["architecture"],
-                    base_environment=tuple(config.get("Env", [])))
-    network = Network(docker, cleanup, run)
+                    base_environment=tuple(config.get("Env", [])), checkpoint=checkpoint)
+    network = Network(docker, cleanup, run, checkpoint=checkpoint)
     result, failure = {}, None
     try:
         metadata_role = roles.create("metadata", entrypoint=PHP_BINARY, command=["-n", "/dev/stdin", "metadata"], environment={})

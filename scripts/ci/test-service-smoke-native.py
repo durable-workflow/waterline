@@ -68,7 +68,7 @@ class NativeLifecycleTest(unittest.TestCase):
             return self.roles
 
         replacements = {"image_configuration": lambda *_args: {"Env": []}, "RoleSet": roles,
-                        "Network": lambda *_args: self.network, "trust_controls": lambda *_args: {},
+                        "Network": lambda *_args, **_kwargs: self.network, "trust_controls": lambda *_args: {},
                         "memory_refusal": lambda *_args: {}, "Fixture": lambda *_args: object(),
                         "running": lambda *_args: {}, "loopback_port": lambda *_args: 41823,
                         "Loopback": lambda *_args: object(), "await_health": lambda *_args: 1.0,

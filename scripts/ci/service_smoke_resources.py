@@ -395,7 +395,7 @@ class RoleSet:
     """At most five roles in one ordinary smoke invocation, with no name cleanup."""
 
     def __init__(self, docker: Callable, cleanup: Callable, *, run: str, image: str,
-                 platform: str, base_environment: tuple[str, ...], network: str | None = None):
+                 platform: str, base_environment: tuple[str, ...], network: str | None = None, checkpoint=None):
         ownership_labels(run, "metadata")
         if not isinstance(image, str) or re.fullmatch(r"sha256:[a-f\d]{64}", image, re.ASCII) is None:
             raise OwnershipError("Expected a captured immutable image ID")
@@ -404,6 +404,7 @@ class RoleSet:
         self.base_environment = base_environment
         selected_environment(base_environment, {})
         self.attempted: dict[str, Container | None] = {}
+        self.checkpoint = checkpoint
 
     def create(self, role: str, *, entrypoint: str, command: list[str], environment: dict[str, str]) -> Container:
         if role in self.attempted:
@@ -417,12 +418,16 @@ class RoleSet:
         for key, value in {**environment, "TMPDIR": TEMP_PATH}.items():
             arguments += ["--env", key + "=" + value]
         self.attempted[role] = None
+        if self.checkpoint is not None:
+            self.checkpoint("container", role, None)
         result = self.docker([*arguments, "--entrypoint", entrypoint, self.image, *command])
         if re.fullmatch(rb"[a-f0-9]{64}\n", result.stdout) is None:
             raise OwnershipError("Creation did not return one full captured ID")
         creation = CreationSpec((entrypoint,), tuple(command), tuple(sorted(key + "=" + value for key, value in expected_environment.items())))
         record = Container(result.stdout.decode().rstrip("\n"), self.run, role, self.image, network, creation)
         self.attempted[role] = record
+        if self.checkpoint is not None:
+            self.checkpoint("container", role, record.identifier)
         if result.returncode != 0 or result.stderr:
             raise OwnershipError("Creation failed after returning its captured ID")
         inspected = record.inspect(self.docker)

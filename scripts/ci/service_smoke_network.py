@@ -63,10 +63,11 @@ def validate(record: dict, members: set[str]) -> None:
 class Network:
     """Create once; recover a lost create response for deletion only."""
 
-    def __init__(self, docker, cleanup, run: str):
+    def __init__(self, docker, cleanup, run: str, checkpoint=None):
         labels(run)
         self.docker, self.cleanup_transport, self.run = docker, cleanup, run
         self.attempted, self.identifier = False, None
+        self.checkpoint = checkpoint
 
     def create(self) -> str:
         if self.attempted:
@@ -77,10 +78,14 @@ class Network:
         for key, value in OPTIONS.items():
             arguments += ["--opt", key + "=" + value]
         self.attempted = True
+        if self.checkpoint is not None:
+            self.checkpoint("network", "network", None)
         result = self.docker([*arguments, self.run + "-network"])
         if re.fullmatch(rb"[a-f0-9]{64}\n", result.stdout) is None:
             raise OwnershipError("Network creation did not return one full ID")
         self.identifier = result.stdout.decode().rstrip("\n")
+        if self.checkpoint is not None:
+            self.checkpoint("network", "network", self.identifier)
         if result.returncode != 0 or result.stderr:
             raise OwnershipError("Network creation failed after ID capture")
         self.check(set())
