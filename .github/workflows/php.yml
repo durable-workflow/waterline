@@ -1122,7 +1122,8 @@ jobs:
     - name: Audit the frontend graph
       run: |
         node --test scripts/ci/npm-audit-allowlisted.test.mjs
-        node scripts/ci/npm-audit-allowlisted.mjs .
+        npm audit --json > "$RUNNER_TEMP/npm-audit.json" || true
+        node scripts/ci/npm-audit-allowlisted.mjs "$RUNNER_TEMP/npm-audit.json"
 
     - name: Run frontend regression tests
       run: npm test

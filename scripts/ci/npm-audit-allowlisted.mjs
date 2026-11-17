@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Run `npm audit` for a directory and fail on any advisory at or above
+// Judge an `npm audit --json` report: fail on any advisory at or above
 // moderate severity, except an exact reviewed (advisory, package) pair with no
 // patched release. Transitive entries only name packages; every root advisory
-// must be allowlisted for the audit to pass.
+// must be allowlisted for the audit to pass. A missing, malformed or errored
+// report fails, so a failed `npm audit` invocation can never pass.
 //
-// Usage: node scripts/ci/npm-audit-allowlisted.mjs <npm prefix>
-import { execFileSync } from 'node:child_process';
+// Usage: npm audit --json > report.json || true
+//        node scripts/ci/npm-audit-allowlisted.mjs report.json
+import { readFileSync } from 'node:fs';
 
 const ALLOWED = new Map([
   // picomatch ReDoS via single-branch repeated extglobs. No patched release
@@ -18,6 +20,9 @@ const ALLOWED = new Map([
 const FAILING = new Set(['moderate', 'high', 'critical']);
 
 export function evaluate(report) {
+  if (report?.error || typeof report?.metadata?.vulnerabilities !== 'object') {
+    return { failures: [`npm audit did not produce a report: ${JSON.stringify(report?.error ?? 'no metadata')}`], accepted: [] };
+  }
   const failures = [];
   const accepted = [];
   for (const [name, vulnerability] of Object.entries(report.vulnerabilities ?? {})) {
@@ -33,15 +38,14 @@ export function evaluate(report) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const prefix = process.argv[2] ?? '.';
-  let output;
+  let report;
   try {
-    output = execFileSync('npm', ['--prefix', prefix, 'audit', '--json'], { encoding: 'utf8' });
+    report = JSON.parse(readFileSync(process.argv[2], 'utf8'));
   } catch (error) {
-    output = error.stdout; // npm audit exits non-zero when it finds anything
-    if (!output) throw error;
+    console.log(`::error::cannot read npm audit report: ${error.message}`);
+    process.exit(1);
   }
-  const { failures, accepted } = evaluate(JSON.parse(output));
+  const { failures, accepted } = evaluate(report);
   for (const item of accepted) console.log(`::warning::accepted reviewed advisory: ${item}`);
   for (const item of failures) console.log(`::error::${item}`);
   if (failures.length) process.exit(1);
