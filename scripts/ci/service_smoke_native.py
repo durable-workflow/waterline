@@ -13,7 +13,7 @@ import time
 from urllib.parse import urlunsplit
 
 from service_smoke_fixture import BROWSER_FILE, FILES, Fixture, source_hashes, startup
-from service_smoke_http import Loopback, native_api, native_budget
+from service_smoke_http import HttpError, Loopback, native_api, native_budget
 from service_smoke_network import Network
 from service_smoke_observation import CLASSES, FRAMEWORK_CLASS, PHP_BINARY, cache_phases, verify_metadata
 from service_smoke_resources import RoleSet, OwnershipError, observation, validate_profile
@@ -229,6 +229,7 @@ def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source
                     base_environment=tuple(config.get("Env", [])), checkpoint=checkpoint)
     network = Network(docker, cleanup, run, checkpoint=checkpoint)
     result, failure = {}, None
+    fixture_role = application = None
     try:
         metadata_role = roles.create("metadata", entrypoint=PHP_BINARY, command=["-n", "/dev/stdin", "metadata"], environment={})
         metadata = verify_metadata(docker, metadata_role, program, lock)
@@ -255,6 +256,9 @@ def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source
         source.check()
     except Exception as error:
         failure = {"class": type(error).__name__, "message": str(error)}
+        if isinstance(error, HttpError) and error.evidence is not None:
+            failure["http"] = error.evidence
+        result["failure_logs"] = failure_logs(docker, {"application": application, "fixture": fixture_role})
     finally:
         try:
             result["roles"] = roles.evidence()
@@ -270,3 +274,19 @@ def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source
     result["failure"] = failure
     result["status"] = "pass" if failure is None and result["cleanup"]["absent"] and result["network_cleanup"]["absent"] else "nonpass"
     return result
+
+
+def failure_logs(docker, selected: dict) -> dict:
+    """Existing tail operation on the captured synthetic roles, before cleanup."""
+    observed = {}
+    for name, role in selected.items():
+        if role is None:
+            continue
+        try:
+            reply = role.command(docker, "logs", [], options=("--tail", "200"))
+            raw = reply.stdout + reply.stderr
+            observed[name] = {"exit": reply.returncode, "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(),
+                              "tail": raw[-16384:].decode("utf-8", errors="replace"), "truncated": len(raw) > 16384}
+        except Exception as error:
+            observed[name] = {"error_class": type(error).__name__}
+    return observed
