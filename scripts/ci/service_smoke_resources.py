@@ -363,11 +363,17 @@ def audit_role_absence(docker: Callable, run: str, role: str, identifier: str | 
         raise OwnershipError("Final captured-ID absence is unconfirmed")
 
 
+def container_name(run: str, role: str) -> str:
+    ownership_labels(run, role)
+    # Preserve the full nonce and role label, with a DNS-safe peer name.
+    return run + "-" + ("browser" if role == "browser-fixture" else role)
+
+
 def create_profile_arguments(role: str, run: str, network: str | None, platform: str) -> list[str]:
     selected = profile(role, network)
     if platform not in {"linux/amd64", "linux/arm64"}:
         raise OwnershipError("Unselected native platform")
-    arguments = ["create", "--name", run + "-" + role, *labels_arguments(run, role),
+    arguments = ["create", "--name", container_name(run, role), *labels_arguments(run, role),
                  "--platform", platform, "--pull", "never", "--init", "--read-only", "--no-healthcheck",
                  "--cpus", str(selected["cpus"] // 1_000_000_000), "--memory", str(selected["memory"]),
                  "--memory-swap", str(selected["memory"]), "--pids-limit", str(selected["pids"]),

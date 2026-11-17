@@ -1,6 +1,7 @@
 """Inert ordinary API vectors and timeout receipts; no HTTP request is sent."""
 
 import copy
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -74,6 +75,37 @@ class BudgetFixture:
 
 
 class ApiTest(unittest.TestCase):
+    def test_wrong_status_retains_numeric_and_closed_error_evidence_without_payload(self):
+        body = {"error": "remote_authorization_failed", "reason": "authorization_failed",
+                "remote_status": 403, "message": "private diagnostic", "remote_details": {"token": "private token"}}
+        observed = reply(body, 403)
+        with self.assertRaises(smoke.HttpError) as refused:
+            smoke.document(lambda *_args: observed, "GET", smoke.RUNNING, 200)
+        self.assertEqual({"expected_status": 200, "actual_status": 403,
+                          "body_bytes": len(observed.body), "body_sha256": hashlib.sha256(observed.body).hexdigest(),
+                          "error": "remote_authorization_failed", "reason": "authorization_failed", "remote_status": 403},
+                         getattr(refused.exception, "evidence", None))
+        self.assertNotIn("private", str(refused.exception))
+
+    def test_unknown_or_malformed_response_keeps_only_numeric_and_hash_metadata(self):
+        for body in (b"not JSON: private", b'{"reason":"private","error":"private","remote_status":true}',
+                     b'{"reason":"request_timeout","reason":"private"}'):
+            observed = smoke.Reply(502, body, 0.2)
+            with self.subTest(body=body), self.assertRaises(smoke.HttpError) as refused:
+                smoke.document(lambda *_args: observed, "GET", smoke.RUNNING, 200)
+            self.assertEqual({"expected_status": 200, "actual_status": 502,
+                              "body_bytes": len(body), "body_sha256": hashlib.sha256(body).hexdigest()},
+                             getattr(refused.exception, "evidence", None))
+
+    def test_untyped_status_still_refuses_and_success_needs_no_failure_evidence(self):
+        for status in (True, "200"):
+            observed = reply({}, status)
+            with self.subTest(status=status), self.assertRaises(smoke.HttpError) as refused:
+                smoke.document(lambda *_args: observed, "GET", smoke.RUNNING, 200)
+            self.assertIsNone(refused.exception.evidence["actual_status"])
+        with patch.object(smoke, "status_evidence", side_effect=AssertionError("unselected diagnostic")):
+            self.assertEqual({"data": []}, smoke.document(lambda *_args: reply({"data": []}), "GET", smoke.RUNNING, 200))
+
     def test_current_target_keeps_ordinary_assertions_and_unique_phase_writes(self):
         fixture = ApiFixture()
         for phase in ("before", "cached", "cleared"):
