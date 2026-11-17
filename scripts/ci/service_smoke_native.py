@@ -12,7 +12,7 @@ import re
 import time
 from urllib.parse import urlunsplit
 
-from service_smoke_fixture import BROWSER_FILE, FILES, Fixture, source_hashes, startup
+from service_smoke_fixture import BROWSER_FILE, FILES, Fixture, browser_proxy_source, source_hashes, startup
 from service_smoke_http import HttpError, Loopback, native_api, native_budget
 from service_smoke_network import Network
 from service_smoke_observation import CLASSES, FRAMEWORK_CLASS, PHP_BINARY, cache_phases, verify_metadata
@@ -221,7 +221,7 @@ def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source
         raise OwnershipError("Artifact source differs from the selected immutable Git input")
     inputs = {name: source.read(path) for name, path in FILES.items()}
     if browser is not None:
-        inputs["host.php"] = source.read(BROWSER_FILE)
+        inputs["host.php"] = browser_proxy_source(source.read(BROWSER_FILE))
     lock = source.read("standalone/composer.lock")
     source_classes = {name: hashlib.sha256(source.read(path.removeprefix("/app/waterline/"))).hexdigest()
                       for name, path in CLASSES.items() if name != FRAMEWORK_CLASS}
