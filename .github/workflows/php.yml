@@ -1120,7 +1120,9 @@ jobs:
       run: npm ci --ignore-scripts
 
     - name: Audit the frontend graph
-      run: npm audit
+      run: |
+        node --test scripts/ci/npm-audit-allowlisted.test.mjs
+        node scripts/ci/npm-audit-allowlisted.mjs .
 
     - name: Run frontend regression tests
       run: npm test
