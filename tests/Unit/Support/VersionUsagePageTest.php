@@ -86,7 +86,11 @@ final class VersionUsagePageTest extends TestCase
         VersionUsagePage::validate($page, $query);
     }
 
-    /** @param array<string, mixed> $page */
+    /**
+     * @param array<string, mixed> $page
+     *
+     * @dataProvider invalidPages
+     */
     #[DataProvider('invalidPages')]
     public function testInvalidAnswersAreErrorsInsteadOfEmptyOrCurrent(array $page): void
     {
