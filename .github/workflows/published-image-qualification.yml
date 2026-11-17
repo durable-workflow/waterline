@@ -356,7 +356,14 @@ jobs:
             printf 'DOCKER_CONFIG=%s\n' "$RUNNER_TEMP/native-budget-docker"
             printf 'WATERLINE_IMAGE=durableworkflow/waterline@%s\n' "$IMAGE_DIGEST"
           } >> "$GITHUB_ENV"
+      - name: Prepare owned Node tool cache for held executable capture
+        # The hosted shared tool cache has writable ancestors. Keep the existing
+        # no-follow source guard and let the pinned installer use owned paths.
+        run: mkdir -m 700 "$RUNNER_TEMP/waterline-owned-node-toolcache"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        env:
+          RUNNER_TOOL_CACHE: ${{ runner.temp }}/waterline-owned-node-toolcache
+          AGENT_TOOLSDIRECTORY: ${{ runner.temp }}/waterline-owned-node-toolcache
         with:
           node-version: '24.22.1'
       - name: Verify raw Node version and trust roots

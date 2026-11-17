@@ -40,6 +40,33 @@ class FrozenLoadingTest(unittest.TestCase):
             compile_source.assert_not_called()
         self.assertTrue(all(name not in sys.modules for name in loading.MODULES))
 
+    def test_shared_node_ancestor_refuses_but_owned_installer_cache_retains_the_guard(self):
+        shared = self.path / 'shared-toolcache'
+        shared.mkdir(mode=0o777)
+        shared.chmod(0o777)
+        (shared / 'node/bin').mkdir(parents=True)
+        node = shared / 'node/bin/node'
+        node.write_bytes(b'synthetic Node file; never executed')
+        node.chmod(0o755)
+        with self.assertRaisesRegex(loading.LoadingError, 'Source parent is writable'):
+            loading.SourceRoot(node.parent)
+        owned = self.path / 'owned-toolcache'
+        owned.mkdir(mode=0o700)
+        (owned / 'node/bin').mkdir(parents=True)
+        captured = owned / 'node/bin/node'
+        captured.write_bytes(node.read_bytes())
+        captured.chmod(0o755)
+        root = loading.SourceRoot(captured.parent)
+        try:
+            self.assertEqual(node.read_bytes(), root.read('node'))
+            owned.chmod(0o770)
+            with self.assertRaisesRegex(loading.LoadingError, 'Source parent is writable'):
+                root.check()
+        finally:
+            owned.chmod(0o700)
+            shared.chmod(0o700)
+            root.close()
+
     def test_old_path_lookup_sees_swap_but_frozen_bytes_execute_the_original_marker(self):
         captured = loading.capture_sources(self.root, self.subjects)
         name = loading.MODULES[0]
