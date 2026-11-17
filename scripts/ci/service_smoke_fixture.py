@@ -19,6 +19,31 @@ FILES = {
     "server.php": "scripts/ci/request-budget-server.php",
 }
 BROWSER_FILE = "scripts/ci/request-budget-host.php"
+BROWSER_PROXY_ORIGINAL = "1a23f052a1b8e774d3e1ddc1c0f29742c104a2e15227d39531c48a4e8bc90389"
+BROWSER_PROXY_COMPILED = "2d3ee27ebca87bfc1942e1156659ef228f7e7c949087e2e7b89cbbef204a4fd9"
+
+
+def browser_proxy_source(raw: bytes) -> bytes:
+    """Keep asset URLs on the browser's loopback port, with the owned target unchanged."""
+    if not isinstance(raw, bytes) or hashlib.sha256(raw).hexdigest() != BROWSER_PROXY_ORIGINAL:
+        raise OwnershipError("The original browser proxy differs from its selected source")
+    before = b"        $headers = ['Host: 127.0.0.1:8080'];"
+    after = rb"""        $browserAuthority = $_SERVER['HTTP_HOST'] ?? '';
+        if (!is_string($browserAuthority)
+            || preg_match('/\A127\.0\.0\.1:([1-9][0-9]{0,4})\z/D', $browserAuthority, $match) !== 1
+            || (int) $match[1] > 65535) {
+            http_response_code(400);
+            throw new NativeBudgetFixtureException('Expected the selected numeric loopback browser authority.');
+        }
+        $headers = ['Host: '.$browserAuthority];"""
+    if raw.count(before) != 1:
+        raise OwnershipError("The original browser proxy Host boundary changed")
+    compiled = raw.replace(before, after)
+    if hashlib.sha256(compiled).hexdigest() != BROWSER_PROXY_COMPILED:
+        raise OwnershipError("The actual browser proxy differs from its selected transformation")
+    return compiled
+
+
 CONTROL = b'''<?php
 declare(strict_types=1);
 $root = '/run/waterline';

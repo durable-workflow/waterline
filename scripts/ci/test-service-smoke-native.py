@@ -104,6 +104,42 @@ class NativeLifecycleTest(unittest.TestCase):
         self.assertEqual("cleanup", self.roles.events[-1])
         self.assertEqual(["create", "cleanup"], self.network.events)
 
+    def test_http_failure_preserves_closed_evidence_and_still_cleans_every_role(self):
+        evidence = {"expected_status": 200, "actual_status": 502, "body_bytes": 2, "body_sha256": "a" * 64}
+        error = native.HttpError("Unexpected HTTP status for /waterline/api/flows/running", evidence=evidence)
+        with patch.object(native, "cache_phases", side_effect=error):
+            result = self.run_case()
+        self.assertEqual("nonpass", result["status"])
+        self.assertEqual(evidence, result["failure"].get("http"))
+        self.assertEqual("cleanup", self.roles.events[-1])
+        self.assertEqual(["create", "cleanup"], self.network.events)
+
+    def test_existing_log_tail_is_bounded_to_captured_roles(self):
+        raw = b"x" * 20000 + b"synthetic application error"
+        calls = []
+
+        def command(*args, **kwargs):
+            calls.append((args[1:], kwargs))
+            return SimpleNamespace(returncode=0, stdout=raw, stderr=b"")
+
+        result = native.failure_logs(None, {"application": SimpleNamespace(command=command), "fixture": None})
+        self.assertEqual([(("logs", []), {"options": ("--tail", "200")})], calls)
+        self.assertEqual(len(raw), result["application"]["bytes"])
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), result["application"]["sha256"])
+        self.assertEqual(raw[-16384:].decode(), result["application"]["tail"])
+        self.assertTrue(result["application"]["truncated"])
+
+    def test_log_capture_refusal_keeps_the_original_http_failure_and_cleanup(self):
+        evidence = {"actual_status": 500}
+        error = native.HttpError("Unexpected HTTP status for /waterline/api/flows/running", evidence=evidence)
+        with patch.object(native, "cache_phases", side_effect=error), \
+                patch.object(native, "failure_logs", return_value={"application": {"error_class": "OwnershipError"}}):
+            result = self.run_case()
+        self.assertEqual(evidence, result["failure"]["http"])
+        self.assertEqual("nonpass", result["status"])
+        self.assertTrue(result["cleanup"]["absent"])
+        self.assertTrue(result["network_cleanup"]["absent"])
+
     def test_cleanup_failure_cannot_turn_a_completed_inner_flow_into_pass(self):
         with patch.object(FakeRoleSet, "cleanup", return_value={"absent": False}):
             result = self.run_case()
@@ -137,6 +173,20 @@ class NativeLifecycleTest(unittest.TestCase):
 
 
 class NativeInputTest(unittest.TestCase):
+    def test_oversized_browser_hostname_is_not_selected_as_the_backend(self):
+        invalid = "waterline-service-" + "d" * 32 + "-browser-fixture"
+        self.assertEqual(66, len(invalid))
+        with self.assertRaises(native.OwnershipError):
+            native.app_environment(invalid)
+
+    def test_backend_endpoint_uses_the_same_dns_safe_captured_role_name(self):
+        run = "waterline-service-" + "d" * 32
+        for role in ("fixture", "browser-fixture"):
+            with self.subTest(role=role):
+                name = native.container_name(run, role)
+                self.assertLessEqual(len(name), 63)
+                self.assertEqual("http://" + name + ":18081", native.app_environment(name)["WATERLINE_SERVER_ENDPOINT"])
+
     def test_rendered_default_fields_do_not_change_exact_image_binding(self):
         config = {"os": "linux", "architecture": "amd64", "config": {"Env": ["PATH=/usr/local/bin:/usr/bin"]},
                   "rootfs": {"diff_ids": ["sha256:" + "a" * 64]}}

@@ -269,6 +269,30 @@ class CapturedContainerTest(unittest.TestCase):
         self.assertEqual([["inspect", OWN_ID]], docker.calls)
 
 
+class FixtureNameTest(unittest.TestCase):
+    def test_browser_creation_uses_a_dns_safe_name_without_changing_nonce_or_role(self):
+        for platform in ("linux/amd64", "linux/arm64"):
+            with self.subTest(platform=platform):
+                arguments = resources.create_profile_arguments("browser-fixture", RUN, NETWORK, platform)
+                name = arguments[arguments.index("--name") + 1]
+                self.assertEqual(RUN + "-browser", name)
+                self.assertLessEqual(len(name), 63)
+                self.assertEqual(name.encode("ascii"), name.encode("idna"))
+                self.assertEqual(name, resources.container_name(RUN, "browser-fixture"))
+                labels = dict(arguments[i + 1].split("=", 1) for i, value in enumerate(arguments) if value == "--label")
+                self.assertEqual(resources.ownership_labels(RUN, "browser-fixture"), labels)
+
+    def test_other_role_names_remain_unchanged(self):
+        for role in resources.ROLES - {"browser-fixture"}:
+            with self.subTest(role=role):
+                self.assertEqual(RUN + "-" + role, resources.container_name(RUN, role))
+
+    def test_an_unselected_role_or_nonce_cannot_select_a_name(self):
+        for run, role in (("foreign", "fixture"), (RUN, "unselected")):
+            with self.subTest(run=run, role=role), self.assertRaises(resources.OwnershipError):
+                resources.container_name(run, role)
+
+
 class CreationFixture(DockerFixture):
     def __init__(self):
         super().__init__()

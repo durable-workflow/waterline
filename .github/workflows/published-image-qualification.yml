@@ -179,7 +179,7 @@ jobs:
       - name: Disable APT download retries (CVE-2026-109518)
         run: echo 'Acquire::Retries "0";' | sudo tee /etc/apt/apt.conf.d/99-no-retries >/dev/null
       - name: Install PHP and Composer
-        uses: durable-workflow/.github/.github/actions/setup-php-linux@411a14ac07d32073eed6ab4977f2825eba4739a7 # bound-linux-php
+        uses: durable-workflow/.github/.github/actions/setup-php-linux@5c1ddbff59bcfad8a686a72a9b09804b359c382a # bound-linux-php
         with:
           php-version: '8.3'
           ini-file: production
@@ -359,6 +359,38 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24.22.1'
+      - name: Secure selected Node path before held executable capture
+        # Tighten only this pinned tool's ancestors/file on the disposable job VM.
+        # The existing no-follow ownership guard remains unchanged.
+        run: |
+          python3 -I -S - <<'PY_NODE'
+          import os
+          from pathlib import Path
+          import platform
+          import shutil
+          import stat
+          import subprocess
+
+          architecture = {'x86_64': 'x64', 'aarch64': 'arm64'}[platform.machine()]
+          cache = Path(os.environ['RUNNER_TOOL_CACHE'])
+          selected = cache / 'node' / '24.22.1' / architecture / 'bin' / 'node'
+          if str(selected) != shutil.which('node') or not selected.is_absolute() or '..' in selected.parts:
+              raise RuntimeError('Node must be the exact pinned hosted-tool-cache executable')
+          for path in [*reversed(selected.parents), selected]:
+              before = path.lstat()
+              expected = stat.S_ISREG(before.st_mode) if path == selected else stat.S_ISDIR(before.st_mode)
+              if not expected or before.st_uid not in {0, os.getuid()} or (path == selected and before.st_nlink != 1):
+                  raise RuntimeError('Selected Node path has an unowned or linked component')
+              if before.st_mode & 0o022:
+                  if before.st_uid == os.getuid():
+                      path.chmod(stat.S_IMODE(before.st_mode) & ~0o022)
+                  else:
+                      subprocess.run(['sudo', 'chmod', 'go-w', '--', str(path)], check=True, timeout=10)
+              after = path.lstat()
+              if (before.st_dev, before.st_ino, before.st_uid, stat.S_IFMT(before.st_mode)) != (
+                  after.st_dev, after.st_ino, after.st_uid, stat.S_IFMT(after.st_mode)) or after.st_mode & 0o022:
+                  raise RuntimeError('Selected Node path changed while tightening its boundary')
+          PY_NODE
       - name: Verify raw Node version and trust roots
         run: node .devcontainer/docker/verify-node-runtime.mjs
       - name: Disable APT download retries (CVE-2026-109518)
@@ -389,7 +421,7 @@ jobs:
           import signal
 
 
-          BOOTSTRAP_SHA256 = "26a61bbff2b8f54e2663d638a2424213b72188e2a46d76fd4cd9fb11e5ddaaa5"
+          BOOTSTRAP_SHA256 = "dde83f98645489088f5f63dc0e82bd5e1a71d62906287454a1aa9424d3d15022"
 
 
           def identity(value):
@@ -507,7 +539,7 @@ jobs:
           import signal
 
 
-          BOOTSTRAP_SHA256 = "26a61bbff2b8f54e2663d638a2424213b72188e2a46d76fd4cd9fb11e5ddaaa5"
+          BOOTSTRAP_SHA256 = "dde83f98645489088f5f63dc0e82bd5e1a71d62906287454a1aa9424d3d15022"
 
 
           def identity(value):

@@ -1,11 +1,13 @@
 """Synthetic descriptor/output controls. No Node, browser or Docker is run."""
 
 import hashlib
+import json
 import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import service_smoke_browser_runner as runner
@@ -63,6 +65,78 @@ class BrowserRunnerTest(unittest.TestCase):
         finally:
             os.close(temporary)
             os.close(descriptor)
+
+
+class RetainedReportTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory(prefix="waterline-browser-report-")
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.descriptor = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        self.addCleanup(os.close, self.descriptor)
+        self.report = {"source": "a" * 40, "status": "pass", "checks": [], "errors": []}
+
+    def capture(self, value=None):
+        raw = json.dumps(self.report if value is None else value, indent=2).encode()
+        (self.root / "browser.json").write_bytes(raw)
+        return raw
+
+    def verify(self):
+        runner.retained_report(self.descriptor, "browser.json", {**self.report, "phase": "before"})
+
+    def test_pretty_report_can_exceed_compact_completion_frame_size(self):
+        self.report["checks"] = [{"response": {"rows": [{"id": i, "state": "running"}
+                                                         for i in range(90)]}} for _ in range(16)]
+        self.assertLess(len(json.dumps(self.report, separators=(",", ":")).encode()), 65536)
+        self.assertGreater(len(self.capture()), 65536)
+        self.verify()
+
+    def test_exact_file_bound_passes_and_one_byte_over_refuses_before_decode(self):
+        raw = self.capture()
+        path = self.root / "browser.json"
+        path.write_bytes(raw + b" " * (runner.MAX_RETAINED_REPORT_BYTES - len(raw)))
+        self.verify()
+        with path.open("ab") as stream:
+            stream.write(b" ")
+        with mock.patch.object(runner, "decode_json") as decode:
+            with self.assertRaisesRegex(runner.BrowserError, "Invalid bounded"):
+                self.verify()
+            decode.assert_not_called()
+
+    def test_stdout_and_retained_content_must_remain_equal(self):
+        self.capture({**self.report, "status": "nonpass"})
+        with self.assertRaisesRegex(runner.BrowserError, "stdout and retained"):
+            self.verify()
+
+    def test_symlink_hardlink_and_directory_are_refused(self):
+        self.capture()
+        path = self.root / "browser.json"
+        path.rename(self.root / "original.json")
+        path.symlink_to("original.json")
+        with self.assertRaises(OSError):
+            self.verify()
+        path.unlink()
+        os.link(self.root / "original.json", path)
+        with self.assertRaisesRegex(runner.BrowserError, "Invalid bounded"):
+            self.verify()
+        path.unlink()
+        path.mkdir()
+        with self.assertRaisesRegex(runner.BrowserError, "Invalid bounded"):
+            self.verify()
+
+    def test_file_changed_during_read_is_refused(self):
+        self.capture()
+        original_read = os.read
+
+        def changed(descriptor, size):
+            raw = original_read(descriptor, size)
+            with (self.root / "browser.json").open("ab") as stream:
+                stream.write(b" ")
+            return raw
+
+        with mock.patch.object(runner.os, "read", side_effect=changed):
+            with self.assertRaisesRegex(runner.BrowserError, "changed during capture"):
+                self.verify()
 
 
 if __name__ == "__main__":

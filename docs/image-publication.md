@@ -62,18 +62,29 @@ with the same reviewed inputs when the tag already names the identical index.
 The copy is then a no-op, and the attest steps sign again.
 - **The attest step fails after the copy:** rerun the publisher with the same
   inputs. Never retag or overwrite.
-- **Published acceptance fails** (provenance guard, browser or installed
-  package): do not announce the release or advance the product tuple. Record
-  the failure on the release issue, then fix forward in the next patch
-  version.
+- **The acceptance tooling fails before application/browser execution:** retain
+  the failed run and repair the qualifier through ordinary source review and
+  current-main checks. A separately selected fresh qualification may use that
+  corrected runner with the same immutable image/source/publisher identities.
+  Do not move a tag, republish different bytes, relax the guard or rerun an
+  unchanged failed qualifier. For example, the hosted shared Node cache is
+  outside the held-source ownership boundary; the native browser job removes group/other write permission from only the
+  selected pinned Node path before capture. Each component must already be an
+  owned non-symlink directory/file, retain its inode and owner, and pass the
+  unchanged loader afterward. No executable bytes or unrelated tool paths change.
+- **Application, browser behavior or installed-package acceptance fails:** do
+  not announce the release or advance the product tuple. Record the failure on
+  the release issue, then fix forward in the next patch version.
 - **An image already exists under the tag with a different index:** the
   publisher refuses. Investigate before taking any other action.
 
-The publication Environment must admit only the protected-main publisher and
-hold the narrowest available expiring registry push credential. Remove the old
-repository-level copies before tagging. Account-side predecessor revocation is
-a separate coordinated action after all known holders migrate; deleting GitHub
-secrets does not revoke a registry credential.
+The publication Environment admits only the protected-main publisher. Under the
+[existing credential decision](https://github.com/durable-workflow/waterline/issues/241#issuecomment-6557110452),
+normal publication uses the existing repository-level `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN` through the reviewed login step. Credential rotation or migration
+is separate maintenance and is not a release prerequisite. Keep candidate builds
+credential-free, verify the inert artifact handoff before login, and remove
+publication authentication before anonymous acceptance.
 
 The OCI layout and index follow the [OCI image layout](https://github.com/opencontainers/image-spec/blob/main/image-layout.md)
 and [image index](https://github.com/opencontainers/image-spec/blob/main/image-index.md)
