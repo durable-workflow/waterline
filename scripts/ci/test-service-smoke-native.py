@@ -173,6 +173,20 @@ class NativeLifecycleTest(unittest.TestCase):
 
 
 class NativeInputTest(unittest.TestCase):
+    def test_oversized_browser_hostname_is_not_selected_as_the_backend(self):
+        invalid = "waterline-service-" + "d" * 32 + "-browser-fixture"
+        self.assertEqual(66, len(invalid))
+        with self.assertRaises(native.OwnershipError):
+            native.app_environment(invalid)
+
+    def test_backend_endpoint_uses_the_same_dns_safe_captured_role_name(self):
+        run = "waterline-service-" + "d" * 32
+        for role in ("fixture", "browser-fixture"):
+            with self.subTest(role=role):
+                name = native.container_name(run, role)
+                self.assertLessEqual(len(name), 63)
+                self.assertEqual("http://" + name + ":18081", native.app_environment(name)["WATERLINE_SERVER_ENDPOINT"])
+
     def test_rendered_default_fields_do_not_change_exact_image_binding(self):
         config = {"os": "linux", "architecture": "amd64", "config": {"Env": ["PATH=/usr/local/bin:/usr/bin"]},
                   "rootfs": {"diff_ids": ["sha256:" + "a" * 64]}}

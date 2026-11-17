@@ -16,7 +16,7 @@ from service_smoke_fixture import BROWSER_FILE, FILES, Fixture, source_hashes, s
 from service_smoke_http import HttpError, Loopback, native_api, native_budget
 from service_smoke_network import Network
 from service_smoke_observation import CLASSES, FRAMEWORK_CLASS, PHP_BINARY, cache_phases, verify_metadata
-from service_smoke_resources import RoleSet, OwnershipError, observation, validate_profile
+from service_smoke_resources import RoleSet, OwnershipError, container_name, observation, validate_profile
 from waterline_release_identity import decode_json
 
 
@@ -71,7 +71,7 @@ def image_configuration(docker, archive, subject: dict) -> dict:
 
 
 def app_environment(fixture_name: str, browser_budget: float = 0.8) -> dict:
-    if re.fullmatch(r"waterline-service-[a-f\d]{32}-(?:browser-)?fixture", fixture_name) is None:
+    if re.fullmatch(r"waterline-service-[a-f\d]{32}-(?:fixture|browser)", fixture_name, re.ASCII) is None:
         raise OwnershipError("Unselected synthetic fixture endpoint")
     if browser_budget not in {0.8, 3.5}:
         raise OwnershipError("Unselected existing browser budget")
@@ -244,7 +244,7 @@ def exercise_native(docker, cleanup, *, run: str, archive, subject: dict, source
         fixture = Fixture(docker, fixture_role)
         startup_started = time.monotonic()
         application = roles.create("application", entrypoint=SHELL, command=["-eu", "-c", APP_START],
-                                   environment=app_environment(run + "-" + fixture_kind, browser_budget))
+                                   environment=app_environment(container_name(run, fixture_kind), browser_budget))
         successful(application.command(docker, "start", []), "Application start")
 
         phases = NativePhases(roles, network, fixture_role, application, fixture, browser)
