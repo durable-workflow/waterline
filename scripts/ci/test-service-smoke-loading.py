@@ -65,7 +65,8 @@ class FrozenLoadingTest(unittest.TestCase):
                 patch('shutil.which', return_value=str(node)), patch('subprocess.run', side_effect=AssertionError('No process in synthetic control')):
             exec(compile(self.selected_node_step(), '<selected workflow Node path boundary>', 'exec'), {})
         self.assertEqual(before, node.read_bytes())
-        self.assertEqual(identity, (node.stat().st_dev, node.stat().st_ino, node.stat().st_uid))
+        after_identity = (node.stat().st_dev, node.stat().st_ino, node.stat().st_uid)
+        self.assertEqual(identity, after_identity)
         root = loading.SourceRoot(node.parent)
         try:
             self.assertEqual(before, root.read('node'))
@@ -74,6 +75,38 @@ class FrozenLoadingTest(unittest.TestCase):
                 root.check()
         finally:
             cache.chmod(0o700)
+            root.close()
+
+    def test_owned_ancestor_above_cache_is_hardened_without_touching_siblings(self):
+        ancestor = self.path / 'shared-hosted-prefix'
+        cache = ancestor / 'toolcache'
+        node = cache / 'node/24.22.1/x64/bin/node'
+        node.parent.mkdir(parents=True)
+        node.write_bytes(b'synthetic Node; never executed')
+        node.chmod(0o755)
+        sibling = ancestor / 'unselected-sibling'
+        sibling.write_bytes(b'unrelated bytes')
+        sibling.chmod(0o666)
+        ancestor.chmod(0o777)
+        current = self.selected_node_step()
+        predecessor = current.replace('    if before.st_mode & 0o022:\n',
+            "    if before.st_mode & 0o022:\n        if path != cache and cache not in path.parents:\n            raise RuntimeError('An ancestor outside the selected Node cache is writable')\n")
+        self.assertEqual('ec58ead1606cb16a443fd6c0b0497855121b2f2c7ee9aa47eb614c341d466c69', hashlib.sha256(predecessor.encode()).hexdigest())
+        old_code = compile(predecessor, '<683 original Node path boundary>', 'exec')
+        new_code = compile(current, '<corrected Node path boundary>', 'exec')
+        with patch.dict(os.environ, {'RUNNER_TOOL_CACHE': str(cache)}), patch('platform.machine', return_value='x86_64'), \
+                patch('shutil.which', return_value=str(node)), patch('subprocess.run', side_effect=AssertionError('No process in synthetic control')):
+            with self.assertRaisesRegex(RuntimeError, 'ancestor outside the selected Node cache'):
+                exec(old_code, {})
+            self.assertEqual(0o777, ancestor.stat().st_mode & 0o777)
+            exec(new_code, {})
+        self.assertEqual(0o755, ancestor.stat().st_mode & 0o777)
+        self.assertEqual(0o666, sibling.stat().st_mode & 0o777)
+        self.assertEqual(b'unrelated bytes', sibling.read_bytes())
+        root = loading.SourceRoot(node.parent)
+        try:
+            self.assertEqual(b'synthetic Node; never executed', root.read('node'))
+        finally:
             root.close()
 
     def test_an_unselected_node_path_refuses_before_permission_mutation(self):
