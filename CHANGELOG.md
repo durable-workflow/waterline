@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The service image bundles PHP SDK 3.19.0 (was 3.16.0), and development, CI
+  and the Laravel 12 and 13 cells qualify against it. The install command
+  Waterline suggests when service mode starts without an SDK now asks for
+  `^3.19`, the first SDK with `workflowVersionUsage()`. Waterline still
+  accepts installed SDKs matching `^2.0 || ^3.0`.
+
 ## 2.18.1 - 2026-11-13
 
 - The standalone service image requires and locks Laravel 12.72.0 to include

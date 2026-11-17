@@ -129,8 +129,8 @@ $app = Application::configure(basePath: __DIR__)->withProviders([
 ], withBootstrapProviders: false)->withExceptions()->create();
 
 if (PHP_SAPI === 'cli') {
-    $sdkVersion = getenv('EXPECTED_BUDGET_SDK_VERSION') ?: '3.16.0';
-    $sdkSource = getenv('EXPECTED_BUDGET_SDK_SOURCE') ?: '00a531e688ccbcaf4ce59a662cdbcd03dd49ee4c';
+    $sdkVersion = getenv('EXPECTED_BUDGET_SDK_VERSION') ?: '3.19.0';
+    $sdkSource = getenv('EXPECTED_BUDGET_SDK_SOURCE') ?: '15e2daa51e3afc61eb243696109ad18059ecd65d';
     if (\Composer\InstalledVersions::getPrettyVersion(RequestBudgetFixtureProvider::SDK_PACKAGE) !== $sdkVersion
         || \Composer\InstalledVersions::getReference(RequestBudgetFixtureProvider::SDK_PACKAGE) !== $sdkSource) {
         throw new UnexpectedRequestBudgetSdk('Expected the exact normally published SDK identity.');
