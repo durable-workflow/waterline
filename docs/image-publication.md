@@ -68,9 +68,10 @@ The copy is then a no-op, and the attest steps sign again.
   corrected runner with the same immutable image/source/publisher identities.
   Do not move a tag, republish different bytes, relax the guard or rerun an
   unchanged failed qualifier. For example, the hosted shared Node cache is
-  outside the held-source ownership boundary; the native browser job installs
-  its pinned Node tool into an exclusive owned cache instead. Both the tool
-  cache lookup and the upstream installer's destination must select that path.
+  outside the held-source ownership boundary; the native browser job removes group/other write permission from only the
+  selected pinned Node path before capture. Each component must already be an
+  owned non-symlink directory/file, retain its inode and owner, and pass the
+  unchanged loader afterward. No executable bytes or unrelated tool paths change.
 - **Application, browser behavior or installed-package acceptance fails:** do
   not announce the release or advance the product tuple. Record the failure on
   the release issue, then fix forward in the next patch version.

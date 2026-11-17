@@ -356,16 +356,43 @@ jobs:
             printf 'DOCKER_CONFIG=%s\n' "$RUNNER_TEMP/native-budget-docker"
             printf 'WATERLINE_IMAGE=durableworkflow/waterline@%s\n' "$IMAGE_DIGEST"
           } >> "$GITHUB_ENV"
-      - name: Prepare owned Node tool cache for held executable capture
-        # The hosted shared tool cache has writable ancestors. Keep the existing
-        # no-follow source guard and let the pinned installer use owned paths.
-        run: mkdir -m 700 "$RUNNER_TEMP/waterline-owned-node-toolcache"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        env:
-          RUNNER_TOOL_CACHE: ${{ runner.temp }}/waterline-owned-node-toolcache
-          AGENT_TOOLSDIRECTORY: ${{ runner.temp }}/waterline-owned-node-toolcache
         with:
           node-version: '24.22.1'
+      - name: Secure selected Node path before held executable capture
+        # Tighten only this pinned tool's ancestors/file on the disposable job VM.
+        # The existing no-follow ownership guard remains unchanged.
+        run: |
+          python3 -I -S - <<'PY_NODE'
+          import os
+          from pathlib import Path
+          import platform
+          import shutil
+          import stat
+          import subprocess
+
+          architecture = {'x86_64': 'x64', 'aarch64': 'arm64'}[platform.machine()]
+          cache = Path(os.environ['RUNNER_TOOL_CACHE'])
+          selected = cache / 'node' / '24.22.1' / architecture / 'bin' / 'node'
+          if str(selected) != shutil.which('node') or not selected.is_absolute() or '..' in selected.parts:
+              raise RuntimeError('Node must be the exact pinned hosted-tool-cache executable')
+          for path in [*reversed(selected.parents), selected]:
+              before = path.lstat()
+              expected = stat.S_ISREG(before.st_mode) if path == selected else stat.S_ISDIR(before.st_mode)
+              if not expected or before.st_uid not in {0, os.getuid()} or (path == selected and before.st_nlink != 1):
+                  raise RuntimeError('Selected Node path has an unowned or linked component')
+              if before.st_mode & 0o022:
+                  if path != cache and cache not in path.parents:
+                      raise RuntimeError('An ancestor outside the selected Node cache is writable')
+                  if before.st_uid == os.getuid():
+                      path.chmod(stat.S_IMODE(before.st_mode) & ~0o022)
+                  else:
+                      subprocess.run(['sudo', 'chmod', 'go-w', '--', str(path)], check=True, timeout=10)
+              after = path.lstat()
+              if (before.st_dev, before.st_ino, before.st_uid, stat.S_IFMT(before.st_mode)) != (
+                  after.st_dev, after.st_ino, after.st_uid, stat.S_IFMT(after.st_mode)) or after.st_mode & 0o022:
+                  raise RuntimeError('Selected Node path changed while tightening its boundary')
+          PY_NODE
       - name: Verify raw Node version and trust roots
         run: node .devcontainer/docker/verify-node-runtime.mjs
       - name: Disable APT download retries (CVE-2026-109518)
