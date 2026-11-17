@@ -421,7 +421,7 @@ jobs:
           import signal
 
 
-          BOOTSTRAP_SHA256 = "b84f1f9d921ffd15fdf3a5b0a7ee9f1964554c6091f2fdb65bed2c552b35ab66"
+          BOOTSTRAP_SHA256 = "dde83f98645489088f5f63dc0e82bd5e1a71d62906287454a1aa9424d3d15022"
 
 
           def identity(value):
@@ -539,7 +539,7 @@ jobs:
           import signal
 
 
-          BOOTSTRAP_SHA256 = "b84f1f9d921ffd15fdf3a5b0a7ee9f1964554c6091f2fdb65bed2c552b35ab66"
+          BOOTSTRAP_SHA256 = "dde83f98645489088f5f63dc0e82bd5e1a71d62906287454a1aa9424d3d15022"
 
 
           def identity(value):
