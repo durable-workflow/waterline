@@ -38,8 +38,8 @@ fallback. Older readers return an explicit unavailable response without counts.
 Native Server 3.12.0 and later advertise `workflow_version_usage`, and PHP SDK
 3.19.0 and later provide `workflowVersionUsage()`; the service image bundles
 SDK 3.19.0. Native Server 3.11.0 and earlier return the unavailable response.
-No published Workflow release yet ships `VersionUsageQuery`, so embedded mode
-returns the unavailable response until one does.
+Workflow 2.29.0 and later ship `VersionUsageQuery`; with Workflow 2.28.x or
+earlier installed, embedded mode returns the unavailable response.
 
 ## HTTP read
 
