@@ -170,7 +170,11 @@ are preserved, and any unresolved cleanup makes the result NONPASS.
 The complete report is emitted as bounded, counted, SHA256-bound chunks in the
 existing Actions log with its observed retention (at most 90 days). Published
 phase reports and screenshots remain under the existing browser evidence path
-and seven-day uploader. Native publisher input remains exactly `image.oci.tar`
+and seven-day uploader. Browser stdout retains its 64 KiB frame and 1 MiB
+total bounds. The same parsed report is retained as indented JSON, with a
+separate 256 KiB file bound; the descriptor must remain a stable regular file
+with one link, and its decoded value must equal stdout exactly. No report is
+truncated to fit. Native publisher input remains exactly `image.oci.tar`
 and `provenance.json`; reports are never added to that allowlist. No new workflow,
 operator input, permission, uploader or historical evidence retrieval is added.
 
