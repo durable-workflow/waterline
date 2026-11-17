@@ -6,7 +6,7 @@
 // report fails, so a failed `npm audit` invocation can never pass.
 //
 // Usage: npm audit --json > report.json || true
-//        node scripts/ci/npm-audit-allowlisted.mjs report.json
+//        node scripts/ci/npm-audit-allowlisted.mjs < report.json
 import { readFileSync } from 'node:fs';
 
 const ALLOWED = new Map([
@@ -40,7 +40,7 @@ export function evaluate(report) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   let report;
   try {
-    report = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+    report = JSON.parse(readFileSync(0, 'utf8')); // the report on stdin
   } catch (error) {
     console.log(`::error::cannot read npm audit report: ${error.message}`);
     process.exit(1);

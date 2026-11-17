@@ -1123,7 +1123,7 @@ jobs:
       run: |
         node --test scripts/ci/npm-audit-allowlisted.test.mjs
         npm audit --json > "$RUNNER_TEMP/npm-audit.json" || true
-        node scripts/ci/npm-audit-allowlisted.mjs "$RUNNER_TEMP/npm-audit.json"
+        node scripts/ci/npm-audit-allowlisted.mjs < "$RUNNER_TEMP/npm-audit.json"
 
     - name: Run frontend regression tests
       run: npm test
