@@ -35,9 +35,11 @@ PHP SDK's `Client::workflowVersionUsage()` and the Server's
 namespace selection and request timeouts. Waterline does not use a raw HTTP
 fallback. Older readers return an explicit unavailable response without counts.
 
-The source adapters and UI require published-package acceptance before this
-feature is considered delivered. They do not imply that an existing published
-Server or embedded package exposes the reader.
+Native Server 3.12.0 and later advertise `workflow_version_usage`, and PHP SDK
+3.19.0 and later provide `workflowVersionUsage()`; the service image bundles
+SDK 3.19.0. Native Server 3.11.0 and earlier return the unavailable response.
+No published Workflow release yet ships `VersionUsageQuery`, so embedded mode
+returns the unavailable response until one does.
 
 ## HTTP read
 
