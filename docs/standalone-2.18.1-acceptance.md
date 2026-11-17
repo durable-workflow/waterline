@@ -89,10 +89,11 @@ The unwired implementation addresses the following source boundaries. Exact sour
    from actual native/published outcomes. Bind final evidence only after exact
    owned cleanup is independently confirmed.
 
-No native or published installed graph/cache observation exists at this source
-checkpoint.
+This map describes the current source boundaries. Actual native and published
+outcomes belong in the selected Actions run and its retained artifacts.
 
-The unwired ordinary implementation is being assembled in [#317](https://github.com/durable-workflow/waterline/pull/317).
+The ordinary implementation introduced in [#317](https://github.com/durable-workflow/waterline/pull/317)
+is connected through the existing native and published qualification workflows.
 Its native inner lifecycle keeps the service/API and actual Server-budget
 assertions. The proposed published connection adds one alternative fixture
 profile with a loopback-only proxy and a finite stdio control channel. One
@@ -107,24 +108,24 @@ and retains all original assertion lines. The actual primary callable is
 `66830e03aa579b884c9a88fcee8f1dab3ec38baa5905cc0719043cd523dac4ec`;
 the automatic-refresh callable is 2,616 bytes, SHA256
 `5e258805d90be6f95d53652662670782067f612b83d66459e843b7039fb5a4ce`.
-These subjects establish only source identity. The wrapper has no ordinary
-call site and has not run a browser or application. It imports no held adapter,
-VM hook or collector. Its complete source/scope disposition remains open.
+These subjects establish only source identity. The literal workflow bootstrap invokes these wrappers from verified source.
+They import no held adapter, VM hook or collector. Source identity alone does
+not qualify a browser result or another selected artifact tuple.
 
 Source/main checks, #312/#313 merges and this map do not qualify a patched base,
 resume stopped M1 inspection/retrieval/observation tasks, permit a PHP Server
 release, close #311, or allow #310's candidate execution.
 
-## Unwired workflow connection
+## Ordinary workflow connection
 
 The complete ordinary invocation source is now present in
 `service_smoke_bootstrap.py`. Its literal reviewed module digests and loader
 identity are checked before compilation. `service_smoke_first_stage.py` is the
-canonical source for a future literal trusted workflow run block. Reopening that
+canonical source for the literal trusted workflow run blocks. Reopening that
 project file to obtain the first-stage guard is not an accepted invocation.
-Neither file has a CLI or an ordinary acceptance call site.
+The existing workflow steps contain the guard before their explicit launch.
 
-The proposed connection changes the existing native OCI acceptance step and
+The connection uses the existing native OCI acceptance step and
 existing published-image browser step only. Native acceptance imports the same
 just-produced archive, then runs graph inspection, trust and deterministic memory
 refusal controls, and all service/API and actual Server-budget assertions across
@@ -133,6 +134,14 @@ verification, reads the current immutable registry index/child/attestation,
 performs one bounded anonymous pull, then repeats graph/cache and all original
 browser assertions in separate primary and automatic-refresh invocations. Each
 invocation starts with its own filesystem and metadata observation.
+
+The native browser proxy preserves the browser's numeric loopback authority
+in its existing `Host` header so Laravel asset URLs return to the same browser
+port. Only `127.0.0.1` with a port from 1 through 65535 is accepted. Its upstream
+target remains the exact owned application on port 8080. The original proxy
+input and the emitted PHP have separate literal SHA-256 guards in
+`service_smoke_fixture.py`; changing that source requires reviewing both
+subjects. Browser assertions and the published application are unchanged.
 
 An invocation permits at most five sequentially admitted roles: metadata, trust,
 memory refusal, one of the two fixture profiles, and application. Application is
@@ -153,7 +162,7 @@ inherited ceilings. The observed physical host memory must be no more than
 
 Before Docker creation, the invocation retains verified code in an independent
 private source snapshot and writes the exact role context into the existing job
-outputs. A proposed `always()` cleanup step reads that retained code independently
+outputs. The `always()` cleanup step reads that retained code independently
 of the workspace and evidence roots. Lost create output can grant deletion-only
 recovery after exact owner/run/role/image checks. Foreign or ambiguous objects
 are preserved, and any unresolved cleanup makes the result NONPASS.
@@ -165,9 +174,9 @@ and seven-day uploader. Native publisher input remains exactly `image.oci.tar`
 and `provenance.json`; reports are never added to that allowlist. No new workflow,
 operator input, permission, uploader or historical evidence retrieval is added.
 
-These are implemented source boundaries and proposed call sites. The workflow
-connection, exact artifact/run subjects and first qualifying execution remain
-unselected pending the complete source/effect review on #317.
+These source boundaries do not select another run or promote an artifact.
+Bind the exact source, immutable image, workflow and attempt before each
+qualification, then inspect its actual result and cleanup before promotion.
 
 Buildx raw-manifest reads have a separate fresh owner-only plugin-state directory.
 Only that closed command receives `BUILDX_CONFIG`; ordinary Docker acquisition,
