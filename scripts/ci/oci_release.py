@@ -44,7 +44,7 @@ INDEX_FILE = "index.json"
 PROVENANCE_FILE = "provenance.json"
 SHA = re.compile(r"[0-9a-f]{40}", re.ASCII)
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}", re.ASCII)
-SDK = {"sdk": "3.19.0", "sdk_source": "15e2daa51e3afc61eb243696109ad18059ecd65d"}
+SDK = {"sdk": "3.20.0", "sdk_source": "d3877654d78194a0fadd8c482b3204295f0a7edd"}
 SECURITY_POLICY = Path(__file__).resolve().parents[2] / "release/service-image-security.json"
 
 

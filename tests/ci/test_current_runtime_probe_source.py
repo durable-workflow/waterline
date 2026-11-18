@@ -19,7 +19,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[2]
 IMAGE = "php@sha256:232331112d3a7c5b98edeeddc3b85f610172f99352c0635fe6b3e166e47062cb"
 CHILD = "sha256:b2d2be78de4de803e20d1ae3df91c196e332a40cc851754472be4fab0fac1f03"
-LOCK_SHA = "302469b08f1184c9b8c65c745f0f1078954ca1382dc60d3478c6e71cb66e8a38"
+LOCK_SHA = "88fe1f3040f812f1c147ed2d444bb754b30f9216005fb49ddd526ddf1f10818f"
 
 
 class CurrentRuntimeProbeSourceTest(unittest.TestCase):

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "ceddbd76d44bff29298605ddc2c87d62",
+    "content-hash": "95ecd852d8dc6a68fde9160d234c5370",
     "packages": [
         {
             "name": "apache/avro",
@@ -512,16 +512,16 @@
         },
         {
             "name": "durable-workflow/sdk",
-            "version": "3.19.0",
+            "version": "3.20.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/durable-workflow/sdk-php.git",
-                "reference": "15e2daa51e3afc61eb243696109ad18059ecd65d"
+                "reference": "d3877654d78194a0fadd8c482b3204295f0a7edd"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/15e2daa51e3afc61eb243696109ad18059ecd65d",
-                "reference": "15e2daa51e3afc61eb243696109ad18059ecd65d",
+                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/d3877654d78194a0fadd8c482b3204295f0a7edd",
+                "reference": "d3877654d78194a0fadd8c482b3204295f0a7edd",
                 "shasum": ""
             },
             "require": {
@@ -573,7 +573,7 @@
                         "laravel": "^12.72.0|^13.41.0",
                         "symfony": "^6.4|^7.0|^8.0"
                     },
-                    "product-train": "3.19.0",
+                    "product-train": "3.20.0",
                     "payload-codecs": [
                         "avro"
                     ],
@@ -643,8 +643,8 @@
                 "issues": "https://github.com/durable-workflow/sdk-php/issues",
                 "source": "https://github.com/durable-workflow/sdk-php"
             },
-            "time": "2026-11-17T21:42:06+00:00",
-            "published-time": "2026-11-17T21:42:20+00:00"
+            "time": "2026-11-18T13:06:15+00:00",
+            "published-time": "2026-11-18T13:06:21+00:00"
         },
         {
             "name": "egulias/email-validator",
