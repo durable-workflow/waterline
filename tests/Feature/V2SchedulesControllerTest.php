@@ -13,6 +13,8 @@ use Workflow\V2\Enums\ScheduleOverlapPolicy;
 use Workflow\V2\Enums\ScheduleStatus;
 use Workflow\V2\Models\WorkflowSchedule;
 use Workflow\V2\Models\WorkflowScheduleHistoryEvent;
+use Workflow\V2\Models\WorkflowInstance;
+use Workflow\V2\Models\WorkflowRun;
 use Workflow\V2\Support\ScheduleManager;
 use Workflow\V2\Support\ScheduleVisibilityQuery;
 
@@ -84,6 +86,76 @@ final class V2SchedulesControllerTest extends TestCase
             ->assertJsonPath('data.0.last_outcome.reason', 'overlap_policy_skip')
             ->assertJsonPath('data.0.last_outcome.at', '2026-10-20T12:31:00.000000+00:00')
             ->assertJsonPath('data.0.skipped_trigger_count', 1);
+    }
+
+    public function testLatestRunFailureRefreshesWithoutRewritingTheRecordedDispatch(): void
+    {
+        $schedule = $this->createSchedule('run-observation');
+        $instanceId = ScheduleManager::trigger($schedule);
+        $instance = WorkflowInstance::query()->findOrFail($instanceId);
+        $run = WorkflowRun::query()->findOrFail($instance->current_run_id);
+        $run->forceFill(['status' => 'running'])->save();
+        $first = $this->getJson('/waterline/api/v2/schedules')->assertOk();
+        $first->assertJsonPath('data.0.current_run_state', 'known')
+            ->assertJsonPath('data.0.current_run.status', 'running');
+
+        $run->forceFill(['status' => 'failed'])->save();
+        $second = $this->getJson('/waterline/api/v2/schedules')->assertOk();
+        $second->assertJsonPath('data.0.current_run.status', 'failed')
+            ->assertJsonPath('data.0.current_run.status_bucket', 'failed')
+            ->assertJsonPath('data.0.current_run.is_terminal', true);
+        self::assertSame($first->json('data.0.last_outcome'), $second->json('data.0.last_outcome'));
+    }
+
+    public function testFiftyScheduleRunsUseTwoMetadataQueriesWithoutPayloadOrHistoryReads(): void
+    {
+        foreach (range(1, 50) as $index) {
+            ScheduleManager::trigger($this->createSchedule('bounded-'.$index));
+        }
+        $db = WorkflowSchedule::query()->getConnection();
+        $db->enableQueryLog();
+        $db->flushQueryLog();
+        $response = $this->getJson('/waterline/api/v2/schedules')->assertOk()->assertJsonCount(50, 'data');
+        $queries = array_column($db->getQueryLog(), 'query');
+        $db->disableQueryLog();
+        foreach (['workflow_instances', 'workflow_runs'] as $table) {
+            $selected = array_values(array_filter($queries, static fn (string $sql): bool => str_contains($sql, $table)));
+            self::assertCount(1, $selected, $table);
+            self::assertStringNotContainsString('*', $selected[0]);
+            self::assertStringNotContainsString('payload', $selected[0]);
+        }
+        self::assertCount(4, $queries, 'count, schedule page, instances and current runs only');
+        foreach ($response->json('data') as $row) {
+            self::assertSame('known', $row['current_run_state']);
+        }
+    }
+
+    public function testLatestRunRefusesCrossNamespaceWrongOwnerAndMissingPointers(): void
+    {
+        $schedule = $this->createSchedule('local');
+        $instanceId = ScheduleManager::trigger($schedule);
+        $otherId = ScheduleManager::trigger($this->createSchedule('foreign', 'other'));
+        $other = WorkflowInstance::query()->findOrFail($otherId);
+        config()->set('waterline.namespace', 'default');
+
+        $schedule->refresh()->forceFill(['latest_workflow_instance_id' => $otherId])->save();
+        $this->getJson('/waterline/api/v2/schedules')->assertOk()
+            ->assertJsonPath('data.0.current_run_state', 'unavailable')
+            ->assertJsonPath('data.0.current_run', null);
+
+        $schedule->forceFill(['latest_workflow_instance_id' => $instanceId])->save();
+        $instance = WorkflowInstance::query()->findOrFail($instanceId);
+        // Same namespace alone does not make another instance's run current.
+        WorkflowRun::query()->findOrFail($other->current_run_id)->forceFill(['namespace' => 'default'])->save();
+        foreach ([$other->current_run_id, 'missing'] as $pointer) {
+            $instance->forceFill(['current_run_id' => $pointer])->save();
+            $this->getJson('/waterline/api/v2/schedules')->assertOk()
+                ->assertJsonPath('data.0.current_run_state', 'unavailable')
+                ->assertJsonPath('data.0.current_run', null);
+        }
+        $schedule->forceFill(['latest_workflow_instance_id' => null])->save();
+        $this->getJson('/waterline/api/v2/schedules')->assertOk()
+            ->assertJsonPath('data.0.current_run_state', 'none')->assertJsonPath('data.0.current_run', null);
     }
 
     public function testListRowReportsARecordedFailure(): void

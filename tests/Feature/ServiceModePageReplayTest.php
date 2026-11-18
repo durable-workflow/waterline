@@ -153,6 +153,48 @@ final class ServiceModePageReplayTest extends TestCase
         }
     }
 
+    public function testScheduleRefreshReusesItsExactPageStartTokenWithoutReplay(): void
+    {
+        $this->client->listPageCount = 5;
+        $this->getJson('/waterline/api/v2/schedules?page=3')
+            ->assertOk()->assertJsonPath('page_start_token', 'page-3');
+        $this->client->calls = [];
+
+        $this->getJson('/waterline/api/v2/schedules?page=3&page_token=page-3')
+            ->assertOk()->assertJsonPath('current_page', 3)
+            ->assertJsonPath('page_start_token', 'page-3')
+            ->assertJsonPath('next_page_token', 'page-4');
+        $this->assertSame(['page-3'], $this->listTokens('listSchedules'));
+    }
+
+    public function testEmptyScheduleCursorRecoversToTheFirstPageWithAtMostTwoReads(): void
+    {
+        $this->client->scheduleListItems = [];
+        $this->getJson('/waterline/api/v2/schedules?page=3&page_token=page-3')
+            ->assertOk()->assertJsonPath('current_page', 1)
+            ->assertJsonPath('page_start_token', null)->assertJsonCount(0, 'data');
+        $this->assertSame(['page-3', null], $this->listTokens('listSchedules'));
+    }
+
+    public function testInvalidScheduleCursorIsRefusedBeforeAnyRemoteRead(): void
+    {
+        foreach ([['unexpected'], str_repeat('x', 8193)] as $token) {
+            $this->getJson('/waterline/api/v2/schedules?'.http_build_query(['page' => 3, 'page_token' => $token]))
+                ->assertStatus(422);
+        }
+        $this->assertSame([], $this->listTokens('listSchedules'));
+    }
+
+    public function testEmptyScheduleCursorDoesNotStartRecoveryAfterTheBudgetExpires(): void
+    {
+        $this->client->scheduleListItems = [];
+        $this->client->listCallSeconds = 70;
+        $this->getJson('/waterline/api/v2/schedules?page=3&page_token=page-3')
+            ->assertStatus(504)->assertJsonPath('reason', 'page_replay_budget_exceeded')
+            ->assertJsonPath('pages_read', 1);
+        $this->assertSame(['page-3'], $this->listTokens('listSchedules'));
+    }
+
     public function testMalformedAndOversizedPagesAreRefusedBeforeAnyServerCall(): void
     {
         // Numeric-string keys become ints in PHP arrays; cast back when building URLs.

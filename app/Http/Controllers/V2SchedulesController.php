@@ -18,6 +18,7 @@ use Waterline\Support\OperatorScope;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\ScheduleActionResult;
 use Waterline\Support\ScheduleRow;
+use Waterline\Support\EmbeddedScheduleRuns;
 use Waterline\Waterline;
 
 class V2SchedulesController extends Controller
@@ -82,8 +83,12 @@ class V2SchedulesController extends Controller
             ]);
         }
 
-        $payload = $query->paginate(50)
-            ->through(fn (WorkflowSchedule $schedule): array => ScheduleRow::detail($this->scheduleSource($schedule)))
+        $page = $query->paginate(50);
+        $runs = EmbeddedScheduleRuns::forPage($page->getCollection());
+        $payload = $page
+            ->through(fn (WorkflowSchedule $schedule): array => ScheduleRow::detail([
+                ...$this->scheduleSource($schedule), ...($runs[spl_object_id($schedule)] ?? []),
+            ]))
             ->toArray();
         $payload['operator_scope'] = OperatorScope::payload();
         $payload['backend'] = BackendConfiguration::payload();
@@ -419,7 +424,10 @@ class V2SchedulesController extends Controller
      */
     private function schedulePayload(WorkflowSchedule $schedule): array
     {
-        $payload = ScheduleRow::detail($this->scheduleSource($schedule));
+        $runs = EmbeddedScheduleRuns::forPage(collect([$schedule]));
+        $payload = ScheduleRow::detail([
+            ...$this->scheduleSource($schedule), ...($runs[spl_object_id($schedule)] ?? []),
+        ]);
         $payload['operator_scope'] = OperatorScope::payload();
 
         return $payload;

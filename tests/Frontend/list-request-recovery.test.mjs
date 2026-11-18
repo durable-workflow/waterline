@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import test, {before} from 'node:test';
+import {parse} from '@vue/compiler-sfc';
 
 // Execute the production list method, rather than a second implementation of
 // request ordering, with only its HTTP boundary and surrounding Vue state faked.
@@ -120,19 +121,15 @@ test('a past-end run page adopts the returned page so Previous follows it',async
 
 test('a past-end schedule page adopts the returned page so Refresh repeats it',async()=>{
     const schedules = fs.readFileSync(new URL('../../resources/js/components/ScheduleView.vue',import.meta.url),'utf8');
-    const methods = ['async loadData() {','listParams() {','refresh() {','goToPage(page) {'].map(start=>{
-        const at = schedules.indexOf('\n        '+start);
-        assert.ok(at>0,`The production ${start} method must be exercised.`);
-        return schedules.slice(at+1,schedules.indexOf('\n        },',at)+11);
-    });
+    const script = parse(schedules).descriptor.script.content;
     const requests = [];
     const axios = {get:(url,options)=>new Promise(resolve=>requests.push({url,params:{...options.params},resolve}))};
-    const component = vm.runInNewContext(`({${methods.join('\n')}})`,{axios,console});
+    const component = Function('axios',script.replace(/^import[\s\S]*?from ['"][^'"]+['"];$/gm,'').replace('export default','return'))(axios);
     const context = {
-        ...component,schedules:[],currentPage:9,listRequest:0,appliedStatus:'',pagination:null,
+        ...component.data(),...component.methods,currentPage:9,
         resolvedApiEndpoint:()=>'/waterline/api/v2/schedules',$t:value=>value,responseMessage:(error,fallback)=>fallback,
     };
-    for (const name of Object.keys(component)) context[name] = component[name].bind(context);
+    for (const name of Object.keys(component.methods)) context[name] = component.methods[name].bind(context);
     const pastEnd = context.loadData();
     assert.equal(requests[0].params.page,9);
     requests[0].resolve({data:{data:[{id:'last'}],current_page:2,last_page:2,per_page:25,total:26}});

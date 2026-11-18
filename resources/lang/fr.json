@@ -718,6 +718,7 @@
     "Configured": "Configuré",
     "Missing": "Manquant",
     "Available": "Disponible",
+    "Latest run": "Dernière exécution",
     "Unavailable": "Indisponible",
     "Partial": "Partiel",
     "Pruned": "Supprimé par rétention",
