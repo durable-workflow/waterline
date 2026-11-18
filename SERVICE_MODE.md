@@ -268,6 +268,16 @@ respective roster lengths. The workers table and active-lease summary are
 derived from the active roster; stale registrations remain visible in the
 registration summary without contributing rows or leases.
 
+Native Server 3.13.0 and later page `GET /api/workers` at 100 registrations
+per page. In service mode Waterline reads the active and stale rosters with the
+PHP SDK's `listAllWorkers()` when the installed SDK has it, which follows the
+pages for at most 50 requests each. Older Servers return every registration in
+one response. If a roster is still incomplete, because the page bound was
+reached or the installed SDK reads only the first page, the health response adds
+a `worker_list_complete` warning check (reason
+`worker_list_page_bound_reached` or `worker_list_paging_unsupported`) and the
+counts cover only the registrations read.
+
 ## Docker Compose
 
 [`deploy/docker-compose.service.yml`](deploy/docker-compose.service.yml) is a
