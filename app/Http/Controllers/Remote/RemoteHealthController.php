@@ -27,8 +27,8 @@ final class RemoteHealthController extends RemoteController
             return $response;
         }
 
-        $workers = $this->backend->client()->listWorkers();
-        $staleWorkers = $this->backend->client()->listWorkers(status: 'stale');
+        $workers = $this->listWorkers(null);
+        $staleWorkers = $this->listWorkers('stale');
         $queues = $this->backend->client()->listTaskQueues();
         $health = [];
         $checks = [];
@@ -55,6 +55,10 @@ final class RemoteHealthController extends RemoteController
                 'message' => 'The installed PHP SDK does not expose system health.',
                 'reason' => 'backend_capability_unavailable',
             ];
+        }
+
+        if (($check = $this->workerListIncompleteCheck($workers, $staleWorkers)) !== null) {
+            $checks[] = $check;
         }
 
         $roster = WorkerRegistrationRoster::from(
@@ -108,6 +112,53 @@ final class RemoteHealthController extends RemoteController
         }
 
         return $this->backend->activityDispatchControl();
+    }
+
+    /**
+     * Read every worker registration with one status filter.
+     *
+     * Native Server 3.13.0 and later page the worker list. An SDK with
+     * listAllWorkers() follows the pages up to its page bound; an older SDK
+     * reads only the first page, and a Server that does not page returns
+     * every registration in one response either way.
+     *
+     * @return array<string, mixed>
+     */
+    private function listWorkers(?string $status): array
+    {
+        $client = $this->backend->client();
+
+        return $this->backend->supports('listAllWorkers')
+            ? $client->listAllWorkers(status: $status)
+            : $client->listWorkers(status: $status);
+    }
+
+    /**
+     * Warn when a worker list response still carries an unread continuation.
+     *
+     * @param array<string, mixed> $workers
+     * @param array<string, mixed> $staleWorkers
+     * @return array<string, mixed>|null
+     */
+    private function workerListIncompleteCheck(array $workers, array $staleWorkers): ?array
+    {
+        $unread = static fn (array $response): bool => is_string($response['next_page_token'] ?? null)
+            && $response['next_page_token'] !== '';
+        if (! $unread($workers) && ! $unread($staleWorkers)) {
+            return null;
+        }
+
+        $pagingSdk = $this->backend->supports('listAllWorkers');
+
+        return [
+            'name' => 'worker_list_complete',
+            'category' => 'correctness',
+            'status' => 'warning',
+            'message' => $pagingSdk
+                ? 'The Server has more worker registrations than Waterline reads; worker counts and rosters cover only the registrations read.'
+                : 'The installed PHP SDK reads only the first page of the Server\'s worker list; worker counts and rosters cover only that page. Upgrade durable-workflow/sdk to a release with listAllWorkers().',
+            'reason' => $pagingSdk ? 'worker_list_page_bound_reached' : 'worker_list_paging_unsupported',
+        ];
     }
 
     /**

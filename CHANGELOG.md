@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Service-mode worker health reads every page of the native Server 3.13.0
+  paged worker list through the PHP SDK's `listAllWorkers()` when the installed
+  SDK provides it, up to 50 pages per roster (server#553). Older Servers still
+  answer with one response. An incomplete roster, from the page bound or an SDK
+  that reads only the first page, adds a `worker_list_complete` warning check.
 - The service image bundles PHP SDK 3.19.0 (was 3.16.0), and development, CI
   and the Laravel 12 and 13 cells qualify against it. The install command
   Waterline suggests when service mode starts without an SDK now asks for
