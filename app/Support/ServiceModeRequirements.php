@@ -15,7 +15,7 @@ final class ServiceModeRequirements
 
     // What a new install should request. ^2.0 alone can resolve to an older,
     // vulnerable 2.x SDK; the accepted range above stays wider for existing hosts.
-    public const SDK_INSTALL_CONSTRAINT = '^3.19';
+    public const SDK_INSTALL_CONSTRAINT = '^3.20';
 
     /**
      * @param  (callable(class-string): bool)|null  $classExists

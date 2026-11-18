@@ -17,8 +17,8 @@ import waterline_release_identity as identity
 from service_smoke_resources import Container, validate_profile
 
 
-PROBE_SHA256 = "5bf1c0d8c6c61c3b18ab982376d1f96404ec3be318b51356bd4ca78d89ec8d54"
-LOCK_SHA256 = "302469b08f1184c9b8c65c745f0f1078954ca1382dc60d3478c6e71cb66e8a38"
+PROBE_SHA256 = "aca3b484f6e71175e548d4aeea789756c13b4221beb4bdcce9825993730227b3"
+LOCK_SHA256 = "88fe1f3040f812f1c147ed2d444bb754b30f9216005fb49ddd526ddf1f10818f"
 CACHE_PATH = "/app/bootstrap/cache/routes-v7.php"
 SCHEMA = "waterline.current-standalone-runtime-observation/v1"
 PHP_BINARY = "/usr/local/bin/php"

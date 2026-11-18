@@ -222,8 +222,8 @@ class ObservationTest(unittest.TestCase):
     def test_sdk_provenance_comes_from_the_actual_captured_installed_metadata(self):
         report = self.verified().report
         observed = observation.installed_sdk(report)
-        self.assertEqual("3.19.0", observed["sdk"])
-        self.assertEqual("15e2daa51e3afc61eb243696109ad18059ecd65d", observed["sdk_source"])
+        self.assertEqual("3.20.0", observed["sdk"])
+        self.assertEqual("d3877654d78194a0fadd8c482b3204295f0a7edd", observed["sdk_source"])
         report["installed_base64"] = base64.b64encode(b'{"unselected":true}').decode()
         with self.assertRaises(observation.ObservationError):
             observation.installed_sdk(report)
