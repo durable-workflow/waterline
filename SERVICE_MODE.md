@@ -93,7 +93,7 @@ hold:
 - cluster info advertises `capabilities.task_queue_activity_dispatch_pause`;
 - the PHP SDK exposes `pauseTaskQueueActivityDispatch()` and
   `resumeTaskQueueActivityDispatch()`, which PHP SDK 3.16.0 and later do. The
-  service image bundles 3.16.0. A custom Laravel host on an older SDK sees the
+  service image bundles 3.19.0. A custom Laravel host on an older SDK sees the
   state, and the card says the actions need a newer SDK.
 
 The Server records the token's principal as the one who paused, and refuses a
@@ -294,8 +294,9 @@ composer require \
 
 On Packagist, `^2.0` resolves to SDK 2.5.4. SDK releases before the
 GHSA-f9x3-7vq9-cph6 fix are outside the SDK's supported boundary, so prefer
-SDK 3.16.0 or later for a new install; it is also the first SDK with the
-activity dispatch pause calls. Waterline's service-mode tests pass with it.
+SDK 3.19.0 or later for a new install; it is the first SDK with
+`workflowVersionUsage()`, which the Version usage page needs. Waterline's
+service-mode tests pass with it.
 Waterline accepts installed SDKs matching `^2.0 || ^3.0`.
 
 Set `WATERLINE_BACKEND=service` together with the endpoint, token, namespace,

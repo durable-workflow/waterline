@@ -7,12 +7,13 @@ Importing this module performs no request or application operation.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 import re
 from urllib.parse import quote
 
 from service_smoke_io import bounded_process
-from waterline_release_identity import decode_json
+from waterline_release_identity import IdentityError, decode_json
 
 
 API = "/waterline/api"
@@ -23,6 +24,10 @@ WORKFLOW_TYPE = "smoke.order"
 
 class HttpError(RuntimeError):
     """The actual HTTP observation differs from the ordinary service contract."""
+
+    def __init__(self, message: str, *, evidence: dict | None = None):
+        super().__init__(message)
+        self.evidence = evidence
 
 
 def require(condition: bool, message: str) -> None:
@@ -92,8 +97,35 @@ def exact_fields(value: dict, expected: dict, label: str) -> None:
 
 def document(request, method: str, path: str, status: int, payload: dict | None = None) -> dict:
     reply = request(method, path, payload)
-    require(type(reply.status) is int and reply.status == status, "Unexpected HTTP status for " + path)
+    if type(reply.status) is not int or reply.status != status:
+        raise HttpError("Unexpected HTTP status for " + path, evidence=status_evidence(reply, status))
     return reply.document()
+
+
+def status_evidence(reply: Reply, expected: int) -> dict:
+    """Retain closed response metadata from the existing request, never its payload."""
+    result = {"expected_status": expected,
+              "actual_status": reply.status if type(reply.status) is int else None,
+              "body_bytes": len(reply.body), "body_sha256": hashlib.sha256(reply.body).hexdigest()}
+    try:
+        body = decode_json(reply.body, "failed HTTP response")
+    except IdentityError:
+        return result
+    selected = {
+        "reason": {"unsupported_control_plane_version", "authorization_failed", "request_timeout",
+                   "remote_transport_failure", "waterline_read_only"},
+        "error": {"waterline_request_configuration_invalid", "remote_authentication_failed",
+                  "remote_authorization_failed", "remote_transport_failure", "server_error",
+                  "not_found", "http_error"},
+    }
+    for key, allowed in selected.items():
+        value = body.get(key)
+        if isinstance(value, str) and value in allowed:
+            result[key] = value
+    remote = body.get("remote_status")
+    if type(remote) is int and 100 <= remote <= 599:
+        result["remote_status"] = remote
+    return result
 
 
 def native_api(request, phase: str) -> dict:

@@ -14,6 +14,8 @@ from service_smoke_subjects import file_identity
 from waterline_release_identity import decode_json
 
 SELF_FD = "/proc/self/fd/"
+# The existing completion frame is compact JSON; the retained artifact is indented.
+MAX_RETAINED_REPORT_BYTES = 256 * 1024
 
 class NodeImage:
     def __init__(self, descriptor: int, expected_sha256: str):
@@ -114,6 +116,21 @@ def phase_output(root, phase: str) -> tuple[str, int, int]:
         raise
 
 
+def retained_report(output_fd: int, expected: str, report: dict) -> None:
+    descriptor = os.open(expected, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=output_fd)
+    try:
+        state = os.fstat(descriptor)
+        if not stat.S_ISREG(state.st_mode) or state.st_nlink != 1 or state.st_size > MAX_RETAINED_REPORT_BYTES:
+            raise BrowserError("Invalid bounded retained browser report")
+        retained = decode_json(os.read(descriptor, MAX_RETAINED_REPORT_BYTES + 1), "retained actual browser report")
+        if file_identity(os.fstat(descriptor)) != file_identity(state):
+            raise BrowserError("Retained browser report changed during capture")
+        if retained != {key: value for key, value in report.items() if key != "phase"}:
+            raise BrowserError("Actual stdout and retained browser report differ")
+    finally:
+        os.close(descriptor)
+
+
 class BrowserRunner:
     def __init__(self, *, node: NodeImage, dependencies, outputs, original: bytes, kind: str, source: str):
         self.node, self.dependencies, self.outputs = node, dependencies, outputs
@@ -147,18 +164,7 @@ class BrowserRunner:
             if report.get("source") != self.source or report.get("phase") != phase:
                 raise BrowserError("Browser report belongs to another artifact source or cache phase")
             expected = "browser.json" if self.kind == "primary" else "browser-auto.json"
-            descriptor = os.open(expected, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=output_fd)
-            try:
-                state = os.fstat(descriptor)
-                if not stat.S_ISREG(state.st_mode) or state.st_nlink != 1 or state.st_size > 65536:
-                    raise BrowserError("Invalid bounded retained browser report")
-                retained = decode_json(os.read(descriptor, 65537), "retained actual browser report")
-                if file_identity(os.fstat(descriptor)) != file_identity(state):
-                    raise BrowserError("Retained browser report changed during capture")
-                if retained != {key: value for key, value in report.items() if key != "phase"}:
-                    raise BrowserError("Actual stdout and retained browser report differ")
-            finally:
-                os.close(descriptor)
+            retained_report(output_fd, expected, report)
             guard()
             result["tooling"] = self.tooling
             return result

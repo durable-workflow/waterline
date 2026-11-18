@@ -8,6 +8,7 @@ use Waterline\Http\Controllers\UserPreferencesController;
 use Waterline\Http\Controllers\V2HealthController;
 use Waterline\Http\Controllers\V2SchedulesController;
 use Waterline\Http\Controllers\V2ServicesController;
+use Waterline\Http\Controllers\VersionUsageController;
 use Waterline\Http\Controllers\WorkflowsController;
 use Waterline\Http\Controllers\Remote\RemoteCapacityEvidenceController;
 use Waterline\Http\Controllers\Remote\RemoteHealthController;
@@ -17,6 +18,7 @@ use Waterline\Http\Controllers\Remote\RemoteStatsController;
 use Waterline\Http\Controllers\Remote\RemoteWorkflowsController;
 use Waterline\Http\Controllers\Remote\RemoteActivityResultsController;
 use Waterline\Http\Controllers\Remote\RemoteTaskQueuesController;
+use Waterline\Http\Controllers\Remote\RemoteVersionUsageController;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Http\Middleware\AuthorizeOperatorAction;
 
@@ -28,11 +30,13 @@ $capacityEvidenceController = BackendConfiguration::serviceMode()
 $healthController = BackendConfiguration::serviceMode() ? RemoteHealthController::class : V2HealthController::class;
 $schedulesController = BackendConfiguration::serviceMode() ? RemoteSchedulesController::class : V2SchedulesController::class;
 $servicesController = BackendConfiguration::serviceMode() ? RemoteServicesController::class : V2ServicesController::class;
+$versionUsageController = BackendConfiguration::serviceMode() ? RemoteVersionUsageController::class : VersionUsageController::class;
 
-Route::prefix('api')->group(function () use ($capacityEvidenceController, $healthController, $schedulesController, $servicesController, $statsController, $workflowsController) {
+Route::prefix('api')->group(function () use ($capacityEvidenceController, $healthController, $schedulesController, $servicesController, $statsController, $versionUsageController, $workflowsController) {
     Route::get('/stats', [$statsController, 'index'])->name('waterline.stats.index');
     Route::get('/v2/capacity-evidence', [$capacityEvidenceController, 'show'])->name('waterline.v2.capacity-evidence.show');
     Route::get('/v2/health', [$healthController, 'show'])->name('waterline.v2.health');
+    Route::get('/v2/workflow-version-usage', [$versionUsageController, 'show'])->name('waterline.v2.version-usage');
     Route::get('/saved-views', [SavedViewsController::class, 'index'])->name('waterline.saved-views.index');
     Route::post('/saved-views', [SavedViewsController::class, 'store'])->name('waterline.saved-views.store');
     Route::get('/saved-views/{view}', [SavedViewsController::class, 'show'])->name('waterline.saved-views.show');

@@ -84,6 +84,9 @@
                         </svg>
                         <span>{{ $t(status.name) }}</span>
                     </router-link>
+                    <router-link active-class="active" to="/version-usage" class="wl-sidebar__link">
+                        <span>{{ $t('Version usage') }}</span>
+                    </router-link>
                 </nav>
             </aside>
 
