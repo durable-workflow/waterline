@@ -1,25 +1,45 @@
 # Changelog
 
-## Unreleased
+## 2.19.0 - 2026-11-19
 
-- The service image is built on PHP 8.3.37 (was 8.3.36) for the PHP security
-  releases of 2026-11-19, and the standalone lock's platform follows it. The
-  PHP 8.2 CI container runtime uses PHP 8.2.36.
+- **Security:** the standalone service image is built on PHP 8.3.37 (was
+  8.3.36), pinned by digest, for the PHP security releases of 2026-11-19
+  (#338). The image serves with PHP's CLI built-in server, so the FPM and CGI
+  fixes don't apply; the applicable 8.3.37 fixes (timezone cache, sessions,
+  http stream wrappers and PHAR) are low or conditional. The standalone lock's
+  platform follows the new runtime, and the PHP 8.2 CI container runtime uses
+  PHP 8.2.36. Upgrade the image even if you don't need the features below.
+- The Schedules page refreshes external changes without a page reload (#310).
+  It shows the latest run's current status separately from the recorded Last
+  Result, and keeps filters, the page, open dialogs and forms. In service mode,
+  a schedule list that carries dispatch summaries (server#1014) is refreshed
+  with one list call every three seconds and no per-schedule describes; older
+  or mixed pages keep the per-schedule reads and a thirty-second cadence.
+  Embedded mode reads the current run with bounded metadata queries.
+- The Version usage page reads open-run version usage in embedded mode with
+  Workflow 2.29.0 or later, and in service mode with PHP SDK 3.19.0 or later
+  against Server 3.12.0 or later (#325, #326, #333). Older backends return an
+  explicit unavailable response without counts.
 - Service-mode worker health reads every page of the native Server 3.13.0
   paged worker list through the PHP SDK's `listAllWorkers()` when the installed
-  SDK provides it, up to 50 pages per roster (server#553). Older Servers still
-  answer with one response. An incomplete roster, from the page bound or an SDK
-  that reads only the first page, adds a `worker_list_complete` warning check.
+  SDK provides it, up to 50 pages per roster (#334, server#553). Older Servers
+  still answer with one response. An incomplete roster, from the page bound or
+  an SDK that reads only the first page, adds a `worker_list_complete` warning
+  check.
 - The service image bundles PHP SDK 3.22.0 (was 3.16.0), and development, CI
-  and the Laravel 12 and 13 cells qualify against it. The install command
+  and the Laravel 12 and 13 cells qualify against it (#335, #336, #340). SDK
+  3.22.0 adds `Client::signalWithStart()` and durable
+  `WorkflowContext::signalExternalWorkflow()`, which need native Server 3.15.0
+  or later; Waterline itself uses no new API from it. The install command
   Waterline suggests when service mode starts without an SDK now asks for
   `^3.22`, the SDK Waterline is qualified against; 3.20.0 added
   `listAllWorkers()` and 3.19.0 added `workflowVersionUsage()`. Waterline
   still accepts installed SDKs matching `^2.0 || ^3.0`.
-- The Version usage page reads open-run version usage in embedded mode with
-  Workflow 2.29.0 or later, and in service mode with PHP SDK 3.19.0 or later
-  against Server 3.12.0 or later (#325). Older backends return an explicit
-  unavailable response without counts.
+- CI and release qualification only, with no change to the package or image:
+  the bound PHP setup is pinned to the 8.3.37 archive repair (#337), the
+  frontend audit accepts only the reviewed unpatched picomatch advisory (#332),
+  and published browser acceptance keeps its Node tooling in an owned path and
+  retains bounded diagnostics on failure (#327-#331).
 
 ## 2.18.1 - 2026-11-13
 
