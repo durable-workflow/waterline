@@ -47,7 +47,7 @@ jobs:
         run: echo 'Acquire::Retries "0";' | sudo tee /etc/apt/apt.conf.d/99-no-retries >/dev/null
       - name: Install PHP and Composer
         # shivammathur/setup-php v2
-        uses: durable-workflow/.github/.github/actions/setup-php-linux@cba1285ddd43696ac9f445d7d04e8aff8fcad545 # bound-linux-php
+        uses: durable-workflow/.github/.github/actions/setup-php-linux@636d0cda4ce1e9c94ac6bf649154ff57957558be # bound-linux-php
         with:
           php-version: '8.3'
           ini-file: production
