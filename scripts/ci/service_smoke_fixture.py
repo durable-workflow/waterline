@@ -19,8 +19,8 @@ FILES = {
     "server.php": "scripts/ci/request-budget-server.php",
 }
 BROWSER_FILE = "scripts/ci/request-budget-host.php"
-BROWSER_PROXY_ORIGINAL = "1c1dda43519b3cd1e1c6ad25a8cd2621073a937f7feb20927f0c198e5fa9de96"
-BROWSER_PROXY_COMPILED = "73431c8d839f7617341c6ed6ecc6325dc75413eb86f53c440a08a7c066f4d2b6"
+BROWSER_PROXY_ORIGINAL = "46372f89bef3cd1cdb372d412e6eef5a3ea1c9c87e0a890176b12caf7d608f92"
+BROWSER_PROXY_COMPILED = "836411ab56f1cbd50faaf36e28cc4b6dc6ef794ad1b0b4120e19f1002ca6bdc8"
 
 
 def browser_proxy_source(raw: bytes) -> bytes:

@@ -7,12 +7,12 @@
   SDK provides it, up to 50 pages per roster (server#553). Older Servers still
   answer with one response. An incomplete roster, from the page bound or an SDK
   that reads only the first page, adds a `worker_list_complete` warning check.
-- The service image bundles PHP SDK 3.20.0 (was 3.16.0), and development, CI
+- The service image bundles PHP SDK 3.21.0 (was 3.16.0), and development, CI
   and the Laravel 12 and 13 cells qualify against it. The install command
   Waterline suggests when service mode starts without an SDK now asks for
-  `^3.20`, the first SDK with `listAllWorkers()`; 3.19.0 added
-  `workflowVersionUsage()`. Waterline still accepts installed SDKs matching
-  `^2.0 || ^3.0`.
+  `^3.21`, the SDK Waterline is qualified against; 3.20.0 added
+  `listAllWorkers()` and 3.19.0 added `workflowVersionUsage()`. Waterline
+  still accepts installed SDKs matching `^2.0 || ^3.0`.
 - The Version usage page reads open-run version usage in embedded mode with
   Workflow 2.29.0 or later, and in service mode with PHP SDK 3.19.0 or later
   against Server 3.12.0 or later (#325). Older backends return an explicit

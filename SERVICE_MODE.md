@@ -93,7 +93,7 @@ hold:
 - cluster info advertises `capabilities.task_queue_activity_dispatch_pause`;
 - the PHP SDK exposes `pauseTaskQueueActivityDispatch()` and
   `resumeTaskQueueActivityDispatch()`, which PHP SDK 3.16.0 and later do. The
-  service image bundles 3.20.0. A custom Laravel host on an older SDK sees the
+  service image bundles 3.21.0. A custom Laravel host on an older SDK sees the
   state, and the card says the actions need a newer SDK.
 
 The Server records the token's principal as the one who paused, and refuses a
@@ -271,7 +271,7 @@ registration summary without contributing rows or leases.
 Native Server 3.13.0 and later page `GET /api/workers` at 100 registrations
 per page. In service mode Waterline reads the active and stale rosters with the
 PHP SDK's `listAllWorkers()` when the installed SDK has it (3.20.0 and later;
-the service image bundles 3.20.0), which follows the
+the service image bundles 3.21.0), which follows the
 pages for at most 50 requests each. Older Servers return every registration in
 one response. If a roster is still incomplete, because the page bound was
 reached or the installed SDK reads only the first page, the health response adds
@@ -305,8 +305,8 @@ composer require \
 
 On Packagist, `^2.0` resolves to SDK 2.5.4. SDK releases before the
 GHSA-f9x3-7vq9-cph6 fix are outside the SDK's supported boundary, so prefer
-SDK 3.20.0 or later for a new install; it is the first SDK with
-`listAllWorkers()`, which reads a paged worker roster completely, and it keeps
+SDK 3.21.0 or later for a new install. It keeps `listAllWorkers()` from
+3.20.0, which reads a paged worker roster completely, and
 `workflowVersionUsage()` from 3.19.0 for the Version usage page. Waterline's
 service-mode tests pass with it.
 Waterline accepts installed SDKs matching `^2.0 || ^3.0`.
