@@ -52,11 +52,11 @@ RUN composer dump-autoload \
             exit(1); \
         }'
 
-FROM php:8.3.36-cli-alpine@sha256:2424931b23ed08b65764a0efe258f9b62fe4e5bc363f685c9d39e7607433381e
+FROM php:8.3.37-cli-alpine@sha256:63f02eda801a17401962739d9bc934dbbe6658e592efef5a048d04ab2f8da619
 
 COPY docker/verify-ca-trust.php docker/verify-brotli.php docker/verify-curl.php /usr/local/share/waterline/
 
-RUN php -r 'exit(PHP_MAJOR_VERSION === 8 && PHP_MINOR_VERSION === 3 && PHP_VERSION_ID >= 80336 ? 0 : 1);' \
+RUN php -r 'exit(PHP_MAJOR_VERSION === 8 && PHP_MINOR_VERSION === 3 && PHP_VERSION_ID >= 80337 ? 0 : 1);' \
     && php /usr/local/share/waterline/verify-ca-trust.php \
     && apk add --no-cache --upgrade 'brotli-libs>=1.2.1-r0' \
     && apk add --no-cache --upgrade 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0' \

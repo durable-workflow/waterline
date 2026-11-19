@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The service image is built on PHP 8.3.37 (was 8.3.36) for the PHP security
+  releases of 2026-11-19, and the standalone lock's platform follows it. The
+  PHP 8.2 CI container runtime uses PHP 8.2.36.
 - Service-mode worker health reads every page of the native Server 3.13.0
   paged worker list through the PHP SDK's `listAllWorkers()` when the installed
   SDK provides it, up to 50 pages per roster (server#553). Older Servers still
