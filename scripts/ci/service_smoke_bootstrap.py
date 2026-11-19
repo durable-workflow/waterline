@@ -23,19 +23,19 @@ from types import ModuleType
 
 LOADING_SHA256 = "8da52d8e882902b35d4083b78139c27dc29803c585d53d00713a02d488e4ca4f"
 REVIEWED = {
-    "oci_release": "3d211dddf1ff84839cfc73c02e801252ae8ce95385fa2158068ccd63fea2dcb7",
+    "oci_release": "f55474adb9c65712f69fa9b19014a49812ec1b7f59945505187d3ffabcf28d10",
     "published_provenance": "ed3f8e1f21b701ff45863ec3c1e5f08ed007ce7961b1a0c1a22bd58a9a96cf37",
     "service_smoke_browser": "bf0ff569c7570cb2390633dd613a95b3fc57a034552cd8c43f7be891b2bb8f4b",
     "service_smoke_browser_runner": "f93ddf416d29b2bacf0bd4af3c71459c2f76c12e15d48ef22c210d8e34f82bbb",
     "service_smoke_browser_source": "d300b6b7efa28c340a684905fbf640900fa90efa43b6ad1773e0ce41d3ed54d5",
     "service_smoke_cleanup": "e8efefc70b6a2ebb899bf52a9fc7f738f7c38934e7309286f9cf709fa0d057f6",
     "service_smoke_entry": "1bfe19c1a099bee4ca63dae3b4b8b380ebeb17ea5199093d7f2efecc8dd38710",
-    "service_smoke_fixture": "2d3decfac3e2e293bf16170cbf3807e6011452dbd9e03baba1d2c9e6fe66956f",
+    "service_smoke_fixture": "2cb0b50235748b84bdc573c5ee2cf208d03ee4672af098ab0eb741707a86825a",
     "service_smoke_http": "80e2f2791ff365d514ebce22a00721b5c8fd8707bed83ca477872de61b990609",
     "service_smoke_io": "d5f59fea36a5946fbd2e82b95e7d0b6d1b1e5ae55ebcf5c359a1d39182836f5a",
     "service_smoke_native": "ffc4374531a896b37ffa6ad1b31302d2926181c8e7f9fd1eae7d17f34fec3260",
     "service_smoke_network": "dd0b17cd7f457182b9bfa605f37d332763b2d53c8f266f0c2a298e8423a2f7cf",
-    "service_smoke_observation": "64bd6adb945aadec4eb2f2f3d8ff425b2a40e820d0f8c850a88440681b7edb64",
+    "service_smoke_observation": "01005f4f36b065f491324e50916a28302b77f1c1ac1ffedbb67bd5a7bd9e08cb",
     "service_smoke_published": "63183a58bbcc8dd0679b0bed6aac56354c7bb13a49c2cb64825f3b7bb73de95d",
     "service_smoke_published_entry": "412a76aeb2f008a3c7343d605c9e03cc3f26c22e0abb8b815d5d7973f3ae6ff3",
     "service_smoke_resources": "de613637988c42041763b824cdf9b541fec064ea17e3ea73c2337d3e087f3066",
