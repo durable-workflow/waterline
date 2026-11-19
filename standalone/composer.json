@@ -19,7 +19,7 @@
         },
         "optimize-autoloader": true,
         "platform": {
-            "php": "8.3.36"
+            "php": "8.3.37"
         },
         "preferred-install": "dist",
         "sort-packages": true

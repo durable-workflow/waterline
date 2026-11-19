@@ -17,8 +17,8 @@ import waterline_release_identity as identity
 from service_smoke_resources import Container, validate_profile
 
 
-PROBE_SHA256 = "4c7769cddabf6a9d738b74cffaef0f4d7af91a5cd22ff5bd0b2a22e0eec129c0"
-LOCK_SHA256 = "0d3d0e6a223fb5056b211af612c16d91461a132af1a85f0527298c0b7bbaa6ce"
+PROBE_SHA256 = "bf5c6b33e2ce5e96d8dfcc196aeb86379b8922ed868a6021ecbc566806fabe27"
+LOCK_SHA256 = "426e5b89864e97de4df4cc05795d8284f4646ceeb19b7b60c5fefde4df901950"
 CACHE_PATH = "/app/bootstrap/cache/routes-v7.php"
 SCHEMA = "waterline.current-standalone-runtime-observation/v1"
 PHP_BINARY = "/usr/local/bin/php"
@@ -143,7 +143,7 @@ def check_cache(value: object, *, present: bool) -> dict:
 def check_base(report: dict, mode: str, installed_sha256: str | None = None) -> None:
     metadata = mode == "metadata"
     if (report.get("schema") != SCHEMA or report.get("mode") != mode
-            or report.get("php_version") != "8.3.36" or type(report.get("php_int_size")) is not int
+            or report.get("php_version") != "8.3.37" or type(report.get("php_int_size")) is not int
             or report["php_int_size"] != 8 or report.get("php_binary") != PHP_BINARY
             or type(report.get("effective_uid")) is not int
             or report["effective_uid"] != (1000 if metadata else 82)

@@ -22,7 +22,7 @@ current_runtime_probe_source() {
 <?php
 declare(strict_types=1);
 
-const CURRENT_LOCK_SHA256 = '0d3d0e6a223fb5056b211af612c16d91461a132af1a85f0527298c0b7bbaa6ce';
+const CURRENT_LOCK_SHA256 = '426e5b89864e97de4df4cc05795d8284f4646ceeb19b7b60c5fefde4df901950';
 const CURRENT_CACHE_PATH = '/app/bootstrap/cache/routes-v7.php';
 const CURRENT_RUNTIME_CLASSES = [
     'Waterline\\Http\\Controllers\\Remote\\RemoteWorkflowsController' => '/app/waterline/app/Http/Controllers/Remote/RemoteWorkflowsController.php',
@@ -145,7 +145,7 @@ try {
     if (!in_array($mode, ['metadata', 'inventory', 'clear-before', 'cache-build', 'clear-after'], true)) {
         throw new RuntimeException('Unselected observation mode.');
     }
-    if (PHP_VERSION_ID !== 80336 || PHP_INT_SIZE !== 8 || realpath(PHP_BINARY) !== '/usr/local/bin/php') {
+    if (PHP_VERSION_ID !== 80337 || PHP_INT_SIZE !== 8 || realpath(PHP_BINARY) !== '/usr/local/bin/php') {
         throw new RuntimeException('Unexpected PHP runtime.');
     }
     if (getenv('APP_ROUTES_CACHE') !== false) {

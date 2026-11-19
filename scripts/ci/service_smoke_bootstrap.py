@@ -35,7 +35,7 @@ REVIEWED = {
     "service_smoke_io": "d5f59fea36a5946fbd2e82b95e7d0b6d1b1e5ae55ebcf5c359a1d39182836f5a",
     "service_smoke_native": "ffc4374531a896b37ffa6ad1b31302d2926181c8e7f9fd1eae7d17f34fec3260",
     "service_smoke_network": "dd0b17cd7f457182b9bfa605f37d332763b2d53c8f266f0c2a298e8423a2f7cf",
-    "service_smoke_observation": "e27a2431480eb62ff6610ac9a5dd5b08e2341721df35b86a5160a166bf084e70",
+    "service_smoke_observation": "64bd6adb945aadec4eb2f2f3d8ff425b2a40e820d0f8c850a88440681b7edb64",
     "service_smoke_published": "63183a58bbcc8dd0679b0bed6aac56354c7bb13a49c2cb64825f3b7bb73de95d",
     "service_smoke_published_entry": "412a76aeb2f008a3c7343d605c9e03cc3f26c22e0abb8b815d5d7973f3ae6ff3",
     "service_smoke_resources": "de613637988c42041763b824cdf9b541fec064ea17e3ea73c2337d3e087f3066",

@@ -80,7 +80,7 @@ class ObservationTest(unittest.TestCase):
 
     def base(self, mode):
         metadata = mode == "metadata"
-        return {"schema": observation.SCHEMA, "mode": mode, "php_version": "8.3.36", "php_int_size": 8,
+        return {"schema": observation.SCHEMA, "mode": mode, "php_version": "8.3.37", "php_int_size": 8,
                 "php_binary": "/usr/local/bin/php", "effective_uid": 1000 if metadata else 82,
                 "ini_loaded_file": None, "ini_scanned_files": None, "ini_before": copy.deepcopy(self.ini),
                 "ini_after": copy.deepcopy(self.ini), "lock_sha256": observation.LOCK_SHA256,
