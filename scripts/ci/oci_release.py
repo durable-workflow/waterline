@@ -18,8 +18,8 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 REPOSITORY = "durable-workflow/waterline"
-VERSION = "2.20.0"
-DESTINATION = "docker.io/durableworkflow/waterline:2.20.0"
+VERSION = "2.21.0"
+DESTINATION = "docker.io/durableworkflow/waterline:2.21.0"
 WORKFLOW = ".github/workflows/service-image.yml"
 PUBLISHER = ".github/workflows/service-image-publish.yml"
 INDEX = "application/vnd.oci.image.index.v1+json"

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.21.0 - 2026-11-21
+
+- Service-mode workflow lists show the task type and queue when the Server
+  reports ready work that none of the active pollers supports. The marker
+  clears when the Server no longer reports the condition. Older Servers can
+  continue to serve these lists. ([Server #535](https://github.com/durable-workflow/server/issues/535))
+
 ## 2.20.0 - 2026-11-21
 
 - Run lists and details show repeated workflow task lease loss when the
