@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.19.2 - 2026-11-21
+
+- **Security:** the standalone service image requires Alpine's patched
+  `libxml2` 2.13.9-r3 or later for CVE-2026-86144.
+- Image scan failures report the high and critical package versions in CI.
+
 ## 2.19.1 - 2026-11-21
 
 - Service-mode health identifies incomplete worker rosters when the runtime

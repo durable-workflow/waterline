@@ -18,8 +18,8 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 REPOSITORY = "durable-workflow/waterline"
-VERSION = "2.19.1"
-DESTINATION = "docker.io/durableworkflow/waterline:2.19.1"
+VERSION = "2.19.2"
+DESTINATION = "docker.io/durableworkflow/waterline:2.19.2"
 WORKFLOW = ".github/workflows/service-image.yml"
 PUBLISHER = ".github/workflows/service-image-publish.yml"
 INDEX = "application/vnd.oci.image.index.v1+json"
@@ -273,6 +273,8 @@ def scan(args: argparse.Namespace) -> None:
                "inventory": inventory, "severity_counts": counts, "high_critical_count": len(findings),
                "findings": findings, "report_digest": digest_file(args.report)}
     args.output.write_bytes(encode(summary) + b"\n")
+    if findings:
+        print(encode({"high_critical_count": len(findings), "findings": findings[:20]}).decode(), file=sys.stderr)
     validate_image_security(summary, subject, args.architecture, config_digest)
     print(f"Exact {args.architecture} image scan passed: {sum(inventory.values())} packages; zero high/critical findings.")
 
