@@ -18,8 +18,8 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 REPOSITORY = "durable-workflow/waterline"
-VERSION = "2.19.2"
-DESTINATION = "docker.io/durableworkflow/waterline:2.19.2"
+VERSION = "2.20.0"
+DESTINATION = "docker.io/durableworkflow/waterline:2.20.0"
 WORKFLOW = ".github/workflows/service-image.yml"
 PUBLISHER = ".github/workflows/service-image-publish.yml"
 INDEX = "application/vnd.oci.image.index.v1+json"
@@ -44,7 +44,7 @@ INDEX_FILE = "index.json"
 PROVENANCE_FILE = "provenance.json"
 SHA = re.compile(r"[0-9a-f]{40}", re.ASCII)
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}", re.ASCII)
-SDK = {"sdk": "3.22.0", "sdk_source": "c056d690a4f8c8e0333f1dd0f7f135ff2ed0ef51"}
+SDK = {"sdk": "3.24.0", "sdk_source": "788b6af2f64777ed891c5582b949f95e0d7bac64"}
 SECURITY_POLICY = Path(__file__).resolve().parents[2] / "release/service-image-security.json"
 
 

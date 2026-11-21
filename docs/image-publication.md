@@ -1,6 +1,6 @@
 # Native image publication
 
-The bounded publisher source admits the fixed Waterline **2.19.2** candidate.
+The bounded publisher source admits the fixed Waterline **2.20.0** candidate.
 Package/tag and image delivery remain separate: do not announce an image or advance the current
 product tuple until the normal package and anonymous native acceptance succeed.
 Source admission is not execution approval. Existing operator stops and each
@@ -91,9 +91,9 @@ and [image index](https://github.com/opencontainers/image-spec/blob/main/image-i
 specifications. Archives and provenance are inert input to the publisher, not
 commands. Missing, failed, expired, stale or mismatched evidence never qualifies.
 
-## Security patch installed-graph and route-cache qualification
+## Installed-graph and route-cache qualification
 
-The 2.19.2 source candidate retains the reviewed production lock. Before any
+The 2.20.0 source candidate pins the reviewed production lock. Before any
 artifact can be accepted, collect the actual Composer installed-package metadata
 inside a clean qualification filesystem and compare every production package's
 name, version and source reference with the lock archived from the independently

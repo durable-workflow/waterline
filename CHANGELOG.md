@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.20.0 - 2026-11-21
+
+- Run lists and details show repeated workflow task lease loss when the
+  runtime supplies the diagnostic. The dashboard reports affected runs and
+  tasks. Embedded and service-mode lists can filter these runs when their
+  backend supports it (#339, #346, #347).
+- The standalone service image bundles PHP SDK 3.24.0. Service-mode filtering
+  uses its pagination support with Servers that advertise
+  `task_attention_workflow_list`.
+
 ## 2.19.2 - 2026-11-21
 
 - **Security:** the standalone service image requires Alpine's patched
