@@ -10,6 +10,7 @@ use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\EngineSourceReadiness;
 use Waterline\Support\OperatorScope;
+use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ServiceVisibilityFilters;
 use Waterline\Support\TaskAttention;
 use Waterline\Support\WorkflowEngineSourceResolver;
@@ -175,7 +176,7 @@ class SavedViewsController extends Controller
         $bucket = $this->bucket($validated['bucket'], required: true);
 
         if (BackendConfiguration::serviceMode()) {
-            ServiceVisibilityFilters::assertSavable($filters, $bucket);
+            ServiceVisibilityFilters::assertSavable($filters, $bucket, $this->serviceTaskAttentionFilterAvailable());
         }
 
         return [
@@ -276,7 +277,7 @@ class SavedViewsController extends Controller
     private function filterDefinition(): array
     {
         return BackendConfiguration::serviceMode()
-            ? ServiceVisibilityFilters::definition()
+            ? ServiceVisibilityFilters::definition($this->serviceTaskAttentionFilterAvailable())
             : ActionabilityVisibilityFilters::definition(TaskAttention::supported());
     }
 
@@ -287,7 +288,12 @@ class SavedViewsController extends Controller
     private function viewPayload(array $payload): array
     {
         return BackendConfiguration::serviceMode()
-            ? ServiceVisibilityFilters::annotateSavedView($payload)
+            ? ServiceVisibilityFilters::annotateSavedView($payload, $this->serviceTaskAttentionFilterAvailable())
             : $payload;
+    }
+
+    private function serviceTaskAttentionFilterAvailable(): bool
+    {
+        return app(RemoteBackend::class)->taskAttentionFilterAvailable();
     }
 }

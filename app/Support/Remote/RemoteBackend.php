@@ -9,6 +9,8 @@ use Carbon\CarbonInterface;
 use DurableWorkflow\Client;
 use DurableWorkflow\Exception\DurableWorkflowException;
 use DurableWorkflow\Exception\ServerException;
+use ReflectionMethod;
+use ReflectionParameter;
 use Throwable;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\CapacityEvidence;
@@ -40,6 +42,8 @@ final class RemoteBackend
     private ?bool $workflowStreamsAvailable = null;
 
     private ?bool $serviceCatalogAvailable = null;
+
+    private ?bool $taskAttentionFilterAvailable = null;
 
     public function __construct(private readonly object $client)
     {
@@ -87,6 +91,30 @@ final class RemoteBackend
     public function readOnly(): bool
     {
         return BackendConfiguration::accessMode() === 'read_only';
+    }
+
+    public function taskAttentionFilterAvailable(): bool
+    {
+        if ($this->taskAttentionFilterAvailable !== null) {
+            return $this->taskAttentionFilterAvailable;
+        }
+
+        if (! $this->supports('clusterInfo') || ! $this->supports('listWorkflows')) {
+            return $this->taskAttentionFilterAvailable = false;
+        }
+        $parameters = (new ReflectionMethod($this->client, 'listWorkflows'))->getParameters();
+        $names = array_map(static fn (ReflectionParameter $parameter): string => $parameter->getName(), $parameters);
+        if (! in_array('taskAttention', $names, true)) {
+            return $this->taskAttentionFilterAvailable = false;
+        }
+
+        try {
+            $info = $this->client->clusterInfo();
+        } catch (DurableWorkflowException) {
+            return $this->taskAttentionFilterAvailable = false;
+        }
+
+        return $this->taskAttentionFilterAvailable = ($info->capabilities['task_attention_workflow_list'] ?? null) === true;
     }
 
     /** @return array<string, mixed> */
