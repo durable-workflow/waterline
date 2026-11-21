@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "19bb0ab00b957111086af7ec1c8185bc",
+    "content-hash": "766d1688a7837bc1a3604ca3e1079cc4",
     "packages": [
         {
             "name": "apache/avro",
@@ -512,16 +512,16 @@
         },
         {
             "name": "durable-workflow/sdk",
-            "version": "3.22.0",
+            "version": "3.24.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/durable-workflow/sdk-php.git",
-                "reference": "c056d690a4f8c8e0333f1dd0f7f135ff2ed0ef51"
+                "reference": "788b6af2f64777ed891c5582b949f95e0d7bac64"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/c056d690a4f8c8e0333f1dd0f7f135ff2ed0ef51",
-                "reference": "c056d690a4f8c8e0333f1dd0f7f135ff2ed0ef51",
+                "url": "https://api.github.com/repos/durable-workflow/sdk-php/zipball/788b6af2f64777ed891c5582b949f95e0d7bac64",
+                "reference": "788b6af2f64777ed891c5582b949f95e0d7bac64",
                 "shasum": ""
             },
             "require": {
@@ -573,7 +573,7 @@
                         "laravel": "^12.72.0|^13.41.0",
                         "symfony": "^6.4|^7.0|^8.0"
                     },
-                    "product-train": "3.22.0",
+                    "product-train": "3.24.0",
                     "payload-codecs": [
                         "avro"
                     ],
@@ -643,8 +643,7 @@
                 "issues": "https://github.com/durable-workflow/sdk-php/issues",
                 "source": "https://github.com/durable-workflow/sdk-php"
             },
-            "time": "2026-11-19T18:15:47+00:00",
-            "published-time": "2026-11-19T18:16:10+00:00"
+            "time": "2026-11-21T11:22:47+00:00"
         },
         {
             "name": "egulias/email-validator",
