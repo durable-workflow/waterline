@@ -1595,7 +1595,7 @@
             </div>
         </div>
 
-        <div class="card mt-4" v-if="ready && activityRows().length">
+        <div class="card mt-4" v-if="ready && (flow.activities_truncated || activityRows().length)">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <h5>{{ $t("Activities") }}</h5>
 
@@ -1605,7 +1605,8 @@
             </div>
 
             <div class="card-body code-bg text-white collapse show" id="collapseActivities">
-                <table class="table">
+                <p v-if="flow.activities_truncated" role="status">{{ $t("The runtime limited this activity list.") }}</p>
+                <table v-if="activityRows().length" class="table">
                     <thead>
                         <tr>
                             <th scope="col">{{ $t("Activity") }}</th>

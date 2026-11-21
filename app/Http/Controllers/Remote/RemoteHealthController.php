@@ -134,7 +134,7 @@ final class RemoteHealthController extends RemoteController
     }
 
     /**
-     * Warn when a worker list response still carries an unread continuation.
+     * Warn when a worker list is truncated or still carries an unread continuation.
      *
      * @param array<string, mixed> $workers
      * @param array<string, mixed> $staleWorkers
@@ -142,22 +142,26 @@ final class RemoteHealthController extends RemoteController
      */
     private function workerListIncompleteCheck(array $workers, array $staleWorkers): ?array
     {
+        $truncated = ($workers['truncated'] ?? false) === true || ($staleWorkers['truncated'] ?? false) === true;
         $unread = static fn (array $response): bool => is_string($response['next_page_token'] ?? null)
             && $response['next_page_token'] !== '';
-        if (! $unread($workers) && ! $unread($staleWorkers)) {
+        if (! $truncated && ! $unread($workers) && ! $unread($staleWorkers)) {
             return null;
         }
 
         $pagingSdk = $this->backend->supports('listAllWorkers');
+        [$reason, $message] = match (true) {
+            $truncated => ['worker_list_truncated', 'The runtime read limit truncated the worker list. Registration counts and rosters cover only the returned workers.'],
+            $pagingSdk => ['worker_list_page_bound_reached', 'The Server has more worker registrations than Waterline reads; worker counts and rosters cover only the registrations read.'],
+            default => ['worker_list_paging_unsupported', 'The installed PHP SDK reads only the first page of the Server\'s worker list; worker counts and rosters cover only that page. Upgrade durable-workflow/sdk to a release with listAllWorkers().'],
+        };
 
         return [
             'name' => 'worker_list_complete',
             'category' => 'correctness',
             'status' => 'warning',
-            'message' => $pagingSdk
-                ? 'The Server has more worker registrations than Waterline reads; worker counts and rosters cover only the registrations read.'
-                : 'The installed PHP SDK reads only the first page of the Server\'s worker list; worker counts and rosters cover only that page. Upgrade durable-workflow/sdk to a release with listAllWorkers().',
-            'reason' => $pagingSdk ? 'worker_list_page_bound_reached' : 'worker_list_paging_unsupported',
+            'message' => $message,
+            'reason' => $reason,
         ];
     }
 

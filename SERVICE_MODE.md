@@ -279,6 +279,11 @@ a `worker_list_complete` warning check (reason
 `worker_list_page_bound_reached` or `worker_list_paging_unsupported`) and the
 counts cover only the registrations read.
 
+When a runtime adapter returns `truncated: true` on a worker or activity
+list, Waterline identifies the partial result even if no continuation is
+available. Health reports `worker_list_truncated`. Run details expose
+`activities_truncated: true` and display a message above the activity list.
+
 ## Docker Compose
 
 [`deploy/docker-compose.service.yml`](deploy/docker-compose.service.yml) is a

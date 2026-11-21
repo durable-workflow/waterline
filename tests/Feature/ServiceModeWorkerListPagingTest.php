@@ -80,6 +80,16 @@ final class ServiceModeWorkerListPagingTest extends TestCase
         $this->assertSame('worker_list_paging_unsupported', self::check($payload, 'worker_list_complete')['reason']);
     }
 
+    public function testATruncatedRosterWithoutAContinuationIsReportedAsIncomplete(): void
+    {
+        $this->pagingClient(['workers' => self::workers('active', 2)], ['workers' => [], 'truncated' => true]);
+
+        $payload = $this->getJson('/waterline/api/v2/health')->assertOk()->json();
+
+        $this->assertSame(2, $payload['operator_metrics']['workers']['active_registration_count']);
+        $this->assertSame('worker_list_truncated', self::check($payload, 'worker_list_complete')['reason']);
+    }
+
     public function testAServerThatDoesNotPageStaysCompleteWithEitherSdk(): void
     {
         $this->singlePageClient(['workers' => self::workers('active', 150)]);
