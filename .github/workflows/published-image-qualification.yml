@@ -403,7 +403,7 @@ jobs:
           npx --no-install playwright install chromium --with-deps
       - name: Exercise the current published graph, cache and browser phases
         id: ordinary
-        if: inputs.release_version == '2.19.2'
+        if: inputs.release_version == '2.20.0'
         shell: bash
         run: |
           python3 -I -S - <<'PY'
@@ -421,7 +421,7 @@ jobs:
           import signal
 
 
-          BOOTSTRAP_SHA256 = "30e61d2c2fa3f4721bd33f22fc3330c59844cb33fd8bac5dad9abf8974433629"
+          BOOTSTRAP_SHA256 = "44efc1287a07554d9180f187bd34883fdbda0a9f1cf7fa9f017a1e7880631b81"
 
 
           def identity(value):
@@ -508,7 +508,7 @@ jobs:
           launch(Path(os.environ["GITHUB_WORKSPACE"]), "published", {"producer_gate_succeeded": True})
           PY
       - name: Exercise historical native image UI, SDK bounds and safe recovery
-        if: inputs.release_version != '2.19.2'
+        if: inputs.release_version != '2.20.0'
         run: bash scripts/ci/request-budget-native.sh
       - name: Independently remove owned ordinary acceptance roles
         if: >-
@@ -539,7 +539,7 @@ jobs:
           import signal
 
 
-          BOOTSTRAP_SHA256 = "30e61d2c2fa3f4721bd33f22fc3330c59844cb33fd8bac5dad9abf8974433629"
+          BOOTSTRAP_SHA256 = "44efc1287a07554d9180f187bd34883fdbda0a9f1cf7fa9f017a1e7880631b81"
 
 
           def identity(value):
