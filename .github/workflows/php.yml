@@ -544,11 +544,15 @@ jobs:
         fi
 
   run-detail-visual:
-    name: Responsive run detail
+    name: Responsive run detail (${{ matrix.suite }})
     needs: classify
     if: ${{ needs.classify.outputs.run-detail-visual-required == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [journeys, translations]
 
     services:
       mysql:
@@ -706,6 +710,7 @@ jobs:
         test -f public/vendor/waterline/mix-manifest.json
 
     - name: Start Sample App
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       run: |
         php artisan serve --host=127.0.0.1 --port=8000 > ../run-detail-web.log 2>&1 &
@@ -735,14 +740,17 @@ jobs:
         npx --no-install playwright install chromium --with-deps
 
     - name: Check dialog opening observer contracts
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       run: node --test ../waterline/tests/Frontend/dialog-readiness-browser.mjs
 
     - name: Check dashboard table observer contracts
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       run: node --test ../waterline/tests/Frontend/dashboard-table-browser.mjs
 
     - name: Qualify the complete run-detail matrix
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       run: >-
         node ../waterline/scripts/ci/run-detail-visual.mjs
@@ -751,6 +759,7 @@ jobs:
         --output-dir run-detail-evidence
 
     - name: Qualify selected activity results and diagnostics
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       run: >-
         node ../waterline/scripts/ci/activity-result-visual.mjs
@@ -758,6 +767,7 @@ jobs:
         --output-dir run-detail-evidence/activity-results
 
     - name: Qualify service catalog call inspection and navigation
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       run: >-
         node ../waterline/scripts/ci/service-catalog-visual.mjs
@@ -766,6 +776,7 @@ jobs:
         --output-dir run-detail-evidence/service-catalog
 
     - name: Qualify populated dashboards and browser zoom
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       run: >-
         node ../waterline/scripts/ci/dashboard-visual.mjs
@@ -774,6 +785,7 @@ jobs:
         --output-dir run-detail-evidence/dashboard
 
     - name: Start Spanish embedded and service presentations
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       run: |
         APP_URL=http://127.0.0.1:8002 WATERLINE_LOCALE=es \
@@ -796,6 +808,7 @@ jobs:
         exit 1
 
     - name: Qualify Spanish operator text and confirmations
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       env:
         WATERLINE_LOCALIZED_EMBEDDED_URL: http://127.0.0.1:8002
@@ -805,6 +818,7 @@ jobs:
         --output-dir run-detail-evidence/language
 
     - name: Start Portuguese embedded and service presentations
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       run: |
         APP_URL=http://127.0.0.1:8004 WATERLINE_LOCALE=PT_br \
@@ -827,6 +841,7 @@ jobs:
         exit 1
 
     - name: Qualify Portuguese operator text and confirmations
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       env:
         WATERLINE_LOCALIZED_EMBEDDED_URL: http://127.0.0.1:8004
@@ -836,6 +851,7 @@ jobs:
         --locale pt-BR --output-dir run-detail-evidence/portuguese
 
     - name: Start Chinese embedded and service presentations
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       run: |
         APP_URL=http://127.0.0.1:8006 WATERLINE_LOCALE=zh_CN \
@@ -858,6 +874,7 @@ jobs:
         exit 1
 
     - name: Qualify Chinese operator text and confirmations
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       env:
         WATERLINE_LOCALIZED_EMBEDDED_URL: http://127.0.0.1:8006
@@ -867,6 +884,7 @@ jobs:
         --locale zh-Hans --output-dir run-detail-evidence/chinese
 
     - name: Qualify Chinese dashboard at actual browser zoom
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       run: >-
         node ../waterline/scripts/ci/dashboard-visual.mjs
@@ -875,6 +893,7 @@ jobs:
         --locale zh-Hans --output-dir run-detail-evidence/chinese-zoom
 
     - name: Start Japanese embedded and service presentations
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       run: |
         APP_URL=http://127.0.0.1:8008 WATERLINE_LOCALE=JA_jp \
@@ -897,6 +916,7 @@ jobs:
         exit 1
 
     - name: Qualify Japanese operator text and confirmations
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       env:
         WATERLINE_LOCALIZED_EMBEDDED_URL: http://127.0.0.1:8008
@@ -906,6 +926,7 @@ jobs:
         --locale ja --output-dir run-detail-evidence/japanese
 
     - name: Qualify Japanese dashboard at actual browser zoom
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       run: >-
         node ../waterline/scripts/ci/dashboard-visual.mjs
@@ -914,6 +935,7 @@ jobs:
         --locale ja --output-dir run-detail-evidence/japanese-zoom
 
     - name: Start French embedded and service presentations
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       run: |
         APP_URL=http://127.0.0.1:8010 WATERLINE_LOCALE=FR_ca \
@@ -936,6 +958,7 @@ jobs:
         exit 1
 
     - name: Qualify French operator text and confirmations
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       env:
         WATERLINE_LOCALIZED_EMBEDDED_URL: http://127.0.0.1:8010
@@ -945,6 +968,7 @@ jobs:
         --locale fr --output-dir run-detail-evidence/french
 
     - name: Qualify French dashboard at actual browser zoom
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       run: >-
         node ../waterline/scripts/ci/dashboard-visual.mjs
@@ -953,6 +977,7 @@ jobs:
         --locale fr --output-dir run-detail-evidence/french-zoom
 
     - name: Start German embedded and service interfaces
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       run: |
         APP_URL=http://127.0.0.1:8012 WATERLINE_LOCALE=DE_at \
@@ -975,6 +1000,7 @@ jobs:
         exit 1
 
     - name: Qualify German operator text and confirmations
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       env:
         WATERLINE_LOCALIZED_EMBEDDED_URL: http://127.0.0.1:8012
@@ -984,6 +1010,7 @@ jobs:
         --locale de --output-dir run-detail-evidence/german
 
     - name: Qualify German dashboard at actual browser zoom
+      if: ${{ matrix.suite == 'translations' }}
       working-directory: sample-app
       run: >-
         node ../waterline/scripts/ci/dashboard-visual.mjs
@@ -993,10 +1020,12 @@ jobs:
 
     # Row actions start workflow runs, so this check runs after the others.
     - name: Seed schedules in two namespaces
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       run: php ../waterline/scripts/ci/seed-schedule-visual.php 'App\Workflows\Simple\SimpleWorkflow'
 
     - name: Qualify schedule rows and row actions
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       run: >-
         node ../waterline/scripts/ci/schedule-actions-visual.mjs
@@ -1004,6 +1033,7 @@ jobs:
         --output-dir run-detail-evidence/schedules
 
     - name: Qualify compiled schedule refresh and form preservation
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       run: >-
         node ../waterline/scripts/ci/schedule-refresh-browser.mjs
@@ -1012,10 +1042,12 @@ jobs:
     # These runs change the list and dashboard data, and add a schedule, so
     # this check runs after the schedule check.
     - name: Seed completed, failed and cancelled runs
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       run: php ../waterline/scripts/ci/seed-theme-contrast.php
 
     - name: Measure the published contrast baseline
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       env:
         CONTRAST_BASELINE_IMAGE: durableworkflow/waterline:2.12.3@sha256:5d1ed06761d05ce4a0cea12dde1ca85efd5787e20633253fac6bc20b69268f32
@@ -1051,6 +1083,7 @@ jobs:
           > run-detail-evidence/theme-contrast/before/image-digests.json
 
     - name: Qualify secondary text and badge contrast in both themes
+      if: ${{ matrix.suite == 'journeys' }}
       working-directory: sample-app
       run: >-
         node ../waterline/scripts/ci/theme-contrast-visual.mjs
@@ -1058,7 +1091,7 @@ jobs:
         --output-dir run-detail-evidence/theme-contrast/after
 
     - name: Retain schedule action and filter acceptance
-      if: ${{ always() }}
+      if: ${{ always() && matrix.suite == 'journeys' }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: waterline-schedule-actions-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1067,7 +1100,7 @@ jobs:
         retention-days: 7
 
     - name: Upload contrast measurements and screenshots
-      if: ${{ always() }}
+      if: ${{ always() && matrix.suite == 'journeys' }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: waterline-theme-contrast-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1079,11 +1112,13 @@ jobs:
       if: ${{ failure() }}
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
       with:
-        name: waterline-run-detail-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+        name: waterline-run-detail-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.suite }}
         path: |
           sample-app/run-detail-evidence/**/*.json
           run-detail-web.log
           run-detail-service-web.log
+          *-embedded-web.log
+          *-service-web.log
         if-no-files-found: warn
         retention-days: 1
 
