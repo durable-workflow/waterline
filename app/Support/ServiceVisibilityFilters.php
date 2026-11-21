@@ -38,24 +38,25 @@ final class ServiceVisibilityFilters
     /**
      * @return list<string>
      */
-    public static function supportedFields(): array
+    public static function supportedFields(bool $taskAttentionAvailable = false): array
     {
         return [
             ...self::DIRECT_FIELDS,
             ...self::SCOPE_FIELDS,
             ...WorkflowTimeWindow::FIELDS,
             ...array_keys(self::FIELD_QUERY_NAMES),
+            ...($taskAttentionAvailable ? [TaskAttention::FIELD] : []),
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    public static function definition(): array
+    public static function definition(bool $taskAttentionAvailable = false): array
     {
-        $definition = ActionabilityVisibilityFilters::definition();
+        $definition = ActionabilityVisibilityFilters::definition($taskAttentionAvailable);
         $fields = is_array($definition['fields'] ?? null) ? $definition['fields'] : [];
-        $supported = self::supportedFields();
+        $supported = self::supportedFields($taskAttentionAvailable);
         $unavailable = [];
 
         foreach ($fields as $name => $field) {
@@ -67,11 +68,11 @@ final class ServiceVisibilityFilters
             $fields[$name] = self::withAvailability(
                 $field,
                 $available,
-                $available
-                    ? (in_array($name, self::SCOPE_FIELDS, true)
-                        ? 'sdk_namespace_scope'
-                        : ($name === 'workflow_type' ? 'workflow_type' : 'visibility_query'))
-                    : null,
+                $available ? match (true) {
+                    in_array($name, self::SCOPE_FIELDS, true) => 'sdk_namespace_scope',
+                    $name === 'workflow_type', $name === TaskAttention::FIELD => $name,
+                    default => 'visibility_query',
+                } : null,
             );
 
             if (! $available) {
@@ -117,7 +118,7 @@ final class ServiceVisibilityFilters
             'capability_version' => self::CAPABILITY_VERSION,
             'backend_contract' => 'durable-workflow/sdk.workflow-list',
             'authoritative_filtering' => true,
-            'supported_fields' => self::supportedFields(),
+            'supported_fields' => $supported,
             'unavailable_fields' => array_values($unavailable),
             'unavailable_maps' => ['labels', 'search_attributes'],
         ];
@@ -136,7 +137,7 @@ final class ServiceVisibilityFilters
      *     capability: array<string, mixed>
      * }
      */
-    public static function plan(array $filters, string $bucket, ?string $genericQuery = null, ?array $workflowTypes = null, ?DateTimeInterface $at = null): array
+    public static function plan(array $filters, string $bucket, ?string $genericQuery = null, ?array $workflowTypes = null, ?DateTimeInterface $at = null, bool $taskAttentionAvailable = false): array
     {
         $normalized = ActionabilityVisibilityFilters::normalize($filters);
         $applied = [];
@@ -154,7 +155,7 @@ final class ServiceVisibilityFilters
                 $applied[$field] = $value;
                 continue;
             }
-            if (in_array($field, self::DIRECT_FIELDS, true)) {
+            if (in_array($field, self::DIRECT_FIELDS, true) || ($field === TaskAttention::FIELD && $taskAttentionAvailable)) {
                 $applied[$field] = $value;
 
                 continue;
@@ -226,7 +227,7 @@ final class ServiceVisibilityFilters
                 'backend_contract' => 'durable-workflow/sdk.workflow-list',
                 'authoritative_filtering' => true,
                 'fully_applied' => $unavailable === [],
-                'supported_fields' => self::supportedFields(),
+                'supported_fields' => self::supportedFields($taskAttentionAvailable),
                 'unavailable_fields' => self::filterNames($unavailable),
             ],
         ];
@@ -236,11 +237,11 @@ final class ServiceVisibilityFilters
      * @param array<string, mixed> $view
      * @return array<string, mixed>
      */
-    public static function annotateSavedView(array $view): array
+    public static function annotateSavedView(array $view, bool $taskAttentionAvailable = false): array
     {
         $filters = is_array($view['filters'] ?? null) ? $view['filters'] : [];
         $bucket = is_string($view['bucket'] ?? null) ? $view['bucket'] : '';
-        $plan = self::plan($filters, $bucket);
+        $plan = self::plan($filters, $bucket, taskAttentionAvailable: $taskAttentionAvailable);
         $versionSupported = ($view['filter_version_supported'] ?? true) === true;
         $available = $versionSupported && $plan['unavailable_filters'] === [];
         $warning = ! $versionSupported
@@ -263,9 +264,9 @@ final class ServiceVisibilityFilters
     /**
      * @param array<string, mixed> $filters
      */
-    public static function assertSavable(array $filters, string $bucket): void
+    public static function assertSavable(array $filters, string $bucket, bool $taskAttentionAvailable = false): void
     {
-        $plan = self::plan($filters, $bucket);
+        $plan = self::plan($filters, $bucket, taskAttentionAvailable: $taskAttentionAvailable);
 
         if ($plan['unavailable_filters'] === []) {
             return;

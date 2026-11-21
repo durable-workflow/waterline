@@ -14,6 +14,7 @@ use Waterline\Support\BackendConfiguration;
 use Waterline\Support\Remote\CursorPageReplay;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ServiceVisibilityFilters;
+use Waterline\Support\TaskAttention;
 use Waterline\Support\WorkflowTimeWindow;
 use Waterline\Support\RunWaitSummary;
 use Waterline\Support\RunApplicationContext;
@@ -231,28 +232,34 @@ final class RemoteWorkflowsController extends RemoteController
         $classification = WorkflowClassification::selection($request);
         $requestedPage = CursorPageReplay::requestedPage($request);
         $context = V2VisibilityFilterContext::resolve($request, $bucket);
+        $taskAttentionAvailable = $this->backend->taskAttentionFilterAvailable();
         $filterPlan = ServiceVisibilityFilters::plan(
             $context['applied_filters'],
             $bucket,
             $this->stringQuery($request, 'query'),
             $classification['workflow_types'],
             WorkflowTimeWindow::requestTime($request),
+            $taskAttentionAvailable,
         );
-        $savedViewPlan = ServiceVisibilityFilters::plan($context['saved_filters'], $bucket);
+        $savedViewPlan = ServiceVisibilityFilters::plan($context['saved_filters'], $bucket, taskAttentionAvailable: $taskAttentionAvailable);
         $savedViewApplied = $context['saved_view'] === null
             ? null
             : ($context['saved_view_applied'] === true && $savedViewPlan['unavailable_filters'] === []);
         $savedViewWarning = $context['saved_view_warning']
             ?? ($context['saved_view'] === null ? null : $savedViewPlan['warning']);
+        $applied = $filterPlan['applied_filters'];
+        $listArguments = [
+            'workflowType' => $filterPlan['workflow_type'],
+            'status' => $bucket,
+            'query' => $filterPlan['query'],
+            'pageSize' => self::PAGE_SIZE,
+        ];
+        if (isset($applied[TaskAttention::FIELD])) {
+            $listArguments['taskAttention'] = $applied[TaskAttention::FIELD];
+        }
         $replay = CursorPageReplay::replay(
             $requestedPage,
-            fn (?string $token) => $this->backend->client()->listWorkflows(
-                workflowType: $filterPlan['workflow_type'],
-                status: $bucket,
-                query: $filterPlan['query'],
-                pageSize: self::PAGE_SIZE,
-                nextPageToken: $token,
-            ),
+            fn (?string $token) => $this->backend->client()->listWorkflows(...($listArguments + ['nextPageToken' => $token])),
         );
         $pageNumber = $replay['page_number'];
         $token = $replay['next_page_token'];
@@ -276,8 +283,8 @@ final class RemoteWorkflowsController extends RemoteController
                 'version' => ActionabilityVisibilityFilters::VERSION,
                 'supported_versions' => ActionabilityVisibilityFilters::supportedVersions(),
                 'bucket' => $bucket,
-                'definition' => ServiceVisibilityFilters::definition(),
-                'applied' => $filterPlan['applied_filters'],
+                'definition' => ServiceVisibilityFilters::definition($taskAttentionAvailable),
+                'applied' => $applied,
                 'unavailable' => $filterPlan['unavailable_filters'],
                 'saved_view' => $context['saved_view'],
                 'saved_view_applied' => $savedViewApplied,

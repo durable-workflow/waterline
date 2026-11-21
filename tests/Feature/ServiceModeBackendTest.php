@@ -10,6 +10,9 @@ use DurableWorkflow\Codec\AvroBinaryValue;
 use DurableWorkflow\Codec\AvroMapValue;
 use DurableWorkflow\Exception\ServerException;
 use DurableWorkflow\Exception\TransportException;
+use DurableWorkflow\Model\ClusterInfo;
+use DurableWorkflow\Model\WorkflowExecution;
+use DurableWorkflow\Model\WorkflowPage;
 use DurableWorkflow\Transport\Transport;
 use DurableWorkflow\Waterline\CI\SqlServerQualificationTls;
 use Illuminate\Support\Carbon;
@@ -1237,6 +1240,42 @@ final class ServiceModeBackendTest extends TestCase
         );
 
         $this->assertSame('orders.process', $listCall['arguments']['workflowType']);
+    }
+
+    public function testServiceTaskAttentionFilterIsSentToEveryAuthoritativePage(): void
+    {
+        $client = new class
+        {
+            public array $selections = [];
+
+            public function clusterInfo(): ClusterInfo
+            {
+                return ClusterInfo::fromArray(['capabilities' => ['task_attention_workflow_list' => true]]);
+            }
+
+            public function listWorkflows(?string $workflowType, ?string $status, ?string $query, ?int $pageSize, ?string $nextPageToken, ?bool $taskAttention = null): WorkflowPage
+            {
+                $this->selections[] = [$nextPageToken, $taskAttention];
+                $row = ['workflow_id' => $nextPageToken === null ? 'order-1' : 'order-2',
+                    'run_id' => 'run-1', 'workflow_type' => 'orders.process', 'status' => 'running'];
+
+                return new WorkflowPage([WorkflowExecution::fromArray($row)], $nextPageToken === null ? 'next' : null, 1, ['workflows' => [$row]]);
+            }
+        };
+        $this->app->instance(RemoteBackend::class, new RemoteBackend($client));
+
+        $created = $this->postJson('/waterline/api/saved-views', [
+            'name' => 'Runs without task attention',
+            'bucket' => 'running',
+            'filters' => ['task_attention' => false],
+        ])->assertCreated()->assertJsonPath('service_mode_available', true)->json();
+
+        $this->getJson('/waterline/api/flows/running?view='.$created['id'].'&page=2')
+            ->assertOk()
+            ->assertJsonPath('data.0.instance_id', 'order-2')
+            ->assertJsonPath('visibility_filters.applied.task_attention', false)
+            ->assertJsonPath('visibility_filters.definition.fields.task_attention.filterable', true);
+        $this->assertSame([[null, false], ['next', false]], $client->selections);
     }
 
     public function testUnavailableServiceModeFiltersAreRejectedOrReportedInsteadOfIgnored(): void
