@@ -54,6 +54,10 @@ final class ActionabilityVisibilityFilters
         if ($repairState !== null) {
             $normalized[self::REPAIR_STATE_FIELD] = $repairState;
         }
+        $taskAttention = VisibilityFilterContract::booleanValue($filters[TaskAttention::FIELD] ?? null);
+        if ($taskAttention !== null) {
+            $normalized[TaskAttention::FIELD] = $taskAttention;
+        }
 
         return [...$normalized, ...WorkflowTimeWindow::normalize($filters)];
     }
@@ -86,6 +90,7 @@ final class ActionabilityVisibilityFilters
         return self::validate([
             ...VisibilityFilterContract::fromRequest($request),
             self::REPAIR_STATE_FIELD => $request->query(self::REPAIR_STATE_FIELD),
+            TaskAttention::FIELD => $request->query(TaskAttention::FIELD),
             ...array_intersect_key($request->query(), array_flip(WorkflowTimeWindow::FIELDS)),
         ]);
     }
@@ -103,6 +108,7 @@ final class ActionabilityVisibilityFilters
             $repairState = $normalized[self::REPAIR_STATE_FIELD]
                 ?? $merged[self::REPAIR_STATE_FIELD]
                 ?? null;
+            $taskAttention = $normalized[TaskAttention::FIELD] ?? $merged[TaskAttention::FIELD] ?? null;
             $time = array_intersect_key(
                 array_key_exists('started_time', $normalized) ? $normalized : $merged,
                 array_flip(WorkflowTimeWindow::FIELDS),
@@ -112,6 +118,9 @@ final class ActionabilityVisibilityFilters
 
             if ($repairState !== null) {
                 $merged[self::REPAIR_STATE_FIELD] = $repairState;
+            }
+            if ($taskAttention !== null) {
+                $merged[TaskAttention::FIELD] = $taskAttention;
             }
         }
 
@@ -169,7 +178,6 @@ final class ActionabilityVisibilityFilters
     {
         $definition = VisibilityFilterContract::definition();
         $fields = is_array($definition['fields'] ?? null) ? $definition['fields'] : [];
-        $fields[TaskAttention::FIELD]['filterable'] = $taskAttentionAvailable;
         $maxOrder = -1;
 
         foreach ($fields as $field) {
@@ -224,6 +232,14 @@ final class ActionabilityVisibilityFilters
                 'group' => 'started_time',
             ];
         }
+        $fields[TaskAttention::FIELD] = [
+            ...VisibilityFilterContract::fieldDefinition(
+                TaskAttention::FIELD,
+                'boolean',
+                $maxOrder + 2 + count(WorkflowTimeWindow::FIELDS),
+            ),
+            'filterable' => $taskAttentionAvailable,
+        ];
         $definition['time_window'] = [
             'timestamp' => 'started_at',
             'timezone' => 'UTC',
