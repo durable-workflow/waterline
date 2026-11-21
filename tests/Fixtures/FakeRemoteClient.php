@@ -61,6 +61,8 @@ final class FakeRemoteClient
     /** @var list<array<string, mixed>>|null */
     public ?array $activities = null;
 
+    public bool $activitiesTruncated = false;
+
     /** @var list<array<string, mixed>>|null Server list items; null uses the default fixture. */
     public ?array $scheduleListItems = null;
 
@@ -200,7 +202,8 @@ final class FakeRemoteClient
     {
         $this->called(__FUNCTION__, get_defined_vars());
 
-        return ['workflow_id' => $workflowId, 'run_id' => $runId, 'activities' => $this->activities ?? []];
+        return ['workflow_id' => $workflowId, 'run_id' => $runId, 'activities' => $this->activities ?? [],
+            'truncated' => $this->activitiesTruncated];
     }
 
     /** @return array<string, mixed> */

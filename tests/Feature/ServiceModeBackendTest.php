@@ -512,6 +512,17 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonPath('timeline.0.event_type', 'WorkflowStarted');
     }
 
+    public function testServiceRunShowsWhenTheRuntimeTruncatesActivities(): void
+    {
+        $this->client->activitiesTruncated = true;
+
+        $this->getJson('/waterline/api/instances/order-1/runs/run-1')
+            ->assertOk()
+            ->assertJsonPath('activities', [])
+            ->assertJsonPath('activities_truncated', true)
+            ->assertJsonPath('timeline.0.event_type', 'WorkflowStarted');
+    }
+
     public function testServiceRunPreservesActivityRouteAuthorizationFailure(): void
     {
         $this->client->failures['workflowActivities'] = new ServerException(
