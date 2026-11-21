@@ -40,6 +40,7 @@ final class VisibilityFilterContract
         'repair_blocked_reason' => 'Repair Blocked Reason',
         'repair_attention' => 'Repair Attention',
         'task_problem' => 'Task Problem',
+        TaskAttention::FIELD => 'Task Lease Loss',
         'continue_as_new_recommended' => 'Continue As New Recommended',
         'archived' => 'Archived',
         'is_terminal' => 'Terminal',
@@ -302,7 +303,7 @@ final class VisibilityFilterContract
         return $value === '' || strlen($value) > 191 ? null : $value;
     }
 
-    private static function booleanValue(mixed $value): ?bool
+    public static function booleanValue(mixed $value): ?bool
     {
         if (is_bool($value)) {
             return $value;
@@ -394,7 +395,7 @@ final class VisibilityFilterContract
     /**
      * @return array<string, mixed>
      */
-    private static function fieldDefinition(
+    public static function fieldDefinition(
         string $field,
         string $type,
         int $order,

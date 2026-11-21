@@ -1429,5 +1429,11 @@
     "Version usage could not be read. No counts are available.": "Version usage could not be read. No counts are available.",
     "Version usage is unavailable on this backend.": "Version usage is unavailable on this backend.",
     "Version usage pages": "Version usage pages",
-    "Waterline - Version usage": "Waterline - Version usage"
+    "Waterline - Version usage": "Waterline - Version usage",
+    "Task Lease Loss": "Task Lease Loss",
+    "Task lease losses ({value1})": "Task lease losses ({value1})",
+    "The workflow task was retried after losing its lease.": "The workflow task was retried after losing its lease.",
+    "Runs with repeated task lease loss": "Runs with repeated task lease loss",
+    "Tasks at or above the lease loss threshold": "Tasks at or above the lease loss threshold",
+    "Most consecutive task lease losses": "Most consecutive task lease losses"
 }

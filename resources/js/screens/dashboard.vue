@@ -396,6 +396,10 @@
                                     </template>
                                 </div>
                             </div>
+                            <div v-for="metric in taskAttentionMetrics" :key="metric.key" class="wl-operator-metric">
+                                <div class="wl-operator-metric__label">{{ $t(metric.label) }}</div>
+                                <div class="wl-operator-metric__value">{{ metric.value.toLocaleString($i18n.locale) }}</div>
+                            </div>
                             <div class="wl-operator-metric" v-if="operatorReplayBlockedReported()">
                                 <div class="wl-operator-metric__label">{{ $t("Replay blocked runs") }}</div>
                                 <div class="wl-operator-metric__value">{{ operatorMetricLabel('runs', 'replay_blocked') }}</div>
@@ -647,6 +651,7 @@
 <script>
 import moment from 'moment-timezone';
 import { projectionMetric, projectionMetricLabel, projectionRebuildTotal } from '../projection-metrics.mjs';
+import { reportedTaskAttentionMetrics } from '../task-attention.mjs';
 import { replayBlockedAgeAvailable, replayBlockedCount, replayBlockedOldestAt, replayBlockedReported, replayBlockedRunsRoute } from '../replay-blocked-metrics.mjs';
 
 export default {
@@ -699,6 +704,10 @@ export default {
 
         topWorkflowTypes() {
             return this.workflowTypes.slice(0, 6);
+        },
+
+        taskAttentionMetrics() {
+            return reportedTaskAttentionMetrics(this.operatorMetrics);
         },
 
         operatorMetrics() {

@@ -1225,6 +1225,12 @@ jobs:
           - workflow: '2.22.0'
             purpose: schedule query
             tests: tests/Feature/V2SchedulesControllerTest.php
+          - workflow: '2.27.0'
+            purpose: legacy task attention compatibility
+            tests: tests/Compatibility/V2TaskAttentionTest.php
+          - workflow: '2.35.1'
+            purpose: task attention
+            tests: tests/Compatibility/V2TaskAttentionTest.php
 
     steps:
     - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6

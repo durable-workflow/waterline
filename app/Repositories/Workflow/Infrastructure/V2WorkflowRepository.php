@@ -12,6 +12,7 @@ use Throwable;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\CompensationVisibility;
+use Waterline\Support\TaskAttention;
 use Waterline\Support\WorkflowClassification;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowInstance;
@@ -77,7 +78,14 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
         // Validate before fallback handling, so an invalid selection cannot
         // silently become an unfiltered durable-run list.
         WorkflowClassification::selection(request());
-        V2VisibilityFilterContext::resolve(request(), $bucket);
+        $context = V2VisibilityFilterContext::resolve(request(), $bucket);
+        if (isset($context['applied_filters'][TaskAttention::FIELD]) && ! TaskAttention::supported(fresh: true)) {
+            throw new HttpResponseException(response()->json([
+                'message' => 'Task lease loss filtering requires a Workflow run summary with task attention.',
+                'reason' => 'backend_capability_unavailable',
+                'capability' => 'task_attention_workflow_list',
+            ], 501));
+        }
         $perPage = max(1, $perPage);
         $page ??= LengthAwarePaginator::resolveCurrentPage();
 
@@ -100,7 +108,7 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
             return $this->runningFlowsWithDurableRows($query, $perPage, $page);
         } catch (Throwable) {
-            $this->refuseUnfilteredTimeFallback('running');
+            $this->refuseUnfilteredFallback('running');
             return $this->runningFlowsFromDurableRuns($perPage, $page);
         }
     }
@@ -415,14 +423,21 @@ class V2WorkflowRepository implements WorkflowRepositoryInterface
 
             return $this->statusFlowsWithDurableRows($query, $status, $perPage, $page);
         } catch (Throwable) {
-            $this->refuseUnfilteredTimeFallback($status);
+            $this->refuseUnfilteredFallback($status);
             return $this->statusFlowsFromDurableRuns($status, $perPage, $page);
         }
     }
 
-    private function refuseUnfilteredTimeFallback(string $bucket): void
+    private function refuseUnfilteredFallback(string $bucket): void
     {
         $context = V2VisibilityFilterContext::resolve(request(), $bucket);
+        if (isset($context['applied_filters'][TaskAttention::FIELD])) {
+            throw new HttpResponseException(response()->json([
+                'message' => 'The task lease loss projection is unavailable.',
+                'reason' => 'backend_capability_unavailable',
+                'capability' => 'task_attention_workflow_list',
+            ], 503));
+        }
         if ($context['time_window'] !== null) {
             throw new HttpResponseException(response()->json([
                 'message' => 'The start-time filtered projection is unavailable. Waterline cannot return an unfiltered fallback list.',

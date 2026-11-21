@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import vm from 'node:vm'
 import test from 'node:test'
 import { appendRunHistoryPage } from '../../resources/js/run-history.mjs'
+import { workflowTaskAttention } from '../../resources/js/task-attention.mjs'
 import { operatorPermission } from '../../resources/js/operator-permissions.mjs'
 import { ambiguousCommandError } from '../../resources/js/request-budget.mjs'
 import { createWaterlineI18n } from '../../resources/js/localization.mjs'
@@ -17,6 +18,7 @@ function loadComponent(backend = 'embedded') {
         TimelineEventRenderer: {}, SearchAttributeRenderer: {}, CancellationCascadeView: {}, ExceptionSourceContext: {},
         appendRunHistoryPage,
         operatorPermission,
+        workflowTaskAttention,
         ambiguousCommandError,
         commandRequestOptions: () => ({}),
         crypto: globalThis.crypto,

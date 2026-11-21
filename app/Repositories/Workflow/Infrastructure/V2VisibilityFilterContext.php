@@ -47,7 +47,6 @@ final class V2VisibilityFilterContext
             'request_filters' => $requestFilters,
             'applied_filters' => $filters,
             'time_window' => WorkflowTimeWindow::evaluate($filters, WorkflowTimeWindow::requestTime($request)),
-            'definition' => ActionabilityVisibilityFilters::definition(),
         ];
     }
 

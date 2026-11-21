@@ -1429,5 +1429,11 @@
     "Version usage could not be read. No counts are available.": "Não foi possível ler o uso de versões. Nenhuma contagem está disponível.",
     "Version usage is unavailable on this backend.": "O uso de versões não está disponível neste backend.",
     "Version usage pages": "Páginas de uso de versões",
-    "Waterline - Version usage": "Waterline - Uso de versões"
+    "Waterline - Version usage": "Waterline - Uso de versões",
+    "Task Lease Loss": "Perda de concessão da tarefa",
+    "Task lease losses ({value1})": "Concessões perdidas ({value1})",
+    "The workflow task was retried after losing its lease.": "A tarefa do workflow foi tentada novamente após perder a concessão.",
+    "Runs with repeated task lease loss": "Execuções com perdas repetidas de concessão",
+    "Tasks at or above the lease loss threshold": "Tarefas que atingiram o limite de perda de concessões",
+    "Most consecutive task lease losses": "Maior número de perdas consecutivas de concessão"
 }

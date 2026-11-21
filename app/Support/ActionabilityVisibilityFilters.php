@@ -54,6 +54,10 @@ final class ActionabilityVisibilityFilters
         if ($repairState !== null) {
             $normalized[self::REPAIR_STATE_FIELD] = $repairState;
         }
+        $taskAttention = VisibilityFilterContract::booleanValue($filters[TaskAttention::FIELD] ?? null);
+        if ($taskAttention !== null) {
+            $normalized[TaskAttention::FIELD] = $taskAttention;
+        }
 
         return [...$normalized, ...WorkflowTimeWindow::normalize($filters)];
     }
@@ -86,6 +90,7 @@ final class ActionabilityVisibilityFilters
         return self::validate([
             ...VisibilityFilterContract::fromRequest($request),
             self::REPAIR_STATE_FIELD => $request->query(self::REPAIR_STATE_FIELD),
+            TaskAttention::FIELD => $request->query(TaskAttention::FIELD),
             ...array_intersect_key($request->query(), array_flip(WorkflowTimeWindow::FIELDS)),
         ]);
     }
@@ -103,6 +108,7 @@ final class ActionabilityVisibilityFilters
             $repairState = $normalized[self::REPAIR_STATE_FIELD]
                 ?? $merged[self::REPAIR_STATE_FIELD]
                 ?? null;
+            $taskAttention = $normalized[TaskAttention::FIELD] ?? $merged[TaskAttention::FIELD] ?? null;
             $time = array_intersect_key(
                 array_key_exists('started_time', $normalized) ? $normalized : $merged,
                 array_flip(WorkflowTimeWindow::FIELDS),
@@ -112,6 +118,9 @@ final class ActionabilityVisibilityFilters
 
             if ($repairState !== null) {
                 $merged[self::REPAIR_STATE_FIELD] = $repairState;
+            }
+            if ($taskAttention !== null) {
+                $merged[TaskAttention::FIELD] = $taskAttention;
             }
         }
 
@@ -132,7 +141,12 @@ final class ActionabilityVisibilityFilters
             throw new LogicException('The embedded Waterline backend requires durable-workflow/workflow visibility filters.');
         }
 
-        $embeddedFilters::apply($query, $normalized);
+        $embeddedFilters::apply($query, array_diff_key($normalized, [TaskAttention::FIELD => true]));
+
+        if (isset($normalized[TaskAttention::FIELD])) {
+            $column = $query->getModel()->qualifyColumn(TaskAttention::FIELD);
+            $normalized[TaskAttention::FIELD] ? $query->whereNotNull($column) : $query->whereNull($column);
+        }
 
         if ($timeWindow !== null) {
             self::applyTimeWindow($query, $timeWindow);
@@ -160,7 +174,7 @@ final class ActionabilityVisibilityFilters
     /**
      * @return array<string, mixed>
      */
-    public static function definition(): array
+    public static function definition(bool $taskAttentionAvailable = false): array
     {
         $definition = VisibilityFilterContract::definition();
         $fields = is_array($definition['fields'] ?? null) ? $definition['fields'] : [];
@@ -218,6 +232,14 @@ final class ActionabilityVisibilityFilters
                 'group' => 'started_time',
             ];
         }
+        $fields[TaskAttention::FIELD] = [
+            ...VisibilityFilterContract::fieldDefinition(
+                TaskAttention::FIELD,
+                'boolean',
+                $maxOrder + 2 + count(WorkflowTimeWindow::FIELDS),
+            ),
+            'filterable' => $taskAttentionAvailable,
+        ];
         $definition['time_window'] = [
             'timestamp' => 'started_at',
             'timezone' => 'UTC',
