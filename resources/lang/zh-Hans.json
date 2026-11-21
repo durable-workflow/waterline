@@ -1432,6 +1432,8 @@
     "Waterline - Version usage": "Waterline - 版本使用情况",
     "Task Lease Loss": "任务租约丢失",
     "Task lease losses ({value1})": "租约丢失（{value1} 次）",
+    "Unsupported activity type": "不受支持的活动类型",
+    "Unsupported workflow type": "不受支持的工作流类型",
     "The workflow task was retried after losing its lease.": "工作流任务在失去租约后已重试。",
     "Runs with repeated task lease loss": "反复丢失任务租约的运行",
     "Tasks at or above the lease loss threshold": "达到租约丢失阈值的任务",

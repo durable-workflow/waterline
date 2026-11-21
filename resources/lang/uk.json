@@ -1432,6 +1432,8 @@
     "Waterline - Version usage": "Waterline - Використання версій",
     "Task Lease Loss": "Втрата оренди завдання",
     "Task lease losses ({value1})": "Втрачені оренди ({value1})",
+    "Unsupported activity type": "Непідтримуваний тип активності",
+    "Unsupported workflow type": "Непідтримуваний тип робочого процесу",
     "The workflow task was retried after losing its lease.": "Завдання робочого процесу повторено після втрати оренди.",
     "Runs with repeated task lease loss": "Запуски з повторною втратою оренди завдання",
     "Tasks at or above the lease loss threshold": "Завдання, що досягли порога втрат оренди",

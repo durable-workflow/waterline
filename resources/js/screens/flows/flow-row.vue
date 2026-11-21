@@ -32,6 +32,11 @@
                     <span v-if="workflowTaskAttention(flow)" class="badge badge-warning">
                         {{ $t("Task lease losses ({value1})", { value1: workflowTaskAttention(flow).consecutive }) }}
                     </span>
+                    <span v-if="unsupportedReadyTask"
+                          class="badge badge-warning"
+                          :title="unsupportedReadyTask.type + ' · ' + unsupportedReadyTask.task_queue">
+                        {{ unsupportedReadyTask.task_kind === 'activity' ? $t("Unsupported activity type") : $t("Unsupported workflow type") }}
+                    </span>
                     <span v-if="showTaskProblemBadge(flow)"
                           :class="taskProblemBadgeClass(flow)"
                           class="badge"
@@ -99,6 +104,19 @@
                 default() {
                     return ['flow', 'started_at', 'closed_at', 'duration', 'actions']
                 }
+            }
+        },
+
+        computed: {
+            unsupportedReadyTask() {
+                const task = this.flow.unsupported_ready_task
+                if (!task || !['workflow', 'activity'].includes(task.task_kind)
+                    || typeof task.type !== 'string' || !task.type
+                    || typeof task.task_queue !== 'string' || !task.task_queue) {
+                    return null
+                }
+
+                return task
             }
         },
 

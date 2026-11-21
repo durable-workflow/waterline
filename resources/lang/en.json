@@ -1432,6 +1432,8 @@
     "Waterline - Version usage": "Waterline - Version usage",
     "Task Lease Loss": "Task Lease Loss",
     "Task lease losses ({value1})": "Task lease losses ({value1})",
+    "Unsupported activity type": "Unsupported activity type",
+    "Unsupported workflow type": "Unsupported workflow type",
     "The workflow task was retried after losing its lease.": "The workflow task was retried after losing its lease.",
     "Runs with repeated task lease loss": "Runs with repeated task lease loss",
     "Tasks at or above the lease loss threshold": "Tasks at or above the lease loss threshold",
