@@ -23,7 +23,7 @@ from types import ModuleType
 
 LOADING_SHA256 = "8da52d8e882902b35d4083b78139c27dc29803c585d53d00713a02d488e4ca4f"
 REVIEWED = {
-    "oci_release": "586f5f5c59675a6ee8ee3b0fcaa8d7c88926ec4ecf2602e6ff6bd13e0f3ba71e",
+    "oci_release": "1d472478ffcbbff6ad93f3dd19d42fc24ba067b85dee818a92fe973dc7f2d537",
     "published_provenance": "ed3f8e1f21b701ff45863ec3c1e5f08ed007ce7961b1a0c1a22bd58a9a96cf37",
     "service_smoke_browser": "bf0ff569c7570cb2390633dd613a95b3fc57a034552cd8c43f7be891b2bb8f4b",
     "service_smoke_browser_runner": "f93ddf416d29b2bacf0bd4af3c71459c2f76c12e15d48ef22c210d8e34f82bbb",

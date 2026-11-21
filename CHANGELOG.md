@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.19.1 - 2026-11-21
+
+- Service-mode health identifies incomplete worker rosters when the runtime
+  reaches a read limit, even without a continuation token. Run details tell
+  operators when the runtime returned a partial activity list (#343).
+
 ## 2.19.0 - 2026-11-19
 
 - **Security:** the standalone service image is built on PHP 8.3.37 (was
