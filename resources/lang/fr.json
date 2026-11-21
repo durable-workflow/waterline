@@ -1432,6 +1432,8 @@
     "Waterline - Version usage": "Waterline - Utilisation des versions",
     "Task Lease Loss": "Perte du bail de tâche",
     "Task lease losses ({value1})": "Baux perdus ({value1})",
+    "Unsupported activity type": "Type d’activité non pris en charge",
+    "Unsupported workflow type": "Type de workflow non pris en charge",
     "The workflow task was retried after losing its lease.": "La tâche du workflow a été relancée après avoir perdu son bail.",
     "Runs with repeated task lease loss": "Exécutions avec pertes de bail répétées",
     "Tasks at or above the lease loss threshold": "Tâches ayant atteint le seuil de pertes de bail",

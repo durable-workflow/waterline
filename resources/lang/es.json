@@ -1432,6 +1432,8 @@
     "Waterline - Version usage": "Waterline - Uso de versiones",
     "Task Lease Loss": "Pérdida de la concesión de tarea",
     "Task lease losses ({value1})": "Concesiones perdidas ({value1})",
+    "Unsupported activity type": "Tipo de actividad no admitido",
+    "Unsupported workflow type": "Tipo de flujo de trabajo no admitido",
     "The workflow task was retried after losing its lease.": "La tarea del flujo se reintentó tras perder su concesión.",
     "Runs with repeated task lease loss": "Ejecuciones con pérdidas repetidas de la concesión",
     "Tasks at or above the lease loss threshold": "Tareas que alcanzaron el umbral de pérdida de concesiones",
