@@ -19,7 +19,7 @@ def encode(value):
 def inputs():
     source = "a" * 40
     config = encode({"architecture": "amd64", "os": "linux", "config": {"Labels": {
-        "org.opencontainers.image.revision": source, "dev.durable-workflow.release.tag": "2.20.0"}}})
+        "org.opencontainers.image.revision": source, "dev.durable-workflow.release.tag": "2.21.0"}}})
     child = encode({"schemaVersion": 2, "mediaType": published.oci_release.MANIFEST,
                     "config": {"mediaType": published.oci_release.CONFIG, "digest": published.digest(config)}})
     attestation = encode(FIXTURE["attestation"](image=published.digest(child)))
