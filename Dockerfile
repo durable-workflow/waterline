@@ -60,6 +60,7 @@ RUN php -r 'exit(PHP_MAJOR_VERSION === 8 && PHP_MINOR_VERSION === 3 && PHP_VERSI
     && php /usr/local/share/waterline/verify-ca-trust.php \
     && apk add --no-cache --upgrade 'brotli-libs>=1.2.1-r0' \
     && apk add --no-cache --upgrade 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0' \
+    && apk add --no-cache --upgrade 'libxml2>=2.13.9-r3' \
     && php /usr/local/share/waterline/verify-curl.php \
     && php /usr/local/share/waterline/verify-brotli.php \
     && apk add --no-cache libpq libzip oniguruma sqlite-libs su-exec \
