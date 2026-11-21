@@ -17,6 +17,7 @@ use Waterline\Support\ObserverStateEnvelope;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\RunApplicationContext;
 use Waterline\Support\RunDiagnostics;
+use Waterline\Support\TaskAttention;
 use Waterline\Support\RunWaitSummary;
 use Waterline\Support\SelectedRunCommandContract;
 use Waterline\Support\WorkflowStreamPresenter;
@@ -325,6 +326,7 @@ class V2StoredWorkflowResource extends JsonResource
     private function fallbackRunDetail(): array
     {
         $summary = $this->fallbackRunSummary();
+        $attention = TaskAttention::fromSummary($summary);
         $status = $this->statusValue($summary?->status ?? $this->resource->status);
         $activities = CompensationVisibility::durableHistoryActivitiesForRun($this->resource);
         $updateFallback = $this->durableUpdateFallbackRows();
@@ -356,6 +358,7 @@ class V2StoredWorkflowResource extends JsonResource
             'status' => $status,
             'status_bucket' => $this->stringValue($summary?->status_bucket) ?? $this->statusBucket($status),
             'is_terminal' => $this->isTerminalStatus($status),
+            ...($attention === null ? [] : [TaskAttention::FIELD => $attention]),
             'closed_reason' => $summary?->closed_reason ?? $this->resource->closed_reason,
             'closed_at' => $summary?->closed_at ?? $this->resource->closed_at,
             'created_at' => $summary?->created_at ?? $this->resource->started_at ?? $this->resource->created_at,

@@ -29,6 +29,9 @@
                           :title="repairBadgeTitle(flow)">
                         {{ repairBadgeLabel(flow) }}
                     </span>
+                    <span v-if="workflowTaskAttention(flow)" class="badge badge-warning">
+                        {{ $t("Task lease losses ({value1})", { value1: workflowTaskAttention(flow).consecutive }) }}
+                    </span>
                     <span v-if="showTaskProblemBadge(flow)"
                           :class="taskProblemBadgeClass(flow)"
                           class="badge"
@@ -83,6 +86,7 @@
 </template>
 
 <script type="text/ecmascript-6">
+    import { workflowTaskAttention } from '../../task-attention.mjs';
     export default {
         props: {
             flow: {
@@ -99,6 +103,8 @@
         },
 
         methods: {
+            workflowTaskAttention,
+
             duration(start, end) {
                 return this.durationBetween(start, end)
             },

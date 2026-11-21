@@ -132,7 +132,12 @@ final class ActionabilityVisibilityFilters
             throw new LogicException('The embedded Waterline backend requires durable-workflow/workflow visibility filters.');
         }
 
-        $embeddedFilters::apply($query, $normalized);
+        $embeddedFilters::apply($query, array_diff_key($normalized, [TaskAttention::FIELD => true]));
+
+        if (isset($normalized[TaskAttention::FIELD])) {
+            $column = $query->getModel()->qualifyColumn(TaskAttention::FIELD);
+            $normalized[TaskAttention::FIELD] ? $query->whereNotNull($column) : $query->whereNull($column);
+        }
 
         if ($timeWindow !== null) {
             self::applyTimeWindow($query, $timeWindow);
@@ -160,10 +165,11 @@ final class ActionabilityVisibilityFilters
     /**
      * @return array<string, mixed>
      */
-    public static function definition(): array
+    public static function definition(bool $taskAttentionAvailable = false): array
     {
         $definition = VisibilityFilterContract::definition();
         $fields = is_array($definition['fields'] ?? null) ? $definition['fields'] : [];
+        $fields[TaskAttention::FIELD]['filterable'] = $taskAttentionAvailable;
         $maxOrder = -1;
 
         foreach ($fields as $field) {

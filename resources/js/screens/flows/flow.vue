@@ -206,6 +206,16 @@
                     </div>
                 </template>
 
+                <div class="row mb-2" v-if="workflowTaskAttention(flow)">
+                    <div class="col-md-2"><strong>{{ $t("Task Lease Loss") }}</strong></div>
+                    <div class="col">
+                        <span class="badge badge-warning mr-2">
+                            {{ $t("Task lease losses ({value1})", { value1: workflowTaskAttention(flow).consecutive }) }}
+                        </span>
+                        <span class="text-muted">{{ $t("The workflow task was retried after losing its lease.") }}</span>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="taskProblemBadge(flow)">
                     <div class="col-md-2"><strong>{{ $t("Task Problems") }}</strong></div>
                     <div class="col">
@@ -1876,6 +1886,7 @@ import TimelineEventRenderer from '../../components/TimelineEventRenderer.vue'
 import SearchAttributeRenderer from '../../components/SearchAttributeRenderer.vue'
 import CancellationCascadeView from '../../components/CancellationCascadeView.vue'
 import ExceptionSourceContext from '../../components/ExceptionSourceContext.vue'
+import { workflowTaskAttention } from '../../task-attention.mjs'
 import { presentWorkflowStreams } from '../../workflow-streams.mjs'
 import { appendRunHistoryPage } from '../../run-history.mjs'
 import { activityResultSelection, activityResultPath, activityResultMatches, activityResultAvailable, activityResultMessage } from '../../activity-result.mjs'
@@ -2030,6 +2041,8 @@ export default {
     },
 
     methods: {
+        workflowTaskAttention,
+
         handleRouteChange() {
             this.routeHashScrollRequest += 1
 

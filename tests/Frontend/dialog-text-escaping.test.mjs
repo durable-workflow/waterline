@@ -5,6 +5,7 @@ import vm from 'node:vm'
 import test from 'node:test'
 import { parse } from '@vue/compiler-sfc'
 import { escapeDialogHtml, showDialogValidationText } from '../../resources/js/dialogs.mjs'
+import { workflowTaskAttention } from '../../resources/js/task-attention.mjs'
 import { operatorPermission } from '../../resources/js/operator-permissions.mjs'
 import { ambiguousCommandError } from '../../resources/js/request-budget.mjs'
 import { createWaterlineI18n } from '../../resources/js/localization.mjs'
@@ -24,6 +25,7 @@ function detail(overrides = {}) {
         Swal: { isLoading: () => false, showValidationMessage: (html) => validationMessages.push(html) },
         showDialogValidationText,
         operatorPermission,
+        workflowTaskAttention,
         ambiguousCommandError,
         commandRequestOptions: () => ({}),
         browserTimeoutMilliseconds: () => 0,

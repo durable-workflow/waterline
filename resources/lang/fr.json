@@ -1429,5 +1429,11 @@
     "Version usage could not be read. No counts are available.": "Impossible de lire l’utilisation des versions. Aucun comptage disponible.",
     "Version usage is unavailable on this backend.": "L’utilisation des versions est indisponible sur ce backend.",
     "Version usage pages": "Pages d’utilisation des versions",
-    "Waterline - Version usage": "Waterline - Utilisation des versions"
+    "Waterline - Version usage": "Waterline - Utilisation des versions",
+    "Task Lease Loss": "Perte du bail de tâche",
+    "Task lease losses ({value1})": "Baux perdus ({value1})",
+    "The workflow task was retried after losing its lease.": "La tâche du workflow a été relancée après avoir perdu son bail.",
+    "Runs with repeated task lease loss": "Exécutions avec pertes de bail répétées",
+    "Tasks at or above the lease loss threshold": "Tâches ayant atteint le seuil de pertes de bail",
+    "Most consecutive task lease losses": "Maximum de pertes de bail consécutives"
 }

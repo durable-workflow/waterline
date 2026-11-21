@@ -7,6 +7,8 @@ use Waterline\Support\RunApplicationContext;
 use Waterline\Support\BackendConfiguration;
 use Waterline\Support\RunObservationHistoryToken;
 use Waterline\Support\RunObservationPresenter;
+use Waterline\Support\TaskAttention;
+use Workflow\V2\Support\WorkflowTaskLeaseLoss;
 use Workflow\V2\Contracts\OperatorObservabilityRepository;
 use Workflow\V2\Models\WorkflowSearchAttribute;
 use Workflow\V2\Support\ConfiguredV2Models;
@@ -31,6 +33,17 @@ class V2RunObservationResource extends JsonResource
             $cursor['after'] ?? 0, $cursor['through'] ?? null,
         );
         $detail = $observer->runObservation($this->resource);
+        if (! array_key_exists(TaskAttention::FIELD, $detail) && TaskAttention::supported()) {
+            $summary = $this->resource->summary()->setEagerLoads([]);
+            $model = $summary->getRelated();
+            $summary->select($model->qualifyColumn(TaskAttention::FIELD));
+            $detail[TaskAttention::FIELD] = TaskAttention::fromSummary(
+                WorkflowTaskLeaseLoss::untrackedOnMissingColumn(
+                    $model,
+                    static fn () => $summary->first(),
+                ),
+            );
+        }
         foreach ($detail['recent_failures']['failures'] as &$failure) {
             if ($failure['supporting_event']['state'] === 'retained') {
                 $reference = $failure['supporting_event'];

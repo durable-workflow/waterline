@@ -40,6 +40,7 @@ use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
 use Waterline\Repositories\Workflow\Interfaces\WorkflowRepositoryInterface;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\ActionabilityVisibilityFilters;
+use Waterline\Support\TaskAttention;
 use Waterline\Support\WorkflowTimeWindow;
 use Waterline\Support\CompatibilitySemantics;
 use Waterline\Support\CompensationVisibility;
@@ -709,13 +710,21 @@ class WorkflowsController extends Controller
         $context = $repository->engineSource() === 'v2'
             ? V2VisibilityFilterContext::resolve(request(), $bucket)
             : null;
+        $requestedFilters = $context['applied_filters'] ?? ActionabilityVisibilityFilters::fromRequest(request());
         $requestedTime = $context['time_window'] ?? WorkflowTimeWindow::evaluate(
-            ActionabilityVisibilityFilters::fromRequest(request()),
+            $requestedFilters,
             WorkflowTimeWindow::requestTime(request()),
         );
-        $timeAvailable = $repository instanceof V2WorkflowRepository
+        $v2ProjectionAvailable = $repository instanceof V2WorkflowRepository
             || ($repository instanceof HybridWorkflowRepository && ! HybridMigrationView::requestIncludesLegacyRows());
-        if ($requestedTime !== null && ! $timeAvailable) {
+        if (isset($requestedFilters[TaskAttention::FIELD]) && ! $v2ProjectionAvailable) {
+            return response()->json([
+                'message' => 'Task lease loss filtering requires a v2 execution list without legacy rows.',
+                'reason' => 'backend_capability_unavailable',
+                'capability' => 'task_attention_workflow_list',
+            ], 501);
+        }
+        if ($requestedTime !== null && ! $v2ProjectionAvailable) {
             return response()->json([
                 'message' => 'Start-time filters require a v2 execution list without legacy rows.',
                 'reason' => 'backend_capability_unavailable',
@@ -729,7 +738,6 @@ class WorkflowsController extends Controller
             return $result;
         }
 
-        $context = V2VisibilityFilterContext::resolve(request(), $bucket);
         $payload = $result->toArray();
 
         $payload['data'] = array_map(
@@ -747,7 +755,7 @@ class WorkflowsController extends Controller
             'version' => ActionabilityVisibilityFilters::VERSION,
             'supported_versions' => ActionabilityVisibilityFilters::supportedVersions(),
             'bucket' => $bucket,
-            'definition' => $context['definition'],
+            'definition' => ActionabilityVisibilityFilters::definition($v2ProjectionAvailable && TaskAttention::supported()),
             'applied' => $context['applied_filters'],
             'saved_view' => $context['saved_view'],
             'saved_view_applied' => $context['saved_view_applied'],
@@ -1522,6 +1530,10 @@ class WorkflowsController extends Controller
     private function listItemView(WorkflowRunSummary $summary, bool $useDurableHistoryFallback = false): array
     {
         $item = RunListItemView::fromSummary($summary);
+        if (! array_key_exists(TaskAttention::FIELD, $item)
+            && ($attention = TaskAttention::fromSummary($summary)) !== null) {
+            $item[TaskAttention::FIELD] = $attention;
+        }
         $item = $this->withSummaryRunIdentity($item, $summary);
         $item['namespace'] ??= is_string($summary->run?->namespace ?? null)
             ? $summary->run->namespace

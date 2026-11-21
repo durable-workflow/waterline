@@ -1429,5 +1429,11 @@
     "Version usage could not be read. No counts are available.": "Не вдалося прочитати використання версій. Дані про кількість недоступні.",
     "Version usage is unavailable on this backend.": "Використання версій недоступне в цьому бекенді.",
     "Version usage pages": "Сторінки використання версій",
-    "Waterline - Version usage": "Waterline - Використання версій"
+    "Waterline - Version usage": "Waterline - Використання версій",
+    "Task Lease Loss": "Втрата оренди завдання",
+    "Task lease losses ({value1})": "Втрачені оренди ({value1})",
+    "The workflow task was retried after losing its lease.": "Завдання робочого процесу повторено після втрати оренди.",
+    "Runs with repeated task lease loss": "Запуски з повторною втратою оренди завдання",
+    "Tasks at or above the lease loss threshold": "Завдання, що досягли порога втрат оренди",
+    "Most consecutive task lease losses": "Найбільша кількість послідовних втрат оренди завдання"
 }

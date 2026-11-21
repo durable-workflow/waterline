@@ -11,6 +11,7 @@ use Waterline\Support\BackendConfiguration;
 use Waterline\Support\EngineSourceReadiness;
 use Waterline\Support\OperatorScope;
 use Waterline\Support\ServiceVisibilityFilters;
+use Waterline\Support\TaskAttention;
 use Waterline\Support\WorkflowEngineSourceResolver;
 
 class SavedViewsController extends Controller
@@ -276,7 +277,7 @@ class SavedViewsController extends Controller
     {
         return BackendConfiguration::serviceMode()
             ? ServiceVisibilityFilters::definition()
-            : ActionabilityVisibilityFilters::definition();
+            : ActionabilityVisibilityFilters::definition(TaskAttention::supported());
     }
 
     /**
