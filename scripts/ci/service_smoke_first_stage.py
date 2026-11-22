@@ -12,7 +12,7 @@ import stat
 import signal
 
 
-BOOTSTRAP_SHA256 = "d03347fdac92599557c5aba8259bdd8fe0730a773f1e0ed81885535c109c81f6"
+BOOTSTRAP_SHA256 = "931df9e1b34d99043e7beb9fe2d3b8054b404ba78f8485e9c685ac7676d86f02"
 
 
 def identity(value):

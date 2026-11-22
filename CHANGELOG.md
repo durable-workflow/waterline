@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.22.0 - 2026-11-22
+
+- Service-mode run diagnostics show when every worker eligible for a ready task
+  reports zero free slots. The finding clears when a matching worker reports a
+  free slot. ([Server #579](https://github.com/durable-workflow/server/issues/579))
+
 ## 2.21.0 - 2026-11-21
 
 - Service-mode workflow lists show the task type and queue when the Server
