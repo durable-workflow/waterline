@@ -18,6 +18,7 @@ use Waterline\Support\TaskAttention;
 use Waterline\Support\WorkflowTimeWindow;
 use Waterline\Support\RunWaitSummary;
 use Waterline\Support\RunApplicationContext;
+use Waterline\Support\RunDiagnostics;
 use Waterline\Support\RunObservationPresenter;
 use Waterline\Support\WorkflowStreamPresenter;
 use Waterline\Support\WorkflowClassification;
@@ -329,6 +330,11 @@ final class RemoteWorkflowsController extends RemoteController
 
         if ($selectedRunId !== '' && $this->backend->supports('workflowDiagnostics')) {
             $diagnostics = $client->workflowDiagnostics($workflowId, $selectedRunId);
+            $slotFindings = RunDiagnostics::fromServerFindings($diagnostics['findings'] ?? null);
+            if ($slotFindings !== []) {
+                $existing = is_array($diagnostics['run_diagnostics'] ?? null) ? $diagnostics['run_diagnostics'] : [];
+                $diagnostics['run_diagnostics'] = array_merge($existing, $slotFindings);
+            }
         }
 
         if ($selectedRunId !== '' && $this->backend->supports('workflowActivities')) {

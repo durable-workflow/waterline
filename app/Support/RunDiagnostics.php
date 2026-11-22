@@ -63,6 +63,39 @@ class RunDiagnostics
             . 'build will claim it on its behalf.',
     ];
 
+    /** @return list<array<string, mixed>> */
+    public static function fromServerFindings(mixed $findings): array
+    {
+        $diagnostics = [];
+        foreach (is_array($findings) ? $findings : [] as $finding) {
+            if (! is_array($finding) || ($finding['code'] ?? null) !== 'eligible_worker_slots_busy') {
+                continue;
+            }
+            $kind = $finding['task_kind'] ?? null;
+            $queue = $finding['task_queue'] ?? null;
+            $type = $finding['task_type'] ?? null;
+            $workers = $finding['eligible_worker_count'] ?? null;
+            if (! in_array($kind, ['workflow', 'activity'], true) || ! is_string($queue) || $queue === ''
+                || ! is_string($type) || $type === '' || ! is_int($workers) || $workers < 1) {
+                continue;
+            }
+
+            $diagnostics[] = [
+                'code' => 'eligible_worker_slots_busy',
+                'severity' => 'info',
+                'title' => __('Eligible workers are busy'),
+                'summary' => __('All eligible workers on queue :queue reported zero free :kind slots.', ['queue' => $queue, 'kind' => $kind]),
+                'guidance' => __('Check worker capacity and in-flight work on this queue. If work keeps backing up, add a compatible worker or review its concurrency limit.'),
+                'evidence_summary' => [
+                    __('Task type :type', ['type' => $type]),
+                    __('Eligible workers :count', ['count' => $workers]),
+                ],
+            ];
+        }
+
+        return $diagnostics;
+    }
+
     /**
      * @param array<string, mixed> $detail
      * @return list<array<string, mixed>>

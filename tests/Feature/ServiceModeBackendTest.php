@@ -179,6 +179,28 @@ final class ServiceModeBackendTest extends TestCase
             ->assertJsonCount(0, 'current_waits');
     }
 
+    public function testSelectedRunPresentsOnlyConfirmedWorkerSlotFindings(): void
+    {
+        $this->client->diagnostics = [
+            'findings' => [
+                ['code' => 'no_active_pollers', 'message' => 'Another diagnostic'],
+                ['code' => 'eligible_worker_slots_busy', 'task_kind' => 'workflow',
+                    'task_type' => 'orders.process', 'task_queue' => 'orders-ready', 'eligible_worker_count' => 2],
+                ['code' => 'eligible_worker_slots_busy', 'task_kind' => 'activity',
+                    'task_type' => 'Ship', 'task_queue' => 'shipping', 'eligible_worker_count' => null],
+            ],
+        ];
+
+        $path = '/waterline/api/instances/order-1/runs/run-1?observation=complete';
+        $this->getJson($path)->assertOk()->assertJsonCount(1, 'run_diagnostics')
+            ->assertJsonPath('run_diagnostics.0.code', 'eligible_worker_slots_busy')
+            ->assertJsonPath('run_diagnostics.0.summary', 'All eligible workers on queue orders-ready reported zero free workflow slots.')
+            ->assertJsonPath('run_diagnostics.0.evidence_summary', ['Task type orders.process', 'Eligible workers 2']);
+
+        $this->client->diagnostics = ['task_queue' => ['stats' => ['approximate_backlog_count' => 8]]];
+        $this->getJson($path)->assertOk()->assertJsonMissingPath('run_diagnostics');
+    }
+
     public function testServiceSummaryPreservesRunTimingWithoutAssigningItToUnrelatedActivities(): void
     {
         Carbon::setTestNow('2026-10-06T15:00:00Z');
