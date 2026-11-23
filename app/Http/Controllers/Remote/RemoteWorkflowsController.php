@@ -11,6 +11,7 @@ use Waterline\Repositories\Workflow\Infrastructure\V2VisibilityFilterContext;
 use Waterline\Support\ActionabilityContract;
 use Waterline\Support\ActionabilityVisibilityFilters;
 use Waterline\Support\BackendConfiguration;
+use Waterline\Support\ContinueAsNewObservation;
 use Waterline\Support\Remote\CursorPageReplay;
 use Waterline\Support\Remote\RemoteBackend;
 use Waterline\Support\ServiceVisibilityFilters;
@@ -418,6 +419,23 @@ final class RemoteWorkflowsController extends RemoteController
         $payload = RunWaitSummary::annotate($payload);
         $payload = RunApplicationContext::annotate($payload);
         $payload = ActionabilityContract::annotateRun($payload);
+
+        $continuation = [];
+        if ($request->query('observation') === 'complete' && $selectedRunId !== ''
+            && $this->backend->supports('workflowObservation')) {
+            try {
+                // A complete view still takes continuation facts from the
+                // selected run's bounded observation, irrespective of history paging.
+                $continuation = $client->workflowObservation($workflowId, $selectedRunId, historyPageSize: 1);
+            } catch (ServerException $exception) {
+                if ($exception->status !== 404
+                    || ! in_array($exception->reason, [null, '', 'not_found', 'route_not_found'], true)) {
+                    throw $exception;
+                }
+            }
+        }
+
+        $payload = ContinueAsNewObservation::annotate($payload, $continuation);
 
         return response()->json($this->scoped($payload));
     }

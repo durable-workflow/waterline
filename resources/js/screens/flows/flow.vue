@@ -583,6 +583,23 @@
                     </div>
                 </div>
 
+                <div class="row mb-2" v-if="flow.continue_as_new_refusal">
+                    <div class="col-md-2"><strong>{{ $t("Promotion unavailable") }}</strong></div>
+                    <div class="col">
+                        {{ $t("No eligible promoted build serves this workflow type on its queue.") }}
+                        <div class="small text-muted">
+                            {{ $t("Workflow task {task} · attempt {attempt} · {status}", {
+                                task: flow.continue_as_new_refusal.task_id,
+                                attempt: flow.continue_as_new_refusal.workflow_task_attempt,
+                                status: stateLabel(flow.continue_as_new_refusal.status),
+                            }) }}
+                        </div>
+                        <div v-if="flow.continue_as_new_refusal.available_at" class="small text-muted">
+                            {{ $t("Next retry at {time}", { time: readableTimestamp(flow.continue_as_new_refusal.available_at) }) }}
+                        </div>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="lineageEntries().length">
                     <div class="col-md-2"><strong>{{ $t("Lineage") }}</strong></div>
                     <div class="col">
@@ -603,7 +620,10 @@
                             <span v-if="entry.status">
                                 - {{ stateLabel(entry.status) }}<span v-if="entry.status_bucket"> / {{ stateLabel(entry.status_bucket) }}</span>
                             </span>
-                        <div
+                            <div v-if="entry.build_transition" class="small">
+                                {{ continuationBuildLabel(entry.build_transition) }}
+                            </div>
+                            <div
                                 v-for="detail in lineageIdentityRows(entry)"
                                 :key="entry.key + '-' + detail"
                                 class="small text-muted"
@@ -1889,6 +1909,7 @@ import ExceptionSourceContext from '../../components/ExceptionSourceContext.vue'
 import { workflowTaskAttention } from '../../task-attention.mjs'
 import { presentWorkflowStreams } from '../../workflow-streams.mjs'
 import { appendRunHistoryPage } from '../../run-history.mjs'
+import { attachContinuationLineage } from '../../continuation-lineage.mjs'
 import { activityResultSelection, activityResultPath, activityResultMatches, activityResultAvailable, activityResultMessage } from '../../activity-result.mjs'
 import { failureSummary, failureEventIndex } from '../../failure-summary.mjs'
 import { operatorPermission } from '../../operator-permissions.mjs'
@@ -4782,11 +4803,12 @@ export default {
 
         lineageEntries() {
             if (this.flow.read_mode === 'bounded') {
-                return ['parents', 'children'].flatMap((direction) => (
+                const entries = ['parents', 'children'].flatMap((direction) => (
                     this.flow.relationships?.[direction]?.relationships || []
                 ).map((link) => ({
                     key: direction + '-' + link.link_id,
-                    label: this.lineageLabel(link, direction === 'parents' ? 'parent' : 'child'),
+                    direction: direction === 'parents' ? 'parent' : 'child',
+                    link_type: link.link_type,
                     display_id: link.run_id || link.instance_id || link.link_id,
                     instance_id: link.instance_id,
                     run_id: link.run_id,
@@ -4794,10 +4816,12 @@ export default {
                     history_authority: 'relationship_metadata',
                     metadata_state: link.metadata_state,
                 })))
+                return this.labeledLineage(entries)
             }
             const parents = (this.flow.parents || []).map((parent) => ({
                 key: 'parent-' + (parent.id || parent.parent_workflow_run_id || parent.parent_workflow_id),
-                label: this.lineageLabel(parent, 'parent'),
+                direction: 'parent',
+                link_type: parent.link_type,
                 display_id: parent.workflow_run_id
                     || parent.parent_workflow_run_id
                     || parent.workflow_instance_id
@@ -4816,7 +4840,8 @@ export default {
 
             const continued = (this.flow.continuedWorkflows || []).map((link) => ({
                 key: 'continued-' + (link.id || link.child_workflow_run_id || link.child_workflow_id),
-                label: this.lineageLabel(link, 'child'),
+                direction: 'child',
+                link_type: link.link_type,
                 display_id: link.workflow_run_id
                     || link.child_workflow_run_id
                     || link.workflow_instance_id
@@ -4833,7 +4858,22 @@ export default {
                 diagnostic_only: link.diagnostic_only === true,
             }))
 
-            return [...parents, ...continued]
+            return this.labeledLineage([...parents, ...continued])
+        },
+
+        labeledLineage(entries) {
+            return attachContinuationLineage(this.flow, entries).map((entry) => ({
+                ...entry,
+                label: this.lineageLabel(entry, entry.direction),
+            }))
+        },
+
+        continuationBuildLabel(transition) {
+            return this.$t("Continued onto {target} ({resolution}) from {source}", {
+                source: transition.from_compatibility ?? this.$t("Unpinned"),
+                target: transition.to_compatibility ?? this.$t("Unpinned"),
+                resolution: transition.resolution === 'promoted' ? this.$t("promoted") : this.$t("inherited"),
+            })
         },
 
         relationshipWindowSummary() {

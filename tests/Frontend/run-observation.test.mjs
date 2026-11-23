@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import vm from 'node:vm'
 import test from 'node:test'
 import { appendRunHistoryPage } from '../../resources/js/run-history.mjs'
+import { attachContinuationLineage } from '../../resources/js/continuation-lineage.mjs'
 import { workflowTaskAttention } from '../../resources/js/task-attention.mjs'
 import { operatorPermission } from '../../resources/js/operator-permissions.mjs'
 import { ambiguousCommandError } from '../../resources/js/request-budget.mjs'
@@ -17,6 +18,7 @@ function loadComponent(backend = 'embedded') {
         Waterline: { basePath: '/waterline', backend: { mode: backend } },
         TimelineEventRenderer: {}, SearchAttributeRenderer: {}, CancellationCascadeView: {}, ExceptionSourceContext: {},
         appendRunHistoryPage,
+        attachContinuationLineage,
         operatorPermission,
         workflowTaskAttention,
         ambiguousCommandError,
@@ -44,6 +46,33 @@ function detail(overrides = {}, backend = 'embedded') {
 }
 
 const run = { instance_id: 'order', selected_run_id: 'run', run_id: 'run', read_mode: 'bounded', engine_source: 'v2' }
+
+test('recorded continuation links keep exact run IDs outside the relationship window', () => {
+    const transition = { run_id: 'predecessor', from_compatibility: null, to_compatibility: 'build-b', resolution: 'promoted' }
+    const context = detail({ flow: { ...run, continue_as_new_build_transitions: { from_predecessor: transition } } })
+    const rows = context.lineageEntries()
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0].label, 'Continued from')
+    assert.equal(rows[0].instance_id, 'order')
+    assert.equal(rows[0].run_id, 'predecessor')
+    assert.equal(context.continuationBuildLabel(rows[0].build_transition), 'Continued onto build-b (promoted) from Unpinned')
+    context.flow.relationships = { parents: { relationships: [
+        { link_id: 'existing', link_type: 'continue_as_new', run_id: 'predecessor', instance_id: 'order', status: 'completed' },
+    ] } }
+    const deduplicated = context.lineageEntries()
+    assert.equal(deduplicated.length, 1)
+    assert.equal(deduplicated[0].status, 'completed')
+    assert.equal(deduplicated[0].build_transition, transition)
+})
+
+test('a refreshed refusal is cleared without inventing a successor or changing the run status', () => {
+    const current = { ...run, status: 'running', continue_as_new_refusal: { reason: 'promoted_build_unavailable' } }
+    const page = { ...run, status: 'running', continue_as_new_refusal: null }
+    const refreshed = appendRunHistoryPage(current, page)
+    assert.equal(refreshed.continue_as_new_refusal, null)
+    assert.equal(refreshed.status, 'running')
+    assert.equal(detail({ flow: refreshed }).lineageEntries().length, 0)
+})
 
 test('host authorization vetoes runtime affordances and explains each denied action', () => {
     for (const name of ['signal', 'update', 'repair', 'cancel', 'terminate', 'archive', 'redrive']) {

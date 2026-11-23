@@ -62,6 +62,6 @@ final class RunObservationPresenter
             'updates' => 'not_loaded', 'streams' => 'not_loaded', 'cancellation_cascade' => 'not_loaded',
         ];
 
-        return $detail;
+        return ContinueAsNewObservation::annotate($detail);
     }
 }

@@ -117,6 +117,66 @@ final class ServiceRunObservationTest extends TestCase
         $this->assertNoFullReads();
     }
 
+    public function testBoundedObservationShowsTheCurrentRefusalAndTheRecordedTransition(): void
+    {
+        $run = $this->createRun('run', 'order');
+        $this->client->observation = $this->observation($run);
+        $refusal = [
+            'reason' => 'promoted_build_unavailable', 'task_id' => 'workflow-task', 'status' => 'ready',
+            'workflow_task_attempt' => 3, 'recorded_at' => '2026-11-20T10:00:00.123Z',
+            'available_at' => '2026-11-20T10:00:03.123Z',
+        ];
+        $this->client->observation['continue_as_new_refusal'] = $refusal + ['unused' => 'unexposed'];
+        $this->getJson($this->path())->assertOk()->assertJsonPath('status', 'running')
+            ->assertJsonPath('continue_as_new_refusal', $refusal)
+            ->assertJsonMissingPath('continue_as_new_build_transitions');
+
+        $this->client->observation['continue_as_new_refusal']['status'] = 'failed';
+        $this->getJson($this->path())->assertOk()
+            ->assertJsonPath('continue_as_new_refusal.status', 'failed')
+            ->assertJsonPath('continue_as_new_refusal.available_at', null);
+
+        $transition = [
+            'run_id' => 'successor', 'from_compatibility' => null,
+            'to_compatibility' => 'build-b', 'resolution' => 'promoted',
+        ];
+        $this->client->observation['continue_as_new_refusal'] = null;
+        $this->client->observation['continue_as_new_build_transitions'] = [
+            'to_successor' => $transition + ['current_promotion' => 'build-c'],
+            'from_predecessor' => ['run_id' => 'missing-build', 'resolution' => 'inherited', 'from_compatibility' => null],
+        ];
+        $this->getJson($this->path())->assertOk()
+            ->assertJsonPath('continue_as_new_refusal', null)
+            ->assertJsonPath('continue_as_new_build_transitions.to_successor', $transition)
+            ->assertJsonPath('continue_as_new_build_transitions.from_predecessor', null);
+        $this->assertNoFullReads();
+    }
+
+    public function testCompleteServiceDetailKeepsTheSameBoundedContinuationEvidence(): void
+    {
+        $run = $this->createRun('run', 'order');
+        $this->client->workflowDescription = [
+            'workflow_id' => 'order', 'run_id' => 'run', 'workflow_type' => 'orders.process',
+            'namespace' => 'orders', 'status' => 'running',
+        ];
+        $this->client->observation = $this->observation($run);
+        $transition = [
+            'run_id' => 'predecessor', 'from_compatibility' => 'build-a',
+            'to_compatibility' => 'build-a', 'resolution' => 'inherited',
+        ];
+        $this->client->observation['continue_as_new_build_transitions']['from_predecessor'] = $transition;
+        $path = '/waterline/api/instances/order/runs/run?observation=complete';
+        $this->getJson($path)->assertOk()
+            ->assertJsonPath('continue_as_new_build_transitions.from_predecessor', $transition);
+        self::assertSame(
+            ['workflowId' => 'order', 'runId' => 'run', 'searchAttributeKeys' => [],
+                'historyPageSize' => 1, 'historyPageToken' => null],
+            $this->observationCalls()[0]['arguments'],
+        );
+        $this->client->observation['run_id'] = 'another-run';
+        $this->getJson($path)->assertOk()->assertJsonMissingPath('continue_as_new_build_transitions');
+    }
+
     public function testMissingSdkCapabilityCannotTriggerCompleteReads(): void
     {
         $this->app->instance(RemoteBackend::class, new RemoteBackend(new \stdClass));
