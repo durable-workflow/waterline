@@ -11,6 +11,7 @@ use Waterline\Support\ActionabilityContract;
 use Waterline\Support\OperatorAuthorization;
 use Waterline\Support\CompatibilitySemantics;
 use Waterline\Support\CompensationVisibility;
+use Waterline\Support\ContinueAsNewObservation;
 use Waterline\Support\DurableCommandAttribution;
 use Waterline\Support\ExceptionSourceContext;
 use Waterline\Support\ObserverStateEnvelope;
@@ -103,6 +104,7 @@ class V2StoredWorkflowResource extends JsonResource
         $detail['namespace'] = $this->resource->namespace;
         $detail['operator_scope'] = OperatorScope::payload();
         $detail = $this->displayTypedValues(OperatorAuthorization::annotateRun(ActionabilityContract::annotateRun($detail)));
+        $detail = ContinueAsNewObservation::annotate($detail);
 
         return $this->includeSourceContext ? ExceptionSourceContext::annotate($detail, $request) : $detail;
     }

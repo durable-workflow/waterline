@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Waterline\Tests\Fixtures;
 
+use DurableWorkflow\Exception\ServerException;
 use DurableWorkflow\Model\ScheduleDescription;
 use DurableWorkflow\Model\SchedulePage;
 use DurableWorkflow\Model\WorkflowExecution;
@@ -233,7 +234,7 @@ final class FakeRemoteClient
         $this->called(__FUNCTION__, get_defined_vars());
         $response = $this->observationPages[$historyPageToken ?? ''] ?? $this->observation;
         if ($response === null) {
-            throw new \LogicException('The bounded observation fixture is not configured.');
+            throw new ServerException('Observation route unavailable.', 404, 'route_not_found');
         }
         $response['search_attributes'] = array_intersect_key($response['search_attributes'] ?? [], array_flip($searchAttributeKeys));
 
