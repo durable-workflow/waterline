@@ -465,7 +465,7 @@ class RegistryVersionCheckTest(unittest.TestCase):
 
     def test_absent_tag_with_manifest_unknown_is_allowed(self) -> None:
         for message in (
-            "Error: reading manifest 2.22.0: manifest unknown",
+            "Error: reading manifest 2.23.0: manifest unknown",
             'errors: [{"code":"MANIFEST_UNKNOWN"}]',
         ):
             with self.subTest(message=message):

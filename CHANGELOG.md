@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.23.0 - 2026-11-23
+
+- Run detail shows the recorded build transition and links to the exact
+  predecessor or successor run. A current promotion refusal shows the task
+  attempt and scheduled retry when the runtime supplies them.
+  (durable-workflow/workflow#880)
+
 ## 2.22.0 - 2026-11-22
 
 - Service-mode run diagnostics show when every worker eligible for a ready task

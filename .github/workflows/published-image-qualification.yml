@@ -403,7 +403,7 @@ jobs:
           npx --no-install playwright install chromium --with-deps
       - name: Exercise the current published graph, cache and browser phases
         id: ordinary
-        if: inputs.release_version == '2.22.0'
+        if: inputs.release_version == '2.23.0'
         shell: bash
         run: |
           python3 -I -S - <<'PY'
@@ -508,7 +508,7 @@ jobs:
           launch(Path(os.environ["GITHUB_WORKSPACE"]), "published", {"producer_gate_succeeded": True})
           PY
       - name: Exercise historical native image UI, SDK bounds and safe recovery
-        if: inputs.release_version != '2.22.0'
+        if: inputs.release_version != '2.23.0'
         run: bash scripts/ci/request-budget-native.sh
       - name: Independently remove owned ordinary acceptance roles
         if: >-
