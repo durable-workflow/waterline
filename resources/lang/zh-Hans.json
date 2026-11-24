@@ -1445,5 +1445,8 @@
     "The workflow task was retried after losing its lease.": "工作流任务在失去租约后已重试。",
     "Runs with repeated task lease loss": "反复丢失任务租约的运行",
     "Tasks at or above the lease loss threshold": "达到租约丢失阈值的任务",
-    "Most consecutive task lease losses": "连续丢失任务租约的最大次数"
+    "Most consecutive task lease losses": "连续丢失任务租约的最大次数",
+    "Timeout cleanup": "超时清理",
+    "Cleanup deadline": "清理截止时间",
+    "Preempted": "已中断"
 }

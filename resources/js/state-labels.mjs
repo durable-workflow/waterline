@@ -6,7 +6,7 @@ const stateMessages = {
     accepted: 'Accepted', started: 'Started', requested: 'Requested', delivered: 'Delivered',
     cleaning_up: 'Cleaning up', deadline_expired: 'Deadline expired', lost_authority: 'Authority lost',
     not_requested: 'Not requested', unknown: 'Unknown', blocked: 'Blocked', ready: 'Ready',
-    active: 'Active', stale: 'Stale', expired: 'Expired', leased: 'Leased', healthy: 'Healthy',
+    active: 'Active', stale: 'Stale', expired: 'Expired', preempted: 'Preempted', leased: 'Leased', healthy: 'Healthy',
     paused: 'Paused', deleted: 'Deleted', open: 'Open', closed: 'Closed', archived: 'Archived',
     try_cancel: 'Try cancellation', wait_cancellation_completed: 'Wait for cancellation completion',
     abandon: 'Abandon', reported_stopped: 'Reported stopped', observed: 'Observed', selected: 'Selected',
