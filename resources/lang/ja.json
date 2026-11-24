@@ -1445,5 +1445,8 @@
     "The workflow task was retried after losing its lease.": "ワークフロータスクはリースを失った後に再試行されました。",
     "Runs with repeated task lease loss": "タスクのリースを繰り返し失った実行",
     "Tasks at or above the lease loss threshold": "リース喪失のしきい値に達したタスク",
-    "Most consecutive task lease losses": "連続したタスクリース喪失の最大回数"
+    "Most consecutive task lease losses": "連続したタスクリース喪失の最大回数",
+    "Timeout cleanup": "タイムアウト時のクリーンアップ",
+    "Cleanup deadline": "クリーンアップ期限",
+    "Preempted": "中断"
 }

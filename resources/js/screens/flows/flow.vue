@@ -165,6 +165,16 @@
                     </div>
                 </div>
 
+                <div class="row mb-2" v-if="flow.timeout_cleanup && hasDetailValue(flow.timeout_cleanup.outcome)">
+                    <div class="col-md-2"><strong>{{ $t("Timeout cleanup") }}</strong></div>
+                    <div class="col">
+                        {{ stateLabel(flow.timeout_cleanup.outcome) }}
+                        <span v-if="hasDetailValue(flow.timeout_cleanup.cleanup_deadline_at)" class="text-muted">
+                            · {{ $t("Cleanup deadline") }} {{ timestamp(flow.timeout_cleanup.cleanup_deadline_at) }}
+                        </span>
+                    </div>
+                </div>
+
                 <div class="row mb-2" v-if="hasDetailValue(flow.namespace)">
                     <div class="col-md-2"><strong>{{ $t("Namespace") }}</strong></div>
                     <div class="col">{{ flow.namespace }}</div>

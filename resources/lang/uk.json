@@ -1445,5 +1445,8 @@
     "The workflow task was retried after losing its lease.": "Завдання робочого процесу повторено після втрати оренди.",
     "Runs with repeated task lease loss": "Запуски з повторною втратою оренди завдання",
     "Tasks at or above the lease loss threshold": "Завдання, що досягли порога втрат оренди",
-    "Most consecutive task lease losses": "Найбільша кількість послідовних втрат оренди завдання"
+    "Most consecutive task lease losses": "Найбільша кількість послідовних втрат оренди завдання",
+    "Timeout cleanup": "Очищення після закінчення часу очікування",
+    "Cleanup deadline": "Кінцевий строк очищення",
+    "Preempted": "Перервано"
 }

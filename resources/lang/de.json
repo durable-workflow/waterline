@@ -1445,5 +1445,8 @@
     "The workflow task was retried after losing its lease.": "Die Workflow-Aufgabe wurde nach einem Lease-Verlust erneut versucht.",
     "Runs with repeated task lease loss": "Ausführungen mit wiederholtem Lease-Verlust",
     "Tasks at or above the lease loss threshold": "Aufgaben ab dem Grenzwert für Lease-Verluste",
-    "Most consecutive task lease losses": "Höchste Anzahl aufeinanderfolgender Lease-Verluste"
+    "Most consecutive task lease losses": "Höchste Anzahl aufeinanderfolgender Lease-Verluste",
+    "Timeout cleanup": "Bereinigung nach Zeitüberschreitung",
+    "Cleanup deadline": "Frist für die Bereinigung",
+    "Preempted": "Unterbrochen"
 }
