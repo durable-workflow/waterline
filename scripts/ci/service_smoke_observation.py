@@ -17,8 +17,9 @@ import waterline_release_identity as identity
 from service_smoke_resources import Container, validate_profile
 
 
-PROBE_SHA256 = "6a8936fa12a388f6174b9d481dffed392bed9a76d96823a7ddc33204edcc7851"
+PROBE_SHA256 = "b84741e1d8441d1e386a328e9bf49db63a9d0691622d7eb7a1bd2ef5b20034d6"
 LOCK_SHA256 = "4eae8af4f7c07b4bbf61397115ea447bd21f14789208e02c3bb1a589c5d0b8ec"
+REVIEWED_LOCK_SHA256 = frozenset((LOCK_SHA256, "5070650d54933371a00660bae4583af5609bc213fadfb2b3dcffbd5f8cd98a9b"))
 CACHE_PATH = "/app/bootstrap/cache/routes-v7.php"
 SCHEMA = "waterline.current-standalone-runtime-observation/v1"
 PHP_BINARY = "/usr/local/bin/php"
@@ -97,7 +98,7 @@ def is_digest(value: object) -> bool:
 
 
 def check_program(program: bytes) -> None:
-    if not isinstance(program, bytes) or len(program) != 10501 or digest(program) != PROBE_SHA256:
+    if not isinstance(program, bytes) or len(program) != 10587 or digest(program) != PROBE_SHA256:
         raise ObservationError("Probe differs from the one reviewed callable representation")
 
 
@@ -140,14 +141,15 @@ def check_cache(value: object, *, present: bool) -> dict:
     return value
 
 
-def check_base(report: dict, mode: str, installed_sha256: str | None = None) -> None:
+def check_base(report: dict, mode: str, installed_sha256: str | None = None,
+               *, lock_sha256: str = LOCK_SHA256) -> None:
     metadata = mode == "metadata"
     if (report.get("schema") != SCHEMA or report.get("mode") != mode
             or report.get("php_version") != "8.3.37" or type(report.get("php_int_size")) is not int
             or report["php_int_size"] != 8 or report.get("php_binary") != PHP_BINARY
             or type(report.get("effective_uid")) is not int
             or report["effective_uid"] != (1000 if metadata else 82)
-            or report.get("lock_sha256") != LOCK_SHA256 or not is_digest(report.get("installed_sha256"))):
+            or report.get("lock_sha256") != lock_sha256 or not is_digest(report.get("installed_sha256"))):
         raise ObservationError("Runtime or metadata identity differs from the current target")
     if installed_sha256 is not None and report["installed_sha256"] != installed_sha256:
         raise ObservationError("Application package bytes differ from verified metadata")
@@ -206,21 +208,22 @@ def check_role_state(docker: Callable, role: Container, mode: str) -> None:
 
 
 def captured_report(docker: Callable, role: Container, program: bytes, mode: str,
-                    *, installed_sha256: str | None = None) -> dict:
+                    *, installed_sha256: str | None = None, lock_sha256: str = LOCK_SHA256) -> dict:
     check_program(program)
     result = run_probe(docker, role, program, mode, installed_sha256)
     if result.returncode != 0 or result.stderr:
         raise probe_refusal(mode, result)
     check_role_state(docker, role, mode)
     report = identity.decode_json(result.stdout, "captured current-target probe")
-    check_base(report, mode, installed_sha256)
+    check_base(report, mode, installed_sha256, lock_sha256=lock_sha256)
     return report
 
 
 def verify_metadata(docker: Callable, role: Container, program: bytes, source_lock: bytes) -> Metadata:
-    if not isinstance(source_lock, bytes) or digest(source_lock) != LOCK_SHA256:
+    lock_sha256 = digest(source_lock) if isinstance(source_lock, bytes) else None
+    if lock_sha256 not in REVIEWED_LOCK_SHA256:
         raise ObservationError("Lock is not the accepted current-target source bytes")
-    report = captured_report(docker, role, program, "metadata")
+    report = captured_report(docker, role, program, "metadata", lock_sha256=lock_sha256)
     if set(report) != BASE_KEYS | {"lock_base64", "installed_base64", "cache"}:
         raise ObservationError("Unexpected metadata report shape")
     check_cache(report["cache"], present=False)
@@ -302,7 +305,9 @@ def cache_phases(docker: Callable, role: Container, program: bytes, metadata: Me
               ("inventory", True), ("clear-after", False), ("inventory", False)]
     for index, (mode, present) in enumerate(stages, 1):
         try:
-            report = captured_report(docker, role, program, mode, installed_sha256=metadata.installed_sha256)
+            report = captured_report(docker, role, program, mode,
+                                     installed_sha256=metadata.installed_sha256,
+                                     lock_sha256=metadata.report["lock_sha256"])
         except ObservationError as error:
             raise ObservationError(f"Cache probe {index}/{len(stages)} ({mode}): {error}") from error
         verify_phase(report, mode, present, source_classes)

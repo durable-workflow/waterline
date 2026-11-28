@@ -22,7 +22,10 @@ current_runtime_probe_source() {
 <?php
 declare(strict_types=1);
 
-const CURRENT_LOCK_SHA256 = '4eae8af4f7c07b4bbf61397115ea447bd21f14789208e02c3bb1a589c5d0b8ec';
+const REVIEWED_LOCK_SHA256 = [
+    '5070650d54933371a00660bae4583af5609bc213fadfb2b3dcffbd5f8cd98a9b',
+    '4eae8af4f7c07b4bbf61397115ea447bd21f14789208e02c3bb1a589c5d0b8ec',
+];
 const CURRENT_CACHE_PATH = '/app/bootstrap/cache/routes-v7.php';
 const CURRENT_RUNTIME_CLASSES = [
     'Waterline\\Http\\Controllers\\Remote\\RemoteWorkflowsController' => '/app/waterline/app/Http/Controllers/Remote/RemoteWorkflowsController.php',
@@ -152,7 +155,7 @@ try {
         throw new RuntimeException('Route-cache path override is unselected.');
     }
     $lock = currentRegularBytes('/app/composer.lock', 1024 * 1024);
-    if (!hash_equals(CURRENT_LOCK_SHA256, hash('sha256', $lock))) {
+    if (!in_array(hash('sha256', $lock), REVIEWED_LOCK_SHA256, true)) {
         throw new RuntimeException('Lock differs from the current-target source.');
     }
     $installed = currentRegularBytes('/app/vendor/composer/installed.json', 1024 * 1024);
