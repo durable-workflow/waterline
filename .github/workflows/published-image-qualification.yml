@@ -178,8 +178,10 @@ jobs:
           clients: pip,python,composer,curl,git
       - name: Disable APT download retries (CVE-2026-109518)
         run: echo 'Acquire::Retries "0";' | sudo tee /etc/apt/apt.conf.d/99-no-retries >/dev/null
+      - name: Require fixed APT before setting up PHP
+        uses: durable-workflow/.github/.github/actions/require-fixed-apt@18783be6bef737cc778e4c7282a8797e39daa61a  # fixed-apt
       - name: Install PHP and Composer
-        uses: durable-workflow/.github/.github/actions/setup-php-linux@636d0cda4ce1e9c94ac6bf649154ff57957558be # bound-linux-php
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962  # v2.40.0
         with:
           php-version: '8.3'
           ini-file: production
@@ -421,7 +423,7 @@ jobs:
           import signal
 
 
-          BOOTSTRAP_SHA256 = "57a9f0d51db2b33dea80336719ff303120af41666d07d73b3ad418f53d454dbf"
+          BOOTSTRAP_SHA256 = "b55505caff288116c895f14c56a6d56434b0da86722b0a480501c2993f69b1af"
 
 
           def identity(value):
@@ -539,7 +541,7 @@ jobs:
           import signal
 
 
-          BOOTSTRAP_SHA256 = "57a9f0d51db2b33dea80336719ff303120af41666d07d73b3ad418f53d454dbf"
+          BOOTSTRAP_SHA256 = "b55505caff288116c895f14c56a6d56434b0da86722b0a480501c2993f69b1af"
 
 
           def identity(value):
