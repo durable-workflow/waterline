@@ -137,25 +137,34 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - name: Check out the fixed APT prerequisite
-      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      with:
-        repository: durable-workflow/.github
-        ref: 18783be6bef737cc778e4c7282a8797e39daa61a
-        path: .central-apt-source
-        persist-credentials: false
     - name: Select Ubuntu's Python 3.12
       run: |
         /usr/bin/python3 -I -S -c 'import sys; assert sys.version_info[:2] == (3, 12)'
         echo /usr/bin >> "$GITHUB_PATH"
+    - name: Create isolated Composer state
+      run: |
+        waterline_php_state="$(mktemp -d "$RUNNER_TEMP/waterline-php-check.XXXXXX")"
+        mkdir -m 700 "$waterline_php_state/home" "$waterline_php_state/cache" "$waterline_php_state/tmp"
+        {
+          echo "COMPOSER_HOME=$waterline_php_state/home"
+          echo "COMPOSER_CACHE_DIR=$waterline_php_state/cache"
+          echo "TMPDIR=$waterline_php_state/tmp"
+        } >> "$GITHUB_ENV"
     - name: Select authenticated dependency trust
       uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@242c2a7fb23459db2e1ada5f84dbee6d61d9b1e5 # clean-trust
       with:
         clients: pip,python,composer,curl,git
     - name: Disable APT download retries (CVE-2026-109518)
       run: echo 'Acquire::Retries "0";' | sudo tee /etc/apt/apt.conf.d/99-no-retries >/dev/null
-    - name: Prepare the reviewed PHP 8.3 container runtime
-      run: bash "$GITHUB_WORKSPACE/scripts/ci/setup-php-container.sh" "8.3"
+    - name: Require fixed APT before setting up PHP
+      uses: durable-workflow/.github/.github/actions/require-fixed-apt@18783be6bef737cc778e4c7282a8797e39daa61a  # fixed-apt
+    - name: Install Composer for public package verification
+      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962  # v2.40.0
+      with:
+        php-version: '8.3'
+        ini-file: production
+        tools: composer:2.10.3,phpunit:11.5.57
+        coverage: none
     - name: Verify Composer configuration before requests
       uses: durable-workflow/.github/.github/actions/verify-composer-trust@242c2a7fb23459db2e1ada5f84dbee6d61d9b1e5 # clean-trust
       with:
@@ -251,25 +260,34 @@ jobs:
       with:
         persist-credentials: false
 
-    - name: Check out the fixed APT prerequisite
-      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      with:
-        repository: durable-workflow/.github
-        ref: 18783be6bef737cc778e4c7282a8797e39daa61a
-        path: .central-apt-source
-        persist-credentials: false
     - name: Select Ubuntu's Python 3.12
       run: |
         /usr/bin/python3 -I -S -c 'import sys; assert sys.version_info[:2] == (3, 12)'
         echo /usr/bin >> "$GITHUB_PATH"
+    - name: Create isolated Composer state
+      run: |
+        waterline_php_state="$(mktemp -d "$RUNNER_TEMP/waterline-php-check.XXXXXX")"
+        mkdir -m 700 "$waterline_php_state/home" "$waterline_php_state/cache" "$waterline_php_state/tmp"
+        {
+          echo "COMPOSER_HOME=$waterline_php_state/home"
+          echo "COMPOSER_CACHE_DIR=$waterline_php_state/cache"
+          echo "TMPDIR=$waterline_php_state/tmp"
+        } >> "$GITHUB_ENV"
     - name: Select authenticated dependency trust
       uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@242c2a7fb23459db2e1ada5f84dbee6d61d9b1e5 # clean-trust
       with:
         clients: pip,python,composer,curl,git,npm
     - name: Disable APT download retries (CVE-2026-109518)
       run: echo 'Acquire::Retries "0";' | sudo tee /etc/apt/apt.conf.d/99-no-retries >/dev/null
-    - name: Prepare the reviewed PHP 8.3 container runtime
-      run: bash "$GITHUB_WORKSPACE/scripts/ci/setup-php-container.sh" "8.3"
+    - name: Require fixed APT before setting up PHP
+      uses: durable-workflow/.github/.github/actions/require-fixed-apt@18783be6bef737cc778e4c7282a8797e39daa61a  # fixed-apt
+    - name: Install PHP and Composer
+      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962  # v2.40.0
+      with:
+        php-version: '8.3'
+        ini-file: production
+        tools: composer:2.10.3,phpunit:11.5.57
+        coverage: none
     - name: Require bound stock PHP extensions
       run: >-
         php -r '$required = ["pdo_sqlite"]; foreach ($required as $extension) {
@@ -311,7 +329,6 @@ jobs:
       run: >-
         vendor/bin/phpunit
         --configuration=phpunit-sqlite.xml
-        --do-not-cache-result
         tests/Unit/WorkerStatusConformanceRunnerTest.php
 
     - name: Run focused Node conformance regressions
@@ -1309,25 +1326,34 @@ jobs:
       with:
         persist-credentials: false
 
-    - name: Check out the fixed APT prerequisite
-      uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      with:
-        repository: durable-workflow/.github
-        ref: 18783be6bef737cc778e4c7282a8797e39daa61a
-        path: .central-apt-source
-        persist-credentials: false
     - name: Select Ubuntu's Python 3.12
       run: |
         /usr/bin/python3 -I -S -c 'import sys; assert sys.version_info[:2] == (3, 12)'
         echo /usr/bin >> "$GITHUB_PATH"
+    - name: Create isolated Composer state
+      run: |
+        waterline_php_state="$(mktemp -d "$RUNNER_TEMP/waterline-php-check.XXXXXX")"
+        mkdir -m 700 "$waterline_php_state/home" "$waterline_php_state/cache" "$waterline_php_state/tmp"
+        {
+          echo "COMPOSER_HOME=$waterline_php_state/home"
+          echo "COMPOSER_CACHE_DIR=$waterline_php_state/cache"
+          echo "TMPDIR=$waterline_php_state/tmp"
+        } >> "$GITHUB_ENV"
     - name: Select authenticated dependency trust
       uses: durable-workflow/.github/.github/actions/bootstrap-patched-pip@242c2a7fb23459db2e1ada5f84dbee6d61d9b1e5 # clean-trust
       with:
         clients: pip,python,composer,curl,git
     - name: Disable APT download retries (CVE-2026-109518)
       run: echo 'Acquire::Retries "0";' | sudo tee /etc/apt/apt.conf.d/99-no-retries >/dev/null
-    - name: Prepare the reviewed PHP 8.3 container runtime
-      run: bash "$GITHUB_WORKSPACE/scripts/ci/setup-php-container.sh" "8.3"
+    - name: Require fixed APT before setting up PHP
+      uses: durable-workflow/.github/.github/actions/require-fixed-apt@18783be6bef737cc778e4c7282a8797e39daa61a  # fixed-apt
+    - name: Install matrix validator PHP
+      uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962  # v2.40.0
+      with:
+        php-version: '8.3'
+        ini-file: production
+        coverage: none
+        tools: composer:2.10.3,phpunit:11.5.57
 
     - name: Validate and export dependency matrix
       id: matrix
