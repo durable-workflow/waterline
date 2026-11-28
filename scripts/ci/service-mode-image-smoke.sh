@@ -22,7 +22,7 @@ current_runtime_probe_source() {
 <?php
 declare(strict_types=1);
 
-const CURRENT_LOCK_SHA256 = '5070650d54933371a00660bae4583af5609bc213fadfb2b3dcffbd5f8cd98a9b';
+const CURRENT_LOCK_SHA256 = '4eae8af4f7c07b4bbf61397115ea447bd21f14789208e02c3bb1a589c5d0b8ec';
 const CURRENT_CACHE_PATH = '/app/bootstrap/cache/routes-v7.php';
 const CURRENT_RUNTIME_CLASSES = [
     'Waterline\\Http\\Controllers\\Remote\\RemoteWorkflowsController' => '/app/waterline/app/Http/Controllers/Remote/RemoteWorkflowsController.php',
