@@ -1,3 +1,4 @@
 {
-  "8.2": "php:8.2.36-cli-bookworm@sha256:0a5ed0098915c11e1db8729b81bdb9a1bf12a998cc5e5b2f9a640afb6104dbe1"
+  "8.2": "php:8.2.36-cli-bookworm@sha256:0a5ed0098915c11e1db8729b81bdb9a1bf12a998cc5e5b2f9a640afb6104dbe1",
+  "8.3": "php:8.3.37-cli-bookworm@sha256:ab657f49471efd8ec265ce14ee20a855e19aee3f3ed3c55910528dab9fa3ffd8"
 }
